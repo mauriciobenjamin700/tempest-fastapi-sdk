@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `CORSSettings.production_violations()` passa a recusar, com
+  `CORS_ALLOW_CREDENTIALS=true`, toda regra de origem que aceita origem não
+  listada: `"*"` em `CORS_ORIGINS` (agora com mensagem própria), `"null"` em
+  `CORS_ORIGINS` e um `CORS_ORIGIN_REGEX` que casa com uma origem reservada
+  `.invalid` (`.*`, `https://.*`). Com credenciais ligadas, o
+  `CORSMiddleware` do Starlette devolve a própria `Origin` do chamador com
+  `Access-Control-Allow-Credentials: true`. Vale só sob `ENV=production`;
+  desenvolvimento e teste continuam aceitando o par. Docstrings do
+  `CORSSettings` e o `hint` do check `security.W003` deixam de afirmar que o
+  navegador bloqueia `*` com credenciais.
+- `AsyncMinIOClient.accel_redirect_response` (e `serve_object` com
+  `accel_redirect=True`) monta os overrides `response-*` pelo mesmo
+  `download_overrides` do `presigned_get_url`: o `media_type=` precisa ser um
+  `tipo/subtipo` puro, e qualquer outro valor sobe `ValueError` antes de
+  assinar. Mudança de comportamento: um `media_type` com parâmetro (`;
+  charset=...`) passa a ser recusado nesse caminho, como já era no link
+  presignado. O `inline` (em todo helper de download) deixa de valer para um
+  tipo com vírgula ou quebra de linha, que o navegador pode ler como outro
+  tipo.
+- Busca textual (`BaseRepository.search`, `search_condition`,
+  `full_text_search`, `full_text_condition` e as funções de `db.search`)
+  passa a recusar sempre `hashed_password` e as colunas de
+  `__secret_columns__` com `422`. Novo `searchable_columns` no
+  `BaseRepository` (atributo de classe ou argumento do construtor, no formato
+  do `orderable_columns`) e novo `searchable=` em `resolve_search_column`,
+  `like_search_condition`, `full_text_condition` e `full_text_rank`
+  restringem `fields` a um conjunto declarado. A recusa de campo
+  desconhecido deixa de listar todas as colunas do model em
+  `details["allowed"]`: a chave só aparece com um conjunto declarado, e
+  lista só ele. Mudança de comportamento: a mensagem passa a ser
+  `... has no searchable column ...`.
+- Stripe: `create`, `retrieve`, `update` e `delete` dos recursos do
+  `StripeClient` conferem o campo `object` da resposta contra o tipo do
+  recurso e levantam o novo `StripeObjectMismatchError` (subclasse de
+  `StripeError`) quando ele difere ou falta. `StripeResource` ganha
+  `object_type=` (default `None`, sem conferência) e `StripeClient.request`
+  ganha `expected_object=`. Mudança de comportamento: um `2xx` de outro tipo
+  de objeto deixa de ser devolvido (#661).
+
 ## [0.335.0] — 2026-10-30
 
 ### Security

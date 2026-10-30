@@ -196,8 +196,12 @@ def check_debug(context: Any) -> list[CheckMessage]:
 def check_cors(context: Any) -> list[CheckMessage]:
     """Flag wildcard CORS origins combined with credentials.
 
-    A browser rejects ``Access-Control-Allow-Origin: *`` together with
-    credentials, and allowing both is a security smell.
+    Starlette's ``CORSMiddleware`` does not send
+    ``Access-Control-Allow-Origin: *`` when credentials are allowed: it
+    echoes the request's own ``Origin`` together with
+    ``Access-Control-Allow-Credentials: true``, so every site may make
+    credentialed reads. ``CORSSettings.production_violations`` refuses the
+    pair under ``ENV=production``; this check also warns elsewhere.
 
     Args:
         context (Any): The settings object.
@@ -220,7 +224,10 @@ def check_cors(context: Any) -> list[CheckMessage]:
         return [
             warning(
                 "CORS allows all origins ('*') with credentials enabled.",
-                hint="List explicit origins; browsers block '*' + credentials.",
+                hint=(
+                    "List explicit origins; with credentials, '*' echoes "
+                    "every request Origin back."
+                ),
                 id="security.W003",
             )
         ]

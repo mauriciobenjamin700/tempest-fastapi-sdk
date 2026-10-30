@@ -858,7 +858,10 @@ class AsyncMinIOClient:
             filename (str | None): Name presented to the client. Defaults to
                 the object key's basename.
             media_type (str | None): Content type the store should answer
-                with. ``None`` keeps the type stored with the object.
+                with, a bare ``type/subtype`` checked by
+                :func:`~tempest_fastapi_sdk.storage.presign.download_overrides`
+                exactly as :meth:`presigned_get_url` checks it. ``None`` keeps
+                the type stored with the object.
             as_attachment (bool): ``True`` (default) forces a download.
                 ``False`` asks for ``inline`` — what ``<video>`` and
                 ``<img>`` want — and is granted only when ``media_type`` is
@@ -878,27 +881,30 @@ class AsyncMinIOClient:
             nginx to replace with the object.
 
         Raises:
-            ValueError: When ``internal_prefix`` does not start with ``/``.
+            ValueError: When ``internal_prefix`` does not start with ``/``,
+                or when ``media_type`` is not a bare ``type/subtype``
+                (parameters, a comma or a line break are refused before
+                anything is signed).
         """
         from urllib.parse import urlsplit
 
         from starlette.responses import Response
 
-        from tempest_fastapi_sdk.utils.download import build_content_disposition
+        from tempest_fastapi_sdk.storage.presign import download_overrides
 
         prefix = (
             self.accel_prefix
             if internal_prefix is None
             else self._check_accel_prefix(internal_prefix)
         )
-        download_name = filename or key.rsplit("/", 1)[-1]
-        overrides: dict[str, str | list[str] | tuple[str]] = {
-            "response-content-disposition": build_content_disposition(
-                download_name, as_attachment=as_attachment, media_type=media_type
-            ),
-        }
-        if media_type is not None:
-            overrides["response-content-type"] = media_type
+        overrides: dict[str, str | list[str] | tuple[str]] = dict(
+            download_overrides(
+                key,
+                filename=filename,
+                media_type=media_type,
+                as_attachment=as_attachment,
+            )
+        )
         if cache_control is not None:
             overrides["response-cache-control"] = cache_control
         target = self._bucket(bucket)

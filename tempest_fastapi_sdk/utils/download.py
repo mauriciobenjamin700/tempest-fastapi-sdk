@@ -85,6 +85,10 @@ that an uploader-chosen type cannot reach ``inline``.
 """
 
 
+_UNSAFE_MEDIA_TYPE_CHARS: frozenset[str] = frozenset({",", "\r", "\n"})
+"""Characters that make a ``Content-Type`` ambiguous to the browser."""
+
+
 def _is_inline_safe(media_type: str | None) -> bool:
     """Tell whether ``media_type`` may be served ``inline``.
 
@@ -95,9 +99,15 @@ def _is_inline_safe(media_type: str | None) -> bool:
 
     Returns:
         bool: ``True`` only for a type in :data:`INLINE_SAFE_MEDIA_TYPES`,
-        compared without parameters and case-insensitively.
+        compared without parameters and case-insensitively. A value holding
+        a comma or a line break is never inline-safe: browsers that follow
+        the Fetch "extract a MIME type" algorithm split ``Content-Type`` on
+        commas and keep the last valid type, so the essence before the first
+        ``;`` is not necessarily the type that gets rendered.
     """
     if media_type is None:
+        return False
+    if any(char in media_type for char in _UNSAFE_MEDIA_TYPE_CHARS):
         return False
     essence: str = media_type.split(";", 1)[0].strip().lower()
     return essence in INLINE_SAFE_MEDIA_TYPES
