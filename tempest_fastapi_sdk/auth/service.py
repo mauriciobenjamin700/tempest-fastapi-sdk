@@ -77,6 +77,7 @@ from tempest_fastapi_sdk.exceptions import (
     OAuthEmailTakenException,
     OAuthEmailUnverifiedException,
     OAuthRegistrationDisabledException,
+    TooManyRequestsException,
     UnauthorizedException,
     ValidationException,
 )
@@ -1814,7 +1815,9 @@ class UserAuthService:
         :func:`~tempest_fastapi_sdk.utils.throttle.login_throttle_key` of
         ``email`` before the password is checked, and ``mfa_throttle`` on
         ``f"mfa:{user_id}"`` before the code is checked; ``login_ip_throttle``
-        is read before anything and spent by every soft failure. A spent
+        reserves one slot before anything else, so concurrent guesses
+        cannot outrun it, and gives it back once the password and code both
+        matched, as on ``/auth/login``. A spent
         budget answers like any other soft failure — ``None``, the generic
         ``202`` — whatever the password or code, and never issues a link.
         A matching password clears the e-mail key and a matching code the
@@ -1868,8 +1871,11 @@ class UserAuthService:
         self.require_mail_delivery()
         ip_throttle = login_ip_throttle if client_ip is not None else None
         ip_key = f"login-ip:{client_ip}"
-        if ip_throttle is not None and (await ip_throttle.status(ip_key)).blocked:
-            return None
+        if ip_throttle is not None:
+            try:
+                await ip_throttle.reserve(ip_key)
+            except TooManyRequestsException:
+                return None
         email_key = login_throttle_key(email)
         if login_throttle is not None:
             attempt = await login_throttle.hit(email_key)
@@ -1883,8 +1889,6 @@ class UserAuthService:
         if user is None or not self.passwords.verify(
             current_password, user.hashed_password
         ):
-            if ip_throttle is not None:
-                await ip_throttle.hit(ip_key)
             return None
         if login_throttle is not None:
             await login_throttle.reset(email_key)
@@ -1903,11 +1907,11 @@ class UserAuthService:
             if not await self._verify_mfa_code(
                 session, user, mfa_code, recovery_code_model
             ):
-                if ip_throttle is not None:
-                    await ip_throttle.hit(ip_key)
                 return None
             if mfa_throttle is not None:
                 await mfa_throttle.reset(mfa_key)
+        if ip_throttle is not None:
+            await ip_throttle.release(ip_key)
         normalized_new = new_email.strip().lower()
         if normalized_new == user.email:
             raise ValidationException(

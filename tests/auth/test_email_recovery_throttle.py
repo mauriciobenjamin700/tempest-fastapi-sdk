@@ -355,3 +355,69 @@ class TestIpBudget:
             )
             is not None
         )
+
+    async def test_concurrent_guesses_cannot_overrun_the_ip_budget(
+        self, session: AsyncSession
+    ) -> None:
+        """A burst from one IP runs at most ``max_attempts`` password checks.
+
+        Reading the budget first and spending it only on failure bounds
+        sequential guesses alone: every request of a burst reads the budget
+        before any of them fails. The slot is reserved before the check, as
+        on ``/auth/login``.
+        """
+        import asyncio
+
+        service = _service()
+        await _user(service, session)
+        real = service.passwords
+        checks: list[str] = []
+
+        class _CountingPasswords:
+            def verify(self, plain: str, hashed: str) -> bool:
+                checks.append(plain)
+                return real.verify(plain, hashed)
+
+        service.passwords = _CountingPasswords()  # type: ignore[assignment]
+        factory = async_sessionmaker(session.bind, expire_on_commit=False)
+        ip_throttle = AttemptThrottle(
+            InMemoryThrottleBackend(), max_attempts=3, window_seconds=60
+        )
+
+        async def _guess(index: int) -> EmailChangeToken | None:
+            async with factory() as own:
+                return await service.request_email_recovery(
+                    own,
+                    email="old@acme.com",
+                    new_email="new@acme.net",
+                    current_password=f"wrong-guess-{index}",
+                    login_ip_throttle=ip_throttle,
+                    client_ip="203.0.113.7",
+                )
+
+        results = await asyncio.gather(*(_guess(index) for index in range(20)))
+        assert all(result is None for result in results)
+        assert len(checks) == 3
+
+    async def test_a_proven_request_gives_the_ip_slot_back(
+        self, session: AsyncSession
+    ) -> None:
+        """Only failed proofs spend the IP budget."""
+        service = _service()
+        await _user(service, session)
+        ip_throttle = AttemptThrottle(
+            InMemoryThrottleBackend(), max_attempts=1, window_seconds=60
+        )
+        for index in range(3):
+            assert (
+                await service.request_email_recovery(
+                    session,
+                    email="old@acme.com",
+                    new_email=f"new{index}@acme.net",
+                    current_password=PASSWORD,
+                    login_ip_throttle=ip_throttle,
+                    client_ip="203.0.113.7",
+                )
+                is not None
+            )
+        assert (await ip_throttle.status("login-ip:203.0.113.7")).attempts == 0

@@ -223,8 +223,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login (por e-mail e, se configurado, por IP) e do `/auth/mfa/verify` (por
   conta). `request_email_recovery` ganha os keyword-only `login_throttle`,
   `login_ip_throttle`, `client_ip` e `mfa_throttle`; orçamento esgotado
-  responde o mesmo `202` genérico sem emitir link. Override antigo continua
-  chamado, com aviso no log.
+  responde o mesmo `202` genérico sem emitir link. Como no login, a vaga do
+  IP é reservada antes de conferir a senha (`AttemptThrottle.reserve`) e
+  devolvida quando senha e código conferem, então uma rajada concorrente não
+  passa do orçamento. Override antigo continua chamado, com aviso no log.
 - `change_password` e `confirm_email_change` revogam as sessões do usuário
   por padrão, como `confirm_password_reset`; `revoke_sessions=False` é a saída
   explícita. `POST /auth/password-change` continua respondendo `204`, mas o
