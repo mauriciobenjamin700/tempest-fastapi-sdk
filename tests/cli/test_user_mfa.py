@@ -35,6 +35,7 @@ from tempest_fastapi_sdk import (
     PasswordUtils,
     make_user_recovery_code_model,
     make_user_refresh_token_model,
+    make_web_authn_credential_model,
 )
 from tempest_fastapi_sdk.cli.main import app
 from tempest_fastapi_sdk.utils.totp import TOTPHelper
@@ -48,6 +49,7 @@ MODEL: str = "cli_mfa_user_model:_CLIMfaUserModel"
 CODES: str = "cli_mfa_user_model:_CLIMfaRecoveryCode"
 AUDIT: str = "cli_mfa_user_model:_CLIMfaAuditLog"
 TOKENS: str = "cli_mfa_user_model:_CLIMfaRefreshToken"
+PASSKEYS: str = "cli_mfa_user_model:_CLIMfaPasskey"
 
 
 class _CLIMfaUserModel(MFAMixin, BaseUserModel):
@@ -84,6 +86,11 @@ _CLIMfaRefreshToken = make_user_refresh_token_model(
     tablename="cli_mfa_refresh_tokens",
     class_name="_CLIMfaRefreshToken",
 )
+_CLIMfaPasskey = make_web_authn_credential_model(
+    user_table="cli_mfa_users",
+    tablename="cli_mfa_passkeys",
+    class_name="_CLIMfaPasskey",
+)
 
 _module = types.ModuleType("cli_mfa_user_model")
 for _name, _value in {
@@ -93,6 +100,7 @@ for _name, _value in {
     "_CLIBareAuditLog": _CLIBareAuditLog,
     "_CLIMfaRecoveryCode": _CLIMfaRecoveryCode,
     "_CLIMfaRefreshToken": _CLIMfaRefreshToken,
+    "_CLIMfaPasskey": _CLIMfaPasskey,
 }.items():
     setattr(_module, _name, _value)
 sys.modules["cli_mfa_user_model"] = _module
@@ -475,6 +483,32 @@ def _open_session(url: str) -> None:
     asyncio.run(_run())
 
 
+def _add_passkey(url: str) -> None:
+    """Insert one WebAuthn credential for the MFA account.
+
+    Args:
+        url (str): The database URL.
+    """
+
+    async def _run() -> None:
+        engine = create_async_engine(url)
+        async with engine.begin() as conn:
+            user_id = (await conn.execute(select(_CLIMfaUserModel.id))).scalar()
+            await conn.execute(
+                _CLIMfaPasskey.__table__.insert().values(
+                    id=uuid.uuid4(),
+                    user_id=user_id,
+                    credential_id=uuid.uuid4().bytes,
+                    credential_data=b"attested-credential-data",
+                    sign_count=0,
+                    backed_up=False,
+                ),
+            )
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
 def _live_sessions(url: str) -> int:
     """Count the refresh tokens of the MFA account that are not revoked.
 
@@ -829,3 +863,90 @@ class TestMfaReset:
         assert "has MFA active" not in result.stdout
         hashed = str(_scalar(project_db, select(_CLIMfaUserModel.hashed_password)))
         assert PasswordUtils().verify(NEW_PASSWORD, hashed)
+
+
+class TestMfaResetPasskeys:
+    """A passkey signs in without the factor, so the reset deletes them."""
+
+    def test_passkeys_are_deleted_by_default(self, project_db: str) -> None:
+        _enroll()
+        _add_passkey(project_db)
+        _add_passkey(project_db)
+
+        result = _mfa_reset(
+            "--yes",
+            "--keep-sessions",
+            "--webauthn-credential-model",
+            PASSKEYS,
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Deleted 2 passkey(s)." in result.stdout
+        assert _count(project_db, _CLIMfaPasskey) == 0
+
+    def test_keep_passkeys_leaves_them(self, project_db: str) -> None:
+        _enroll()
+        _add_passkey(project_db)
+
+        result = _mfa_reset("--yes", "--keep-sessions", "--keep-passkeys")
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "--keep-passkeys given" in result.stderr
+        assert _count(project_db, _CLIMfaPasskey) == 1
+
+    def test_keep_passkeys_contradicts_the_model(self, project_db: str) -> None:
+        _enroll()
+        _add_passkey(project_db)
+
+        result = _mfa_reset(
+            "--yes",
+            "--keep-passkeys",
+            "--webauthn-credential-model",
+            PASSKEYS,
+        )
+
+        assert result.exit_code == 2
+        assert "contradict" in result.stderr
+        assert _count(project_db, _CLIMfaPasskey) == 1
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
+
+    def test_without_a_model_it_says_so(self, project_db: str) -> None:
+        _enroll()
+
+        result = _mfa_reset("--yes", "--keep-sessions")
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "so no passkey was deleted" in result.stderr
+
+    def test_a_typed_spec_that_is_not_a_credential_model_is_refused(
+        self, project_db: str
+    ) -> None:
+        _enroll()
+
+        result = _mfa_reset(
+            "--yes",
+            "--keep-sessions",
+            "--webauthn-credential-model",
+            TOKENS,
+        )
+
+        assert result.exit_code == 2
+        assert "not a BaseWebAuthnCredentialModel subclass" in result.stderr
+        assert _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
+
+    def test_the_audit_event_counts_the_deleted_passkeys(self, project_db: str) -> None:
+        _enroll()
+        _add_passkey(project_db)
+
+        result = _mfa_reset(
+            "--yes",
+            "--keep-sessions",
+            "--webauthn-credential-model",
+            PASSKEYS,
+            "--audit-model",
+            AUDIT,
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        changes = _scalar(project_db, select(_CLIMfaAuditLog.changes))
+        assert "passkeys_revoked" in str(changes)

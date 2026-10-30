@@ -459,7 +459,7 @@ Full surface:
 | `mfa_confirm` | `(session, *, user, code) -> None` | Activates MFA. |
 | `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model, throttle=None) -> UserModel` | Authenticated user (mint the JWT next). |
 | `mfa_disable` | `(session, *, user, password, code, recovery_code_model) -> None` | Clears secret + codes. |
-| `mfa_reset` | `(session, *, user, recovery_code_model, revoke_sessions=True) -> int` | Clears secret + codes **without proof** and revokes the sessions; returns how many fell. An operator path — see [An account that lost its second factor](#mfa-reset). |
+| `mfa_reset` | `(session, *, user, recovery_code_model, revoke_sessions=True, revoke_passkeys=True) -> int` | Clears secret + codes **without proof**, revokes the sessions and deletes the passkeys; returns how many sessions fell. An operator path — see [An account that lost its second factor](#mfa-reset). |
 | `change_password_with_mfa` | `(session, *, user, code, new_password, recovery_code_model=None, revoke_sessions=True, throttle=None) -> UserModel` | Replaces the password on proof of the factor. Raises `MFANotEnrolledException` on an account without MFA. |
 
 
@@ -547,6 +547,7 @@ tempest user mfa-reset --email staff@example.com \
 Remove the second factor of staff@example.com? It will log in with the password alone until it enrolls again. [y/N]: y
 MFA reset for staff@example.com (id=2ced9167-4e7a-4dc5-8626-72b64ff7e4a7)
 Revoked 2 active refresh token(s).
+Deleted 1 passkey(s).
 ```
 
 Piece by piece:
@@ -554,8 +555,9 @@ Piece by piece:
 1. **Confirmation is required.** In a terminal, the command asks; outside one (CI, a pipe), it needs `--yes` and exits with code 1 without it. Declining the prompt changes nothing.
 2. **The reset is `UserAuthService.mfa_reset`**: it clears `totp_secret`, `totp_enabled_at` and `totp_last_step` and deletes **every** recovery code of the user — the same cleanup as `mfa_disable`, without the proof.
 3. **Sessions are revoked by default**, in the same transaction: whoever kept the lost phone may hold a live session too. `--keep-sessions` is the explicit opt-out; the table comes from `--refresh-token-model` (default `src.db.models:UserRefreshTokenModel`).
-4. **`--audit-model` writes `record_event` in the same transaction** (`actor="cli"`, `changes` with `mfa_enabled` and `sessions_revoked`), named by `--event` (default `user.mfa_reset`). If the audit write fails, the reset rolls back with it. Without `--audit-model`, the command goes on and says on stderr that no event was recorded.
-5. **An account without MFA active exits with code 2** and `has no MFA active, nothing to reset.` — nothing is written, not even the event.
+4. **Passkeys are deleted by default too**, in the same transaction: a passkey signs in without the second factor, and one registered by whoever kept the phone would survive the reset. `--keep-passkeys` is the explicit opt-out; the table comes from `--webauthn-credential-model` (default `src.db.models:UserWebAuthnCredentialModel`). See [Password and MFA resets delete the passkeys](webauthn.md#password-and-mfa-resets-delete-the-passkeys).
+5. **`--audit-model` writes `record_event` in the same transaction** (`actor="cli"`, `changes` with `mfa_enabled`, `sessions_revoked` and `passkeys_revoked`), named by `--event` (default `user.mfa_reset`). If the audit write fails, the reset rolls back with it. Without `--audit-model`, the command goes on and says on stderr that no event was recorded.
+6. **An account without MFA active exits with code 2** and `has no MFA active, nothing to reset.` — nothing is written, not even the event.
 
 After the reset the account logs in with the password alone until it enrolls again — and `set-password` stops asking for a code. If the password is lost too, run both, in that order.
 
@@ -706,7 +708,7 @@ Callers of `UserAuthService.signup` get, in the second tuple item, `None`
 - Whoever lost the phone **and** the recovery codes comes back through the
   operator: `tempest user mfa-reset` (or `mfa_reset` in code) removes the
   factor without proof, with confirmation, an audit event in the same
-  transaction and the sessions revoked.
+  transaction, the sessions revoked and the passkeys deleted.
 - The TOTP secret lives on `UserModel` — consider encrypting that column at
   rest.
 - `/auth/mfa/verify` answers `429` after five wrong codes per account in 15

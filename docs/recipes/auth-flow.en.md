@@ -1211,6 +1211,15 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     set-password`; a caller that passes `revoke_sessions=False` to the
     service gives that up on purpose.
 
+!!! note "The reset also deletes the passkeys"
+    With [WebAuthn](webauthn.md) mounted, the reset deletes **every**
+    passkey of the user in the same transaction: a passkey signs in without
+    the password, and one registered by whoever held the account would keep
+    signing in after the recovery. The owner's own go too, and they register
+    again. `confirm_password_reset(..., revoke_passkeys=False)` is the
+    explicit opt-out. See
+    [Password and MFA resets delete the passkeys](webauthn.md#password-and-mfa-resets-delete-the-passkeys).
+
 !!! check "Errors you'll see"
     - Unknown / already-used / expired token → **401** with `code: "INVALID_TOKEN"` and a `detail` naming the reason (unknown token: `token not recognized`).
     - A `token` shorter than 16 characters → **422** from FastAPI itself (`string_too_short`), before it reaches the service.
@@ -1262,7 +1271,8 @@ exchanged, and the cookie session of the [auth pages](auth-pages.md) ends
 too. The current access token lives until its short TTL ends; the next
 session starts at login. Wrong `current_password` → **401**. Calling the
 service directly, `change_password(..., revoke_sessions=False)` is the
-explicit opt-out.
+explicit opt-out. The passkeys stay: the caller just proved the current
+password, so this is not account recovery.
 
 !!! tip "Reset vs change — which is which?"
     - **Forgot** the password, not logged in → **[Password recovery](#password-recovery)** (`password-reset/request` → `confirm`, prove with an emailed token).

@@ -172,6 +172,14 @@ def create_app() -> FastAPI:
 inside `create_app`. The application does not start with endpoints that would
 answer 500 — the same rule `recovery_code_model` follows for MFA.
 
+`make_auth_router(webauthn=...)` also hands the credential table to the
+`UserAuthService` (`webauthn_credential_model`) when you did not pass one,
+because the account-recovery flows delete the user's passkeys (see
+[Password and MFA resets delete the passkeys](#password-and-mfa-resets-delete-the-passkeys)).
+Code that uses `UserAuthService` outside the router — a worker, the CLI —
+passes `webauthn_credential_model=UserWebAuthnCredentialModel` to the
+constructor.
+
 ## Step 4 — the frontend
 
 The browser speaks `ArrayBuffer`; the API speaks base64url. Let the browser do
@@ -299,6 +307,35 @@ The delete endpoint does not stop you from removing the last credential.
 Whether a password is still an acceptable fallback is the application's
 decision, and the SDK cannot know it.
 
+### Password and MFA resets delete the passkeys
+
+A passkey signs in without the password and without the second factor. If
+someone held the account for a while and registered one, revoking the sessions
+is not enough: the passkey keeps signing in after the owner recovers the
+account. So both recovery flows delete **every** passkey of the user, in the
+same transaction:
+
+| Flow | Deletes the passkeys? | Explicit opt-out |
+| --- | --- | --- |
+| `confirm_password_reset` (and `POST /auth/password-reset/confirm`) | yes | `revoke_passkeys=False` |
+| `mfa_reset` (and `tempest user mfa-reset`) | yes | `revoke_passkeys=False` / `--keep-passkeys` |
+| `change_password` (authenticated user, with the current password) | no | — |
+| `mfa_disable` (authenticated user, with password and code) | no | — |
+
+There is no telling the intruder's passkey from the owner's, so the owner's go
+too: after the reset they register again. The authenticated flows keep the
+passkeys because the caller just proved the password.
+
+`UserAuthService.revoke_user_passkeys(session, user_id=...)` is the same
+operation on its own, for a recovery flow of your own. Without
+`webauthn_credential_model` on the service there is nothing to delete, and the
+method returns `0`.
+
+!!! warning "Behaviour change"
+    Up to this version, password and MFA resets left the passkeys in place.
+    Tell the user on the reset screen that their passkeys need to be
+    registered again.
+
 ## Registering asks for the password (and the second factor)
 
 `POST /auth/webauthn/register/begin` needs more than the access token. The body
@@ -308,12 +345,11 @@ them. A wrong password or code answers **401** and no challenge is issued; a
 missing body answers **422**.
 
 Why: a passkey signs in without the password and without the second factor
-(next section), and a password reset does not remove it. If a bearer token
-were enough, whoever read one from a log, a shared machine or a script injected
-into the page could register an authenticator of their own and keep signing in
-after the token expired, after a password reset and after the owner enrolled
-TOTP. Asking for the factors at registration is what keeps a short-lived leak
-short-lived.
+(next section), and only account recovery removes it. If a bearer token were
+enough, whoever read one from a log, a shared machine or a script injected into
+the page could register an authenticator of their own and keep signing in after
+the token expired and after the owner enrolled TOTP. Asking for the factors at
+registration is what keeps a short-lived leak short-lived.
 
 !!! note "Accounts created by social login"
     An account created through the OAuth callback has a generated password
@@ -345,6 +381,8 @@ uses whichever is at hand.
   rule entirely.
 - Registering a passkey asks for the password, plus the second factor on an
   MFA account — the access token alone is refused.
+- Password and MFA resets delete every passkey of the user;
+  `revoke_passkeys=False` is the explicit opt-out.
 - The challenge is single-use; a counter that fails to advance is refused;
   deletion is scoped to the owner.
 - Multi-replica requires `RedisWebAuthnChallengeStore`.

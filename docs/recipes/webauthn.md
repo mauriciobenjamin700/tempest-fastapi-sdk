@@ -172,6 +172,13 @@ def create_app() -> FastAPI:
 `create_app`. A aplicação não sobe com endpoints que responderiam 500 — o mesmo
 critério do `recovery_code_model` no MFA.
 
+O `make_auth_router(webauthn=...)` também entrega a tabela de credenciais ao
+`UserAuthService` (`webauthn_credential_model`) quando você não passou uma,
+porque os fluxos de recuperação de conta apagam as passkeys do usuário (veja
+[Reset de senha e de MFA apagam as passkeys](#reset-de-senha-e-de-mfa-apagam-as-passkeys)).
+Quem usa o `UserAuthService` fora do router — um worker, a CLI — passa
+`webauthn_credential_model=UserWebAuthnCredentialModel` no construtor.
+
 ## Passo 4 — o frontend
 
 O navegador fala em `ArrayBuffer`; a API fala em base64url. Deixe o próprio
@@ -298,6 +305,33 @@ A diferença decide o seu produto, não o SDK:
 O endpoint de delete não impede remover a última credencial. Se uma senha ainda
 é um fallback aceitável é decisão da aplicação, e o SDK não tem como saber.
 
+### Reset de senha e de MFA apagam as passkeys
+
+Uma passkey entra sem a senha e sem o segundo fator. Se alguém segurou a conta
+por um tempo e cadastrou uma, revogar as sessões não basta: a passkey continua
+entrando depois que o dono recupera a conta. Por isso os dois fluxos de
+recuperação apagam **todas** as passkeys do usuário, na mesma transação:
+
+| Fluxo | Apaga as passkeys? | Saída explícita |
+| --- | --- | --- |
+| `confirm_password_reset` (e `POST /auth/password-reset/confirm`) | sim | `revoke_passkeys=False` |
+| `mfa_reset` (e `tempest user mfa-reset`) | sim | `revoke_passkeys=False` / `--keep-passkeys` |
+| `change_password` (usuário autenticado, com a senha atual) | não | — |
+| `mfa_disable` (usuário autenticado, com senha e código) | não | — |
+
+Não há como separar a passkey de quem invadiu da passkey do dono, então as do
+dono vão junto: depois do reset ele cadastra de novo. Os fluxos autenticados
+mantêm as passkeys porque quem chama acabou de provar a senha.
+
+`UserAuthService.revoke_user_passkeys(session, user_id=...)` é a mesma operação
+avulsa, para o seu próprio fluxo de recuperação. Sem `webauthn_credential_model`
+no service não há o que apagar, e o método devolve `0`.
+
+!!! warning "Mudança de comportamento"
+    Até esta versão, o reset de senha e o de MFA deixavam as passkeys no lugar.
+    Avise o usuário na tela de reset que as chaves de acesso precisam ser
+    cadastradas de novo.
+
 ## Cadastrar pede a senha (e o segundo fator)
 
 `POST /auth/webauthn/register/begin` precisa de mais que o access token. O
@@ -307,11 +341,11 @@ confere. Senha ou código errado responde **401** e nenhum challenge é emitido;
 corpo ausente responde **422**.
 
 Por quê: uma passkey entra sem a senha e sem o segundo fator (próxima seção), e
-o reset de senha não a remove. Se o bearer token bastasse, quem lesse um num
-log, numa máquina compartilhada ou por um script injetado na página poderia
+só a recuperação de conta a remove. Se o bearer token bastasse, quem lesse um
+num log, numa máquina compartilhada ou por um script injetado na página poderia
 cadastrar um autenticador próprio e continuar entrando depois que o token
-expirasse, depois de um reset de senha e depois que o dono ativasse o TOTP.
-Pedir os fatores no cadastro é o que mantém curto um vazamento curto.
+expirasse e depois que o dono ativasse o TOTP. Pedir os fatores no cadastro é o
+que mantém curto um vazamento curto.
 
 !!! note "Contas criadas por login social"
     Uma conta criada pelo callback de OAuth tem uma senha gerada que ninguém
@@ -343,6 +377,8 @@ tiver à mão.
   default por inteiro.
 - Cadastrar passkey pede a senha, mais o segundo fator numa conta com MFA — só o
   access token é recusado.
+- Reset de senha e de MFA apagam todas as passkeys do usuário;
+  `revoke_passkeys=False` é a saída explícita.
 - Desafio é uso único; contador que não avança é recusado; delete é escopado ao
   dono.
 - Multi-réplica exige `RedisWebAuthnChallengeStore`.

@@ -1145,6 +1145,7 @@ tempest user mfa-reset --email staff@example.com \
 # Remove the second factor of staff@example.com? It will log in with the password alone until it enrolls again. [y/N]: y
 # MFA reset for staff@example.com (id=2ced...)
 # Revoked 2 active refresh token(s).
+# Deleted 1 passkey(s).
 
 # Fora de um terminal (CI, script): --yes é obrigatório
 tempest user mfa-reset --email staff@example.com --yes \
@@ -1156,6 +1157,7 @@ tempest user mfa-reset --email staff@example.com --yes --keep-sessions
 
 - Roda `UserAuthService.mfa_reset`: limpa `totp_secret`, `totp_enabled_at` e `totp_last_step` e apaga os recovery codes (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`; sem tabela, sai com código 2 nomeando a flag).
 - **Revoga as sessões por padrão**, na mesma transação, com as mesmas regras do `set-password`: `--refresh-token-model` (default `src.db.models:UserRefreshTokenModel`), `--keep-sessions` como saída explícita, e as duas juntas recusadas com código 2.
+- **Apaga as passkeys por padrão**, na mesma transação, pelas mesmas regras: `--webauthn-credential-model` (default `src.db.models:UserWebAuthnCredentialModel`; sem tabela, avisa no stderr que nenhuma passkey foi apagada), `--keep-passkeys` como saída explícita, e as duas juntas recusadas com código 2.
 - `--audit-model` (com `AuditRequestMixin`) grava `record_event` na **mesma transação**, com o nome de `--event` (default `user.mfa_reset`); se a escrita da auditoria falha, o reset volta junto. Sem `--audit-model`, o comando avisa no stderr que nenhum evento foi gravado. `--event` sem `--audit-model` sai com código 2.
 - Sem confirmação nada muda: fora de terminal, sem `--yes`, sai com código 1; no terminal, responder `n` também sai com 1.
 - Conta **sem MFA ativo** sai com código 2 (`has no MFA active, nothing to reset.`); `UserModel` sem `MFAMixin` também, antes de abrir o banco. Email desconhecido sai com 1 e `no user found`.

@@ -133,6 +133,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.user_refresh_token_model import (
         BaseUserRefreshTokenModel,
     )
+    from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
+        BaseWebAuthnCredentialModel,
+    )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.sse.broker import SSEBroker
     from tempest_fastapi_sdk.utils.email import EmailUtils
@@ -243,6 +246,7 @@ class UserAuthService:
         oauth_account_model: type[BaseUserOAuthAccountModel] | None = None,
         exceptions: AuthExceptions | None = None,
         refuses_email_link: Callable[[Any], bool] | None = None,
+        webauthn_credential_model: type[BaseWebAuthnCredentialModel] | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -302,6 +306,15 @@ class UserAuthService:
                 predicate everyone writes (typed against their own model).
                 ``None`` (default) keeps every account on the current
                 behavior. See :class:`EmailLinkForbiddenException`.
+            webauthn_credential_model (type[BaseWebAuthnCredentialModel] | None):
+                Concrete passkey table — usually
+                ``src.db.models.UserWebAuthnCredentialModel``, the one the
+                project's :class:`~tempest_fastapi_sdk.auth.webauthn.WebAuthnService`
+                stores into. Read by :meth:`revoke_user_passkeys`, which the
+                account-recovery flows (:meth:`confirm_password_reset`,
+                :meth:`mfa_reset`) run by default. ``None`` (default) means
+                there are no passkeys to revoke; ``make_auth_router(webauthn=...)``
+                fills it from the WebAuthn service when it is left unset.
         """
         self.exceptions: AuthExceptions = exceptions or AuthExceptions()
         self.user_model: type[BaseUserModel] = user_model
@@ -323,6 +336,9 @@ class UserAuthService:
         )
         self.refuses_email_link: Callable[[Any], bool] | None = refuses_email_link
         self.session_revokers: list[Callable[[UUID], Awaitable[int]]] = []
+        self.webauthn_credential_model: type[BaseWebAuthnCredentialModel] | None = (
+            webauthn_credential_model
+        )
 
     # ------------------------------------------------------------------
     # Signup
@@ -1383,6 +1399,7 @@ class UserAuthService:
         token: str,
         new_password: str,
         revoke_sessions: bool = True,
+        revoke_passkeys: bool = True,
     ) -> BaseUserModel:
         """Consume a reset token and replace the user's password.
 
@@ -1399,6 +1416,14 @@ class UserAuthService:
         Stateless refresh tokens (no ``refresh_token_model``) have no row
         to revoke and keep working until they expire.
 
+        A reset is account recovery, so every passkey of the user is
+        removed too (:meth:`revoke_user_passkeys`): a passkey signs in
+        without the password, and one registered by whoever held the
+        account would otherwise outlive the recovery. The owner's own
+        passkeys go with it and are registered again after the reset. The
+        authenticated :meth:`change_password` keeps them — its caller just
+        proved the current password.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             token (str): Plaintext token from the reset URL.
@@ -1406,6 +1431,9 @@ class UserAuthService:
             revoke_sessions (bool): Revoke every refresh token of the user
                 (default). ``False`` is the explicit opt-out, for a caller
                 that ends the sessions some other way.
+            revoke_passkeys (bool): Delete every WebAuthn credential of the
+                user (default). ``False`` is the explicit opt-out. Without a
+                ``webauthn_credential_model`` there is nothing to delete.
 
         Returns:
             BaseUserModel: The user whose password was rotated.
@@ -1437,6 +1465,8 @@ class UserAuthService:
             await self._refuse_email_link(session)
         user.hashed_password = self.passwords.hash(new_password)
         await session.flush()
+        if revoke_passkeys:
+            await self.revoke_user_passkeys(session, user_id=user.id)
         if revoke_sessions:
             await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
@@ -1504,6 +1534,11 @@ class UserAuthService:
         change no longer rotates. That includes the caller's own refresh
         token — the access token it holds lives until its short TTL ends,
         and the next session starts at login.
+
+        Passkeys are kept: the caller is authenticated and just proved the
+        current password, so this is not account recovery. Only the
+        recovery flows (:meth:`confirm_password_reset`, :meth:`mfa_reset`)
+        run :meth:`revoke_user_passkeys`.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
@@ -2301,6 +2336,42 @@ class UserAuthService:
         for revoker in self.session_revokers:
             revoked += await revoker(user_id)
         return revoked
+
+    async def revoke_user_passkeys(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+    ) -> int:
+        """Delete every WebAuthn credential of a user, by id.
+
+        The passkey counterpart of :meth:`revoke_user_sessions`. A passkey
+        signs in without the password and without the second factor, so
+        recovering an account has to remove the ones registered while
+        somebody else held it — there is no telling them apart from the
+        owner's, so all of them go. :meth:`confirm_password_reset` and
+        :meth:`mfa_reset` call this by default; the authenticated
+        :meth:`change_password` and :meth:`mfa_disable` do not.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The delete
+                is flushed (the caller owns the commit), so a rollback
+                brings the credentials back.
+            user_id (UUID): Owner whose passkeys are deleted.
+
+        Returns:
+            int: How many credential rows were deleted — ``0`` without a
+            ``webauthn_credential_model``.
+        """
+        model = self.webauthn_credential_model
+        if model is None:
+            return 0
+        result = cast(
+            "CursorResult[Any]",
+            await session.execute(delete(model).where(model.user_id == user_id)),
+        )
+        await session.flush()
+        return int(result.rowcount or 0)
 
     def add_session_revoker(self, revoker: Callable[[UUID], Awaitable[int]]) -> None:
         """Register a store of sessions that :meth:`revoke_user_sessions` ends.
@@ -4228,6 +4299,7 @@ class UserAuthService:
             user=user,
             recovery_code_model=recovery_code_model,
             revoke_sessions=False,
+            revoke_passkeys=False,
         )
 
     async def mfa_reset(
@@ -4237,6 +4309,7 @@ class UserAuthService:
         user: BaseUserModel,
         recovery_code_model: type[BaseUserRecoveryCodeModel],
         revoke_sessions: bool = True,
+        revoke_passkeys: bool = True,
     ) -> int:
         """Switch MFA off for ``user`` without proof of the factor.
 
@@ -4254,6 +4327,13 @@ class UserAuthService:
         factor reads the column, not :meth:`is_mfa_enrolled`, so it holds
         with the ``AUTH_MFA_ENABLED`` kill-switch off.
 
+        Being account recovery, it also deletes every passkey of the user by
+        default (:meth:`revoke_user_passkeys`), as
+        :meth:`confirm_password_reset` does: a passkey registered by
+        whoever held the lost device would otherwise keep signing in.
+        :meth:`mfa_disable`, where the owner proves password and code, keeps
+        both the sessions and the passkeys.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session. The changes
                 are flushed, not committed.
@@ -4265,6 +4345,9 @@ class UserAuthService:
                 through :meth:`revoke_user_sessions` (default): whoever holds
                 the lost device may hold a live session too. ``False`` is
                 the explicit opt-out.
+            revoke_passkeys (bool): Delete every WebAuthn credential of the
+                user (default). ``False`` is the explicit opt-out. Without a
+                ``webauthn_credential_model`` there is nothing to delete.
 
         Returns:
             int: How many refresh-token rows were revoked — ``0`` with
@@ -4285,6 +4368,8 @@ class UserAuthService:
             ),
         )
         await session.flush()
+        if revoke_passkeys:
+            await self.revoke_user_passkeys(session, user_id=user.id)
         revoked = 0
         if revoke_sessions:
             revoked = await self.revoke_user_sessions(session, user_id=user.id)

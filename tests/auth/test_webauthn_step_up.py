@@ -1,11 +1,11 @@
 """Registering a passkey asks for the account's factors, not just a token.
 
 A passkey signs in without the password and without the second factor, and
-password reset leaves it in place. Before this, ``POST
-/auth/webauthn/register/begin`` depended on the bearer access token alone,
-so whoever held a leaked token could bind an authenticator of their own and
-keep signing in after the token expired, after a password reset and after
-the owner enrolled TOTP. The route now re-verifies the password, plus the
+only account recovery removes it (``test_recovery_revokes_passkeys``). Before
+this, ``POST /auth/webauthn/register/begin`` depended on the bearer access
+token alone, so whoever held a leaked token could bind an authenticator of
+their own and keep signing in after the token expired and after the owner
+enrolled TOTP. The route now re-verifies the password, plus the
 second factor when the account has MFA enrolled, like ``/auth/mfa/disable``.
 """
 
