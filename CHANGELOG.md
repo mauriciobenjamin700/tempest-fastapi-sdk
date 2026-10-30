@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `ChatMemory`: toda mutação passa a ser vinculada ao dono.
+  **Mudança incompatível:** `delete_for_chat` exige `user_id` (keyword-only) e
+  apaga só as linhas daquele usuário no chat — antes apagava as de todo usuário
+  com o mesmo `chat_id`. Novo `delete_for_user(user_id=...)` para exclusão de
+  conta. `index` levanta `ValueError` quando o `message_id` já está indexado
+  para outro usuário, em vez de sobrescrever a linha e trocar o dono.
 - Chat: quem entra num grupo sem `share_history` deixa de receber o corpo
   de mensagens anteriores ao seu `history_from` por cópias derivadas. No
   histórico, o `reply_to` de uma resposta que cita mensagem anterior chega com

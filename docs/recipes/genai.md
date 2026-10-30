@@ -996,8 +996,15 @@ asyncio.run(main())
 `search` filtra pelo `user_id`, aplica o piso de similaridade
 (`min_similarity`) e então mistura o decaimento de recência — cada
 `MemoryHit` traz `content`, `role`, `chat_id`, `created_at`, `similarity`
-(cosseno cru) e `score` (o valor final, já com recência). `delete_for_chat`
-apaga tudo de um chat quando ele é removido.
+(cosseno cru) e `score` (o valor final, já com recência).
+
+A coleção é compartilhada por todos os usuários, então toda mutação nomeia
+o dono. `delete_for_chat(user_id=..., chat_id=...)` apaga as linhas daquele
+usuário naquele chat quando ele o remove — o `chat_id` vem do corpo da
+requisição e pode repetir entre usuários, e as linhas dos outros ficam.
+`delete_for_user(user_id=...)` apaga a memória inteira de um usuário (exclusão
+de conta). E `index` recusa com `ValueError` um `message_id` que já pertence a
+outro usuário, em vez de sobrescrever a linha dele.
 
 O Chroma é consultado pelos `top_k * candidate_multiplier` vizinhos mais
 próximos (padrão `4`), e o re-rank por recência escolhe os `top_k` entre
