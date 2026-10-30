@@ -68,7 +68,7 @@ class ZapInboundMessageMixin(_MixinBase):
 
     Mix into a concrete :class:`~tempest_fastapi_sdk.BaseModel` table::
 
-        class ZapMessageModel(BaseModel, ZapInboundMessageMixin):
+        class ZapMessageModel(ZapInboundMessageMixin, BaseModel):
             __tablename__ = "zap_messages"
 
     For static typing only, the mixin is declared as a ``BaseModel``
@@ -103,7 +103,7 @@ class ZapDeliveryMixin(_MixinBase):
 
     Mix into a concrete :class:`~tempest_fastapi_sdk.BaseModel` table::
 
-        class ZapDeliveryModel(BaseModel, ZapDeliveryMixin):
+        class ZapDeliveryModel(ZapDeliveryMixin, BaseModel):
             __tablename__ = "zap_deliveries"
 
     For static typing only, the mixin is declared as a ``BaseModel``

@@ -37,13 +37,13 @@ USER: str = "5511999999999@s.whatsapp.net"
 """A person writing by number."""
 
 
-class InboxMessageModel(BaseModel, ZapInboundMessageMixin):
+class InboxMessageModel(ZapInboundMessageMixin, BaseModel):
     """The consumer's inbound table."""
 
     __tablename__ = "test_zap_inbox_messages"
 
 
-class InboxDeliveryModel(BaseModel, ZapDeliveryMixin):
+class InboxDeliveryModel(ZapDeliveryMixin, BaseModel):
     """The consumer's delivery table."""
 
     __tablename__ = "test_zap_inbox_deliveries"
