@@ -17,6 +17,9 @@ from tempest_fastapi_sdk.openapi.source import (
     MAX_LINE as _MAX_LINE,
 )
 from tempest_fastapi_sdk.openapi.source import (
+    docstring_title as _docstring_title,
+)
+from tempest_fastapi_sdk.openapi.source import (
     string_literal as _string_literal,
 )
 from tempest_fastapi_sdk.openapi.source import (
@@ -85,35 +88,16 @@ def _docstring_lines(operation: OperationIR) -> list[str]:
     Returns:
         list[str]: Source lines for the docstring, always multi-line so
         the ``Args:`` / ``Returns:`` / ``Raises:`` sections have a home.
-        Prefixed ``r\"\"\"`` when any of the specification's prose carries a
-        backslash — ``\#`` is not a Python escape, so the plain form raised
-        ``W605`` and, from 3.12, a ``SyntaxWarning``. It survived review
-        because the generator's own ``ruff --fix`` pass adds the prefix
-        afterwards, which hides the defect from everyone except a caller
-        passing ``--no-format``.
-
-    The prose is rendered twice rather than patched after the fact: the
-    ``r`` costs a column on the line already closest to the budget, so a
-    summary that wrapped to exactly 88 characters would overrun.
+        Every piece of the specification's prose goes through
+        :func:`~tempest_fastapi_sdk.openapi.source.wrap`, which escapes it
+        with ``docstring_text``: a description carrying ``\"\"\"`` would
+        otherwise close the docstring and emit the rest of the sentence as
+        statements of the method body. Because backslashes are escaped
+        rather than left raw, the delimiter is always the plain ``\"\"\"``
+        — ``\#`` in the prose renders as ``\\#``, which raises neither
+        ``W605`` nor a ``SyntaxWarning``.
     """
-    lines = _render_docstring(operation, '"""')
-    if any("\\" in line for line in lines):
-        return _render_docstring(operation, 'r"""')
-    return lines
-
-
-def _render_docstring(operation: OperationIR, opening: str) -> list[str]:
-    """Render the docstring with a given opening delimiter.
-
-    Args:
-        operation (OperationIR): The operation to render.
-        opening (str): ``'\"\"\"'`` or ``'r\"\"\"'``.
-
-    Returns:
-        list[str]: Source lines, wrapped against the budget the delimiter
-        leaves.
-    """
-    lines = _wrap(operation.summary, "        ", opening, hanging=False)
+    lines = _wrap(operation.summary, "        ", '"""', hanging=False)
     if operation.description:
         lines.append("")
         for paragraph in operation.description.split("\n\n"):
@@ -586,7 +570,10 @@ def rerun_hint(source: str, name: str, *, schemas_only: bool = False) -> list[st
 
     Returns:
         list[str]: Indented command lines, none exceeding the line budget.
+        ``source`` is escaped for the package docstring the lines land in,
+        the same way specification prose is.
     """
+    source = _docstring_title(source)
     tail = f"--name {name}" + (" --schemas-only" if schemas_only else "")
     single = f"    tempest openapi-client {source} {tail}"
     if len(single) <= _MAX_LINE:
@@ -624,7 +611,8 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
     """
     schema_names = sorted(_referenced_schema_names(client))
     lines: list[str] = [
-        f'"""Typed HTTP client generated from the {client.title} OpenAPI spec.',
+        f'"""Typed HTTP client generated from the {_docstring_title(client.title)} '
+        "OpenAPI spec.",
         "",
         "Do not edit by hand — rerun `tempest openapi-client` to refresh.",
         "",
@@ -649,7 +637,7 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
 
     lines.extend(
         [
-            f'DEFAULT_BASE_URL: str = "{client.base_url}"',
+            f"DEFAULT_BASE_URL: str = {_string_literal(client.base_url)}",
             '"""``servers[0].url`` from the specification."""',
             "",
             "",
@@ -747,14 +735,25 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
                 "        included, because an identifier is one segment and must",
                 "        not become two.",
                 "",
+                "    Raises:",
+                "        ValueError: When the value is empty, ``.`` or ``..``.",
+                "",
                 "    Without this, a reserved character does not fail: it",
                 "    *retargets*. ``order#42`` interpolated raw yields",
                 "    ``/charge/order#42``, whose fragment the HTTP client never",
                 "    sends — so the request addresses ``/charge/order``, and on a",
                 "    ``DELETE`` route that is a destructive call against a",
-                "    different resource.",
+                "    different resource. Percent-encoding cannot cover the dot",
+                "    segments: ``quote`` leaves ``.`` alone and the HTTP client",
+                "    resolves ``..`` before sending, so ``/charge/..`` would go",
+                "    out as a request to the parent path, with the same method",
+                "    and credentials. An empty value collapses the segment the",
+                "    same way, so the three are refused instead.",
                 '    """',
-                '    return quote(str(_param(value)), safe="")',
+                "    text = str(_param(value))",
+                '    if text in {"", ".", ".."}:',
+                '        raise ValueError(f"invalid path segment: {text!r}")',
+                '    return quote(text, safe="")',
                 "",
                 "",
             ]
@@ -763,8 +762,12 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
     lines.extend(
         [
             f"class {client.class_name}:",
-            f'    """Client for {client.title}'
-            + (f" (version {client.version})." if client.version else ".")
+            f'    """Client for {_docstring_title(client.title)}'
+            + (
+                f" (version {_docstring_title(client.version)})."
+                if client.version
+                else "."
+            )
             + '"""',
             "",
             "    def __init__(self, client: HTTPClient) -> None:",

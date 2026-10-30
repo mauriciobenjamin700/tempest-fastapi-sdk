@@ -16,6 +16,12 @@ from tempest_fastapi_sdk.asyncapi.emit_stream import emit_stream
 from tempest_fastapi_sdk.asyncapi.loader import load_asyncapi_spec
 from tempest_fastapi_sdk.asyncapi.parse import as_spec_ir, parse_asyncapi
 from tempest_fastapi_sdk.openapi.emit_schemas import emit_schemas
+from tempest_fastapi_sdk.openapi.source import (
+    check_generated_source as _check_generated_source,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    docstring_title as _docstring_title,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,25 +91,27 @@ def generate_stream(
     Raises:
         SpecError: When the document cannot be loaded, is not AsyncAPI 3.x,
             does not declare whose point of view its actions record, or
-            declares no frames.
+            declares no frames, or when an emitted module fails
+            :func:`~tempest_fastapi_sdk.openapi.source.check_generated_source`
+            — nothing is written in that case.
     """
     document = load_asyncapi_spec(source, headers=headers)
     parsed = parse_asyncapi(document, client_name=name)
+
+    sources: dict[str, str] = {
+        "schemas.py": emit_schemas(as_spec_ir(parsed), title=parsed.stream.title),
+        "stream.py": emit_stream(parsed.stream, schemas_module="schemas"),
+        "__init__.py": _emit_init(parsed),
+    }
+    for filename, source_text in sources.items():
+        _check_generated_source(source_text, filename)
 
     out.mkdir(parents=True, exist_ok=True)
     schemas_path = out / "schemas.py"
     stream_path = out / "stream.py"
     init_path = out / "__init__.py"
-
-    schemas_path.write_text(
-        emit_schemas(as_spec_ir(parsed), title=parsed.stream.title),
-        encoding="utf-8",
-    )
-    stream_path.write_text(
-        emit_stream(parsed.stream, schemas_module="schemas"),
-        encoding="utf-8",
-    )
-    init_path.write_text(_emit_init(parsed), encoding="utf-8")
+    for path in (schemas_path, stream_path, init_path):
+        path.write_text(sources[path.name], encoding="utf-8")
 
     written = [schemas_path, stream_path, init_path]
     if run_format:
@@ -146,7 +154,7 @@ def _emit_init(parsed: object) -> str:
     payloads = sorted({schema.name for schema in parsed.schemas})
 
     lines = [
-        f'"""Generated client for {stream.title}.',
+        f'"""Generated client for {_docstring_title(stream.title)}.',
         "",
         "Do not edit by hand — rerun the generator to refresh.",
         '"""',

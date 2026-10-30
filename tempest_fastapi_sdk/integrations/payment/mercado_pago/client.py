@@ -221,14 +221,25 @@ def _path_param(value: Any) -> str:
         included, because an identifier is one segment and must
         not become two.
 
+    Raises:
+        ValueError: When the value is empty, ``.`` or ``..``.
+
     Without this, a reserved character does not fail: it
     *retargets*. ``order#42`` interpolated raw yields
     ``/charge/order#42``, whose fragment the HTTP client never
     sends — so the request addresses ``/charge/order``, and on a
     ``DELETE`` route that is a destructive call against a
-    different resource.
+    different resource. Percent-encoding cannot cover the dot
+    segments: ``quote`` leaves ``.`` alone and the HTTP client
+    resolves ``..`` before sending, so ``/charge/..`` would go
+    out as a request to the parent path, with the same method
+    and credentials. An empty value collapses the segment the
+    same way, so the three are refused instead.
     """
-    return quote(str(_param(value)), safe="")
+    text = str(_param(value))
+    if text in {"", ".", ".."}:
+        raise ValueError(f"invalid path segment: {text!r}")
+    return quote(text, safe="")
 
 
 class MercadoPagoClient:

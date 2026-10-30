@@ -3142,7 +3142,7 @@ class WebhookSignatureHeader(BaseSchema):
     Attributes:
         ts (str | None): Unix timestamp of the notification
         v1 (str | None): HMAC-SHA256 signature of
-            "id:[notif_id];request-id:[req_id];ts:[ts];"
+            "id:[notif_id];request-id:[req_id];ts:[ts];\"
     """
 
     ts: str | None = Field(

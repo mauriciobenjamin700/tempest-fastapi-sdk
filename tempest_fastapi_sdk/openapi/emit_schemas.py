@@ -21,7 +21,10 @@ from tempest_fastapi_sdk.openapi.source import (
     MAX_LINE as _MAX_LINE,
 )
 from tempest_fastapi_sdk.openapi.source import (
-    docstring_delimiter as _delimiter,
+    docstring_text as _docstring_text,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    docstring_title as _docstring_title,
 )
 from tempest_fastapi_sdk.openapi.source import (
     string_chunks as _string_chunks,
@@ -87,13 +90,12 @@ def _docstring_lines(summary: str, indent: str) -> list[str]:
     re-wraps three columns narrower to force a second one, which the
     formatter leaves alone.
     """
-    opening = _delimiter(summary)
-    single = f'{indent}{opening}{summary}"""'
+    single = f'{indent}"""{_docstring_text(summary)}"""'
     if len(single) <= _MAX_LINE:
         return [single]
-    lines = _wrap(summary, indent, opening, hanging=False)
+    lines = _wrap(summary, indent, '"""', hanging=False)
     if len(lines) == 1:
-        lines = _wrap(summary, indent, opening, hanging=False, budget=_MAX_LINE - 3)
+        lines = _wrap(summary, indent, '"""', hanging=False, budget=_MAX_LINE - 3)
     lines.append(f'{indent}"""')
     return lines
 
@@ -461,8 +463,7 @@ def _model_lines(schema: SchemaIR) -> list[str]:
     docstring = f"{schema.docstring}"
     body = _attributes_section(schema)
     if body:
-        opening = _delimiter(docstring, *body)
-        lines.extend(_wrap(docstring, "    ", opening, hanging=False))
+        lines.extend(_wrap(docstring, "    ", '"""', hanging=False))
         lines.extend(body)
         lines.append('    """')
     else:
@@ -672,7 +673,8 @@ def emit_schemas(spec: SpecIR, *, title: str) -> str:
         str: The complete module source, ending in a newline.
     """
     header = [
-        f'"""Pydantic schemas generated from the {title} OpenAPI specification.',
+        f'"""Pydantic schemas generated from the {_docstring_title(title)} '
+        "OpenAPI specification.",
         "",
         "Do not edit by hand — rerun `tempest openapi-client` to refresh.",
         "",
