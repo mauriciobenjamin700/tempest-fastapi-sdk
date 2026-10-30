@@ -134,6 +134,56 @@ class StripeError(RuntimeError):
         self.payload: dict[str, Any] = dict(payload or {})
 
 
+class StripeObjectMismatchError(StripeError):
+    """Raised when a ``2xx`` body is not the kind of object the call asked for.
+
+    Every Stripe object carries its type in ``object`` (``"customer"``,
+    ``"payment_intent"``, ``"checkout.session"``), and a deleted one keeps
+    the same value next to ``deleted: true``. A body whose ``object`` is
+    missing or names another type did not come from the endpoint the
+    resource addresses, so validating it into the resource's model would
+    hand the caller another object's data under the wrong type.
+
+    Subclasses :class:`StripeError`, so ``except StripeError`` keeps
+    catching it. ``status_code`` is the (successful) status the body came
+    with; ``error_type`` and ``code`` stay empty, since Stripe raised
+    nothing.
+
+    Attributes:
+        expected_object (str): The ``object`` value the resource expects.
+        received_object (str): The ``object`` value in the body; empty
+            when the key is missing or not a string.
+    """
+
+    def __init__(
+        self,
+        *,
+        expected_object: str,
+        received_object: str,
+        status_code: int,
+        request_id: str = "",
+        payload: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Initialize the error.
+
+        Args:
+            expected_object (str): The ``object`` value the resource expects.
+            received_object (str): The ``object`` value the body carried.
+            status_code (int): The HTTP status of the response.
+            request_id (str): Stripe's request id.
+            payload (Mapping[str, Any] | None): The decoded body.
+        """
+        super().__init__(
+            f"Stripe returned object {received_object!r} where "
+            f"{expected_object!r} was expected",
+            status_code=status_code,
+            request_id=request_id,
+            payload=payload,
+        )
+        self.expected_object: str = expected_object
+        self.received_object: str = received_object
+
+
 class StripeResource(Generic[ResourceT]):
     """The five calls Stripe gives every resource, typed to one model.
 
@@ -144,6 +194,11 @@ class StripeResource(Generic[ResourceT]):
         path (str): Path segment under ``/v1`` — ``"customers"``,
             ``"checkout/sessions"``.
         model (type[ResourceT]): The model responses validate into.
+        object_type (str | None): The ``object`` value every single-object
+            response must carry (``"customer"``). :meth:`create`,
+            :meth:`retrieve`, :meth:`update` and :meth:`delete` raise
+            :class:`StripeObjectMismatchError` on any other value. ``None``
+            skips the check.
 
     The parametrized page model (``StripeList[model]``) is built once in
     the constructor: subscripting a generic Pydantic model creates a new
@@ -156,6 +211,8 @@ class StripeResource(Generic[ResourceT]):
         client: StripeClient,
         path: str,
         model: type[ResourceT],
+        *,
+        object_type: str | None = None,
     ) -> None:
         """Initialize the resource.
 
@@ -163,10 +220,13 @@ class StripeResource(Generic[ResourceT]):
             client (StripeClient): The owning client.
             path (str): Path segment under ``/v1``.
             model (type[ResourceT]): Model for responses.
+            object_type (str | None): The ``object`` value single-object
+                responses must carry. ``None`` skips the check.
         """
         self._client: StripeClient = client
         self.path: str = path
         self.model: type[ResourceT] = model
+        self.object_type: str | None = object_type
         self._page_model: type[StripeList[ResourceT]] = StripeList[model]  # type: ignore[valid-type]
 
     async def create(
@@ -189,6 +249,8 @@ class StripeResource(Generic[ResourceT]):
             ResourceT: The created object.
 
         Raises:
+            StripeObjectMismatchError: When the body's ``object`` is not
+                :attr:`object_type`.
             StripeError: When Stripe rejects the request.
         """
         payload = await self._client.request(
@@ -196,6 +258,7 @@ class StripeResource(Generic[ResourceT]):
             f"/v1/{self.path}",
             data=params,
             idempotency_key=idempotency_key,
+            expected_object=self.object_type,
         )
         return self.model.model_validate(payload)
 
@@ -217,11 +280,16 @@ class StripeResource(Generic[ResourceT]):
 
         Raises:
             ValueError: When ``resource_id`` is empty, ``.`` or ``..``.
+            StripeObjectMismatchError: When the body's ``object`` is not
+                :attr:`object_type`.
             StripeError: When Stripe rejects the request, including the
                 ``404`` for an unknown id.
         """
         payload = await self._client.request(
-            "GET", f"/v1/{self.path}/{_path_segment(resource_id)}", params=params
+            "GET",
+            f"/v1/{self.path}/{_path_segment(resource_id)}",
+            params=params,
+            expected_object=self.object_type,
         )
         return self.model.model_validate(payload)
 
@@ -244,6 +312,8 @@ class StripeResource(Generic[ResourceT]):
 
         Raises:
             ValueError: When ``resource_id`` is empty, ``.`` or ``..``.
+            StripeObjectMismatchError: When the body's ``object`` is not
+                :attr:`object_type`.
             StripeError: When Stripe rejects the request.
         """
         payload = await self._client.request(
@@ -251,6 +321,7 @@ class StripeResource(Generic[ResourceT]):
             f"/v1/{self.path}/{_path_segment(resource_id)}",
             data=params,
             idempotency_key=idempotency_key,
+            expected_object=self.object_type,
         )
         return self.model.model_validate(payload)
 
@@ -265,10 +336,15 @@ class StripeResource(Generic[ResourceT]):
 
         Raises:
             ValueError: When ``resource_id`` is empty, ``.`` or ``..``.
+            StripeObjectMismatchError: When the body's ``object`` is not
+                :attr:`object_type` — Stripe's tombstone keeps the deleted
+                object's type.
             StripeError: When Stripe rejects the request.
         """
         payload = await self._client.request(
-            "DELETE", f"/v1/{self.path}/{_path_segment(resource_id)}"
+            "DELETE",
+            f"/v1/{self.path}/{_path_segment(resource_id)}",
+            expected_object=self.object_type,
         )
         return StripeDeleted.model_validate(payload)
 
@@ -356,31 +432,34 @@ class StripeClient:
         """
         self._client: HTTPClient = client
         self.customers: StripeResource[StripeCustomer] = StripeResource(
-            self, "customers", StripeCustomer
+            self, "customers", StripeCustomer, object_type="customer"
         )
         self.payment_intents: StripeResource[StripePaymentIntent] = StripeResource(
-            self, "payment_intents", StripePaymentIntent
+            self, "payment_intents", StripePaymentIntent, object_type="payment_intent"
         )
         self.refunds: StripeResource[StripeRefund] = StripeResource(
-            self, "refunds", StripeRefund
+            self, "refunds", StripeRefund, object_type="refund"
         )
         self.products: StripeResource[StripeProduct] = StripeResource(
-            self, "products", StripeProduct
+            self, "products", StripeProduct, object_type="product"
         )
         self.prices: StripeResource[StripePrice] = StripeResource(
-            self, "prices", StripePrice
+            self, "prices", StripePrice, object_type="price"
         )
         self.subscriptions: StripeResource[StripeSubscription] = StripeResource(
-            self, "subscriptions", StripeSubscription
+            self, "subscriptions", StripeSubscription, object_type="subscription"
         )
         self.invoices: StripeResource[StripeInvoice] = StripeResource(
-            self, "invoices", StripeInvoice
+            self, "invoices", StripeInvoice, object_type="invoice"
         )
         self.checkout_sessions: StripeResource[StripeCheckoutSession] = StripeResource(
-            self, "checkout/sessions", StripeCheckoutSession
+            self,
+            "checkout/sessions",
+            StripeCheckoutSession,
+            object_type="checkout.session",
         )
         self.events: StripeResource[StripeEventObject] = StripeResource(
-            self, "events", StripeEventObject
+            self, "events", StripeEventObject, object_type="event"
         )
 
     async def request(
@@ -391,6 +470,7 @@ class StripeClient:
         params: Mapping[str, Any] | None = None,
         data: Mapping[str, Any] | None = None,
         idempotency_key: str | None = None,
+        expected_object: str | None = None,
     ) -> dict[str, Any]:
         """Perform one Stripe call and return the decoded body.
 
@@ -404,12 +484,16 @@ class StripeClient:
             idempotency_key (str | None): Value for the
                 ``Idempotency-Key`` header on writes. ``None`` generates a
                 UUID4 for every non-``GET``.
+            expected_object (str | None): The ``object`` value a successful
+                body must carry. ``None`` skips the check.
 
         Returns:
             dict[str, Any]: The decoded JSON body.
 
         Raises:
             StripeError: On any non-2xx response.
+            StripeObjectMismatchError: When ``expected_object`` is given
+                and the successful body's ``object`` differs or is missing.
 
         Writes carry an idempotency key **by default**. Stripe replays the
         original response for a repeated key within 24 hours, which is what
@@ -434,7 +518,20 @@ class StripeClient:
             payload = {}
         if response.status_code >= 400:
             raise _error_from(response.status_code, payload, response.headers)
-        return payload if isinstance(payload, dict) else {"data": payload}
+        body: dict[str, Any] = (
+            payload if isinstance(payload, dict) else {"data": payload}
+        )
+        if expected_object is not None:
+            received = body.get("object")
+            if received != expected_object:
+                raise StripeObjectMismatchError(
+                    expected_object=expected_object,
+                    received_object=received if isinstance(received, str) else "",
+                    status_code=response.status_code,
+                    request_id=str(response.headers.get("Request-Id", "")),
+                    payload=body,
+                )
+        return body
 
 
 def _error_from(
@@ -472,5 +569,6 @@ def _error_from(
 __all__: list[str] = [
     "StripeClient",
     "StripeError",
+    "StripeObjectMismatchError",
     "StripeResource",
 ]

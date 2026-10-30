@@ -295,6 +295,42 @@ segment: `/`, `?` and `#` are encoded (`quote(..., safe="")`), and `""`,
 went in raw, and an id holding `/`, `..` or `?` addressed another Stripe
 resource, with the same secret key and the same method.
 
+The response is checked too. Every Stripe object names its own type in the
+`object` field (`"customer"`, `"payment_intent"`, `"checkout.session"`), and
+a `delete` tombstone keeps the deleted object's type. `create`, `retrieve`,
+`update` and `delete` on the `StripeClient` resources raise
+`StripeObjectMismatchError` when a `2xx` carries another type or none —
+instead of validating another family's object into the wrong model:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment.stripe import (
+    StripeClient,
+    StripeObjectMismatchError,
+    stripe_http_client,
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    client = StripeClient(stripe_http_client("sk_test_..."))
+    try:
+        await client.customers.retrieve("cus_123")
+    except StripeObjectMismatchError as error:
+        print(error.expected_object)   # customer
+        print(error.received_object)   # the type that came back ("" without the field)
+        print(error.status_code)       # the response's 2xx
+
+
+asyncio.run(main())
+```
+
+It subclasses `StripeError`, so an existing `except StripeError` keeps
+catching it. Behaviour change: up to v0.335.0 the body was returned
+unchecked. A `StripeResource` you build by hand only checks when given
+`object_type=`.
+
 ### Thin models, nothing lost
 
 The models name the fields that carry decisions — `status`, `amount`,

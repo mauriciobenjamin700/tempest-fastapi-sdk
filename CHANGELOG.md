@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `details["allowed"]`: a chave só aparece com um conjunto declarado, e
   lista só ele. Mudança de comportamento: a mensagem passa a ser
   `... has no searchable column ...`.
+- Stripe: `create`, `retrieve`, `update` e `delete` dos recursos do
+  `StripeClient` conferem o campo `object` da resposta contra o tipo do
+  recurso e levantam o novo `StripeObjectMismatchError` (subclasse de
+  `StripeError`) quando ele difere ou falta. `StripeResource` ganha
+  `object_type=` (default `None`, sem conferência) e `StripeClient.request`
+  ganha `expected_object=`. Mudança de comportamento: um `2xx` de outro tipo
+  de objeto deixa de ser devolvido (#661).
 
 ## [0.335.0] — 2026-10-30
 

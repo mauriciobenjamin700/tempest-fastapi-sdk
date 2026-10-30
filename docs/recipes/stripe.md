@@ -293,6 +293,42 @@ levantam `ValueError` antes de enviar. Até a v0.334.1 o id entrava cru, e um id
 com `/`, `..` ou `?` endereçava outro recurso da Stripe, com a mesma chave
 secreta e o mesmo método.
 
+A resposta também é conferida. Todo objeto da Stripe diz o próprio tipo no
+campo `object` (`"customer"`, `"payment_intent"`, `"checkout.session"`), e o
+tombstone de um `delete` mantém o tipo do objeto apagado. `create`,
+`retrieve`, `update` e `delete` dos recursos do `StripeClient` levantam
+`StripeObjectMismatchError` quando um `2xx` traz outro tipo ou nenhum — em vez
+de validar o objeto de outra família no modelo errado:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment.stripe import (
+    StripeClient,
+    StripeObjectMismatchError,
+    stripe_http_client,
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    client = StripeClient(stripe_http_client("sk_test_..."))
+    try:
+        await client.customers.retrieve("cus_123")
+    except StripeObjectMismatchError as error:
+        print(error.expected_object)   # customer
+        print(error.received_object)   # o tipo que veio ("" sem o campo)
+        print(error.status_code)       # o 2xx da resposta
+
+
+asyncio.run(main())
+```
+
+É subclasse de `StripeError`, então um `except StripeError` já existente
+continua pegando. Mudança de comportamento: até a v0.335.0 o corpo era
+devolvido sem conferência. Um `StripeResource` que você monta à mão só confere
+se receber `object_type=`.
+
 ### Modelos finos, e nada se perde
 
 Os modelos nomeiam os campos que carregam decisão — `status`, `amount`,

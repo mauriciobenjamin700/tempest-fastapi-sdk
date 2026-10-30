@@ -1122,6 +1122,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeClient
 ::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeResource
 ::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeError
+::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeObjectMismatchError
 ::: tempest_fastapi_sdk.integrations.payment.stripe.environment.stripe_http_client
 ::: tempest_fastapi_sdk.integrations.payment.stripe.environment.STRIPE_API_VERSION
 ::: tempest_fastapi_sdk.integrations.payment.stripe.environment.STRIPE_BASE_URL
