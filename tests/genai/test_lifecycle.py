@@ -43,6 +43,7 @@ from tempest_fastapi_sdk.genai.audio import (
     VoiceEmbedder,
 )
 from tempest_fastapi_sdk.genai.audio import diarization as diarization_module
+from tempest_fastapi_sdk.genai.audio import stt as stt_module
 from tempest_fastapi_sdk.genai.audio import voiceprint as voiceprint_module
 from tempest_fastapi_sdk.genai.moderation import ModerationResult
 from tempest_fastapi_sdk.genai.rag import Chunk, Reranker
@@ -590,6 +591,7 @@ def _stt(mp: pytest.MonkeyPatch, gate: Gate, counter: BuildCounter) -> Any:
         self._model = FakeWhisper(gate)
 
     _patch_build(mp, SpeechToText, counter, _assign)
+    mp.setattr(stt_module, "load_audio", lambda audio, **_: [])
     return SpeechToText(
         "base",
         device="cpu",
@@ -617,7 +619,7 @@ def _diarizer(mp: pytest.MonkeyPatch, gate: Gate, counter: BuildCounter) -> Any:
 
     _patch_build(mp, SpeakerDiarizer, counter, _assign)
     mp.setattr(SpeakerDiarizer, "_make_config", lambda self, count: None)
-    mp.setattr(diarization_module, "load_audio", lambda audio, target_rate: [])
+    mp.setattr(diarization_module, "load_audio", lambda audio, **_: [])
     return SpeakerDiarizer(
         num_speakers=2,
         max_concurrent=3,
@@ -663,7 +665,7 @@ def _voice(mp: pytest.MonkeyPatch, gate: Gate, counter: BuildCounter) -> Any:
     mp.setattr(
         voiceprint_module,
         "load_audio",
-        lambda audio, target_rate: np.zeros(16, dtype=np.float32),
+        lambda audio, **_: np.zeros(16, dtype=np.float32),
     )
     return VoiceEmbedder(max_concurrent=3, idle_unload_seconds=0.0)
 

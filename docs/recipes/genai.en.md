@@ -3122,6 +3122,37 @@ POST /api/genai/generate {"prompt": "hi", "config": {"max_new_tokens": 100000000
     `422` — the route used to render the whole batch on the GPU and return
     only the first. For a batch, use `ImageGenerator` directly.
 
+#### Audio: the bound is decoded duration, not just bytes
+
+`max_upload_bytes` bounds what the client sends, not what the upload turns
+into once decoded: the file header declares its own sample rate, and a codec
+compresses silence to almost nothing (ten minutes of silent FLAC fit in
+~114 KB). That is why `SpeechToText`, `SpeakerDiarizer` and `VoiceEmbedder`
+decode audio through the same bounded decoder, before the model sees
+anything:
+
+- a declared rate outside `MIN_SOURCE_RATE`–`MAX_SOURCE_RATE`
+  (8,000–192,000 Hz) is refused before resampling;
+- decoded audio past `max_audio_seconds` is refused as soon as the sample
+  count passes the bound — the default is `DEFAULT_MAX_AUDIO_SECONDS`, one
+  hour.
+
+Both refusals are a `ValidationException`, so with
+`register_exception_handlers` the `/transcribe` route (of this router and of
+`make_voice_router`) answers `422`, with `details` carrying `min_rate` and
+`max_rate`, or `max_seconds`. The Whisper model receives the decoded
+samples, not the file.
+
+```python
+from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer, SpeechToText
+
+stt: SpeechToText = SpeechToText("base", max_audio_seconds=900.0)
+diarizer: SpeakerDiarizer = SpeakerDiarizer(max_audio_seconds=900.0)
+```
+
+`max_audio_seconds=None` lifts the duration bound (the rate range still
+applies) — only for trusted files the operator supplies.
+
 ### `RedisEmbeddingCache` — cache shared across workers
 
 `Embedder` accepts a synchronous cache (`InMemoryEmbeddingCache`) **or**

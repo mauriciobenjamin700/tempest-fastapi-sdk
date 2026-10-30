@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Áudio enviado ao `SpeechToText`, ao `SpeakerDiarizer` e ao `VoiceEmbedder`
+  agora passa por um decodificador limitado compartilhado
+  (`tempest_fastapi_sdk.genai.audio.decoding.load_audio`). A taxa de
+  amostragem declarada precisa estar entre `MIN_SOURCE_RATE` (8 000 Hz) e
+  `MAX_SOURCE_RATE` (192 000 Hz) e a duração decodificada não pode passar de
+  `max_audio_seconds` (novo parâmetro nos três motores, default
+  `DEFAULT_MAX_AUDIO_SECONDS` = 3 600 s; `None` tira o limite). A recusa é
+  `ValidationException` (`422`), levantada antes de reamostrar e antes de o
+  modelo rodar; o PyAV para de decodificar assim que o limite é passado.
+  Antes, só os bytes do upload eram limitados, e a quantidade de áudio
+  decodificado podia crescer muito além deles. Mudança de comportamento:
+  áudio com mais de uma hora agora é recusado por default, e o
+  `SpeechToText` entrega ao faster-whisper as amostras decodificadas em vez
+  do arquivo.
 - `PixKeyField`, `detect_pix_key_type`, `is_valid_pix_key` e
   `normalize_pix_key` recusam chave com mais de 77 caracteres (depois do
   `strip`) antes de qualquer regex rodar, e o padrão de e-mail deixou de ter

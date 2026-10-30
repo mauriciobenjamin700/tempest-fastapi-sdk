@@ -36,14 +36,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from tempest_fastapi_sdk.genai.audio.decoding import (
+    DEFAULT_MAX_AUDIO_SECONDS,
+    load_audio,
+)
 from tempest_fastapi_sdk.genai.audio.schemas import SpeakerTurn
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    import numpy as np
-    import numpy.typing as npt
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -322,6 +323,8 @@ class SpeakerDiarizer:
             do not control.
         threshold (float): Clustering threshold, used when
             ``num_speakers`` is ``None``.
+        max_audio_seconds (float | None): Longest decoded recording
+            accepted; ``None`` when unbounded.
     """
 
     def __init__(
@@ -339,6 +342,7 @@ class SpeakerDiarizer:
         max_speakers: int = 10,
         max_concurrent: int = 1,
         idle_unload_seconds: float | None = None,
+        max_audio_seconds: float | None = DEFAULT_MAX_AUDIO_SECONDS,
     ) -> None:
         """Initialize the diarizer without loading anything.
 
@@ -370,6 +374,9 @@ class SpeakerDiarizer:
                 call mostly adds latency to both.
             idle_unload_seconds (float | None): Idle time after which
                 :meth:`unload_if_idle` releases the models.
+            max_audio_seconds (float | None): Longest decoded recording
+                accepted, checked while decoding and before the engine
+                runs. ``None`` lifts the bound, for trusted files only.
 
         Raises:
             ValueError: If ``max_concurrent`` is below 1, or
@@ -388,6 +395,7 @@ class SpeakerDiarizer:
         self._num_threads = num_threads
         self._provider = provider
         self.idle_unload_seconds: float | None = idle_unload_seconds
+        self.max_audio_seconds: float | None = max_audio_seconds
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
         self._engine: Any | None = None
         self._extractor: Any | None = None
@@ -556,7 +564,10 @@ class SpeakerDiarizer:
         Raises:
             ImportError: When the ``[genai-diarization]`` extra is absent.
             ValueError: When ``num_speakers`` is neither a positive int,
-                ``"auto"``, nor ``None``.
+                ``"auto"``, nor ``None``, or the audio cannot be decoded.
+            ValidationException: When the audio declares a sample rate
+                outside the accepted range or decodes past
+                ``max_audio_seconds``.
         """
         wanted = (
             self.num_speakers
@@ -614,7 +625,11 @@ class SpeakerDiarizer:
         )
 
         embedder = self._embedder()
-        samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
+        samples = load_audio(
+            audio,
+            target_rate=DIARIZATION_SAMPLE_RATE,
+            max_seconds=self.max_audio_seconds,
+        )
         vectors: list[list[float]] = []
         for turn in turns:
             first = int(turn.start * DIARIZATION_SAMPLE_RATE)
@@ -682,7 +697,11 @@ class SpeakerDiarizer:
                 rather than an ``assert`` that ``python -O`` strips.
         """
         with self._lifecycle.use():
-            samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
+            samples = load_audio(
+                audio,
+                target_rate=DIARIZATION_SAMPLE_RATE,
+                max_seconds=self.max_audio_seconds,
+            )
             engine = self._engine
             if engine is None:
                 raise RuntimeError(
@@ -727,123 +746,6 @@ def _renumber(turns: list[SpeakerTurn]) -> list[SpeakerTurn]:
             mapping[turn.speaker] = len(mapping)
         renumbered.append(turn.model_copy(update={"speaker": mapping[turn.speaker]}))
     return renumbered
-
-
-def load_audio(
-    audio: str | Path | bytes,
-    *,
-    target_rate: int,
-) -> npt.NDArray[np.float32]:
-    """Read audio into mono float32 samples at ``target_rate``.
-
-    Accepts what the models need rather than what a file happens to be:
-    stereo is mixed down and any sample rate is resampled, because
-    feeding a model the wrong rate degrades it silently instead of
-    failing.
-
-    Args:
-        audio (str | Path | bytes): Path to an audio file, or its bytes.
-        target_rate (int): Sample rate to produce.
-
-    Returns:
-        npt.NDArray[np.float32]: 1-D samples in ``[-1, 1]``.
-
-    Raises:
-        ImportError: When the ``[genai-diarization]`` extra is absent.
-        ValueError: When the audio cannot be decoded.
-    """
-    import io
-    import wave
-
-    import numpy as np
-
-    if isinstance(audio, bytes):
-        handle: Any = io.BytesIO(audio)
-    else:
-        handle = str(audio)
-
-    try:
-        with wave.open(handle) as wav:
-            channels = wav.getnchannels()
-            rate = wav.getframerate()
-            width = wav.getsampwidth()
-            frames = wav.readframes(wav.getnframes())
-    except (wave.Error, EOFError):
-        return _decode_with_soundfile(audio, target_rate=target_rate)
-
-    if width != 2:
-        return _decode_with_soundfile(audio, target_rate=target_rate)
-    samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-    if channels > 1:
-        samples = samples.reshape(-1, channels).mean(axis=1)
-    if rate != target_rate:
-        samples = _resample(samples, rate, target_rate)
-    return samples
-
-
-def _decode_with_soundfile(
-    audio: str | Path | bytes,
-    *,
-    target_rate: int,
-) -> npt.NDArray[np.float32]:
-    """Decode a non-WAV file through the STT extra's decoder.
-
-    ``faster-whisper`` already depends on a full audio decoder, so a
-    project that transcribes can also read mp3/m4a/ogg here without a
-    new dependency.
-
-    Args:
-        audio (str | Path | bytes): The recording.
-        target_rate (int): Sample rate to produce.
-
-    Returns:
-        npt.NDArray[np.float32]: Mono samples.
-
-    Raises:
-        ValueError: When no decoder is available for the format.
-    """
-    try:
-        from faster_whisper.audio import decode_audio
-    except ImportError as exc:
-        raise ValueError(
-            "only 16-bit WAV can be read without a decoder; install the "
-            "[genai-audio] extra for mp3/m4a/ogg: pip install "
-            '"tempest-fastapi-sdk[genai-audio]"',
-        ) from exc
-    import io
-
-    source: Any = io.BytesIO(audio) if isinstance(audio, bytes) else str(audio)
-    decoded: Any = decode_audio(source, sampling_rate=target_rate)
-    return decoded
-
-
-def _resample(
-    samples: npt.NDArray[np.float32],
-    source_rate: int,
-    target_rate: int,
-) -> npt.NDArray[np.float32]:
-    """Resample mono samples by linear interpolation.
-
-    Linear interpolation is not the best resampler, but the models
-    consume 16 kHz speech and the alternative is a new dependency
-    (``soxr``, ``scipy``) for a step that runs once per request. A
-    project that cares can hand in audio already at 16 kHz.
-
-    Args:
-        samples (npt.NDArray[np.float32]): 1-D samples.
-        source_rate (int): Their current rate.
-        target_rate (int): The rate to produce.
-
-    Returns:
-        npt.NDArray[np.float32]: Resampled samples.
-    """
-    import numpy as np
-
-    duration = len(samples) / source_rate
-    target_length = int(duration * target_rate)
-    source_positions = np.linspace(0.0, len(samples) - 1, num=len(samples))
-    target_positions = np.linspace(0.0, len(samples) - 1, num=target_length)
-    return np.interp(target_positions, source_positions, samples).astype(np.float32)
 
 
 __all__: list[str] = [

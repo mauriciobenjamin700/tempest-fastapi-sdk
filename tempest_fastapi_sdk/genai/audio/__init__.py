@@ -10,6 +10,16 @@ from tempest_fastapi_sdk.genai.audio.conversation import (
     ConversationTranscriber as ConversationTranscriber,
 )
 from tempest_fastapi_sdk.genai.audio.conversation import align_turns as align_turns
+from tempest_fastapi_sdk.genai.audio.decoding import (
+    DEFAULT_MAX_AUDIO_SECONDS as DEFAULT_MAX_AUDIO_SECONDS,
+)
+from tempest_fastapi_sdk.genai.audio.decoding import MAX_CHANNELS as MAX_CHANNELS
+from tempest_fastapi_sdk.genai.audio.decoding import (
+    MAX_SOURCE_RATE as MAX_SOURCE_RATE,
+)
+from tempest_fastapi_sdk.genai.audio.decoding import (
+    MIN_SOURCE_RATE as MIN_SOURCE_RATE,
+)
 from tempest_fastapi_sdk.genai.audio.diarization import (
     DEFAULT_CLUSTERING_THRESHOLD as DEFAULT_CLUSTERING_THRESHOLD,
 )
@@ -109,13 +119,17 @@ __all__: list[str] = [
     "DEFAULT_AFFINITY_PERCENTILE",
     "DEFAULT_CLUSTERING_THRESHOLD",
     "DEFAULT_MATCH_THRESHOLD",
+    "DEFAULT_MAX_AUDIO_SECONDS",
     "DEFAULT_MAX_SPEAKERS",
     "DEFAULT_MAX_UPLOAD_BYTES",
     "DEFAULT_MODEL_NAME",
     "DIARIZATION_SAMPLE_RATE",
     "EMBEDDING_DIMENSIONS",
     "EMBEDDING_MODEL",
+    "MAX_CHANNELS",
+    "MAX_SOURCE_RATE",
     "MIN_ENROLLMENT_SECONDS",
+    "MIN_SOURCE_RATE",
     "SEGMENTATION_MODEL",
     "ConsentRequired",
     "ConversationTranscriber",
