@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SpeechToText.transcribe` só abre arquivo local: string que não nomeia um
   arquivo existente levanta `FileNotFoundError`, e o decodificador recebe um
   objeto de arquivo, nunca a string.
+- `LocalObjectStorageClient.list_objects(recursive=False)` fica dentro do
+  bucket: prefixo cuja parte de diretório tem segmento vazio, `.` ou `..`,
+  ou que resolve para fora do bucket (symlink incluído), devolve `[]`, como
+  o S3.
 
 ## [0.334.0] — 2026-10-29
 

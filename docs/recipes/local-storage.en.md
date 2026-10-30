@@ -364,7 +364,9 @@ error's `code` keeps working.
       (`FileExistsError` or `IsADirectoryError`, depending on the order). S3
       accepts both.
     * `list_objects(recursive=False)` returns "folders" ending in `/`, as S3
-      does.
+      does. A prefix whose directory part has an empty, `.` or `..` segment,
+      or that resolves outside the bucket (a symlink included), returns `[]`
+      — on S3 `../` is just characters no key starts with.
     * `remove_objects` returns `AccessDenied` for a permission error and
       `InternalError` for anything else, one `ObjectDeleteError` per key.
     * `X-Accel-Redirect` is not supported by the local client: `GET` always

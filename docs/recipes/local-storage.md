@@ -360,7 +360,9 @@ Objeto ausente levanta `LocalObjectNotFoundError`, um `FileNotFoundError` com
       e pasta ao mesmo tempo); gravar a segunda levanta `OSError` (`FileExistsError` ou `IsADirectoryError`, conforme a ordem). O S3
       aceita as duas.
     * `list_objects(recursive=False)` devolve as "pastas" terminadas em `/`,
-      como o S3.
+      como o S3. Prefixo cuja parte de diretório tem segmento vazio, `.` ou
+      `..`, ou que resolve para fora do bucket (symlink incluído), devolve
+      `[]` — no S3 `../` é só texto que nenhuma chave tem.
     * `remove_objects` devolve `AccessDenied` para erro de permissão e
       `InternalError` para o resto, num `ObjectDeleteError` por chave.
     * `X-Accel-Redirect` não é suportado pelo cliente local: o `GET` sempre
