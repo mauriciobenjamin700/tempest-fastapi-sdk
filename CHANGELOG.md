@@ -53,6 +53,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qualquer que fosse `max_attempts`. Login bem-sucedido continua sem gastar
   o orçamento do IP. Receita e README ensinam `reserve` no lugar de
   `raise_if_blocked` + `hit`.
+- `TaskQueue.redis`, `TaskQueue.from_settings` e o backend de resultado do
+  RabbitMQ gravam resultado e progresso com `JSONSerializer` em vez do
+  `PickleSerializer` default do `taskiq_redis`; `result_serializer="pickle"`
+  (novo, com `ResultSerializer` e `DEFAULT_RESULT_SERIALIZER`) é o opt-in
+  explícito. **Mudança de comportamento:** resultado gravado em pickle por
+  versão anterior não é lido até expirar, e resultado que não é
+  serializável em JSON não é gravado — medido com taskiq 0.12.4, o
+  `model_dump(mode="json")` que o TaskIQ aplica antes do serializer já
+  recusava esses valores também sob pickle.
 
 ## [0.334.0] — 2026-10-29
 

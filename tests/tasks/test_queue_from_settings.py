@@ -309,3 +309,98 @@ class TestTheMissingExtraNamesTheUrl:
         assert "TASKIQ_BROKER_URL" in message
         assert "secret" not in message
         assert "[tasks-redis]" in message
+
+
+class TestResultSerializer:
+    """Stored results are decoded as data unless pickle is asked for."""
+
+    def test_every_entry_point_defaults_to_json(self) -> None:
+        from taskiq.serializers import JSONSerializer
+
+        redis_queue = TaskQueue.redis(REDIS_URL)
+        settings_queue = TaskQueue.from_settings(Settings(REDIS_URL))
+        amqp_queue = TaskQueue.from_settings(Settings(AMQP_URL, REDIS_URL))
+
+        for queue in (redis_queue, settings_queue, amqp_queue):
+            backend = queue.broker.result_backend
+            assert isinstance(backend.serializer, JSONSerializer)  # type: ignore[attr-defined]
+
+    def test_pickle_is_an_explicit_opt_in(self) -> None:
+        from taskiq.serializers import PickleSerializer
+
+        redis_queue = TaskQueue.redis(REDIS_URL, result_serializer="pickle")
+        amqp_queue = TaskQueue.from_settings(
+            Settings(AMQP_URL, REDIS_URL), result_serializer="pickle"
+        )
+
+        for queue in (redis_queue, amqp_queue):
+            backend = queue.broker.result_backend
+            assert isinstance(backend.serializer, PickleSerializer)  # type: ignore[attr-defined]
+
+    def test_unknown_serializer_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="result_serializer"):
+            TaskQueue.redis(REDIS_URL, result_serializer="yaml")  # type: ignore[arg-type]
+
+    async def test_a_planted_pickle_is_not_executed_on_read(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A value written by someone else is never unpickled.
+
+        The planted bytes would set ``sys.TEMPEST_PICKLE_RAN`` when
+        unpickled. Under the default serializer the read fails to decode
+        them and the flag stays unset.
+        """
+        import pickle
+
+        import fakeredis.aioredis as fakeredis
+        import taskiq_redis.redis_backend as redis_backend
+        from taskiq import AsyncTaskiqTask
+        from taskiq.exceptions import ResultGetError
+
+        server = fakeredis.FakeServer()
+
+        class _Redis(fakeredis.FakeRedis):
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                super().__init__(server=server)
+
+        monkeypatch.setattr(redis_backend, "Redis", _Redis)
+
+        class _Payload:
+            def __reduce__(self) -> tuple[object, tuple[str]]:
+                return (exec, ("import sys; sys.TEMPEST_PICKLE_RAN = True",))
+
+        queue = TaskQueue.redis(REDIS_URL)
+        backend = queue.broker.result_backend
+        writer = fakeredis.FakeRedis(server=server)
+        await writer.set("tempest:results:feedface", pickle.dumps(_Payload()))
+        monkeypatch.delattr(sys, "TEMPEST_PICKLE_RAN", raising=False)
+
+        with pytest.raises((ResultGetError, ValueError)):
+            await AsyncTaskiqTask("feedface", backend).get_result()
+
+        assert getattr(sys, "TEMPEST_PICKLE_RAN", None) is None
+
+    async def test_json_results_round_trip(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import fakeredis.aioredis as fakeredis
+        import taskiq_redis.redis_backend as redis_backend
+        from taskiq import AsyncTaskiqTask, TaskiqResult
+
+        server = fakeredis.FakeServer()
+
+        class _Redis(fakeredis.FakeRedis):
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                super().__init__(server=server)
+
+        monkeypatch.setattr(redis_backend, "Redis", _Redis)
+        queue = TaskQueue.redis(REDIS_URL)
+        backend = queue.broker.result_backend
+        await backend.set_result(
+            "abc",
+            TaskiqResult(is_err=False, return_value={"total": 3}, execution_time=0.1),
+        )
+
+        result = await AsyncTaskiqTask("abc", backend).get_result()
+
+        assert result.return_value == {"total": 3}

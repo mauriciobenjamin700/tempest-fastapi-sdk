@@ -89,6 +89,20 @@ too.
 Pass ``""`` to restore the bare task id.
 """
 
+ResultSerializer = Literal["json", "pickle"]
+"""How stored task results are encoded in Redis.
+
+``"json"`` (the default) stores data only. ``"pickle"`` is what
+``taskiq_redis`` uses on its own, and reading a pickled value runs whatever
+code the stored bytes name: anyone able to write the result keys (a
+co-tenant on a shared Redis, a leaked credential) gets code execution in the
+process that reads the result. It stays available as an explicit opt-in for
+a Redis nobody else can write.
+"""
+
+DEFAULT_RESULT_SERIALIZER: Final[ResultSerializer] = "json"
+"""The result encoding used unless ``result_serializer=`` says otherwise."""
+
 
 def _redis_result_backend(
     url: str,
@@ -96,8 +110,15 @@ def _redis_result_backend(
     result_ttl_seconds: int,
     result_prefix: str,
     missing_extra_hint: str,
+    result_serializer: ResultSerializer = DEFAULT_RESULT_SERIALIZER,
 ) -> AsyncResultBackend[Any]:
     """Build a Redis result backend with a bounded footprint.
+
+    The values are encoded with taskiq's ``JSONSerializer`` unless
+    ``result_serializer="pickle"`` asks for ``PickleSerializer``. taskiq
+    turns the result into JSON-compatible data (``model_dump(mode="json")``)
+    before either serializer sees it, so the value a reader gets back is the
+    same under both; what changes is that decoding JSON cannot run code.
 
     Args:
         url (str): Redis URL the results are written to.
@@ -108,6 +129,8 @@ def _redis_result_backend(
         missing_extra_hint (str): The message to raise when
             ``taskiq_redis`` is absent, phrased for the caller's entry
             point.
+        result_serializer (ResultSerializer): ``"json"`` (default) or the
+            explicit ``"pickle"`` opt-in.
 
     Returns:
         AsyncResultBackend[Any]: A ``taskiq_redis.RedisAsyncResultBackend``.
@@ -116,15 +139,30 @@ def _redis_result_backend(
 
     Raises:
         ImportError: When ``taskiq_redis`` is not installed.
+        ValueError: When ``result_serializer`` is neither ``"json"`` nor
+            ``"pickle"``.
     """
     try:
         from taskiq_redis import RedisAsyncResultBackend
     except ImportError as exc:
         raise ImportError(missing_extra_hint) from exc
+    from taskiq.abc.serializer import TaskiqSerializer
+    from taskiq.serializers import JSONSerializer, PickleSerializer
+
+    serializer: TaskiqSerializer
+    if result_serializer == "json":
+        serializer = JSONSerializer()
+    elif result_serializer == "pickle":
+        serializer = PickleSerializer()
+    else:
+        raise ValueError(
+            f"result_serializer must be 'json' or 'pickle', got {result_serializer!r}"
+        )
     backend: AsyncResultBackend[Any] = RedisAsyncResultBackend(
         url,
         result_ex_time=result_ttl_seconds or None,
         prefix_str=result_prefix or None,
+        serializer=serializer,
     )
     return backend
 
@@ -540,6 +578,7 @@ class TaskQueue:
         results: bool | str = True,
         result_ttl_seconds: int = DEFAULT_RESULT_TTL_SECONDS,
         result_prefix: str = DEFAULT_RESULT_PREFIX,
+        result_serializer: ResultSerializer = DEFAULT_RESULT_SERIALIZER,
         resources: Sequence[LifecycleResource] = (),
         **options: Any,
     ) -> TaskQueue:
@@ -562,6 +601,12 @@ class TaskQueue:
             result_prefix (str): Namespace for the result keys. Defaults
                 to :data:`DEFAULT_RESULT_PREFIX`; ``""`` writes the bare
                 task id.
+            result_serializer (ResultSerializer): How results are encoded.
+                ``"json"`` (default) stores data only; ``"pickle"`` is the
+                explicit opt-in to ``taskiq_redis``'s own default, which
+                runs code named by the stored bytes when a result is read —
+                only for a Redis nobody else can write. Until 0.334.0 results
+                were always pickled.
             resources (Sequence[LifecycleResource]): Resources the
                 worker opens on startup and closes on shutdown — see
                 :meth:`use`.
@@ -602,6 +647,7 @@ class TaskQueue:
                     result_ttl_seconds=result_ttl_seconds,
                     result_prefix=result_prefix,
                     missing_extra_hint=hint,
+                    result_serializer=result_serializer,
                 ),
             )
         return cls(broker, resources=resources, lock_url=url)
@@ -639,6 +685,7 @@ class TaskQueue:
         results: bool | str | None = None,
         result_ttl_seconds: int | None = None,
         result_prefix: str | None = None,
+        result_serializer: ResultSerializer = DEFAULT_RESULT_SERIALIZER,
         resources: Sequence[LifecycleResource] = (),
         **options: Any,
     ) -> TaskQueue:
@@ -689,6 +736,10 @@ class TaskQueue:
                 namespace. ``None`` uses
                 :data:`DEFAULT_RESULT_PREFIX`; ``""`` writes the bare
                 task id.
+            result_serializer (ResultSerializer): How results are encoded,
+                on both transports. ``"json"`` (default) stores data only;
+                ``"pickle"`` is the explicit, unsafe-on-shared-Redis opt-in
+                described on :meth:`redis`.
             resources (Sequence[LifecycleResource]): Resources the
                 worker opens on startup and closes on shutdown.
             **options (Any): Extra keyword arguments forwarded to the
@@ -736,6 +787,7 @@ class TaskQueue:
                     results=derived if results is None else results,
                     result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
                     result_prefix=prefix,
+                    result_serializer=result_serializer,
                     resources=resources,
                     **options,
                 )
@@ -765,6 +817,7 @@ class TaskQueue:
                     result_url,
                     result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
                     result_prefix=prefix,
+                    result_serializer=result_serializer,
                 )
             return cls._with_settings_heartbeat(queue, settings)
         raise ValueError(
@@ -815,6 +868,7 @@ class TaskQueue:
         *,
         result_ttl_seconds: int = DEFAULT_RESULT_TTL_SECONDS,
         result_prefix: str = DEFAULT_RESULT_PREFIX,
+        result_serializer: ResultSerializer = DEFAULT_RESULT_SERIALIZER,
     ) -> None:
         """Route results to Redis on a broker that cannot store them.
 
@@ -830,6 +884,8 @@ class TaskQueue:
                 ``0`` keeps results forever.
             result_prefix (str): Namespace for the result keys; ``""``
                 writes the bare task id.
+            result_serializer (ResultSerializer): ``"json"`` (default) or
+                the explicit ``"pickle"`` opt-in.
 
         Raises:
             ImportError: When ``taskiq_redis`` is not installed.
@@ -844,6 +900,7 @@ class TaskQueue:
                     "the optional [tasks-redis] extra. Install with: "
                     "pip install tempest-fastapi-sdk[tasks-redis]"
                 ),
+                result_serializer=result_serializer,
             ),
         )
         self._lock_url = url
@@ -1767,6 +1824,7 @@ __all__: list[str] = [
     "Hook",
     "LifecycleResource",
     "LifecycleScope",
+    "ResultSerializer",
     "Task",
     "TaskQueue",
 ]

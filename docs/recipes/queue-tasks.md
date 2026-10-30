@@ -1583,6 +1583,36 @@ tq: TaskQueue = TaskQueue.from_settings(settings)
     `TASKIQ_RESULT_TTL_SECONDS=0`, ou
     `TaskQueue.redis(url, result_ttl_seconds=0)`.
 
+!!! danger "Resultado é gravado em JSON, não em pickle — mudança de comportamento"
+    Sozinho, o `taskiq_redis` grava resultado e progresso com
+    `PickleSerializer`, e ler um pickle executa o código que os bytes
+    guardados nomeiam: quem consegue escrever nas chaves
+    `tempest:results:*` (outro serviço no mesmo Redis, uma credencial
+    vazada) ganha execução de código no processo que chama
+    `get_result()` / `wait_result()`. Por isso o `TaskQueue` usa
+    `JSONSerializer` em `redis()`, `from_settings()` e no backend de
+    resultado do RabbitMQ.
+
+    O valor que volta é o mesmo nos dois: o TaskIQ converte o resultado com
+    `model_dump(mode="json")` **antes** de serializar, então `datetime` e
+    `UUID` já voltavam como `str`, `set`/`tuple` como `list`, e um objeto
+    que o pydantic não serializa já falhava. Exceção de task também volta
+    com a classe original. O que muda:
+
+    - resultado gravado por uma versão anterior (pickle) não é lido pela
+      nova até expirar (`TASKIQ_RESULT_TTL_SECONDS`, 24 h por padrão) —
+      `get_result()` falha ao decodificar;
+    - valor que não vira JSON continua falhando ao gravar: medido com
+      taskiq 0.12.4 e taskiq-redis 1.2.3, um objeto arbitrário levanta
+      `PydanticSerializationError` no `model_dump` com os **dois**
+      serializers, e `bytes` que não são UTF-8 levantam
+      `UnicodeDecodeError` com os dois. Quem dependia do pickle para outra
+      forma de valor passa `result_serializer="pickle"`.
+
+    Quem tem um Redis que só o próprio serviço escreve e precisa do pickle
+    pede explicitamente: `TaskQueue.redis(url, result_serializer="pickle")`
+    ou `TaskQueue.from_settings(settings, result_serializer="pickle")`.
+
 !!! tip "Serviço só de cron não precisa guardar resultado"
     `TASKIQ_STORE_RESULTS=False` deixa o `DummyResultBackend` do TaskIQ
     no lugar, nos dois transportes. É a configuração de um serviço que só
