@@ -999,8 +999,15 @@ asyncio.run(main())
 `search` filters by `user_id`, applies the similarity floor
 (`min_similarity`), then blends in the recency decay — each `MemoryHit`
 carries `content`, `role`, `chat_id`, `created_at`, `similarity` (raw
-cosine) and `score` (the final value, recency included). `delete_for_chat`
-wipes everything for a chat when it's removed.
+cosine) and `score` (the final value, recency included).
+
+Every user shares one collection, so every mutation names its owner.
+`delete_for_chat(user_id=..., chat_id=...)` deletes that user's rows for
+the chat when they remove it — the `chat_id` comes from the request body
+and can repeat across users, and the other users' rows stay.
+`delete_for_user(user_id=...)` erases a user's whole memory (account
+deletion). And `index` refuses, with `ValueError`, a `message_id` that
+already belongs to another user instead of overwriting that user's row.
 
 Chroma is asked for the `top_k * candidate_multiplier` nearest neighbours
 (default `4`), and the recency re-rank picks `top_k` of them — so a recent

@@ -72,6 +72,10 @@ class ReplyPreviewSchema(BaseSchema):
             of its body — empty when revoked.
         revoked (bool): Whether the quoted message was deleted for
             everyone. Render the tombstone, never the excerpt.
+        created_at (datetime | None): When the quoted message was posted.
+            The excerpt is empty for a reader whose ``history_from``
+            starts after this instant, and the conversation stream reads
+            this field to blank it per subscriber.
     """
 
     id: UUID
@@ -79,6 +83,7 @@ class ReplyPreviewSchema(BaseSchema):
     kind: MessageKind = MessageKind.TEXT
     excerpt: str = ""
     revoked: bool = False
+    created_at: datetime | None = None
 
 
 class AttachmentResponseSchema(BaseSchema):

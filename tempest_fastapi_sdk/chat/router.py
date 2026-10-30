@@ -16,6 +16,7 @@ import inspect
 import json
 import time
 from collections.abc import AsyncIterator, Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -41,6 +42,7 @@ from tempest_fastapi_sdk.chat.schemas import (
 from tempest_fastapi_sdk.chat.service import PARTICIPANT_REMOVED_EVENT, ChatService
 from tempest_fastapi_sdk.exceptions import ForbiddenException, NotFoundException
 from tempest_fastapi_sdk.sse.event_stream import sse_response
+from tempest_fastapi_sdk.utils.datetime import to_utc
 
 if TYPE_CHECKING:
     pass
@@ -94,6 +96,79 @@ def _removed_user_id(chunk: bytes) -> str | None:
         return None
     user_id = data.get("user_id") if isinstance(data, dict) else None
     return str(user_id) if user_id is not None else None
+
+
+_MESSAGE_EVENTS: frozenset[str] = frozenset(
+    {"message", "message.edited", "message.revoked", "message.reaction"},
+)
+"""SSE events whose payload is a ``MessageResponseSchema``."""
+
+
+def _parse_instant(value: Any) -> datetime | None:
+    """Read an ISO-8601 instant from a frame payload, normalized to UTC.
+
+    Args:
+        value (Any): The JSON value, usually a string.
+
+    Returns:
+        datetime | None: The instant, or ``None`` when absent or not a
+        valid timestamp.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        return to_utc(datetime.fromisoformat(value))
+    except ValueError:
+        return None
+
+
+def _scope_frame(chunk: bytes, history_from: datetime) -> bytes | None:
+    """Fit one broker frame to a subscriber's ``history_from``.
+
+    The broker fans one payload to every subscriber, but a member added
+    without the group's backlog must not receive it through the stream
+    either. A message frame (new, edited, revoked or reacted) for a
+    message older than ``history_from`` is dropped, and a reply whose
+    quoted parent is older keeps its stub with an empty excerpt. Every
+    other frame passes through unchanged.
+
+    Args:
+        chunk (bytes): One encoded SSE frame.
+        history_from (datetime): The subscriber's earliest visible
+            instant.
+
+    Returns:
+        bytes | None: The frame to send, or ``None`` to drop it.
+    """
+    lines = chunk.decode("utf-8", errors="replace").splitlines()
+    events = [
+        line.removeprefix("event: ") for line in lines if line.startswith("event: ")
+    ]
+    if not events or events[0] not in _MESSAGE_EVENTS:
+        return chunk
+    payload = "\n".join(
+        line.removeprefix("data: ") for line in lines if line.startswith("data: ")
+    )
+    try:
+        data: Any = json.loads(payload)
+    except ValueError:
+        return chunk
+    if not isinstance(data, dict):
+        return chunk
+    start = to_utc(history_from)
+    created_at = _parse_instant(data.get("created_at"))
+    if created_at is not None and created_at < start:
+        return None
+    reply = data.get("reply_to")
+    if not isinstance(reply, dict) or not reply.get("excerpt"):
+        return chunk
+    quoted_at = _parse_instant(reply.get("created_at"))
+    if quoted_at is None or quoted_at >= start:
+        return chunk
+    data["reply_to"] = {**reply, "excerpt": ""}
+    kept = [line for line in lines if line and not line.startswith("data: ")]
+    frame = "\n".join([*kept, f"data: {json.dumps(data, default=str)}"])
+    return f"{frame}\n\n".encode()
 
 
 def make_chat_router(
@@ -290,6 +365,7 @@ def make_chat_router(
         chunks: AsyncIterator[bytes],
         conversation_id: UUID,
         user_id: UUID,
+        history_from: datetime | None = None,
     ) -> AsyncIterator[bytes]:
         """Relay a broker stream until the subscriber stops being a member.
 
@@ -298,10 +374,17 @@ def make_chat_router(
         connection closed; the reconnect an ``EventSource`` then attempts
         is refused by the participant check.
 
+        With a ``history_from``, each frame is fitted to it first (see
+        :func:`_scope_frame`): edits, reactions and revocations of a
+        message older than the subscriber's history are dropped, and a
+        reply quoting one carries an empty excerpt.
+
         Args:
             chunks (AsyncIterator[bytes]): The broker stream's frames.
             conversation_id (UUID): The subscribed conversation.
             user_id (UUID): The subscriber.
+            history_from (datetime | None): The subscriber's
+                ``history_from``, or ``None`` when they see the backlog.
 
         Yields:
             bytes: Each frame, until the membership ends.
@@ -325,6 +408,11 @@ def make_chat_router(
                     checked_at = time.monotonic()
                     if not allowed:
                         return
+                if history_from is not None:
+                    scoped = _scope_frame(chunk, history_from)
+                    if scoped is None:
+                        continue
+                    chunk = scoped
                 yield chunk
         finally:
             await _aclose(chunks)
@@ -854,10 +942,12 @@ def make_chat_router(
             raise ForbiddenException(message="You are not in this conversation.")
         if broker is None:
             raise NotFoundException(message="Real-time streaming is not enabled.")
+        membership = await service._membership(conversation_id, user_id)
+        history_from = None if membership is None else membership.history_from
         channel = str(conversation_id)
         stream = broker.register(channel)
         return sse_response(
-            _member_stream(stream.stream(), conversation_id, user_id),
+            _member_stream(stream.stream(), conversation_id, user_id, history_from),
             on_disconnect=lambda: broker.unregister(channel, stream),
         )
 

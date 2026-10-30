@@ -101,12 +101,16 @@ class _FakeCollection:
     def get(
         self,
         *,
+        ids: list[str] | None = None,
         where: dict[str, Any] | None = None,
         include: list[str] | None = None,
     ) -> dict[str, Any]:
-        ids: list[str] = []
+        wanted = ids
+        ids = []
         metadatas: list[dict[str, Any]] = []
         for entry_id, row in self._store.items():
+            if wanted is not None and entry_id not in wanted:
+                continue
             if _match(row["metadata"], where):
                 ids.append(entry_id)
                 metadatas.append(row["metadata"])
@@ -476,7 +480,7 @@ class TestChatMemory:
             content="content to delete",
             created_at=_now(),
         )
-        await memory.delete_for_chat(chat_id="doomed")
+        await memory.delete_for_chat(user_id="u1", chat_id="doomed")
         hits = await memory.search(user_id="u1", query="query", top_k=5)
         assert hits == []
 
@@ -495,3 +499,91 @@ class TestChatMemory:
                 content="long enough content",
                 created_at=_now(),
             )
+
+
+class TestMemoryMutationsAreOwnerBound:
+    """Users share one collection, so every mutation names its owner."""
+
+    async def test_delete_for_chat_keeps_other_users_rows(
+        self, chroma_client: Any
+    ) -> None:
+        """Before the fix one user's removal wiped every user's ``chat-1``."""
+        embedder = _FakeEmbedder({"long enough content": [1.0, 0.0]})
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-own")
+        for user, chat, message in [
+            ("u-alice", "chat-1", "a1"),
+            ("u-bob", "chat-1", "b1"),
+            ("u-bob", "chat-2", "b2"),
+        ]:
+            await memory.index(
+                user_id=user,
+                chat_id=chat,
+                message_id=message,
+                role="user",
+                content="long enough content",
+                created_at=_now(),
+            )
+
+        await memory.delete_for_chat(user_id="u-alice", chat_id="chat-1")
+
+        collection = memory._get_collection()
+        assert set(collection.get(where={"user_id": "u-bob"})["ids"]) == {"b1", "b2"}
+        assert collection.get(where={"user_id": "u-alice"})["ids"] == []
+
+    async def test_delete_for_user_erases_only_that_user(
+        self, chroma_client: Any
+    ) -> None:
+        embedder = _FakeEmbedder({"long enough content": [1.0, 0.0]})
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-erase")
+        for user, message in [("u-alice", "a1"), ("u-bob", "b1")]:
+            await memory.index(
+                user_id=user,
+                chat_id="chat-1",
+                message_id=message,
+                role="user",
+                content="long enough content",
+                created_at=_now(),
+            )
+
+        await memory.delete_for_user(user_id="u-alice")
+
+        assert memory._get_collection().get()["ids"] == ["b1"]
+
+    async def test_index_refuses_another_users_message_id(
+        self, chroma_client: Any
+    ) -> None:
+        """A colliding id no longer re-assigns the row to the second user."""
+        embedder = _FakeEmbedder(
+            {"bob's text here": [1.0, 0.0], "alice's text here": [0.0, 1.0]}
+        )
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-coll")
+        await memory.index(
+            user_id="u-bob",
+            chat_id="c",
+            message_id="m1",
+            role="user",
+            content="bob's text here",
+            created_at=_now(),
+        )
+
+        with pytest.raises(ValueError):
+            await memory.index(
+                user_id="u-alice",
+                chat_id="c",
+                message_id="m1",
+                role="user",
+                content="alice's text here",
+                created_at=_now(),
+            )
+        reindexed = await memory.index(
+            user_id="u-bob",
+            chat_id="c",
+            message_id="m1",
+            role="user",
+            content="bob's text here",
+            created_at=_now(),
+        )
+
+        meta = memory._get_collection().get(where={"message_id": "m1"})["metadatas"]
+        assert reindexed is True
+        assert [m["user_id"] for m in meta] == ["u-bob"]

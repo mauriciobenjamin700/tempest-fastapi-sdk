@@ -572,6 +572,12 @@ Someone who joins later does **not** inherit the backlog by default
 it over. Someone who leaves keeps their row with `left_at` — otherwise
 old messages lose the sender's name. The owner cannot be removed.
 
+Roles follow a hierarchy in `set_role`: an admin can promote a member to
+admin, but only the owner grants `OWNER` or changes the role of an admin
+or of the owner. An admin who tries to demote the owner, or to make
+themselves owner, gets `ForbiddenException` — otherwise demoting and then
+removing would get around the owner's protection.
+
 !!! tip "`kind` is inferred when you don't say"
     With no `kind`, up to two people is `DIRECT` and more is `GROUP` —
     which is what someone who never heard of the distinction means.
@@ -685,6 +691,15 @@ see it cannot copy it into another conversation. And replying with a
 quote of a message older than your `history_from` is a `404` too,
 because the quote stub would carry an excerpt of the backlog you were
 not given.
+
+Derived copies follow the same rule for whoever reads them. When an
+older member replies to a message older than the reader's
+`history_from`, that reply's `reply_to` comes back with an empty
+`excerpt` in that reader's history (`reply_to.created_at` says when the
+quoted message was sent). On the SSE stream, each subscriber gets the
+frames fitted to their own `history_from`: edits, reactions and
+revocations of a message older than it are not delivered, and a reply
+quoting one arrives with an empty excerpt.
 
 ### Input limits
 

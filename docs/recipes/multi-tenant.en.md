@@ -104,6 +104,27 @@ async def fetch(repo: TenantScopedRepository[OrderModel], order_id: UUID) -> Ord
 `delete_many({})` deletes only **this** tenant's rows, never the whole
 table — the tenant predicate is always added.
 
+### Every read and every write, search and bulk included
+
+The scope does not depend on which method you call:
+
+- **Search** — `search` and `full_text_search` with only a term (the
+  search-box case) return only this tenant's rows.
+- **A filter on the tenant column only narrows.** The tenant predicate is
+  ANDed with your filter, never replaced by it:
+  `repo.list({"tenant_id": other})` returns `[]`.
+- **Bulk inserts** — `bulk_create_values` and `bulk_upsert` stamp
+  `tenant_id` onto every row, overwriting any value in the dict, the way
+  `add` does with the instance.
+- **Upsert** — `bulk_upsert(..., on_conflict="update")` only rewrites a
+  conflicting row that already belongs to this tenant. A conflict with
+  another tenant's row (the same `id`, say) updates nothing.
+- **Update** — `bulk_update` / `update_returning` refuse, with
+  `ValueError`, `values` that move `tenant_id` to another tenant.
+  `update`, `update_many`, `update_audited` and `delete_audited` refuse an
+  instance of another tenant (the repository's not-found exception) and
+  an instance whose `tenant_id` was changed (`ValueError`).
+
 !!! warning "Raw queries are your responsibility"
     A subclass that builds its own `select(...)` without going through
     `_apply_filters` — or a pre-built `query=` passed to `paginate` — is
@@ -117,4 +138,6 @@ table — the tenant predicate is always added.
   filter into every read and stamps every write.
 - `get_by_id` / `delete` / `delete_batch` / `delete_many` are scoped —
   cross-tenant access is impossible through the repository methods.
+- So are search, bulk inserts, upserts and updates: a filter on the tenant
+  column only narrows, and a write never moves a row to another tenant.
 - The constructor validates the tenant column exists at boot.

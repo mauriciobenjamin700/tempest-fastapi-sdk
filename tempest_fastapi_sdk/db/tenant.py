@@ -10,13 +10,28 @@ individual query sites can't get it wrong.
 
 How the scoping is applied:
 
-* **Reads** — :meth:`_apply_filters` is overridden to always merge the
-  tenant predicate, and the filter-taking methods (``list``, ``first``,
-  ``count``, ``paginate``, ``cursor_paginate``, ``delete_many``,
-  ``exists``, ``get``/``get_or_none``) pass a tenant-bearing filter dict
-  so the predicate fires even when the caller passed no filters at all.
-* **Writes** — :meth:`add` / :meth:`add_all` stamp ``tenant_id`` onto
-  the instance before insert.
+* **Reads** — :meth:`_apply_filters` is overridden to always AND
+  ``tenant_column == tenant_id`` onto the statement, and every
+  filter-taking method (``list``, ``first``, ``count``, ``paginate``,
+  ``cursor_paginate``, ``delete_many``, ``exists``,
+  ``get``/``get_or_none``, ``search``/``full_text_search``,
+  ``bulk_update``/``update_returning``) reaches it even when the caller
+  passed no filters at all. The predicate is ANDed, never merged into
+  the caller's dict, so a caller filter on the tenant column can only
+  narrow the result: ``{"tenant_id": other}`` matches nothing.
+* **Inserts** — :meth:`add`, :meth:`add_all`,
+  :meth:`save_with_outbox` and :meth:`add_audited` stamp ``tenant_id``
+  onto the instance, and :meth:`bulk_create_values` /
+  :meth:`bulk_upsert` stamp it onto every row mapping, overwriting any
+  tenant value the caller supplied.
+* **Upserts** — :meth:`bulk_upsert` with ``on_conflict="update"`` only
+  rewrites a conflicting row that already belongs to this tenant; a
+  conflict with another tenant's row leaves that row untouched.
+* **Updates** — :meth:`bulk_update` / :meth:`update_returning` refuse
+  ``values`` that set the tenant column to another tenant, and
+  :meth:`update`, :meth:`update_many`, :meth:`update_audited` and
+  :meth:`delete_audited` refuse an instance that belongs to, or was
+  moved to, another tenant.
 * **Id-based mutation** — :meth:`delete` / :meth:`delete_batch` add the
   tenant predicate to the ``DELETE`` so a guessed id from another
   tenant matches nothing. ``soft_delete`` / ``restore`` ride on the
@@ -32,12 +47,14 @@ How the scoping is applied:
 from __future__ import annotations
 
 import builtins
+from collections.abc import Sequence
 from typing import Any, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, delete
+from sqlalchemy import CursorResult, delete, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql.elements import ColumnElement
 
 from tempest_fastapi_sdk.db.expressions import WhereClause
 from tempest_fastapi_sdk.db.model import BaseModel
@@ -141,31 +158,194 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         )
 
     def _with_tenant(self, filters: dict[str, Any] | None) -> dict[str, Any]:
-        """Return ``filters`` with the tenant predicate guaranteed present.
+        """Return ``filters`` guaranteed non-empty, so scoping always runs.
+
+        The base methods call :meth:`_apply_filters` only when
+        ``filters`` is truthy, so an empty dict would skip the scope.
+        This returns a copy that carries the tenant key when the caller
+        did not pass one. It is **not** what enforces the scope: a
+        caller key on the tenant column is kept as given and
+        :meth:`_apply_filters` ANDs the bound tenant on top of it, so it
+        can only narrow the result.
 
         Args:
             filters (dict[str, Any] | None): The caller's filters.
 
         Returns:
-            dict[str, Any]: A new dict that always carries the tenant id
-            (never empty, so the base's ``if filters`` guards fire).
+            dict[str, Any]: A new, never-empty dict.
         """
         merged = dict(filters or {})
         merged.setdefault(self.tenant_field, self.tenant_id)
         return merged
 
     def _apply_filters(self, query: Any, filters: dict[str, Any]) -> Any:
-        """Apply filters with the tenant predicate always included.
+        """Apply filters and AND the bound tenant predicate onto the statement.
 
         Args:
             query: The SQLAlchemy statement to scope.
             filters (dict[str, Any]): The filter conditions.
 
         Returns:
-            The statement with the tenant predicate (and the caller's
-            filters) applied.
+            The statement with the caller's filters and
+            ``tenant_column == tenant_id`` applied.
         """
-        return super()._apply_filters(query, self._with_tenant(filters))
+        scoped = super()._apply_filters(query, self._with_tenant(filters))
+        return scoped.where(self.tenant_column == self.tenant_id)
+
+    async def _run_search(
+        self,
+        condition: ColumnElement[bool] | None,
+        *,
+        rank: ColumnElement[Any] | None,
+        filters: dict[str, Any] | None,
+        where: WhereClause | None,
+        order_by: Any | None,
+        ascending: bool,
+        with_: builtins.list[str] | None,
+        limit: int | None,
+    ) -> builtins.list[TenantModelType]:
+        """Run :meth:`search` / :meth:`full_text_search` scoped to the tenant.
+
+        The base applies filters only when they are truthy, so a search
+        with just a term would skip :meth:`_apply_filters`; this passes
+        a never-empty filter dict instead.
+
+        Args:
+            condition (ColumnElement[bool] | None): The text condition.
+            rank (ColumnElement[Any] | None): Relevance expression.
+            filters (dict[str, Any] | None): The caller's extra filters.
+            where (WhereClause | None): Extra condition ANDed in.
+            order_by (Any | None): Explicit ordering.
+            ascending (bool): Direction for ``order_by``.
+            with_ (builtins.list[str] | None): Relationship paths to
+                eager-load.
+            limit (int | None): Cap on rows returned.
+
+        Returns:
+            builtins.list[TenantModelType]: The matching rows of this
+            tenant.
+        """
+        return await super()._run_search(
+            condition,
+            rank=rank,
+            filters=self._with_tenant(filters),
+            where=where,
+            order_by=order_by,
+            ascending=ascending,
+            with_=with_,
+            limit=limit,
+        )
+
+    def _prepare_insert(self, model: TenantModelType) -> None:
+        """Stamp the bound tenant id onto an instance before it is inserted.
+
+        Args:
+            model (TenantModelType): The instance about to be inserted.
+        """
+        setattr(model, self.tenant_field, self.tenant_id)
+
+    def _prepare_insert_rows(
+        self, rows: builtins.list[dict[str, Any]]
+    ) -> builtins.list[dict[str, Any]]:
+        """Return copies of ``rows`` stamped with the bound tenant id.
+
+        A tenant value already present in a row is overwritten, the same
+        way :meth:`add` overwrites the attribute.
+
+        Args:
+            rows (builtins.list[dict[str, Any]]): The caller's mappings.
+
+        Returns:
+            builtins.list[dict[str, Any]]: New mappings carrying
+            ``tenant_field = tenant_id``.
+        """
+        return [{**row, self.tenant_field: self.tenant_id} for row in rows]
+
+    def _upsert_conflict_where(self) -> ColumnElement[bool]:
+        """Limit an upsert's ``DO UPDATE`` to rows of the bound tenant.
+
+        A conflict with a row of another tenant (a shared primary key,
+        say) then updates nothing instead of rewriting, and re-tenanting,
+        that row.
+
+        Returns:
+            ColumnElement[bool]: ``tenant_column == tenant_id``.
+        """
+        return cast("ColumnElement[bool]", self.tenant_column == self.tenant_id)
+
+    async def _check_instance_write(self, model: TenantModelType) -> None:
+        """Refuse to update or delete an instance outside the bound tenant.
+
+        Reads the tenant value the instance was loaded with and any
+        value assigned since, from the attribute history, without
+        touching the database. When the attribute was never loaded, the
+        stored value is read with one ``SELECT``.
+
+        Args:
+            model (TenantModelType): The instance about to be written.
+
+        Raises:
+            AppException: ``self.not_found_exception`` when the stored
+                row belongs to another tenant.
+            ValueError: When the instance's tenant column was changed to
+                another tenant.
+        """
+        history = inspect(model).attrs[self.tenant_field].history
+        stored = [*history.unchanged, *history.deleted]
+        if not stored and model.id is not None:
+            persisted = await self.session.scalar(
+                select(self.tenant_column).where(self.model.id == model.id)
+            )
+            stored = [] if persisted is None else [persisted]
+        if any(value != self.tenant_id for value in stored):
+            self._raise_not_found()
+        if any(value != self.tenant_id for value in history.added):
+            raise ValueError(
+                f"{self.model.__name__}.{self.tenant_field} cannot be moved to "
+                "another tenant through a TenantScopedRepository.",
+            )
+
+    async def _execute_update(
+        self,
+        filters: dict[str, Any],
+        values: dict[str, Any],
+        where: WhereClause | None,
+        returning: Sequence[Any],
+        *,
+        operation: str,
+    ) -> tuple[int, builtins.list[Any]]:
+        """Run a scoped ``UPDATE``, refusing to move rows to another tenant.
+
+        Args:
+            filters (dict[str, Any]): The caller's filters; the tenant
+                predicate is ANDed on by :meth:`_apply_filters`.
+            values (dict[str, Any]): Column-value pairs to set.
+            where (WhereClause | None): Extra condition, or ``None``.
+            returning (Sequence[Any]): Mapped columns to read back.
+            operation (str): Method name, for the log line.
+
+        Returns:
+            tuple[int, builtins.list[Any]]: The affected row count and the
+            returned rows.
+
+        Raises:
+            ValueError: When ``values`` sets the tenant column to anything
+                other than the bound tenant id.
+        """
+        if self.tenant_field in values:
+            value = values[self.tenant_field]
+            if not isinstance(value, UUID) or value != self.tenant_id:
+                raise ValueError(
+                    f"{self.model.__name__}.{self.tenant_field} cannot be set "
+                    "to another tenant through a TenantScopedRepository.",
+                )
+        return await super()._execute_update(
+            filters,
+            values,
+            where,
+            returning,
+            operation=operation,
+        )
 
     # -- reads that guard on ``if filters`` -------------------------------
 
@@ -462,34 +642,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         """
         return await super().delete_many(self._with_tenant(filters), where=where)
 
-    # -- writes / id-based mutation --------------------------------------
-
-    async def add(self, model: TenantModelType) -> TenantModelType:
-        """Insert ``model`` after stamping the tenant id onto it.
-
-        Args:
-            model (TenantModelType): The instance to insert.
-
-        Returns:
-            TenantModelType: The inserted, refreshed instance.
-        """
-        setattr(model, self.tenant_field, self.tenant_id)
-        return await super().add(model)
-
-    async def add_all(
-        self, models: builtins.list[TenantModelType]
-    ) -> builtins.list[TenantModelType]:
-        """Insert several models after stamping the tenant id onto each.
-
-        Args:
-            models (list[TenantModelType]): The instances to insert.
-
-        Returns:
-            list[TenantModelType]: The inserted, refreshed instances.
-        """
-        for model in models:
-            setattr(model, self.tenant_field, self.tenant_id)
-        return await super().add_all(models)
+    # -- id-based mutation ----------------------------------------------
 
     async def delete(self, id: UUID) -> None:
         """Delete a row by id **within this tenant**.

@@ -55,6 +55,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `False`. Store customizado sem `touch` continua funcionando pelo `set`, com um
   `DeprecationWarning` — o protocolo `SessionStore` agora declara seis métodos.
 
+### Security
+
+- `@cached`: o key builder padrão codifica cada argumento pelo dado, não por
+  `str()`. Model Pydantic entra com todos os campos (`SecretStr` como hash do
+  segredo, `Field(repr=False)` incluído), dataclass com os campos, e `UUID` /
+  `datetime` / `Decimal` / `Enum` / `bytes` com valor tipado. **Mudança de
+  comportamento:** argumento sem codificação fiel faz a chamada rodar sem cache,
+  com o aviso `cached_key_unencodable`, em vez de entrar na chave pelo `str()`;
+  chaves de argumentos não-JSON mudam de forma, então essas entradas sofrem um
+  miss depois do upgrade. Argumentos já aceitos por `json.dumps` mantêm a chave.
+- `ChatMemory`: toda mutação passa a ser vinculada ao dono.
+  **Mudança incompatível:** `delete_for_chat` exige `user_id` (keyword-only) e
+  apaga só as linhas daquele usuário no chat — antes apagava as de todo usuário
+  com o mesmo `chat_id`. Novo `delete_for_user(user_id=...)` para exclusão de
+  conta. `index` levanta `ValueError` quando o `message_id` já está indexado
+  para outro usuário, em vez de sobrescrever a linha e trocar o dono.
+- Chat: quem entra num grupo sem `share_history` deixa de receber o corpo
+  de mensagens anteriores ao seu `history_from` por cópias derivadas. No
+  histórico, o `reply_to` de uma resposta que cita mensagem anterior chega com
+  `excerpt` vazio para esse leitor; no stream SSE do `make_chat_router`, cada
+  assinante recebe os frames ajustados ao próprio `history_from` (edição,
+  reação e revogação de mensagem anterior não chegam; a citação chega sem o
+  trecho). `ReplyPreviewSchema` ganha o campo `created_at`.
+- Chat: `ChatService.set_role` aplica hierarquia de papéis. **Mudança de
+  comportamento:** só o dono concede `OWNER` ou muda o papel de um admin ou do
+  dono; um admin continua podendo promover membro a admin. Antes um admin
+  podia rebaixar o dono e então removê-lo.
+- `TenantScopedRepository` passa a aplicar o escopo do tenant em todo caminho
+  herdado do `BaseRepository`, não só nos métodos sobrescritos à mão. O
+  predicado do tenant agora é somado com `AND` ao filtro do chamador em vez de
+  ser mesclado no dict, então um filtro na coluna de tenant só estreita o
+  resultado. `search` e `full_text_search` sem `filters` ficam escopados;
+  `bulk_create_values` e `bulk_upsert` carimbam o tenant em cada linha; o
+  `DO UPDATE` do `bulk_upsert` só alcança linhas do próprio tenant;
+  `save_with_outbox` e `add_audited` carimbam a instância como o `add`.
+  **Mudança de comportamento:** `bulk_update` / `update_returning` levantam
+  `ValueError` quando `values` muda a coluna de tenant para outro tenant, e
+  `update`, `update_many`, `update_audited` e `delete_audited` recusam instância
+  de outro tenant (exceção de não encontrado do repositório) ou cujo tenant foi
+  trocado (`ValueError`). O `BaseRepository` ganha os hooks privados que fazem
+  isso num lugar só (`_prepare_insert`, `_prepare_insert_rows`,
+  `_upsert_conflict_where`, `_check_instance_write`), sem efeito na classe base.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

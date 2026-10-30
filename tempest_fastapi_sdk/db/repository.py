@@ -963,6 +963,61 @@ class BaseRepository(Generic[ModelType]):
         """
         await emit(type(instance), signal, instance)
 
+    def _prepare_insert(self, model: ModelType) -> None:
+        """Adjust an instance right before an insert method adds it.
+
+        A no-op here. Every instance insert path (:meth:`add`,
+        :meth:`add_all`, :meth:`save_with_outbox`, :meth:`add_audited`)
+        calls it, so a subclass that must stamp a column on every new
+        row (the tenant id, in
+        :class:`~tempest_fastapi_sdk.db.tenant.TenantScopedRepository`)
+        does it in one place instead of overriding each method.
+
+        Args:
+            model (ModelType): The instance about to be inserted.
+        """
+
+    async def _check_instance_write(self, model: ModelType) -> None:
+        """Validate an attached instance before it is updated or deleted.
+
+        A no-op here. :meth:`update`, :meth:`update_many`,
+        :meth:`update_audited` and :meth:`delete_audited` call it inside
+        their error handling, so an exception raised by an override
+        rolls the pending change back like any other failed write.
+
+        Args:
+            model (ModelType): The instance about to be written.
+        """
+
+    def _prepare_insert_rows(self, rows: List[dict[str, Any]]) -> List[dict[str, Any]]:
+        """Return the row mappings a bulk insert should actually write.
+
+        Returns ``rows`` unchanged here. :meth:`bulk_create_values` and
+        :meth:`bulk_upsert` call it, so a subclass can stamp a column on
+        every row of a statement that bypasses the unit of work.
+
+        Args:
+            rows (List[dict[str, Any]]): The caller's row mappings.
+
+        Returns:
+            List[dict[str, Any]]: The mappings to insert.
+        """
+        return rows
+
+    def _upsert_conflict_where(self) -> ColumnElement[bool] | None:
+        """Return the condition an existing row must meet to be upserted over.
+
+        ``None`` here, so :meth:`bulk_upsert` with
+        ``on_conflict="update"`` rewrites any conflicting row. A
+        subclass returns a predicate on the existing row (rendered as
+        the ``WHERE`` of ``ON CONFLICT ... DO UPDATE``) to leave rows
+        outside its scope untouched.
+
+        Returns:
+            ColumnElement[bool] | None: The predicate, or ``None``.
+        """
+        return None
+
     def _raise_not_found(self) -> NoReturn:
         """Raise the configured not-found exception with the resolved message.
 
@@ -1829,6 +1884,7 @@ class BaseRepository(Generic[ModelType]):
             ConflictException: On integrity violations (unique
                 constraint, FK error, etc.).
         """
+        self._prepare_insert(model)
         try:
             await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             self.session.add(model)
@@ -1863,6 +1919,8 @@ class BaseRepository(Generic[ModelType]):
         Raises:
             ConflictException: On integrity violations.
         """
+        for model in models:
+            self._prepare_insert(model)
         try:
             for model in models:
                 await self._emit_signal(RepositorySignal.PRE_SAVE, model)
@@ -1913,6 +1971,7 @@ class BaseRepository(Generic[ModelType]):
             ConflictException: On integrity violations (the whole
                 transaction — model and event — is rolled back).
         """
+        self._prepare_insert(model)
         try:
             self.session.add(model)
             self.session.add(event)
@@ -1999,6 +2058,7 @@ class BaseRepository(Generic[ModelType]):
                 transaction is rolled back).
         """
         audit_model = self._require_audit_model()
+        self._prepare_insert(model)
         try:
             self.session.add(model)
             await self.session.flush()
@@ -2082,6 +2142,7 @@ class BaseRepository(Generic[ModelType]):
         """
         audit_model = self._require_audit_model()
         try:
+            await self._check_instance_write(model)
             entry = audit_model.for_update(
                 model,
                 before,
@@ -2156,6 +2217,7 @@ class BaseRepository(Generic[ModelType]):
         """
         audit_model = self._require_audit_model()
         try:
+            await self._check_instance_write(model)
             entry = audit_model.for_delete(
                 model,
                 actor=actor,
@@ -2263,6 +2325,7 @@ class BaseRepository(Generic[ModelType]):
             ConflictException: On integrity violations.
         """
         try:
+            await self._check_instance_write(model)
             await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             await self._commit()
             await self.session.refresh(model)
@@ -2295,6 +2358,8 @@ class BaseRepository(Generic[ModelType]):
             ConflictException: On integrity violations.
         """
         try:
+            for model in models:
+                await self._check_instance_write(model)
             for model in models:
                 await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             await self._commit()
@@ -2545,6 +2610,7 @@ class BaseRepository(Generic[ModelType]):
         """
         if not rows:
             raise ValueError("bulk_create_values requires at least one row.")
+        rows = self._prepare_insert_rows(rows)
         try:
             query = insert(self.model).values(rows)
             result = cast(CursorResult[Any], await self.session.execute(query))
@@ -2705,6 +2771,7 @@ class BaseRepository(Generic[ModelType]):
                 "on_conflict='nothing'; drop it, or use on_conflict='update'.",
             )
 
+        rows = self._prepare_insert_rows(rows)
         bind = self.session.get_bind()
         dialect_name = bind.dialect.name
         stmt: Any
@@ -2744,6 +2811,7 @@ class BaseRepository(Generic[ModelType]):
             stmt = stmt.on_conflict_do_update(
                 index_elements=conflict_columns,
                 set_=update_set,
+                where=self._upsert_conflict_where(),
             )
         use_returning = returning_ids or on_conflict == "nothing"
         if use_returning:

@@ -401,6 +401,11 @@ class ChatMemory:
         idempotent. When the per-user quota is exceeded, the oldest entries
         for that user are evicted first.
 
+        The collection is shared by every user, so a ``message_id`` already
+        indexed for a **different** user is refused instead of being
+        overwritten, which would move that row (text and owner) to
+        ``user_id``.
+
         Args:
             user_id (str | UUID): Owner of the message.
             chat_id (str | UUID): Chat the message belongs to.
@@ -414,6 +419,8 @@ class ChatMemory:
             was skipped for being too short.
 
         Raises:
+            ValueError: When ``message_id`` is already indexed for another
+                user.
             Exception: Embedding or Chroma failures propagate to the caller
                 (no internal retry — see the class scope note).
         """
@@ -435,6 +442,12 @@ class ChatMemory:
             "created_at_ts": _to_epoch(created_at),
         }
         collection = self._get_collection()
+        owner = await asyncio.to_thread(self._owner_of, str(message_id))
+        if owner is not None and owner != str(user_id):
+            raise ValueError(
+                f"message_id {str(message_id)!r} is already indexed for another "
+                "user; message ids must be unique across users.",
+            )
         await asyncio.to_thread(self._evict_over_quota, str(user_id), str(message_id))
 
         def _upsert() -> None:
@@ -447,6 +460,25 @@ class ChatMemory:
 
         await asyncio.to_thread(_upsert)
         return True
+
+    def _owner_of(self, message_id: str) -> str | None:
+        """Return the ``user_id`` an indexed message belongs to.
+
+        Sync helper meant to run inside :func:`asyncio.to_thread`.
+
+        Args:
+            message_id (str): The Chroma id to look up.
+
+        Returns:
+            str | None: The stored owner, or ``None`` when the id is not
+            indexed.
+        """
+        found = self._get_collection().get(ids=[message_id], include=["metadatas"])
+        metadatas: list[dict[str, Any]] = list(found.get("metadatas") or [])
+        if not metadatas or not metadatas[0]:
+            return None
+        owner = metadatas[0].get("user_id")
+        return None if owner is None else str(owner)
 
     def _evict_over_quota(self, user_id: str, incoming_message_id: str) -> int:
         """Evict oldest entries beyond ``max_entries_per_user`` for a user.
@@ -620,16 +652,40 @@ class ChatMemory:
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [hit for _, hit in scored[:top_k]]
 
-    async def delete_for_chat(self, *, chat_id: str | UUID) -> None:
-        """Remove every vector belonging to a chat.
+    async def delete_for_chat(
+        self, *, user_id: str | UUID, chat_id: str | UUID
+    ) -> None:
+        """Remove one user's vectors for a chat.
+
+        ``chat_id`` is not unique across users — the chat router takes it
+        from the request body — so the delete is keyed on the owner too:
+        removing a chat never touches another user's rows that share the
+        id.
 
         Args:
+            user_id (str | UUID): The owner whose entries to delete.
             chat_id (str | UUID): The chat whose entries to delete.
+        """
+        collection = self._get_collection()
+        where: dict[str, Any] = {
+            "$and": [{"user_id": str(user_id)}, {"chat_id": str(chat_id)}],
+        }
+
+        def _delete() -> None:
+            collection.delete(where=where)
+
+        await asyncio.to_thread(_delete)
+
+    async def delete_for_user(self, *, user_id: str | UUID) -> None:
+        """Remove every vector belonging to a user (account erasure).
+
+        Args:
+            user_id (str | UUID): The owner whose entries to delete.
         """
         collection = self._get_collection()
 
         def _delete() -> None:
-            collection.delete(where={"chat_id": str(chat_id)})
+            collection.delete(where={"user_id": str(user_id)})
 
         await asyncio.to_thread(_delete)
 

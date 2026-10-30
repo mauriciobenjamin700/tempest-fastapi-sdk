@@ -556,3 +556,99 @@ class TestStreamEndsWithTheMembership:
             assert harness.open_sessions[0] == 0
         finally:
             await stream.close()
+
+
+class TestStreamRespectsHistoryFrom:
+    """A newcomer without the backlog must not receive it over the stream."""
+
+    async def test_newcomer_stream_hides_pre_join_bodies(
+        self,
+        harness: _Harness,
+    ) -> None:
+        """Edits of, and reply excerpts from, a pre-join message stay hidden.
+
+        Before the fix the edit frame carried the pre-join message whole and
+        the reply frame carried its excerpt, to every subscriber alike.
+        """
+        conversation = await _group(harness)
+        harness.caller.user_id = ANA
+        posted = await harness.client.post(
+            f"/api/chat/conversations/{conversation}/messages",
+            json={"body": "PRE-JOIN-TEXT"},
+        )
+        assert posted.status_code == 201, posted.text
+        pre_join_id = posted.json()["id"]
+        await asyncio.sleep(0.02)
+        newcomer = uuid4()
+        added = await harness.client.post(
+            f"/api/chat/conversations/{conversation}/participants",
+            json={"participant_ids": [str(newcomer)]},
+        )
+        assert added.status_code == 200, added.text
+        await asyncio.sleep(0.02)
+
+        harness.caller.user_id = newcomer
+        stream = _OpenStream(
+            harness.app, f"/api/chat/conversations/{conversation}/stream"
+        )
+        try:
+            await stream.first_frame()
+            harness.caller.user_id = BRUNO
+            reply = await harness.client.post(
+                f"/api/chat/conversations/{conversation}/messages",
+                json={"body": "agree", "reply_to_id": pre_join_id},
+            )
+            assert reply.status_code == 201, reply.text
+            assert reply.json()["reply_to"]["excerpt"] == "PRE-JOIN-TEXT"
+            harness.caller.user_id = ANA
+            edited = await harness.client.patch(
+                f"/api/chat/messages/{pre_join_id}",
+                json={"body": "PRE-JOIN-EDITED"},
+            )
+            assert edited.status_code == 200, edited.text
+            await harness.client.post(
+                f"/api/chat/conversations/{conversation}/messages",
+                json={"body": "MARKER"},
+            )
+            for _ in range(250):
+                if "MARKER" in stream.text:
+                    break
+                await asyncio.sleep(0.01)
+
+            assert "MARKER" in stream.text
+            assert "agree" in stream.text
+            assert "PRE-JOIN" not in stream.text
+            assert "event: message.edited" not in stream.text
+        finally:
+            await stream.close()
+
+    async def test_older_member_stream_keeps_the_bodies(
+        self,
+        harness: _Harness,
+    ) -> None:
+        """A member who has the history still receives the full frames."""
+        conversation = await _group(harness)
+        harness.caller.user_id = ANA
+        posted = await harness.client.post(
+            f"/api/chat/conversations/{conversation}/messages",
+            json={"body": "PRE-JOIN-TEXT"},
+        )
+        pre_join_id = posted.json()["id"]
+        harness.caller.user_id = CARLA
+        stream = _OpenStream(
+            harness.app, f"/api/chat/conversations/{conversation}/stream"
+        )
+        try:
+            await stream.first_frame()
+            harness.caller.user_id = BRUNO
+            await harness.client.post(
+                f"/api/chat/conversations/{conversation}/messages",
+                json={"body": "agree", "reply_to_id": pre_join_id},
+            )
+            for _ in range(250):
+                if "agree" in stream.text:
+                    break
+                await asyncio.sleep(0.01)
+            assert "PRE-JOIN-TEXT" in stream.text
+        finally:
+            await stream.close()
