@@ -79,6 +79,12 @@ The `+asyncpg` / `+aiosqlite` suffix is stripped for you — you pass the
 application URL and keep no second variable just for backups. Without
 `output=`, the file lands in `backups/<db>_<YYYYMMDD-HHMMSS>.<ext>`.
 
+A dump is a full copy of the database, so only its owner can read it: the
+file is created with mode `0600` (whatever the umask) and a directory
+`backup()` creates gets `0700`. A `tempest new` project already lists
+`backups/`, `*.dump` and `*.sqlite` in `.gitignore` and `.dockerignore`; in
+an older project, add those lines to both files.
+
 | Backend | `backup()` uses | Format |
 | --- | --- | --- |
 | `postgresql` | `pg_dump` | custom (`-Fc`) by default; a `.sql` `output` (or `plain=True`) writes a text dump |

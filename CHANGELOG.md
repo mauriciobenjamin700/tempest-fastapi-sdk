@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bucket: prefixo cuja parte de diretório tem segmento vazio, `.` ou `..`,
   ou que resolve para fora do bucket (symlink incluído), devolve `[]`, como
   o S3.
+- `DatabaseBackup.backup` (e `tempest db backup`) grava o dump com modo
+  `0600` e cria a pasta de destino com `0700`, seja qual for o umask; um
+  `pg_dump` que falha não deixa arquivo para trás. O `.gitignore` e o
+  `.dockerignore` do `tempest new` passam a ignorar `backups/`, `*.dump` e
+  `*.sqlite`. Projetos já gerados precisam acrescentar essas linhas à mão.
 
 ## [0.334.0] — 2026-10-29
 
