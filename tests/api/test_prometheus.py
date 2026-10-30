@@ -94,3 +94,65 @@ class TestPrometheusEndpoint:
             if line.startswith("http_requests_in_progress{"):
                 value = float(line.rsplit(" ", 1)[1])
                 assert 0.0 <= value <= 1.0
+
+
+class TestLabelCardinality:
+    """Label values the client controls must collapse to a fixed set.
+
+    Every distinct label value is a child series that lives until the
+    process restarts and is emitted on every scrape, so a raw 404 path or
+    an invented method token would let any anonymous client grow the
+    registry without bound.
+    """
+
+    @staticmethod
+    def _labels(registry: object, name: str) -> set[str]:
+        values: set[str] = set()
+        for family in registry.collect():  # type: ignore[attr-defined]
+            if family.name != "http_requests":
+                continue
+            for sample in family.samples:
+                values.add(sample.labels[name])
+        return values
+
+    async def test_unmatched_paths_and_invented_methods_share_one_label(
+        self,
+    ) -> None:
+        from fastapi import APIRouter
+
+        registry = make_prometheus_registry()
+        app = FastAPI()
+        app.add_middleware(PrometheusMiddleware, registry=registry)
+        orders = APIRouter(prefix="/api/orders")
+
+        @orders.get("/{order_id}")
+        async def get_order(order_id: int) -> dict[str, int]:
+            return {"order_id": order_id}
+
+        app.include_router(orders)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            for index in range(5):
+                await c.get(f"/api/orders/{index}")
+            for index in range(300):
+                assert (await c.get(f"/nope-{index}")).status_code == 404
+            for index in range(30):
+                await c.request(f"XM{index}", "/api/orders/1")
+
+        paths = self._labels(registry, "path")
+        methods = self._labels(registry, "method")
+        assert paths == {"/api/orders/{order_id}", "<unmatched>"}
+        assert methods == {"GET", "OTHER"}
+
+    async def test_standard_methods_keep_their_own_label(self) -> None:
+        app, registry = _build_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            await c.get("/ping")
+            await c.post("/ping")
+            await c.delete("/ping")
+
+        assert self._labels(registry, "method") == {"GET", "POST", "DELETE"}

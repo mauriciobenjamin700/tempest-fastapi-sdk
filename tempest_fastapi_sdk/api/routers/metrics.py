@@ -60,6 +60,23 @@ DEFAULT_LATENCY_BUCKETS: tuple[float, ...] = (
 )
 
 
+_UNMATCHED_ROUTE_LABEL: str = "<unmatched>"
+"""``path`` label for a request that matched no route.
+
+A 404 has no route template, and labelling it with the raw URL would let
+any client mint a new series per path it invents. Every unmatched request
+shares this one value instead.
+"""
+
+_KNOWN_HTTP_METHODS: frozenset[str] = frozenset(
+    {"CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"},
+)
+"""Methods that keep their own ``method`` label (RFC 9110 plus ``PATCH``)."""
+
+_OTHER_METHOD_LABEL: str = "OTHER"
+"""``method`` label for any method token outside ``_KNOWN_HTTP_METHODS``."""
+
+
 def _require_prometheus() -> None:
     """Raise a clear error when the optional dependency is missing."""
     if not _PROMETHEUS_AVAILABLE:
@@ -103,7 +120,13 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 
     The ``path`` label uses the **route template** (e.g.
     ``/orders/{order_id}``) when the request hit a FastAPI route,
-    not the raw URL — that keeps the cardinality bounded.
+    not the raw URL, and ``"<unmatched>"`` when it hit none (every 404
+    shares that one value). The ``method`` label is the request method
+    when it is a standard one (``GET``, ``HEAD``, ``POST``, ``PUT``,
+    ``PATCH``, ``DELETE``, ``OPTIONS``, ``CONNECT``, ``TRACE``) and
+    ``"OTHER"`` for any other token.
+    Neither label takes a value the client chooses freely, so the
+    number of series is bounded by routes x methods x statuses.
     """
 
     def __init__(
@@ -150,11 +173,19 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _route_template(request: Request) -> str:
-        """Pick the route template the request matched, falling back to the path."""
+        """Pick the route template the request matched.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            str: The matched route's template, or ``"<unmatched>"`` when
+            no route matched.
+        """
         route = request.scope.get("route")
         if route is not None and hasattr(route, "path"):
             return str(route.path)
-        return request.url.path
+        return _UNMATCHED_ROUTE_LABEL
 
     async def dispatch(
         self,
@@ -171,7 +202,11 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         Returns:
             Response: The downstream response, after this middleware ran.
         """
-        method = request.method
+        method = (
+            request.method
+            if request.method in _KNOWN_HTTP_METHODS
+            else _OTHER_METHOD_LABEL
+        )
         self.in_progress.labels(method=method).inc()
         start = time.perf_counter()
         status_code = 500

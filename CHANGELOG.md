@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `PrometheusMiddleware` registra request sem rota casada com
+  `path="<unmatched>"` (antes, o path cru) e método fora dos padrões HTTP com
+  `method="OTHER"`, então o número de séries não cresce com valores escolhidos
+  pelo cliente.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

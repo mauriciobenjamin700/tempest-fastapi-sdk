@@ -102,6 +102,8 @@ Buckets padrão (`DEFAULT_LATENCY_BUCKETS`) cobrem 5ms → 10s — adequado pra 
 !!! tip "Path normalization"
     O `path` label usa o template da rota (`/api/users/{user_id}`), não o path concreto, pra não explodir a cardinalidade com UUIDs únicos. Isso vem do FastAPI/Starlette — você não precisa configurar nada.
 
+    Request que não casa com rota nenhuma (todo `404`) entra com `path="<unmatched>"`, e método fora dos padrões (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `CONNECT`, `TRACE`) entra com `method="OTHER"`. Nenhum label recebe valor escolhido pelo cliente, então o número de séries fica limitado por rotas × métodos × status — um cliente anônimo inventando paths não cria série nova.
+
 ### Scrape config
 
 `prometheus.yml` — o `http_headers` manda o `X-Token` em todo scrape, lido de
