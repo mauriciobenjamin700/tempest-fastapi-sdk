@@ -44,6 +44,7 @@ if TYPE_CHECKING:
         BaseUserModel,
         BaseUserRecoveryCodeModel,
         BaseUserRefreshTokenModel,
+        BaseWebAuthnCredentialModel,
         UserAuthService,
     )
     from tempest_fastapi_sdk.utils.password import PasswordPolicy
@@ -293,6 +294,16 @@ accept a recovery code in place of a TOTP code, so there the lookup may come
 back empty.
 """
 
+_DEFAULT_WEBAUTHN_CREDENTIAL_MODEL: str = "src.db.models:UserWebAuthnCredentialModel"
+"""Dotted spec ``mfa-reset`` tries when ``--webauthn-credential-model`` is omitted.
+
+The name the WebAuthn recipe gives the table
+``make_web_authn_credential_model`` builds. Removing the user's passkeys is
+part of the reset — a passkey signs in without the second factor — so it has
+to happen when the operator types nothing. A project without passkeys has
+nothing at this path, which is why the lookup may come back empty.
+"""
+
 MFA_CODE_ATTEMPTS: int = 3
 """How many codes ``create --require-mfa`` and ``set-password`` read before giving up.
 
@@ -369,6 +380,61 @@ def _find_default_recovery_code_model() -> type[BaseUserRecoveryCodeModel] | Non
     return model
 
 
+def _resolve_webauthn_credential_model(
+    spec: str,
+) -> type[BaseWebAuthnCredentialModel] | None:
+    """Resolve the passkey table from a spec or the convention.
+
+    A spec the operator typed is a promise: it must import and be a
+    :class:`~tempest_fastapi_sdk.BaseWebAuthnCredentialModel` subclass, or
+    the command stops. The conventional path
+    (:data:`_DEFAULT_WEBAUTHN_CREDENTIAL_MODEL`) is a guess, so every failure
+    there — absent module, absent attribute, wrong base — reads as "this
+    project has no passkeys".
+
+    Args:
+        spec (str): The ``--webauthn-credential-model`` value, empty when the
+            operator did not type one.
+
+    Returns:
+        type[BaseWebAuthnCredentialModel] | None: The model, or ``None``
+        when the project has none at the conventional path.
+
+    Raises:
+        typer.Exit: Code 2 when a typed spec does not resolve to a
+            credential model.
+    """
+    from tempest_fastapi_sdk import (
+        BaseWebAuthnCredentialModel as _BaseWebAuthnCredentialModel,
+    )
+
+    if spec:
+        model = _import_symbol(spec, "--webauthn-credential-model")
+        if not isinstance(model, type) or not issubclass(
+            model,
+            _BaseWebAuthnCredentialModel,
+        ):
+            typer.echo(
+                f"error: {spec} is not a BaseWebAuthnCredentialModel subclass.",
+                err=True,
+            )
+            raise typer.Exit(2)
+        return model
+    module_path, _, class_name = _DEFAULT_WEBAUTHN_CREDENTIAL_MODEL.partition(":")
+    sys.path.insert(0, str(Path.cwd()))
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError:
+        return None
+    found = getattr(module, class_name, None)
+    if not isinstance(found, type) or not issubclass(
+        found,
+        _BaseWebAuthnCredentialModel,
+    ):
+        return None
+    return found
+
+
 def _load_audit_model(dotted: str) -> type[BaseAuditLogModel]:
     """Import the project's audit-log model via dotted spec.
 
@@ -412,6 +478,7 @@ def _load_audit_model(dotted: str) -> type[BaseAuditLogModel]:
 def _build_auth_service(
     user_model: type[BaseUserModel],
     refresh_token_model: type[BaseUserRefreshTokenModel] | None,
+    webauthn_credential_model: type[BaseWebAuthnCredentialModel] | None = None,
 ) -> UserAuthService:
     """Build the ``UserAuthService`` the MFA paths of the CLI run through.
 
@@ -432,6 +499,8 @@ def _build_auth_service(
         user_model (type[BaseUserModel]): The concrete user model.
         refresh_token_model (type[BaseUserRefreshTokenModel] | None): The
             project's refresh-token table, or ``None``.
+        webauthn_credential_model (type[BaseWebAuthnCredentialModel] | None):
+            The project's passkey table, or ``None``.
 
     Returns:
         UserAuthService: The service wired for the CLI.
@@ -455,6 +524,7 @@ def _build_auth_service(
         auth_settings=auth_settings,
         jwt_settings=jwt_settings,
         refresh_token_model=refresh_token_model,
+        webauthn_credential_model=webauthn_credential_model,
     )
 
 
@@ -887,13 +957,17 @@ async def _reset_user_mfa(
     refresh_token_model: type[BaseUserRefreshTokenModel] | None,
     audit_model: type[BaseAuditLogModel] | None = None,
     event: str = DEFAULT_USER_MFA_RESET_EVENT,
-) -> tuple[str, int] | None:
+    webauthn_credential_model: type[BaseWebAuthnCredentialModel] | None = None,
+) -> tuple[str, int, int] | None:
     """Switch one user's MFA off, found by email, without proof of the factor.
 
     Runs :meth:`~tempest_fastapi_sdk.UserAuthService.mfa_reset`, which
     clears the TOTP columns and deletes the recovery codes; with
     ``refresh_token_model`` it also revokes every refresh token of the
-    user. With ``audit_model`` a ``record_event`` row is written before the
+    user, and with ``webauthn_credential_model`` it deletes every passkey
+    of the user
+    (:meth:`~tempest_fastapi_sdk.UserAuthService.revoke_user_passkeys`).
+    With ``audit_model`` a ``record_event`` row is written before the
     single commit, so the reset and its audit entry land together or not
     at all.
 
@@ -911,10 +985,14 @@ async def _reset_user_mfa(
         audit_model (type[BaseAuditLogModel] | None): The project's audit
             table; given, ``event`` is recorded for the user.
         event (str): The audit event name.
+        webauthn_credential_model (type[BaseWebAuthnCredentialModel] | None):
+            The project's passkey table, or ``None`` to leave passkeys
+            alone.
 
     Returns:
-        tuple[str, int] | None: The user's id and how many refresh tokens
-        were revoked, or ``None`` when no user matches the email.
+        tuple[str, int, int] | None: The user's id, how many refresh tokens
+        were revoked and how many passkeys were deleted, or ``None`` when no
+        user matches the email.
 
     Raises:
         typer.Exit: With code 2 when the account has no MFA active; nothing
@@ -935,13 +1013,18 @@ async def _reset_user_mfa(
             user = result.scalar_one_or_none()
             if user is None:
                 return None
-            service = _build_auth_service(user_model, refresh_token_model)
+            service = _build_auth_service(
+                user_model,
+                refresh_token_model,
+                webauthn_credential_model,
+            )
             try:
                 revoked = await service.mfa_reset(
                     session,
                     user=user,
                     recovery_code_model=recovery_code_model,
                     revoke_sessions=refresh_token_model is not None,
+                    revoke_passkeys=False,
                 )
             except ValidationException as exc:
                 typer.echo(
@@ -949,6 +1032,7 @@ async def _reset_user_mfa(
                     err=True,
                 )
                 raise typer.Exit(2) from exc
+            removed = await service.revoke_user_passkeys(session, user_id=user.id)
             if audit_model is not None:
                 await BaseRepository(
                     session,
@@ -962,10 +1046,11 @@ async def _reset_user_mfa(
                     changes={
                         "mfa_enabled": False,
                         "sessions_revoked": revoked,
+                        "passkeys_revoked": removed,
                     },
                 )
             await session.commit()
-            return str(user.id), revoked
+            return str(user.id), revoked, removed
     finally:
         await db.disconnect()
 
@@ -1891,6 +1976,24 @@ def user_mfa_reset(
             "stays exchangeable after the factor is removed."
         ),
     ),
+    webauthn_credential_model: str | None = typer.Option(
+        None,
+        "--webauthn-credential-model",
+        help=(
+            "Dotted spec for the concrete WebAuthn credential model. Omitted, "
+            f"{_DEFAULT_WEBAUTHN_CREDENTIAL_MODEL!r} is tried, so the user's "
+            "passkeys are deleted along with the factor whenever the "
+            "project has that table."
+        ),
+    ),
+    keep_passkeys: bool = typer.Option(
+        False,
+        "--keep-passkeys",
+        help=(
+            "Do not delete the user's passkeys: each one keeps signing in "
+            "after the factor is removed."
+        ),
+    ),
     audit_model: str | None = typer.Option(
         None,
         "--audit-model",
@@ -1925,6 +2028,11 @@ def user_mfa_reset(
         the account logs in with the password alone until it enrolls
         again.
 
+        The user's passkeys are deleted **by default** too, in the same
+        transaction: a passkey signs in without the second factor, and one
+        registered by whoever held the lost device would survive the
+        reset. ``--keep-passkeys`` is the explicit opt-out.
+
         With ``--audit-model`` the event (``--event``, default
         ``user.mfa_reset``) is written in the same transaction as the
         reset, so one never lands without the other. Without it the reset
@@ -1947,6 +2055,13 @@ def user_mfa_reset(
     if keep_sessions and refresh_token_model:
         typer.echo(
             "error: --keep-sessions and --refresh-token-model contradict "
+            "each other. Pass one or neither.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if keep_passkeys and webauthn_credential_model:
+        typer.echo(
+            "error: --keep-passkeys and --webauthn-credential-model contradict "
             "each other. Pass one or neither.",
             err=True,
         )
@@ -1975,6 +2090,11 @@ def user_mfa_reset(
     token_model: type[BaseUserRefreshTokenModel] | None = None
     if not keep_sessions:
         token_model = _resolve_refresh_token_model(refresh_token_model or "")
+    passkey_model: type[BaseWebAuthnCredentialModel] | None = None
+    if not keep_passkeys:
+        passkey_model = _resolve_webauthn_credential_model(
+            webauthn_credential_model or ""
+        )
     audit = _load_audit_model(audit_model) if audit_model else None
     if not yes:
         if not _stdin_is_interactive():
@@ -1999,12 +2119,13 @@ def user_mfa_reset(
             refresh_token_model=token_model,
             audit_model=audit,
             event=event or DEFAULT_USER_MFA_RESET_EVENT,
+            webauthn_credential_model=passkey_model,
         )
     )
     if outcome is None:
         typer.echo(f"error: no user found with email {email!r}.", err=True)
         raise typer.Exit(1)
-    user_id, revoked = outcome
+    user_id, revoked, removed = outcome
     typer.echo(f"MFA reset for {email.lower()} (id={user_id})")
     if token_model is not None:
         typer.echo(f"Revoked {revoked} active refresh token(s).")
@@ -2019,6 +2140,21 @@ def user_mfa_reset(
             f"note: no refresh-token model at {_DEFAULT_REFRESH_TOKEN_MODEL!r}, "
             "so no session was revoked. Pass --refresh-token-model if yours "
             "lives elsewhere.",
+            err=True,
+        )
+    if passkey_model is not None:
+        typer.echo(f"Deleted {removed} passkey(s).")
+    elif keep_passkeys:
+        typer.echo(
+            "note: --keep-passkeys given, so every passkey of the user still signs in.",
+            err=True,
+        )
+    else:
+        typer.echo(
+            "note: no WebAuthn credential model at "
+            f"{_DEFAULT_WEBAUTHN_CREDENTIAL_MODEL!r}, so no passkey was "
+            "deleted. Pass --webauthn-credential-model if yours lives "
+            "elsewhere.",
             err=True,
         )
     if audit is None:

@@ -1198,6 +1198,15 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     `tempest user set-password`; quem chama o service com
     `revoke_sessions=False` abre mão disso de propósito.
 
+!!! note "O reset também apaga as passkeys"
+    Com [WebAuthn](webauthn.md) montado, o reset apaga **todas** as passkeys
+    do usuário na mesma transação: uma passkey entra sem a senha, e a que
+    alguém cadastrou enquanto segurava a conta continuaria entrando depois
+    da recuperação. As do próprio dono vão junto, e ele cadastra de novo.
+    `confirm_password_reset(..., revoke_passkeys=False)` é a saída
+    explícita. Veja
+    [Reset de senha e de MFA apagam as passkeys](webauthn.md#reset-de-senha-e-de-mfa-apagam-as-passkeys).
+
 !!! check "Erros que você vai ver"
     - Token desconhecido / já usado / expirado → **401** com `code: "INVALID_TOKEN"` e um `detail` que diz o motivo (token desconhecido: `token not recognized`).
     - `token` com menos de 16 caracteres → **422** do próprio FastAPI (`string_too_short`), antes de chegar ao serviço.
@@ -1248,7 +1257,9 @@ inclusive o de quem chamou — deixa de ser trocável, e o cookie de sessão
 das [páginas de auth](auth-pages.md) também cai. O access token atual vale
 até o TTL curto acabar; a próxima sessão começa no login.
 `current_password` errada → **401**. Chamando o service direto,
-`change_password(..., revoke_sessions=False)` é a saída explícita.
+`change_password(..., revoke_sessions=False)` é a saída explícita. As
+passkeys ficam: quem chama acabou de provar a senha atual, então não é
+recuperação de conta.
 
 !!! tip "Reset vs change — qual é qual?"
     - **Esqueceu** a senha, não está logado → **[Recuperação de senha](#recuperacao-de-senha)** (`password-reset/request` → `confirm`, prova com token de e-mail).
@@ -1520,7 +1531,7 @@ Decidem **se** e **como** o link chega ao usuário. Mapeiam direto nos [cinco mo
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user nasce ativo, pula activation, signup devolve JWT pair direto (Modo D). **Nunca em produção.** |
+| `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user nasce ativo, pula activation, signup devolve JWT pair direto (Modo D). `ENV=production` recusa subir com ele ligado. |
 | `AUTH_RETURN_TOKEN_IN_RESPONSE` | `bool` | `false` | `true` = link de ativação/reset vai no corpo JSON em vez do e-mail (Modo C). |
 | `AUTH_SEND_EMAILS_IN_BACKGROUND` | `bool` | `false` | `true` = os e-mails das rotas de auth saem **depois** da resposta (`BackgroundTasks`); falha de SMTP vira log, não `503`. Veja [Em background](#em-background-auth_send_emails_in_background). |
 

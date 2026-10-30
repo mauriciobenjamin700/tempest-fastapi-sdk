@@ -174,3 +174,49 @@ def test_production_boot_is_refused_with_return_token_in_response() -> None:
             **GOOD,
         )
     assert "AUTH_RETURN_TOKEN_IN_RESPONSE" in str(error.value)
+
+
+def test_auto_activate_is_refused() -> None:
+    """Activating every signup without the e-mailed link is a violation."""
+    settings = AuthSettings(**GOOD, AUTH_AUTO_ACTIVATE=True)  # type: ignore[arg-type]
+    assert [v.split(":")[0] for v in settings.production_violations()] == [
+        "AUTH_AUTO_ACTIVATE"
+    ]
+
+
+def test_auto_activate_is_refused_with_email_off() -> None:
+    """``EMAIL_ENABLED=false`` skips the link rule, never the flag rule."""
+    settings = Composed(  # type: ignore[call-arg]
+        _env_file=None,
+        ENV="development",
+        EMAIL_ENABLED=False,
+        AUTH_AUTO_ACTIVATE=True,
+    )
+    assert [v.split(":")[0] for v in settings.production_violations()] == [
+        "AUTH_AUTO_ACTIVATE"
+    ]
+
+
+def test_production_boot_is_refused_with_auto_activate() -> None:
+    with pytest.raises(ValidationError) as error:
+        Composed(  # type: ignore[call-arg]
+            _env_file=None,
+            ENV="production",
+            SMTP_HOST="smtp.gmail.com",
+            SMTP_USERNAME="app@gmail.com",
+            SMTP_FROM_ADDR="app@gmail.com",
+            AUTH_AUTO_ACTIVATE=True,
+            **GOOD,
+        )
+    assert "AUTH_AUTO_ACTIVATE" in str(error.value)
+
+
+def test_development_boot_keeps_auto_activate() -> None:
+    """Outside production the flag still builds: it is a dev / CI switch."""
+    settings = Composed(  # type: ignore[call-arg]
+        _env_file=None,
+        ENV="development",
+        AUTH_AUTO_ACTIVATE=True,
+        **GOOD,
+    )
+    assert settings.AUTH_AUTO_ACTIVATE is True

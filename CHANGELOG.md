@@ -235,6 +235,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ativação, reset de senha, troca/verificação e recuperação de e-mail, antes
   de ler ou gravar qualquer coisa. Em desenvolvimento o comportamento não
   muda. **Mudança de comportamento** para quem rodava produção sem mailer.
+- **Recuperação de conta apaga as passkeys.** `confirm_password_reset` (e
+  `POST /auth/password-reset/confirm`) e `mfa_reset` (e
+  `tempest user mfa-reset`) passam a apagar todas as credenciais WebAuthn do
+  usuário na mesma transação, além de revogar as sessões. Antes, uma passkey
+  cadastrada enquanto outra pessoa segurava a conta continuava entrando
+  depois da recuperação. `change_password` e `mfa_disable`, em que o usuário
+  autenticado prova a senha, mantêm as passkeys. Novos:
+  `UserAuthService(webauthn_credential_model=...)` (o
+  `make_auth_router(webauthn=...)` preenche a partir do `WebAuthnService`
+  quando ficou vazio), `UserAuthService.revoke_user_passkeys`, o keyword
+  `revoke_passkeys=True` nos dois fluxos (saída explícita com `False`) e, no
+  `tempest user mfa-reset`, `--webauthn-credential-model` (default
+  `src.db.models:UserWebAuthnCredentialModel`) e `--keep-passkeys`; o evento
+  de auditoria ganha `passkeys_revoked`. **Mudança de comportamento:** as
+  passkeys do próprio dono também são apagadas no reset e precisam ser
+  cadastradas de novo. Sem tabela de credenciais ligada, nada muda.
+- `AuthSettings.production_violations()` passa a recusar também
+  `AUTH_AUTO_ACTIVATE=true`, que ativa todo cadastro sem prova de que o
+  e-mail é de quem se cadastrou. **Mudança de comportamento:** uma
+  configuração com `ENV=production` e `AUTH_AUTO_ACTIVATE=true` deixa de
+  subir (`ValidationError` na construção do settings). Fora de produção o
+  flag continua valendo para dev e CI.
 - `POST /auth/email-recovery/request` gasta os mesmos orçamentos de falha do
   login (por e-mail e, se configurado, por IP) e do `/auth/mfa/verify` (por
   conta). `request_email_recovery` ganha os keyword-only `login_throttle`,

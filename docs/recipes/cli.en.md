@@ -1151,6 +1151,7 @@ tempest user mfa-reset --email staff@example.com \
 # Remove the second factor of staff@example.com? It will log in with the password alone until it enrolls again. [y/N]: y
 # MFA reset for staff@example.com (id=2ced...)
 # Revoked 2 active refresh token(s).
+# Deleted 1 passkey(s).
 
 # Outside a terminal (CI, a script): --yes is required
 tempest user mfa-reset --email staff@example.com --yes \
@@ -1162,6 +1163,7 @@ tempest user mfa-reset --email staff@example.com --yes --keep-sessions
 
 - It runs `UserAuthService.mfa_reset`: clears `totp_secret`, `totp_enabled_at` and `totp_last_step` and deletes the recovery codes (`--recovery-code-model`, default `src.db.models:UserRecoveryCodeModel`; without a table, it exits with code 2 naming the flag).
 - **It revokes the sessions by default**, in the same transaction, with the same rules as `set-password`: `--refresh-token-model` (default `src.db.models:UserRefreshTokenModel`), `--keep-sessions` as the explicit opt-out, and both together refused with code 2.
+- **It deletes the passkeys by default**, in the same transaction, by the same rules: `--webauthn-credential-model` (default `src.db.models:UserWebAuthnCredentialModel`; without a table, it says on stderr that no passkey was deleted), `--keep-passkeys` as the explicit opt-out, and both together refused with code 2.
 - `--audit-model` (with `AuditRequestMixin`) writes `record_event` in the **same transaction**, named by `--event` (default `user.mfa_reset`); if the audit write fails, the reset rolls back with it. Without `--audit-model`, the command says on stderr that no event was recorded. `--event` without `--audit-model` exits with code 2.
 - Without confirmation nothing changes: outside a terminal, without `--yes`, it exits with code 1; in a terminal, answering `n` exits with 1 too.
 - An account **without MFA active** exits with code 2 (`has no MFA active, nothing to reset.`); a `UserModel` without `MFAMixin` does too, before the database is opened. An unknown email exits with 1 and `no user found`.

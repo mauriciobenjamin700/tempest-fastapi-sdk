@@ -437,7 +437,10 @@ def make_auth_router(
             :class:`~tempest_fastapi_sdk.auth.webauthn.WebAuthnService`.
             Required when ``AUTH_WEBAUTHN_ENABLED`` is on; it carries the
             relying-party identity, the credential model and the challenge
-            store, none of which the router can infer.
+            store, none of which the router can infer. When the service
+            was built without ``webauthn_credential_model``, the router
+            sets it to ``webauthn.credential_model``, so the recovery flows
+            (password reset, MFA reset) delete the user's passkeys.
         oauth_clients (Mapping[str, OAuthClient] | None): Social-login
             clients keyed by the provider name the URLs will carry —
             ``{"google": GoogleOAuthClient(...)}`` serves
@@ -1956,6 +1959,9 @@ def make_auth_router(
     # ------------------------------------------------------------------
     # WebAuthn / passkeys
     # ------------------------------------------------------------------
+
+    if webauthn is not None and service.webauthn_credential_model is None:
+        service.webauthn_credential_model = webauthn.credential_model
 
     if auth_settings.AUTH_WEBAUTHN_ENABLED:
         if webauthn is None:
