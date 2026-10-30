@@ -127,3 +127,28 @@ class TestLegacyClaims:
             )
             is False
         )
+
+
+class TestPurposeClaim:
+    """A token that declares a purpose is that purpose, not a session.
+
+    The reset recipe signed ``{"sub", "purpose": "password_reset"}`` with
+    the same ``JWTUtils`` as the access token. With no ``typ`` it reached
+    the untyped fallback and passed every non-strict access guard.
+    """
+
+    def test_a_reset_token_is_not_an_access_token(self) -> None:
+        payload = {"sub": "1", "purpose": "password_reset"}
+        assert token_type_allowed(payload, [ACCESS_TOKEN_TYPE]) is False
+
+    def test_the_purpose_is_accepted_where_it_is_listed(self) -> None:
+        payload = {"sub": "1", "purpose": "password_reset"}
+        assert token_type_allowed(payload, ["password_reset"]) is True
+
+    def test_a_non_string_purpose_is_refused(self) -> None:
+        payload = {"sub": "1", "purpose": 7}
+        assert token_type_allowed(payload, [ACCESS_TOKEN_TYPE]) is False
+
+    def test_a_declared_typ_still_wins(self) -> None:
+        payload = {"sub": "1", "typ": "access", "purpose": "password_reset"}
+        assert token_type_allowed(payload, [ACCESS_TOKEN_TYPE]) is True

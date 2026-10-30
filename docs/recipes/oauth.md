@@ -424,11 +424,19 @@ deixar um segundo caminho mais silencioso.
 | `false` | `true` | Cria a conta (sistema fechado com onboarding pelo provedor) |
 | `true` | `false` | **403** — cadastro por formulário sim, por provedor não |
 
-A conta criada nasce **ativa**. O ponto do fluxo é que o provedor já fez a
-verificação; re-verificar por e-mail pediria ao usuário que provasse de novo o
-que o Google acabou de provar. `AUTH_AUTO_ACTIVATE` não é consultado aqui — um
-serviço que quer aprovação humana antes do primeiro login desliga a criação e
-faz um administrador criar e ligar a linha.
+O callback só cria conta **quando o provedor afirma ter verificado o
+endereço** (`email_verified is True`). `False` ou `None` respondem **409** com
+`code` `OAUTH_EMAIL_UNVERIFIED`, e nada é gravado: a linha seria dona daquele
+endereço desde o primeiro segundo, então criá-la a partir de uma afirmação não
+verificada deixaria quem controla a identidade no provedor com uma conta no
+e-mail de outra pessoa — e entrando nela depois que o dono de verdade a
+recuperasse por reset de senha.
+
+A conta criada nasce **ativa**: o provedor já fez a verificação, como o
+`email_verified` dele afirma, e re-verificar por e-mail pediria ao usuário que
+provasse de novo o que o Google acabou de provar. `AUTH_AUTO_ACTIVATE` não é
+consultado aqui — um serviço que quer aprovação humana antes do primeiro login
+desliga a criação e faz um administrador criar e ligar a linha.
 
 !!! info "A senha gerada, e por que ela não é `secrets.token_urlsafe`"
     `hashed_password` é `NOT NULL` e continua assim: nenhuma migration, nenhum
@@ -465,9 +473,27 @@ o provedor afirma explicitamente ter verificado o endereço
     cadastrar aquele endereço num IdP que não exige confirmação.
 
     É o caso possível do GitHub — o `email` de `GET /user` é o do perfil
-    público, que o GitHub não exige verificar, e por isso o SDK deixa
-    `email_verified=None` ali em vez de inventar um valor. Ligue esse knob só
-    para provedores em que você confia na verificação.
+    público, que o GitHub não exige verificar, e por isso o
+    `GitHubOAuthClient` lê o `verified` de `GET /user/emails` em vez de
+    inventar um valor. Ligue esse knob só para provedores em que você confia na
+    verificação.
+
+A palavra do provedor cobre só o lado dele. Ligar exige também que a conta
+**local** tenha provado o endereço, e a tabela de usuários não guarda data de
+verificação — só `is_active`. Isso só prova algo quando a ativação precisou da
+caixa de entrada, então a ligação é recusada (**409**, `OAUTH_EMAIL_TAKEN`) em
+toda configuração em que quem se cadastra ativa sem ler o e-mail:
+
+| Configuração | Por que `is_active` não prova nada |
+| --- | --- |
+| `AUTH_AUTO_ACTIVATE=true` | A linha nasce ativa no cadastro |
+| `AUTH_RETURN_TOKEN_IN_RESPONSE=true` | O link de ativação volta na resposta do cadastro |
+| `UserAuthService(email=None)` | Idem: sem mailer, o link volta na resposta |
+
+Sem essa regra, um estranho que cadastrasse `ana@example.com` antes, com uma
+senha dele, herdaria o primeiro login da Ana pelo Google — e ficaria com a
+senha. Com a ligação recusada nessas configurações, a Ana retoma o endereço
+pelo reset de senha, que precisa da caixa de entrada.
 
 O caminho seguro, com o knob desligado: a pessoa entra com a senha e liga o
 provedor de dentro da conta.
@@ -636,9 +662,13 @@ app.include_router(
 - **`email` pode vir `None`.** Scopes default são `read:user` e `user:email`,
   mas quem marca o e-mail como privado no GitHub não o expõe no `/user` — e aí
   o callback responde 422.
-- **`email_verified` é sempre `None` aqui.** O payload de `GET /user` não traz
-  campo de verificação, então o SDK não inventa um. Se você precisa da resposta,
-  chame `GET /user/emails` (scope `user:email`) e leia o campo `verified` de lá.
+- **O endereço vem de `GET /user/emails`.** `GET /user` não traz campo de
+  verificação, então o `fetch_user` também lê a lista (scope `user:email`, nos
+  defaults) e usa o endereço **primário verificado**, com
+  `email_verified=True`. Sem um, mantém o endereço do perfil com o flag que o
+  GitHub informa para ele; se a lista não puder ser lida (scope não
+  concedido), `email_verified` fica `None` — e o callback recusa criar conta a
+  partir dele.
 
 ## Qualquer outro IdP: `OIDCProvider`
 
@@ -889,8 +919,8 @@ async def finish_login(code: str) -> OAuthUser:
 um `refresh_token` ao Google.
 
 !!! warning "Indo por aqui, as três regras de segurança são suas"
-    Guardar e comparar o `state`; exigir `email_verified is True` antes de ligar
-    conta por e-mail; e chavear em `(provider, subject)` com índice único
+    Guardar e comparar o `state`; exigir `email_verified is True` antes de criar
+    conta ou ligar uma por e-mail; e chavear em `(provider, subject)` com índice único
     composto. O router bundled faz as três e tem teste para cada uma; na mão,
     elas voltam a viver só na sua atenção.
 
@@ -909,8 +939,9 @@ um `refresh_token` ao Google.
   (`make_user_oauth_account_model`), com `UNIQUE (provider, subject)`.
 - O callback devolve o **mesmo par JWT** do `POST /auth/login`: `typ`, refresh
   opaco, rotação, detecção de reuso e `/auth/logout`.
-- Criar conta herda `AUTH_SIGNUP_ENABLED`; ligar por e-mail exige
-  `email_verified is True` e está desligado por padrão.
+- Criar conta herda `AUTH_SIGNUP_ENABLED` e exige `email_verified is True`;
+  ligar por e-mail também exige, está desligado por padrão e é recusado onde
+  uma conta local ativa sem a caixa de entrada.
 - Cliente nativo usa `POST /auth/oauth/{provider}/token` com o token no corpo —
   e a audiência do token é conferida **antes** de qualquer leitura, porque
   `userinfo` diz de quem é o token, nunca para quem ele foi emitido.

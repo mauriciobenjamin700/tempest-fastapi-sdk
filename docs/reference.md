@@ -1104,6 +1104,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.auth.webauthn.RedisWebAuthnChallengeStore
 ::: tempest_fastapi_sdk.auth.webauthn.CHALLENGE_ID_BYTES
 ::: tempest_fastapi_sdk.auth.schemas.WebAuthnOptionsSchema
+::: tempest_fastapi_sdk.auth.schemas.WebAuthnRegisterBeginSchema
 ::: tempest_fastapi_sdk.auth.schemas.WebAuthnRegisterCompleteSchema
 ::: tempest_fastapi_sdk.auth.schemas.WebAuthnAuthenticateBeginSchema
 ::: tempest_fastapi_sdk.auth.schemas.WebAuthnAuthenticateCompleteSchema
@@ -1507,6 +1508,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.websockets.hub.WebSocketHub
 ::: tempest_fastapi_sdk.websockets.hub.WebSocketConnection
 ::: tempest_fastapi_sdk.websockets.router.make_websocket_router
+::: tempest_fastapi_sdk.websockets.router.make_jwt_bearer_resolver
 ::: tempest_fastapi_sdk.websockets.heartbeat.heartbeat
 ::: tempest_fastapi_sdk.websockets.heartbeat.Liveness
 ::: tempest_fastapi_sdk.websockets.schemas.WSEnvelope

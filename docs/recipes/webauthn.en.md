@@ -22,7 +22,7 @@ it there. That property — not "passwordless" — is what justifies the feature
 Two ceremonies, two requests each:
 
 ```text
-Register    POST /auth/webauthn/register/begin      (bearer) → options + challenge_id
+Register    POST /auth/webauthn/register/begin      (bearer + password [+ code]) → options + challenge_id
             navigator.credentials.create(options.publicKey)
             POST /auth/webauthn/register/complete   (bearer) → credential stored
 
@@ -182,7 +182,11 @@ the conversion with `PublicKeyCredential.parseCreationOptionsFromJSON` and
 // registration (the user is already signed in)
 const begin = await fetch("/auth/webauthn/register/begin", {
   method: "POST",
-  headers: { Authorization: `Bearer ${accessToken}` },
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ current_password: password, code: totpCode }),
 }).then((r) => r.json());
 
 const credential = await navigator.credentials.create(
@@ -295,6 +299,28 @@ The delete endpoint does not stop you from removing the last credential.
 Whether a password is still an acceptable fallback is the application's
 decision, and the SDK cannot know it.
 
+## Registering asks for the password (and the second factor)
+
+`POST /auth/webauthn/register/begin` needs more than the access token. The body
+carries `current_password` and, when the account has TOTP enrolled, `code` (a
+TOTP code or a recovery code), checked the same way `/auth/mfa/disable` checks
+them. A wrong password or code answers **401** and no challenge is issued; a
+missing body answers **422**.
+
+Why: a passkey signs in without the password and without the second factor
+(next section), and a password reset does not remove it. If a bearer token
+were enough, whoever read one from a log, a shared machine or a script injected
+into the page could register an authenticator of their own and keep signing in
+after the token expired, after a password reset and after the owner enrolled
+TOTP. Asking for the factors at registration is what keeps a short-lived leak
+short-lived.
+
+!!! note "Accounts created by social login"
+    An account created through the OAuth callback has a generated password
+    nobody knows. Its owner sets one through `POST /auth/password-reset/request`
+    before registering a passkey — the same step `POST /auth/password-change`
+    already requires.
+
 ## Relationship to MFA
 
 `POST /auth/webauthn/authenticate/complete` does **not** go through the MFA
@@ -317,6 +343,8 @@ uses whichever is at hand.
   everything already registered.
 - `AUTH_WEBAUTHN_ALLOWED_ORIGINS` is for development, and replaces the default
   rule entirely.
+- Registering a passkey asks for the password, plus the second factor on an
+  MFA account — the access token alone is refused.
 - The challenge is single-use; a counter that fails to advance is refused;
   deletion is scoped to the owner.
 - Multi-replica requires `RedisWebAuthnChallengeStore`.

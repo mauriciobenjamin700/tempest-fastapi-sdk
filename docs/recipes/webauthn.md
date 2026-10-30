@@ -22,7 +22,7 @@ usá-la ali. É essa propriedade — e não "sem senha" — que justifica a feat
 Duas cerimônias, de duas requisições cada:
 
 ```text
-Registro    POST /auth/webauthn/register/begin      (bearer) → options + challenge_id
+Registro    POST /auth/webauthn/register/begin      (bearer + senha [+ código]) → options + challenge_id
             navigator.credentials.create(options.publicKey)
             POST /auth/webauthn/register/complete   (bearer) → credencial salva
 
@@ -182,7 +182,11 @@ navegador converter com `PublicKeyCredential.parseCreationOptionsFromJSON` e
 // registro (o usuário já está logado)
 const begin = await fetch("/auth/webauthn/register/begin", {
   method: "POST",
-  headers: { Authorization: `Bearer ${accessToken}` },
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ current_password: password, code: totpCode }),
 }).then((r) => r.json());
 
 const credential = await navigator.credentials.create(
@@ -294,6 +298,27 @@ A diferença decide o seu produto, não o SDK:
 O endpoint de delete não impede remover a última credencial. Se uma senha ainda
 é um fallback aceitável é decisão da aplicação, e o SDK não tem como saber.
 
+## Cadastrar pede a senha (e o segundo fator)
+
+`POST /auth/webauthn/register/begin` precisa de mais que o access token. O
+corpo leva `current_password` e, quando a conta tem TOTP ativo, `code` (código
+TOTP ou de recuperação), conferidos do mesmo jeito que o `/auth/mfa/disable`
+confere. Senha ou código errado responde **401** e nenhum challenge é emitido;
+corpo ausente responde **422**.
+
+Por quê: uma passkey entra sem a senha e sem o segundo fator (próxima seção), e
+o reset de senha não a remove. Se o bearer token bastasse, quem lesse um num
+log, numa máquina compartilhada ou por um script injetado na página poderia
+cadastrar um autenticador próprio e continuar entrando depois que o token
+expirasse, depois de um reset de senha e depois que o dono ativasse o TOTP.
+Pedir os fatores no cadastro é o que mantém curto um vazamento curto.
+
+!!! note "Contas criadas por login social"
+    Uma conta criada pelo callback de OAuth tem uma senha gerada que ninguém
+    conhece. O dono define uma por `POST /auth/password-reset/request` antes de
+    cadastrar uma passkey — o mesmo passo que o `POST /auth/password-change` já
+    exige.
+
 ## Relação com o MFA
 
 `POST /auth/webauthn/authenticate/complete` **não** passa pelo desafio de MFA.
@@ -316,6 +341,8 @@ tiver à mão.
   já foi registrado.
 - `AUTH_WEBAUTHN_ALLOWED_ORIGINS` é para desenvolvimento, e substitui a regra
   default por inteiro.
+- Cadastrar passkey pede a senha, mais o segundo fator numa conta com MFA — só o
+  access token é recusado.
 - Desafio é uso único; contador que não avança é recusado; delete é escopado ao
   dono.
 - Multi-réplica exige `RedisWebAuthnChallengeStore`.

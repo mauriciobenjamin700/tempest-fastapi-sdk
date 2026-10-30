@@ -210,6 +210,9 @@ from tempest_fastapi_sdk.auth.schemas import (
     WebAuthnOptionsSchema as WebAuthnOptionsSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import (
+    WebAuthnRegisterBeginSchema as WebAuthnRegisterBeginSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
     WebAuthnRegisterCompleteSchema as WebAuthnRegisterCompleteSchema,
 )
 from tempest_fastapi_sdk.auth.service import (
@@ -317,6 +320,7 @@ __all__: list[str] = [
     "WebAuthnCredentialSchema",
     "WebAuthnDeleteSchema",
     "WebAuthnOptionsSchema",
+    "WebAuthnRegisterBeginSchema",
     "WebAuthnRegisterCompleteSchema",
     "WebAuthnService",
     "apply_auth_cookies",

@@ -60,7 +60,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   security boundary — changing it invalidates every credential;
   `AUTH_WEBAUTHN_ALLOWED_ORIGINS` **replaces** the `fido2` default rule
   rather than extending it. Passkey login deliberately skips the MFA
-  challenge. Tests drive real crypto through a software authenticator
+  challenge, so registering a passkey requires the password plus, on an MFA
+  account, the second factor (`WebAuthnRegisterBeginSchema`,
+  `UserAuthService.reauthenticate`, Unreleased). Tests drive real crypto through a software authenticator
   (`tests/auth/webauthn_authenticator.py`) — a mocked verifier would assert
   away exactly the properties worth testing. Recipe:
   `docs/recipes/webauthn.md`. **Token-type checks for foreign tokens
@@ -1648,6 +1650,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   declara `AdminAuthBackend[BaseUserModel]`. Runtime intocado; `mypy --strict`
   passa a exigir o parâmetro em subclasse de consumidor
   (`disallow_any_generics`), o que o guia de migração cobre com a linha exata.
+- **`make_jwt_bearer_resolver` (Unreleased)** — o resolver de JWT para
+  `make_websocket_router`: decodifica com o `JWTUtils` da aplicação e só
+  admite access token (`token_type_allowed(..., strict=True)` por padrão), então
+  refresh, MFA pendente e ticket de stream fecham o handshake com `4401`. A
+  receita deixou de mostrar o resolver escrito à mão, que devolvia o `sub` de
+  qualquer token assinado com o mesmo segredo.
 - **`heartbeat` público, fora do router (v0.261.0)** — issue #225. A mecânica
   existia desde a v0.197.0 mas só dentro de `make_websocket_router`, que impõe
   bearer no handshake e registro num hub indexado por `user_id: UUID`.

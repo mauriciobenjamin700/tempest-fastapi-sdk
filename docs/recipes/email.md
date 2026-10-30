@@ -324,7 +324,7 @@ class PasswordResetService:
         if user is None:
             return
         token: str = self.tokens.encode(
-            {"sub": str(user.id), "purpose": "password_reset"},
+            {"sub": str(user.id), "typ": "password_reset"},
             ttl=timedelta(minutes=15),
         )
         reset_url: str = f"https://app.example.com/reset-password?token={token}"

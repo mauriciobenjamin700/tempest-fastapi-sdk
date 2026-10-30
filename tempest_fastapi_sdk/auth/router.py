@@ -106,6 +106,7 @@ from tempest_fastapi_sdk.auth.schemas import (
     WebAuthnCredentialSchema,
     WebAuthnDeleteSchema,
     WebAuthnOptionsSchema,
+    WebAuthnRegisterBeginSchema,
     WebAuthnRegisterCompleteSchema,
 )
 from tempest_fastapi_sdk.auth.token_delivery import (
@@ -1929,12 +1930,25 @@ def make_auth_router(
             description=route_docs.description("auth.webauthn_register_begin"),
         )
         async def webauthn_register_begin(
+            payload: WebAuthnRegisterBeginSchema,
             session: AsyncSession = session_dep,
             user: BaseUserModel = Depends(current_user_dep),
         ) -> WebAuthnOptionsSchema:
             """Return the creation options plus the ceremony handle.
 
+            The access token is not enough on its own: a passkey signs in
+            without the password or the second factor, so whoever holds a
+            leaked token could otherwise turn it into a credential that
+            survives the token's expiry and a password reset. The caller
+            re-enters the password, plus a TOTP or recovery code when the
+            account has MFA enrolled (:meth:`UserAuthService.reauthenticate`),
+            before any challenge is issued. The proof is spent here and
+            committed, so a TOTP step accepted at ``begin`` cannot be
+            replayed.
+
             Args:
+                payload (WebAuthnRegisterBeginSchema): The password and,
+                    for an MFA account, the second factor.
                 session (AsyncSession): The request-scoped DB session.
                 user (BaseUserModel): The authenticated caller.
 
@@ -1943,6 +1957,15 @@ def make_auth_router(
                 ``navigator.credentials.create()`` and the
                 ``challenge_id`` to echo back.
             """
+            user = await service.reauthenticate(
+                session,
+                user=user,
+                current_password=payload.current_password,
+                code=payload.code,
+                recovery_code_model=recovery_code_model,
+                throttle=resolved_mfa_throttle,
+            )
+            await session.commit()
             options, challenge_id = await service_webauthn.register_begin(
                 session,
                 user=user,

@@ -51,19 +51,21 @@ the first line of the handler runs.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 from starlette.websockets import WebSocketState
 
+from tempest_fastapi_sdk.utils.token_types import ACCESS_TOKEN_TYPE, token_type_allowed
 from tempest_fastapi_sdk.websockets.heartbeat import Liveness, heartbeat
 from tempest_fastapi_sdk.websockets.hub import WebSocketConnection, WebSocketHub
 from tempest_fastapi_sdk.websockets.schemas import WSEnvelope
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.settings.mixins import WebSocketSettings
+    from tempest_fastapi_sdk.utils.jwt import JWTUtils
 
 
 _UNAUTHORIZED_CLOSE_CODE: int = 4401
@@ -83,6 +85,73 @@ Receives the live :class:`WebSocket`, the
 :class:`WebSocketHub` so the handler can call ``hub.broadcast`` or
 ``hub.send_to`` directly.
 """
+
+
+def make_jwt_bearer_resolver(
+    tokens: JWTUtils,
+    *,
+    accepted: Collection[str] = (ACCESS_TOKEN_TYPE,),
+    strict: bool = True,
+) -> BearerResolver:
+    """Build the :data:`BearerResolver` for tokens signed by ``tokens``.
+
+    The handshake is the WebSocket's only authentication step, and the
+    resolver is all of it. Checking the signature and the expiry is not
+    enough when one secret signs several kinds of token:
+    :class:`~tempest_fastapi_sdk.UserAuthService` signs the access token,
+    the refresh token and the MFA-pending token with the same
+    ``JWTUtils``, and all three carry ``sub``. A resolver that returns
+    ``sub`` after ``decode`` opens a full session for the token handed
+    out after the password step but *before* the second factor, and for
+    a refresh token. This one refuses every token whose type is not in
+    ``accepted``, through the same
+    :func:`~tempest_fastapi_sdk.utils.token_types.token_type_allowed`
+    the HTTP guards use.
+
+    ``strict`` defaults to ``True``, unlike
+    :func:`~tempest_fastapi_sdk.make_bearer_token_dependency`: a token
+    with no type marker at all is refused. Every token
+    :class:`~tempest_fastapi_sdk.UserAuthService` issues carries one;
+    pass ``strict=False`` only while access tokens a project signed
+    itself, without ``typ``, are still in circulation.
+
+    Args:
+        tokens (JWTUtils): The helper that signs the application's
+            access tokens.
+        accepted (Collection[str]): Token types that may open a socket.
+            Defaults to the access token alone.
+        strict (bool): Refuse a token whose type cannot be determined.
+
+    Returns:
+        BearerResolver: Awaitable mapping a bearer token to the user id
+        in its ``sub``, or ``None`` when the token is invalid, expired,
+        of a refused type, or carries no UUID subject.
+    """
+    accepted_types: tuple[str, ...] = tuple(accepted)
+
+    async def resolve(token: str) -> UUID | None:
+        """Map ``token`` to its user id, or ``None`` to refuse it.
+
+        Args:
+            token (str): The bearer token from the handshake.
+
+        Returns:
+            UUID | None: The subject, or ``None`` when refused.
+        """
+        payload = tokens.decode_or_none(token)
+        if payload is None:
+            return None
+        if not token_type_allowed(payload, accepted_types, strict=strict):
+            return None
+        subject = payload.get("sub")
+        if subject is None:
+            return None
+        try:
+            return UUID(str(subject))
+        except ValueError:
+            return None
+
+    return resolve
 
 
 def make_websocket_router(
@@ -105,7 +174,9 @@ def make_websocket_router(
             hub instance per FastAPI app is the usual setup.
         bearer_resolver (BearerResolver): Awaitable returning the
             user UUID for a token, or ``None`` on bad / expired
-            tokens.
+            tokens. For JWTs, build it with
+            :func:`make_jwt_bearer_resolver`, which also refuses
+            refresh and MFA-pending tokens signed by the same secret.
         settings (WebSocketSettings): Heartbeat / cap / size limits.
         path (str): Mount path. Defaults to ``"/ws"``.
         tags (list[str] | None): OpenAPI tags. Defaults to

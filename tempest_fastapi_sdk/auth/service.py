@@ -760,16 +760,25 @@ class UserAuthService:
            converts a provider's word about an email into control of an
            existing account, so it is off unless asked for twice — once
            by ``AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL``, once by the
-           provider's own flag.
+           provider's own flag. Linking also requires that activating
+           a local account proves mailbox control here, so it is
+           refused under ``AUTH_AUTO_ACTIVATE``,
+           ``AUTH_RETURN_TOKEN_IN_RESPONSE`` or a service without
+           ``EmailUtils``: there, an active row says nothing about who
+           owns its address.
         3. **Creation** — an unknown identity with an unknown email.
            Creates the user row with the provider's email, the
            provider's name (or a localized placeholder) and a generated
-           password, then links the identity to it.
+           password, then links the identity to it. Only when the
+           provider states it verified the address
+           (``email_verified is True``): the row owns that address from
+           the start, so an unverified claim is refused rather than
+           turned into an account.
 
-        A created account is **active immediately**: the point of the
-        flow is that the identity provider performed the verification,
-        so re-verifying by email would ask the user to prove something
-        Google already proved. ``AUTH_AUTO_ACTIVATE`` is not consulted
+        A created account is **active immediately**: the identity
+        provider performed the verification, as its ``email_verified``
+        flag states, so re-verifying by email would ask the user to
+        prove something Google already proved. ``AUTH_AUTO_ACTIVATE`` is not consulted
         here — a project that wants human approval before first login
         turns account creation off and has an administrator create and
         link the row.
@@ -817,9 +826,11 @@ class UserAuthService:
                 nothing to store and inventing an address would create
                 an account nobody can recover.
             OAuthEmailTakenException: When the email already belongs to
-                another account and linking is not allowed.
-            OAuthEmailUnverifiedException: When linking was allowed but
-                the provider did not state it verified the address.
+                another account and linking is not allowed, or this
+                service's activation does not prove mailbox control.
+            OAuthEmailUnverifiedException: When the provider did not
+                state it verified the address, and the identity would
+                either link to an existing account or create a new one.
                 Deliberately distinct from the one above: that one has a
                 next step for the user, this one has none.
             OAuthRegistrationDisabledException: When the identity is
@@ -878,9 +889,10 @@ class UserAuthService:
                 ``oauth_account_model``.
             OAuthEmailMissingException: When the provider returned no email.
             OAuthEmailTakenException: When the email belongs to another
-                account and linking is not allowed.
-            OAuthEmailUnverifiedException: When linking was allowed but the
-                provider did not state it verified the address.
+                account and linking is not allowed, or this service's
+                activation does not prove mailbox control.
+            OAuthEmailUnverifiedException: When the provider did not state
+                it verified the address, on the link or the creation path.
             OAuthRegistrationDisabledException: When the identity is unknown
                 and account creation is disabled.
             OAuthAccountInactiveException: When the resolved account is
@@ -953,6 +965,30 @@ class UserAuthService:
             return configured
         return self.auth_settings.AUTH_SIGNUP_ENABLED
 
+    def _activation_proves_email_ownership(self) -> bool:
+        """Return whether an active local account has proven its email.
+
+        The user table has no verification timestamp, so the only
+        evidence that the owner of an address created the row is that
+        the row became active, and that evidence holds only when
+        activation required a link delivered to the mailbox. Three
+        configurations break it, each letting a registrant activate an
+        address they cannot read: ``AUTH_AUTO_ACTIVATE`` (active at
+        signup), ``AUTH_RETURN_TOKEN_IN_RESPONSE`` (the activation link
+        comes back in the signup response), and a service built without
+        ``EmailUtils`` (which returns the link the same way). The same
+        three let an e-mail change complete without the new mailbox.
+
+        Returns:
+            bool: ``True`` when activating, or changing the email of, a
+            local account requires reading the mailbox.
+        """
+        if self.email is None:
+            return False
+        if self.auth_settings.AUTH_AUTO_ACTIVATE:
+            return False
+        return not self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
+
     async def _load_linked_user(
         self,
         session: AsyncSession,
@@ -994,6 +1030,25 @@ class UserAuthService:
     ) -> BaseUserModel:
         """Find or create the local user for a first-time identity.
 
+        Both doors that turn a provider's word about an email into a
+        local account demand that word be a verified ``yes``
+        (``email_verified is True``): linking an existing row, and
+        creating a new one. A created account owns the address from its
+        first second, so creating it from an unverified claim would let
+        whoever controls the provider identity squat an address they do
+        not own, and keep the link after the real owner recovers the
+        account by password reset.
+
+        Linking also needs the *local* side to have proven the address.
+        The user table records no verification timestamp, only
+        ``is_active``, and ``is_active`` is proof of mailbox control only
+        when activation went through a mailed link. Under
+        ``AUTH_AUTO_ACTIVATE``, ``AUTH_RETURN_TOKEN_IN_RESPONSE`` or a
+        service with no ``EmailUtils`` the registrant activates without
+        the mailbox, so a stranger could pre-register the address and
+        absorb its owner's first social login; those configurations
+        refuse the link (see :meth:`_activation_proves_email_ownership`).
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             profile (OAuthUser): The identity the provider returned.
@@ -1010,11 +1065,14 @@ class UserAuthService:
             OAuthEmailMissingException: When the provider returned no
                 email.
             OAuthEmailTakenException: When the email is taken and
-                linking is not allowed. Refusing names the collision
-                rather than hiding it: the alternative is attaching the
-                identity anyway, which is account takeover.
-            OAuthEmailUnverifiedException: When linking was allowed but
-                the provider did not verify the address.
+                linking is not allowed, or when linking is allowed but
+                this service's configuration lets an account become
+                active without proving its email. Refusing names the
+                collision rather than hiding it: the alternative is
+                attaching the identity anyway, which is account takeover.
+            OAuthEmailUnverifiedException: When the provider did not
+                state it verified the address — whether the identity
+                would link to an existing account or create a new one.
             OAuthRegistrationDisabledException: When creation is
                 disabled.
             OAuthAccountInactiveException: When the matched account is
@@ -1038,6 +1096,10 @@ class UserAuthService:
                 raise OAuthEmailUnverifiedException(
                     details={"email": email, "provider": profile.provider},
                 )
+            if not self._activation_proves_email_ownership():
+                raise OAuthEmailTakenException(
+                    details={"email": email, "provider": profile.provider},
+                )
             if not existing.is_active:
                 raise OAuthAccountInactiveException(
                     details={"email": email, "provider": profile.provider},
@@ -1046,6 +1108,10 @@ class UserAuthService:
         if not allow_account_creation:
             raise OAuthRegistrationDisabledException(
                 details={"provider": profile.provider},
+            )
+        if profile.email_verified is not True:
+            raise OAuthEmailUnverifiedException(
+                details={"email": email, "provider": profile.provider},
             )
         return await self._create_oauth_user(
             session,
@@ -3825,6 +3891,86 @@ class UserAuthService:
         if revoke_sessions:
             await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
+
+    async def reauthenticate(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        current_password: str,
+        code: str | None = None,
+        recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
+        throttle: AttemptThrottle | None = None,
+    ) -> BaseUserModel:
+        """Demand fresh proof of the account's factors before a sensitive change.
+
+        A bearer access token proves that *someone* holds a session, not
+        that the account owner is at the keyboard: a token read from a
+        log, a shared device or a script injected into the page carries
+        the same authority. Operations that add a lasting way into the
+        account — registering a passkey is the one the bundled router
+        guards with this — must not be reachable with the token alone,
+        or a short-lived leak becomes a credential that outlives the
+        token, a password reset and a later TOTP enrollment.
+
+        The password is checked first, against the stored hash, as
+        :meth:`change_password` does. When the account has TOTP enrolled
+        (:meth:`is_mfa_enrolled`) the second factor is required too and is
+        spent like at login: a TOTP step is recorded, a recovery code is
+        stamped ``used_at``. An account without MFA is asked for the
+        password only, and ``code`` is ignored.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The caller
+                owns the commit.
+            user (BaseUserModel): The authenticated account.
+            current_password (str): The account's plaintext password.
+            code (str | None): A 6-digit TOTP code or a recovery code;
+                required when the account has MFA enrolled.
+            recovery_code_model (type[BaseUserRecoveryCodeModel] | None):
+                The project's concrete recovery-code model. ``None``
+                (default) accepts TOTP codes only.
+            throttle (AttemptThrottle | None): Failure budget for the
+                second factor, keyed on ``f"mfa:{user_id}"`` like
+                :meth:`mfa_verify`. ``None`` (default) leaves the factor
+                check unthrottled.
+
+        Returns:
+            BaseUserModel: The account, attached to ``session``.
+
+        Raises:
+            UnauthorizedException: When the password does not match, or
+                when MFA is enrolled and ``code`` is missing or matches
+                neither an unspent TOTP step nor an unused recovery code.
+            MfaThrottledException: When ``throttle`` has the account's
+                attempt budget spent. Raised before the code is checked.
+        """
+        if not self.passwords.verify(current_password, user.hashed_password):
+            raise UnauthorizedException(message="current password is incorrect")
+        user = await self._attach(session, user)
+        if not self.is_mfa_enrolled(user):
+            return user
+        if code is None:
+            raise UnauthorizedException(message="invalid MFA code")
+        throttle_key = f"mfa:{user.id}"
+        if throttle is not None:
+            attempt = await throttle.hit(throttle_key)
+            if attempt.attempts > throttle.max_attempts:
+                raise MfaThrottledException(
+                    message="too many invalid MFA codes, try again later",
+                    retry_after_seconds=attempt.retry_after_seconds,
+                )
+        if recovery_code_model is None:
+            accepted = await self._claim_totp_step(session, user, code)
+        else:
+            accepted = await self._verify_mfa_code(
+                session, user, code, recovery_code_model
+            )
+        if not accepted:
+            raise UnauthorizedException(message="invalid MFA code")
+        if throttle is not None:
+            await throttle.reset(throttle_key)
+        return user
 
     async def mfa_disable(
         self,

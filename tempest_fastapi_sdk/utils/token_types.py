@@ -54,6 +54,19 @@ def token_type_allowed(
     read as a fallback so an old refresh or MFA-pending token is still
     classified instead of being waved through as an access token.
 
+    Any other ``purpose`` claim is read as the token's type too. A token
+    that declares what it is for — ``{"purpose": "password_reset"}``,
+    the shape single-use links are commonly signed with — is a
+    single-purpose token, never a session, so it passes only where its
+    purpose is listed in ``accepted``. Before this, such a token reached
+    the untyped fallback and authorized every route guarded with the
+    default ``strict=False`` for its whole lifetime:
+
+        >>> token_type_allowed({"purpose": "password_reset"}, [ACCESS_TOKEN_TYPE])
+        False
+        >>> token_type_allowed({"purpose": "password_reset"}, ["password_reset"])
+        True
+
     That default is right for tokens **this SDK** minted and wrong for
     everyone else's. A service that already separated access from refresh
     under a claim of its own — ``type``, ``token_type`` — has no ``typ`` on
@@ -96,8 +109,11 @@ def token_type_allowed(
         return declared in accepted
     if payload.get("refresh") is True:
         return REFRESH_TOKEN_TYPE in accepted
-    if payload.get("purpose") == "mfa_pending":
+    purpose = payload.get("purpose")
+    if purpose == "mfa_pending":
         return MFA_TOKEN_TYPE in accepted
+    if purpose is not None:
+        return isinstance(purpose, str) and purpose in accepted
     return not strict
 
 

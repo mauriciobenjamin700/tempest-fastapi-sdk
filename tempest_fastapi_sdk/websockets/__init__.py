@@ -25,6 +25,9 @@ from tempest_fastapi_sdk.websockets.hub import (
 )
 from tempest_fastapi_sdk.websockets.hub import WebSocketHub as WebSocketHub
 from tempest_fastapi_sdk.websockets.router import (
+    make_jwt_bearer_resolver as make_jwt_bearer_resolver,
+)
+from tempest_fastapi_sdk.websockets.router import (
     make_websocket_router as make_websocket_router,
 )
 from tempest_fastapi_sdk.websockets.schemas import WSEnvelope as WSEnvelope
@@ -36,5 +39,6 @@ __all__: list[str] = [
     "WebSocketConnection",
     "WebSocketHub",
     "heartbeat",
+    "make_jwt_bearer_resolver",
     "make_websocket_router",
 ]

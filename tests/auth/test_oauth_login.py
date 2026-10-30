@@ -24,6 +24,7 @@ browser drops a ``Secure`` cookie over HTTP.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -55,6 +56,8 @@ from tempest_fastapi_sdk import (
 )
 from tempest_fastapi_sdk.exceptions import ConflictException
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
+from tempest_fastapi_sdk.utils.email import EmailUtils
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
     token_type_allowed,
@@ -167,6 +170,20 @@ def _profile(**overrides: Any) -> OAuthUser:
     return OAuthUser(**fields)
 
 
+def _mailed_token(mail: FakeEmailUtils) -> str:
+    """Pull the single-use token out of the last message the fake accepted.
+
+    Args:
+        mail (FakeEmailUtils): The mailer the service was built with.
+
+    Returns:
+        str: The plaintext token of the link in the message body.
+    """
+    found = re.search(r"token=([A-Za-z0-9_\-]+)", mail.outbox[-1].body)
+    assert found is not None
+    return found.group(1)
+
+
 @pytest.fixture
 async def session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -185,6 +202,7 @@ def _service(
     with_refresh_model: bool = False,
     user_model: type[BaseUserModel] = _OAuthUser,
     token_model: Any = _OAuthUserToken,
+    email: EmailUtils | None = None,
     **auth_overrides: Any,
 ) -> UserAuthService:
     """Build a service wired for social login.
@@ -195,15 +213,17 @@ def _service(
         with_refresh_model (bool): Whether to wire DB-backed refresh.
         user_model (type[BaseUserModel]): The user table.
         token_model (Any): The one-time-token table.
+        email (EmailUtils | None): The mailer; ``None`` wires none.
         **auth_overrides (Any): ``AuthSettings`` field overrides.
+            ``AUTH_AUTO_ACTIVATE`` defaults to ``True`` here.
 
     Returns:
         UserAuthService: The configured service.
     """
     auth_overrides.setdefault("AUTH_OAUTH_ENABLED", True)
+    auth_overrides.setdefault("AUTH_AUTO_ACTIVATE", True)
     auth = AuthSettings(
         _env_file=None,
-        AUTH_AUTO_ACTIVATE=True,
         AUTH_TOKEN_DELIVERY=delivery,
         AUTH_COOKIE_SECURE=False,
         **auth_overrides,
@@ -213,7 +233,7 @@ def _service(
         token_model=token_model,
         auth_settings=auth,
         jwt_settings=JWTSettings(_env_file=None, JWT_SECRET="x" * 32),
-        email=None,
+        email=email,
         oauth_account_model=_OAuthAccount if with_account_model else None,
         refresh_token_model=_OAuthRefresh if with_refresh_model else None,
     )
@@ -611,15 +631,27 @@ class TestTheEmailRules:
     async def test_verified_email_links_when_the_setting_allows_it(
         self, session: AsyncSession
     ) -> None:
-        service = _service(AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=True)
-        user, _ = await service.signup(
-            session, email="ana@example.com", password=_PASSWORD
+        """A local account activated through the mailed link may be linked."""
+        mail = FakeEmailUtils()
+        service = _service(
+            AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=True,
+            AUTH_AUTO_ACTIVATE=False,
+            email=mail,
         )
-        await session.commit()
         async with _client(service, session) as client:
+            signed_up = await client.post(
+                "/auth/signup",
+                json={"email": "ana@example.com", "password": _PASSWORD},
+            )
+            assert signed_up.status_code == 201, signed_up.text
+            assert signed_up.json()["activation_url"] is None
+            activated = await client.post(
+                f"/auth/activate/{_mailed_token(mail)}",
+            )
+            assert activated.status_code == 200, activated.text
             response = await _login(client)
-        assert response.status_code == 200
-        assert response.json()["user_id"] == str(user.id)
+        assert response.status_code == 200, response.text
+        assert response.json()["user_id"] == signed_up.json()["user_id"]
         assert len((await session.execute(select(_OAuthUser))).scalars().all()) == 1
 
     async def test_unverified_email_never_links(self, session: AsyncSession) -> None:
@@ -636,6 +668,127 @@ class TestTheEmailRules:
         async with _client(service, session, clients=clients) as client:
             response = await _login(client)
         assert response.status_code == 409
+
+
+class TestCreationRequiresAVerifiedEmail:
+    """An unknown identity creates an account only on a verified address.
+
+    The created row owns the address from the start, so creating it from a
+    claim the provider did not verify would let whoever controls that
+    provider identity hold an account under someone else's email, and keep
+    signing into it after the owner recovers it by password reset.
+    """
+
+    @pytest.mark.parametrize("verified", [False, None])
+    async def test_an_unverified_email_creates_nothing(
+        self, session: AsyncSession, verified: bool | None
+    ) -> None:
+        clients = {
+            "google": _FakeClient(
+                _profile(subject="attacker-sub", email_verified=verified)
+            )
+        }
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app.include_router(
+            make_auth_router(
+                _service(), session_factory=_factory, oauth_clients=clients
+            )
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            response = await _login(client)
+            assert response.status_code == 409, response.text
+            assert response.json()["code"] == "OAUTH_EMAIL_UNVERIFIED"
+            assert "access_token" not in response.json()
+            signup = await client.post(
+                "/auth/signup",
+                json={"email": "ana@example.com", "password": _PASSWORD},
+            )
+        assert signup.status_code == 201, signup.text
+        assert (await session.execute(select(_OAuthAccount))).scalars().first() is None
+        users = (await session.execute(select(_OAuthUser))).scalars().all()
+        assert [str(u.id) for u in users] == [signup.json()["user_id"]]
+
+    async def test_a_verified_email_still_creates_the_account(
+        self, session: AsyncSession
+    ) -> None:
+        async with _client(_service(), session) as client:
+            response = await _login(client)
+        assert response.status_code == 200, response.text
+
+
+class TestLinkingRequiresAProvenLocalEmail:
+    """An existing row absorbs an identity only if its owner proved the email.
+
+    The table has no verification timestamp; an active row is proof only
+    when activation needed the mailbox. Under the three configurations
+    below a registrant activates an address they cannot read, so a
+    stranger who pre-registers it must not inherit its owner's first
+    social login.
+    """
+
+    @pytest.mark.parametrize(
+        ("overrides", "mailer"),
+        [
+            pytest.param({"AUTH_AUTO_ACTIVATE": True}, True, id="auto-activate"),
+            pytest.param({"AUTH_AUTO_ACTIVATE": False}, False, id="no-mailer"),
+            pytest.param(
+                {
+                    "AUTH_AUTO_ACTIVATE": False,
+                    "AUTH_RETURN_TOKEN_IN_RESPONSE": True,
+                },
+                True,
+                id="return-token",
+            ),
+        ],
+    )
+    async def test_a_pre_registered_account_is_not_linked(
+        self,
+        session: AsyncSession,
+        overrides: dict[str, Any],
+        mailer: bool,
+    ) -> None:
+        service = _service(
+            AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=True,
+            email=FakeEmailUtils() if mailer else None,
+            **overrides,
+        )
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app.include_router(
+            make_auth_router(
+                service,
+                session_factory=_factory,
+                oauth_clients={"google": _FakeClient(_profile())},
+            )
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            signed_up = await client.post(
+                "/auth/signup",
+                json={"email": "ana@example.com", "password": _PASSWORD},
+            )
+            assert signed_up.status_code == 201, signed_up.text
+            returned = signed_up.json()["activation_url"]
+            if returned is not None:
+                token = parse_qs(urlparse(returned).query)["token"][0]
+                activated = await client.post(f"/auth/activate/{token}")
+                assert activated.status_code == 200, activated.text
+            response = await _login(client)
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == "OAUTH_EMAIL_TAKEN"
+        assert (await session.execute(select(_OAuthAccount))).scalars().first() is None
 
 
 class TestTheIdentityIsTheKeyNotTheEmail:

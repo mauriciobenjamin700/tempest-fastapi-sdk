@@ -509,3 +509,22 @@ class TestLoaderDecliningTheSubject:
             )
         assert response.status_code == 200
         assert response.json()["user"]["id"] == "u1"
+
+
+@pytest.mark.asyncio
+async def test_a_purpose_token_is_refused_by_both_default_guards() -> None:
+    """The recipe's reset token, signed by the shared helper, opens no session."""
+    bearer_app, tokens = _make_bearer_app(soft=False)
+    user_app, user_tokens = _make_user_app(soft=False)
+    for app, signer, path in (
+        (bearer_app, tokens, "/claims"),
+        (user_app, user_tokens, "/me"),
+    ):
+        token = signer.encode({"sub": "42", "purpose": "password_reset"})
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                path, headers={"Authorization": f"Bearer {token}"}
+            )
+        assert response.status_code == 401, (path, response.text)
