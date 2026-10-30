@@ -25,7 +25,7 @@ condition = like_search_condition(UserModel, "joao", [UserModel.name])
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from functools import reduce
 from typing import Any, Final, cast
 
@@ -47,6 +47,36 @@ in an inline literal.
 
 ColumnRef = str | InstrumentedAttribute[Any]
 """A searchable column: its name, or the mapped attribute itself."""
+
+_ALWAYS_SECRET_COLUMNS: Final[frozenset[str]] = frozenset({"hashed_password"})
+"""Columns no text search may name, whatever the model declares.
+
+``hashed_password`` is the SDK's password column on ``BaseUserModel`` and
+the name the admin panel and the audit log already hide. Searching it turns
+row presence into a substring oracle on the hash.
+"""
+
+
+def _secret_search_columns(model: type[Any]) -> frozenset[str]:
+    """Return the columns of ``model`` a text search always refuses.
+
+    ``hashed_password`` plus every column the model declares in
+    ``__secret_columns__`` (read through
+    :meth:`~tempest_fastapi_sdk.db.model.BaseModel.get_secret_columns`
+    when the model has it). An ``ILIKE`` on such a column answers "does a
+    row's secret contain this substring" through which rows come back.
+
+    Args:
+        model (type[Any]): The model being searched.
+
+    Returns:
+        frozenset[str]: The refused column names.
+    """
+    get_secret_columns = getattr(model, "get_secret_columns", None)
+    declared: frozenset[str] = (
+        frozenset(get_secret_columns()) if callable(get_secret_columns) else frozenset()
+    )
+    return _ALWAYS_SECRET_COLUMNS | declared
 
 
 class TextSearchLanguage(BaseStrEnum):
@@ -154,6 +184,8 @@ def _regconfig(language: TextSearchLanguage) -> ColumnElement[Any]:
 def resolve_search_column(
     model: type[Any],
     field: ColumnRef,
+    *,
+    searchable: Collection[str] | None = None,
 ) -> InstrumentedAttribute[Any]:
     """Resolve a column reference to a mapped attribute on ``model``.
 
@@ -163,25 +195,44 @@ def resolve_search_column(
     through the mapper's column set, which also rejects class attributes
     that exist but are not columns (``metadata``, ``registry``).
 
+    Searching is an oracle on the searched column: which rows come back
+    tells the caller whether each row's value contains the term.
+    ``hashed_password`` and every column the model declares in
+    ``__secret_columns__`` are therefore refused always, and
+    ``searchable`` narrows the rest to a declared set, the way
+    ``orderable_columns`` narrows ``order_by``. The refusal never lists the
+    mapper: with ``searchable`` declared, ``details["allowed"]`` is that set
+    minus the secret columns; without it, ``allowed`` is omitted.
+
     Args:
         model (type[Any]): The model the column belongs to.
         field (ColumnRef): The column name, or the mapped attribute.
+        searchable (Collection[str] | None): The columns a search may
+            name. ``None`` accepts any mapped column that is not secret.
 
     Returns:
         InstrumentedAttribute[Any]: The resolved column.
 
     Raises:
         ValidationException: When the name is not a mapped column of
-            ``model``, or the attribute belongs to a different model.
+            ``model``, is a secret column, or is outside ``searchable``.
     """
     mapper = inspect(model)
     name = field if isinstance(field, str) else field.key
-    if name not in mapper.columns:
-        raise ValidationException(
-            message=f"{model.__name__!r} has no column {name!r}",
-            details={"field": name, "allowed": sorted(mapper.columns.keys())},
-        )
-    return cast("InstrumentedAttribute[Any]", getattr(model, name))
+    refused = _secret_search_columns(model)
+    if (
+        name in mapper.columns
+        and name not in refused
+        and (searchable is None or name in searchable)
+    ):
+        return cast("InstrumentedAttribute[Any]", getattr(model, name))
+    details: dict[str, Any] = {"field": name}
+    if searchable is not None:
+        details["allowed"] = sorted(set(searchable) - refused)
+    raise ValidationException(
+        message=f"{model.__name__!r} has no searchable column {name!r}",
+        details=details,
+    )
 
 
 def tokenize(term: str) -> list[str]:
@@ -202,6 +253,7 @@ def like_search_condition(
     fields: Sequence[ColumnRef],
     *,
     token_match: TokenMatch = TokenMatch.ALL,
+    searchable: Collection[str] | None = None,
 ) -> ColumnElement[bool] | None:
     """Build a portable substring-search condition.
 
@@ -218,6 +270,9 @@ def like_search_condition(
             mapped attributes. Must not be empty.
         token_match (TokenMatch): Whether every token must match or any
             single one is enough.
+        searchable (Collection[str] | None): The columns ``fields`` may
+            name (see :func:`resolve_search_column`). ``None`` accepts any
+            mapped column that is not secret.
 
     Returns:
         ColumnElement[bool] | None: The condition, or ``None`` when the
@@ -226,9 +281,9 @@ def like_search_condition(
 
     Raises:
         ValidationException: When ``fields`` is empty or names a column
-            the model does not have.
+            that :func:`resolve_search_column` refuses.
     """
-    columns = _resolve_columns(model, fields)
+    columns = _resolve_columns(model, fields, searchable)
     tokens = tokenize(term)
     if not tokens:
         return None
@@ -255,6 +310,7 @@ def full_text_condition(
     weights: Mapping[str, TextSearchWeight] | None = None,
     dialect: str = POSTGRESQL_DIALECT,
     token_match: TokenMatch = TokenMatch.ALL,
+    searchable: Collection[str] | None = None,
 ) -> ColumnElement[bool] | None:
     """Build a full-text match condition, or the portable fallback.
 
@@ -283,6 +339,8 @@ def full_text_condition(
         token_match (TokenMatch): Used only by the fallback path;
             PostgreSQL's ``websearch_to_tsquery`` already treats
             space-separated words as ``AND``.
+        searchable (Collection[str] | None): The columns ``fields`` may
+            name (see :func:`resolve_search_column`).
 
     Returns:
         ColumnElement[bool] | None: The condition, or ``None`` for a
@@ -290,14 +348,16 @@ def full_text_condition(
 
     Raises:
         ValidationException: When ``fields`` is empty or names a column
-            the model does not have.
+            that :func:`resolve_search_column` refuses.
     """
     if dialect != POSTGRESQL_DIALECT:
-        return like_search_condition(model, term, fields, token_match=token_match)
+        return like_search_condition(
+            model, term, fields, token_match=token_match, searchable=searchable
+        )
     if not tokenize(term):
         return None
 
-    vector = _tsvector(model, fields, language, weights)
+    vector = _tsvector(model, fields, language, weights, searchable)
     query = func.websearch_to_tsquery(_regconfig(language), term)
     return cast("ColumnElement[bool]", vector.bool_op("@@")(query))
 
@@ -310,6 +370,7 @@ def full_text_rank(
     language: TextSearchLanguage = TextSearchLanguage.PORTUGUESE,
     weights: Mapping[str, TextSearchWeight] | None = None,
     dialect: str = POSTGRESQL_DIALECT,
+    searchable: Collection[str] | None = None,
 ) -> ColumnElement[Any] | None:
     """Build the relevance-score expression to order results by.
 
@@ -322,6 +383,8 @@ def full_text_rank(
             weight; must match what was passed to
             :func:`full_text_condition`.
         dialect (str): The active SQLAlchemy dialect name.
+        searchable (Collection[str] | None): The columns ``fields`` may
+            name (see :func:`resolve_search_column`).
 
     Returns:
         ColumnElement[Any] | None: The ``ts_rank`` expression, or
@@ -331,11 +394,11 @@ def full_text_rank(
 
     Raises:
         ValidationException: When ``fields`` is empty or names a column
-            the model does not have.
+            that :func:`resolve_search_column` refuses.
     """
     if dialect != POSTGRESQL_DIALECT or not tokenize(term):
         return None
-    vector = _tsvector(model, fields, language, weights)
+    vector = _tsvector(model, fields, language, weights, searchable)
     query = func.websearch_to_tsquery(_regconfig(language), term)
     return cast("ColumnElement[Any]", func.ts_rank(vector, query))
 
@@ -358,12 +421,15 @@ def supports_full_text(dialect: str) -> bool:
 def _resolve_columns(
     model: type[Any],
     fields: Sequence[ColumnRef],
+    searchable: Collection[str] | None,
 ) -> list[InstrumentedAttribute[Any]]:
     """Resolve every reference in ``fields``, rejecting an empty list.
 
     Args:
         model (type[Any]): The model being searched.
         fields (Sequence[ColumnRef]): The references to resolve.
+        searchable (Collection[str] | None): The columns ``fields`` may
+            name; ``None`` accepts any non-secret mapped column.
 
     Returns:
         list[InstrumentedAttribute[Any]]: The resolved columns.
@@ -378,7 +444,9 @@ def _resolve_columns(
             message="A text search needs at least one column to search",
             details={"model": model.__name__},
         )
-    return [resolve_search_column(model, field) for field in fields]
+    return [
+        resolve_search_column(model, field, searchable=searchable) for field in fields
+    ]
 
 
 def _tsvector(
@@ -386,6 +454,7 @@ def _tsvector(
     fields: Sequence[ColumnRef],
     language: TextSearchLanguage,
     weights: Mapping[str, TextSearchWeight] | None,
+    searchable: Collection[str] | None,
 ) -> ColumnElement[Any]:
     """Build the ``tsvector`` document from the searched columns.
 
@@ -405,11 +474,13 @@ def _tsvector(
         language (TextSearchLanguage): Stemming configuration.
         weights (Mapping[str, TextSearchWeight] | None): Per-column
             weight keyed by column name; absent columns get ``D``.
+        searchable (Collection[str] | None): The columns ``fields`` may
+            name; ``None`` accepts any non-secret mapped column.
 
     Returns:
         ColumnElement[Any]: The ``tsvector`` expression.
     """
-    columns = _resolve_columns(model, fields)
+    columns = _resolve_columns(model, fields, searchable)
     if not weights:
         document = func.concat_ws(
             " ",

@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   presignado. O `inline` (em todo helper de download) deixa de valer para um
   tipo com vírgula ou quebra de linha, que o navegador pode ler como outro
   tipo.
+- Busca textual (`BaseRepository.search`, `search_condition`,
+  `full_text_search`, `full_text_condition` e as funções de `db.search`)
+  passa a recusar sempre `hashed_password` e as colunas de
+  `__secret_columns__` com `422`. Novo `searchable_columns` no
+  `BaseRepository` (atributo de classe ou argumento do construtor, no formato
+  do `orderable_columns`) e novo `searchable=` em `resolve_search_column`,
+  `like_search_condition`, `full_text_condition` e `full_text_rank`
+  restringem `fields` a um conjunto declarado. A recusa de campo
+  desconhecido deixa de listar todas as colunas do model em
+  `details["allowed"]`: a chave só aparece com um conjunto declarado, e
+  lista só ele. Mudança de comportamento: a mensagem passa a ser
+  `... has no searchable column ...`.
 
 ## [0.335.0] — 2026-10-30
 

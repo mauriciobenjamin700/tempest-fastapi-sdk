@@ -9,6 +9,8 @@ configuration, and would catch a regression that silently dropped the
 whole full-text branch into the fallback.
 """
 
+from typing import ClassVar
+
 import pytest
 from sqlalchemy import String, Text
 from sqlalchemy.dialects import postgresql
@@ -36,6 +38,21 @@ class Article(BaseModel):
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     author: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class Member(BaseModel):
+    """A model with a password hash and a declared secret column."""
+
+    __tablename__ = "member_for_search_test"
+    __secret_columns__: ClassVar[frozenset[str]] = frozenset({"api_key"})
+
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(128), nullable=False)
+    api_key: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+MEMBER_HASH: str = "$2b$12$QzDexamplehash"
+"""Stored password hash the prefix probes below try to recover."""
 
 
 @pytest.fixture
@@ -92,6 +109,31 @@ class TestResolveSearchColumn:
         with pytest.raises(ValidationException) as exc:
             resolve_search_column(Article, "nope")
         assert exc.value.details["field"] == "nope"
+
+    def test_unknown_column_refusal_does_not_list_the_mapper(self) -> None:
+        """Without a declared set the 422 names only the rejected field."""
+        with pytest.raises(ValidationException) as exc:
+            resolve_search_column(Member, "nope")
+        assert exc.value.details == {"field": "nope"}
+
+    def test_refusal_lists_only_the_declared_set(self) -> None:
+        with pytest.raises(ValidationException) as exc:
+            resolve_search_column(Article, "body", searchable={"title", "author"})
+        assert exc.value.details == {"field": "body", "allowed": ["author", "title"]}
+
+    @pytest.mark.parametrize("field", ["hashed_password", "api_key"])
+    def test_secret_columns_are_never_searchable(self, field: str) -> None:
+        """Even a declared set naming them cannot unlock the secret columns."""
+        with pytest.raises(ValidationException) as exc:
+            resolve_search_column(Member, field)
+        assert exc.value.details == {"field": field}
+        with pytest.raises(ValidationException) as declared:
+            resolve_search_column(Member, field, searchable={"name", field})
+        assert declared.value.details == {"field": field, "allowed": ["name"]}
+
+    def test_mapped_attribute_of_a_secret_column_is_refused(self) -> None:
+        with pytest.raises(ValidationException):
+            resolve_search_column(Member, Member.hashed_password)
 
     def test_rejects_a_non_column_attribute(self) -> None:
         """``metadata`` exists on the class but is not a mapped column."""
@@ -290,3 +332,81 @@ class TestPostgresFullTextSql:
     def test_blank_term_yields_no_condition(self) -> None:
         assert full_text_condition(Article, "  ", ["title"]) is None
         assert full_text_rank(Article, "  ", ["title"]) is None
+
+
+class TestSearchAllowlist:
+    """Search fields are an oracle; the repository narrows them."""
+
+    @pytest.fixture
+    async def members(self, session: AsyncSession) -> BaseRepository[Member]:
+        repository: BaseRepository[Member] = BaseRepository(session, model=Member)
+        await repository.add(
+            Member(name="ana", hashed_password=MEMBER_HASH, api_key="key-123")
+        )
+        return repository
+
+    @pytest.mark.parametrize("prefix", ["$2b$12$Q", "$2b$12$QzD", "$2b$12$R"])
+    async def test_hash_prefix_probe_is_refused(
+        self, members: BaseRepository[Member], prefix: str
+    ) -> None:
+        """A row-presence probe on the hash fails instead of answering."""
+        with pytest.raises(ValidationException) as exc:
+            await members.search(prefix, fields=["hashed_password"])
+        assert exc.value.details == {"field": "hashed_password"}
+
+    async def test_unknown_field_does_not_echo_columns(
+        self, members: BaseRepository[Member]
+    ) -> None:
+        with pytest.raises(ValidationException) as exc:
+            await members.search("x", fields=["nope"])
+        assert "allowed" not in exc.value.details
+
+    async def test_declared_set_narrows_fields(self, session: AsyncSession) -> None:
+        repository: BaseRepository[Article] = BaseRepository(
+            session, model=Article, searchable_columns={"title"}
+        )
+        await repository.add(Article(title="Nota", body="pedido", author="joao"))
+        assert len(await repository.search("nota", fields=["title"])) == 1
+        with pytest.raises(ValidationException) as exc:
+            await repository.search("joao", fields=["author"])
+        assert exc.value.details == {"field": "author", "allowed": ["title"]}
+        with pytest.raises(ValidationException):
+            repository.search_condition("joao", fields=["author"])
+        with pytest.raises(ValidationException):
+            await repository.full_text_search("joao", fields=["author"])
+
+    async def test_class_attribute_declares_the_set(
+        self, session: AsyncSession
+    ) -> None:
+        class ArticleRepository(BaseRepository[Article]):
+            searchable_columns = frozenset({"body"})
+
+        repository = ArticleRepository(session, model=Article)
+        with pytest.raises(ValidationException):
+            repository.full_text_condition("x", fields=["title"])
+
+    def test_declaring_a_secret_column_fails_at_construction(
+        self, session: AsyncSession
+    ) -> None:
+        with pytest.raises(ValueError, match="secret columns"):
+            BaseRepository(
+                session, model=Member, searchable_columns={"name", "hashed_password"}
+            )
+
+    def test_declaring_an_unmapped_column_fails_at_construction(
+        self, session: AsyncSession
+    ) -> None:
+        with pytest.raises(ValueError, match="does not map"):
+            BaseRepository(session, model=Article, searchable_columns={"titel"})
+
+    def test_postgres_full_text_honours_the_set(self) -> None:
+        with pytest.raises(ValidationException):
+            full_text_condition(
+                Article,
+                "nota",
+                ["body"],
+                dialect=POSTGRESQL_DIALECT,
+                searchable={"title"},
+            )
+        with pytest.raises(ValidationException):
+            full_text_rank(Member, "x", ["hashed_password"], dialect=POSTGRESQL_DIALECT)

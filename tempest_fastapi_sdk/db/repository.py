@@ -55,6 +55,7 @@ from tempest_fastapi_sdk.db.search import (
     TextSearchLanguage,
     TextSearchWeight,
     TokenMatch,
+    _secret_search_columns,
     full_text_rank,
     like_search_condition,
     supports_full_text,
@@ -231,6 +232,16 @@ class BaseRepository(Generic[ModelType]):
     any mapped column still sorts — the historical behavior — but the
     refusal no longer publishes the mapper's column list.
 
+    Text search is the same oracle on the searched column: ``fields`` that
+    come from a query parameter let a caller learn, row by row, whether a
+    column contains a substring. :meth:`search`, :meth:`search_condition`,
+    :meth:`full_text_search` and :meth:`full_text_condition` therefore
+    always refuse ``hashed_password`` and the model's
+    ``__secret_columns__``, and ``searchable_columns`` (class attribute or
+    constructor argument, like ``orderable_columns``) narrows ``fields`` to
+    a declared set. The 422 names the rejected field and, only when a set
+    is declared, ``details["allowed"]``.
+
     Every ``filters`` argument is a mapping from column name to the value
     that column must hold, and the pairs are ANDed:
     ``{"user_id": 1234, "is_active": True}`` selects the rows where
@@ -319,6 +330,10 @@ class BaseRepository(Generic[ModelType]):
             default for the columns ``order_by`` may name in
             :meth:`paginate`, :meth:`cursor_paginate` and
             :meth:`changes_since`. ``None`` accepts any mapped column.
+        searchable_columns (ClassVar[frozenset[str] | None]): Class-level
+            default for the columns ``fields`` may name in the text-search
+            methods. ``None`` accepts any mapped column that is not
+            ``hashed_password`` or in ``__secret_columns__``.
         max_page_size (ClassVar[int | None]): Class-level default ceiling
             on ``page_size`` (and the cursor ``limit``). ``None`` — the
             default, because internal callers such as the admin export
@@ -326,6 +341,7 @@ class BaseRepository(Generic[ModelType]):
     """
 
     orderable_columns: ClassVar[frozenset[str] | None] = None
+    searchable_columns: ClassVar[frozenset[str] | None] = None
     max_page_size: ClassVar[int | None] = None
 
     def __init__(
@@ -348,6 +364,7 @@ class BaseRepository(Generic[ModelType]):
         autocommit: bool = True,
         orderable_columns: Iterable[str] | None = None,
         max_page_size: int | None = None,
+        searchable_columns: Iterable[str] | None = None,
     ) -> None:
         """Initialize the repository.
 
@@ -430,6 +447,10 @@ class BaseRepository(Generic[ModelType]):
             max_page_size (int | None): Inclusive ceiling on
                 ``page_size`` / ``limit`` for this instance. ``None``
                 falls back to the class attribute of the same name.
+            searchable_columns (Iterable[str] | None): The columns the
+                text-search methods may name in ``fields`` on this
+                instance. ``None`` falls back to the class attribute of the
+                same name.
 
         Raises:
             TypeError: When ``model`` is not a subclass of
@@ -438,7 +459,9 @@ class BaseRepository(Generic[ModelType]):
                 something that is not a mapped column of ``model`` — a
                 declaration typo would otherwise refuse the column the
                 listing meant to allow, on every request — or when the
-                effective ``max_page_size`` is below 1.
+                effective ``max_page_size`` is below 1, or when the
+                effective ``searchable_columns`` names an unmapped column,
+                ``hashed_password`` or a ``__secret_columns__`` entry.
         """
         if not isinstance(model, type) or not issubclass(model, BaseModel):
             raise TypeError(
@@ -488,6 +511,25 @@ class BaseRepository(Generic[ModelType]):
                     f"{sorted(unknown)}",
                 )
         self._orderable_columns: frozenset[str] | None = declared
+        searchable = (
+            frozenset(searchable_columns)
+            if searchable_columns is not None
+            else type(self).searchable_columns
+        )
+        if searchable is not None:
+            unknown = searchable - set(inspect(model).columns.keys())
+            if unknown:
+                raise ValueError(
+                    f"searchable_columns names columns {name!r} does not map: "
+                    f"{sorted(unknown)}",
+                )
+            secret = searchable & _secret_search_columns(model)
+            if secret:
+                raise ValueError(
+                    f"searchable_columns names secret columns of {name!r}: "
+                    f"{sorted(secret)}",
+                )
+        self._searchable_columns: frozenset[str] | None = searchable
         ceiling = (
             max_page_size if max_page_size is not None else type(self).max_page_size
         )
@@ -812,9 +854,16 @@ class BaseRepository(Generic[ModelType]):
 
         Raises:
             ValidationException: When ``fields`` is empty or names a
-                column the model does not have.
+                column the model does not have, a secret column, or one
+                outside ``searchable_columns``.
         """
-        return like_search_condition(self.model, term, fields, token_match=token_match)
+        return like_search_condition(
+            self.model,
+            term,
+            fields,
+            token_match=token_match,
+            searchable=self._searchable_columns,
+        )
 
     def full_text_condition(
         self,
@@ -848,7 +897,8 @@ class BaseRepository(Generic[ModelType]):
 
         Raises:
             ValidationException: When ``fields`` is empty or names a
-                column the model does not have.
+                column the model does not have, a secret column, or one
+                outside ``searchable_columns``.
         """
         return build_full_text_condition(
             self.model,
@@ -858,6 +908,7 @@ class BaseRepository(Generic[ModelType]):
             weights=weights,
             dialect=self.dialect,
             token_match=token_match,
+            searchable=self._searchable_columns,
         )
 
     def _resolve_order_column(self, order_by: str) -> Any:
@@ -1388,11 +1439,16 @@ class BaseRepository(Generic[ModelType]):
 
         Raises:
             ValidationException: When ``fields`` is empty or names a
-                column the model does not have.
+                column the model does not have, a secret column, or one
+                outside ``searchable_columns``.
             ValueError: When a ``with_`` path names a non-relationship.
         """
         condition = like_search_condition(
-            self.model, term, fields, token_match=token_match
+            self.model,
+            term,
+            fields,
+            token_match=token_match,
+            searchable=self._searchable_columns,
         )
         return await self._run_search(
             condition,
@@ -1462,7 +1518,8 @@ class BaseRepository(Generic[ModelType]):
 
         Raises:
             ValidationException: When ``fields`` is empty or names a
-                column the model does not have.
+                column the model does not have, a secret column, or one
+                outside ``searchable_columns``.
             ValueError: When a ``with_`` path names a non-relationship.
         """
         condition = build_full_text_condition(
@@ -1473,6 +1530,7 @@ class BaseRepository(Generic[ModelType]):
             weights=weights,
             dialect=self.dialect,
             token_match=token_match,
+            searchable=self._searchable_columns,
         )
         rank = (
             None
@@ -1484,6 +1542,7 @@ class BaseRepository(Generic[ModelType]):
                 language=language,
                 weights=weights,
                 dialect=self.dialect,
+                searchable=self._searchable_columns,
             )
         )
         return await self._run_search(
