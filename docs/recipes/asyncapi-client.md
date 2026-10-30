@@ -31,6 +31,11 @@ Saem três arquivos, como no gerador de OpenAPI:
 Requer o extra `[websocket]`, que o SDK já usa no lado servidor — nenhuma
 dependência nova entra por causa disto.
 
+A prosa do documento (`info.title`, a `description` do canal) passa pelo mesmo
+escape do gerador de OpenAPI antes de entrar numa docstring, e os três módulos
+passam pela mesma checagem de `ast.parse` antes de serem gravados: se algum
+trouxer algo que o emissor não escreve, sai `SpecError` e nada é gravado.
+
 ## Usando
 
 ```python

@@ -514,10 +514,10 @@ from tempest_fastapi_sdk import BaseSchema
 
 
 class Charge(BaseSchema):
-    r"""Schema generated for Charge.
+    """Schema generated for Charge.
 
     Attributes:
-        reference (str): Codifique os caracteres (%, \#, /) antes de enviar, porque o
+        reference (str): Codifique os caracteres (%, \\#, /) antes de enviar, porque o
             gateway rejeita a requisição e o erro devolvido não diz qual caractere
             causou.
         field_2fa (bool | None): Undocumented in the spec.
@@ -541,8 +541,9 @@ class Charge(BaseSchema):
 
 Quatro decisões nessa saída, nenhuma óbvia:
 
-1. **A docstring virou `r"""`.** `\#` não é escape de Python: sem o `r`, isso é
-   `W605` no lint e `SyntaxWarning` a partir do 3.12.
+1. **A barra invertida da docstring saiu dobrada (`\\#`).** `\#` não é escape
+   de Python: deixado assim, é `W605` no lint e `SyntaxWarning` a partir do
+   3.12. A docstring continua dizendo `\#` para quem a lê com `help()`.
 2. **O `title` saiu com aspas simples**, apesar da regra de aspas duplas do
    projeto.
 3. **A `description` foi partida em dois literais adjacentes**, e não deixada
@@ -572,11 +573,25 @@ Resumindo o que o emissor garante para qualquer texto que a spec traga:
 
 | Na spec | No código gerado |
 | --- | --- |
-| Barra invertida (`\#`, `\b`, `\x41`) | Escapada no literal, e a docstring vira `r"""` |
+| Barra invertida (`\#`, `\b`, `\x41`) | Escapada no literal e na docstring (`\\#`) |
+| `"""` ou aspas encostadas na docstring | Escapadas (`\"\"\"`): o texto nunca fecha a docstring |
 | Quebra de linha, tab, caractere de controle | `\n` / `\t` / `\xNN` no literal |
 | `"aspas"` no texto | Literal com aspas **simples** |
 | Descrição longa demais | Partida em dois ou mais literais adjacentes |
 | Valor de enum longo demais | Partido igual, e o **nome** do membro é encurtado — o valor, nunca |
+
+!!! info "A spec é código de terceiro chegando no seu import"
+    Docstring é código-fonte, não dado. Até a v0.334.0, uma descrição com
+    `"""` fechava a docstring e o resto da frase virava Python, executado
+    quando o seu serviço importava o pacote gerado. Hoje toda prosa da spec
+    (descrição, `summary`, `title`, `info.title`) passa pelo mesmo escape antes
+    de entrar entre aspas triplas, e `servers[0].url` vira literal escapado.
+
+    Por cima disso, o gerador faz `ast.parse` de cada módulo antes de gravar e
+    **recusa a geração** (`SpecError`, nada é escrito) se achar algo que nenhum
+    emissor escreve: docstring que não é um literal sozinho, duas instruções
+    na mesma linha, referência a `__import__`/`eval`/`exec`, ou f-string que
+    interpola outra coisa além de `_path_param(nome)`.
 
 ### Nomes longos e o orçamento de linha
 
@@ -642,6 +657,14 @@ aceita, ou descreve um path que não fecha com os parâmetros que declara:
     silenciosamente. E um placeholder sem declaração **não** pode ser
     ignorado — o path é uma f-string, então o módulo referenciaria um nome
     inexistente e nem importaria.
+
+!!! info "O valor que você passa vira um segmento só"
+    Todo parâmetro de path passa por `_path_param`, que codifica com
+    `quote(..., safe="")`: `/`, `?` e `#` ficam dentro do segmento. O ponto não
+    é escapado, e o `httpx` resolve `.` e `..` antes de enviar — então
+    `get_charge("..")` saía como `GET /api/v1`, com as suas credenciais, até a
+    v0.334.0. Hoje `""`, `"."` e `".."` levantam `ValueError` antes de
+    qualquer requisição.
 
 !!! danger "Toda correção dessas aparece no resumo"
     Descartar um parâmetro e sintetizar outro são decisões sobre a assinatura

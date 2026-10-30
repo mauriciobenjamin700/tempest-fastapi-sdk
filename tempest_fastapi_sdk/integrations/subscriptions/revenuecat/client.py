@@ -111,13 +111,15 @@ class RevenueCatClient:
             just created — see the module warning) parses the same way.
 
         Raises:
-            ValueError: If ``app_user_id`` is empty — the path would collapse
-                to ``/subscribers/``.
+            ValueError: If ``app_user_id`` is empty, ``.`` or ``..`` — the
+                path would collapse to ``/subscribers/``, or the HTTP client
+                would resolve the dot segment and send the request to
+                another endpoint with the secret key.
             httpx.HTTPStatusError: For any non-2xx answer (``401`` for a bad
                 key, ``400`` for a malformed id).
         """
-        if not app_user_id:
-            raise ValueError("app_user_id must not be empty")
+        if app_user_id in {"", ".", ".."}:
+            raise ValueError(f"invalid app_user_id: {app_user_id!r}")
         response = await self._http.get(f"/subscribers/{quote(app_user_id, safe='')}")
         response.raise_for_status()
         return RevenueCatCustomerInfo.model_validate(response.json())

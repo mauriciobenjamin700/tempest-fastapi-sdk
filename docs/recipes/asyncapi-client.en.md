@@ -31,6 +31,12 @@ Three files come out, as with the OpenAPI generator:
 It needs the `[websocket]` extra, which the SDK already uses on the server
 side — no new dependency enters because of this.
 
+The document's prose (`info.title`, the channel `description`) goes through
+the same escaping as the OpenAPI generator before it lands in a docstring,
+and all three modules go through the same `ast.parse` check before being
+written: if one holds something the emitter does not write, `SpecError` is
+raised and nothing is written.
+
 ## Using it
 
 ```python

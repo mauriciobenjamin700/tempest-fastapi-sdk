@@ -20,7 +20,12 @@ generated file fail ``ruff format --check`` on the consumer's first run.
 
 from __future__ import annotations
 
+import ast
+import itertools
+import re
 import textwrap
+
+from tempest_fastapi_sdk.openapi.loader import SpecError
 
 MAX_LINE: int = 88
 """Line budget matching the project's ruff configuration."""
@@ -113,29 +118,63 @@ def string_chunks(text: str, budget: int) -> list[str]:
     return chunks
 
 
-def docstring_delimiter(*texts: str) -> str:
-    r"""Return the opening delimiter a docstring built from ``texts`` needs.
+_DOCSTRING_QUOTE_RUN: re.Pattern[str] = re.compile(r'"(?=")|(?<=")"|"$')
+"""A double quote that touches another one, or that ends the text.
+
+Those are the only quotes that can take part in a ``\"\"\"`` sequence once
+the text sits between two docstring delimiters. A lone quote mid-sentence
+stays as it is, so ordinary prose (``the "reference" field``) renders
+unchanged.
+"""
+
+_DOCSTRING_WHITESPACE: frozenset[str] = frozenset("\t\n\r\x0b\x0c")
+"""Control characters left raw, because :func:`wrap` folds them into spaces."""
+
+
+def docstring_text(text: str) -> str:
+    r"""Neutralize specification prose so it is inert inside a docstring.
 
     Args:
-        *texts (str): Every piece of prose the docstring will carry, either
-            raw or already rendered as source lines.
+        text (str): Prose taken from the specification — a description, a
+            summary, a title — about to be placed between ``\"\"\"``
+            delimiters.
 
     Returns:
-        str: ``'\"\"\"'``, or ``'r\"\"\"'`` when any text carries a
-        backslash.
+        str: Source text whose value, once Python parses the docstring, is
+        ``text`` again. Every backslash is doubled, every double quote that
+        touches another one (or ends the text) is escaped, and every
+        non-whitespace control character becomes a ``\xNN`` escape.
 
-    A specification is free to put one in its prose — OpenPix documents the
-    characters needing URI encoding as ``(%, \#, /)`` — and ``\#`` is not a
-    Python escape, so the emitted docstring raised ``W605`` and, from 3.12,
-    a ``SyntaxWarning``. It survived review because the generator's own
-    ``ruff --fix`` pass adds the prefix afterwards, which hides the defect
-    from everyone except a caller who passes ``--no-format``.
-
-    The decision is taken **before** wrapping rather than by patching the
-    rendered first line, because the ``r`` costs a column and the opening
-    line is the one already closest to the budget.
+    The docstring is source, not data: a description carrying ``\"\"\"``
+    used to close the literal and turn the rest of the sentence into Python
+    statements, which ran when the generated module was imported. Escaping
+    the backslash is what keeps that closed — a trailing ``\`` left raw
+    would escape the closing delimiter instead — and is also why the emitted
+    docstrings never need the ``r`` prefix: ``\#`` in a specification
+    renders as ``\\#``, which is not an invalid escape.
     """
-    return 'r"""' if any("\\" in text for text in texts) else '"""'
+    escaped = text.replace("\\", "\\\\")
+    escaped = _DOCSTRING_QUOTE_RUN.sub('\\\\"', escaped)
+    return "".join(
+        f"\\x{ord(char):02x}"
+        if (char < " " and char not in _DOCSTRING_WHITESPACE) or char == "\x7f"
+        else char
+        for char in escaped
+    )
+
+
+def docstring_title(text: str) -> str:
+    """Render a one-line name (``info.title``) for interpolation in a docstring.
+
+    Args:
+        text (str): The name as the specification wrote it.
+
+    Returns:
+        str: :func:`docstring_text` of it with every run of whitespace
+        collapsed to one space, because the caller places it inside a line
+        of fixed source rather than wrapping it.
+    """
+    return " ".join(docstring_text(text).split())
 
 
 def wrap(
@@ -145,11 +184,14 @@ def wrap(
     *,
     hanging: bool = True,
     budget: int = MAX_LINE,
+    escape: bool = True,
 ) -> list[str]:
     """Wrap prose to the line budget.
 
     Args:
-        text (str): The prose to wrap.
+        text (str): The prose to wrap. Passed through
+            :func:`docstring_text` first unless ``escape`` is false, so the
+            width is measured on the source that is actually emitted.
         indent (str): Indentation for the first line.
         first_prefix (str): Text prefixed to the first line (an opening
             ``\"\"\"``, or an ``Attributes:`` entry's ``"name (type): "``).
@@ -163,12 +205,16 @@ def wrap(
         budget (int): Width to wrap to. Defaults to :data:`MAX_LINE`; a
             caller passes less when the formatter will append something to
             the last line after this function returns.
+        escape (bool): Whether ``text`` is docstring content. Every caller
+            but :func:`unsupported_comment` places the result inside a
+            docstring; a ``#`` comment cannot be closed early, because the
+            wrap folds every line break into a space.
 
     Returns:
         list[str]: Wrapped source lines. A single unbreakable token longer
         than the budget is emitted whole rather than mangled.
     """
-    body = f"{first_prefix}{text}"
+    body = f"{first_prefix}{docstring_text(text) if escape else text}"
     wrapped = textwrap.wrap(
         body,
         width=budget,
@@ -211,16 +257,172 @@ def unsupported_comment(notes: tuple[str, ...], indent: str) -> list[str]:
     """
     lines: list[str] = []
     for note in notes:
-        wrapped = wrap(note, indent, f"{UNSUPPORTED_MARKER} — ", hanging=True)
+        wrapped = wrap(
+            note, indent, f"{UNSUPPORTED_MARKER} — ", hanging=True, escape=False
+        )
         lines.append(wrapped[0])
         lines.extend(f"{indent}#   {line.strip()}" for line in wrapped[1:])
     return lines
 
 
+_FORBIDDEN_NAMES: frozenset[str] = frozenset(
+    {
+        "__builtins__",
+        "__import__",
+        "breakpoint",
+        "compile",
+        "eval",
+        "exec",
+        "globals",
+        "locals",
+        "open",
+        "vars",
+    }
+)
+"""Names no emitter ever writes, and the first thing injected code reaches for."""
+
+
+def _is_docstring(node: ast.stmt) -> bool:
+    """Report whether a statement is a bare string literal.
+
+    Args:
+        node (ast.stmt): The statement to inspect.
+
+    Returns:
+        bool: ``True`` for an expression statement holding one ``str``
+        constant — a docstring, or an attribute docstring under an
+        assignment.
+    """
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
+def _expression_statement_is_expected(node: ast.Expr) -> bool:
+    """Report whether an expression statement has a shape the emitters write.
+
+    Args:
+        node (ast.Expr): The expression statement.
+
+    Returns:
+        bool: ``True`` for a docstring, and for a call, ``await`` or
+        ``yield`` whose callee is reached through names rather than through
+        a literal — ``response.raise_for_status()``,
+        ``await self._socket.close()``. Prose that escaped a docstring
+        surfaces as an operator joining two string literals
+        (``\"\"\"\"\"\"+expr+\"\"\"``) or as a method called on one, and
+        both are refused here.
+    """
+    if _is_docstring(node):
+        return True
+    value: ast.expr = node.value
+    if isinstance(value, (ast.Await, ast.Yield)) and value.value is not None:
+        value = value.value
+    if not isinstance(value, ast.Call):
+        return False
+    callee: ast.expr = value.func
+    while isinstance(callee, (ast.Attribute, ast.Call, ast.Subscript)):
+        callee = callee.func if isinstance(callee, ast.Call) else callee.value
+    return isinstance(callee, ast.Name)
+
+
+def check_generated_source(source: str, filename: str) -> None:
+    """Refuse an emitted module that holds statements no emitter writes.
+
+    Args:
+        source (str): The module source, as about to be written.
+        filename (str): Name reported in the error.
+
+    Raises:
+        SpecError: When the source does not parse; when a module, class or
+            function opens with an expression statement that is not a lone
+            string literal; when an expression statement has any other
+            shape than a docstring or a call through names; when two
+            statements share a line; when a name such as ``__import__`` or
+            ``eval`` appears; or when an f-string interpolates anything but
+            a name or a ``_path_param(name)`` call.
+
+    Defense in depth behind :func:`docstring_text` and
+    :func:`string_literal`: every specification string is already escaped
+    on the way in, and this pass is what turns a gap in that escaping into
+    a refused generation instead of a module that runs the specification
+    author's code when the consumer imports it.
+    """
+    try:
+        tree = ast.parse(source, filename=filename)
+    except SyntaxError as exc:
+        raise SpecError(
+            f"The generated {filename} does not parse ({exc.msg}, line "
+            f"{exc.lineno}). The specification text was not rendered safely."
+        ) from exc
+
+    def refuse(node: ast.AST, reason: str) -> SpecError:
+        """Build the error naming what was found and where.
+
+        Args:
+            node (ast.AST): The offending node.
+            reason (str): What the node is, for the message.
+
+        Returns:
+            SpecError: The error to raise.
+        """
+        line = getattr(node, "lineno", "?")
+        return SpecError(
+            f"The generated {filename} holds {reason} at line {line}, which "
+            "no emitter writes. Refusing to write it: the specification text "
+            "would run as code."
+        )
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(
+                node,
+                ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+            )
+            and node.body
+        ):
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and not _is_docstring(first):
+                raise refuse(first, "a docstring that is not a lone literal")
+        for field_name in ("body", "orelse", "finalbody"):
+            block = getattr(node, field_name, None)
+            if not isinstance(block, list):
+                continue
+            statements = [item for item in block if isinstance(item, ast.stmt)]
+            for previous, current in itertools.pairwise(statements):
+                end = previous.end_lineno or previous.lineno
+                if current.lineno <= end:
+                    raise refuse(current, "two statements on one line")
+        if isinstance(node, ast.Expr) and not _expression_statement_is_expected(node):
+            raise refuse(node, "an unexpected expression statement")
+        if (
+            isinstance(node, ast.Name)
+            and isinstance(node.ctx, ast.Load)
+            and node.id in _FORBIDDEN_NAMES
+        ):
+            raise refuse(node, f"a reference to `{node.id}`")
+        if isinstance(node, ast.FormattedValue):
+            value = node.value
+            is_path_param = (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == "_path_param"
+                and len(value.args) == 1
+                and not value.keywords
+                and isinstance(value.args[0], ast.Name)
+            )
+            if not (isinstance(value, ast.Name) or is_path_param):
+                raise refuse(node, "an f-string interpolating an expression")
+
+
 __all__: list[str] = [
     "MAX_LINE",
     "UNSUPPORTED_MARKER",
-    "docstring_delimiter",
+    "check_generated_source",
+    "docstring_text",
+    "docstring_title",
     "string_chunks",
     "string_literal",
     "unsupported_comment",

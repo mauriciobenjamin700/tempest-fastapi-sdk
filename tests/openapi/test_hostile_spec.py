@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import warnings
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -212,13 +213,13 @@ class TestSchemaDocstring:
 class TestClientDocstring:
     """The emitted docstring is valid, non-warning Python."""
 
-    def test_backslash_in_prose_makes_it_raw(self) -> None:
-        """``\\#`` is not a Python escape.
+    def test_backslash_in_prose_is_escaped(self) -> None:
+        """``\\#`` is not a Python escape, so the backslash is doubled.
 
-        ``W605`` before 3.12, a ``SyntaxWarning`` from it.
-
-        The generator's own ``ruff --fix`` pass adds the ``r`` prefix, so
-        this only ever failed for a caller passing ``--no-format``.
+        ``W605`` before 3.12, a ``SyntaxWarning`` from it. The emitter used
+        to switch to an ``r`` prefix instead, which cannot carry a closing
+        quote or a trailing backslash safely; escaping keeps the delimiter
+        plain and the docstring's value equal to the specification's text.
         """
         operation = OperationIR(
             name="list_charges",
@@ -233,7 +234,16 @@ class TestClientDocstring:
             success_status="204",
             error_statuses=(),
         )
-        assert _client_doc(operation)[0].startswith('        r"""')
+        lines = _client_doc(operation)
+        assert lines[0] == '        """Encode (%, \\\\#, /) before sending.'
+        source = "def probe():\n" + "\n".join(lines) + "\n"
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            module = ast.parse(source)
+        function = module.body[0]
+        assert isinstance(function, ast.FunctionDef)
+        docstring = ast.get_docstring(function, clean=False) or ""
+        assert docstring.startswith("Encode (%, \\#, /) before sending.")
 
     def test_plain_prose_is_not_raw(self) -> None:
         """The prefix is added only when something needs it."""

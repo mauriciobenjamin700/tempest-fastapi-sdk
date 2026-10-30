@@ -75,13 +75,14 @@ class FakeRevenueCatClient(_Steerable):
             current time as ``request_date``.
 
         Raises:
-            ValueError: If ``app_user_id`` is empty, as the real client does.
+            ValueError: If ``app_user_id`` is empty, ``.`` or ``..``, as the
+                real client does.
             httpx.HTTPStatusError: A ``404`` for an id nobody seeded.
             BaseException: Whatever :meth:`fail_next` queued.
         """
         self._record("get_subscriber")
-        if not app_user_id:
-            raise ValueError("app_user_id must not be empty")
+        if app_user_id in {"", ".", ".."}:
+            raise ValueError(f"invalid app_user_id: {app_user_id!r}")
         self.requested.append(app_user_id)
         subscriber = self._subscribers.get(app_user_id)
         if subscriber is None:

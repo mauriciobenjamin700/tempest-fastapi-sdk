@@ -98,6 +98,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   isso num lugar só (`_prepare_insert`, `_prepare_insert_rows`,
   `_upsert_conflict_where`, `_check_instance_write`), sem efeito na classe base.
 
+### Security
+
+- Geradores `tempest openapi-client` e `tempest asyncapi-client`: toda prosa
+  da especificação que entra numa docstring (descrição, `summary`, `title`,
+  `info.title`, `info.version`, descrição de canal) passa por um escape único
+  (`openapi.source.docstring_text`), que dobra a barra invertida e escapa as
+  aspas que poderiam fechar o delimitador. `servers[0].url` passa a sair
+  como literal escapado. Como defesa em profundidade, cada módulo emitido é
+  analisado com `ast.parse` antes de ser gravado, e a geração é recusada com
+  `SpecError` (nada é escrito) quando aparece algo que nenhum emissor
+  escreve. **Mudança de saída:** docstrings com barra invertida deixam de
+  usar o prefixo `r"""` e saem com a barra dobrada; o valor da docstring não
+  muda. Os clientes OpenPix, Mercado Pago e zap-api foram regenerados.
+- Clientes gerados (OpenPix, Mercado Pago, zap-api): `_path_param` recusa
+  `""`, `"."` e `".."` com `ValueError` antes de enviar a requisição, para
+  que um identificador nunca enderece outro recurso.
+- `StripeResource.retrieve`, `update` e `delete` codificam o `resource_id`
+  num único segmento de path (`quote(..., safe="")`) e recusam `""`, `"."` e
+  `".."` com `ValueError`; antes o id era interpolado cru.
+- `RevenueCatClient.get_subscriber` (e o `FakeRevenueCatClient`) recusam
+  também `"."` e `".."`, além do id vazio.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

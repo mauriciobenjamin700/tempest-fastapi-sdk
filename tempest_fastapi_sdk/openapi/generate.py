@@ -13,6 +13,7 @@ from tempest_fastapi_sdk.openapi.emit_schemas import emit_schemas
 from tempest_fastapi_sdk.openapi.loader import SpecError, load_spec
 from tempest_fastapi_sdk.openapi.naming import to_pascal, to_snake
 from tempest_fastapi_sdk.openapi.parse import parse_spec
+from tempest_fastapi_sdk.openapi.source import check_generated_source, docstring_title
 
 _PACKAGE_DOCSTRING = '''"""{title} integration — generated from its OpenAPI spec.
 
@@ -165,7 +166,10 @@ def generate_integration(
     Raises:
         SpecError: When the specification cannot be loaded or parsed, or
             when it declares no ``info.title`` and no ``--name`` was given
-            (there would be no way to name the package).
+            (there would be no way to name the package), or when an emitted
+            module fails
+            :func:`~tempest_fastapi_sdk.openapi.source.check_generated_source`
+            — nothing is written in that case.
     """
     document = load_spec(source, headers=headers)
 
@@ -188,16 +192,19 @@ def generate_integration(
     }
     if schemas_only:
         files["__init__.py"] = _SCHEMAS_ONLY_DOCSTRING.format(
-            title=spec.client.title,
+            title=docstring_title(spec.client.title),
             rerun="\n".join(rerun_hint(source, package_name, schemas_only=True)),
         )
     else:
         files["client.py"] = emit_client(spec.client)
         files["__init__.py"] = _PACKAGE_DOCSTRING.format(
-            title=spec.client.title,
+            title=docstring_title(spec.client.title),
             rerun="\n".join(rerun_hint(source, package_name)),
             client_class=spec.client.class_name,
         )
+
+    for filename, source_text in files.items():
+        check_generated_source(source_text, filename)
 
     result = GenerationResult(
         schema_count=len(spec.schemas),

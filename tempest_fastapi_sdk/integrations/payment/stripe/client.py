@@ -27,6 +27,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Generic
+from urllib.parse import quote
 
 from tempest_fastapi_sdk.integrations.payment.stripe.environment import (
     STRIPE_IDEMPOTENCY_HEADER,
@@ -47,6 +48,35 @@ from tempest_fastapi_sdk.integrations.payment.stripe.schemas import (
 )
 from tempest_fastapi_sdk.utils.forms import form_encode
 from tempest_fastapi_sdk.utils.http_client import HTTPClient
+
+
+def _path_segment(resource_id: str) -> str:
+    """Escape a Stripe object id into exactly one path segment.
+
+    Args:
+        resource_id (str): The object id as the caller passed it.
+
+    Returns:
+        str: The id percent-encoded with an empty ``safe`` set, so ``/``,
+        ``?`` and ``#`` are escaped instead of adding a segment, a query or
+        a fragment to the request.
+
+    Raises:
+        ValueError: When the id is empty, ``.`` or ``..``. Percent-encoding
+            leaves the dot alone and the HTTP client resolves dot segments
+            before sending, so ``/v1/customers/..`` would go out as a
+            request to ``/v1`` with the same method and the secret key.
+
+    Interpolating the id raw let it address a different object family or a
+    sub-action under the same credentials — ``../subscriptions/sub_1``
+    passed to ``customers.delete`` went out as ``DELETE
+    /v1/subscriptions/sub_1``. The generated clients enforce the same rule
+    through their ``_path_param``.
+    """
+    value = str(resource_id)
+    if value in {"", ".", ".."}:
+        raise ValueError(f"invalid Stripe object id: {value!r}")
+    return quote(value, safe="")
 
 
 class StripeError(RuntimeError):
@@ -186,11 +216,12 @@ class StripeResource(Generic[ResourceT]):
             ResourceT: The object.
 
         Raises:
+            ValueError: When ``resource_id`` is empty, ``.`` or ``..``.
             StripeError: When Stripe rejects the request, including the
                 ``404`` for an unknown id.
         """
         payload = await self._client.request(
-            "GET", f"/v1/{self.path}/{resource_id}", params=params
+            "GET", f"/v1/{self.path}/{_path_segment(resource_id)}", params=params
         )
         return self.model.model_validate(payload)
 
@@ -212,11 +243,12 @@ class StripeResource(Generic[ResourceT]):
             ResourceT: The updated object.
 
         Raises:
+            ValueError: When ``resource_id`` is empty, ``.`` or ``..``.
             StripeError: When Stripe rejects the request.
         """
         payload = await self._client.request(
             "POST",
-            f"/v1/{self.path}/{resource_id}",
+            f"/v1/{self.path}/{_path_segment(resource_id)}",
             data=params,
             idempotency_key=idempotency_key,
         )
@@ -232,9 +264,12 @@ class StripeResource(Generic[ResourceT]):
             StripeDeleted: The id and the tombstone flag.
 
         Raises:
+            ValueError: When ``resource_id`` is empty, ``.`` or ``..``.
             StripeError: When Stripe rejects the request.
         """
-        payload = await self._client.request("DELETE", f"/v1/{self.path}/{resource_id}")
+        payload = await self._client.request(
+            "DELETE", f"/v1/{self.path}/{_path_segment(resource_id)}"
+        )
         return StripeDeleted.model_validate(payload)
 
     async def list(

@@ -375,6 +375,11 @@ asyncio.run(main())
     `tempest integrations verify revenuecat` sai com código 2 sem chamar
     nada: verificar a chave por essa rota criaria um cliente.
 
+O `app_user_id` vai para o path codificado num segmento só, e `""`, `"."` e
+`".."` levantam `ValueError` antes de qualquer requisição — o ponto não é
+escapado, e até a v0.334.0 `".."` subia um nível no path com a chave secreta.
+O `FakeRevenueCatClient` recusa os mesmos três.
+
 Para teste, `FakeRevenueCatClient` responde o que você semear e falha quando
 você mandar:
 

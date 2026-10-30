@@ -22,6 +22,9 @@ from __future__ import annotations
 from tempest_fastapi_sdk.asyncapi.ir import MessageIR, StreamIR
 from tempest_fastapi_sdk.openapi.naming import to_snake
 from tempest_fastapi_sdk.openapi.source import (
+    docstring_title as _docstring_title,
+)
+from tempest_fastapi_sdk.openapi.source import (
     string_literal as _string_literal,
 )
 from tempest_fastapi_sdk.openapi.source import (
@@ -136,8 +139,8 @@ def emit_stream(stream: StreamIR, *, schemas_module: str) -> str:
     payloads = sorted({m.class_name for m in (*inbound, *outbound)})
 
     lines: list[str] = [
-        f'"""Typed WebSocket client generated from the {stream.title} '
-        f"AsyncAPI document.",
+        f'"""Typed WebSocket client generated from the '
+        f"{_docstring_title(stream.title)} AsyncAPI document.",
         "",
         "Do not edit by hand — rerun the generator to refresh.",
         "",
@@ -420,7 +423,8 @@ def _stream_class(
                 "",
                 "        Raises:",
                 f"            {stream.class_name}FrameError: For a frame whose",
-                f"                `{inbound_tag}` the document does not declare.",
+                f"                `{_docstring_title(inbound_tag)}` the document "
+                "does not declare.",
                 '        """',
                 "        raw: Any = json.loads(await self.socket.recv())",
                 f"        tag = raw.get({tag}) if isinstance(raw, dict) else None",

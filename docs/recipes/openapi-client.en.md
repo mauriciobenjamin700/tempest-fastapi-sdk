@@ -521,10 +521,10 @@ from tempest_fastapi_sdk import BaseSchema
 
 
 class Charge(BaseSchema):
-    r"""Schema generated for Charge.
+    """Schema generated for Charge.
 
     Attributes:
-        reference (str): Encode the characters (%, \#, /) before sending, because the
+        reference (str): Encode the characters (%, \\#, /) before sending, because the
             gateway rejects the request and the error it answers with does not say which
             character was at fault.
         field_2fa (bool | None): Undocumented in the spec.
@@ -549,8 +549,10 @@ class Charge(BaseSchema):
 
 Four decisions in that output, none of them obvious:
 
-1. **The docstring became `r"""`.** `\#` is not a Python escape: without the
-   `r`, that is `W605` in the lint and a `SyntaxWarning` from 3.12 on.
+1. **The docstring's backslash came out doubled (`\\#`).** `\#` is not a
+   Python escape: left as is, that is `W605` in the lint and a
+   `SyntaxWarning` from 3.12 on. The docstring still reads `\#` to whoever
+   opens it with `help()`.
 2. **The `title` came out single-quoted**, despite the project's double-quote
    rule.
 3. **The `description` was split into adjacent literals** rather than left on a
@@ -582,11 +584,27 @@ Summing up what the emitter guarantees for any text the spec carries:
 
 | In the spec | In the generated code |
 | --- | --- |
-| A backslash (`\#`, `\b`, `\x41`) | Escaped in the literal, and the docstring becomes `r"""` |
+| A backslash (`\#`, `\b`, `\x41`) | Escaped in the literal and in the docstring (`\\#`) |
+| `"""`, or quotes touching each other, in a docstring | Escaped (`\"\"\"`): the text never closes the docstring |
 | Line break, tab, control character | `\n` / `\t` / `\xNN` in the literal |
 | `"quotes"` in the text | A **single**-quoted literal |
 | An over-long description | Split into two or more adjacent literals |
 | An over-long enum value | Split the same way, and the member **name** is shortened — the value, never |
+
+!!! info "The spec is third-party code reaching your import"
+    A docstring is source, not data. Up to v0.334.0, a description holding
+    `"""` closed the docstring and the rest of the sentence became Python,
+    run when your service imported the generated package. Now every piece of
+    spec prose (description, `summary`, `title`, `info.title`) goes through
+    the same escaping before it lands between triple quotes, and
+    `servers[0].url` becomes an escaped literal.
+
+    On top of that, the generator runs `ast.parse` on every module before
+    writing it and **refuses the generation** (`SpecError`, nothing written)
+    when it finds something no emitter writes: a docstring that is not a lone
+    literal, two statements on one line, a reference to
+    `__import__`/`eval`/`exec`, or an f-string interpolating anything other
+    than `_path_param(name)`.
 
 ### Long names and the line budget
 
@@ -653,6 +671,14 @@ declares:
     the floor. And an undeclared placeholder **cannot** be skipped — the path is
     an f-string, so the module would reference a name that does not exist and
     would not even import.
+
+!!! info "The value you pass becomes exactly one segment"
+    Every path parameter goes through `_path_param`, which encodes with
+    `quote(..., safe="")`: `/`, `?` and `#` stay inside the segment. The dot
+    is not escaped, and `httpx` resolves `.` and `..` before sending — so
+    `get_charge("..")` went out as `GET /api/v1`, with your credentials, up
+    to v0.334.0. Now `""`, `"."` and `".."` raise `ValueError` before any
+    request is made.
 
 !!! danger "Every one of these repairs shows up in the summary"
     Dropping one parameter and synthesizing another are decisions about the

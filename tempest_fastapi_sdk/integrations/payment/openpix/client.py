@@ -272,14 +272,25 @@ def _path_param(value: Any) -> str:
         included, because an identifier is one segment and must
         not become two.
 
+    Raises:
+        ValueError: When the value is empty, ``.`` or ``..``.
+
     Without this, a reserved character does not fail: it
     *retargets*. ``order#42`` interpolated raw yields
     ``/charge/order#42``, whose fragment the HTTP client never
     sends — so the request addresses ``/charge/order``, and on a
     ``DELETE`` route that is a destructive call against a
-    different resource.
+    different resource. Percent-encoding cannot cover the dot
+    segments: ``quote`` leaves ``.`` alone and the HTTP client
+    resolves ``..`` before sending, so ``/charge/..`` would go
+    out as a request to the parent path, with the same method
+    and credentials. An empty value collapses the segment the
+    same way, so the three are refused instead.
     """
-    return quote(str(_param(value)), safe="")
+    text = str(_param(value))
+    if text in {"", ".", ".."}:
+        raise ValueError(f"invalid path segment: {text!r}")
+    return quote(text, safe="")
 
 
 class OpenPixClient:
@@ -1115,12 +1126,12 @@ class OpenPixClient:
         self,
         id: str,
     ) -> GetChargeResponse:
-        r"""Get one charge.
+        """Get one charge.
 
         Args:
             id (str): charge ID or correlation ID. You will need URI encoding if your
                 correlation ID has characters outside the ASCII set or reserved
-                characters (%, \#, /).
+                characters (%, \\#, /).
 
         Returns:
             GetChargeResponse: The 200 response body, validated.
@@ -1143,11 +1154,11 @@ class OpenPixClient:
         *,
         body: ChargePatchPayload,
     ) -> UpdateChargeResponse:
-        r"""Edit expiration date of a charge.
+        """Edit expiration date of a charge.
 
         Args:
             id (str): correlation ID. You will need URI encoding if your correlation ID
-                has characters outside the ASCII set or reserved characters (%, \#, /).
+                has characters outside the ASCII set or reserved characters (%, \\#, /).
             body (ChargePatchPayload): The request body.
 
         Returns:
@@ -1171,12 +1182,12 @@ class OpenPixClient:
         self,
         id: str,
     ) -> DeleteChargeResponse:
-        r"""Delete a charge.
+        """Delete a charge.
 
         Args:
             id (str): charge ID or correlation ID. You will need URI encoding if your
                 correlation ID has characters outside the ASCII set or reserved
-                characters (%, \#, /).
+                characters (%, \\#, /).
 
         Returns:
             DeleteChargeResponse: The 200 response body, validated.
@@ -1197,14 +1208,14 @@ class OpenPixClient:
         self,
         id: str,
     ) -> ListChargeRefundsResponse:
-        r"""Get all refunds of a charge.
+        """Get all refunds of a charge.
 
         Endpoint to get all refunds of a charge
 
         Args:
             id (str): The correlation ID of the charge. You will need URI encoding if
                 your correlation ID has characters outside the ASCII set or reserved
-                characters (%, \#, /).
+                characters (%, \\#, /).
 
         Returns:
             ListChargeRefundsResponse: The 200 response body, validated.
@@ -1227,14 +1238,14 @@ class OpenPixClient:
         *,
         body: ChargeRefundPayload,
     ) -> RefundChargeResponse:
-        r"""Create a new refund for a charge.
+        """Create a new refund for a charge.
 
         Endpoint to create a new refund for a charge
 
         Args:
             id (str): The correlation ID of the charge. You will need URI encoding if
                 your correlation ID has characters outside the ASCII set or reserved
-                characters (%, \#, /).
+                characters (%, \\#, /).
             body (ChargeRefundPayload): The request body.
 
         Returns:
