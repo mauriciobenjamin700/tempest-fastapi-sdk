@@ -232,7 +232,12 @@ TTL é gerenciado pelo Redis automaticamente — sem janitor process.
 
 ### Customizado
 
-Qualquer classe que implemente o protocol `SessionStore` (5 métodos async) plugga out-of-the-box — DynamoDB, Postgres table, Memcached, etc.
+Qualquer classe que implemente o protocol `SessionStore` (6 métodos async: `get`, `set`, `touch`, `delete`, `delete_by_user` e `list_by_user`) plugga out-of-the-box — DynamoDB, Postgres table, Memcached, etc.
+
+O `touch(session) -> bool` é o que faz a revogação valer contra uma requisição em voo. O `SessionAuth.resolve` lê a sessão e grava de volta o `last_seen_at` (e o `expires_at` novo, com `SESSION_SLIDING`) por ele, não pelo `set`. O contrato é: atualizar **só se a chave ainda existe**, numa operação atômica, sem re-adicionar a sessão ao índice do usuário, e devolver `False` quando ela sumiu — o `resolve` então devolve `None`. No `RedisSessionStore` isso é um único `SET ... XX`. Sem ele, um `logout` ou `revoke_all` que caia entre a leitura e a escrita é desfeito: a escrita recria a sessão com TTL novo.
+
+!!! warning "Store customizado sem `touch`"
+    Um store escrito antes do `touch` continua funcionando: o `resolve` cai no `set` e emite um `DeprecationWarning`, porque esse caminho não consegue impedir que uma sessão revogada volte. Implemente o `touch` para fechar a janela.
 
 ---
 

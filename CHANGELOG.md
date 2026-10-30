@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `SessionAuth.resolve` grava o refresh da sessão (`last_seen_at` e, com
+  `SESSION_SLIDING`, o `expires_at`) pelo novo `SessionStore.touch`, que
+  atualiza só uma sessão que ainda existe. Antes era um `set` incondicional, e
+  uma requisição que leu a sessão antes de um `revoke` / `revoke_all` a recriava
+  depois dele. `MemorySessionStore.touch` confere a existência sob o lock;
+  `RedisSessionStore.touch` é um único `SET ... XX` e não re-adiciona a sessão
+  ao índice do usuário. O `resolve` devolve `None` quando o `touch` responde
+  `False`. Store customizado sem `touch` continua funcionando pelo `set`, com um
+  `DeprecationWarning` — o protocolo `SessionStore` agora declara seis métodos.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

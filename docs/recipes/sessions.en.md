@@ -230,7 +230,12 @@ Redis handles TTL automatically — no janitor process needed.
 
 ### Custom
 
-Any class that implements the `SessionStore` protocol (5 async methods) plugs in out of the box — DynamoDB, a Postgres table, Memcached, etc.
+Any class that implements the `SessionStore` protocol (6 async methods: `get`, `set`, `touch`, `delete`, `delete_by_user` and `list_by_user`) plugs in out of the box — DynamoDB, a Postgres table, Memcached, etc.
+
+`touch(session) -> bool` is what makes revocation hold against a request already in flight. `SessionAuth.resolve` reads the session and writes `last_seen_at` (and the new `expires_at`, under `SESSION_SLIDING`) back through it, not through `set`. The contract: update **only if the key still exists**, in one atomic operation, without re-adding the session to the user index, and return `False` when it is gone — `resolve` then returns `None`. In `RedisSessionStore` that is a single `SET ... XX`. Without it, a `logout` or `revoke_all` that lands between the read and the write is undone: the write re-creates the session with a fresh TTL.
+
+!!! warning "Custom store without `touch`"
+    A store written before `touch` keeps working: `resolve` falls back to `set` and emits a `DeprecationWarning`, because that path cannot stop a revoked session from coming back. Implement `touch` to close the window.
 
 ---
 
