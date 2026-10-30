@@ -34,6 +34,7 @@ from tempest_fastapi_sdk.webpush import dispatcher as dispatcher_module  # noqa:
 from tempest_fastapi_sdk.webpush.dispatcher import (  # noqa: E402
     DEFAULT_WEBPUSH_TIMEOUT,
     WebPushDispatcher,
+    WebPushEndpointRefusedError,
     WebPushError,
 )
 from tempest_fastapi_sdk.webpush.schemas import (  # noqa: E402
@@ -213,9 +214,10 @@ class TestNonPublicEndpointsAreRefused:
         assert recorder.calls == []
 
     @pytest.mark.asyncio
-    async def test_send_many_logs_a_refused_endpoint_without_pruning(
+    async def test_send_many_prunes_an_internal_ip_literal_endpoint(
         self, recorder: _Recorder
     ) -> None:
+        """A non-public IP literal can never be delivered, so it is pruned."""
         dispatcher = WebPushDispatcher(
             "priv",
             vapid_subject="mailto:ops@x.com",
@@ -225,10 +227,39 @@ class TestNonPublicEndpointsAreRefused:
             [_subscription("https://10.0.0.1/a"), _subscription("https://ok.test/b")],
             "p",
         )
-        assert gone == []
+        assert gone == ["https://10.0.0.1/a"]
         assert [c["subscription_info"]["endpoint"] for c in recorder.calls] == [
             "https://ok.test/b"
         ]
+
+    @pytest.mark.asyncio
+    async def test_send_many_keeps_an_endpoint_refused_by_a_dns_answer(
+        self, recorder: _Recorder
+    ) -> None:
+        """A DNS answer can change, so that refusal is logged, not pruned."""
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+        )
+        gone = await dispatcher.send_many([_subscription("https://push.test/a")], "p")
+        assert gone == []
+        assert recorder.calls == []
+
+    @pytest.mark.asyncio
+    async def test_refusals_say_whether_they_are_permanent(self) -> None:
+        """Literal and scheme refusals are permanent; DNS refusals are not."""
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+        )
+        with pytest.raises(WebPushEndpointRefusedError) as literal:
+            await dispatcher.check_endpoint("https://127.0.0.1/x")
+        assert literal.value.permanent is True
+        with pytest.raises(WebPushEndpointRefusedError) as answer:
+            await dispatcher.check_endpoint("https://push.test/x")
+        assert answer.value.permanent is False
 
     @pytest.mark.asyncio
     async def test_allow_private_networks_opts_out(self, recorder: _Recorder) -> None:

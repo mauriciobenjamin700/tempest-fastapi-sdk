@@ -129,6 +129,14 @@ Pronto: `POST /api/push/register`, `POST /api/push/unregister` e
     com a assinatura antiga (sem `user_id`), o router confere a posse por
     `list_for_user` antes de chamar o seu override.
 
+!!! info "Endpoint web interno é recusado no `/register`"
+    Um registro `web` passa pelo dispatcher do `WebPushTransport` antes de
+    ser gravado (`WebPushDispatcher.check_endpoint`): endpoint que não é
+    `https`, ou que é ou resolve para loopback, rede privada ou link-local,
+    responde `422 PUSH_ENDPOINT_NOT_PUBLIC`. É a mesma regra do envio, com o
+    mesmo `allow_private_networks` — detalhes em
+    [Web Push](webpush.md#para-onde-o-envio-vai).
+
 ### 4. Notificar
 
 ```python

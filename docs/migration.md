@@ -7,6 +7,7 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 | Onde | O que muda | O que fazer |
 | --- | --- | --- |
 | `SSEBroker` com Redis | Com o `channel_prefix` default `"sse"`, a construção registra um `WARNING`: o pub/sub do Redis ignora o índice de DB, e outro serviço na mesma instância com o mesmo prefixo troca eventos com este | Passe um `channel_prefix` próprio do serviço (`"orders-api:sse"`) em todo worker ao mesmo tempo — workers com prefixos diferentes não se enxergam |
+| Inscrição Web Push (`WebPushSubscriptionService.subscribe`, `make_web_push_router`, registro `web` do `make_push_router`) | Endpoint que é ou resolve para endereço não público responde `422 PUSH_ENDPOINT_NOT_PUBLIC` e não é gravado; o `send_many` devolve para poda o endpoint gravado antes com IP literal não público | Nada, se o push service é público. Push service próprio na rede interna: `allow_private_networks=True` no `WebPushDispatcher` abre inscrição e envio juntos |
 
 ## 0.335.0 — `BaseUserModel` ganha a coluna `email_verified_at`
 

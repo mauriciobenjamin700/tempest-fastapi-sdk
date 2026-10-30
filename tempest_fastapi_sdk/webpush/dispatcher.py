@@ -134,6 +134,40 @@ class WebPushGoneError(WebPushError):
     """
 
 
+class WebPushEndpointRefusedError(WebPushError):
+    """Raised when the egress policy refuses a subscription endpoint.
+
+    The endpoint is not an ``https`` URL, or (unless the dispatcher allows
+    private networks) it names or resolves to a loopback, private,
+    link-local or otherwise non-public address. No request was sent.
+
+    Attributes:
+        permanent (bool): ``True`` when the refusal follows from the URL
+            itself — the scheme, or a host that is an IP literal — so no
+            later attempt can succeed. ``False`` when it follows from a DNS
+            answer, which can change: a resolver that maps a real push
+            service to an internal proxy refuses every endpoint at once,
+            and the store must not lose them all over a configuration slip.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        endpoint: str | None = None,
+        permanent: bool,
+    ) -> None:
+        """Initialize the refusal.
+
+        Args:
+            message (str): Human-readable description.
+            endpoint (str | None): Subscription endpoint, when known.
+            permanent (bool): Whether the URL alone decided the refusal.
+        """
+        super().__init__(message, endpoint=endpoint)
+        self.permanent: bool = permanent
+
+
 def _require_pywebpush() -> Any:
     """Import :mod:`pywebpush` lazily.
 
@@ -344,9 +378,10 @@ class WebPushDispatcher:
             an IP literal).
 
         Raises:
-            WebPushError: When the endpoint is not ``https`` with a host,
-                cannot be resolved, or (unless private networks are
-                allowed) any resolved address is not public.
+            WebPushEndpointRefusedError: When the endpoint is not ``https``
+                with a host, or (unless private networks are allowed) its
+                IP literal or any resolved address is not public.
+            WebPushError: When the endpoint host cannot be resolved.
         """
         masked = _mask_endpoint(endpoint)
         try:
@@ -356,9 +391,10 @@ class WebPushDispatcher:
         except ValueError:
             scheme, host = "", None
         if scheme != "https" or not host:
-            raise WebPushError(
+            raise WebPushEndpointRefusedError(
                 f"Refused Web Push endpoint {masked}: not an https URL",
                 endpoint=endpoint,
+                permanent=True,
             )
         if self.allow_private_networks:
             return host, None
@@ -368,9 +404,10 @@ class WebPushDispatcher:
             literal = None
         if literal is not None:
             if not is_public_address(literal):
-                raise WebPushError(
+                raise WebPushEndpointRefusedError(
                     f"Refused Web Push endpoint {masked}: non-public address",
                     endpoint=endpoint,
+                    permanent=True,
                 )
             return host, None
         try:
@@ -381,11 +418,31 @@ class WebPushDispatcher:
                 endpoint=endpoint,
             ) from exc
         if not addresses or not all(is_public_address(a) for a in addresses):
-            raise WebPushError(
+            raise WebPushEndpointRefusedError(
                 f"Refused Web Push endpoint {masked}: non-public address",
                 endpoint=endpoint,
+                permanent=False,
             )
         return host, str(addresses[0]).split("%", 1)[0]
+
+    async def check_endpoint(self, endpoint: str) -> None:
+        """Apply the egress check a dispatch applies, without sending.
+
+        The same scheme, public-address and ``allow_private_networks``
+        rules as :meth:`send`, through the same ``resolver``, so a
+        subscription refused here is exactly one :meth:`send` would refuse.
+        :func:`~tempest_fastapi_sdk.webpush.make_web_push_router` calls it
+        before storing an endpoint; the switch that lets a self-hosted push
+        service through stays one switch, on the dispatcher.
+
+        Args:
+            endpoint (str): The subscription endpoint to judge.
+
+        Raises:
+            WebPushEndpointRefusedError: When the endpoint is refused.
+            WebPushError: When the endpoint host cannot be resolved.
+        """
+        await self._pin_destination(endpoint)
 
     async def send(
         self,
@@ -412,9 +469,11 @@ class WebPushDispatcher:
                 subscription as dead — ``404``/``410`` anywhere, plus
                 ``400`` from WNS, which is how Edge's push service spells
                 it. See :func:`_is_gone`.
+            WebPushEndpointRefusedError: When the egress check refuses the
+                endpoint (non-public address, not ``https``); no request is
+                sent.
             WebPushError: For any other delivery failure, including an
-                endpoint refused by the egress check (non-public address,
-                not ``https``), a redirect answer, a timeout and a
+                unresolvable host, a redirect answer, a timeout and a
                 connection error.
         """
         pywebpush = _require_pywebpush()
@@ -489,11 +548,15 @@ class WebPushDispatcher:
         """Fan out a single payload to many subscriptions.
 
         Dispatches run concurrently via :func:`asyncio.gather`. Only
-        subscriptions the push service reports as dead are returned — the
-        list is what :meth:`prune` consumes, so an endpoint that failed
-        for a transient reason must not be in it. Every other failure is
-        logged and dropped: a delivery that failed once is not a device
-        that went away.
+        subscriptions that can never be delivered are returned — the ones
+        the push service reports as dead, and the ones the egress check
+        refuses permanently (see
+        :attr:`WebPushEndpointRefusedError.permanent`: not ``https``, or an
+        IP-literal host that is not public). The list is what
+        :meth:`prune` consumes, so an endpoint that failed for a transient
+        reason must not be in it: a refusal decided by a DNS answer is
+        logged and kept, like every other failure, because a delivery that
+        failed once is not a device that went away.
 
         Args:
             subscriptions (list[WebPushSubscriptionSchema]): Recipients.
@@ -525,6 +588,15 @@ class WebPushDispatcher:
                 await self.send(sub, payload, ttl_seconds=ttl_seconds, headers=headers)
             except WebPushGoneError:
                 gone.append(sub.endpoint)
+            except WebPushEndpointRefusedError as exc:
+                if exc.permanent:
+                    gone.append(sub.endpoint)
+                    return
+                logger.warning(
+                    "Web Push send failed for %s: %s",
+                    _mask_endpoint(sub.endpoint),
+                    exc,
+                )
             except WebPushError as exc:
                 logger.warning(
                     "Web Push send failed for %s: %s",
@@ -545,6 +617,7 @@ class WebPushDispatcher:
 
 __all__: list[str] = [
     "WebPushDispatcher",
+    "WebPushEndpointRefusedError",
     "WebPushError",
     "WebPushGoneError",
 ]

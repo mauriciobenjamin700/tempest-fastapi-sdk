@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serviços na mesma instância com o mesmo prefixo recebem os eventos uns dos
   outros. O default continua `"sse"` por compatibilidade; a receita de SSE
   passa a usar um prefixo próprio do serviço.
+- Web Push: `WebPushSubscriptionService.subscribe` (e, por ele, o
+  `POST /subscribe` do `make_web_push_router`) e o registro `web` do
+  `DeviceService.register` / `make_push_router` recusam com
+  `422 PUSH_ENDPOINT_NOT_PUBLIC` o endpoint que o dispatcher recusaria na
+  entrega — não `https`, ou com host que é ou resolve para endereço não
+  público. A checagem é o novo `WebPushDispatcher.check_endpoint`, com o
+  mesmo `resolver` e o mesmo `allow_private_networks` do envio; host que não
+  resolve no momento é aceito. Novos símbolos: `WebPushEndpointRefusedError`
+  (subclasse de `WebPushError`, com `permanent`) e
+  `PushEndpointNotPublicException`. Mudança de comportamento: o
+  `send_many` passa a devolver para poda o endpoint recusado de forma
+  permanente (não `https`, ou IP literal não público), e o
+  `WebPushTransport` o traduz em `PushDeviceGoneError`; recusa decidida por
+  resposta de DNS continua só no log (#660).
 
 ## [0.335.0] — 2026-10-30
 

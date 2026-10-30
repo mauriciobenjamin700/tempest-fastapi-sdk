@@ -499,6 +499,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
 ::: tempest_fastapi_sdk.exceptions.validation.OrderByNotAllowedException
 ::: tempest_fastapi_sdk.exceptions.validation.PageSizeTooLargeException
+::: tempest_fastapi_sdk.exceptions.validation.PushEndpointNotPublicException
 ::: tempest_fastapi_sdk.exceptions.validation.UnknownFilterKeyException
 ::: tempest_fastapi_sdk.exceptions.validation.InvalidFilterValueException
 ::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
@@ -1503,6 +1504,7 @@ então importar o namespace não constrói nenhum modelo.
 ### `tempest_fastapi_sdk.webpush`
 
 ::: tempest_fastapi_sdk.webpush.dispatcher.WebPushDispatcher
+::: tempest_fastapi_sdk.webpush.dispatcher.WebPushEndpointRefusedError
 ::: tempest_fastapi_sdk.webpush.service.WebPushSubscriptionService
 ::: tempest_fastapi_sdk.webpush.router.make_web_push_router
 ::: tempest_fastapi_sdk.db.webpush_subscription_model.BaseWebPushSubscriptionModel

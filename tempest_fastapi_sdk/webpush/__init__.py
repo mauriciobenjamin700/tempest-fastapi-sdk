@@ -4,6 +4,9 @@ from tempest_fastapi_sdk.webpush.dispatcher import (
     WebPushDispatcher as WebPushDispatcher,
 )
 from tempest_fastapi_sdk.webpush.dispatcher import (
+    WebPushEndpointRefusedError as WebPushEndpointRefusedError,
+)
+from tempest_fastapi_sdk.webpush.dispatcher import (
     WebPushError as WebPushError,
 )
 from tempest_fastapi_sdk.webpush.dispatcher import (
@@ -27,6 +30,7 @@ from tempest_fastapi_sdk.webpush.service import (
 
 __all__: list[str] = [
     "WebPushDispatcher",
+    "WebPushEndpointRefusedError",
     "WebPushError",
     "WebPushGoneError",
     "WebPushKeysSchema",
