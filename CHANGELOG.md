@@ -7,18 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- A ordem das bases ensinada para os mixins tipados como `BaseModel`
-  (`ZapInboundMessageMixin`, `ZapDeliveryMixin`, `ArtifactVersionMixin`) passa
-  a ser `class M(Mixin, BaseModel)`. A forma documentada até a 0.334.0,
-  `class M(BaseModel, Mixin)`, é conflito de metaclass e MRO no mypy de quem
-  consome, e o `BaseRepository[M]` deixa de aceitar o model. Docstrings, as
-  receitas `zap-inbound` e `artifact-registry` (PT + EN) e os testes usam a
-  ordem nova; em runtime as duas ordens funcionam.
-- `tests/test_docs_type_guard.py` lê também o código `metaclass` do mypy, e
-  um teste prova que ele dispara na ordem que shippou.
-
 ### Security
 
 - `AccessLogMiddleware` esconde por padrão as credenciais que o próprio SDK põe
@@ -54,9 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ao índice do usuário. O `resolve` devolve `None` quando o `touch` responde
   `False`. Store customizado sem `touch` continua funcionando pelo `set`, com um
   `DeprecationWarning` — o protocolo `SessionStore` agora declara seis métodos.
-
-### Security
-
 - `@cached`: o key builder padrão codifica cada argumento pelo dado, não por
   `str()`. Model Pydantic entra com todos os campos (`SecretStr` como hash do
   segredo, `Field(repr=False)` incluído), dataclass com os campos, e `UUID` /
@@ -97,9 +82,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trocado (`ValueError`). O `BaseRepository` ganha os hooks privados que fazem
   isso num lugar só (`_prepare_insert`, `_prepare_insert_rows`,
   `_upsert_conflict_where`, `_check_instance_write`), sem efeito na classe base.
-
-### Security
-
 - Geradores `tempest openapi-client` e `tempest asyncapi-client`: toda prosa
   da especificação que entra numa docstring (descrição, `summary`, `title`,
   `info.title`, `info.version`, descrição de canal) passa por um escape único
@@ -119,9 +101,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `".."` com `ValueError`; antes o id era interpolado cru.
 - `RevenueCatClient.get_subscriber` (e o `FakeRevenueCatClient`) recusam
   também `"."` e `".."`, além do id vazio.
-
-### Security
-
 - Áudio enviado ao `SpeechToText`, ao `SpeakerDiarizer` e ao `VoiceEmbedder`
   agora passa por um decodificador limitado compartilhado
   (`tempest_fastapi_sdk.genai.audio.decoding.load_audio`). A taxa de
@@ -146,9 +125,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `path="<unmatched>"` (antes, o path cru) e método fora dos padrões HTTP com
   `method="OTHER"`, então o número de séries não cresce com valores escolhidos
   pelo cliente.
-
-### Security
-
 - `WebPushDispatcher` passa a tratar o `endpoint` da inscrição como destino
   não confiável: o host precisa resolver só para endereços públicos (a mesma
   regra do `ContentExtractor`, agora num helper compartilhado), a conexão vai
@@ -178,9 +154,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pg_dump` que falha não deixa arquivo para trás. O `.gitignore` e o
   `.dockerignore` do `tempest new` passam a ignorar `backups/`, `*.dump` e
   `*.sqlite`. Projetos já gerados precisam acrescentar essas linhas à mão.
-
-### Security
-
 - Admin: `access_policy` now covers what one model's page renders or writes
   of another. An inline table needs `VIEW` on the child (a child with no
   registered admin is asked about through a throwaway `AdminModel`); the
@@ -207,9 +180,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Admin: the CSV export prefixes a text cell starting with `=`, `+`, `-`,
   `@`, tab or CR with `'`, so spreadsheets do not evaluate it as a formula.
   The JSON export is unchanged.
-
-### Security
-
 - **Login social só cria conta com e-mail verificado.** O callback de OAuth
   (`/auth/oauth/{provider}/callback` e `/auth/oauth/{provider}/token`) passa a
   exigir `email_verified is True` também para **criar** conta, não só para
@@ -241,9 +211,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolver de JWT que só admite access token (estrito por padrão), fechando o
   handshake com `4401` para refresh, MFA pendente e ticket de stream. A
   receita de WebSocket passa a usá-lo no lugar do resolver escrito à mão.
-
-### Security
-
 - Sob `ENV=production`, nenhum fluxo de auth devolve link de e-mail no corpo
   da resposta. `AuthSettings.production_violations()` passa a recusar
   `AUTH_RETURN_TOKEN_IN_RESPONSE=true` (independente de `EMAIL_ENABLED`), e um
@@ -270,16 +237,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A rotação do refresh token DB-backed é decidida num único `UPDATE`
   condicional: duas redenções concorrentes do mesmo token rendem um par novo
   e um `401` que revoga a família.
-
-### Fixed
-
-- A mensagem de `ACCOUNT_INACTIVE`, a docstring de `request_activation` e a
-  receita do CLI dizem o que acontece: desativar bloqueia o login, mas o dono
-  reativa a conta pelo link de ativação; banimento definitivo é o
-  `refuses_email_link`.
-
-### Security
-
 - `WebhookSignatureVerifier` levanta `ValueError` quando o segredo é vazio
   ou só espaços, e `make_stripe_webhook_dependency` faz o mesmo na montagem;
   `stripe.verify_signature` devolve `False` para segredo vazio. Antes, um
@@ -338,6 +295,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de 1 s. Antes, o fechamento esperava o handshake do cliente com o lock do
   hub preso, e um cliente que não respondia segurava `send_to`, `broadcast`
   e `register` de todos os usuários do processo.
+
+### Fixed
+
+- A ordem das bases ensinada para os mixins tipados como `BaseModel`
+  (`ZapInboundMessageMixin`, `ZapDeliveryMixin`, `ArtifactVersionMixin`) passa
+  a ser `class M(Mixin, BaseModel)`. A forma documentada até a 0.334.0,
+  `class M(BaseModel, Mixin)`, é conflito de metaclass e MRO no mypy de quem
+  consome, e o `BaseRepository[M]` deixa de aceitar o model. Docstrings, as
+  receitas `zap-inbound` e `artifact-registry` (PT + EN) e os testes usam a
+  ordem nova; em runtime as duas ordens funcionam.
+- `tests/test_docs_type_guard.py` lê também o código `metaclass` do mypy, e
+  um teste prova que ele dispara na ordem que shippou.
+- A mensagem de `ACCOUNT_INACTIVE`, a docstring de `request_activation` e a
+  receita do CLI dizem o que acontece: desativar bloqueia o login, mas o dono
+  reativa a conta pelo link de ativação; banimento definitivo é o
+  `refuses_email_link`.
 
 ## [0.334.0] — 2026-10-29
 
