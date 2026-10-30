@@ -338,6 +338,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A mensagem de `ACCOUNT_INACTIVE`, a docstring de `request_activation` e a
+  receita do CLI dizem o que acontece: desativar bloqueia o login, mas o dono
+  reativa a conta pelo link de ativação; banimento definitivo é o
+  `refuses_email_link`.
+
+## [0.334.1] — 2026-10-29
+
+### Fixed
+
 - A ordem das bases ensinada para os mixins tipados como `BaseModel`
   (`ZapInboundMessageMixin`, `ZapDeliveryMixin`, `ArtifactVersionMixin`) passa
   a ser `class M(Mixin, BaseModel)`. A forma documentada até a 0.334.0,
@@ -347,10 +356,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordem nova; em runtime as duas ordens funcionam.
 - `tests/test_docs_type_guard.py` lê também o código `metaclass` do mypy, e
   um teste prova que ele dispara na ordem que shippou.
-- A mensagem de `ACCOUNT_INACTIVE`, a docstring de `request_activation` e a
-  receita do CLI dizem o que acontece: desativar bloqueia o login, mas o dono
-  reativa a conta pelo link de ativação; banimento definitivo é o
-  `refuses_email_link`.
 
 ## [0.334.0] — 2026-10-29
 
