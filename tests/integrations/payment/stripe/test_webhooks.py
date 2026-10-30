@@ -252,3 +252,36 @@ def test_window_edges_are_inclusive(tolerance: int) -> None:
         verify_signature(BODY, past_edge, SECRET, tolerance_seconds=tolerance, now=NOW)
         is False
     )
+
+
+class TestEmptySecretFailsClosed:
+    """An unset signing secret must never verify a delivery."""
+
+    @staticmethod
+    def _empty_key_header() -> str:
+        """Sign ``BODY`` the way Stripe would under an empty key.
+
+        Returns:
+            str: A ``Stripe-Signature`` value computed with ``b""`` as key.
+        """
+        digest = hmac.new(b"", f"{NOW}.".encode() + BODY, hashlib.sha256).hexdigest()
+        return f"t={NOW},v1={digest}"
+
+    @pytest.mark.parametrize("secret", ["", "   "])
+    def test_verify_signature_refuses_empty_secret(self, secret: str) -> None:
+        """A digest under the empty key is computable by anyone.
+
+        Args:
+            secret (str): An empty or blank secret.
+        """
+        assert verify_signature(BODY, self._empty_key_header(), secret, now=NOW) is False
+
+    @pytest.mark.parametrize("secret", ["", "   "])
+    def test_dependency_refuses_to_build(self, secret: str) -> None:
+        """The recipe's ``""`` default fails at boot, not at the first forgery.
+
+        Args:
+            secret (str): An empty or blank secret.
+        """
+        with pytest.raises(ValueError, match="non-empty"):
+            make_stripe_webhook_dependency(secret)

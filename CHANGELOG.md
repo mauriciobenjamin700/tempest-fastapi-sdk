@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `WebhookSignatureVerifier` levanta `ValueError` quando o segredo é vazio
+  ou só espaços, e `make_stripe_webhook_dependency` faz o mesmo na montagem;
+  `stripe.verify_signature` devolve `False` para segredo vazio. Antes, um
+  `STRIPE_WEBHOOK_SECRET` não configurado (o default `""` da receita)
+  verificava contra uma chave vazia. **Mudança de comportamento:** serviço
+  que montava o verificador com segredo vazio passa a falhar no boot.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

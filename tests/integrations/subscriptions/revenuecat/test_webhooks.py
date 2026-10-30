@@ -11,6 +11,8 @@ the status code asserted is the one RevenueCat would see.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -220,7 +222,8 @@ class TestSignature:
 
     def test_an_empty_signing_secret_refuses_everything(self) -> None:
         body = _body()
-        header = sign_payload(body, "", timestamp=1_000)
+        digest = hmac.new(b"", b"1000." + body, hashlib.sha256).hexdigest()
+        header = f"t=1000,v1={digest}"
 
         assert verify_signature(body, header, "", now=1_000) is False
 
@@ -271,7 +274,11 @@ class TestEmptySecretMeansUnconfigured:
     @pytest.mark.parametrize("empty", ["", " ", "Bearer "])
     async def test_both_empty_refuses_even_a_signed_delivery(self, empty: str) -> None:
         body = _body()
-        header = sign_payload(body, empty, timestamp=int(time.time()))
+        now = int(time.time())
+        digest = hmac.new(
+            empty.encode(), f"{now}.".encode() + body, hashlib.sha256
+        ).hexdigest()
+        header = f"t={now},v1={digest}"
 
         response = await _post(
             _dependency_app(secret=empty, signing_secret=empty),

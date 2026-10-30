@@ -187,7 +187,7 @@ def verify_signature(
         bool: ``True`` when ``secret`` is non-empty, ``t`` is inside the
         window and a ``v1`` matches in constant time.
     """
-    if not secret:
+    if not secret.strip():
         return False
     timestamp, signatures = parse_signature_header(header)
     if timestamp is None or not signatures:

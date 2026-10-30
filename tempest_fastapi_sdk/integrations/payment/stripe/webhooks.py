@@ -127,13 +127,16 @@ def verify_signature(
             pin time instead of sleeping.
 
     Returns:
-        bool: ``True`` when the timestamp is inside the window and at
-        least one ``v1`` signature matches, compared in constant time.
+        bool: ``True`` when ``secret`` is non-empty, the timestamp is inside
+        the window and at least one ``v1`` signature matches, compared in
+        constant time. An empty or blank secret always returns ``False``.
 
     The HMAC covers ``f"{t}.{body}"``, not the body — this is the
     documented Stripe scheme and the single most common mistake in a
     hand-rolled verification.
     """
+    if not secret.strip():
+        return False
     timestamp, signatures = parse_signature_header(header)
     if timestamp is None or not signatures:
         return False
@@ -230,6 +233,9 @@ def make_stripe_webhook_dependency(
         dependency returning a :class:`StripeWebhookEvent`.
 
     Raises:
+        ValueError: When ``secret`` is empty or only whitespace, so an unset
+            ``STRIPE_WEBHOOK_SECRET`` fails at boot instead of serving an
+            endpoint that verifies against an empty key.
         UnauthorizedException: Raised by the returned dependency when the
             header is missing, malformed, outside the tolerance window, or
             signed with another secret.
@@ -239,6 +245,8 @@ def make_stripe_webhook_dependency(
     turns their release into its own outage. The type is kept as
     ``event_type`` with ``event`` left ``None``.
     """
+    if not secret.strip():
+        raise ValueError("a non-empty Stripe webhook signing secret is required")
 
     async def dependency(request: Request) -> StripeWebhookEvent:
         """Verify and parse the inbound delivery.

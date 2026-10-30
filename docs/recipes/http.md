@@ -1488,7 +1488,7 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
     ...
 ```
 
-Suporta encodings `hex` (default) e `base64`, qualquer algoritmo hashlib garantido entre plataformas, e um `prefix` opcional (ex.: `"sha256="`) removido antes da comparação. Use o imperativo `verifier.verify(body, signature)` de handlers de fila quando a validação acontece fora do pipeline FastAPI.
+Suporta encodings `hex` (default) e `base64`, qualquer algoritmo hashlib garantido entre plataformas, e um `prefix` opcional (ex.: `"sha256="`) removido antes da comparação. Segredo vazio ou só com espaços levanta `ValueError` na construção: o HMAC com chave vazia é calculável por qualquer um, então um setting esquecido derruba o boot em vez de aceitar toda entrega. Use o imperativo `verifier.verify(body, signature)` de handlers de fila quando a validação acontece fora do pipeline FastAPI.
 
 A assinatura cobre **só o corpo**, então uma entrega capturada continua válida pra sempre — quem observar uma pode reenviar indefinidamente. Passe `timestamp_header=` pra também exigir um timestamp unix recente e recusar o que estiver fora da janela:
 
