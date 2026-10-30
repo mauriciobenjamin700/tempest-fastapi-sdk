@@ -114,6 +114,8 @@ It applies to every Redis store the SDK ships -- `RedisRateLimitStore`, `RedisQu
 
 `@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs (without a method's `self`/`cls` — see [below](#cache-aside-in-a-service)); pass `key_prefix=` to namespace entries. To invalidate **before** the TTL, use tags/namespace (below) rather than a prefix scan.
 
+Each argument enters the key through its **data**, never through `str()`: a Pydantic model contributes every field (`Field(repr=False)` included, and a `SecretStr` as a hash of the secret), a dataclass its fields, and `UUID` / `datetime` / `Decimal` / `Enum` a typed value. So two calls that differ only in a secret or in a field hidden from `repr` never share an entry. An argument with no faithful encoding (an arbitrary object) makes the call run **without the cache**, with a `cached_key_unencodable` warning in the log — pass `key_builder=` to cache it.
+
 ```python
 from typing import Any
 

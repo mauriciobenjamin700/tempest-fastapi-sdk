@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import hashlib
 import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from enum import Enum
 from typing import TYPE_CHECKING, Any, TypeVar
+from uuid import UUID
+
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import SecretBytes, SecretStr
 
 from tempest_fastapi_sdk.cache.invalidation import (
     namespace_registry_key,
@@ -120,20 +128,103 @@ def _default_key_builder(
     return f"{func_name}:{digest}"
 
 
+class _UnencodableKeyError(TypeError):
+    """Raised when an argument has no faithful encoding for the cache key."""
+
+
 def _to_jsonable(value: Any) -> Any:
-    """Best-effort JSON-able representation used for cache key hashing.
+    """Return an identity-preserving JSON form of an argument for the key.
+
+    A value :func:`json.dumps` already accepts is returned as is. Anything
+    else is encoded from its **data**, never from ``str()``: a Pydantic
+    model by every field (``repr=False`` and ``exclude=True`` fields
+    included), a ``SecretStr`` / ``SecretBytes`` by a SHA-256 of the
+    secret, a dataclass by its fields, and ``UUID`` / ``datetime`` /
+    ``Decimal`` / ``Enum`` / ``bytes`` by a typed tag. ``str()`` is a
+    display form that masks secrets and drops ``repr=False`` fields, so
+    two calls differing only there used to share one entry.
 
     Args:
         value (Any): Any positional / keyword argument value.
 
     Returns:
-        Any: A JSON-serializable representation (falls back to ``str``).
+        Any: A JSON-serializable representation.
+
+    Raises:
+        _UnencodableKeyError: When the value (or something nested in it)
+            has no faithful encoding; the decorator then runs the call
+            without the cache.
     """
     try:
         json.dumps(value)
-    except TypeError:
-        return str(value)
+    except (TypeError, ValueError):
+        return _encode(value)
     return value
+
+
+def _encode(value: Any) -> Any:
+    """Encode a value :func:`json.dumps` rejected, recursively.
+
+    Args:
+        value (Any): The value to encode.
+
+    Returns:
+        Any: A JSON-serializable, type-tagged representation.
+
+    Raises:
+        _UnencodableKeyError: When no faithful encoding is known.
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (SecretStr, SecretBytes)):
+        secret = value.get_secret_value()
+        raw = secret if isinstance(secret, bytes) else secret.encode()
+        return {"__secret__": hashlib.sha256(raw).hexdigest()}
+    if isinstance(value, PydanticBaseModel):
+        model = type(value)
+        fields = {name: getattr(value, name) for name in model.model_fields}
+        fields.update(value.model_extra or {})
+        return {
+            "__model__": f"{model.__module__}.{model.__qualname__}",
+            "fields": {name: _encode(item) for name, item in sorted(fields.items())},
+        }
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        cls = type(value)
+        return {
+            "__dataclass__": f"{cls.__module__}.{cls.__qualname__}",
+            "fields": {
+                field.name: _encode(getattr(value, field.name))
+                for field in dataclasses.fields(value)
+            },
+        }
+    if isinstance(value, Enum):
+        enum_cls = type(value)
+        return {
+            "__enum__": f"{enum_cls.__module__}.{enum_cls.__qualname__}",
+            "value": _encode(value.value),
+        }
+    if isinstance(value, (UUID, Decimal, datetime, date, time, timedelta)):
+        return {"__t__": type(value).__name__, "v": str(value)}
+    if isinstance(value, (bytes, bytearray)):
+        return {"__bytes__": bytes(value).hex()}
+    if isinstance(value, dict):
+        return {
+            "__dict__": sorted(
+                ([_encode(k), _encode(v)] for k, v in value.items()),
+                key=lambda pair: json.dumps(pair[0], sort_keys=True),
+            ),
+        }
+    if isinstance(value, (list, tuple)):
+        return {"__seq__": type(value).__name__, "items": [_encode(v) for v in value]}
+    if isinstance(value, (set, frozenset)):
+        items = [_encode(v) for v in value]
+        return {
+            "__set__": sorted(items, key=lambda item: json.dumps(item, sort_keys=True)),
+        }
+    raise _UnencodableKeyError(
+        f"@cached cannot build a key from {type(value).__qualname__}; "
+        "pass key_builder= to cache this call.",
+    )
 
 
 def cached(
@@ -185,8 +276,15 @@ def cached(
         key_builder (Callable[[str, tuple, dict], str] | None): Custom
             cache key builder, called with the qualified name and the
             call's full ``args`` / ``kwargs`` (receiver included).
-            Defaults to a SHA-256 of args/kwargs that **leaves out the
-            method receiver**: when the decorated function's first
+            Defaults to a SHA-256 of args/kwargs encoded from their data,
+            never from ``str()``: a Pydantic model contributes every
+            field (``SecretStr`` included, as a hash of the secret), a
+            dataclass its fields, and ``UUID`` / ``datetime`` /
+            ``Decimal`` / ``Enum`` a typed value. An argument with no
+            faithful encoding (an arbitrary object) makes the call run
+            **without the cache**, with a ``cached_key_unencodable``
+            warning — pass a ``key_builder`` to cache it. The default
+            **leaves out the method receiver**: when the decorated function's first
             parameter is ``self`` or ``cls``, that argument is not part
             of the key, so every instance of the class shares the entry
             for the same remaining arguments. The qualified name
@@ -225,11 +323,18 @@ def cached(
 
             if key_builder is None:
                 key_args, key_kwargs = _strip_receiver(receiver, args, kwargs)
-                fragment = _default_key_builder(
-                    func.__qualname__,
-                    key_args,
-                    key_kwargs,
-                )
+                try:
+                    fragment = _default_key_builder(
+                        func.__qualname__,
+                        key_args,
+                        key_kwargs,
+                    )
+                except _UnencodableKeyError as exc:
+                    logger.warning(
+                        "cached_key_unencodable",
+                        extra={"function": func.__qualname__, "error": str(exc)},
+                    )
+                    return await func(*args, **kwargs)
             else:
                 fragment = key_builder(func.__qualname__, args, kwargs)
             key = key_prefix + fragment

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `@cached`: o key builder padrão codifica cada argumento pelo dado, não por
+  `str()`. Model Pydantic entra com todos os campos (`SecretStr` como hash do
+  segredo, `Field(repr=False)` incluído), dataclass com os campos, e `UUID` /
+  `datetime` / `Decimal` / `Enum` / `bytes` com valor tipado. **Mudança de
+  comportamento:** argumento sem codificação fiel faz a chamada rodar sem cache,
+  com o aviso `cached_key_unencodable`, em vez de entrar na chave pelo `str()`;
+  chaves de argumentos não-JSON mudam de forma, então essas entradas sofrem um
+  miss depois do upgrade. Argumentos já aceitos por `json.dumps` mantêm a chave.
 - `ChatMemory`: toda mutação passa a ser vinculada ao dono.
   **Mudança incompatível:** `delete_for_chat` exige `user_id` (keyword-only) e
   apaga só as linhas daquele usuário no chat — antes apagava as de todo usuário
