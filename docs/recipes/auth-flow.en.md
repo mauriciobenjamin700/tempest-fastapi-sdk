@@ -1648,7 +1648,7 @@ enumerates nothing, because whoever has the password already owns the account:
 $ curl -s -X POST localhost:8000/auth/login \
     -H "Content-Type: application/json" \
     -d '{"email":"ana@example.com","password":"strong-pass-12-chars"}'
-{"detail":"Esta conta está desativada — fale com o suporte para reativá-la","code":"ACCOUNT_INACTIVE","details":{}}
+{"detail":"Esta conta está desativada — reative-a pelo link de ativação","code":"ACCOUNT_INACTIVE","details":{}}
 ```
 
 (With the default catalog in `register_exception_handlers(app, catalog=default_message_catalog())`,

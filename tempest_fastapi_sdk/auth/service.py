@@ -586,7 +586,7 @@ class UserAuthService:
         *,
         email: str,
     ) -> ActivationToken | None:
-        """Re-issue the activation link for an account that never activated.
+        """Re-issue the activation link for an inactive account.
 
         The signup email is sent once. When it does not arrive — a typo in
         a spam filter, a bounced relay, a closed tab — the account is
@@ -595,6 +595,14 @@ class UserAuthService:
         :meth:`request_email_verification` needs a bearer token that only a
         successful login hands out. This is the way back in, and it needs
         no credentials by design.
+
+        "Inactive" includes an account an operator deactivated
+        (``is_active=False``, e.g. ``tempest user deactivate``): the link
+        goes to it too, and opening it makes the account active again.
+        That is intended — deactivation blocks login, and the holder of
+        the mailbox can reactivate it on their own. To close the account
+        for good, match it with the ``refuses_email_link`` predicate, which
+        this flow answers with no token and no mail.
 
         Nothing is leaked about the address. An unknown email, an already
         active account and a genuine re-send are indistinguishable to the

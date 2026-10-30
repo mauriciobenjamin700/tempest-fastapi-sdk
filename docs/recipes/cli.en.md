@@ -1213,6 +1213,15 @@ the number of sessions **that run** killed, so a second run prints
     terminal, `--yes` is required. When what you mean is "this person should
     not be able to log in any more", the command is `deactivate`.
 
+!!! note "`deactivate` blocks login, it is not a ban"
+    A deactivated account cannot log in, but its holder can reactivate it on
+    their own: `POST /auth/activation/request` mails a fresh activation link
+    to the account's address, and opening it makes the account active again.
+    That is intended — whoever holds the mailbox gets back in. To close the
+    door for good, pass `refuses_email_link` to `UserAuthService` with a
+    predicate matching that account: activation and reset by e-mail are then
+    refused for it (see the [MFA recipe](mfa.md#email-link-refusal)).
+
 ### Secrets — `tempest secrets`
 
 Four commands, ordered by how much they touch your `.env`:

@@ -286,3 +286,26 @@ class TestServiceFlows:
         )
         with pytest.raises(IntegrationDisabledException):
             service.require_mail_delivery()
+
+
+class TestDeactivatedAccount:
+    """Pins the intended self-reactivation the docs describe."""
+
+    async def test_holder_reactivates_through_the_activation_link(
+        self, session: AsyncSession
+    ) -> None:
+        user = await seed_user(session, active=False)
+        service = build_service(env="development")
+        bundle = await service.request_activation(session, email="ana@acme.com")
+        await session.commit()
+        assert bundle is not None
+        await service.activate(session, token=bundle.token)
+        await session.commit()
+        await session.refresh(user)
+        assert user.is_active is True
+
+    async def test_refuses_email_link_closes_it(self, session: AsyncSession) -> None:
+        await seed_user(session, active=False)
+        service = build_service(env="development")
+        service.refuses_email_link = lambda account: True
+        assert await service.request_activation(session, email="ana@acme.com") is None

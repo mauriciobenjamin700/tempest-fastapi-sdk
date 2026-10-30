@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   condicional: duas redenções concorrentes do mesmo token rendem um par novo
   e um `401` que revoga a família.
 
+### Fixed
+
+- A mensagem de `ACCOUNT_INACTIVE`, a docstring de `request_activation` e a
+  receita do CLI dizem o que acontece: desativar bloqueia o login, mas o dono
+  reativa a conta pelo link de ativação; banimento definitivo é o
+  `refuses_email_link`.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added
