@@ -13,6 +13,8 @@ response.
   `Authorization: Bearer <token>`,
 - it **caches** successful lookups in-process for a short TTL, so a burst
   of requests carrying the same token doesn't hammer the upstream,
+- with `audiences=`, it **binds the token to this service**: the response
+  must name one of them in `aud`, `azp` or `client_id`,
 - it can optionally **gate access** on an application claim
   (`access_apps` by default), and
 - it extracts the user id from the subject claim (`sub` by default).
@@ -40,6 +42,7 @@ from src.core.settings import settings
 
 auth = IntrospectionAuth(
     userinfo_url=settings.IAGRO_USERINFO_URL,   # e.g. https://id.iagro.gov/users/me
+    audiences=["famacha-api"],                  # this service's client id at the provider
     required_app="famacha",                     # per-app access gate
 )
 ```
@@ -80,8 +83,9 @@ async def list_animals(
     it is not part of the SDK. Swap it for your project's real call.
 
 That's it. A request without `Authorization` gets **401**; a token the
-upstream rejects gets **401**; a user without `famacha` in `access_apps`
-gets **403**.
+upstream rejects gets **401**; a token issued to another client of the
+provider gets **401**; a user without `famacha` in `access_apps` gets
+**403**.
 
 !!! tip "Wire up the exception handlers"
     `IntrospectionAuth` raises the SDK's own `UnauthorizedException`
@@ -97,7 +101,8 @@ gets **403**.
 
 1. reads the bearer via `HTTPBearer(auto_error=False)` — **no** header →
    `UnauthorizedException`;
-2. calls `fetch_userinfo(token)` (cached);
+2. calls `fetch_userinfo(token)` (cached), which with `audiences` refuses
+   the response for a token issued to another client;
 3. if `required_app` is set, requires it to be in
    `claims.get(app_claim) or []`, otherwise `ForbiddenException`;
 4. returns the claims dict.
@@ -171,6 +176,46 @@ A missing subject, or one that isn't a valid UUID, becomes
     depends on the **bearer directly** and calls
     `await self.get_claims(credentials)` in its body. It still wires
     cleanly as `Depends(auth.get_user_id)`.
+
+### Bind the token to this service — `audiences`
+
+A `200` from `userinfo` proves the token is valid **at the provider**, not
+that it was issued **to your service**. A provider that serves several
+clients (your app, a partner app, an internal tool) usually answers
+`userinfo` for the token of any of them. Without a binding, a token the
+user handed to **another** app at the same provider authenticates here as
+that user — and whoever runs that app can replay it.
+
+`audiences=` closes that: the response must name one of the values in
+`aud` (a string or a list), `azp` or `client_id`. None of them matches, or
+the response carries none of the three → **401**, and the refused response
+is not cached.
+
+```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+auth = IntrospectionAuth(
+    userinfo_url="https://id.example.com/users/me",
+    audiences=["famacha-api"],
+)
+```
+
+| Upstream response | With `audiences=["famacha-api"]` |
+| --- | --- |
+| `{"sub": "…", "aud": "famacha-api"}` | accepted |
+| `{"sub": "…", "aud": ["account", "famacha-api"]}` | accepted |
+| `{"sub": "…", "aud": "account", "azp": "famacha-api"}` | accepted (Keycloak) |
+| `{"sub": "…", "client_id": "famacha-api"}` | accepted (RFC 7662) |
+| `{"sub": "…", "aud": "other-app", "azp": "other-app"}` | **401** |
+| `{"sub": "…"}` | **401** |
+
+!!! warning "Without `audiences`, behaviour is unchanged — with a warning"
+    The parameter is optional so existing users of the class keep working,
+    but an instance built without it logs a `WARNING` on the
+    `tempest_fastapi_sdk.auth.introspection` logger, once per instance. If
+    your provider returns none of these claims from `userinfo`, check
+    whether it exposes introspection (RFC 7662), which returns
+    `client_id`.
 
 ### The cache
 
@@ -294,8 +339,11 @@ async def test_valid_token() -> None:
   issues tokens.
 - `get_claims` and `get_user_id` are **bound methods** usable directly as
   `Depends(auth.get_claims)` / `Depends(auth.get_user_id)`.
-- No credentials → 401; rejected token / upstream down → 401; app not
-  granted → 403; invalid subject → 401.
+- No credentials → 401; rejected token / upstream down → 401; token of
+  another client (with `audiences`) → 401; app not granted → 403; invalid
+  subject → 401.
+- Pass `audiences=` with the service's client id: without it, a token
+  issued to another app at the same provider authenticates here.
 - In-process per-token cache with a `time.monotonic()` TTL; `401`/`403`
   evicts; `cache_ttl_seconds=0` disables it.
 - `userinfo_url` can be a `str` or a callable (resolved per call); claims

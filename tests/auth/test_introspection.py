@@ -18,6 +18,7 @@ from tempest_fastapi_sdk.exceptions import (
 )
 
 _SUBJECT = uuid4()
+LOGGER: str = "tempest_fastapi_sdk.auth.introspection"
 
 
 class _CountingHandler:
@@ -354,3 +355,102 @@ class TestFastAPIWiring:
                 "/claims", headers={"Authorization": "Bearer tok"}
             )
             assert response.status_code == 403
+
+
+def _bound(
+    payload: dict[str, Any], audiences: Any = ("this-api",)
+) -> tuple[IntrospectionAuth, _CountingHandler]:
+    """Build an instance bound to ``audiences`` over a mocked upstream.
+
+    Args:
+        payload (dict[str, Any]): The userinfo body the upstream answers.
+        audiences (Any): Forwarded to ``IntrospectionAuth(audiences=...)``.
+
+    Returns:
+        tuple[IntrospectionAuth, _CountingHandler]: The instance and the
+        handler serving its upstream.
+    """
+    handler = _CountingHandler(payload=payload)
+    auth = IntrospectionAuth(
+        userinfo_url="https://id.example.com/users/me",
+        http_client=_client(handler),
+        audiences=audiences,
+    )
+    return auth, handler
+
+
+class TestAudienceBinding:
+    """``audiences=`` binds the bearer to this service (token substitution)."""
+
+    async def test_matching_aud_is_accepted(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT), "aud": "this-api"})
+        assert await auth.get_user_id(_credentials("tok")) == _SUBJECT
+
+    async def test_matching_azp_is_accepted(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT), "aud": "account", "azp": "this-api"})
+        assert await auth.get_user_id(_credentials("tok")) == _SUBJECT
+
+    async def test_matching_client_id_is_accepted(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT), "client_id": "this-api"})
+        assert await auth.get_user_id(_credentials("tok")) == _SUBJECT
+
+    async def test_aud_list_containing_ours_is_accepted(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT), "aud": ["other-app", "this-api"]})
+        assert await auth.get_user_id(_credentials("tok")) == _SUBJECT
+
+    async def test_a_bare_string_is_one_audience(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT), "aud": "this-api"}, "this-api")
+        assert auth.audiences == frozenset({"this-api"})
+        assert await auth.get_user_id(_credentials("tok")) == _SUBJECT
+
+    async def test_another_client_is_refused(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT), "aud": "other-app", "azp": "other-app"})
+        with pytest.raises(UnauthorizedException):
+            await auth.get_user_id(_credentials("tok"))
+
+    async def test_missing_claims_are_refused(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT)})
+        with pytest.raises(UnauthorizedException):
+            await auth.get_user_id(_credentials("tok"))
+
+    async def test_a_refused_response_is_not_cached(self) -> None:
+        auth, handler = _bound({"sub": str(_SUBJECT), "aud": "other-app"})
+        for _ in range(2):
+            with pytest.raises(UnauthorizedException):
+                await auth.fetch_userinfo("tok")
+        assert handler.calls == 2
+
+    async def test_the_route_answers_401(self) -> None:
+        auth, _ = _bound({"sub": str(_SUBJECT), "aud": "other-app"})
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/user-id")
+        async def read_user_id(
+            user_id: UUID = Depends(auth.get_user_id),
+        ) -> dict[str, str]:
+            return {"user_id": str(user_id)}
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/user-id", headers={"Authorization": "Bearer tok"}
+            )
+        assert response.status_code == 401
+
+    async def test_unset_accepts_any_client_and_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level("WARNING", logger=LOGGER):
+            auth, _ = _bound({"sub": str(_SUBJECT), "aud": "other-app"}, ())
+        assert auth.audiences == frozenset()
+        assert await auth.get_user_id(_credentials("tok")) == _SUBJECT
+        warnings = [record for record in caplog.records if record.name == LOGGER]
+        assert len(warnings) == 1
+        assert "audiences=" in warnings[0].getMessage()
+
+    def test_set_does_not_warn(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("WARNING", logger=LOGGER):
+            _bound({"sub": str(_SUBJECT)})
+        assert not [record for record in caplog.records if record.name == LOGGER]

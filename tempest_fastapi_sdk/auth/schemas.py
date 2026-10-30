@@ -317,9 +317,10 @@ class LoginResponseSchema(BaseSchema):
       ``POST /auth/mfa/verify`` to swap the short-lived token for
       the real JWT pair.
 
-    The bundled router reuses this shape for both ``POST /auth/login``
-    and ``POST /auth/password-reset/confirm`` since both flows end
-    with an authenticated session.
+    The bundled router reuses this shape for ``POST /auth/login``,
+    ``POST /auth/password-reset/confirm``, ``POST /auth/mfa/confirm`` and
+    ``POST /auth/password-change``, since every one of them ends with an
+    authenticated session.
 
     Attributes:
         user_id (UUID): UUID of the authenticated user.

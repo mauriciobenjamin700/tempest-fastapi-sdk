@@ -17,7 +17,9 @@ issuer. Each one must be in :data:`ALLOWLIST` under a category:
 * ``new-account`` — the account was created in the same request, so no
   factor can be enrolled yet.
 * ``rotation`` — ``refresh_tokens`` rotates an existing session and repeats
-  its stored ``amr``; it opens nothing new.
+  its stored ``amr``; ``/password-change`` reissues the authenticated
+  caller's session with the ``amr`` of its access token. Neither opens a
+  session the caller did not already hold.
 * ``helper`` — ``_issue_pair`` itself, whose callers are classified above.
 
 The scan is by AST, not over a mounted router, because most routes are
@@ -86,6 +88,12 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "rotates an existing session and repeats the amr stored on it",
     ),
     "refresh_cookie": ("rotation", "same as /refresh, from the refresh cookie"),
+    "password_change": (
+        "rotation",
+        "the caller is already authenticated; after revoking every session "
+        "it reissues the pair with the amr of the access token that "
+        "authenticated the request (#662)",
+    ),
     "mfa_confirm": (
         "completes-mfa",
         "the request proves a fresh TOTP code; issues with MFA_AMR",

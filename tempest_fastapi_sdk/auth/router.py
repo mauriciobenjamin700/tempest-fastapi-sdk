@@ -52,7 +52,10 @@ from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect
 
 from tempest_fastapi_sdk.api.cookies import clear_cookie, set_cookie
-from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
+from tempest_fastapi_sdk.api.dependencies import (
+    make_bearer_token_dependency,
+    make_jwt_user_dependency,
+)
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
 from tempest_fastapi_sdk.api.error_docs import error_responses
 from tempest_fastapi_sdk.api.oauth import (
@@ -139,6 +142,8 @@ from tempest_fastapi_sdk.utils.token_types import (
     AMR_EXTERNAL,
     AMR_HARDWARE_KEY,
     MFA_AMR,
+    PASSWORD_AMR,
+    token_amr,
 )
 
 if TYPE_CHECKING:
@@ -405,8 +410,8 @@ def make_auth_router(
             whatever the product's account carries at birth — a phone,
             a document, a role flag. Each extra field that is also a
             column of the user model (outside
-            :data:`SIGNUP_PROTECTED_FIELDS`) is set on the row before the
-            insert, so a ``NOT NULL`` column needs no hook; a unique one
+            :meth:`UserAuthService.signup_protected_fields`) is set on the
+            row before the insert, so a ``NOT NULL`` column needs no hook; a unique one
             that collides answers ``409``. The payload still reaches
             ``on_signup`` as-is. ``None`` (default) uses
             :class:`SignupSchema`.
@@ -825,6 +830,12 @@ def make_auth_router(
         legacy_claims=token_legacy_claims,
         session_dependency=session_provider,
     )
+    current_claims_dep = make_bearer_token_dependency(
+        service.jwt,
+        cookie_name=cookies.access_name if cookie_enabled else None,
+        strict=token_strict,
+        legacy_claims=token_legacy_claims,
+    )
 
     async def _issue_pair(
         session: AsyncSession,
@@ -906,7 +917,7 @@ def make_auth_router(
 
         The fields :paramref:`signup_schema` adds on top of
         :class:`SignupSchema` that are also columns of the user model
-        (minus :data:`SIGNUP_PROTECTED_FIELDS`) are set on the row
+        (minus :meth:`UserAuthService.signup_protected_fields`) are set on the row
         **before** the insert, so a ``NOT NULL`` column the product adds
         is filled from the body. Fields that are not columns reach only
         ``on_signup``.
@@ -1192,22 +1203,71 @@ def make_auth_router(
 
     @router.post(
         "/password-change",
-        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=LoginResponseSchema,
         summary=route_docs.summary("auth.password_change"),
         description=route_docs.description("auth.password_change"),
     )
     async def password_change(
         payload: PasswordChangeSchema,
+        request: Request,
+        response: Response,
         session: AsyncSession = session_dep,
         user: BaseUserModel = Depends(current_user_dep),
-    ) -> None:
-        await service.change_password(
+        claims: dict[str, Any] = Depends(current_claims_dep),
+    ) -> LoginResponseSchema:
+        """Change the caller's password and hand back a fresh session.
+
+        :meth:`~tempest_fastapi_sdk.UserAuthService.change_password` revokes
+        every session of the user, the caller's own refresh token included,
+        so the route issues a new pair in the same transaction — after the
+        revocation, so the new refresh token is the only one left. The pair
+        repeats the ``amr`` of the access token that authenticated the
+        request (an MFA session stays an MFA session); a token without the
+        claim gets :data:`~tempest_fastapi_sdk.PASSWORD_AMR`, since the
+        request itself proved the password.
+
+        Args:
+            payload (PasswordChangeSchema): Current and new password.
+            request (Request): Tells a bearer caller from a cookie one.
+            response (Response): Receives the cookies in cookie mode.
+            session (AsyncSession): The request-scoped DB session.
+            user (BaseUserModel): The authenticated caller.
+            claims (dict[str, Any]): The claims of the caller's access
+                token, read for its ``amr``.
+
+        Returns:
+            LoginResponseSchema: The new pair in the body for a bearer
+            caller; ``user_id`` only (tokens in cookies) for a caller that
+            authenticated with the access cookie.
+        """
+        user = await service.change_password(
             session,
             user=user,
             current_password=payload.current_password,
             new_password=payload.new_password,
         )
+        access, refresh = await _issue_pair(
+            session,
+            user,
+            token_amr(claims) or PASSWORD_AMR,
+        )
         await session.commit()
+        bearer_caller = (
+            request.headers.get("authorization", "").lower().startswith("bearer ")
+        )
+        if cookie_enabled and not bearer_caller:
+            apply_auth_cookies(
+                response,
+                access_token=access,
+                refresh_token=refresh,
+                config=cookies,
+            )
+            return LoginResponseSchema(user_id=user.id)
+        return LoginResponseSchema(
+            user_id=user.id,
+            access_token=access,
+            refresh_token=refresh,
+        )
 
     @router.post(
         "/email-change/request",

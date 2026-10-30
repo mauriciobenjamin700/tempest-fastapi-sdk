@@ -195,7 +195,7 @@ uv run tempest db upgrade
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Authenticated.** Returns the account owning the bearer token. Never serializes the password hash: the handler returns the whole model and the `response_model` filters. Swap in your own schema with `me_response_model=` to expose extra columns. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Always HTTP 202 + generic body. Link via email (A/B) or body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consumes token + writes new password + revokes sessions + issues JWT pair. With MFA enrolled on the account, it answers the challenge (`mfa_required=true` + `mfa_token`) instead of the pair — finish at `/auth/mfa/verify`. |
-| POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Authenticated** (bearer token). Change your own password: confirm the current password + write the new one. No email token. |
+| POST | `/auth/password-change` | `PasswordChangeSchema` → `LoginResponseSchema` | **Authenticated** (bearer token). Change your own password: confirm the current password + write the new one. No email token. |
 | POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Authenticated.** Confirm the current password + email a confirmation link to the **new** address. Always 202. |
 | POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consume the token + apply the new email + (optionally) notify the old address. |
 | POST | `/auth/email-verify/request` *(v0.92.0+)* | — → `EmailChangeResponseSchema` | **Authenticated.** Re-send a verification link to the **current** email. |
@@ -427,11 +427,15 @@ catalog=default_message_catalog())` it comes out translated (`Conflito de
 recurso` under pt-BR), and `code`, `details` and `field` do not change.
 
 !!! warning "A protected column never comes from the body"
-    `id`, `email`, `hashed_password`, `is_active`, `is_admin` and
-    `email_verified_at` (`SIGNUP_PROTECTED_FIELDS`) belong to the SDK. A `signup_schema` with an
-    `is_admin` field promotes nobody: the route drops those names before
-    writing. Calling the service directly,
-    `signup(fields={"is_admin": True})` raises `ValueError`.
+    `id`, `email`, `hashed_password`, `is_active`, `is_admin`,
+    `email_verified_at` and the `MFAMixin` columns (`totp_secret`,
+    `totp_enabled_at`, `totp_last_step`) — the `SIGNUP_PROTECTED_FIELDS` —
+    belong to the SDK, and every column your model declares in
+    `__secret_columns__` joins them (`service.signup_protected_fields()`
+    returns the set for your model). A `signup_schema` with an `is_admin`
+    field promotes nobody, and one with `totp_enabled_at` turns on no
+    factor: the route drops those names before writing. Calling the service
+    directly, `signup(fields={"is_admin": True})` raises `ValueError`.
 
 Annotate the hook with **your** classes — the concrete model and the concrete
 schema — as above: that is what makes `payload.accept_terms` type-check on
@@ -1269,12 +1273,30 @@ curl -X POST localhost:8000/auth/password-change \
   -d '{"current_password": "current-pass", "new_password": "new-strong-pass-12"}'
 ```
 
-Returns **204** and **revokes the user's sessions** in the same
-transaction that writes the new password, like the reset: a refresh token
-issued before the change — the caller's included — can no longer be
-exchanged, and the cookie session of the [auth pages](auth-pages.md) ends
-too. The current access token lives until its short TTL ends; the next
-session starts at login. Wrong `current_password` → **401**. Calling the
+It **revokes the user's sessions** in the same transaction that writes
+the new password, like the reset: a refresh token issued before the
+change — the caller's included — can no longer be exchanged, and the
+cookie session of the [auth pages](auth-pages.md) ends too. So the device
+that changed the password stays signed in, the response is **200** with a
+**fresh pair** (through 0.335.0 it was `204` with no body — see the
+[migration guide](../migration.md)), issued after the revocation — it is the only
+refresh token left:
+
+```json
+{
+  "user_id": "7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab",
+  "access_token": "eyJhbGciOi…",
+  "refresh_token": "Zm9vYmFy…",
+  "mfa_required": false,
+  "mfa_token": null
+}
+```
+
+Store both and drop the old ones. The pair repeats the `amr` of the access
+token that authenticated the request, so a session that passed MFA stays
+MFA. A caller that authenticated with the access cookie gets the pair in
+cookies, and the body carries only the `user_id`. Wrong
+`current_password` → **401**, no pair. Calling the
 service directly, `change_password(..., revoke_sessions=False)` is the
 explicit opt-out. The passkeys stay: the caller just proved the current
 password, so this is not account recovery.

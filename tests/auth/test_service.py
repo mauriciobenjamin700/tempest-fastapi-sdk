@@ -719,7 +719,8 @@ class TestChangePassword:
                 },
                 headers={"Authorization": f"Bearer {access}"},
             )
-        assert r.status_code == 204, r.text
+        assert r.status_code == 200, r.text
+        assert r.json()["access_token"]
         # The new password now authenticates.
         await service.login(session, email="chgep@b.com", password="brand-new-pass-12")
 

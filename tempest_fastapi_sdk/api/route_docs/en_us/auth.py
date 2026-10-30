@@ -169,9 +169,14 @@ AUTH_ROUTES: dict[str, RouteDoc] = {
             "``AUTH_PASSWORD_MIN_LENGTH`` (and the complexity rules when "
             "``AUTH_PASSWORD_REQUIRE_COMPLEXITY=True``); violations return "
             "**422**.\n\n"
-            "On success the endpoint returns **204**. The existing "
-            "``access_token`` / ``refresh_token`` stay valid — this "
-            "endpoint does not revoke sessions."
+            "**Every session ends**, the caller's own refresh token "
+            "included: the old password may be known to someone else. The "
+            "response is **200** with a fresh pair so the device that "
+            "changed the password stays signed in — in the body for a "
+            "bearer caller, in cookies for a caller that authenticated with "
+            "the access cookie. The pair repeats the ``amr`` of the access "
+            "token that authenticated the request. The old access token "
+            "lives until it expires; discard it and use the new one."
         ),
     ),
     "auth.email_change_request": RouteDoc(

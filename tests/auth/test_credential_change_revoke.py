@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from tempest_fastapi_sdk import (
+    MFA_AMR,
+    PASSWORD_AMR,
     BaseModel,
     BaseUserModel,
     UserAuthService,
@@ -158,7 +160,7 @@ class TestRoutesRevoke:
                 headers={"Authorization": f"Bearer {own['access_token']}"},
             )
             replay = await client.post("/auth/refresh", json={"refresh_token": stolen})
-        assert changed.status_code == 204
+        assert changed.status_code == 200
         assert replay.status_code == 401
 
     async def test_email_change_refuses_the_older_refresh_token(
@@ -181,6 +183,103 @@ class TestRoutesRevoke:
             replay = await client.post("/auth/refresh", json={"refresh_token": stolen})
         assert confirmed.status_code == 200
         assert replay.status_code == 401
+
+
+class TestPasswordChangeReissuesThePair:
+    """The change ends every session, so the caller gets a new pair (#662)."""
+
+    async def test_the_response_carries_a_pair_that_rotates(
+        self, session: AsyncSession
+    ) -> None:
+        service = _service()
+        await _signup(service, session)
+        async with _client(service, session) as client:
+            own = await _login(client)
+            changed = await client.post(
+                "/auth/password-change",
+                json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+                headers={"Authorization": f"Bearer {own['access_token']}"},
+            )
+            body = changed.json()
+            old = await client.post(
+                "/auth/refresh", json={"refresh_token": own["refresh_token"]}
+            )
+            new = await client.post(
+                "/auth/refresh", json={"refresh_token": body["refresh_token"]}
+            )
+            me = await client.get(
+                "/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"}
+            )
+        assert changed.status_code == 200, changed.text
+        assert body["user_id"] == own["user_id"]
+        assert body["access_token"]
+        assert body["refresh_token"] != own["refresh_token"]
+        assert old.status_code == 401
+        assert new.status_code == 200, new.text
+        assert me.status_code == 200, me.text
+
+    async def test_the_pair_repeats_the_amr_of_the_caller(
+        self, session: AsyncSession
+    ) -> None:
+        service = _service()
+        user = await _signup(service, session)
+        access, _ = await service.issue_token_pair(session, user, amr=MFA_AMR)
+        await session.commit()
+        async with _client(service, session) as client:
+            changed = await client.post(
+                "/auth/password-change",
+                json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+                headers={"Authorization": f"Bearer {access}"},
+            )
+        claims = service.jwt.decode(changed.json()["access_token"])
+        assert changed.status_code == 200, changed.text
+        assert tuple(claims["amr"]) == MFA_AMR
+
+    async def test_a_password_session_stays_a_password_session(
+        self, session: AsyncSession
+    ) -> None:
+        service = _service()
+        await _signup(service, session)
+        async with _client(service, session) as client:
+            own = await _login(client)
+            changed = await client.post(
+                "/auth/password-change",
+                json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+                headers={"Authorization": f"Bearer {own['access_token']}"},
+            )
+        claims = service.jwt.decode(changed.json()["access_token"])
+        assert tuple(claims["amr"]) == PASSWORD_AMR
+
+    async def test_a_wrong_password_issues_nothing(self, session: AsyncSession) -> None:
+        service = _service()
+        await _signup(service, session)
+        async with _client(service, session) as client:
+            own = await _login(client)
+            changed = await client.post(
+                "/auth/password-change",
+                json={
+                    "current_password": "not-it-at-all",
+                    "new_password": NEW_PASSWORD,
+                },
+                headers={"Authorization": f"Bearer {own['access_token']}"},
+            )
+            still = await client.post(
+                "/auth/refresh", json={"refresh_token": own["refresh_token"]}
+            )
+        assert changed.status_code == 401
+        assert "access_token" not in changed.text
+        assert still.status_code == 200
+
+    def test_the_openapi_documents_the_pair(self, session: AsyncSession) -> None:
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(_service(), session_factory=_factory))
+        operation = app.openapi()["paths"]["/auth/password-change"]["post"]
+        assert "204" not in operation["responses"]
+        schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+        assert schema["$ref"].endswith("/LoginResponseSchema")
 
 
 class TestServiceOptOut:

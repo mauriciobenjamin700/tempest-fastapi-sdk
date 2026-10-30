@@ -2,6 +2,15 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não publicado — `password-change` devolve um par novo, `set-password` apaga passkeys
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `POST /auth/password-change` | Responde **200** com `LoginResponseSchema` (`user_id`, `access_token`, `refresh_token`) em vez de `204` sem corpo. A troca já revogava todas as sessões, inclusive a de quem chamou; o par novo é emitido depois da revogação e repete o `amr` do access token da requisição. Quem se autenticou pelo cookie de acesso recebe o par em cookies, e o corpo traz só o `user_id` | Cliente bearer: guarde o `access_token` e o `refresh_token` da resposta e descarte os antigos. Cliente que tratava qualquer `2xx` como sucesso não quebra, mas continua deslogando no fim do TTL do access token se não guardar o par |
+| `tempest user set-password` | Apaga as passkeys WebAuthn do usuário na mesma transação, quando acha a tabela (`--webauthn-credential-model`, default `src.db.models:UserWebAuthnCredentialModel`) | `--keep-passkeys` mantém o comportamento antigo; avise o usuário que ele cadastra a passkey de novo |
+| `signup(fields=...)` e `signup_schema` | `totp_secret`, `totp_enabled_at`, `totp_last_step` e toda coluna de `__secret_columns__` do user model são recusados (`ValueError` no service, descartados pela rota) | Nada para as colunas do MFA, que só o fluxo de inscrição grava. Se o seu cadastro grava uma coluna própria de `__secret_columns__`, mova a escrita para o `on_signup` |
+| `IntrospectionAuth` | Novo `audiences=`; sem ele, um `WARNING` por instância na construção | Passe `audiences=` com o client id do serviço no provedor. Veja [Amarrar o token a este serviço](recipes/introspection-auth.md#amarrar-o-token-a-este-servico-audiences) |
+
 ## 0.335.0 — `BaseUserModel` ganha a coluna `email_verified_at`
 
 O `BaseUserModel` passou a mapear `email_verified_at` (timestamp com fuso,

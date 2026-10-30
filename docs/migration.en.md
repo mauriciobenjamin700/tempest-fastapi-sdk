@@ -2,6 +2,15 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — `password-change` returns a fresh pair, `set-password` deletes passkeys
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `POST /auth/password-change` | Answers **200** with `LoginResponseSchema` (`user_id`, `access_token`, `refresh_token`) instead of `204` with no body. The change already revoked every session, the caller's included; the fresh pair is issued after the revocation and repeats the `amr` of the request's access token. A caller that authenticated with the access cookie gets the pair in cookies, and the body carries only the `user_id` | Bearer client: store the response's `access_token` and `refresh_token` and drop the old ones. A client that treated any `2xx` as success does not break, but still gets signed out when the access token's TTL ends unless it stores the pair |
+| `tempest user set-password` | Deletes the user's WebAuthn passkeys in the same transaction when it finds the table (`--webauthn-credential-model`, default `src.db.models:UserWebAuthnCredentialModel`) | `--keep-passkeys` keeps the old behaviour; tell the user they register their passkey again |
+| `signup(fields=...)` and `signup_schema` | `totp_secret`, `totp_enabled_at`, `totp_last_step` and every `__secret_columns__` column of the user model are refused (`ValueError` in the service, dropped by the route) | Nothing for the MFA columns, which only the enrollment flow writes. If your signup writes a `__secret_columns__` column of your own, move that write to `on_signup` |
+| `IntrospectionAuth` | New `audiences=`; without it, one `WARNING` per instance at construction | Pass `audiences=` with the service's client id at the provider. See [Bind the token to this service](recipes/introspection-auth.md#bind-the-token-to-this-service-audiences) |
+
 ## 0.335.0 — `BaseUserModel` gains the `email_verified_at` column
 
 `BaseUserModel` now maps `email_verified_at` (timezone-aware timestamp,

@@ -13,6 +13,8 @@ introspecção e confia na resposta.
   `Authorization: Bearer <token>`,
 - **cacheia** as respostas boas em processo por um TTL curto, pra uma
   rajada de requisições com o mesmo token não martelar o upstream,
+- com `audiences=`, **amarra o token a este serviço**: a resposta precisa
+  nomear um deles em `aud`, `azp` ou `client_id`,
 - opcionalmente **restringe o acesso** a uma claim de aplicação
   (`access_apps` por padrão), e
 - extrai o id do usuário da claim de subject (`sub` por padrão).
@@ -40,6 +42,7 @@ from src.core.settings import settings
 
 auth = IntrospectionAuth(
     userinfo_url=settings.IAGRO_USERINFO_URL,   # ex.: https://id.iagro.gov/users/me
+    audiences=["famacha-api"],                  # client id deste serviço no provedor
     required_app="famacha",                     # gate de acesso por app
 )
 ```
@@ -80,8 +83,9 @@ async def list_animals(
     não faz parte do SDK. Troque pela chamada real do seu projeto.
 
 Pronto. Uma requisição sem `Authorization` recebe **401**; um token que
-o upstream rejeita recebe **401**; um usuário sem `famacha` no
-`access_apps` recebe **403**.
+o upstream rejeita recebe **401**; um token emitido para outro cliente do
+provedor recebe **401**; um usuário sem `famacha` no `access_apps` recebe
+**403**.
 
 !!! tip "Ligue os handlers de exceção"
     `IntrospectionAuth` levanta `UnauthorizedException` (401) e
@@ -97,7 +101,8 @@ o upstream rejeita recebe **401**; um usuário sem `famacha` no
 
 1. lê o bearer via `HTTPBearer(auto_error=False)` — **sem** header →
    `UnauthorizedException`;
-2. chama `fetch_userinfo(token)` (com cache);
+2. chama `fetch_userinfo(token)` (com cache), que com `audiences` recusa
+   resposta de token emitido para outro cliente;
 3. se `required_app` estiver setado, exige que ele esteja em
    `claims.get(app_claim) or []`, senão `ForbiddenException`;
 4. devolve o dict de claims.
@@ -170,6 +175,45 @@ Subject ausente ou que não é um UUID válido vira `UnauthorizedException`.
     `get_user_id` depende do **bearer diretamente** e chama
     `await self.get_claims(credentials)` no corpo. Continua funcionando
     liso como `Depends(auth.get_user_id)`.
+
+### Amarrar o token a este serviço — `audiences`
+
+Um `200` do `userinfo` prova que o token é válido **no provedor**, não que
+ele foi emitido **para o seu serviço**. Um provedor que atende vários
+clientes (o seu app, um app parceiro, uma ferramenta interna) costuma
+responder `userinfo` para o token de qualquer um deles. Sem amarração, um
+token que o usuário entregou a **outro** app do mesmo provedor autentica
+aqui como esse usuário — e quem controla aquele app pode reaproveitá-lo.
+
+`audiences=` fecha isso: a resposta precisa nomear um dos valores em
+`aud` (string ou lista), `azp` ou `client_id`. Nenhum deles bate, ou a
+resposta não traz nenhum dos três → **401**, e a resposta recusada não
+entra no cache.
+
+```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+auth = IntrospectionAuth(
+    userinfo_url="https://id.example.com/users/me",
+    audiences=["famacha-api"],
+)
+```
+
+| Resposta do upstream | Com `audiences=["famacha-api"]` |
+| --- | --- |
+| `{"sub": "…", "aud": "famacha-api"}` | aceita |
+| `{"sub": "…", "aud": ["account", "famacha-api"]}` | aceita |
+| `{"sub": "…", "aud": "account", "azp": "famacha-api"}` | aceita (Keycloak) |
+| `{"sub": "…", "client_id": "famacha-api"}` | aceita (RFC 7662) |
+| `{"sub": "…", "aud": "outro-app", "azp": "outro-app"}` | **401** |
+| `{"sub": "…"}` | **401** |
+
+!!! warning "Sem `audiences`, o comportamento é o de antes — com um aviso"
+    O parâmetro é opcional para não quebrar quem já usa a classe, mas uma
+    instância criada sem ele registra um `WARNING` no logger
+    `tempest_fastapi_sdk.auth.introspection`, uma vez por instância. Se o
+    seu provedor não devolve nenhuma dessas claims no `userinfo`, confira
+    se ele expõe introspecção (RFC 7662), que devolve `client_id`.
 
 ### O cache
 
@@ -290,8 +334,11 @@ async def test_valid_token() -> None:
   opacos contra um `userinfo` upstream — não emite tokens.
 - `get_claims` e `get_user_id` são **bound methods** usáveis direto como
   `Depends(auth.get_claims)` / `Depends(auth.get_user_id)`.
-- Sem credenciais → 401; token rejeitado/upstream fora → 401; app não
-  liberada → 403; subject inválido → 401.
+- Sem credenciais → 401; token rejeitado/upstream fora → 401; token de
+  outro cliente (com `audiences`) → 401; app não liberada → 403; subject
+  inválido → 401.
+- Passe `audiences=` com o client id do serviço: sem ele, um token
+  emitido para outro app do mesmo provedor autentica aqui.
 - Cache em processo por token com TTL em `time.monotonic()`; `401`/`403`
   evicta; `cache_ttl_seconds=0` desliga.
 - `userinfo_url` pode ser `str` ou callable (resolvido por chamada);

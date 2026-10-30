@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `tempest user set-password` passa a apagar as passkeys WebAuthn do usuário
+  por padrão, na mesma transação do hash novo, como o `mfa-reset`: a troca
+  feita pelo operador é recuperação de conta. Ganha
+  `--webauthn-credential-model` (default
+  `src.db.models:UserWebAuthnCredentialModel`, usado quando existe) e
+  `--keep-passkeys` como saída explícita; as duas juntas saem com código 2, e
+  a saída diz quantas passkeys foram apagadas (#659). Mudança de
+  comportamento.
+- `POST /auth/password-change` responde **200** com um par de tokens novo
+  (`LoginResponseSchema`) em vez de `204`: a troca revoga todas as sessões,
+  inclusive a de quem chamou, e o par é emitido depois da revogação,
+  repetindo o `amr` do access token que autenticou a requisição. Quem se
+  autenticou pelo cookie de acesso recebe o par em cookies (#662). Mudança de
+  contrato da rota.
+- `SIGNUP_PROTECTED_FIELDS` passa a incluir as colunas do `MFAMixin`
+  (`totp_secret`, `totp_enabled_at`, `totp_last_step`), e o signup recusa
+  também toda coluna que o user model declara em `__secret_columns__`. Novo
+  `UserAuthService.signup_protected_fields()` devolve o conjunto do model; o
+  `signup_schema` do `make_auth_router` descarta esses nomes antes de gravar
+  (#663).
+- `IntrospectionAuth` ganha `audiences=` (keyword-only): com ele, a resposta
+  do `userinfo` precisa nomear um dos valores em `aud` (string ou lista),
+  `azp` ou `client_id`, senão a requisição responde `401` e a resposta não
+  entra no cache. Sem ele o comportamento não muda, e a instância registra um
+  `WARNING` na construção apontando para a receita.
+
 ## [0.335.0] — 2026-10-30
 
 ### Security

@@ -984,6 +984,9 @@ tempest user set-password --email ana@example.com \
 # Troca a senha e deixa as sessões vivas (opt-out explícito)
 tempest user set-password --email ana@example.com --keep-sessions
 
+# Troca a senha e mantém as passkeys (opt-out explícito)
+tempest user set-password --email ana@example.com --keep-passkeys
+
 # Primeira conta privilegiada já com MFA + evento de auditoria na mesma transação
 tempest user create --email staff@example.com --admin --require-mfa \
     --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
@@ -1064,6 +1067,7 @@ tempest user set-password --email ana@example.com
 # Confirm:
 # Password updated for ana@example.com (id=6f0c...)
 # Revoked 2 active refresh token(s).
+# Deleted 1 passkey(s).
 ```
 
 !!! check "Trocar a senha derruba as sessões — por padrão"
@@ -1090,6 +1094,18 @@ tempest user set-password --email ana@example.com
     A contagem é de sessões que **esta** execução matou — linha já
     revogada não é recontada, então rodar de novo imprime
     `Revoked 0 active refresh token(s).`
+
+!!! check "E apaga as passkeys — também por padrão"
+    A troca feita pelo operador é recuperação de conta, como o
+    `mfa-reset`: uma passkey entra sem a senha, e a que foi cadastrada por
+    quem segurou a conta sobreviveria ao hash novo. Então o comando apaga
+    **todas** as passkeys do usuário na mesma transação
+    (`UserAuthService.revoke_user_passkeys`), pelas mesmas regras das
+    sessões: `--webauthn-credential-model` (default
+    `src.db.models:UserWebAuthnCredentialModel`; sem tabela, avisa no
+    stderr que nenhuma passkey foi apagada), `--keep-passkeys` como saída
+    explícita, e as duas juntas recusadas com código 2. O dono cadastra a
+    passkey de novo depois.
 
 !!! tip "O mesmo, de dentro do código"
     `await service.revoke_user_sessions(session, user_id=user.id)` é o
