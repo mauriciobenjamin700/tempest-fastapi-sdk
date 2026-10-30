@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Admin: `access_policy` now covers what one model's page renders or writes
+  of another. An inline table needs `VIEW` on the child (a child with no
+  registered admin is asked about through a throwaway `AdminModel`); the
+  editable inline's add row needs the child's `can_create` and `CREATE`, and
+  its delete box `DELETE`, with the formset `POST` answering `403` before
+  writing; FK selects, FK list filters and autocomplete need `VIEW` on the
+  referenced admin.
+- Admin: new `surface_policy=` on `make_admin_router`, with `AdminSurface`
+  (`SQL`, `TASKS`, `LOGS`) and `AdminSurfacePolicy`, gates the SQL console,
+  the task panel and the logs page. **Behaviour change:** once an
+  `access_policy` is configured, those surfaces are denied to every principal
+  unless a `surface_policy` grants them. With neither policy nothing changes.
+- `BaseModel.__secret_columns__` (merged along the MRO by
+  `BaseModel.get_secret_columns()`) declares credential columns. The SDK
+  declares `MFAMixin.totp_secret`, the push subscription and device-token
+  `endpoint`/`token`, `p256dh` and `auth`, and the refresh-token and
+  recovery-code digests. The admin hides them from every read surface and
+  from the edit form without `exclude_fields` (a required one stays a blank
+  input on the create form, see `AdminModel.insertable_secret_names()`), and
+  the audit trail redacts them. **Behaviour change:** those columns no longer
+  appear in the admin, even when named in `list_display`.
+- Admin: an inline of a child model with no registered admin no longer
+  renders `hashed_password` or other hidden columns.
+- Admin: the CSV export prefixes a text cell starting with `=`, `+`, `-`,
+  `@`, tab or CR with `'`, so spreadsheets do not evaluate it as a formula.
+  The JSON export is unchanged.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

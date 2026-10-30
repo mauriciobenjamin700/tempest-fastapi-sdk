@@ -14,6 +14,7 @@ untouched — this is an additional table, not a migration of that one.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 from uuid import UUID
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, String
@@ -48,6 +49,9 @@ class BaseDeviceTokenModel(BaseModel):
     """
 
     __abstract__ = True
+    __secret_columns__: ClassVar[frozenset[str]] = frozenset(
+        {"token", "p256dh", "auth"}
+    )
 
     user_id: Mapped[UUID] = mapped_column(
         nullable=False,

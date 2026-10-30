@@ -202,11 +202,11 @@ def fk_label(admin: AdminModel[Any], instance: Any) -> str:
     """Build a human label for a referenced row (Django ``__str__`` analog).
 
     Prefers the referenced admin's first search field, then a common
-    display attribute, then the primary key. A display attribute the
-    referenced admin hides (:meth:`AdminModel.hidden_field_names`) is
-    skipped: the label is rendered in *another* model's form and select,
-    where the referenced admin's ``exclude_fields`` would not otherwise
-    reach.
+    display attribute, then the primary key. A search field or display
+    attribute the referenced admin hides
+    (:meth:`AdminModel.hidden_field_names`) is skipped: the label is
+    rendered in *another* model's form and select, where the referenced
+    admin's ``exclude_fields`` would not otherwise reach.
 
     Args:
         admin (AdminModel[Any]): The referenced model's admin config.
@@ -215,11 +215,13 @@ def fk_label(admin: AdminModel[Any], instance: Any) -> str:
     Returns:
         str: A label for the option.
     """
+    hidden = admin.hidden_field_names()
     for fname in admin.search_fields:
+        if fname in hidden:
+            continue
         value = getattr(instance, fname, None)
         if value:
             return str(value)
-    hidden = admin.hidden_field_names()
     for attr in ("name", "title", "email", "label"):
         if attr in hidden:
             continue
@@ -298,6 +300,7 @@ def build_form_fields(
     errors: Mapping[str, str] | None = None,
     fk_options: Mapping[str, list[tuple[str, str]]] | None = None,
     only: Collection[str] | None = None,
+    creating: bool = False,
 ) -> list[FormField]:
     """Build the ordered list of form fields for create/edit.
 
@@ -315,6 +318,9 @@ def build_form_fields(
         only (Collection[str] | None): Restrict to this subset of field
             names (used by inline formsets); ``None`` keeps all editable
             fields.
+        creating (bool): Whether this is the create form, which also takes
+            the model's required secret columns
+            (:meth:`AdminModel.insertable_secret_names`) as blank inputs.
 
     Returns:
         list[FormField]: Descriptors ready for the template.
@@ -339,7 +345,7 @@ def build_form_fields(
     errors = errors or {}
     fk_options = fk_options or {}
     fields: list[FormField] = []
-    for name in admin.editable_field_names():
+    for name in admin.editable_field_names(creating=creating):
         if only is not None and name not in only:
             continue
         column = columns.get(name)
@@ -437,6 +443,7 @@ def parse_submission(
     form: Mapping[str, Any],
     *,
     only: Collection[str] | None = None,
+    creating: bool = False,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Coerce a posted form into model kwargs + collect field errors.
 
@@ -446,6 +453,9 @@ def parse_submission(
         only (Collection[str] | None): Restrict parsing to this subset of
             field names (used by inline formsets); ``None`` parses all
             editable fields.
+        creating (bool): Whether the submission creates a row, which also
+            reads the model's required secret columns
+            (:meth:`AdminModel.insertable_secret_names`).
 
     Returns:
         tuple[dict[str, Any], dict[str, str]]: ``(data, errors)`` where
@@ -467,7 +477,7 @@ def parse_submission(
     columns = sa_inspect(admin.model).columns
     data: dict[str, Any] = {}
     errors: dict[str, str] = {}
-    for name in admin.editable_field_names():
+    for name in admin.editable_field_names(creating=creating):
         if only is not None and name not in only:
             continue
         column = columns.get(name)

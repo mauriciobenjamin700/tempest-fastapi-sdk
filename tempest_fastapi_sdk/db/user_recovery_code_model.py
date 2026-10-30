@@ -17,6 +17,7 @@ the application's naming convention. The pattern mirrors
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 from uuid import UUID
 
 from sqlalchemy import String
@@ -48,6 +49,7 @@ class BaseUserRecoveryCodeModel(BaseModel):
     """
 
     __abstract__ = True
+    __secret_columns__: ClassVar[frozenset[str]] = frozenset({"code_hash"})
 
     user_id: Mapped[UUID]
     code_hash: Mapped[str] = mapped_column(
