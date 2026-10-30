@@ -44,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   IP como header ausente. Antes, qualquer valor enviado pelo cliente virava um
   bucket novo no rate limit. **Mudança incompatível:** chamada sem `is_known=`
   passa a levantar `TypeError`.
+- `AttemptThrottle.reserve` (incrementa antes de verificar e recusa acima de
+  `max_attempts`) e `AttemptThrottle.release` (devolve a vaga);
+  `InMemoryThrottleBackend` ganha `decr`. O orçamento por IP do login de
+  `make_auth_router`, `make_auth_pages_router` e do admin passa a ser
+  reservado antes da checagem de senha. Antes, requisições simultâneas do
+  mesmo IP liam "não bloqueado" juntas e todas verificavam a senha,
+  qualquer que fosse `max_attempts`. Login bem-sucedido continua sem gastar
+  o orçamento do IP. Receita e README ensinam `reserve` no lugar de
+  `raise_if_blocked` + `hit`.
 
 ## [0.334.0] — 2026-10-29
 

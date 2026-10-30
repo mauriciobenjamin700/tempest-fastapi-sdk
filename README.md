@@ -3873,11 +3873,10 @@ throttle = AttemptThrottle(
 
 async def login(email: str, password: str) -> User:
     key = f"login:{email}"
-    await throttle.raise_if_blocked(key)  # raises 429 when over budget
+    await throttle.reserve(key)  # spend 1 attempt before verifying; 429 if over budget
 
     user = await users_repo.get_or_none({"email": email})
     if user is None or not password_utils.verify(password, user.hashed_password):
-        await throttle.hit(key)  # +1 failure, applies the TTL
         raise UnauthorizedException(message="Invalid credentials.")
 
     await throttle.reset(key)  # success clears the counter
@@ -3955,7 +3954,7 @@ router = APIRouter()
 async def login(request: Request, payload: LoginIn) -> LoginOut:
     # Behind Nginx that overwrites X-Real-IP with the real peer:
     ip = get_client_ip(request, trusted_header="x-real-ip")
-    await throttle.raise_if_blocked(f"login:{ip}")
+    await throttle.reserve(f"login:{ip}")
     ...
 ```
 

@@ -418,3 +418,26 @@ def test_key_matches_the_auth_router_shape() -> None:
     )
     assert login_throttle_key("root@example.com").startswith("login:")
     assert "root" not in login_throttle_key("root@example.com")
+
+
+class TestConcurrentIpBudget:
+    async def test_concurrent_failures_cannot_overrun_the_ip_budget(self) -> None:
+        """A burst from one IP runs at most ``ip_budget`` password checks."""
+        import asyncio
+
+        built = await _build(identifier_budget=100, ip_budget=3)
+        try:
+
+            async def attempt(index: int) -> Response:
+                async with _client(built.app) as client:
+                    return await _login(client, f"user{index}@example.com", "wrong")
+
+            responses = await asyncio.gather(*(attempt(i) for i in range(12)))
+            assert all(r.status_code in {401, 429} for r in responses), [
+                r.status_code for r in responses
+            ]
+            throttled = [r for r in responses if r.status_code == 429]
+            assert len(throttled) == 9
+        finally:
+            await built.db.drop_tables()
+            await built.db.disconnect()

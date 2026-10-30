@@ -69,11 +69,10 @@ async def on_startup() -> None:
 
 async def login(email: str, password: str) -> User:
     key = f"login:{email}"
-    await throttle.raise_if_blocked(key)  # 429 se já estourou
+    await throttle.reserve(key)  # gasta 1 tentativa antes de verificar; 429 se estourou
 
     user = await users_repo.get_or_none({"email": email})
     if user is None or not password_utils.verify(password, user.hashed_password):
-        await throttle.hit(key)  # +1 failure, aplica TTL
         raise UnauthorizedException(message="Invalid credentials.")
 
     await throttle.reset(key)  # zera contagem no sucesso
@@ -85,6 +84,9 @@ async def login(email: str, password: str) -> User:
 - `attempts: int` — falhas registradas na janela atual.
 - `blocked: bool` — `True` quando `attempts >= max_attempts`.
 - `retry_after_seconds: int` — segundos até a janela resetar (`0` quando não bloqueado).
+
+!!! warning "Reserve antes de verificar"
+    `raise_if_blocked` só **lê** o contador. Seguido de um `hit` depois da verificação, ele limita tentativas em sequência, mas não em paralelo: uma rajada de requisições simultâneas lê "não bloqueado" antes de qualquer `hit` cair, e todas verificam a senha. `reserve` incrementa (atomicamente, `INCR`) antes da checagem e recusa quem passa de `max_attempts`, então no máximo `max_attempts` verificações rodam por janela. Quando a tentativa não é falha, `reset` zera a chave ou `release` devolve só aquela vaga.
 
 Use os campos pra montar payloads de erro amigáveis. `raise_if_blocked` já cria a `TooManyRequestsException` com `Retry-After` no header — não precisa lê-los manualmente.
 
@@ -428,7 +430,7 @@ router = APIRouter()
 async def login(request: Request, payload: LoginIn) -> LoginOut:
     # Atrás de Nginx que sobrescreve X-Real-IP com o peer real:
     ip = get_client_ip(request, trusted_header="x-real-ip")
-    await throttle.raise_if_blocked(f"login:{ip}")
+    await throttle.reserve(f"login:{ip}")
     ...
 ```
 

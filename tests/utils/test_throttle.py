@@ -294,3 +294,49 @@ class TestInMemoryThrottleBackend:
             assert await backend.get("k") == "2"
             await backend.delete("k")
             assert await backend.get("k") is None
+
+
+class TestReserve:
+    """``reserve`` counts before the check, so concurrency cannot overrun it."""
+
+    async def test_concurrent_reservations_admit_only_the_budget(self) -> None:
+        import asyncio
+
+        throttle = AttemptThrottle(
+            InMemoryThrottleBackend(), max_attempts=5, window_seconds=900
+        )
+        checks: list[int] = []
+
+        async def attempt(index: int) -> None:
+            await throttle.reserve("login-ip:1.2.3.4")
+            await asyncio.sleep(0.01)
+            checks.append(index)
+
+        results = await asyncio.gather(
+            *(attempt(i) for i in range(50)), return_exceptions=True
+        )
+        refused = [r for r in results if isinstance(r, TooManyRequestsException)]
+        assert len(checks) == 5
+        assert len(refused) == 45
+
+    async def test_release_returns_the_slot(self) -> None:
+        throttle = AttemptThrottle(
+            InMemoryThrottleBackend(), max_attempts=1, window_seconds=900
+        )
+        await throttle.reserve("k")
+        await throttle.release("k")
+        status = await throttle.reserve("k")
+        assert status.attempts == 1
+
+    async def test_release_of_an_expired_key_leaves_nothing_behind(self) -> None:
+        backend = InMemoryThrottleBackend()
+        throttle = AttemptThrottle(backend, max_attempts=1, window_seconds=900)
+        await throttle.release("k")
+        assert await backend.get("throttle:k") is None
+
+    async def test_release_without_decr_keeps_the_slot_spent(self) -> None:
+        throttle = AttemptThrottle(FakeRedis(), max_attempts=1, window_seconds=900)
+        await throttle.reserve("k")
+        await throttle.release("k")
+        with pytest.raises(TooManyRequestsException):
+            await throttle.reserve("k")
