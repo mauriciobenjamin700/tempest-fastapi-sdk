@@ -242,6 +242,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   handshake com `4401` para refresh, MFA pendente e ticket de stream. A
   receita de WebSocket passa a usá-lo no lugar do resolver escrito à mão.
 
+### Security
+
+- Sob `ENV=production`, nenhum fluxo de auth devolve link de e-mail no corpo
+  da resposta. `AuthSettings.production_violations()` passa a recusar
+  `AUTH_RETURN_TOKEN_IN_RESPONSE=true` (independente de `EMAIL_ENABLED`), e um
+  `UserAuthService` sem `email=` cujo `auth_settings` reporta
+  `ENV=production` responde `503 INTEGRATION_DISABLED` a signup, reenvio de
+  ativação, reset de senha, troca/verificação e recuperação de e-mail, antes
+  de ler ou gravar qualquer coisa. Em desenvolvimento o comportamento não
+  muda. **Mudança de comportamento** para quem rodava produção sem mailer.
+- `POST /auth/email-recovery/request` gasta os mesmos orçamentos de falha do
+  login (por e-mail e, se configurado, por IP) e do `/auth/mfa/verify` (por
+  conta). `request_email_recovery` ganha os keyword-only `login_throttle`,
+  `login_ip_throttle`, `client_ip` e `mfa_throttle`; orçamento esgotado
+  responde o mesmo `202` genérico sem emitir link. Override antigo continua
+  chamado, com aviso no log.
+- `change_password` e `confirm_email_change` revogam as sessões do usuário
+  por padrão, como `confirm_password_reset`; `revoke_sessions=False` é a saída
+  explícita. `POST /auth/password-change` continua respondendo `204`, mas o
+  refresh token de quem chamou também deixa de valer.
+- `revoke_user_sessions` também encerra os cookies de sessão do
+  `make_auth_pages_router`: o router registra `session_auth.revoke_all` no
+  service pelo novo `UserAuthService.add_session_revoker` (lista em
+  `session_revokers`). O retorno soma as linhas de refresh e o que cada
+  revoker encerrou.
+- A rotação do refresh token DB-backed é decidida num único `UPDATE`
+  condicional: duas redenções concorrentes do mesmo token rendem um par novo
+  e um `401` que revoga a família.
+
+### Fixed
+
+- A mensagem de `ACCOUNT_INACTIVE`, a docstring de `request_activation` e a
+  receita do CLI dizem o que acontece: desativar bloqueia o login, mas o dono
+  reativa a conta pelo link de ativação; banimento definitivo é o
+  `refuses_email_link`.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

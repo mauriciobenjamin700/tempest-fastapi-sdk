@@ -218,7 +218,7 @@ regras no método `production_violations()`:
 | `StorageSettings` | chaves `minioadmin` do default, `STORAGE_SECURE=false` (exceto bucket privado atrás de endpoint público HTTPS — veja [Storage](storage.md#bucket-privado-atras-de-https)), `STORAGE_PUBLIC_SECURE=false` explícito |
 | `EmailSettings` | host `mailpit`/`mailhog`, loopback na porta `1025`, `SMTP_HOST` default sem `SMTP_USERNAME`, `SMTP_FROM_ADDR` default ou com domínio reservado |
 | `RevenueCatSettings` | os dois segredos de webhook vazios |
-| `AuthSettings` | template de link do e-mail (`AUTH_*_URL_TEMPLATE`) em host local/reservado ou `http://` (com o e-mail ligado) |
+| `AuthSettings` | `AUTH_RETURN_TOKEN_IN_RESPONSE=true` (sempre); template de link do e-mail (`AUTH_*_URL_TEMPLATE`) em host local/reservado ou `http://` (com o e-mail ligado) |
 
 !!! info "O placeholder vem do mixin, não de um literal"
     O `JWT_SECRET` é comparado com `JWTSettings.model_fields["JWT_SECRET"].default`.

@@ -1207,6 +1207,15 @@ vezes imprime `Revoked 0` na segunda.
     `--yes` é obrigatório. Quando a intenção é "essa pessoa não deve mais
     entrar", o comando certo é `deactivate`.
 
+!!! note "`deactivate` bloqueia o login, não é banimento"
+    Conta desativada não entra, mas o dono pode reativá-la sozinho: o
+    `POST /auth/activation/request` manda um link de ativação novo para o
+    e-mail da conta, e abrir esse link a deixa ativa de novo. É o
+    comportamento pretendido — quem tem a caixa de e-mail volta. Para
+    fechar a porta de vez, passe `refuses_email_link` ao `UserAuthService`
+    com um predicado que case essa conta: ativação e reset por e-mail ficam
+    recusados para ela (veja a [receita de MFA](mfa.md#email-link-refusal)).
+
 ### Segredos — `tempest secrets`
 
 Quatro comandos, ordenados por quanto mexem no seu `.env`:

@@ -470,7 +470,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "Não foi possível confirmar a transferência; ela será conferida"
         ),
         "ACCOUNT_INACTIVE": (
-            "Esta conta está desativada — fale com o suporte para reativá-la"
+            "Esta conta está desativada — reative-a pelo link de ativação"
         ),
         "EMAIL_LINK_FORBIDDEN": "Esta conta não aceita links por e-mail",
         "PASSWORD_TOO_SHORT": "A senha precisa ter pelo menos {min_length} caracteres",
@@ -607,7 +607,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "The transfer could not be confirmed; it will be reconciled"
         ),
         "ACCOUNT_INACTIVE": (
-            "This account is deactivated — contact support to reactivate it"
+            "This account is deactivated — reactivate it through the activation link"
         ),
         "EMAIL_LINK_FORBIDDEN": "This account does not accept email links",
         "PASSWORD_TOO_SHORT": "Password must be at least {min_length} characters",

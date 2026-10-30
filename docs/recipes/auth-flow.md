@@ -1202,7 +1202,11 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
 !!! note "Modo dev: link no body (sem SMTP)"
     Sem o extra `[email]`, ou com `AUTH_RETURN_TOKEN_IN_RESPONSE=True`, o
     `reset_url` volta **no corpo** do `request` em vez de ir por e-mail —
-    você dispara o fluxo inteiro sem inbox. Em produção ele fica `null`.
+    você dispara o fluxo inteiro sem inbox. Em produção ele fica `null`:
+    com `ENV=production` (`EnvironmentSettings` composto), a flag derruba o
+    boot, e um `UserAuthService` sem `email=` responde **503**
+    `INTEGRATION_DISABLED` a todo fluxo que levaria link — o link nunca
+    volta para quem só digitou o e-mail.
 
 !!! tip "Conta que não usa link de e-mail *(v0.316.0+)*"
     O `UserAuthService(refuses_email_link=...)` fecha este fluxo (e o de
@@ -1233,8 +1237,13 @@ curl -X POST localhost:8000/auth/password-change \
   -d '{"current_password": "senha-atual", "new_password": "nova-senha-forte-12"}'
 ```
 
-Retorna **204**; os tokens atuais continuam válidos (este endpoint não
-revoga sessões). `current_password` errada → **401**.
+Retorna **204** e **revoga as sessões** do usuário na mesma transação que
+grava a senha nova, como o reset: refresh token emitido antes da troca —
+inclusive o de quem chamou — deixa de ser trocável, e o cookie de sessão
+das [páginas de auth](auth-pages.md) também cai. O access token atual vale
+até o TTL curto acabar; a próxima sessão começa no login.
+`current_password` errada → **401**. Chamando o service direto,
+`change_password(..., revoke_sessions=False)` é a saída explícita.
 
 !!! tip "Reset vs change — qual é qual?"
     - **Esqueceu** a senha, não está logado → **[Recuperação de senha](#recuperacao-de-senha)** (`password-reset/request` → `confirm`, prova com token de e-mail).
@@ -1267,7 +1276,10 @@ curl -X POST localhost:8000/auth/email-change/confirm \
 
 Ao confirmar, se `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` (padrão) um **aviso
 de segurança vai pro endereço antigo** — o padrão de bancos/Google, pra
-uma conta sequestrada ainda alertar o dono.
+uma conta sequestrada ainda alertar o dono. A confirmação também **revoga
+as sessões** do usuário (refresh tokens e cookies das páginas), como a
+troca de senha — `confirm_email_change(..., revoke_sessions=False)` é a
+saída explícita no service.
 
 !!! check "Erros"
     - Senha atual errada → **401**.
@@ -1316,6 +1328,10 @@ curl -X POST localhost:8000/auth/email-recovery/request \
     - Sempre **202** genérico pra toda falha leve (e-mail desconhecido,
       senha errada, `mfa_code` faltando/errado) — não enumera contas.
     - Se o TOTP estiver inscrito, exige um `mfa_code` válido.
+    - Gasta os **mesmos orçamentos** do `/auth/login` (por e-mail e, se
+      configurado, por IP) e do `/auth/mfa/verify` (por conta): depois de
+      esgotados, nem a senha nem o código certos emitem link — a resposta
+      continua o `202` genérico.
     - Mantenha `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` pra o e-mail antigo
       sempre ser avisado da troca.
 
@@ -1613,7 +1629,7 @@ quem tem a senha já é o dono:
 $ curl -s -X POST localhost:8000/auth/login \
     -H "Content-Type: application/json" \
     -d '{"email":"ana@example.com","password":"strong-pass-12-chars"}'
-{"detail":"Esta conta está desativada — fale com o suporte para reativá-la","code":"ACCOUNT_INACTIVE","details":{}}
+{"detail":"Esta conta está desativada — reative-a pelo link de ativação","code":"ACCOUNT_INACTIVE","details":{}}
 ```
 
 (Com o catálogo default em `register_exception_handlers(app, catalog=default_message_catalog())`;

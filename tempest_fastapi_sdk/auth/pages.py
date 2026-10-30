@@ -249,6 +249,11 @@ def make_auth_pages_router(
             request-scoped DB session provider.
         session_auth (SessionAuth): Opens, resolves and revokes the
             cookie session; its ``SESSION_*`` settings shape the cookie.
+            Its ``revoke_all`` is registered on ``service``
+            (:meth:`UserAuthService.add_session_revoker`), so every flow
+            that revokes the user's sessions — password reset, password
+            change, e-mail change, the MFA resets — ends the cookie
+            sessions too.
         template_dir (str | None): Project folder overriding the bundled
             templates, by file name (per-locale subfolder first).
         recovery_code_model (type[BaseUserRecoveryCodeModel] | None):
@@ -304,6 +309,7 @@ def make_auth_pages_router(
     signup_columns: frozenset[str] = service.signup_column_names()
     forward_signup_fields = accepts_keyword(service.signup, "fields")
     forward_mfa_amr = accepts_keyword(service.issue_mfa_token, "amr")
+    service.add_session_revoker(session_auth.revoke_all)
     session_settings = session_auth.settings
     csrf = FormCSRF(
         secure=session_settings.SESSION_COOKIE_SECURE,

@@ -94,6 +94,7 @@ from tempest_fastapi_sdk.utils.password import (
     check_password_policy,
     generate_password,
 )
+from tempest_fastapi_sdk.utils.throttle import login_throttle_key
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
     AMR_CLAIM,
@@ -106,7 +107,14 @@ from tempest_fastapi_sdk.utils.token_types import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Coroutine, Mapping, Sequence
+    from collections.abc import (
+        Awaitable,
+        Callable,
+        Collection,
+        Coroutine,
+        Mapping,
+        Sequence,
+    )
     from typing import Any, NoReturn
 
     from fastapi import APIRouter, Request
@@ -247,8 +255,11 @@ class UserAuthService:
             jwt_settings (JWTSettings): The mixin populating
                 signing keys and TTLs.
             email (EmailUtils | None): Configured email helper.
-                When ``None``, the service always returns the link
-                in the response (and never tries to send).
+                When ``None``, the service returns the link in the
+                response (and never tries to send) — except under
+                ``ENV=production``, where every flow carrying a link
+                answers ``503 INTEGRATION_DISABLED`` instead (see
+                :meth:`require_mail_delivery`).
             passwords (PasswordUtils | None): Override for tests;
                 defaults to a fresh instance.
             jwt (JWTUtils | None): Override for tests; defaults
@@ -310,6 +321,7 @@ class UserAuthService:
             oauth_account_model
         )
         self.refuses_email_link: Callable[[Any], bool] | None = refuses_email_link
+        self.session_revokers: list[Callable[[UUID], Awaitable[int]]] = []
 
     # ------------------------------------------------------------------
     # Signup
@@ -574,7 +586,7 @@ class UserAuthService:
         *,
         email: str,
     ) -> ActivationToken | None:
-        """Re-issue the activation link for an account that never activated.
+        """Re-issue the activation link for an inactive account.
 
         The signup email is sent once. When it does not arrive — a typo in
         a spam filter, a bounced relay, a closed tab — the account is
@@ -583,6 +595,14 @@ class UserAuthService:
         :meth:`request_email_verification` needs a bearer token that only a
         successful login hands out. This is the way back in, and it needs
         no credentials by design.
+
+        "Inactive" includes an account an operator deactivated
+        (``is_active=False``, e.g. ``tempest user deactivate``): the link
+        goes to it too, and opening it makes the account active again.
+        That is intended — deactivation blocks login, and the holder of
+        the mailbox can reactivate it on their own. To close the account
+        for good, match it with the ``refuses_email_link`` predicate, which
+        this flow answers with no token and no mail.
 
         Nothing is leaked about the address. An unknown email, an already
         active account and a genuine re-send are indistinguishable to the
@@ -1465,6 +1485,7 @@ class UserAuthService:
         user: BaseUserModel,
         current_password: str,
         new_password: str,
+        revoke_sessions: bool = True,
     ) -> BaseUserModel:
         """Replace an authenticated user's password after re-auth.
 
@@ -1475,6 +1496,14 @@ class UserAuthService:
         involved — this is distinct from the email-driven reset flow
         (:meth:`request_password_reset` / :meth:`confirm_password_reset`).
 
+        A password is changed because the old one may be known to someone
+        else, so by default every session of the user is revoked in the
+        same transaction (:meth:`revoke_user_sessions`), as in
+        :meth:`confirm_password_reset`: a refresh token minted before the
+        change no longer rotates. That includes the caller's own refresh
+        token — the access token it holds lives until its short TTL ends,
+        and the next session starts at login.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             user (BaseUserModel): The authenticated user (already loaded
@@ -1482,6 +1511,9 @@ class UserAuthService:
             current_password (str): The user's current plaintext password,
                 re-entered for confirmation.
             new_password (str): The plaintext replacement password.
+            revoke_sessions (bool): Revoke every session of the user
+                (default). ``False`` is the explicit opt-out, for a caller
+                that ends the sessions some other way.
 
         Returns:
             BaseUserModel: The user whose password was rotated.
@@ -1498,6 +1530,8 @@ class UserAuthService:
         user = await self._attach(session, user)
         user.hashed_password = self.passwords.hash(new_password)
         await session.flush()
+        if revoke_sessions:
+            await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
         return user
 
@@ -1588,6 +1622,7 @@ class UserAuthService:
         session: AsyncSession,
         *,
         token: str,
+        revoke_sessions: bool = True,
     ) -> BaseUserModel:
         """Consume an ``EMAIL_CHANGE`` token and apply the pending address.
 
@@ -1597,9 +1632,17 @@ class UserAuthService:
         ``AUTH_EMAIL_CHANGE_NOTIFY_OLD`` is on — sends a security notice
         to the previous address.
 
+        The address is where the password reset goes, so moving it is a
+        credential change: by default every session of the user is
+        revoked in the same transaction (:meth:`revoke_user_sessions`), as
+        in :meth:`confirm_password_reset`.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             token (str): Plaintext token from the confirmation link.
+            revoke_sessions (bool): Revoke every session of the user
+                (default). ``False`` is the explicit opt-out, for a caller
+                that ends the sessions some other way.
 
         Returns:
             BaseUserModel: The user whose email was changed.
@@ -1647,6 +1690,8 @@ class UserAuthService:
         old_email = user.email
         user.email = new_email
         await session.flush()
+        if revoke_sessions:
+            await self.revoke_user_sessions(session, user_id=user.id)
         await session.refresh(user)
         await self._maybe_send_email_changed_notice(user, old_email, new_email)
         return user
@@ -1741,6 +1786,10 @@ class UserAuthService:
         current_password: str,
         mfa_code: str | None = None,
         recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
+        login_throttle: AttemptThrottle | None = None,
+        login_ip_throttle: AttemptThrottle | None = None,
+        client_ip: str | None = None,
+        mfa_throttle: AttemptThrottle | None = None,
     ) -> EmailChangeToken | None:
         """Start an email move for a user who lost access to their mailbox.
 
@@ -1758,6 +1807,20 @@ class UserAuthService:
         is a target address already in use, or a deployment that enabled
         recovery without wiring ``recovery_code_model`` for an MFA user.
 
+        The password and the second factor checked here are the same ones
+        ``/auth/login`` and ``/auth/mfa/verify`` check, so they spend the
+        same budgets — otherwise this route would be the way around them.
+        ``login_throttle`` is reserved on
+        :func:`~tempest_fastapi_sdk.utils.throttle.login_throttle_key` of
+        ``email`` before the password is checked, and ``mfa_throttle`` on
+        ``f"mfa:{user_id}"`` before the code is checked; ``login_ip_throttle``
+        is read before anything and spent by every soft failure. A spent
+        budget answers like any other soft failure — ``None``, the generic
+        ``202`` — whatever the password or code, and never issues a link.
+        A matching password clears the e-mail key and a matching code the
+        MFA key, as on the login doors. The bundled router passes its own
+        throttles; ``None`` (default) leaves that budget unchecked.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             email (str): The account's current (old) email.
@@ -1769,11 +1832,20 @@ class UserAuthService:
             recovery_code_model (type[BaseUserRecoveryCodeModel] | None):
                 The project's recovery-code model, needed to verify a
                 recovery-code ``mfa_code``.
+            login_throttle (AttemptThrottle | None): The per-e-mail login
+                budget.
+            login_ip_throttle (AttemptThrottle | None): The per-IP login
+                budget, keyed ``f"login-ip:{client_ip}"``. Ignored without
+                ``client_ip``.
+            client_ip (str | None): The caller's address, for
+                ``login_ip_throttle``.
+            mfa_throttle (AttemptThrottle | None): The per-account
+                second-factor budget.
 
         Returns:
             EmailChangeToken | None: The token bundle when the caller
             surfaces the link, ``None`` otherwise (including every soft
-            identity-proof failure).
+            identity-proof failure and every spent budget).
 
         Raises:
             ValidationException: When ``recovery_code_model`` is missing
@@ -1794,15 +1866,28 @@ class UserAuthService:
                 the caller's rollback drops it.
         """
         self.require_mail_delivery()
+        ip_throttle = login_ip_throttle if client_ip is not None else None
+        ip_key = f"login-ip:{client_ip}"
+        if ip_throttle is not None and (await ip_throttle.status(ip_key)).blocked:
+            return None
+        email_key = login_throttle_key(email)
+        if login_throttle is not None:
+            attempt = await login_throttle.hit(email_key)
+            if attempt.attempts > login_throttle.max_attempts:
+                return None
         normalized_old = email.strip().lower()
         result = await session.execute(
             select(self.user_model).where(self.user_model.email == normalized_old),
         )
         user: BaseUserModel | None = result.scalar_one_or_none()
-        if user is None:
+        if user is None or not self.passwords.verify(
+            current_password, user.hashed_password
+        ):
+            if ip_throttle is not None:
+                await ip_throttle.hit(ip_key)
             return None
-        if not self.passwords.verify(current_password, user.hashed_password):
-            return None
+        if login_throttle is not None:
+            await login_throttle.reset(email_key)
         if self.is_mfa_enrolled(user):
             if not mfa_code:
                 return None
@@ -1810,10 +1895,19 @@ class UserAuthService:
                 raise ValidationException(
                     message="recovery_code_model is required to verify MFA",
                 )
+            mfa_key = f"mfa:{user.id}"
+            if mfa_throttle is not None:
+                attempt = await mfa_throttle.hit(mfa_key)
+                if attempt.attempts > mfa_throttle.max_attempts:
+                    return None
             if not await self._verify_mfa_code(
                 session, user, mfa_code, recovery_code_model
             ):
+                if ip_throttle is not None:
+                    await ip_throttle.hit(ip_key)
                 return None
+            if mfa_throttle is not None:
+                await mfa_throttle.reset(mfa_key)
         normalized_new = new_email.strip().lower()
         if normalized_new == user.email:
             raise ValidationException(
@@ -2059,7 +2153,10 @@ class UserAuthService:
           stolen-token signal: the **entire family** is revoked and the
           call raises ``401``. On success the presented token is marked
           ``used_at`` and a new opaque token is minted in the same
-          family.
+          family. The database decides the rotation in one conditional
+          ``UPDATE`` (:meth:`_spend_refresh_record`), so two concurrent
+          redemptions of one token yield one new pair and one ``401``
+          that revokes the family — never two live descendants.
         * **``refresh_token_model`` is ``None`` (stateless / legacy)** —
           the refresh JWT is decoded and must carry the ``refresh``
           claim, so a stolen *access* token can't be replayed here.
@@ -2099,13 +2196,11 @@ class UserAuthService:
                 access, refresh = self.issue_jwt_pair(user)
             return user, access, refresh
 
-        record = await self._lookup_refresh_record(session, refresh_token)
+        record = await self._spend_refresh_record(session, refresh_token)
         family_id = record.family_id
         family_amr = tuple(record.amr.split()) if record.amr else None
         user = await self.get_user(record.user_id, session)
         require_active(user, exception=self.inactive_account_error)
-        record.used_at = utcnow()
-        await session.flush()
         access, refresh = await self._issue_pair_with_amr(
             session, user, family_id=family_id, amr=family_amr
         )
@@ -2163,18 +2258,26 @@ class UserAuthService:
         *,
         user_id: UUID,
     ) -> int:
-        """Revoke every active refresh token of a user, by id.
+        """Revoke every active session of a user, by id.
 
         The administrative counterpart of :meth:`revoke_refresh_token`:
         logout-everywhere for a user whose token nobody holds — the
         account an operator just reset the password of, or one being
         locked after a report. Wraps
         :func:`revoke_user_refresh_tokens` with the service's configured
-        table so the caller needs no model reference of its own.
+        table so the caller needs no model reference of its own, then
+        runs every revoker in :attr:`session_revokers` — the cookie
+        sessions :func:`~tempest_fastapi_sdk.auth.make_auth_pages_router`
+        opens are registered there (:meth:`add_session_revoker`), so a
+        password reset, password change or e-mail change ends them too.
 
-        Returns ``0`` when ``refresh_token_model`` is not wired, since
+        Without ``refresh_token_model`` no refresh row is revoked, since
         stateless JWT refresh tokens carry no server-side row to flip;
         those keep working until they expire.
+
+        The revokers act on their own store as they run, outside the
+        database transaction: a rollback afterwards does not bring a
+        revoked cookie session back.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session. The
@@ -2182,12 +2285,37 @@ class UserAuthService:
             user_id (UUID): Owner whose sessions are being killed.
 
         Returns:
-            int: How many refresh-token rows were revoked.
+            int: How many refresh-token rows were revoked, plus what each
+            revoker reported.
         """
         model = self.refresh_token_model
-        if model is None:
-            return 0
-        return await revoke_user_refresh_tokens(session, model, user_id=user_id)
+        revoked = (
+            0
+            if model is None
+            else await revoke_user_refresh_tokens(session, model, user_id=user_id)
+        )
+        for revoker in self.session_revokers:
+            revoked += await revoker(user_id)
+        return revoked
+
+    def add_session_revoker(self, revoker: Callable[[UUID], Awaitable[int]]) -> None:
+        """Register a store of sessions that :meth:`revoke_user_sessions` ends.
+
+        A session that is not a refresh-token row — the opaque cookie of
+        :class:`~tempest_fastapi_sdk.sessions.SessionAuth` — is invisible to
+        the refresh table, so a password reset would leave it alive.
+        :func:`~tempest_fastapi_sdk.auth.make_auth_pages_router` registers
+        its ``session_auth.revoke_all`` here; register your own when you
+        open sessions over this service some other way. Registering the
+        same callable twice keeps one entry.
+
+        Args:
+            revoker (Callable[[UUID], Awaitable[int]]): Called with the
+                user id; ends every session of that user and returns how
+                many it ended.
+        """
+        if revoker not in self.session_revokers:
+            self.session_revokers.append(revoker)
 
     async def _issue_refresh_record(
         self,
@@ -2231,6 +2359,62 @@ class UserAuthService:
         session.add(record)
         await session.flush()
         return plain
+
+    async def _spend_refresh_record(
+        self,
+        session: AsyncSession,
+        token: str,
+    ) -> BaseUserRefreshTokenModel:
+        """Mark a refresh token used in one conditional statement.
+
+        The rotation is one ``UPDATE ... SET used_at = now WHERE
+        token_hash = :h AND used_at IS NULL AND revoked_at IS NULL AND
+        expires_at > now RETURNING *``, as in :meth:`_consume_token`: two
+        concurrent redemptions of the same token both issue it, and only
+        one finds ``used_at`` still empty. Reading the row first and
+        writing ``used_at`` afterwards — the shape this replaces — let
+        both pass the read and each mint a child in the family, with no
+        reuse detected.
+
+        When no row comes back, :meth:`_lookup_refresh_record` names the
+        reason and, for a token already rotated, revokes the family. A
+        row it still reads as live means a concurrent redemption is in
+        flight and has not committed: that is a replay too, and the family
+        is revoked the same way.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The
+                statement is executed but not committed.
+            token (str): Plaintext opaque token.
+
+        Returns:
+            BaseUserRefreshTokenModel: The token row, with ``used_at`` set.
+
+        Raises:
+            InvalidTokenException: When the token is unknown, revoked,
+                expired or already rotated — including when a concurrent
+                redemption spent it first.
+        """
+        model = self.refresh_token_model
+        assert model is not None
+        now = utcnow()
+        result = await session.execute(
+            update(model)
+            .where(
+                model.token_hash == hash_opaque_token(token),
+                model.used_at.is_(None),
+                model.revoked_at.is_(None),
+                model.expires_at > now,
+            )
+            .values(used_at=now)
+            .returning(model)
+        )
+        record: BaseUserRefreshTokenModel | None = result.scalar_one_or_none()
+        if record is not None:
+            return record
+        live = await self._lookup_refresh_record(session, token)
+        await self._revoke_reused_family(session, live)
+        raise InvalidTokenException(message="refresh token reuse detected")
 
     async def _lookup_refresh_record(
         self,
@@ -3359,6 +3543,16 @@ class UserAuthService:
         The check runs before the account lookup, so a refused reset
         answers the same for a known and an unknown address.
 
+        Under ``ENV=production`` (read from ``auth_settings`` when it
+        composes :class:`~tempest_fastapi_sdk.settings.EnvironmentSettings`)
+        a flow carrying a link is refused the same way whenever the link
+        would travel in the response body instead of the mail — no
+        ``EmailUtils`` wired, or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` on. Those
+        are development conveniences: in production they hand a reset or
+        activation link to whoever typed the address. The production guard
+        refuses the flag at boot; this covers the missing mailer, which is
+        a constructor argument no settings guard can see.
+
         Args:
             carries_token (bool): ``True`` (default) for a mail carrying a
                 link, which ``AUTH_RETURN_TOKEN_IN_RESPONSE`` replaces by
@@ -3368,13 +3562,31 @@ class UserAuthService:
 
         Raises:
             IntegrationDisabledException: When the wired mailer is
-                disabled and the operation would need it.
+                disabled and the operation would need it, or under
+                ``ENV=production`` when the link would be surfaced in
+                the response.
         """
+        if carries_token and self._links_surface_in_production():
+            raise IntegrationDisabledException("email")
         if self.email is None or getattr(self.email, "enabled", True):
             return
         if carries_token and self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
             return
         raise IntegrationDisabledException("email")
+
+    def _links_surface_in_production(self) -> bool:
+        """Tell whether a link would reach the response body in production.
+
+        Returns:
+            bool: ``True`` when ``auth_settings`` reports ``ENV=production``
+            and the link would be surfaced instead of mailed — no
+            ``EmailUtils`` wired, or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` on.
+            ``auth_settings`` without an ``ENV`` field counts as not
+            production.
+        """
+        if getattr(self.auth_settings, "ENV", None) != "production":
+            return False
+        return self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
 
     async def _send_email(
         self,
