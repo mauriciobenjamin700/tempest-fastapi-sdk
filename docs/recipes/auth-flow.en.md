@@ -1221,7 +1221,10 @@ curl -X POST localhost:8000/auth/password-reset/confirm \
     Without the `[email]` extra, or with `AUTH_RETURN_TOKEN_IN_RESPONSE=True`,
     the `reset_url` comes back **in the `request` body** instead of by
     email — you can drive the whole flow with no inbox. In production it
-    stays `null`.
+    stays `null`: under `ENV=production` (`EnvironmentSettings` composed)
+    the flag refuses to boot, and a `UserAuthService` without `email=`
+    answers **503** `INTEGRATION_DISABLED` to every flow that would carry
+    a link — the link never goes back to whoever only typed the address.
 
 !!! tip "Accounts that do not use emailed links *(v0.316.0+)*"
     `UserAuthService(refuses_email_link=...)` closes this flow (and the
@@ -1252,8 +1255,14 @@ curl -X POST localhost:8000/auth/password-change \
   -d '{"current_password": "current-pass", "new_password": "new-strong-pass-12"}'
 ```
 
-Returns **204**; current tokens stay valid (this endpoint doesn't revoke
-sessions). Wrong `current_password` → **401**.
+Returns **204** and **revokes the user's sessions** in the same
+transaction that writes the new password, like the reset: a refresh token
+issued before the change — the caller's included — can no longer be
+exchanged, and the cookie session of the [auth pages](auth-pages.md) ends
+too. The current access token lives until its short TTL ends; the next
+session starts at login. Wrong `current_password` → **401**. Calling the
+service directly, `change_password(..., revoke_sessions=False)` is the
+explicit opt-out.
 
 !!! tip "Reset vs change — which is which?"
     - **Forgot** the password, not logged in → **[Password recovery](#password-recovery)** (`password-reset/request` → `confirm`, prove with an emailed token).
@@ -1286,7 +1295,10 @@ curl -X POST localhost:8000/auth/email-change/confirm \
 
 On confirmation, if `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` (default) a
 **security notice goes to the old address** — the banks/Google pattern,
-so a hijacked account still alerts its owner.
+so a hijacked account still alerts its owner. Confirming also **revokes
+the user's sessions** (refresh tokens and the pages' cookies), like the
+password change — `confirm_email_change(..., revoke_sessions=False)` is the
+explicit opt-out on the service.
 
 !!! check "Errors"
     - Wrong current password → **401**.
@@ -1335,6 +1347,10 @@ curl -X POST localhost:8000/auth/email-recovery/request \
     - Always a generic **202** for every soft failure (unknown email,
       wrong password, missing/invalid `mfa_code`) — no account enumeration.
     - When TOTP is enrolled, a valid `mfa_code` is required.
+    - It spends the **same budgets** as `/auth/login` (per email and, when
+      configured, per IP) and `/auth/mfa/verify` (per account): once they
+      are spent, not even the right password or code issues a link — the
+      answer stays the generic `202`.
     - Keep `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` so the old email is always
       alerted of the change.
 

@@ -139,3 +139,38 @@ def test_production_boot_passes_with_real_links() -> None:
         **GOOD,
     )
     assert settings.production_violations() == []
+
+
+def test_return_token_in_response_is_refused() -> None:
+    """The dev flag that puts the link in the response is a violation."""
+    settings = AuthSettings(**GOOD, AUTH_RETURN_TOKEN_IN_RESPONSE=True)  # type: ignore[arg-type]
+    assert [v.split(":")[0] for v in settings.production_violations()] == [
+        "AUTH_RETURN_TOKEN_IN_RESPONSE"
+    ]
+
+
+def test_return_token_in_response_is_refused_with_email_off() -> None:
+    """``EMAIL_ENABLED=false`` skips the link rule, never the flag rule."""
+    settings = Composed(  # type: ignore[call-arg]
+        _env_file=None,
+        ENV="development",
+        EMAIL_ENABLED=False,
+        AUTH_RETURN_TOKEN_IN_RESPONSE=True,
+    )
+    assert [v.split(":")[0] for v in settings.production_violations()] == [
+        "AUTH_RETURN_TOKEN_IN_RESPONSE"
+    ]
+
+
+def test_production_boot_is_refused_with_return_token_in_response() -> None:
+    with pytest.raises(ValidationError) as error:
+        Composed(  # type: ignore[call-arg]
+            _env_file=None,
+            ENV="production",
+            SMTP_HOST="smtp.gmail.com",
+            SMTP_USERNAME="app@gmail.com",
+            SMTP_FROM_ADDR="app@gmail.com",
+            AUTH_RETURN_TOKEN_IN_RESPONSE=True,
+            **GOOD,
+        )
+    assert "AUTH_RETURN_TOKEN_IN_RESPONSE" in str(error.value)

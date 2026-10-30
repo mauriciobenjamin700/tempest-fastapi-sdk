@@ -2030,7 +2030,8 @@ class AuthSettings(BaseAppSettings):
             "response body instead of (or in addition to) "
             "sending the email. Useful when the SMTP host is "
             "MailHog and you don't want to round-trip through "
-            "the inbox UI."
+            "the inbox UI. Development only: ``ENV=production`` "
+            "refuses to build with it on."
         ),
         examples=[False, True],
     )
@@ -2280,10 +2281,21 @@ class AuthSettings(BaseAppSettings):
         never leaves the process. Without ``EmailSettings`` composed the
         attribute is absent and the check applies.
 
+        ``AUTH_RETURN_TOKEN_IN_RESPONSE`` is refused regardless of
+        ``EMAIL_ENABLED``: it hands the activation, reset, e-mail change
+        and recovery links to whoever sent the request.
+
         Returns:
-            list[str]: The parent's entries plus at most one per template.
+            list[str]: The parent's entries, one for
+            ``AUTH_RETURN_TOKEN_IN_RESPONSE`` when it is on, plus at most
+            one per template.
         """
         violations: list[str] = super().production_violations()
+        if self.AUTH_RETURN_TOKEN_IN_RESPONSE:
+            violations.append(
+                "AUTH_RETURN_TOKEN_IN_RESPONSE: hands the e-mailed links to "
+                "the anonymous caller instead of the mailbox"
+            )
         if getattr(self, "EMAIL_ENABLED", True) is False:
             return violations
         for field in AUTH_EMAIL_LINK_FIELDS:

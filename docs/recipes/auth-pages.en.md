@@ -281,6 +281,12 @@ Each item below has a test in `tests/auth/test_auth_pages.py`.
 !!! note "What about the password-reset form?"
     The reset pages stay with the `make_auth_router` link pages (`AUTH_BACKEND_LINKS=true`). They do not ask for a CSRF token: the POST only works with the secret token from the e-mailed URL, and whoever has that token can already reset the password without forging anything.
 
+    `make_auth_pages_router` registers `session_auth.revoke_all` on the
+    `UserAuthService` (`add_session_revoker`), so resetting the password —
+    and also changing the password or the e-mail, or the MFA resets — ends
+    the cookie sessions the pages opened. A cookie copied before the reset
+    stops working together with the old password.
+
 ## Testing
 
 `TestClient` does what the browser does: loads the form, reads the hidden field and submits it.

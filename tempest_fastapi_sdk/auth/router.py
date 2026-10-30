@@ -613,6 +613,19 @@ def make_auth_router(
             type(service).__name__,
         )
     forward_mfa_amr: bool = accepts_keyword(service.issue_mfa_token, "amr")
+    forward_recovery_throttles: bool = accepts_keyword(
+        service.request_email_recovery, "mfa_throttle"
+    )
+    if auth_settings.AUTH_EMAIL_RECOVERY_ENABLED and not forward_recovery_throttles:
+        logger.warning(
+            "%s.request_email_recovery() does not accept the throttle "
+            "keywords, so /email-recovery/request checks the password and "
+            "the second factor without the login and MFA budgets; add "
+            "'login_throttle', 'login_ip_throttle', 'client_ip' and "
+            "'mfa_throttle' (all '... | None = None') to the override and "
+            "pass them on to super().request_email_recovery().",
+            type(service).__name__,
+        )
     if not forward_mfa_amr:
         logger.warning(
             "%s.issue_mfa_token() does not accept 'amr', so /mfa/verify "
@@ -1280,8 +1293,36 @@ def make_auth_router(
     )
     async def email_recovery_request(
         payload: EmailRecoveryRequestSchema,
+        request: Request,
         session: AsyncSession = session_dep,
     ) -> EmailChangeResponseSchema:
+        """Start an email move proven by password (and second factor).
+
+        The password and code checked here spend the budgets of
+        ``/auth/login`` and ``/auth/mfa/verify`` — the same throttle
+        instances — so this route is not a way around them. A spent budget
+        answers the same generic ``202``.
+
+        Args:
+            payload (EmailRecoveryRequestSchema): Old and new address,
+                password, optional code.
+            request (Request): The inbound request (client IP).
+            session (AsyncSession): The request-scoped DB session.
+
+        Returns:
+            EmailChangeResponseSchema: The generic message, plus the link
+            when the service surfaces it.
+        """
+        throttles: dict[str, Any] = (
+            {
+                "login_throttle": resolved_login_throttle,
+                "login_ip_throttle": login_ip_throttle,
+                "client_ip": _client_ip(request),
+                "mfa_throttle": resolved_mfa_throttle,
+            }
+            if forward_recovery_throttles
+            else {}
+        )
         token = await service.request_email_recovery(
             session,
             email=payload.email,
@@ -1289,6 +1330,7 @@ def make_auth_router(
             current_password=payload.current_password,
             mfa_code=payload.mfa_code,
             recovery_code_model=recovery_code_model,
+            **throttles,
         )
         await session.commit()
         message = "If the details match an account, a confirmation link was sent."

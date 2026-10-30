@@ -281,6 +281,12 @@ Cada item abaixo tem teste em `tests/auth/test_auth_pages.py`.
 !!! note "E o formulário de redefinir senha?"
     As páginas de reset continuam nas páginas de link do `make_auth_router` (`AUTH_BACKEND_LINKS=true`). Elas não pedem token CSRF: o POST só funciona com o token secreto que veio na URL do e-mail, e quem tem esse token já consegue redefinir a senha sem forjar nada.
 
+    O `make_auth_pages_router` registra o `session_auth.revoke_all` no
+    `UserAuthService` (`add_session_revoker`), então redefinir a senha —
+    e também trocar a senha ou o e-mail, ou os resets de MFA — derruba os
+    cookies de sessão que as páginas abriram. Um cookie copiado antes do
+    reset para de funcionar junto com a senha antiga.
+
 ## Testando
 
 O `TestClient` faz o que o navegador faz: abre o formulário, lê o hidden e envia.

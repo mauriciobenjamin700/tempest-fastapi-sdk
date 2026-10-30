@@ -145,6 +145,14 @@ Result: both the attacker and the victim are logged out on their next attempt. T
 !!! danger "Single-use is mandatory for reuse detection to work"
     The client **must** discard the old refresh token after each `/refresh` and keep the new one. Reusing a rotated token triggers the family kill — that is not a bug, it is the feature.
 
+!!! info "Two redemptions at once"
+    The database decides the rotation in a conditional
+    `UPDATE ... WHERE used_at IS NULL`: two concurrent `POST /refresh` with
+    the same token yield **one** new pair and **one** 401, and the 401
+    revokes the family — including the child the other one just received.
+    Before, both read the token as free and each got a live child, with no
+    reuse detected.
+
 !!! info "The revocation is committed, and the request rolled back first (v0.252.0)"
     The family kill has to survive the 401 that immediately follows it. In a FastAPI request the exception leaves through the session dependency's teardown, so up to v0.251.0 the revocation — which only went through `flush()` — went away with the rollback: the replay was refused and **every descendant kept working**.
 

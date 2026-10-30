@@ -145,6 +145,13 @@ Resultado: tanto o atacante quanto a vítima são deslogados na próxima tentati
 !!! danger "Single-use é obrigatório pro reuso funcionar"
     O cliente **tem** que descartar o refresh token antigo após cada `/refresh` e guardar o novo. Reusar um token rotacionado dispara o kill de família — não é bug, é a feature.
 
+!!! info "Duas redenções ao mesmo tempo"
+    A rotação é decidida pelo banco num `UPDATE ... WHERE used_at IS NULL`
+    condicional: duas `POST /refresh` concorrentes com o mesmo token rendem
+    **um** par novo e **um** 401, e o 401 revoga a família — inclusive o
+    filho que a outra acabou de receber. Antes, as duas liam o token como
+    livre e cada uma ganhava um filho vivo, sem detecção de reuso.
+
 !!! info "A revogação é comitada, e a request é revertida antes (v0.252.0)"
     O kill de família precisa sobreviver ao 401 que vem logo depois. Numa request FastAPI a exceção sai pelo teardown da dependency de sessão, então até a v0.251.0 a revogação — que só passava por `flush()` — ia embora com o rollback: o replay era recusado e **todo descendente continuava funcionando**.
 
