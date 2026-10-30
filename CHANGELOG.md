@@ -62,6 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serializável em JSON não é gravado — medido com taskiq 0.12.4, o
   `model_dump(mode="json")` que o TaskIQ aplica antes do serializer já
   recusava esses valores também sob pickle.
+- `WebSocketHub.register` remove a conexão evictada (acima de
+  `max_per_user`) sob o lock e fecha o socket depois de soltá-lo, com limite
+  de 1 s. Antes, o fechamento esperava o handshake do cliente com o lock do
+  hub preso, e um cliente que não respondia segurava `send_to`, `broadcast`
+  e `register` de todos os usuários do processo.
 
 ## [0.334.0] — 2026-10-29
 

@@ -14,6 +14,16 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.websockets.schemas import WSEnvelope
 
 
+_EVICT_CLOSE_TIMEOUT_SECONDS: float = 1.0
+"""How long :meth:`WebSocketHub.register` waits for an evicted socket to close.
+
+The close handshake waits on the peer, and a peer that never answers holds
+it for as long as the server allows (about 20 s under uvicorn's
+``ws="websockets"``). The close runs outside the hub lock and is abandoned
+after this bound, so one silent client cannot stall delivery to others.
+"""
+
+
 @dataclass
 class WebSocketConnection:
     """A single live WebSocket bound to an authenticated user.
@@ -87,8 +97,12 @@ class WebSocketHub:
         """Register an accepted WebSocket against ``user_id``.
 
         When the user is already at ``max_per_user`` open
-        connections, the oldest one is force-closed (code ``4429``)
-        before the new connection is admitted.
+        connections, the oldest one is removed and force-closed (code
+        ``4429``). The indexes change under the hub lock; the close
+        handshake runs after the lock is released and is abandoned after
+        ``_EVICT_CLOSE_TIMEOUT_SECONDS`` (1 s). Awaiting it under the lock let
+        a peer that never answers the close stall every ``send_to``,
+        ``broadcast`` and ``register`` of every other user meanwhile.
 
         Args:
             user_id (UUID): The authenticated user owning the new
@@ -100,11 +114,11 @@ class WebSocketHub:
             ``connection_id`` to :meth:`unregister`,
             :meth:`subscribe` or :meth:`unsubscribe`.
         """
+        evicted: WebSocketConnection | None = None
         async with self._lock:
             existing = self._by_user.get(user_id, [])
             if len(existing) >= self.max_per_user:
-                oldest_id = existing[0]
-                await self._evict_locked(oldest_id, code=4429)
+                evicted = self._remove_locked(existing[0])
             connection = WebSocketConnection(
                 connection_id=uuid4(),
                 user_id=user_id,
@@ -112,7 +126,13 @@ class WebSocketHub:
             )
             self._connections[connection.connection_id] = connection
             self._by_user.setdefault(user_id, []).append(connection.connection_id)
-            return connection
+        if evicted is not None:
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(
+                    evicted.ws.close(code=4429),
+                    timeout=_EVICT_CLOSE_TIMEOUT_SECONDS,
+                )
+        return connection
 
     async def unregister(self, connection_id: UUID) -> None:
         """Remove a connection from every index. Idempotent.
@@ -121,13 +141,23 @@ class WebSocketHub:
             connection_id (UUID): Identifier of the connection.
         """
         async with self._lock:
-            await self._evict_locked(connection_id, code=None)
+            self._remove_locked(connection_id)
 
-    async def _evict_locked(self, connection_id: UUID, *, code: int | None) -> None:
-        """Internal — already-locked eviction (close socket if ``code``)."""
+    def _remove_locked(self, connection_id: UUID) -> WebSocketConnection | None:
+        """Drop ``connection_id`` from every index; the caller holds the lock.
+
+        Does no I/O, so the lock is never held across a network wait.
+
+        Args:
+            connection_id (UUID): Identifier of the connection.
+
+        Returns:
+            WebSocketConnection | None: The removed connection, or ``None``
+            when it was not registered.
+        """
         connection = self._connections.pop(connection_id, None)
         if connection is None:
-            return
+            return None
         user_list = self._by_user.get(connection.user_id, [])
         if connection_id in user_list:
             user_list.remove(connection_id)
@@ -137,9 +167,7 @@ class WebSocketHub:
             self._by_topic.get(topic, set()).discard(connection_id)
             if not self._by_topic.get(topic):
                 self._by_topic.pop(topic, None)
-        if code is not None:
-            with contextlib.suppress(Exception):
-                await connection.ws.close(code=code)
+        return connection
 
     async def subscribe(self, connection_id: UUID, topic: str) -> None:
         """Add ``topic`` to the connection's subscription set.

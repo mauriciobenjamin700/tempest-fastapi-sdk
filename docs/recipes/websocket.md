@@ -318,6 +318,11 @@ Códigos de fechamento que o router emite:
 | `4408` | Nenhum frame de entrada dentro de `WS_HEARTBEAT_TIMEOUT_SECONDS` |
 | `4429` | Limite `WS_MAX_CONNECTIONS_PER_USER` excedido — conexão **mais antiga** do user é evictada |
 
+A conexão evictada sai dos índices do hub na hora; o fechamento com `4429`
+roda **fora** do lock do hub e é abandonado depois de 1 s. Um cliente que
+nunca responde o handshake de fechamento não segura o `send_to`, o
+`broadcast` nem o `register` dos outros usuários enquanto isso.
+
 ### Heartbeat sem o router
 
 O heartbeat não exige o resto do router. `heartbeat` é um context manager
