@@ -4246,7 +4246,7 @@ pip install "tempest-fastapi-sdk[admin]"
 
 #### 1. User model
 
-Subclass `BaseUserModel` to get the four columns the admin auth backend expects (`email`, `hashed_password`, `is_admin`, `last_login_at`) on top of the standard `BaseModel` row:
+Subclass `BaseUserModel` to get the four columns the admin auth backend expects (`email`, `hashed_password`, `is_admin`, `last_login_at`), plus the `email_verified_at` proof the bundled auth flow fills, on top of the standard `BaseModel` row:
 
 ```python
 # src/db/models/user.py

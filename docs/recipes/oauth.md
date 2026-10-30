@@ -432,9 +432,9 @@ verificada deixaria quem controla a identidade no provedor com uma conta no
 e-mail de outra pessoa — e entrando nela depois que o dono de verdade a
 recuperasse por reset de senha.
 
-A conta criada nasce **ativa**: o provedor já fez a verificação, como o
-`email_verified` dele afirma, e re-verificar por e-mail pediria ao usuário que
-provasse de novo o que o Google acabou de provar. `AUTH_AUTO_ACTIVATE` não é
+A conta criada nasce **ativa** e com `email_verified_at` preenchido: o provedor
+já fez a verificação, como o `email_verified` dele afirma, e re-verificar por
+e-mail pediria ao usuário que provasse de novo o que o Google acabou de provar. `AUTH_AUTO_ACTIVATE` não é
 consultado aqui — um serviço que quer aprovação humana antes do primeiro login
 desliga a criação e faz um administrador criar e ligar a linha.
 
@@ -479,21 +479,41 @@ o provedor afirma explicitamente ter verificado o endereço
     verificação.
 
 A palavra do provedor cobre só o lado dele. Ligar exige também que a conta
-**local** tenha provado o endereço, e a tabela de usuários não guarda data de
-verificação — só `is_active`. Isso só prova algo quando a ativação precisou da
-caixa de entrada, então a ligação é recusada (**409**, `OAUTH_EMAIL_TAKEN`) em
-toda configuração em que quem se cadastra ativa sem ler o e-mail:
+**local** tenha provado o endereço: a coluna `email_verified_at` do
+`BaseUserModel` precisa estar preenchida. Sem ela, a ligação é recusada
+(**409**, `OAUTH_EMAIL_TAKEN`). `is_active` não basta, porque uma conta fica
+ativa por caminhos que nunca passaram pela caixa de entrada.
 
-| Configuração | Por que `is_active` não prova nada |
+O SDK preenche a coluna só onde ele mesmo viu a prova:
+
+| Caminho | `email_verified_at` |
 | --- | --- |
-| `AUTH_AUTO_ACTIVATE=true` | A linha nasce ativa no cadastro |
-| `AUTH_RETURN_TOKEN_IN_RESPONSE=true` | O link de ativação volta na resposta do cadastro |
-| `UserAuthService(email=None)` | Idem: sem mailer, o link volta na resposta |
+| Link de ativação (`/auth/activate/{token}`) enviado por e-mail e confirmado | preenchido |
+| Link de verificação (`/auth/email-verify/confirm`) enviado por e-mail e confirmado | preenchido |
+| Troca de e-mail confirmada pelo link enviado ao endereço **novo** | preenchido para o endereço novo |
+| Conta criada pelo login social com `email_verified is True` | preenchido |
+| Ativação pelo admin ou por `tempest user activate` | **não** muda |
+| `AUTH_AUTO_ACTIVATE=true` (a linha nasce ativa no cadastro) | **não** muda |
+| `AUTH_RETURN_TOKEN_IN_RESPONSE=true` ou `UserAuthService(email=None)` (o link volta na resposta) | **não** muda; a troca de e-mail confirmada assim o **limpa** |
+| Qualquer flush do ORM que muda `email` sem escrever a coluna (admin, script) | **limpo** |
+
+O link de ativação e o de verificação guardam o endereço para o qual foram
+enviados, e só carimbam se esse ainda for o `email` da conta no clique: um link
+devolvido na resposta, ou enviado antes de alguém editar o endereço, ativa a
+conta sem carimbar nada.
 
 Sem essa regra, um estranho que cadastrasse `ana@example.com` antes, com uma
-senha dele, herdaria o primeiro login da Ana pelo Google — e ficaria com a
-senha. Com a ligação recusada nessas configurações, a Ana retoma o endereço
-pelo reset de senha, que precisa da caixa de entrada.
+senha dele, e conseguisse a conta ativa sem ler o e-mail, herdaria o primeiro
+login da Ana pelo Google — e ficaria com a senha. Com a ligação recusada, a Ana
+retoma o endereço pelo reset de senha, que precisa da caixa de entrada.
+
+!!! warning "Contas antigas começam com `NULL`"
+    A coluna é nova, então toda conta criada antes dela tem
+    `email_verified_at` vazio e deixa de ser ligada por e-mail até verificar o
+    endereço (`POST /auth/email-verify/request`). Se você **sabe** que as
+    contas ativas do seu banco foram ativadas pelo link enviado por e-mail, o
+    [guia de migração](../migration.md) mostra como preencher a coluna — a
+    decisão é sua, não do SDK.
 
 O caminho seguro, com o knob desligado: a pessoa entra com a senha e liga o
 provedor de dentro da conta.
@@ -940,8 +960,8 @@ um `refresh_token` ao Google.
 - O callback devolve o **mesmo par JWT** do `POST /auth/login`: `typ`, refresh
   opaco, rotação, detecção de reuso e `/auth/logout`.
 - Criar conta herda `AUTH_SIGNUP_ENABLED` e exige `email_verified is True`;
-  ligar por e-mail também exige, está desligado por padrão e é recusado onde
-  uma conta local ativa sem a caixa de entrada.
+  ligar por e-mail também exige, está desligado por padrão e é recusado quando
+  a conta local não tem `email_verified_at`.
 - Cliente nativo usa `POST /auth/oauth/{provider}/token` com o token no corpo —
   e a audiência do token é conferida **antes** de qualquer leitura, porque
   `userinfo` diz de quem é o token, nunca para quem ele foi emitido.

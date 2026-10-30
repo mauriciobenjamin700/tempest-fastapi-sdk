@@ -427,8 +427,8 @@ catalog=default_message_catalog())` it comes out translated (`Conflito de
 recurso` under pt-BR), and `code`, `details` and `field` do not change.
 
 !!! warning "A protected column never comes from the body"
-    `id`, `email`, `hashed_password`, `is_active` and `is_admin`
-    (`SIGNUP_PROTECTED_FIELDS`) belong to the SDK. A `signup_schema` with an
+    `id`, `email`, `hashed_password`, `is_active`, `is_admin` and
+    `email_verified_at` (`SIGNUP_PROTECTED_FIELDS`) belong to the SDK. A `signup_schema` with an
     `is_admin` field promotes nobody: the route drops those names before
     writing. Calling the service directly,
     `signup(fields={"is_admin": True})` raises `ValueError`.
@@ -905,9 +905,14 @@ curl 127.0.0.1:8000/api/profile \
   "updated_at": "2026-09-27T22:16:48.642307Z",
   "email": "ana@example.com",
   "is_admin": false,
-  "last_login_at": "2026-09-27T22:16:48.641560Z"
+  "last_login_at": "2026-09-27T22:16:48.641560Z",
+  "email_verified_at": null
 }
 ```
+
+`email_verified_at` is `null` because, in this mailer-less setup, the
+activation link came back in the signup response: activating through it does
+not prove you read the mailbox. See [What counts as a verified email](#what-counts-as-a-verified-email).
 
 Without the header, the same route answers `401` with
 `{"detail": "Authorization token is missing or invalid"}`.
@@ -1298,7 +1303,9 @@ On confirmation, if `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` (default) a
 so a hijacked account still alerts its owner. Confirming also **revokes
 the user's sessions** (refresh tokens and the pages' cookies), like the
 password change — `confirm_email_change(..., revoke_sessions=False)` is the
-explicit opt-out on the service.
+explicit opt-out on the service. `email_verified_at` now applies to the new
+address: stamped when the link reached it only by mail, cleared when it came
+back in the response.
 
 !!! check "Errors"
     - Wrong current password → **401**.
@@ -1316,6 +1323,28 @@ curl -X POST localhost:8000/auth/email-verify/request \
   -H "Authorization: Bearer eyJhbGciOi…"
 # then: POST /auth/email-verify/confirm  {"token": "…"}
 ```
+
+It is also how an account activated from the admin site, or created before the
+`email_verified_at` column existed, proves its address.
+
+### What counts as a verified email
+
+`BaseUserModel` records **when** the account holder proved they read the
+current address in `email_verified_at` (`null` when they never did), and
+`GET /auth/me` returns the column. `is_active` cannot answer that: an account
+becomes active from the admin site, through `tempest user activate`, with
+`AUTH_AUTO_ACTIVATE=true` or through a link returned in the response — and none
+of those paths went through the mailbox.
+
+The SDK stamps the column only when confirming an activation or verification
+link that was **mailed to that address** (with
+`AUTH_RETURN_TOKEN_IN_RESPONSE=false`, `AUTH_AUTO_ACTIVATE=false` and
+`EmailUtils` wired), when confirming an email change under the same
+conditions, and when creating an account through [social login](oauth.md) with
+`email_verified is True`. Changing `email` through any other ORM path (admin,
+script) clears the column; a bulk `UPDATE` bypasses the ORM and must clear it
+itself. Today the reader of the column is social login's link by email
+(`AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL`).
 
 ### Email recovery
 
@@ -1606,7 +1635,7 @@ There's a whole section dedicated to this, explained step by step:
 | `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` mounts the five `/auth/oauth/*` routes (`{provider}/login`, `{provider}/callback`, `{provider}/token`, `accounts` and `accounts/unlink`). Requires a client in `oauth_clients=`, an `oauth_account_model` on the service and a `name` column on the user model — each missing piece raises `RuntimeError` at router construction. |
 | `AUTH_OAUTH_STATE_COOKIE_NAME` | `str` | `oauth_state` | Cookie carrying the CSRF `state` between the redirect and the callback. Always `HttpOnly` and always `SameSite=Lax`. |
 | `AUTH_OAUTH_STATE_TTL_SECONDS` | `int` | `600` | How long the user has to finish consenting at the provider. |
-| `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` attaches a new identity to an existing account whose email matches — **only** when `email_verified is True`. Off by default because this is the knob that turns a provider's word about an email into control of an account. |
+| `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` attaches a new identity to an existing account whose email matches — **only** when `email_verified is True` and the local account has `email_verified_at`. Off by default because this is the knob that turns a provider's word about an email into control of an account. |
 | `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` | `bool` or empty | empty | Whether the callback may create an account. Empty inherits `AUTH_SIGNUP_ENABLED`, so closing signup closes this door with it. |
 | `OAUTH_REDIRECT_BASE_URL` | `str` | `""` | Public origin of the service. The redirect URI is derived from it by `oauth_redirect_uri(provider)`. |
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credentials from the Google console. `google_kwargs()` builds the client. |

@@ -192,12 +192,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `user:email`, já nos defaults) e devolve o endereço primário verificado com
   `email_verified=True`; sem um, mantém o do perfil com o flag que o GitHub
   informa, e `None` quando a lista não pode ser lida.
-- **Ligar conta por e-mail exige que a conta local tenha provado o endereço.**
-  Com `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true`, a ligação é recusada (`409`
-  `OAUTH_EMAIL_TAKEN`) quando `AUTH_AUTO_ACTIVATE` ou
-  `AUTH_RETURN_TOKEN_IN_RESPONSE` está ligado, ou o `UserAuthService` não tem
-  `EmailUtils` — configurações em que uma conta ativa nunca precisou da caixa
-  de entrada. Mudança de comportamento nessas combinações.
+- **Ligar conta por e-mail exige que a conta local tenha provado o endereço,
+  e a prova vira coluna.** O `BaseUserModel` ganha `email_verified_at`
+  (timestamp nullable, exposto no `AuthUserSchema` de `GET /auth/me` e
+  protegido em `SIGNUP_PROTECTED_FIELDS`). Com
+  `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true`, a ligação exige a coluna
+  preenchida e responde `409 OAUTH_EMAIL_TAKEN` sem ela — `is_active` deixa de
+  contar como prova, então conta ativada pelo admin ou por
+  `tempest user activate` não é mais ligada. O SDK preenche a coluna ao
+  confirmar o link de ativação ou de verificação enviado por e-mail ao endereço
+  atual (o token passa a guardar o endereço para o qual foi enviado), ao
+  confirmar a troca de e-mail pelo link enviado ao endereço novo, e ao criar
+  conta pelo login social com `email_verified is True`. Não preenche com
+  `AUTH_AUTO_ACTIVATE`, `AUTH_RETURN_TOKEN_IN_RESPONSE` ou sem `EmailUtils`
+  (a troca de e-mail confirmada assim limpa a coluna), e um flush do ORM que
+  muda `email` sem escrevê-la a limpa.
+  **Exige migration** (`ADD COLUMN email_verified_at`, nullable): sem a coluna,
+  toda consulta ao user model falha. Mudança de comportamento: contas
+  existentes ficam com `NULL` e deixam de ser ligadas por e-mail até verificar
+  o endereço; o guia de migração traz o preenchimento opcional, que é decisão
+  do consumidor.
 - **Cadastrar passkey pede a senha (e o segundo fator).**
   `POST /auth/webauthn/register/begin` passa a exigir corpo
   `WebAuthnRegisterBeginSchema` com `current_password` e, para conta com TOTP

@@ -2,6 +2,90 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — `BaseUserModel` gains the `email_verified_at` column
+
+`BaseUserModel` now maps `email_verified_at` (timezone-aware timestamp,
+nullable): **when** the account holder proved they read the current address.
+Since the column is mapped on the base, **migrate the database before upgrading
+the package**: without it, every query on the user model fails (`no such
+column: users.email_verified_at`, measured with SQLite).
+
+The behaviour change: social login's link by email
+(`AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true`) now requires the column to be set.
+An existing account has `NULL`, so it **stops being linked by email** (`409
+OAUTH_EMAIL_TAKEN`) until it proves the address — through
+`POST /auth/email-verify/request` and the link that arrives in the mailbox. A
+service with the knob off (the default) changes nothing beyond the migration.
+What sets and what clears the column is in
+[What counts as a verified email](recipes/auth-flow.md#what-counts-as-a-verified-email).
+
+### What to do
+
+1. Generate the migration (`uv run tempest db revision -m "email verified at"`,
+   or `alembic revision --autogenerate`) or write it by hand:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+    revision: str = "email_verified_at"
+    down_revision: str | None = "<the previous revision>"
+
+
+    def upgrade() -> None:
+        """Add the proof of email ownership."""
+        op.add_column(
+            "users",
+            sa.Column("email_verified_at", sa.TIMESTAMP(timezone=True), nullable=True),
+        )
+
+
+    def downgrade() -> None:
+        """Drop the proof of email ownership."""
+        op.drop_column("users", "email_verified_at")
+    ```
+
+2. Run `uv run tempest db upgrade` (or `alembic upgrade head`) and only then
+   deploy the new version.
+
+### Backfilling existing accounts — your decision
+
+The SDK fills nothing for you: it does not know how each existing account
+became active. Backfill only if you **know** the active accounts in the
+database were activated through the mailed link — that is, the service always
+ran with `AUTH_AUTO_ACTIVATE=false`, `AUTH_RETURN_TOKEN_IN_RESPONSE=false` and
+`EmailUtils` wired, and nobody activated an account from the admin site or
+through `tempest user activate`. If any of that failed for part of the
+database, narrow the `WHERE` to the rest (by `created_at`, for instance) or do
+not backfill.
+
+There is no column holding the activation time; `created_at` is the lower
+bound the database knows, and it is the value the step below writes. Add to
+the migration's `upgrade()`:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+
+def upgrade() -> None:
+    """Mark the active accounts, activated by email, as verified."""
+    users = sa.table(
+        "users",
+        sa.column("is_active", sa.Boolean()),
+        sa.column("created_at", sa.TIMESTAMP(timezone=True)),
+        sa.column("email_verified_at", sa.TIMESTAMP(timezone=True)),
+    )
+    op.execute(
+        users.update()
+        .where(users.c.is_active.is_(True), users.c.email_verified_at.is_(None))
+        .values(email_verified_at=users.c.created_at)
+    )
+```
+
+Without this step, an account that wants to link social login by email
+verifies its address once, and linking works again.
+
 ## 0.332.0 — the DLQ pins the consumer's ack policy
 
 On a `QueueSpec` with a dead-letter, `MessageBroker.on` / `register` and

@@ -103,7 +103,7 @@ class TestUserRepository:
 ```
 
 !!! warning "`BaseUserModel` columns"
-    The abstract `BaseUserModel` declares **`email`**, **`hashed_password`**, **`is_admin`** and **`last_login_at`**, and inherits **`id`**, **`is_active`**, **`created_at`** and **`updated_at`** from `BaseModel`. The **`name`** column used in the examples is **not** part of `BaseUserModel` — it's added by the project's own `UserModel`. The non-default fields (`email` + `hashed_password`) are `nullable=False`, so omitting either one raises `IntegrityError` on flush. Also note: the column is **`hashed_password`** — not `password_hash`.
+    The abstract `BaseUserModel` declares **`email`**, **`hashed_password`**, **`is_admin`**, **`last_login_at`** and **`email_verified_at`**, and inherits **`id`**, **`is_active`**, **`created_at`** and **`updated_at`** from `BaseModel`. The **`name`** column used in the examples is **not** part of `BaseUserModel` — it's added by the project's own `UserModel`. The non-default fields (`email` + `hashed_password`) are `nullable=False`, so omitting either one raises `IntegrityError` on flush. Also note: the column is **`hashed_password`** — not `password_hash`.
 
 ## Endpoint test
 

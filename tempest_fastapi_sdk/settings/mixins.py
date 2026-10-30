@@ -2924,11 +2924,11 @@ class AuthSettings(BaseAppSettings):
             "without proving it hands over every account whose email "
             "was guessed. Turn it on only for providers you trust to "
             "verify, and read the recipe's warning first. The local "
-            "account must have proven the address too, so the link is "
-            "refused while ``AUTH_AUTO_ACTIVATE`` or "
-            "``AUTH_RETURN_TOKEN_IN_RESPONSE`` is on, or the service has "
-            "no ``EmailUtils``: there an active account never needed "
-            "its mailbox."
+            "account must have proven the address too: the link is "
+            "refused unless its ``email_verified_at`` is set, which "
+            "only a confirmed mailed link (or a verified social "
+            "signup) does — never an admin or CLI activation, "
+            "``AUTH_AUTO_ACTIVATE`` or a link returned in the response."
         ),
         examples=[False, True],
     )

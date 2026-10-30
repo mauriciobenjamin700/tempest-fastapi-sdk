@@ -143,14 +143,22 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 """Where an enumeration-safe flow records the mail it could not send."""
 
 SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
-    {"id", "email", "hashed_password", "is_active", "is_admin"}
+    {
+        "id",
+        "email",
+        "hashed_password",
+        "is_active",
+        "is_admin",
+        "email_verified_at",
+    }
 )
 """User columns ``signup(fields=...)`` refuses to set.
 
 The service owns each of them: ``email`` is normalized and checked for
 duplicates, ``hashed_password`` comes from the policy-checked password,
-``is_active`` from ``AUTH_AUTO_ACTIVATE``. ``is_admin`` and ``id`` are
-never something a sign-up form decides. ``make_auth_router`` drops them
+``is_active`` from ``AUTH_AUTO_ACTIVATE``, ``email_verified_at`` from a
+confirmed mailed link. ``is_admin`` and ``id`` are never something a
+sign-up form decides. ``make_auth_router`` drops them
 from a ``signup_schema`` before forwarding, so a schema field named
 ``is_admin`` cannot reach the row.
 """
@@ -447,6 +455,7 @@ class UserAuthService:
             purpose=UserTokenPurpose.ACTIVATION,
             ttl_seconds=self.auth_settings.AUTH_ACTIVATION_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_ACTIVATION_URL_TEMPLATE,
+            payload=self._mailed_address(user),
         )
         await self._maybe_send_activation_email(user, activation)
         return user, ActivationToken(
@@ -549,6 +558,11 @@ class UserAuthService:
     ) -> BaseUserModel:
         """Consume an activation token and flip ``is_active`` on the user.
 
+        ``email_verified_at`` is stamped too, but only when the link proved
+        the mailbox — see :meth:`_record_email_proof`. An activation whose
+        link came back in the HTTP response activates the account and
+        leaves the column alone.
+
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             token (str): Plaintext token from the activation URL.
@@ -577,6 +591,7 @@ class UserAuthService:
         if self.email_link_refused(user):
             await self._refuse_email_link(session)
         user.is_active = True
+        self._record_email_proof(user, record)
         await session.flush()
         await session.refresh(user)
         return user
@@ -655,6 +670,7 @@ class UserAuthService:
             ttl_seconds=self.auth_settings.AUTH_ACTIVATION_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_ACTIVATION_URL_TEMPLATE,
             mail=self._maybe_send_activation_email,
+            payload=self._mailed_address(user),
         )
         if activation is None:
             return None
@@ -986,29 +1002,70 @@ class UserAuthService:
             return configured
         return self.auth_settings.AUTH_SIGNUP_ENABLED
 
-    def _activation_proves_email_ownership(self) -> bool:
-        """Return whether an active local account has proven its email.
+    def _links_prove_mailbox(self) -> bool:
+        """Return whether this service's links reach their holder only by mail.
 
-        The user table has no verification timestamp, so the only
-        evidence that the owner of an address created the row is that
-        the row became active, and that evidence holds only when
-        activation required a link delivered to the mailbox. Three
-        configurations break it, each letting a registrant activate an
-        address they cannot read: ``AUTH_AUTO_ACTIVATE`` (active at
-        signup), ``AUTH_RETURN_TOKEN_IN_RESPONSE`` (the activation link
-        comes back in the signup response), and a service built without
-        ``EmailUtils`` (which returns the link the same way). The same
-        three let an e-mail change complete without the new mailbox.
+        Confirming a link proves control of the mailbox only when the
+        mailbox was the one way to get it. Three configurations break
+        that, each letting a registrant confirm an address they cannot
+        read: ``AUTH_AUTO_ACTIVATE`` (active at signup, no link at all),
+        ``AUTH_RETURN_TOKEN_IN_RESPONSE`` (the link comes back in the HTTP
+        response), and a service built without ``EmailUtils`` (which
+        returns the link the same way). Under any of them the flows still
+        work, but none of them stamps ``email_verified_at``.
 
         Returns:
-            bool: ``True`` when activating, or changing the email of, a
-            local account requires reading the mailbox.
+            bool: ``True`` when a confirmed activation, verification or
+            e-mail-change link proves the holder reads the mailbox.
         """
         if self.email is None:
             return False
         if self.auth_settings.AUTH_AUTO_ACTIVATE:
             return False
         return not self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
+
+    def _mailed_address(self, user: BaseUserModel) -> str | None:
+        """Return the token payload that binds a link to the mailbox it went to.
+
+        Activation and e-mail-verification tokens carry the address they
+        were mailed to, and only when the link travels by mail alone
+        (:meth:`_links_prove_mailbox` at issue time). A link surfaced in
+        the response carries ``None``, so it can never stamp
+        ``email_verified_at`` later, even if the configuration changes
+        before it is confirmed.
+
+        Args:
+            user (BaseUserModel): The account the link is for.
+
+        Returns:
+            str | None: ``user.email`` for a mail-only link, else ``None``.
+        """
+        return user.email if self._links_prove_mailbox() else None
+
+    def _record_email_proof(
+        self, user: BaseUserModel, record: BaseUserTokenModel
+    ) -> None:
+        """Stamp ``email_verified_at`` when a confirmed link proved the mailbox.
+
+        Three conditions, all required: the token was issued as a
+        mail-only link (its payload is the address, see
+        :meth:`_mailed_address`); that address is still the account's
+        current ``email`` — an operator may have edited it between the
+        mail and the click, and the click proves the old mailbox, not the
+        new one; and links still travel only by mail
+        (:meth:`_links_prove_mailbox` at confirm time). Otherwise the
+        column is left as it was. A token issued before this check
+        existed has no payload and therefore stamps nothing.
+
+        Args:
+            user (BaseUserModel): The account the link belongs to.
+            record (BaseUserTokenModel): The consumed token row.
+        """
+        if record.payload is None or record.payload != user.email:
+            return
+        if not self._links_prove_mailbox():
+            return
+        user.email_verified_at = utcnow()
 
     async def _load_linked_user(
         self,
@@ -1060,15 +1117,17 @@ class UserAuthService:
         not own, and keep the link after the real owner recovers the
         account by password reset.
 
-        Linking also needs the *local* side to have proven the address.
-        The user table records no verification timestamp, only
-        ``is_active``, and ``is_active`` is proof of mailbox control only
-        when activation went through a mailed link. Under
-        ``AUTH_AUTO_ACTIVATE``, ``AUTH_RETURN_TOKEN_IN_RESPONSE`` or a
-        service with no ``EmailUtils`` the registrant activates without
-        the mailbox, so a stranger could pre-register the address and
-        absorb its owner's first social login; those configurations
-        refuse the link (see :meth:`_activation_proves_email_ownership`).
+        Linking also needs the *local* side to have proven the address:
+        ``email_verified_at`` must be set. ``is_active`` is not enough —
+        an account activated by an operator, born active under
+        ``AUTH_AUTO_ACTIVATE``, or activated through a link the HTTP
+        response handed back never showed that its registrant reads the
+        mailbox, so a stranger could pre-register the address and absorb
+        its owner's first social login. The column is stamped only where
+        the SDK saw the proof (see
+        :attr:`~tempest_fastapi_sdk.BaseUserModel.email_verified_at`), and
+        it is a fact about the row, so it keeps counting after the
+        service's configuration changes.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
@@ -1087,8 +1146,8 @@ class UserAuthService:
                 email.
             OAuthEmailTakenException: When the email is taken and
                 linking is not allowed, or when linking is allowed but
-                this service's configuration lets an account become
-                active without proving its email. Refusing names the
+                the existing account never proved its email
+                (``email_verified_at`` is ``None``). Refusing names the
                 collision rather than hiding it: the alternative is
                 attaching the identity anyway, which is account takeover.
             OAuthEmailUnverifiedException: When the provider did not
@@ -1117,7 +1176,7 @@ class UserAuthService:
                 raise OAuthEmailUnverifiedException(
                     details={"email": email, "provider": profile.provider},
                 )
-            if not self._activation_proves_email_ownership():
+            if existing.email_verified_at is None:
                 raise OAuthEmailTakenException(
                     details={"email": email, "provider": profile.provider},
                 )
@@ -1173,8 +1232,12 @@ class UserAuthService:
             email (str): The already-normalized email.
             locale (str): Canonical locale, for the placeholder name.
 
+        The row is born with ``email_verified_at`` set: the only caller,
+        :meth:`_resolve_oauth_user`, gets here after the provider stated
+        ``email_verified is True`` for this address.
+
         Returns:
-            BaseUserModel: The persisted, active user.
+            BaseUserModel: The persisted, active, e-mail-verified user.
 
         Raises:
             ValidationException: When the configured policy rejects the
@@ -1186,7 +1249,11 @@ class UserAuthService:
             require_complexity=(self.auth_settings.AUTH_PASSWORD_REQUIRE_COMPLEXITY),
         )
         self._enforce_password_policy(password)
-        user = self.user_model(email=email, is_active=True)
+        user = self.user_model(
+            email=email,
+            is_active=True,
+            email_verified_at=utcnow(),
+        )
         user.hashed_password = self.passwords.hash(password)
         if hasattr(user, "name"):
             user.name = (profile.name or "").strip() or default_display_name(locale)
@@ -1633,6 +1700,11 @@ class UserAuthService:
         ``AUTH_EMAIL_CHANGE_NOTIFY_OLD`` is on — sends a security notice
         to the previous address.
 
+        ``email_verified_at`` follows the new address: stamped now when
+        the link reached its holder only by mail to that address
+        (:meth:`_links_prove_mailbox`), cleared otherwise, because the
+        proof the account had belonged to the previous address.
+
         The address is where the password reset goes, so moving it is a
         credential change: by default every session of the user is
         revoked in the same transaction (:meth:`revoke_user_sessions`), as
@@ -1690,6 +1762,7 @@ class UserAuthService:
             )
         old_email = user.email
         user.email = new_email
+        user.email_verified_at = utcnow() if self._links_prove_mailbox() else None
         await session.flush()
         if revoke_sessions:
             await self.revoke_user_sessions(session, user_id=user.id)
@@ -1733,6 +1806,7 @@ class UserAuthService:
             purpose=UserTokenPurpose.EMAIL_VERIFICATION,
             ttl_seconds=self.auth_settings.AUTH_EMAIL_VERIFICATION_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_EMAIL_VERIFICATION_URL_TEMPLATE,
+            payload=self._mailed_address(user),
         )
         await self._maybe_send_email_verification_email(user, bundle)
         if self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE or self.email is None:
@@ -1751,6 +1825,9 @@ class UserAuthService:
         token: str,
     ) -> BaseUserModel:
         """Consume an ``EMAIL_VERIFICATION`` token and mark the user active.
+
+        Also stamps ``email_verified_at`` when the link proved the
+        mailbox of the current address — see :meth:`_record_email_proof`.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
@@ -1774,6 +1851,7 @@ class UserAuthService:
                 message="token references a missing user"
             )
         user.is_active = True
+        self._record_email_proof(user, record)
         await session.flush()
         await session.refresh(user)
         return user
@@ -3194,6 +3272,7 @@ class UserAuthService:
         mail: Callable[
             [BaseUserModel, tuple[str, str, datetime]], Coroutine[Any, Any, None]
         ],
+        payload: str | None = None,
     ) -> tuple[str, str, datetime] | None:
         """Mail a link first and persist its token only once it went out.
 
@@ -3225,6 +3304,8 @@ class UserAuthService:
             mail (Callable[[BaseUserModel, tuple[str, str, datetime]],
                 Coroutine[Any, Any, None]]): The ``_maybe_send_*`` method
                 that renders and sends the link.
+            payload (str | None): Optional flow context stored on the
+                row, as in :meth:`_issue_token`.
 
         Returns:
             tuple[str, str, datetime] | None: ``(plain, url, expires_at)``
@@ -3251,6 +3332,7 @@ class UserAuthService:
             purpose=purpose,
             digest=digest,
             expires_at=expires_at,
+            payload=payload,
         )
         return plain, url, expires_at
 

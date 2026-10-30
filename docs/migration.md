@@ -2,6 +2,88 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Não publicado — `BaseUserModel` ganha a coluna `email_verified_at`
+
+O `BaseUserModel` passou a mapear `email_verified_at` (timestamp com fuso,
+nullable): **quando** o dono da conta provou que lê o endereço atual. Como a
+coluna é mapeada na base, **migre o banco antes de atualizar o pacote**: sem
+ela, toda consulta ao user model falha (`no such column:
+users.email_verified_at`, medido com SQLite).
+
+A mudança de comportamento: a ligação de login social por e-mail
+(`AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true`) passa a exigir a coluna preenchida.
+Conta antiga fica com `NULL`, então **deixa de ser ligada por e-mail** (`409
+OAUTH_EMAIL_TAKEN`) até provar o endereço — por `POST /auth/email-verify/request`
+e o link que chega na caixa de entrada. Serviço com o knob desligado (o
+default) não muda nada além da migration. O que preenche e o que limpa a coluna
+está em [O que conta como e-mail verificado](recipes/auth-flow.md#o-que-conta-como-e-mail-verificado).
+
+### O que fazer
+
+1. Gere a migration (`uv run tempest db revision -m "email verified at"`, ou
+   `alembic revision --autogenerate`) ou escreva-a à mão:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+    revision: str = "email_verified_at"
+    down_revision: str | None = "<a revisão anterior>"
+
+
+    def upgrade() -> None:
+        """Adiciona a prova de posse do e-mail."""
+        op.add_column(
+            "users",
+            sa.Column("email_verified_at", sa.TIMESTAMP(timezone=True), nullable=True),
+        )
+
+
+    def downgrade() -> None:
+        """Remove a prova de posse do e-mail."""
+        op.drop_column("users", "email_verified_at")
+    ```
+
+2. Rode `uv run tempest db upgrade` (ou `alembic upgrade head`) e só então faça
+   o deploy da versão nova.
+
+### Preencher as contas antigas — decisão sua
+
+O SDK não preenche nada por você: ele não sabe como cada conta antiga ficou
+ativa. Preencha só se você **sabe** que as contas ativas do banco foram
+ativadas pelo link enviado por e-mail — ou seja, que o serviço sempre rodou com
+`AUTH_AUTO_ACTIVATE=false`, `AUTH_RETURN_TOKEN_IN_RESPONSE=false` e `EmailUtils`
+ligado, e que ninguém ativou conta pelo admin ou por `tempest user activate`. Se
+qualquer uma dessas falhou para parte do banco, restrinja o `WHERE` a essa
+parte (por `created_at`, por exemplo) ou não preencha.
+
+Não existe coluna com o momento da ativação; `created_at` é o limite inferior
+que o banco conhece, e é o valor que o passo abaixo grava. Acrescente ao
+`upgrade()` da migration:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+
+def upgrade() -> None:
+    """Marca como verificadas as contas ativas, que foram ativadas por e-mail."""
+    users = sa.table(
+        "users",
+        sa.column("is_active", sa.Boolean()),
+        sa.column("created_at", sa.TIMESTAMP(timezone=True)),
+        sa.column("email_verified_at", sa.TIMESTAMP(timezone=True)),
+    )
+    op.execute(
+        users.update()
+        .where(users.c.is_active.is_(True), users.c.email_verified_at.is_(None))
+        .values(email_verified_at=users.c.created_at)
+    )
+```
+
+Sem esse passo, a conta que quiser ligar o login social por e-mail verifica o
+endereço uma vez, e a ligação volta a funcionar.
+
 ## 0.332.0 — DLQ fixa a política de ack do consumidor
 
 Num `QueueSpec` com dead-letter, o `MessageBroker.on` / `register` e o

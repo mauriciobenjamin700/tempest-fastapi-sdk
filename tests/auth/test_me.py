@@ -201,6 +201,7 @@ class TestMeNeverLeaksTheHash:
             "email",
             "is_admin",
             "last_login_at",
+            "email_verified_at",
         }
 
     async def test_a_wider_model_still_omits_it(
