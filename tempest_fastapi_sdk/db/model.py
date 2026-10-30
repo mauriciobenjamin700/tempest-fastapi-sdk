@@ -114,6 +114,22 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
     declares ``audit_model=``.
     """
 
+    __secret_columns__: ClassVar[frozenset[str]] = frozenset()
+    """Columns that hold a credential and that no read surface may print.
+
+    The SDK's own models declare theirs — ``MFAMixin`` the TOTP seed,
+    the push subscription and device-token models the push endpoint and
+    keys, the refresh-token and recovery-code models their digests — and
+    a project model may declare its own. Declarations are merged along
+    the MRO by :meth:`get_secret_columns`, so a mixin's set survives the
+    order the bases are listed in.
+
+    The admin panel treats every name here like ``hashed_password``:
+    hidden from the list, the detail view, the export, the sortable
+    headers, the inline tables, the edit form and the audit timeline.
+    The audit trail redacts them as if they were in ``__audit_redact__``.
+    """
+
     type_annotation_map: ClassVar[dict[Any, Any]] = {
         enum.Enum: TempestEnum(),
     }
@@ -223,6 +239,32 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
                 "has no table name",
             )
         return table.name
+
+    @classmethod
+    def get_secret_columns(cls) -> frozenset[str]:
+        """Return every ``__secret_columns__`` name declared along the MRO.
+
+        A plain class attribute lookup would return only the first
+        declaration found, so ``class User(BaseUserModel, MFAMixin)`` would
+        read ``BaseModel``'s empty set before reaching the mixin's. Walking
+        the MRO and merging each class's own declaration makes the answer
+        independent of the base order.
+
+        Example:
+
+            >>> from tempest_fastapi_sdk import BaseUserModel, MFAMixin
+            >>> class AgentModel(BaseUserModel, MFAMixin):
+            ...     pass
+            >>> sorted(AgentModel.get_secret_columns())
+            ['totp_secret']
+
+        Returns:
+            frozenset[str]: The declared secret column names.
+        """
+        names: set[str] = set()
+        for klass in cls.__mro__:
+            names.update(klass.__dict__.get("__secret_columns__", ()))
+        return frozenset(names)
 
     def __repr__(self) -> str:
         """Render the row as ``ClassName(col=value, ...)``.

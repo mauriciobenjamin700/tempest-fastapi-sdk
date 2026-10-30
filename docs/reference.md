@@ -50,6 +50,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.Lens
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermission
 ::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
+::: tempest_fastapi_sdk.admin.permissions.AdminSurface
+::: tempest_fastapi_sdk.admin.permissions.AdminSurfacePolicy
 ::: tempest_fastapi_sdk.admin.dashboard.MetricCard
 ::: tempest_fastapi_sdk.admin.dashboard.MetricValue
 ::: tempest_fastapi_sdk.admin.dashboard.MetricTrend

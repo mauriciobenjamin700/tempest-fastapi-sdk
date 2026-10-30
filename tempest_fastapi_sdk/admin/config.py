@@ -642,16 +642,26 @@ class AdminModel(Generic[ModelT]):
     def hidden_field_names(self) -> set[str]:
         """Return the columns no read surface of the panel may show.
 
-        ``hashed_password``, every ``password_fields`` column and every
-        ``exclude_fields`` column. The list, the export, the detail view,
-        the sortable headers, a parent's inline table and the audit
-        timeline all filter through this one set, so hiding a column is
-        one decision and not one per template.
+        ``hashed_password``, every credential column the model declares
+        in ``__secret_columns__`` (the SDK's own ``MFAMixin.totp_secret``,
+        the push subscription and device-token keys, the refresh-token
+        and recovery-code digests — see
+        :meth:`~tempest_fastapi_sdk.db.model.BaseModel.get_secret_columns`),
+        every ``password_fields`` column and every ``exclude_fields``
+        column. The list, the export, the detail view, the sortable
+        headers, a parent's inline table and the audit timeline all filter
+        through this one set, so hiding a column is one decision and not
+        one per template.
 
         Returns:
             set[str]: The hidden column names.
         """
-        return {"hashed_password", *self.password_fields, *self.exclude_fields}
+        return {
+            "hashed_password",
+            *self.model.get_secret_columns(),
+            *self.password_fields,
+            *self.exclude_fields,
+        }
 
     def resolved_list_display(self) -> list[str]:
         """Return the effective ``list_display`` column list.
@@ -669,13 +679,21 @@ class AdminModel(Generic[ModelT]):
             return [name for name in self.list_display if name not in hidden]
         return [name for name in self.column_names() if name not in hidden]
 
-    def editable_field_names(self) -> list[str]:
+    def editable_field_names(self, *, creating: bool = False) -> list[str]:
         """Return the columns a create/edit form should expose.
 
         Excludes the primary key, the audit timestamps
-        (``created_at`` / ``updated_at``), the password hash, and any
-        column listed in ``readonly_fields`` or ``exclude_fields`` — none
-        of which a user edits directly through the generic admin form.
+        (``created_at`` / ``updated_at``), the password hash, the
+        model's ``__secret_columns__``, and any column listed in
+        ``readonly_fields`` or ``exclude_fields`` — none of which a user
+        edits directly through the generic admin form.
+
+        A secret column that is ``NOT NULL`` with no default comes back
+        when ``creating``: the create form starts blank, so it shows no
+        stored value, and without the input no row of a model like
+        ``BaseWebPushSubscriptionModel`` could be created through the
+        panel. The edit form, the inline formset and every read surface
+        still leave it out, since those would print the stored value.
 
         A column named in ``password_fields`` is the exception: it comes
         back in, rendered as a password box that takes plaintext and is
@@ -684,9 +702,16 @@ class AdminModel(Generic[ModelT]):
         column, the insert hit the ``NOT NULL`` and the operator read
         ``Conflict creating <Model>``.
 
+        Args:
+            creating (bool): Whether the form is the create form, which
+                takes the required secret columns as blank inputs.
+
         Returns:
             list[str]: Editable column keys in declaration order.
         """
+        secrets = set(self.model.get_secret_columns())
+        if creating:
+            secrets -= self.insertable_secret_names()
         skip = (
             (
                 set(self.readonly_fields)
@@ -696,10 +721,35 @@ class AdminModel(Generic[ModelT]):
                     "updated_at",
                     "hashed_password",
                 }
+                | secrets
             )
             - set(self.password_fields)
         ) | set(self.exclude_fields)
         return [name for name in self.column_names() if name not in skip]
+
+    def insertable_secret_names(self) -> set[str]:
+        """Return the secret columns the create form must still accept.
+
+        The ``__secret_columns__`` that are ``NOT NULL`` with neither a
+        default nor a server default and that ``exclude_fields`` does not
+        already remove: an insert without them could only fail. They are
+        write-only — rendered blank on the create form and never read back
+        by any surface.
+
+        Returns:
+            set[str]: The required secret column names.
+        """
+        columns = inspect(self.model).columns
+        excluded = set(self.exclude_fields)
+        return {
+            name
+            for name in self.model.get_secret_columns()
+            if name in columns
+            and name not in excluded
+            and not columns[name].nullable
+            and columns[name].default is None
+            and columns[name].server_default is None
+        }
 
     def build_repository(self, session: AsyncSession) -> BaseRepository[ModelT]:
         """Instantiate the repository for ``session``.

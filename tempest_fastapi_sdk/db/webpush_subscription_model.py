@@ -15,6 +15,7 @@ browser (and forwarded verbatim by ``tempest-react-sdk``'s
 
 from __future__ import annotations
 
+from typing import ClassVar
 from uuid import UUID
 
 from sqlalchemy import BigInteger, ForeignKey, String
@@ -47,6 +48,9 @@ class BaseWebPushSubscriptionModel(BaseModel):
     """
 
     __abstract__ = True
+    __secret_columns__: ClassVar[frozenset[str]] = frozenset(
+        {"endpoint", "p256dh", "auth"}
+    )
 
     user_id: Mapped[UUID] = mapped_column(
         nullable=False,

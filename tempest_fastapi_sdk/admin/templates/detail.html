@@ -71,10 +71,12 @@
               {% if inline.can_delete %}<td class="tempest-admin-inline__del"><input type="checkbox" name="row.{{ row.key }}.__delete" value="true"></td>{% endif %}
             </tr>
             {% endfor %}
+            {% if inline.new_row %}
             <tr class="tempest-admin-inline__new">
               {% for f in inline.new_row.fields %}<td>{{ inline_cell(f) }}</td>{% endfor %}
               {% if inline.can_delete %}<td></td>{% endif %}
             </tr>
+            {% endif %}
           </tbody>
         </table>
       </div>

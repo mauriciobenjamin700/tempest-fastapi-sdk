@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 from uuid import UUID
 
 from sqlalchemy import Integer, String, Uuid
@@ -146,6 +147,8 @@ class MFAMixin:
             replaced; rows created before 0.306.0 start ``NULL``, which
             reads as "nothing spent yet".
     """
+
+    __secret_columns__: ClassVar[frozenset[str]] = frozenset({"totp_secret"})
 
     totp_secret: Mapped[str | None] = mapped_column(
         String(64),

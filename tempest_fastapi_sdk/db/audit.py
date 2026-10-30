@@ -312,8 +312,13 @@ DEFAULT_AUDIT_REDACT: Final[frozenset[str]] = frozenset({"hashed_password"})
 def audit_redacted_columns(model: type[BaseModel]) -> frozenset[str]:
     """Return the columns of ``model`` whose values the audit never stores.
 
-    ``model.__audit_redact__`` plus :data:`DEFAULT_AUDIT_REDACT`, the
-    latter only where the model has the column.
+    ``model.__audit_redact__``, plus the credential columns the model
+    declares through ``__secret_columns__``
+    (:meth:`~tempest_fastapi_sdk.db.model.BaseModel.get_secret_columns`,
+    which covers ``MFAMixin.totp_secret`` and the push, refresh-token and
+    recovery-code models without any project configuration), plus
+    :data:`DEFAULT_AUDIT_REDACT` — the last two only where the model has
+    the column.
 
     Args:
         model (type[BaseModel]): The audited model class.
@@ -333,7 +338,8 @@ def audit_redacted_columns(model: type[BaseModel]) -> frozenset[str]:
             f"{model.__name__}.__audit_redact__ names columns the model does "
             f"not have: {', '.join(unknown)}",
         )
-    return declared | (DEFAULT_AUDIT_REDACT & columns)
+    secrets = (DEFAULT_AUDIT_REDACT | model.get_secret_columns()) & columns
+    return declared | secrets
 
 
 def redact_snapshot(

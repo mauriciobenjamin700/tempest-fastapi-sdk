@@ -33,6 +33,10 @@ from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy as AdminAccessPolicy,
 )
 from tempest_fastapi_sdk.admin.permissions import AdminPermission as AdminPermission
+from tempest_fastapi_sdk.admin.permissions import AdminSurface as AdminSurface
+from tempest_fastapi_sdk.admin.permissions import (
+    AdminSurfacePolicy as AdminSurfacePolicy,
+)
 from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
 from tempest_fastapi_sdk.admin.session import AdminLoginCSRF as AdminLoginCSRF
 from tempest_fastapi_sdk.admin.session import AdminSession as AdminSession
@@ -75,6 +79,8 @@ __all__: list[str] = [
     "AdminSession",
     "AdminSessionRevocations",
     "AdminSite",
+    "AdminSurface",
+    "AdminSurfacePolicy",
     "AdminTheme",
     "FieldRef",
     "Inline",

@@ -59,7 +59,12 @@ from tempest_fastapi_sdk.admin.forms import (
     parse_submission,
     to_display_timezone,
 )
-from tempest_fastapi_sdk.admin.permissions import AdminAccessPolicy, AdminPermission
+from tempest_fastapi_sdk.admin.permissions import (
+    AdminAccessPolicy,
+    AdminPermission,
+    AdminSurface,
+    AdminSurfacePolicy,
+)
 from tempest_fastapi_sdk.admin.session import (
     ADMIN_SESSION_MAX_AGE_SECONDS,
     AdminLoginCSRF,
@@ -86,7 +91,6 @@ from tempest_fastapi_sdk.api.routers.logs import (
     rotated_log_files,
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
-from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.db.search import like_search_condition
 from tempest_fastapi_sdk.exceptions import AppException
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router
@@ -256,6 +260,7 @@ def make_admin_router(
     show_logs: bool = False,
     log_dir: str | Path = "logs",
     access_policy: AdminAccessPolicy | None = None,
+    surface_policy: AdminSurfacePolicy | None = None,
     sql_shell: SqlShellService | None = None,
     tasks: TaskPanelService[Any] | None = None,
     mfa_throttle: AttemptThrottle | None = None,
@@ -332,7 +337,21 @@ def make_admin_router(
             to the ``AdminModel.can_*`` flags). A policy that denies an
             action yields ``403`` and hides the model from the dashboard
             + nav for ``VIEW``. Composes with the ``can_*`` flags — both
-            must allow.
+            must allow. It also governs what a page renders of another
+            model: inline tables need ``VIEW`` on the child (an editable
+            inline's add row ``CREATE``, its delete box ``DELETE``), and
+            foreign-key selects, list filters and autocomplete need
+            ``VIEW`` on the referenced admin.
+        surface_policy (AdminSurfacePolicy | None): Hook asked
+            ``(principal, AdminSurface)`` before the SQL console, the task
+            panel (cancel included) or the logs page (export included) is
+            served; a denial yields ``403`` and drops the sidebar entry.
+            ``None`` (default) allows every surface when ``access_policy``
+            is also ``None``, and **denies** every surface once an
+            ``access_policy`` is configured: a principal restricted to
+            some models would otherwise read any table through the
+            console. Pass one to grant the surfaces to the roles that
+            should have them.
         sql_shell (SqlShellService | None): When given, mounts the SQL
             console at ``GET/POST {prefix}/sql`` and adds its nav entry.
         tasks (TaskPanelService[Any] | None): When given, mounts the task
@@ -410,6 +429,15 @@ def make_admin_router(
             "Install with `pip install tempest-fastapi-sdk[admin]`."
         ) from exc
 
+    _mounted_surfaces: tuple[AdminSurface, ...] = tuple(
+        surface
+        for surface, mounted in (
+            (AdminSurface.LOGS, show_logs),
+            (AdminSurface.SQL, sql_shell is not None),
+            (AdminSurface.TASKS, tasks is not None),
+        )
+        if mounted
+    )
     store: SessionStore = session_store or SignedCookieSessionStore(
         secret_key,
         secure=cookie_secure,
@@ -559,24 +587,52 @@ def make_admin_router(
             )
         return session
 
+    async def _allows_surface(principal: Any, surface: AdminSurface) -> bool:
+        """Return whether ``principal`` may open ``surface``.
+
+        Args:
+            principal (Any): The current admin principal.
+            surface (AdminSurface): The panel being opened.
+
+        Returns:
+            bool: ``True`` when permitted — always with neither policy
+            configured, never with only ``access_policy`` configured, and
+            whatever ``surface_policy`` answers when it is given.
+        """
+        if surface_policy is None:
+            return access_policy is None
+        result = surface_policy(principal, surface)
+        if isinstance(result, bool):
+            return result
+        return bool(await result)
+
     async def _resolve_principal(
         request: Request,
         db_session: AsyncSession,
         admin_session: AdminSession,
+        *,
+        surface: AdminSurface | None = None,
     ) -> Any:
         """Reload the admin principal or redirect to login.
+
+        Also records on ``request.state`` which of the mounted surfaces
+        the principal may open, so :func:`_render` can drop the sidebar
+        entries it would refuse.
 
         Args:
             request (Request): The inbound request.
             db_session (AsyncSession): The DB session.
             admin_session (AdminSession): The validated cookie.
+            surface (AdminSurface | None): The non-model panel this
+                request serves, if any; the principal must be allowed it.
 
         Returns:
             Any: The reloaded principal.
 
         Raises:
             HTTPException: ``303`` redirect when the principal is gone or
-                its credential changed after the session was issued.
+                its credential changed after the session was issued;
+                ``403`` when ``surface`` is given and denied.
         """
         principal = await auth_backend.load_principal(
             db_session, admin_session.principal_id
@@ -587,6 +643,13 @@ def make_admin_router(
                 detail="login required",
                 headers={"location": f"{prefix}/login"},
             )
+        allowed: set[AdminSurface] = set()
+        for mounted in _mounted_surfaces:
+            if await _allows_surface(principal, mounted):
+                allowed.add(mounted)
+        request.state.tempest_admin_surfaces = frozenset(allowed)
+        if surface is not None and surface not in allowed:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
         return principal
 
     async def _reload_expired(
@@ -660,14 +723,20 @@ def make_admin_router(
             ],
         )
         context.setdefault("nav_index_url", f"{prefix}/")
-        context.setdefault("nav_logs_url", f"{prefix}/logs" if show_logs else None)
+        allowed: frozenset[AdminSurface] = getattr(
+            request.state, "tempest_admin_surfaces", frozenset()
+        )
+        context.setdefault(
+            "nav_logs_url",
+            f"{prefix}/logs" if AdminSurface.LOGS in allowed else None,
+        )
         context.setdefault(
             "nav_sql_url",
-            f"{prefix}/sql" if sql_shell is not None else None,
+            f"{prefix}/sql" if AdminSurface.SQL in allowed else None,
         )
         context.setdefault(
             "nav_tasks_url",
-            f"{prefix}/tasks" if tasks is not None else None,
+            f"{prefix}/tasks" if AdminSurface.TASKS in allowed else None,
         )
         return templates.TemplateResponse(
             request,
@@ -779,17 +848,21 @@ def make_admin_router(
     async def _resolve_fk_options(
         admin: AdminModel[Any],
         db_session: AsyncSession,
+        principal: Any,
     ) -> dict[str, list[tuple[str, str]]]:
         """Build select options for FK fields whose target is registered.
 
         A foreign key whose referenced table has its own
         :class:`AdminModel` becomes a dropdown of related rows
         (Django's FK select). FKs to unmanaged tables stay plain
-        UUID text inputs.
+        UUID text inputs, and so do FKs to an admin the principal may
+        not ``VIEW``: listing its rows' labels in a select would read
+        that model through another one's form.
 
         Args:
             admin (AdminModel[Any]): The admin being rendered.
             db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
 
         Returns:
             dict[str, list[tuple[str, str]]]: Field → ``(value, label)``
@@ -805,7 +878,9 @@ def make_admin_router(
             if field_name in admin.autocomplete_fields:
                 continue
             referenced = site.get(table)
-            if referenced is None:
+            if referenced is None or not await _allows(
+                principal, referenced, AdminPermission.VIEW
+            ):
                 continue
             rows = await referenced.build_repository(db_session).list()
             options[field_name] = [
@@ -817,6 +892,7 @@ def make_admin_router(
         admin: AdminModel[Any],
         field: str,
         db_session: AsyncSession,
+        principal: Any,
     ) -> list[tuple[str, str]]:
         """Return ``(value, label)`` options for a FK list-filter field.
 
@@ -824,18 +900,21 @@ def make_admin_router(
             admin (AdminModel[Any]): The admin being rendered.
             field (str): The foreign-key column key.
             db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
 
         Returns:
             list[tuple[str, str]]: Related-row options (``[]`` when the
-            target table has no registered admin), capped at
-            ``FK_OPTION_CAP``.
+            target table has no registered admin, or one the principal
+            may not ``VIEW``), capped at ``FK_OPTION_CAP``.
         """
         column = sa_inspect(admin.model).columns.get(field)
         if column is None or not column.foreign_keys:
             return []
         table = next(iter(column.foreign_keys)).column.table.name
         referenced = site.get(table)
-        if referenced is None:
+        if referenced is None or not await _allows(
+            principal, referenced, AdminPermission.VIEW
+        ):
             return []
         rows = await referenced.build_repository(db_session).list()
         return [
@@ -846,6 +925,7 @@ def make_admin_router(
         admin: AdminModel[Any],
         request: Request,
         db_session: AsyncSession,
+        principal: Any,
     ) -> list[dict[str, Any]]:
         """Build the list-view filter widgets for each ``list_filter`` field.
 
@@ -857,6 +937,8 @@ def make_admin_router(
             admin (AdminModel[Any]): The admin being rendered.
             request (Request): The inbound request (for active values).
             db_session (AsyncSession): The DB session (for FK options).
+            principal (Any): The signed-in admin principal (FK options
+                need ``VIEW`` on the referenced admin).
 
         Returns:
             list[dict[str, Any]]: Widget descriptors for the template.
@@ -886,7 +968,9 @@ def make_admin_router(
                     enum_cls = _filter_python_type(admin, field)
                     pairs = _enum_filter_options(enum_cls) if enum_cls else []
                 else:
-                    pairs = await _fk_filter_options(admin, field, db_session)
+                    pairs = await _fk_filter_options(
+                        admin, field, db_session, principal
+                    )
                 specs.append(
                     {
                         "field": field,
@@ -912,47 +996,60 @@ def make_admin_router(
     async def _form_fields(
         admin: AdminModel[Any],
         db_session: AsyncSession,
+        principal: Any,
         *,
         instance: Any | None = None,
         submitted: Any | None = None,
         errors: Any | None = None,
+        creating: bool = False,
     ) -> Any:
         """Resolve FK options then build the form-field descriptors.
 
         Args:
             admin (AdminModel[Any]): The admin being rendered.
             db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal (FK options
+                and autocomplete labels need ``VIEW`` on the referenced
+                admin).
             instance (Any | None): Row being edited (pre-fill).
             submitted (Any | None): Rejected submission to re-render.
             errors (Any | None): Per-field error messages.
+            creating (bool): Whether this is the create form.
 
         Returns:
             Any: The list of form-field descriptors.
         """
-        fk_options = await _resolve_fk_options(admin, db_session)
+        fk_options = await _resolve_fk_options(admin, db_session, principal)
         fields = build_form_fields(
             admin,
             instance=instance,
             submitted=submitted,
             errors=errors,
             fk_options=fk_options,
+            creating=creating,
         )
         if admin.autocomplete_fields:
-            await _decorate_autocomplete_fields(admin, fields, db_session)
+            await _decorate_autocomplete_fields(admin, fields, db_session, principal)
         return fields
 
     async def _decorate_autocomplete_fields(
         admin: AdminModel[Any],
         fields: list[Any],
         db_session: AsyncSession,
+        principal: Any,
     ) -> None:
         """Fill in the search URL + current label for autocomplete fields.
+
+        The current row's label is left out when the principal may not
+        ``VIEW`` the referenced admin, the same rule the search endpoint
+        applies.
 
         Args:
             admin (AdminModel[Any]): The admin being rendered.
             fields (list[Any]): The form fields to mutate in place.
             db_session (AsyncSession): The DB session, used to resolve the
                 label of the currently-selected row (one lookup per field).
+            principal (Any): The signed-in admin principal.
         """
         tables = fk_fields(admin)
         slug = admin.get_slug()
@@ -965,6 +1062,8 @@ def make_admin_router(
             table = tables.get(form_field.name)
             referenced = site.get(table) if table else None
             if referenced is None or not form_field.value:
+                continue
+            if not await _allows(principal, referenced, AdminPermission.VIEW):
                 continue
             current = await referenced.build_repository(db_session).get_or_none(
                 {referenced.identity_field: _identity_value(str(form_field.value))}
@@ -1466,7 +1565,9 @@ def make_admin_router(
                 HTTPException: ``303`` redirect to the login page when the
                     principal no longer qualifies.
             """
-            await _resolve_principal(request, db_session, session)
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.LOGS
+            )
             entries = await _collect_log_entries(source, q)
             total = len(entries)
             window = entries[:_logs_export_max]
@@ -1519,7 +1620,9 @@ def make_admin_router(
                 HTMLResponse: The logs template (empty state when no log
                 files exist on disk).
             """
-            principal = await _resolve_principal(request, db_session, session)
+            principal = await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.LOGS
+            )
 
             entries = await _collect_log_entries(source, q)
 
@@ -1727,7 +1830,7 @@ def make_admin_router(
                 "new_url": f"{prefix}/m/{slug}/new",
                 "bulk_actions": _bulk_actions(admin),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
-                "filters": await _filter_specs(admin, request, db_session),
+                "filters": await _filter_specs(admin, request, db_session, principal),
                 "nav_models": await _visible_nav(principal),
             },
         )
@@ -1843,7 +1946,11 @@ def make_admin_router(
                 "admin": admin,
                 "mode": "create",
                 "form_fields": await _form_fields(
-                    admin, db_session, submitted=prefill or None
+                    admin,
+                    db_session,
+                    principal,
+                    submitted=prefill or None,
+                    creating=True,
                 ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
@@ -1884,7 +1991,7 @@ def make_admin_router(
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
                 "admin": admin,
-                "columns": admin.editable_field_names(),
+                "columns": admin.editable_field_names(creating=True),
                 "action_url": f"{prefix}/m/{slug}/import",
                 "back_url": f"{prefix}/m/{slug}/",
                 "result": None,
@@ -1947,7 +2054,7 @@ def make_admin_router(
             created = 0
             row_errors: list[dict[str, Any]] = []
             for line_no, row in enumerate(reader, start=2):
-                data, errors = parse_submission(admin, row)
+                data, errors = parse_submission(admin, row, creating=True)
                 if errors:
                     row_errors.append({"row": line_no, "errors": errors})
                     continue
@@ -1972,7 +2079,7 @@ def make_admin_router(
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
                 "admin": admin,
-                "columns": admin.editable_field_names(),
+                "columns": admin.editable_field_names(creating=True),
                 "action_url": f"{prefix}/m/{slug}/import",
                 "back_url": f"{prefix}/m/{slug}/",
                 "result": result,
@@ -2007,7 +2114,7 @@ def make_admin_router(
         await _require_access(principal, admin, AdminPermission.CREATE)
         _check_csrf(session, csrf_token)
         form = await request.form()
-        data, errors = parse_submission(admin, form)
+        data, errors = parse_submission(admin, form, creating=True)
         errors.update(await _save_uploads(admin, form, data, creating=True))
         passwords, password_errors = parse_password_submission(
             admin,
@@ -2042,7 +2149,12 @@ def make_admin_router(
                 "admin": admin,
                 "mode": "create",
                 "form_fields": await _form_fields(
-                    admin, db_session, submitted=form, errors=errors
+                    admin,
+                    db_session,
+                    principal,
+                    submitted=form,
+                    errors=errors,
+                    creating=True,
                 ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
@@ -2340,14 +2452,23 @@ def make_admin_router(
         inline packages the rows as a table with links to the child admin
         (when registered); an ``editable`` inline whose child admin allows
         editing packages them as an in-place formset (one input row per
-        child plus a blank add row).
+        child, plus a blank add row when the principal may ``CREATE`` and
+        a delete box when it may ``DELETE``).
+
+        An inline is left out entirely when the principal may not ``VIEW``
+        the child admin; the rows are that model's data, whichever page
+        renders them. A child with no registered admin is judged through a
+        throwaway ``AdminModel(child)``: the access policy is asked about
+        it like any other admin, and its :meth:`AdminModel.hidden_field_names`
+        filters the columns, so ``hashed_password`` and the model's
+        ``__secret_columns__`` never reach the table.
 
         Args:
             admin (AdminModel[Any]): The parent admin.
             instance (Any): The parent row.
             db_session (AsyncSession): The DB session.
             principal (Any): The signed-in admin principal (for the
-                per-child EDIT permission check).
+                per-child VIEW, EDIT, CREATE and DELETE checks).
             parent_slug (str): The parent's admin slug (for the formset
                 POST action URL).
             parent_identity (str): The parent's identity value.
@@ -2366,21 +2487,21 @@ def make_admin_router(
         for inline in admin.inlines:
             child_slug = inline.get_slug()
             child_admin = site.get(child_slug)
-            repository = (
-                child_admin.build_repository(db_session)
+            view_admin = (
+                child_admin
                 if child_admin is not None
-                else BaseRepository(db_session, model=inline.model)
+                else AdminModel(inline.model, can_create=False)
             )
+            if not await _allows(principal, view_admin, AdminPermission.VIEW):
+                continue
+            repository = view_admin.build_repository(db_session)
             children = await repository.list({inline.fk_field: parent_id})
             if inline.list_display is not None:
                 display = inline.list_display
-            elif child_admin is not None:
-                display = child_admin.resolved_list_display()
             else:
-                display = list(sa_inspect(inline.model).columns.keys())
-            if child_admin is not None:
-                child_hidden = child_admin.hidden_field_names()
-                display = [name for name in display if name not in child_hidden]
+                display = view_admin.resolved_list_display()
+            child_hidden = view_admin.hidden_field_names()
+            display = [name for name in display if name not in child_hidden]
 
             editable = (
                 inline.editable
@@ -2397,6 +2518,15 @@ def make_admin_router(
                         f"{prefix}/m/{parent_slug}/{parent_identity}"
                         f"/inlines/{child_slug}",
                         overrides.get(child_slug),
+                        can_create=child_admin.can_create
+                        and await _allows(
+                            principal, child_admin, AdminPermission.CREATE
+                        ),
+                        can_delete=inline.can_delete
+                        and child_admin.can_delete
+                        and await _allows(
+                            principal, child_admin, AdminPermission.DELETE
+                        ),
                     )
                 )
                 continue
@@ -2413,7 +2543,11 @@ def make_admin_router(
                 }
                 for child in children[:_INLINE_ROW_LIMIT]
             ]
-            can_add = child_admin is not None and child_admin.can_create
+            can_add = (
+                child_admin is not None
+                and child_admin.can_create
+                and await _allows(principal, child_admin, AdminPermission.CREATE)
+            )
             add_url = (
                 f"{prefix}/m/{child_slug}/new?{inline.fk_field}={parent_id}"
                 if can_add
@@ -2448,6 +2582,10 @@ def make_admin_router(
         ``<li>`` fragment of up to ``_AUTOCOMPLETE_LIMIT`` ``(id, label)``
         options.
 
+        Answers ``403`` unless the principal may ``VIEW`` both the admin
+        being edited and the referenced one: the options are rows of the
+        referenced model, so a search here is a read of it.
+
         Args:
             request (Request): The inbound request.
             slug (str): The admin slug being edited.
@@ -2470,6 +2608,8 @@ def make_admin_router(
             )
         table = fk_fields(admin).get(field)
         referenced = site.get(table) if table else None
+        if referenced is not None:
+            await _require_access(principal, referenced, AdminPermission.VIEW)
         results: list[tuple[str, str]] = []
         if referenced is not None:
             ref_model = referenced.model
@@ -2537,7 +2677,9 @@ def make_admin_router(
                 "admin": admin,
                 "mode": "edit",
                 "identity": identity,
-                "form_fields": await _form_fields(admin, db_session, instance=instance),
+                "form_fields": await _form_fields(
+                    admin, db_session, principal, instance=instance
+                ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
                 "form_error": None,
@@ -2613,7 +2755,7 @@ def make_admin_router(
                 "mode": "edit",
                 "identity": identity,
                 "form_fields": await _form_fields(
-                    admin, db_session, submitted=form, errors=errors
+                    admin, db_session, principal, submitted=form, errors=errors
                 ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
@@ -2661,6 +2803,14 @@ def make_admin_router(
             The parent foreign key is excluded from the parsed names and
             forced from the URL instead, so a crafted form can never
             re-point a child row at a different parent.
+
+            The formset is held to the same permissions as the child's own
+            routes: editing needs ``EDIT``, a filled-in new row needs the
+            child admin's ``can_create`` and ``CREATE``, and a checked
+            delete box (when the inline and child admin allow deletion)
+            needs ``DELETE``. A submission asking for an action the
+            principal lacks is refused with ``403`` before anything is
+            written, rather than applied in part.
 
             Posted inputs are named ``row.<key>.<field>`` and grouped by
             row key before parsing. A new row whose every value is blank is
@@ -2715,7 +2865,18 @@ def make_admin_router(
                 continue
             grouped.setdefault(key, {})[field_name] = str(form.get(full_key) or "")
 
+        adds = any(
+            key.startswith("new") and any(v.strip() for v in values.values())
+            for key, values in grouped.items()
+        )
+        if adds and not (
+            child_admin.can_create
+            and await _allows(principal, child_admin, AdminPermission.CREATE)
+        ):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
         can_delete = inline.can_delete and child_admin.can_delete
+        if to_delete and can_delete:
+            await _require_access(principal, child_admin, AdminPermission.DELETE)
         error_rows: list[tuple[str, dict[str, str], dict[str, str]]] = []
         form_error: str | None = None
 
@@ -2879,7 +3040,9 @@ def make_admin_router(
                 HTTPException: ``303`` redirect to the login page when the
                     principal no longer qualifies.
             """
-            principal = await _resolve_principal(request, db_session, session)
+            principal = await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.SQL
+            )
             return _render(
                 request,
                 "sql_shell.html",
@@ -2918,7 +3081,9 @@ def make_admin_router(
                     principal no longer qualifies, before the statement
                     reaches the shell; ``403`` on CSRF mismatch.
             """
-            principal = await _resolve_principal(request, db_session, session)
+            principal = await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.SQL
+            )
             _check_csrf(session, csrf_token)
             context = await _sql_context(session, principal)
             context["submitted"] = sql
@@ -2961,7 +3126,9 @@ def make_admin_router(
             Returns:
                 Response: The task panel page.
             """
-            principal = await _resolve_principal(request, db_session, session)
+            principal = await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.TASKS
+            )
             runs = await _panel.recent_runs(status=status or None)
             return _render(
                 request,
@@ -3007,7 +3174,9 @@ def make_admin_router(
                 retention sweep is exactly the case that would otherwise
                 raise.
             """
-            principal = await _resolve_principal(request, db_session, session)
+            principal = await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.TASKS
+            )
             chrome: dict[str, Any] = {
                 "user": principal,
                 "session": session,
@@ -3065,7 +3234,9 @@ def make_admin_router(
                     principal no longer qualifies, before the row is
                     touched; ``403`` on CSRF mismatch.
             """
-            await _resolve_principal(request, db_session, session)
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.TASKS
+            )
             _check_csrf(session, csrf_token)
             await _panel.cancel(job_id)
             return RedirectResponse(
@@ -3404,6 +3575,9 @@ def _build_editable_inline(
     children: list[Any],
     form_action: str,
     submitted_rows: list[tuple[str, dict[str, str], dict[str, str]]] | None,
+    *,
+    can_create: bool,
+    can_delete: bool,
 ) -> dict[str, Any]:
     """Package one editable inline as an in-place formset block.
 
@@ -3415,6 +3589,11 @@ def _build_editable_inline(
         submitted_rows (list[...] | None): On an error re-render, the
             submitted ``(rowkey, values, errors)`` per row, so inputs show
             what the user typed with per-field errors.
+        can_create (bool): Whether the blank add row is rendered — the
+            child admin's ``can_create`` and the principal's ``CREATE``.
+        can_delete (bool): Whether the per-row delete box is rendered —
+            the inline's and the child admin's ``can_delete`` and the
+            principal's ``DELETE``.
 
     Returns:
         dict[str, Any]: The template-ready editable inline block.
@@ -3443,7 +3622,7 @@ def _build_editable_inline(
         )
     new_count = 0
     for key, (values, errs) in submitted_map.items():
-        if key.startswith("new"):
+        if key.startswith("new") and can_create:
             fields = build_form_fields(
                 child_admin, submitted=values, errors=errs, only=names
             )
@@ -3451,18 +3630,21 @@ def _build_editable_inline(
                 {"key": key, "fields": _prefix_row_fields(key, fields), "is_new": True}
             )
             new_count += 1
-    blank_key = f"new{new_count}"
-    blank_fields = build_form_fields(child_admin, only=names)
+    new_row: dict[str, Any] | None = None
+    if can_create:
+        blank_key = f"new{new_count}"
+        blank_fields = build_form_fields(child_admin, only=names)
+        new_row = {
+            "key": blank_key,
+            "fields": _prefix_row_fields(blank_key, blank_fields),
+        }
     return {
         "label": inline.get_label(),
         "editable": True,
         "columns": headers,
         "rows": rows,
-        "new_row": {
-            "key": blank_key,
-            "fields": _prefix_row_fields(blank_key, blank_fields),
-        },
-        "can_delete": inline.can_delete and child_admin.can_delete,
+        "new_row": new_row,
+        "can_delete": can_delete,
         "form_action": form_action,
         "total": len(children),
         "truncated": len(children) > _INLINE_ROW_LIMIT,
@@ -3567,8 +3749,39 @@ def _export_value(value: Any) -> Any:
     return str(value)
 
 
+_CSV_FORMULA_TRIGGERS: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+"""Leading characters a spreadsheet reads as the start of a formula.
+
+The set OWASP lists for CSV injection. A cell starting with one of them
+is written with a leading ``'`` so Excel, LibreOffice and Google Sheets
+show it as text instead of evaluating it.
+"""
+
+
+def _csv_cell(value: Any) -> Any:
+    """Neutralize a CSV cell a spreadsheet would evaluate as a formula.
+
+    Only text is touched: a number keeps its sign (``-5`` is an ``int``,
+    not a formula), while a stored string such as ``=HYPERLINK(...)`` or
+    ``-5`` gains a leading ``'``. The JSON export is left alone, since no
+    spreadsheet evaluates it.
+
+    Args:
+        value (Any): A value already passed through :func:`_export_value`.
+
+    Returns:
+        Any: ``value`` unchanged, or the string prefixed with ``'``.
+    """
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_TRIGGERS):
+        return f"'{value}"
+    return value
+
+
 def _to_csv(columns: list[str], items: list[Any]) -> str:
     """Serialize ``items`` to a CSV document with a header row.
+
+    Every cell goes through :func:`_csv_cell`, so a value that would open
+    as a live formula in a spreadsheet is written as text.
 
     Args:
         columns (list[str]): Column keys (header + value order).
@@ -3582,7 +3795,7 @@ def _to_csv(columns: list[str], items: list[Any]) -> str:
     writer.writerow(columns)
     for instance in items:
         writer.writerow(
-            [_export_value(getattr(instance, col, None)) for col in columns]
+            [_csv_cell(_export_value(getattr(instance, col, None))) for col in columns]
         )
     return buffer.getvalue()
 

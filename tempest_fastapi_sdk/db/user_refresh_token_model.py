@@ -33,6 +33,7 @@ service keeps issuing the legacy stateless JWT refresh token.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 from uuid import UUID
 
 from sqlalchemy import ForeignKey, String, Uuid
@@ -82,6 +83,7 @@ class BaseUserRefreshTokenModel(BaseModel):
     """
 
     __abstract__ = True
+    __secret_columns__: ClassVar[frozenset[str]] = frozenset({"token_hash"})
 
     user_id: Mapped[UUID] = mapped_column(
         nullable=False,

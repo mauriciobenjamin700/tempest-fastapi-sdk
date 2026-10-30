@@ -205,7 +205,7 @@ app.include_router(
 - `GET  /admin/logs` — **application logs** (when `show_logs=True`): reads the structured JSON files written by `configure_logging(log_dir=…)`, with source filter (`?source=`), free-text search (`?q=`) and pagination. Color-coded level badges. Renders an empty state when no log files exist yet.
 - `GET  /admin/logs/export` — **log export** (`?format=md|json`): downloads the filtered selection as markdown (traceback in a fenced block, ready to paste into an issue) or verbatim JSON.
 - `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`: each word matched as a case-insensitive substring in any of the `search_fields`, and every word must appear; `%` and `_` are literal) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
-- `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000).
+- `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000). In the CSV, a text cell starting with `=`, `+`, `-`, `@`, tab or CR is written with a leading `'`, so a spreadsheet shows the text instead of evaluating a formula; the JSON is unchanged.
 - `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate + your **custom actions**) on the selected rows.
 - `GET/POST /admin/m/{slug}/new` — **create** a record (when `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view with Edit/Delete controls.
@@ -729,11 +729,83 @@ and denying create/edit/delete hides the matching buttons. Enforced
 across list, detail, create, edit, delete, bulk (delete → `DELETE`, rest
 → `EDIT`), export, import and FK autocomplete.
 
+It also covers what one model's page shows of **another** model:
+
+- the inline table on a parent's detail view appears only with `VIEW` on
+  the child — a child with no registered `AdminModel` is asked about
+  through a throwaway `AdminModel(Child)`, so a policy that decides by
+  `admin.model` answers the same way;
+- on an editable inline, the add row needs `CREATE` (and the child's
+  `can_create`) and the delete box needs `DELETE`; a formset `POST` that
+  asks for a denied action answers `403` and writes nothing;
+- the FK `<select>`, the list view's FK filter and autocomplete need
+  `VIEW` on the referenced model. Without it, the FK field becomes a text
+  input and autocomplete answers `403`.
+
 !!! info "Composes with the `can_*` flags"
     The policy is **additive** to the `AdminModel`'s
     `can_create`/`can_edit`/`can_delete` flags — both must allow.
     Without `access_policy`, nothing changes (every logged-in admin does
     everything). Sync or `async`.
+
+### SQL console, tasks and logs (`surface_policy=`)
+
+The SQL console, the task panel and the logs page are not about one
+model, so `access_policy` has nothing to ask about. `surface_policy`
+decides instead, asked `(principal, AdminSurface)`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminModel,
+    AdminPermission,
+    AdminSurface,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import SqlShellService
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+app = FastAPI()
+
+
+def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
+    return user.role == "superadmin" or action is AdminPermission.VIEW
+
+
+def surfaces(user: UserModel, surface: AdminSurface) -> bool:
+    return user.role == "superadmin"
+
+
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.JWT_SECRET,
+        access_policy=policy,
+        surface_policy=surfaces,
+        sql_shell=SqlShellService(db),
+        show_logs=True,
+    ),
+)
+```
+
+A denial answers `403` on every route of the surface (the console's
+`POST`, task cancel and the logs export included) and drops its sidebar
+entry.
+
+!!! warning "With `access_policy`, the surfaces are closed by default"
+    With neither policy, every admin opens all three surfaces, as before.
+    With `access_policy` and **no** `surface_policy`, nobody does: the
+    console reads any table the `SqlShellPolicy` allows, and an operator
+    restricted to some models would read the rest through it. Pass a
+    `surface_policy` to give the surfaces back to whoever should have them.
 
 ## Field widgets by column type
 
@@ -846,7 +918,23 @@ default ordering applies), the inline table on the parent's detail —
 even when the `Inline` names the column in its own `list_display` —, the
 before/after rows of the audit timeline, and the label another model's FK
 `<select>` shows. All of them read the same set, `hidden_field_names()`,
-which is `hashed_password` + `password_fields` + `exclude_fields`.
+which is `hashed_password` + the model's `__secret_columns__` +
+`password_fields` + `exclude_fields`.
+
+!!! info "The SDK models' credentials leave on their own"
+    `MFAMixin.totp_secret`, `BaseWebPushSubscriptionModel`'s
+    `endpoint`/`p256dh`/`auth`, `BaseDeviceTokenModel`'s
+    `token`/`p256dh`/`auth`, `BaseUserRefreshTokenModel.token_hash` and
+    `BaseUserRecoveryCodeModel.code_hash` are declared in
+    `__secret_columns__`. A plain `AdminModel(model=...)` — or `automap` —
+    already hides them from every surface above, and the audit stores them
+    as `[redacted]`, with no `exclude_fields` or `__audit_redact__`.
+    `exclude_fields` stays the way to hide a column of **your** model, like
+    the `push_token` above. A `NOT NULL` secret column with no default still
+    shows as a blank input on the **create** form (never on edit), so a push
+    subscription can still be created through the panel. Your own model
+    declares its secrets with
+    `__secret_columns__: ClassVar[frozenset[str]] = frozenset({"api_key"})`.
 
 A configuration that contradicts itself fails when the `AdminModel` is
 built, at boot, instead of rendering the secret:

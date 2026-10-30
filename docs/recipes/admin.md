@@ -188,7 +188,7 @@ app.include_router(
 - `GET  /admin/logs` — **logs da aplicação** (quando `show_logs=True`): lê os arquivos JSON estruturados escritos pelo `configure_logging(log_dir=…)`, com filtro por fonte (`?source=`), busca em texto (`?q=`) e paginação. Badges coloridos por nível. Quando ainda não há arquivos de log, mostra um estado vazio.
 - `GET  /admin/logs/export` — **export dos logs** (`?format=md|json`): baixa a seleção filtrada como markdown (traceback em bloco cercado, pronto para colar em issue) ou JSON verbatim.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`: cada palavra procurada por trecho, sem diferenciar maiúscula, em qualquer um dos `search_fields`, e toda palavra precisa aparecer; `%` e `_` são literais) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
-- `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000).
+- `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000). No CSV, uma célula de texto que começa com `=`, `+`, `-`, `@`, tab ou CR sai com um `'` na frente, para a planilha mostrar o texto em vez de avaliar uma fórmula; o JSON sai sem mudança.
 - `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate + suas **ações customizadas**) nas linhas selecionadas.
 - `GET/POST /admin/m/{slug}/new` — **criar** registro (quando `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view com botões Edit/Delete.
@@ -711,10 +711,82 @@ create/edit/delete some com os botões correspondentes. Vale em list,
 detail, create, edit, delete, bulk (delete → `DELETE`, resto → `EDIT`),
 export, import e autocomplete de FK.
 
+Vale também para o que a página de um model mostra de **outro** model:
+
+- a tabela de inline no detail do pai só aparece com `VIEW` no filho — um
+  filho sem `AdminModel` registrado é perguntado por um
+  `AdminModel(Filho)` descartável, então uma policy que libera por
+  `admin.model` decide igual;
+- no inline editável, a linha de adicionar exige `CREATE` (e o
+  `can_create` do filho) e a caixa de apagar exige `DELETE`; um `POST` do
+  formset que peça a ação negada responde `403` sem gravar nada;
+- o `<select>` de FK, o filtro de FK da listagem e o autocomplete exigem
+  `VIEW` no model referenciado. Sem ele, o campo de FK vira input de texto
+  e o autocomplete responde `403`.
+
 !!! info "Compõe com os flags `can_*`"
     A policy **soma** aos flags `can_create`/`can_edit`/`can_delete` do
     `AdminModel` — os dois precisam liberar. Sem `access_policy`, nada
     muda (todo admin logado faz tudo). Pode ser sync ou `async`.
+
+### Console SQL, tasks e logs (`surface_policy=`)
+
+O console SQL, o painel de tasks e a página de logs não são de um model,
+então a `access_policy` não tem o que perguntar. Quem decide é a
+`surface_policy`, consultada `(principal, AdminSurface)`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminModel,
+    AdminPermission,
+    AdminSurface,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import SqlShellService
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+app = FastAPI()
+
+
+def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
+    return user.role == "superadmin" or action is AdminPermission.VIEW
+
+
+def surfaces(user: UserModel, surface: AdminSurface) -> bool:
+    return user.role == "superadmin"
+
+
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.JWT_SECRET,
+        access_policy=policy,
+        surface_policy=surfaces,
+        sql_shell=SqlShellService(db),
+        show_logs=True,
+    ),
+)
+```
+
+Negar responde `403` em todas as rotas da superfície (o `POST` do
+console, o cancelamento de task e o export de logs incluídos) e tira a
+entrada da barra lateral.
+
+!!! warning "Com `access_policy`, as superfícies fecham por padrão"
+    Sem nenhuma das duas policies, todo admin abre as três superfícies,
+    como antes. Com `access_policy` e **sem** `surface_policy`, ninguém
+    abre: o console lê qualquer tabela que a `SqlShellPolicy` libera, e um
+    operador restrito a alguns models leria o resto por ali. Passe uma
+    `surface_policy` para devolver as superfícies a quem deve tê-las.
 
 ## Widgets de campo por tipo de coluna
 
@@ -826,7 +898,23 @@ default), a tabela de inline no detail do pai — mesmo que o `Inline`
 declare a coluna no próprio `list_display` —, as linhas de antes/depois da
 linha do tempo de auditoria, e o rótulo que o `<select>` de FK de outro
 model mostra. Todas leem o mesmo conjunto, `hidden_field_names()`, que é
-`hashed_password` + `password_fields` + `exclude_fields`.
+`hashed_password` + `__secret_columns__` do model + `password_fields` +
+`exclude_fields`.
+
+!!! info "As credenciais dos models do SDK já saem sozinhas"
+    `MFAMixin.totp_secret`, `endpoint`/`p256dh`/`auth` do
+    `BaseWebPushSubscriptionModel`, `token`/`p256dh`/`auth` do
+    `BaseDeviceTokenModel`, `token_hash` do `BaseUserRefreshTokenModel` e
+    `code_hash` do `BaseUserRecoveryCodeModel` são declarados em
+    `__secret_columns__`. Um `AdminModel(model=...)` simples — ou o
+    `automap` — já os esconde de toda superfície acima, e a auditoria os
+    grava como `[redacted]`, sem `exclude_fields` nem `__audit_redact__`.
+    O `exclude_fields` continua sendo o caminho para a coluna do **seu**
+    model, como o `push_token` acima. A coluna secreta `NOT NULL` sem
+    default ainda aparece em branco no form de **create** (nunca no de
+    edit), para a assinatura de push continuar podendo ser criada pelo
+    painel. Um model seu declara as próprias com
+    `__secret_columns__: ClassVar[frozenset[str]] = frozenset({"api_key"})`.
 
 A configuração que se contradiz falha na construção do `AdminModel`, no
 boot, em vez de renderizar o segredo:

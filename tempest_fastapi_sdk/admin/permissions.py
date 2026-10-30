@@ -27,6 +27,33 @@ def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
 
 router = make_admin_router(site, ..., access_policy=policy)
 ```
+
+The policy also covers what a model surface renders of *another* model:
+an inline table on a parent's detail view needs ``VIEW`` on the child
+(an inline whose child has no registered admin is asked about a
+throwaway ``AdminModel(child)``), an editable inline's add row needs
+``CREATE`` and its delete box ``DELETE``, and a foreign-key select,
+list filter or autocomplete needs ``VIEW`` on the referenced admin.
+
+The panels that are not about one model — the SQL console, the task
+panel and the logs page — are an :class:`AdminSurface`, decided by an
+:data:`AdminSurfacePolicy` passed as ``surface_policy``. Once an
+``access_policy`` is configured they are **denied** to everyone unless a
+``surface_policy`` says otherwise, because a principal the model policy
+restricts would otherwise read any table through the console:
+
+```python
+from tempest_fastapi_sdk.admin import AdminSurface
+
+
+def surfaces(user: UserModel, surface: AdminSurface) -> bool:
+    return user.role == "superadmin"
+
+
+router = make_admin_router(
+    site, ..., access_policy=policy, surface_policy=surfaces
+)
+```
 """
 
 from __future__ import annotations
@@ -49,6 +76,19 @@ class AdminPermission(BaseStrEnum):
     DELETE = "delete"
 
 
+class AdminSurface(BaseStrEnum):
+    """An admin panel that is not about one model.
+
+    Gated by an :data:`AdminSurfacePolicy` instead of the per-model
+    :data:`AdminAccessPolicy`, since there is no :class:`AdminModel` to
+    ask about.
+    """
+
+    SQL = "sql"
+    TASKS = "tasks"
+    LOGS = "logs"
+
+
 #: A policy deciding whether ``principal`` may perform ``action`` on the
 #: model behind ``admin``. Sync or ``async``; return truthy to allow.
 AdminAccessPolicy = Callable[
@@ -57,7 +97,18 @@ AdminAccessPolicy = Callable[
 ]
 
 
+#: A policy deciding whether ``principal`` may open ``surface`` (the SQL
+#: console, the task panel or the logs page). Sync or ``async``; return
+#: truthy to allow.
+AdminSurfacePolicy = Callable[
+    [Any, AdminSurface],
+    bool | Awaitable[bool],
+]
+
+
 __all__: list[str] = [
     "AdminAccessPolicy",
     "AdminPermission",
+    "AdminSurface",
+    "AdminSurfacePolicy",
 ]

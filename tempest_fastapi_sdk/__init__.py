@@ -49,6 +49,12 @@ if TYPE_CHECKING:
         AdminSite as AdminSite,
     )
     from tempest_fastapi_sdk.admin import (
+        AdminSurface as AdminSurface,
+    )
+    from tempest_fastapi_sdk.admin import (
+        AdminSurfacePolicy as AdminSurfacePolicy,
+    )
+    from tempest_fastapi_sdk.admin import (
         AdminTheme as AdminTheme,
     )
     from tempest_fastapi_sdk.admin import (
@@ -2309,6 +2315,8 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "AdminModel": "tempest_fastapi_sdk.admin",
     "AdminPermission": "tempest_fastapi_sdk.admin",
     "AdminSite": "tempest_fastapi_sdk.admin",
+    "AdminSurface": "tempest_fastapi_sdk.admin",
+    "AdminSurfacePolicy": "tempest_fastapi_sdk.admin",
     "AdminTheme": "tempest_fastapi_sdk.admin",
     "FieldRef": "tempest_fastapi_sdk.admin",
     "Inline": "tempest_fastapi_sdk.admin",
@@ -3217,6 +3225,8 @@ __all__: list[str] = [
     "AdminModel",
     "AdminPermission",
     "AdminSite",
+    "AdminSurface",
+    "AdminSurfacePolicy",
     "AdminTheme",
     "AlembicHelper",
     "AllowedImageMediaTypes",
