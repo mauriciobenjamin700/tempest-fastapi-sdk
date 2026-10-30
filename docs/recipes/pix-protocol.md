@@ -95,7 +95,7 @@ nada — a mesma costura que o SDK usa em `RateLimitStore`, `QuotaStore`,
     cobrança certa. Antes da v0.270.0 o `#` era interpretado como
     fragmento e a chamada acertava outro recurso — num `DELETE`. E `""`,
     `"."` e `".."` levantam `ValueError` antes de enviar: o ponto não é
-    escapado, e até a v0.334.0 `..` subia um nível no path.
+    escapado, e até a v0.334.1 `..` subia um nível no path.
 
 ### O que sai: `PixCharge`
 

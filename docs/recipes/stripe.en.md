@@ -291,7 +291,7 @@ asyncio.run(main())
 
 The id that `retrieve`, `update` and `delete` take becomes **one** path
 segment: `/`, `?` and `#` are encoded (`quote(..., safe="")`), and `""`,
-`"."` and `".."` raise `ValueError` before sending. Up to v0.334.0 the id
+`"."` and `".."` raise `ValueError` before sending. Up to v0.334.1 the id
 went in raw, and an id holding `/`, `..` or `?` addressed another Stripe
 resource, with the same secret key and the same method.
 

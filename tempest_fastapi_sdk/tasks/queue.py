@@ -605,7 +605,7 @@ class TaskQueue:
                 ``"json"`` (default) stores data only; ``"pickle"`` is the
                 explicit opt-in to ``taskiq_redis``'s own default, which
                 runs code named by the stored bytes when a result is read —
-                only for a Redis nobody else can write. Until 0.334.0 results
+                only for a Redis nobody else can write. Until 0.334.1 results
                 were always pickled.
             resources (Sequence[LifecycleResource]): Resources the
                 worker opens on startup and closes on shutdown — see

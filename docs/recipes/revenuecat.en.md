@@ -379,7 +379,7 @@ asyncio.run(main())
 
 The `app_user_id` reaches the path encoded as a single segment, and `""`,
 `"."` and `".."` raise `ValueError` before any request — the dot is not
-escaped, and up to v0.334.0 `".."` climbed one level up the path with the
+escaped, and up to v0.334.1 `".."` climbed one level up the path with the
 secret key. `FakeRevenueCatClient` refuses the same three.
 
 For tests, `FakeRevenueCatClient` answers what you seed and fails when told

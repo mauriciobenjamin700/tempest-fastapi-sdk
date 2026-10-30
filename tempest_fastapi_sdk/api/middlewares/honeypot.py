@@ -373,7 +373,7 @@ class HoneypotBanMiddleware:
                 anything with replicas.
             patterns (tuple[re.Pattern[str], ...]): Signatures matched
                 against the request path. Defaults to
-                :data:`DEFAULT_HONEYPOT_PATTERNS`. Until 0.334.0 these were
+                :data:`DEFAULT_HONEYPOT_PATTERNS`. Until 0.334.1 these were
                 matched against ``path?query``; a custom pattern that
                 targets the query moves to ``query_patterns``.
             query_patterns (tuple[re.Pattern[str], ...]): Signatures matched

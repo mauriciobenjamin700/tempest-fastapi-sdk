@@ -377,7 +377,7 @@ asyncio.run(main())
 
 O `app_user_id` vai para o path codificado num segmento só, e `""`, `"."` e
 `".."` levantam `ValueError` antes de qualquer requisição — o ponto não é
-escapado, e até a v0.334.0 `".."` subia um nível no path com a chave secreta.
+escapado, e até a v0.334.1 `".."` subia um nível no path com a chave secreta.
 O `FakeRevenueCatClient` recusa os mesmos três.
 
 Para teste, `FakeRevenueCatClient` responde o que você semear e falha quando

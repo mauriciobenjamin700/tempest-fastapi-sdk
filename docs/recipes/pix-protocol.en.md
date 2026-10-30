@@ -95,7 +95,7 @@ nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
     `order#42` and `order/1042` address the right charge. Before v0.270.0
     the `#` was read as a fragment and the call hit a different resource —
     on a `DELETE`. And `""`, `"."` and `".."` raise `ValueError` before
-    sending: the dot is not escaped, and up to v0.334.0 `..` climbed one
+    sending: the dot is not escaped, and up to v0.334.1 `..` climbed one
     level up the path.
 
 ### What comes out: `PixCharge`

@@ -289,7 +289,7 @@ asyncio.run(main())
 
 O id que `retrieve`, `update` e `delete` recebem vira **um** segmento do path:
 `/`, `?` e `#` são codificados (`quote(..., safe="")`), e `""`, `"."` e `".."`
-levantam `ValueError` antes de enviar. Até a v0.334.0 o id entrava cru, e um id
+levantam `ValueError` antes de enviar. Até a v0.334.1 o id entrava cru, e um id
 com `/`, `..` ou `?` endereçava outro recurso da Stripe, com a mesma chave
 secreta e o mesmo método.
 

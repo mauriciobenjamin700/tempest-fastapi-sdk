@@ -654,7 +654,7 @@ mesmo NAT), então a lista evita o que um cliente honesto pede:
 - `credentials` e `secrets` só casam na raiz — o
   `/auth/webauthn/credentials` do router de auth passa.
 
-Até a 0.334.0 o `patterns=` era casado contra `path?query`. Padrão próprio que
+Até a 0.334.1 o `patterns=` era casado contra `path?query`. Padrão próprio que
 mira a query vai para `query_patterns=`.
 
 ### Falha aberta, por padrão

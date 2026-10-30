@@ -659,7 +659,7 @@ NAT), so the list stays clear of what an honest client requests:
 - `credentials` and `secrets` only match at the root — the auth router's
   `/auth/webauthn/credentials` passes.
 
-Until 0.334.0 `patterns=` was matched against `path?query`. A custom pattern
+Until 0.334.1 `patterns=` was matched against `path?query`. A custom pattern
 that targets the query moves to `query_patterns=`.
 
 ### It fails open, by default

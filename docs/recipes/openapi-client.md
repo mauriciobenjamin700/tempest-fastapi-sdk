@@ -581,7 +581,7 @@ Resumindo o que o emissor garante para qualquer texto que a spec traga:
 | Valor de enum longo demais | Partido igual, e o **nome** do membro é encurtado — o valor, nunca |
 
 !!! info "A spec é código de terceiro chegando no seu import"
-    Docstring é código-fonte, não dado. Até a v0.334.0, uma descrição com
+    Docstring é código-fonte, não dado. Até a v0.334.1, uma descrição com
     `"""` fechava a docstring e o resto da frase virava Python, executado
     quando o seu serviço importava o pacote gerado. Hoje toda prosa da spec
     (descrição, `summary`, `title`, `info.title`) passa pelo mesmo escape antes
@@ -663,7 +663,7 @@ aceita, ou descreve um path que não fecha com os parâmetros que declara:
     `quote(..., safe="")`: `/`, `?` e `#` ficam dentro do segmento. O ponto não
     é escapado, e o `httpx` resolve `.` e `..` antes de enviar — então
     `get_charge("..")` saía como `GET /api/v1`, com as suas credenciais, até a
-    v0.334.0. Hoje `""`, `"."` e `".."` levantam `ValueError` antes de
+    v0.334.1. Hoje `""`, `"."` e `".."` levantam `ValueError` antes de
     qualquer requisição.
 
 !!! danger "Toda correção dessas aparece no resumo"

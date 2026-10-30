@@ -592,7 +592,7 @@ Summing up what the emitter guarantees for any text the spec carries:
 | An over-long enum value | Split the same way, and the member **name** is shortened — the value, never |
 
 !!! info "The spec is third-party code reaching your import"
-    A docstring is source, not data. Up to v0.334.0, a description holding
+    A docstring is source, not data. Up to v0.334.1, a description holding
     `"""` closed the docstring and the rest of the sentence became Python,
     run when your service imported the generated package. Now every piece of
     spec prose (description, `summary`, `title`, `info.title`) goes through
@@ -677,7 +677,7 @@ declares:
     `quote(..., safe="")`: `/`, `?` and `#` stay inside the segment. The dot
     is not escaped, and `httpx` resolves `.` and `..` before sending — so
     `get_charge("..")` went out as `GET /api/v1`, with your credentials, up
-    to v0.334.0. Now `""`, `"."` and `".."` raise `ValueError` before any
+    to v0.334.1. Now `""`, `"."` and `".."` raise `ValueError` before any
     request is made.
 
 !!! danger "Every one of these repairs shows up in the summary"
