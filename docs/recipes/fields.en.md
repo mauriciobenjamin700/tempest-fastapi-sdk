@@ -183,6 +183,11 @@ is_valid_pix_key("529.982.247-25")       # -> True
     random; otherwise digits + **check digits** decide between CPF and
     CNPJ (a CPF with wrong check digits is rejected). Phone follows
     Brazilian E.164 (`+55` + area + number, 10-11 digits after `+55`).
+    A key longer than **77 characters** after `strip` (BACEN's cap for an
+    email key, the longest of the five) is refused before any regex runs,
+    so validation cost does not grow with the size of the submitted value.
+    The email domain needs non-empty labels: `a@b..c`, `a@.b` and `a@b.c.`
+    are refused.
 
 ## Full example (schema + route + 422)
 

@@ -38,9 +38,14 @@ DEFAULT_MAX_UPLOAD_BYTES: int = 25 * 1024 * 1024
 """Largest upload accepted, in bytes.
 
 Audio arrives whole and is held in memory while it is decoded, so an
-unbounded upload is a way to exhaust the worker. 25 MiB is roughly
-half an hour of 16 kHz mono WAV — beyond that the request belongs in a
+unbounded upload is a way to exhaust the worker. 25 MiB is about 13.6
+minutes of 16 kHz mono 16-bit WAV — beyond that the request belongs in a
 background job, not a synchronous endpoint.
+
+This bounds the encoded bytes only. The decoded duration, which is what
+a compressed or forged upload inflates, is bounded by the engines'
+``max_audio_seconds`` (see
+:mod:`tempest_fastapi_sdk.genai.audio.decoding`).
 """
 
 

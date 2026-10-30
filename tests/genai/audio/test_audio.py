@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import wave
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -109,6 +111,24 @@ class _FakeWhisperModel:
         return iter([_FakeSegment(0.0, 1.0, "olá ")]), _FakeInfo()
 
 
+@pytest.fixture
+def clip_wav(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Write a short 16 kHz WAV as ``clip.wav`` in a fresh working directory.
+
+    ``SpeechToText`` decodes the audio itself before the model sees it, so
+    the path the tests pass has to be a real recording.
+    """
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "clip.wav"
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(16_000)
+        handle.writeframes(b"\x00\x00" * 1_600)
+    return path
+
+
+@pytest.mark.usefixtures("clip_wav")
 class TestSpeechToText:
     def test_init_resolves(self) -> None:
         stt = SpeechToText("base", device="cpu")
@@ -215,7 +235,7 @@ class TestSpeechToText:
     async def test_transcribe_without_extra_raises(self) -> None:
         stt = SpeechToText(device="cpu")
         with pytest.raises(ImportError, match=r"\[genai-audio\]"):
-            await stt.transcribe("x.wav")
+            await stt.transcribe("clip.wav")
 
 
 class TestTextToSpeech:

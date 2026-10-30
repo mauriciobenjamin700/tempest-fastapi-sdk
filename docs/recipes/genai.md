@@ -3128,6 +3128,37 @@ POST /api/genai/generate {"prompt": "hi", "config": {"max_new_tokens": 100000000
     recebe `422` — antes a rota gerava o lote inteiro na GPU e devolvia só a
     primeira. Para lote, use o `ImageGenerator` direto.
 
+#### Áudio: o limite é a duração decodificada, não só os bytes
+
+`max_upload_bytes` limita o que o cliente envia, mas não o que o upload vira
+depois de decodificado: o cabeçalho do arquivo declara a própria taxa de
+amostragem e um codec comprime silêncio a quase nada (dez minutos de FLAC
+silencioso cabem em ~114 KB). Por isso o `SpeechToText`, o
+`SpeakerDiarizer` e o `VoiceEmbedder` decodificam o áudio pelo mesmo
+decodificador limitado, antes de o modelo ver qualquer coisa:
+
+- taxa declarada fora de `MIN_SOURCE_RATE`–`MAX_SOURCE_RATE`
+  (8 000–192 000 Hz) é recusada antes de reamostrar;
+- áudio decodificado acima de `max_audio_seconds` é recusado assim que o
+  contador de amostras passa do limite — o default é
+  `DEFAULT_MAX_AUDIO_SECONDS`, uma hora.
+
+As duas recusas são `ValidationException`, então com o
+`register_exception_handlers` o `/transcribe` (deste router e do
+`make_voice_router`) responde `422`, com `details` trazendo `min_rate` e
+`max_rate`, ou `max_seconds`. O modelo do Whisper recebe as amostras já
+decodificadas, não o arquivo.
+
+```python
+from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer, SpeechToText
+
+stt: SpeechToText = SpeechToText("base", max_audio_seconds=900.0)
+diarizer: SpeakerDiarizer = SpeakerDiarizer(max_audio_seconds=900.0)
+```
+
+`max_audio_seconds=None` tira o limite de duração (a faixa de taxa continua
+valendo) — só para arquivo confiável, que o próprio operador fornece.
+
 ### `RedisEmbeddingCache` — cache compartilhado entre workers
 
 `Embedder` aceita cache síncrono (`InMemoryEmbeddingCache`) **ou**

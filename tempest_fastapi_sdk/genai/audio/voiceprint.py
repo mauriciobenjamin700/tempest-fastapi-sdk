@@ -21,11 +21,14 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.genai.audio.decoding import (
+    DEFAULT_MAX_AUDIO_SECONDS,
+    load_audio,
+)
 from tempest_fastapi_sdk.genai.audio.diarization import (
     DIARIZATION_SAMPLE_RATE,
     EMBEDDING_MODEL,
     ensure_models,
-    load_audio,
 )
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
@@ -109,6 +112,8 @@ class VoiceEmbedder:
     Attributes:
         idle_unload_seconds (float | None): Idle time after which
             :meth:`unload_if_idle` releases the model.
+        max_audio_seconds (float | None): Longest decoded recording
+            accepted; ``None`` when unbounded.
     """
 
     def __init__(
@@ -120,6 +125,7 @@ class VoiceEmbedder:
         provider: str = "cpu",
         max_concurrent: int = 2,
         idle_unload_seconds: float | None = None,
+        max_audio_seconds: float | None = DEFAULT_MAX_AUDIO_SECONDS,
     ) -> None:
         """Initialize the embedder without loading anything.
 
@@ -134,6 +140,9 @@ class VoiceEmbedder:
             idle_unload_seconds (float | None): Idle time after which
                 :meth:`unload_if_idle` releases the model. ``None``
                 disables idle unloading.
+            max_audio_seconds (float | None): Longest decoded recording
+                accepted, checked while decoding. ``None`` lifts the
+                bound, for trusted files only.
 
         Raises:
             ValueError: If ``max_concurrent`` is below 1.
@@ -146,6 +155,7 @@ class VoiceEmbedder:
         self._provider = provider
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
         self.idle_unload_seconds: float | None = idle_unload_seconds
+        self.max_audio_seconds: float | None = max_audio_seconds
         self._extractor: Any | None = None
         self._lifecycle = ModelLifecycle(
             build=self._build,
@@ -280,6 +290,9 @@ class VoiceEmbedder:
         Raises:
             ImportError: When the ``[genai-diarization]`` extra is absent.
             ValueError: When the span is empty.
+            ValidationException: When the audio declares a sample rate
+                outside the accepted range or decodes past
+                ``max_audio_seconds``.
         """
         async with self._semaphore:
             return await asyncio.to_thread(self._embed_sync, audio, start, end, None)
@@ -315,6 +328,9 @@ class VoiceEmbedder:
         Raises:
             ValueError: When the requested span holds no samples, or the
                 recording is shorter than ``min_seconds``.
+            ValidationException: When the audio declares a sample rate
+                outside the accepted range or decodes past
+                ``max_audio_seconds``.
         """
         with self._lifecycle.use():
             return self._extract(audio, start, end, min_seconds)
@@ -340,8 +356,15 @@ class VoiceEmbedder:
         Raises:
             ValueError: When the requested span holds no samples, or the
                 recording is shorter than ``min_seconds``.
+            ValidationException: When the audio declares a sample rate
+                outside the accepted range or decodes past
+                ``max_audio_seconds``.
         """
-        samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
+        samples = load_audio(
+            audio,
+            target_rate=DIARIZATION_SAMPLE_RATE,
+            max_seconds=self.max_audio_seconds,
+        )
         if min_seconds is not None:
             duration = len(samples) / DIARIZATION_SAMPLE_RATE
             if duration < min_seconds:
@@ -398,6 +421,9 @@ class VoiceEmbedder:
             ValueError: When the recording is shorter than
                 ``min_seconds``.
             ImportError: When the ``[genai-diarization]`` extra is absent.
+            ValidationException: When the audio declares a sample rate
+                outside the accepted range or decodes past
+                ``max_audio_seconds``.
         """
         async with self._semaphore:
             return await asyncio.to_thread(

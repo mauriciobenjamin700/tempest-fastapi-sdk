@@ -103,6 +103,8 @@ Default buckets (`DEFAULT_LATENCY_BUCKETS`) cover 5ms → 10s — fits typical A
 !!! tip "Path normalization"
     The `path` label uses the route template (`/api/users/{user_id}`), not the concrete path, so cardinality doesn't explode with unique UUIDs. That comes from FastAPI/Starlette — no config needed on your end.
 
+    A request that matches no route (every `404`) is recorded as `path="<unmatched>"`, and a method outside the standard set (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `CONNECT`, `TRACE`) as `method="OTHER"`. No label takes a value the client chooses, so the series count stays bounded by routes × methods × statuses — an anonymous client inventing paths creates no new series.
+
 ### Scrape config
 
 `prometheus.yml` — `http_headers` sends `X-Token` on every scrape, read from

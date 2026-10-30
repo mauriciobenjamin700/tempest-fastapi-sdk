@@ -26,6 +26,10 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.genai.audio.decoding import (
+    DEFAULT_MAX_AUDIO_SECONDS,
+    load_audio,
+)
 from tempest_fastapi_sdk.genai.audio.language import Language, whisper_language
 from tempest_fastapi_sdk.genai.audio.schemas import Transcription, TranscriptionSegment
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
@@ -34,7 +38,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    import numpy as np
+    import numpy.typing as npt
+
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+_WHISPER_SAMPLE_RATE: int = 16_000
+"""Sample rate Whisper models consume; audio is decoded to it."""
 
 
 def resolve_audio_device(device: str) -> str:
@@ -122,6 +132,8 @@ class SpeechToText:
             path).
         device (str): Resolved device (``cuda`` / ``cpu``).
         compute_type (str): Resolved faster-whisper compute type.
+        max_audio_seconds (float | None): Longest decoded recording
+            accepted; ``None`` when unbounded.
     """
 
     def __init__(
@@ -142,6 +154,7 @@ class SpeechToText:
         cpu_threads: int = 0,
         num_workers: int = 1,
         condition_on_previous_text: bool = True,
+        max_audio_seconds: float | None = DEFAULT_MAX_AUDIO_SECONDS,
     ) -> None:
         """Configure the transcriber (does not load weights yet).
 
@@ -204,6 +217,12 @@ class SpeechToText:
                 it serializes spans that would otherwise decode in parallel,
                 and it is the documented path by which one bad span
                 contaminates the ones after it (the repetition loop).
+            max_audio_seconds (float | None): Longest decoded recording
+                accepted. The SDK decodes the audio itself, counting
+                samples as they come out, and refuses past this bound
+                before the model sees anything; faster-whisper then gets
+                the samples, not the file. ``None`` lifts the bound, for
+                trusted, operator-supplied files only.
 
         Raises:
             ValueError: When ``max_concurrent`` is not positive, when
@@ -234,6 +253,7 @@ class SpeechToText:
         self.cpu_threads = cpu_threads
         self.num_workers = num_workers
         self.condition_on_previous_text = condition_on_previous_text
+        self.max_audio_seconds = max_audio_seconds
         self._model: Any = None
         self._pipeline: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
@@ -361,6 +381,12 @@ class SpeechToText:
         Returns:
             Transcription: The transcript, language (+ probability),
             duration and segments.
+
+        Raises:
+            ValidationException: When the audio declares a sample rate
+                outside the accepted range or decodes past
+                ``max_audio_seconds``.
+            ValueError: When the audio cannot be decoded.
         """
         async with self._semaphore:
             result = await asyncio.to_thread(
@@ -385,13 +411,21 @@ class SpeechToText:
     ) -> Transcription:
         """Blocking transcription; assembles a :class:`Transcription`.
 
-        Runs inside the lifecycle's ``use()`` block: the segments come out
-        of a lazy generator, so the model has to stay resident until the
-        last one is decoded, not only until ``transcribe`` returns.
+        The audio is decoded first, through the bounded decoder, so a
+        recording refused for its rate or length never loads the model.
+        The rest runs inside the lifecycle's ``use()`` block: the segments
+        come out of a lazy generator, so the model has to stay resident
+        until the last one is decoded, not only until ``transcribe``
+        returns.
         """
+        samples = load_audio(
+            audio,
+            target_rate=_WHISPER_SAMPLE_RATE,
+            max_seconds=self.max_audio_seconds,
+        )
         with self._lifecycle.use():
             return self._decode(
-                audio,
+                samples,
                 language,
                 with_segments,
                 beam_size,
@@ -401,7 +435,7 @@ class SpeechToText:
 
     def _decode(
         self,
-        audio: str | Path | bytes,
+        samples: npt.NDArray[np.float32],
         language: str | None,
         with_segments: bool,
         beam_size: int,
@@ -411,7 +445,8 @@ class SpeechToText:
         """Run the loaded engine and collect its segments.
 
         Args:
-            audio (str | Path | bytes): Audio file path or raw bytes.
+            samples (npt.NDArray[np.float32]): Mono 16 kHz samples from
+                the bounded decoder.
             language (str | None): Whisper language code, or ``None``.
             with_segments (bool): Include per-span timestamps.
             beam_size (int): Beam width.
@@ -422,9 +457,6 @@ class SpeechToText:
         Returns:
             Transcription: The assembled transcript.
         """
-        import io
-
-        source: Any = io.BytesIO(audio) if isinstance(audio, bytes) else str(audio)
         engine = self._pipeline if self._pipeline is not None else self._model
         options: dict[str, Any] = {
             "language": language,
@@ -434,7 +466,7 @@ class SpeechToText:
         }
         if self._pipeline is not None:
             options["batch_size"] = self.batch_size
-        segments_iter, info = engine.transcribe(source, **options)
+        segments_iter, info = engine.transcribe(samples, **options)
         duration = float(getattr(info, "duration", 0.0) or 0.0)
         segments: list[TranscriptionSegment] = []
         texts: list[str] = []

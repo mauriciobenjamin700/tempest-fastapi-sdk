@@ -501,3 +501,72 @@ class TestMobilePhoneBRField:
     def test_phone_field_still_accepts_that_landline(self) -> None:
         """``PhoneBRField`` is unchanged; the new type is the strict one."""
         assert PhoneSchema(phone="(11) 3333-4444").phone == "1133334444"
+
+
+class TestPixKeyLengthBound:
+    """A PIX key is short, so validation cost must not grow with the input.
+
+    The e-mail branch used a pattern whose domain and TLD classes both
+    matched ``.``, which backtracked quadratically: 16 000 dots cost ~0.8 s
+    of event-loop time per request, before any handler ran.
+    """
+
+    @staticmethod
+    def _adversarial(dots: int) -> str:
+        return "a@" + "." * dots + "@"
+
+    def test_overlong_value_never_reaches_the_pattern(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tempest_fastapi_sdk.utils import detect_pix_key_type
+        from tempest_fastapi_sdk.utils import regex as regex_module
+
+        class _Trap:
+            def match(self, value: str) -> None:
+                raise AssertionError("the pattern ran on an over-long key")
+
+        monkeypatch.setattr(regex_module, "_PIX_EMAIL_PATTERN", _Trap())
+        assert detect_pix_key_type(self._adversarial(100_000)) is None
+
+    def test_field_refuses_100kb_value_quickly(self) -> None:
+        import time
+
+        from tempest_fastapi_sdk.utils import PixKeyField
+
+        class _Schema(BaseModel):
+            key: PixKeyField
+
+        started = time.perf_counter()
+        with pytest.raises(ValidationError):
+            _Schema(key=self._adversarial(100_000))
+        assert time.perf_counter() - started < 1.0
+
+    def test_email_pattern_is_linear_within_the_bound(self) -> None:
+        import time
+
+        from tempest_fastapi_sdk.utils import regex as regex_module
+
+        started = time.perf_counter()
+        for value in (
+            self._adversarial(20_000),
+            "a@" + "b." * 10_000 + "@",
+            "a@" + "b." * 10_000,
+        ):
+            assert regex_module._PIX_EMAIL_PATTERN.match(value) is None
+        assert time.perf_counter() - started < 0.5
+
+    def test_longest_email_key_is_accepted_and_one_more_is_not(self) -> None:
+        from tempest_fastapi_sdk.utils import PixKeyType, detect_pix_key_type
+
+        domain = "@example.com.br"
+        longest = "a" * (77 - len(domain)) + domain
+        assert detect_pix_key_type(longest) == PixKeyType.EMAIL
+        assert detect_pix_key_type("a" + longest) is None
+        assert detect_pix_key_type(f"  {longest}  ") == PixKeyType.EMAIL
+
+    @pytest.mark.parametrize("value", ["a@b..c", "a@.b.c", "a@b.c.", "a@bc"])
+    def test_email_with_empty_or_missing_label_is_refused(self, value: str) -> None:
+        from tempest_fastapi_sdk.utils import detect_pix_key_type
+
+        assert detect_pix_key_type(value) is None
