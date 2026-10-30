@@ -21,7 +21,7 @@ config, because that is the strictness the docs themselves teach a consumer
 to switch on (`recipes/typing.md`), and the pydantic plugin it declares is
 what types a schema constructor at all.
 
-Five error codes are read, and each one is a defect a reader hits by
+Six error codes are read, and each one is a defect a reader hits by
 pasting the block:
 
 * `arg-type` — the wrong type reaches a parameter.
@@ -30,6 +30,11 @@ pasting the block:
   pass at "make every example complete" appended placeholder assignments at
   the **end** of blocks whose bodies already used them, which reads fine on
   the page and never runs.
+* `metaclass` — a model declared with its bases in an order the type checker
+  cannot linearize. It shipped in v0.334.0: the zap-api and artifact mixins
+  are typed as `BaseModel` subclasses, so `class M(BaseModel, Mixin)` is a
+  metaclass conflict for every consumer running mypy, and the page taught
+  that order. `(Mixin, BaseModel)` is the form that checks.
 * `attr-defined`, **only** when the owner is a class the block imported from
   the family. `"Coordinate" has no attribute "location"` is a real call
   against a class the SDK ships; `"UserService" has no attribute "repo"` is a
@@ -95,7 +100,14 @@ FENCE_RE: re.Pattern[str] = re.compile(
 SKIP_MARKER: str = "docs-guard: skip"
 
 CHECKED_CODES: frozenset[str] = frozenset(
-    {"arg-type", "call-arg", "name-defined", "used-before-def", "attr-defined"}
+    {
+        "arg-type",
+        "call-arg",
+        "name-defined",
+        "used-before-def",
+        "attr-defined",
+        "metaclass",
+    }
 )
 """The mypy error codes a reader would hit by pasting the block.
 
@@ -522,6 +534,18 @@ session = None  # provided by db.get_session_context() in your code
 ```
 """
 
+SHIPPED_MIXIN_ORDER_DEFECT: str = """```python
+from tempest_fastapi_sdk import BaseModel
+from tempest_fastapi_sdk.integrations.messaging.zap import ZapInboundMessageMixin
+
+
+class ZapMessageModel(BaseModel, ZapInboundMessageMixin):
+    \"\"\"The order zap-inbound.md taught in v0.334.0.\"\"\"
+
+    __tablename__ = "zap_messages"
+```
+"""
+
 ELISION_IDIOM: str = """```python
 from fastapi import FastAPI
 
@@ -546,6 +570,20 @@ def test_guard_fires_on_the_argument_type_that_shipped(tmp_path: Path) -> None:
     assert len(problems) == 1, problems
     assert 'Argument 1 to "get_claims"' in problems[0]
     assert "HTTPAuthorizationCredentials" in problems[0]
+
+
+def test_guard_fires_on_the_mixin_order_that_shipped(tmp_path: Path) -> None:
+    """Pin the base order v0.334.0 taught for the zap-api mixins.
+
+    The mixin is a `BaseModel` subclass to the type checker, so listing
+    `BaseModel` first cannot be linearized: mypy reports a `metaclass`
+    conflict on the class line, which this guard did not read until then.
+    """
+    page: Path = tmp_path / "mixin_order.md"
+    page.write_text(SHIPPED_MIXIN_ORDER_DEFECT, encoding="utf-8")
+    problems: list[str] = _findings([page], tag="mixin_order")
+    assert len(problems) == 1, problems
+    assert "Metaclass conflict" in problems[0]
 
 
 def test_guard_fires_on_the_placeholder_defined_after_use(tmp_path: Path) -> None:

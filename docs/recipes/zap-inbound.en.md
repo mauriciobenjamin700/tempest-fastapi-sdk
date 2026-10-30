@@ -549,13 +549,13 @@ db: AsyncDatabaseManager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
 verify_zap = make_zap_webhook_dependency(secret="my-secret")
 
 
-class ZapMessageModel(BaseModel, ZapInboundMessageMixin):
+class ZapMessageModel(ZapInboundMessageMixin, BaseModel):
     """An incoming message, stored only once."""
 
     __tablename__ = "zap_messages"
 
 
-class ZapDeliveryModel(BaseModel, ZapDeliveryMixin):
+class ZapDeliveryModel(ZapDeliveryMixin, BaseModel):
     """The last known status of a sent message."""
 
     __tablename__ = "zap_deliveries"

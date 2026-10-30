@@ -32,7 +32,7 @@ from tempest_fastapi_sdk import BaseModel
 from tempest_fastapi_sdk.artifacts import ArtifactVersionMixin
 
 
-class ModelVersion(BaseModel, ArtifactVersionMixin):
+class ModelVersion(ArtifactVersionMixin, BaseModel):
     """Uma versão de um modelo ONNX servido em runtime."""
 
     __tablename__ = "model_versions"

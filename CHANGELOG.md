@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A ordem das bases ensinada para os mixins tipados como `BaseModel`
+  (`ZapInboundMessageMixin`, `ZapDeliveryMixin`, `ArtifactVersionMixin`) passa
+  a ser `class M(Mixin, BaseModel)`. A forma documentada até a 0.334.0,
+  `class M(BaseModel, Mixin)`, é conflito de metaclass e MRO no mypy de quem
+  consome, e o `BaseRepository[M]` deixa de aceitar o model. Docstrings, as
+  receitas `zap-inbound` e `artifact-registry` (PT + EN) e os testes usam a
+  ordem nova; em runtime as duas ordens funcionam.
+- `tests/test_docs_type_guard.py` lê também o código `metaclass` do mypy, e
+  um teste prova que ele dispara na ordem que shippou.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

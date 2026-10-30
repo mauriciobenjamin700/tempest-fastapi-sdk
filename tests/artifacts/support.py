@@ -18,7 +18,7 @@ from tempest_fastapi_sdk import (
 )
 
 
-class ArtifactVersionModel(BaseModel, ArtifactVersionMixin):
+class ArtifactVersionModel(ArtifactVersionMixin, BaseModel):
     """Concrete artifact-version table used across the artifacts tests."""
 
     __tablename__ = "artifact_versions_test"

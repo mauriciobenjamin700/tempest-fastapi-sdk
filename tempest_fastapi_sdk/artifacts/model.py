@@ -9,7 +9,7 @@ into the SDK :class:`~tempest_fastapi_sdk.BaseModel` (optionally with
     from tempest_fastapi_sdk.artifacts import ArtifactVersionMixin
 
 
-    class ModelVersion(BaseModel, ArtifactVersionMixin):
+    class ModelVersion(ArtifactVersionMixin, BaseModel):
         __tablename__ = "model_versions"
 
 The ``is_current`` flag is deliberately distinct from ``BaseModel``'s
