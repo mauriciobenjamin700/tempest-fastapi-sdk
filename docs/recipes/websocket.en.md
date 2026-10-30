@@ -50,8 +50,6 @@ Three objects: the **hub** (in-memory state), the **resolver** (token → user U
 
 ```python
 # src/api/app.py
-from uuid import UUID
-
 from fastapi import FastAPI, WebSocket
 
 from tempest_fastapi_sdk import (
@@ -60,6 +58,7 @@ from tempest_fastapi_sdk import (
     WebSocketConnection,
     WebSocketHub,
     WebSocketSettings,
+    make_jwt_bearer_resolver,
     make_websocket_router,
 )
 from src.core.settings import settings
@@ -67,15 +66,7 @@ from src.core.settings import settings
 ws_settings = WebSocketSettings()
 hub = WebSocketHub(max_per_user=ws_settings.WS_MAX_CONNECTIONS_PER_USER)
 tokens = JWTUtils(secret=settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-
-
-async def bearer_resolver(token: str) -> UUID | None:
-    """Decode JWT and return the subject (user id) — None on bad token."""
-    try:
-        payload = tokens.decode(token)
-    except Exception:  # noqa: BLE001 — any decode failure = reject
-        return None
-    return UUID(payload["sub"])
+bearer_resolver = make_jwt_bearer_resolver(tokens)
 
 
 async def handler(
@@ -137,6 +128,15 @@ When both are present, **subprotocol wins**.
     `?token=<jwt>` shows up in proxy/Nginx access logs, in the `Referer` header, and in browser history — any of them can retain the JWT in plain text. Always prefer the subprotocol (`["bearer", jwt]`) when the client is yours; use the query param only as a fallback for clients that can't set a subprotocol.
 
 With no token, or with the resolver returning `None`, the SDK **accepts the handshake and immediately closes** the socket with code `4401`, before the handler runs. The client gets `open` and then a `close` with `code === 4401`.
+
+### Only the access token opens a socket
+
+`make_jwt_bearer_resolver(tokens)` checks more than the signature and the expiry. `UserAuthService` signs three kinds of token with the same secret — the access token, the refresh token and the MFA-pending token handed out after the password step but **before** the second factor — and all three carry `sub`. A resolver that decodes and returns `sub` would open a full socket for the MFA-pending token (the second factor skipped) or for a refresh token. The SDK resolver refuses every token whose `typ` is not `access`, with the same `token_type_allowed` the HTTP guards use, and the handshake closes with `4401`.
+
+It is strict by default: a token with no `typ` at all is refused too. Every token `UserAuthService` issues carries one; pass `strict=False` only while access tokens your project signed by hand, without `typ`, are still in circulation.
+
+!!! warning "Writing your own resolver"
+    A resolver that is not built on JWTs (an opaque session, an API key) is still a plain `async def (token: str) -> UUID | None`. If it does decode a JWT, call `token_type_allowed(payload, [ACCESS_TOKEN_TYPE], strict=True)` before trusting `sub` — that check is the whole difference between a session and a refresh token.
 
 !!! info "Why accept before refusing"
     A `close` sent before `accept` is not a WebSocket close: it is a handshake rejection. uvicorn answers `HTTP 403`, the `4401` code never reaches the wire, and the browser only sees `1006`, with no reason. Starlette's `TestClient` reports `4401` in both cases, which is why the wrong form passed the suite. Up to 0.302.0 the router closed before `accept`; since then it accepts (echoing the `bearer` subprotocol when offered) and closes with `4401`. Measured with a real uvicorn and the `websockets` client: `received 4401 (private use)`.
@@ -430,6 +430,8 @@ WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default — closes with 1009 whe
   boilerplate `make_websocket_router` + `WebSocketHub` already handle.
 - Three objects make the flow: the hub (in-memory state), the resolver (token →
   user) and the handler (message loop).
+- `make_jwt_bearer_resolver(tokens)` is the resolver for JWTs: it admits only
+  access tokens, so a refresh or MFA-pending token closes with `4401`.
 - The token arrives by subprotocol (preferred) or query string, and the
   handshake is where authentication happens — not on the first message.
 - The automatic heartbeat is what tells a live connection from a half-open

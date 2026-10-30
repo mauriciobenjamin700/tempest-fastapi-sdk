@@ -208,6 +208,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@`, tab or CR with `'`, so spreadsheets do not evaluate it as a formula.
   The JSON export is unchanged.
 
+### Security
+
+- **Login social só cria conta com e-mail verificado.** O callback de OAuth
+  (`/auth/oauth/{provider}/callback` e `/auth/oauth/{provider}/token`) passa a
+  exigir `email_verified is True` também para **criar** conta, não só para
+  ligar uma existente. `False` ou `None` respondem `409`
+  `OAUTH_EMAIL_UNVERIFIED` e nada é gravado. Mudança de comportamento: um
+  provedor que não informa verificação deixa de criar conta.
+- **`GitHubOAuthClient.fetch_user` lê `GET /user/emails`** (scope
+  `user:email`, já nos defaults) e devolve o endereço primário verificado com
+  `email_verified=True`; sem um, mantém o do perfil com o flag que o GitHub
+  informa, e `None` quando a lista não pode ser lida.
+- **Ligar conta por e-mail exige que a conta local tenha provado o endereço.**
+  Com `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true`, a ligação é recusada (`409`
+  `OAUTH_EMAIL_TAKEN`) quando `AUTH_AUTO_ACTIVATE` ou
+  `AUTH_RETURN_TOKEN_IN_RESPONSE` está ligado, ou o `UserAuthService` não tem
+  `EmailUtils` — configurações em que uma conta ativa nunca precisou da caixa
+  de entrada. Mudança de comportamento nessas combinações.
+- **Cadastrar passkey pede a senha (e o segundo fator).**
+  `POST /auth/webauthn/register/begin` passa a exigir corpo
+  `WebAuthnRegisterBeginSchema` com `current_password` e, para conta com TOTP
+  ativo, `code` (TOTP ou recuperação); senha ou código errado responde `401`,
+  corpo ausente `422`. Novo `UserAuthService.reauthenticate` faz a checagem.
+  **Breaking** para o frontend que chamava a rota só com o bearer token.
+- **Token com `purpose` não é access token.** `token_type_allowed` passa a ler
+  qualquer claim `purpose` como o tipo do token: `{"purpose":
+  "password_reset"}` só é aceito onde `"password_reset"` está em `accepted`, e
+  nunca pelos guards de access no modo default. As receitas de reset (README,
+  `http`, `email`) passam a assinar `typ: "password_reset"`.
+- **`make_jwt_bearer_resolver(tokens)`** para `make_websocket_router`: o
+  resolver de JWT que só admite access token (estrito por padrão), fechando o
+  handshake com `4401` para refresh, MFA pendente e ticket de stream. A
+  receita de WebSocket passa a usá-lo no lugar do resolver escrito à mão.
+
 ## [0.334.0] — 2026-10-29
 
 ### Added

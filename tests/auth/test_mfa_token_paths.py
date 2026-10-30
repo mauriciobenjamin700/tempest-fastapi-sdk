@@ -340,11 +340,22 @@ class TestSingleFactorPairsAreRefusedByTheMfaGate:
     async def test_a_social_login_of_an_mfa_account_is_not_an_mfa_session(
         self, session: AsyncSession
     ) -> None:
-        """OAuth skips the TOTP step, but the pair says so with ``ext``."""
+        """OAuth skips the TOTP step, but the pair says so with ``ext``.
+
+        The identity is linked up front: this service returns activation
+        links in the response, so linking by email is refused here, and
+        the subject of the test is the stamp of the pair, not the link.
+        """
         service = _service()
         async with _client(service, session) as client:
             user = await _active_mfa_account(client, session, "social@a.com")
             assert service.is_mfa_enrolled(user)
+            session.add(
+                _PathsOAuthAccount(
+                    user_id=user.id, provider="google", subject="sub-social"
+                )
+            )
+            await session.flush()
             _, access, _ = await service.login_with_oauth(
                 session,
                 OAuthUser(

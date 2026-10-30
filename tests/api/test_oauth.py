@@ -14,6 +14,7 @@ from tempest_fastapi_sdk import (
     OAuthTokenAudienceMismatchException,
     OAuthTokenRejectedException,
     OAuthTokens,
+    OAuthUser,
     OIDCProvider,
     generate_oauth_state,
 )
@@ -304,8 +305,8 @@ class TestEmailVerification:
         finally:
             await client.aclose()
 
-    async def test_github_never_claims_verification(self) -> None:
-        """``GET /user`` has no verification field, so the answer is unknown."""
+    async def test_github_without_an_email_list_claims_nothing(self) -> None:
+        """``GET /user`` has no verification field; an unreadable list adds none."""
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
@@ -324,6 +325,86 @@ class TestEmailVerification:
             assert user.email_verified is None
         finally:
             await client.aclose()
+
+
+class TestGitHubReadsTheVerifiedAddress:
+    """GitHub states verification only in ``GET /user/emails``.
+
+    Account creation requires ``email_verified is True``, so the client
+    reads the list instead of leaving the flag ``None`` forever.
+    """
+
+    @staticmethod
+    def _handler(emails: httpx.Response) -> object:
+        """Answer ``/user`` with a profile and ``/user/emails`` with ``emails``.
+
+        Args:
+            emails (httpx.Response): The ``/user/emails`` response.
+
+        Returns:
+            object: The MockTransport handler.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/user/emails":
+                return emails
+            return httpx.Response(
+                200,
+                json={"id": 42, "login": "ana", "email": "public@example.com"},
+            )
+
+        return handler
+
+    async def _fetch(self, emails: httpx.Response) -> OAuthUser:
+        """Fetch the user through a client answering ``emails``.
+
+        Args:
+            emails (httpx.Response): The ``/user/emails`` response.
+
+        Returns:
+            OAuthUser: The parsed identity.
+        """
+        client = _client_with_handler(GitHubOAuthClient, self._handler(emails))
+        try:
+            return await client.fetch_user(
+                OAuthTokens(access_token="gho_x", token_type="Bearer"),
+            )
+        finally:
+            await client.aclose()
+
+    async def test_the_primary_verified_address_wins(self) -> None:
+        user = await self._fetch(
+            httpx.Response(
+                200,
+                json=[
+                    {
+                        "email": "public@example.com",
+                        "primary": False,
+                        "verified": False,
+                    },
+                    {"email": "ana@example.com", "primary": True, "verified": True},
+                ],
+            )
+        )
+        assert user.email == "ana@example.com"
+        assert user.email_verified is True
+
+    async def test_an_unverified_profile_address_is_reported_false(self) -> None:
+        user = await self._fetch(
+            httpx.Response(
+                200,
+                json=[
+                    {"email": "public@example.com", "primary": True, "verified": False},
+                ],
+            )
+        )
+        assert user.email == "public@example.com"
+        assert user.email_verified is False
+
+    async def test_a_refused_list_leaves_the_flag_unknown(self) -> None:
+        user = await self._fetch(httpx.Response(403, json={"message": "scope"}))
+        assert user.email == "public@example.com"
+        assert user.email_verified is None
 
 
 class TestVerifyTokenAudience:

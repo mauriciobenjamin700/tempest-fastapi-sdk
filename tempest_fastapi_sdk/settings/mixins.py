@@ -2911,7 +2911,12 @@ class AuthSettings(BaseAppSettings):
             "existing account: an IdP that lets a user set any address "
             "without proving it hands over every account whose email "
             "was guessed. Turn it on only for providers you trust to "
-            "verify, and read the recipe's warning first."
+            "verify, and read the recipe's warning first. The local "
+            "account must have proven the address too, so the link is "
+            "refused while ``AUTH_AUTO_ACTIVATE`` or "
+            "``AUTH_RETURN_TOKEN_IN_RESPONSE`` is on, or the service has "
+            "no ``EmailUtils``: there an active account never needed "
+            "its mailbox."
         ),
         examples=[False, True],
     )
@@ -2926,7 +2931,9 @@ class AuthSettings(BaseAppSettings):
             "this one with it. Set ``True`` on a closed system that "
             "still wants onboarding through the provider; set ``False`` "
             "to keep an open signup form while restricting social login "
-            "to identities an administrator already linked."
+            "to identities an administrator already linked. Either way "
+            "an account is created only when the provider states it "
+            "verified the email (``email_verified is True``)."
         ),
         examples=[None, True, False],
     )

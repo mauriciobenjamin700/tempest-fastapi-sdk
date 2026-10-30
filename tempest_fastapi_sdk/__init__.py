@@ -718,6 +718,9 @@ if TYPE_CHECKING:
         WebAuthnOptionsSchema as WebAuthnOptionsSchema,
     )
     from tempest_fastapi_sdk.auth import (
+        WebAuthnRegisterBeginSchema as WebAuthnRegisterBeginSchema,
+    )
+    from tempest_fastapi_sdk.auth import (
         WebAuthnRegisterCompleteSchema as WebAuthnRegisterCompleteSchema,
     )
     from tempest_fastapi_sdk.auth import (
@@ -2298,6 +2301,9 @@ if TYPE_CHECKING:
         heartbeat as heartbeat,
     )
     from tempest_fastapi_sdk.websockets import (
+        make_jwt_bearer_resolver as make_jwt_bearer_resolver,
+    )
+    from tempest_fastapi_sdk.websockets import (
         make_websocket_router as make_websocket_router,
     )
 
@@ -2530,6 +2536,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "WebAuthnCredentialSchema": "tempest_fastapi_sdk.auth",
     "WebAuthnDeleteSchema": "tempest_fastapi_sdk.auth",
     "WebAuthnOptionsSchema": "tempest_fastapi_sdk.auth",
+    "WebAuthnRegisterBeginSchema": "tempest_fastapi_sdk.auth",
     "WebAuthnRegisterCompleteSchema": "tempest_fastapi_sdk.auth",
     "WebAuthnService": "tempest_fastapi_sdk.auth",
     "apply_auth_cookies": "tempest_fastapi_sdk.auth",
@@ -3034,6 +3041,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "WebSocketHub": "tempest_fastapi_sdk.websockets",
     "WSEnvelope": "tempest_fastapi_sdk.websockets",
     "heartbeat": "tempest_fastapi_sdk.websockets",
+    "make_jwt_bearer_resolver": "tempest_fastapi_sdk.websockets",
     "make_websocket_router": "tempest_fastapi_sdk.websockets",
     "OAuthAudienceVerifier": "tempest_fastapi_sdk.api",
     "OAuthClient": "tempest_fastapi_sdk.api",
@@ -3633,6 +3641,7 @@ __all__: list[str] = [
     "WebAuthnCredentialSchema",
     "WebAuthnDeleteSchema",
     "WebAuthnOptionsSchema",
+    "WebAuthnRegisterBeginSchema",
     "WebAuthnRegisterCompleteSchema",
     "WebAuthnService",
     "WebPushDispatcher",
@@ -3758,6 +3767,7 @@ __all__: list[str] = [
     "make_flag_guard",
     "make_health_router",
     "make_http_exception_handler",
+    "make_jwt_bearer_resolver",
     "make_jwt_user_dependency",
     "make_local_storage_router",
     "make_logs_router",

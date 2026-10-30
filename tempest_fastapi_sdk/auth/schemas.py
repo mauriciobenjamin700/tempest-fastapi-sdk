@@ -1105,6 +1105,41 @@ class WebAuthnOptionsSchema(BaseSchema):
     )
 
 
+class WebAuthnRegisterBeginSchema(BaseSchema):
+    """Request body for ``POST /auth/webauthn/register/begin``.
+
+    Registering a passkey adds a lasting way into the account, one that
+    signs in without the password or the second factor. A bearer access
+    token alone is not enough proof for that: the route asks for the
+    password, and for the second factor when the account has TOTP
+    enrolled, exactly as disabling MFA does.
+
+    Attributes:
+        current_password (str): The account's password, re-verified.
+        code (str | None): A TOTP code or a recovery code. Required when
+            the account has MFA enrolled; ignored otherwise.
+    """
+
+    current_password: str = Field(
+        min_length=1,
+        title="Account password",
+        description="Plaintext password — re-verified server-side.",
+        examples=["strong-pass-12-chars"],
+    )
+    code: str | None = Field(
+        default=None,
+        min_length=6,
+        max_length=16,
+        title="TOTP code OR recovery code",
+        description=(
+            "Required when the account has MFA enrolled: a 6-digit code "
+            "from the Authenticator OR one of the recovery codes printed "
+            "at enrollment."
+        ),
+        examples=["123456", "abcde-fghij"],
+    )
+
+
 class WebAuthnRegisterCompleteSchema(BaseSchema):
     """Request body for ``POST /auth/webauthn/register/complete``.
 

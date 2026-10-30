@@ -52,6 +52,7 @@ from tempest_fastapi_sdk import (
     token_amr,
 )
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
+from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
 
 PASSWORD: str = "strong-pass-12-chars"
 EMAIL: str = "ana@example.com"
@@ -224,7 +225,7 @@ def _service(
         token_model=_SocialMfaUserToken,
         auth_settings=AuthSettings(
             _env_file=None,
-            AUTH_AUTO_ACTIVATE=True,
+            AUTH_AUTO_ACTIVATE=False,
             AUTH_MFA_ENABLED=True,
             AUTH_MFA_ISSUER="Tempest Test",
             AUTH_OAUTH_ENABLED=True,
@@ -233,7 +234,7 @@ def _service(
             AUTH_COOKIE_SECURE=False,
         ),
         jwt_settings=JWTSettings(_env_file=None, JWT_SECRET="x" * 32),
-        email=None,
+        email=FakeEmailUtils(),
         refresh_token_model=_SocialMfaRefreshToken,
         oauth_account_model=_SocialMfaAccount,
     )
@@ -291,11 +292,17 @@ def _client(service: UserAuthService, session: AsyncSession) -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://t")
 
 
-async def _enrolled_account(client: AsyncClient) -> str:
+async def _enrolled_account(client: AsyncClient, service: UserAuthService) -> str:
     """Create the password account the provider identity links to, with TOTP.
+
+    The account is activated through the mailed link, the only activation
+    that proves the registrant reads the address, which is what lets a
+    verified provider identity link to it by email.
 
     Args:
         client (AsyncClient): The test client.
+        service (UserAuthService): The service whose fake mailer holds the
+            activation link.
 
     Returns:
         str: The enrolled Base32 secret.
@@ -303,7 +310,12 @@ async def _enrolled_account(client: AsyncClient) -> str:
     credentials = {"email": EMAIL, "password": PASSWORD}
     signed_up = await client.post("/auth/signup", json=credentials)
     assert signed_up.status_code == 201, signed_up.text
-    bearer = {"Authorization": f"Bearer {signed_up.json()['access_token']}"}
+    assert isinstance(service.email, FakeEmailUtils)
+    mailed = re.search(r"token=([A-Za-z0-9_\-]+)", service.email.outbox[-1].body)
+    assert mailed is not None
+    activated = await client.post(f"/auth/activate/{mailed.group(1)}")
+    assert activated.status_code == 200, activated.text
+    bearer = {"Authorization": f"Bearer {activated.json()['access_token']}"}
     enrolled = await client.post("/auth/mfa/enroll", headers=bearer)
     assert enrolled.status_code == 200, enrolled.text
     secret: str = enrolled.json()["secret"]
@@ -399,7 +411,7 @@ class TestAnEnrolledAccountIsChallenged:
         """No pair in the body, no session cookie, an ``mfa_token``."""
         service = _service()
         async with _client(service, session) as client:
-            await _enrolled_account(client)
+            await _enrolled_account(client, service)
             response = await route(client)
         assert response.status_code == 200, response.text
         body = response.json()
@@ -415,7 +427,7 @@ class TestAnEnrolledAccountIsChallenged:
         """The pair names both methods that ran, and passes the MFA gate."""
         service = _service()
         async with _client(service, session) as client:
-            secret = await _enrolled_account(client)
+            secret = await _enrolled_account(client, service)
             challenge = (await route(client)).json()
             verified = await client.post(
                 "/auth/mfa/verify",
@@ -495,7 +507,7 @@ async def test_an_issue_mfa_token_override_without_amr_keeps_the_old_stamp(
         for record in caplog.records
     )
     async with client:
-        secret = await _enrolled_account(client)
+        secret = await _enrolled_account(client, service)
         challenge = (await _callback(client)).json()
         verified = await client.post(
             "/auth/mfa/verify",

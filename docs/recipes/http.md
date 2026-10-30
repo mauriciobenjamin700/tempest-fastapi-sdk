@@ -2277,7 +2277,7 @@ class PasswordResetService:
         if user is None:
             return
         token = self.tokens.encode(
-            {"sub": str(user.id), "purpose": "password_reset"},
+            {"sub": str(user.id), "typ": "password_reset"},
             ttl=timedelta(minutes=15),
         )
         reset_url = f"https://my-app.com/reset-password?token={token}"
@@ -2297,7 +2297,7 @@ class PasswordResetService:
         # `decode` raises InvalidTokenException / ExpiredTokenException
         # (both 401). Caught by the SDK handler.
         payload = self.tokens.decode(token)
-        if payload.get("purpose") != "password_reset":
+        if payload.get("typ") != "password_reset":
             raise InvalidTokenException()
         user = await self.repo.get_by_id(UUID(payload["sub"]))
         user.password_hash = passwords.hash(new_password)

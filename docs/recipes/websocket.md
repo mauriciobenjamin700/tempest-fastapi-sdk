@@ -50,8 +50,6 @@ Três objetos: o **hub** (estado em memória), o **resolver** (token → user UU
 
 ```python
 # src/api/app.py
-from uuid import UUID
-
 from fastapi import FastAPI, WebSocket
 
 from tempest_fastapi_sdk import (
@@ -60,6 +58,7 @@ from tempest_fastapi_sdk import (
     WebSocketConnection,
     WebSocketHub,
     WebSocketSettings,
+    make_jwt_bearer_resolver,
     make_websocket_router,
 )
 from src.core.settings import settings
@@ -67,15 +66,7 @@ from src.core.settings import settings
 ws_settings = WebSocketSettings()
 hub = WebSocketHub(max_per_user=ws_settings.WS_MAX_CONNECTIONS_PER_USER)
 tokens = JWTUtils(secret=settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-
-
-async def bearer_resolver(token: str) -> UUID | None:
-    """Decode JWT and return the subject (user id) — None on bad token."""
-    try:
-        payload = tokens.decode(token)
-    except Exception:  # noqa: BLE001 — any decode failure = reject
-        return None
-    return UUID(payload["sub"])
+bearer_resolver = make_jwt_bearer_resolver(tokens)
 
 
 async def handler(
@@ -137,6 +128,15 @@ Quando ambos vêm, **subprotocol vence**.
     `?token=<jwt>` aparece nos access logs de proxy/Nginx, no header `Referer` e no histórico do browser — qualquer um deles pode reter o JWT em texto plano. Prefira sempre o subprotocol (`["bearer", jwt]`) quando o cliente for seu; use o query param só como fallback pra clientes que não conseguem setar subprotocol.
 
 Sem token, ou com o resolver retornando `None`, o SDK **aceita o handshake e logo em seguida fecha** o socket com código `4401`, antes do handler rodar. O cliente recebe o `open` e, na sequência, um `close` com `code === 4401`.
+
+### Só o access token abre socket
+
+`make_jwt_bearer_resolver(tokens)` confere mais que a assinatura e a expiração. O `UserAuthService` assina três tipos de token com o mesmo segredo — o access token, o refresh token e o token de MFA pendente, entregue depois da senha mas **antes** do segundo fator — e os três carregam `sub`. Um resolver que decodifica e devolve o `sub` abriria um socket completo para o token de MFA pendente (pulando o segundo fator) ou para um refresh token. O resolver do SDK recusa todo token cujo `typ` não seja `access`, com o mesmo `token_type_allowed` dos guards HTTP, e o handshake fecha com `4401`.
+
+Ele é estrito por padrão: token sem `typ` nenhum também é recusado. Todo token que o `UserAuthService` emite carrega um; passe `strict=False` só enquanto ainda circularem access tokens que o seu projeto assinou na mão, sem `typ`.
+
+!!! warning "Escrevendo o seu próprio resolver"
+    Um resolver que não usa JWT (sessão opaca, API key) continua sendo um `async def (token: str) -> UUID | None` comum. Se ele decodifica JWT, chame `token_type_allowed(payload, [ACCESS_TOKEN_TYPE], strict=True)` antes de confiar no `sub` — essa checagem é toda a diferença entre uma sessão e um refresh token.
 
 !!! info "Por que aceitar antes de recusar"
     Um `close` enviado antes do `accept` não é fechamento de WebSocket: é recusa do handshake. O uvicorn responde `HTTP 403`, o código `4401` nunca chega ao fio, e o browser vê só `1006`, sem motivo. O `TestClient` do Starlette reporta o `4401` nos dois casos, por isso a forma errada passava na suíte. Até a 0.302.0 o router fechava antes do `accept`; desde então ele aceita (devolvendo o subprotocolo `bearer`, quando oferecido) e fecha com `4401`. Medido com uvicorn de verdade e o cliente `websockets`: `received 4401 (private use)`.
@@ -430,6 +430,8 @@ WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default — fecha com 1009 ao es
   `make_websocket_router` + `WebSocketHub` já resolvem.
 - Três objetos montam o fluxo: o hub (estado em memória), o resolver (token →
   usuário) e o handler (loop de mensagens).
+- `make_jwt_bearer_resolver(tokens)` é o resolver para JWT: só admite access
+  token, então refresh ou token de MFA pendente fecham com `4401`.
 - O token entra por subprotocol (preferido) ou query string, e o handshake é
   onde a autenticação acontece — não na primeira mensagem.
 - O heartbeat automático é o que distingue conexão viva de socket meio-aberto,

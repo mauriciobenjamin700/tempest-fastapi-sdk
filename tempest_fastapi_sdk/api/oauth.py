@@ -25,7 +25,7 @@ from __future__ import annotations
 import base64
 import secrets
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from urllib.parse import urlencode
 
@@ -738,15 +738,61 @@ class GitHubOAuthClient(_BaseOAuthClient):
     def _default_scopes(self) -> list[str]:
         return ["read:user", "user:email"]
 
+    @property
+    def emails_url(self) -> str:
+        """GitHub's endpoint listing the account's addresses and their status.
+
+        Returns:
+            str: The endpoint URL.
+        """
+        return "https://api.github.com/user/emails"
+
+    async def fetch_user(self, tokens: OAuthTokens) -> OAuthUser:
+        """Resolve the token to an identity whose email GitHub verified.
+
+        ``GET /user`` returns the *public* profile email, which GitHub does
+        not require to be verified, and no verification flag at all. The
+        account will only sign in or be created on an address the provider
+        states it verified, so this also reads ``GET /user/emails`` (scope
+        ``user:email``, in the default scopes) and picks, in order: the
+        primary address when verified; otherwise the profile address,
+        carrying the ``verified`` flag GitHub reports for it. When the list
+        cannot be read — the scope was not granted, or GitHub answers an
+        error — the profile is returned as ``GET /user`` gave it, with
+        ``email_verified`` left ``None``, which the service treats as "not
+        verified".
+
+        Args:
+            tokens (OAuthTokens): Bundle returned by :meth:`exchange_code`.
+
+        Returns:
+            OAuthUser: Normalized identity.
+
+        Raises:
+            OAuthError: When ``GET /user`` rejects the token.
+        """
+        profile = await super().fetch_user(tokens)
+        response = await self._http.get(
+            self.emails_url,
+            headers={
+                "Authorization": f"{tokens.token_type} {tokens.access_token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        if response.status_code >= 400:
+            return profile
+        try:
+            entries: Any = response.json()
+        except ValueError:
+            return profile
+        return _with_verified_github_email(profile, entries)
+
     def _parse_user(self, payload: dict[str, Any]) -> OAuthUser:
         """Map ``GET /user`` onto :class:`OAuthUser`.
 
-        ``email_verified`` is left ``None``: the ``GET /user`` payload the
-        client reads carries no verification flag, and the address it
-        returns is the account's *public* profile email, which GitHub does
-        not require to be verified. Call ``GET /user/emails`` (scope
-        ``user:email``) and read the ``verified`` field there when you need
-        the answer.
+        ``email_verified`` is left ``None`` here: the ``GET /user`` payload
+        carries no verification flag. :meth:`fetch_user` fills it from
+        ``GET /user/emails``.
         """
         return OAuthUser(
             provider=self.provider_name,
@@ -756,6 +802,45 @@ class GitHubOAuthClient(_BaseOAuthClient):
             picture=payload.get("avatar_url"),
             raw=payload,
         )
+
+
+def _with_verified_github_email(profile: OAuthUser, entries: Any) -> OAuthUser:
+    """Apply GitHub's ``GET /user/emails`` answer to a ``GET /user`` profile.
+
+    Args:
+        profile (OAuthUser): The identity parsed from ``GET /user``.
+        entries (Any): The decoded ``GET /user/emails`` body — a list of
+            ``{"email", "primary", "verified"}`` objects when GitHub
+            answered normally. Anything else leaves ``profile`` as is.
+
+    Returns:
+        OAuthUser: ``profile`` with the primary verified address and
+        ``email_verified=True`` when GitHub has one; otherwise ``profile``
+        with ``email_verified`` set from GitHub's flag for the profile
+        address (``None`` when that address is not in the list).
+    """
+    if not isinstance(entries, list):
+        return profile
+    statuses: dict[str, bool] = {}
+    primary: str | None = None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        address = entry.get("email")
+        if not isinstance(address, str) or not address:
+            continue
+        verified = entry.get("verified") is True
+        statuses[address.strip().lower()] = verified
+        if entry.get("primary") is True and verified:
+            primary = address
+    if primary is not None:
+        return replace(profile, email=primary, email_verified=True)
+    if profile.email is None:
+        return profile
+    return replace(
+        profile,
+        email_verified=statuses.get(profile.email.strip().lower()),
+    )
 
 
 class OIDCProvider(_BaseOAuthClient):

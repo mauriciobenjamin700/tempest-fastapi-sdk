@@ -133,7 +133,7 @@ require_refresh = make_bearer_token_dependency(
     `/login` returns the `mfa_token` to a client that has proven **only the password**. Without the type check it works as a bearer on every authenticated route — the second factor becomes decoration. Same for the refresh token: it is long-lived on purpose, and accepting it as an access token defeats the reason the access token is short.
 
 !!! note "A token without `typ` still works"
-    Projects signing JWTs directly with `JWTUtils.encode()` need no change: a token with no `typ` is accepted, otherwise upgrading the SDK would log every live session out. The two legacy markers the SDK already stamped — `refresh: True` and `purpose: "mfa_pending"` — are recognized and **rejected** as access. Use `token_type_allowed()` when you need the same decision outside a dependency.
+    An access token signed directly with `JWTUtils.encode()` and carrying no type at all is still accepted, otherwise upgrading the SDK would log every live session out. The two legacy markers the SDK already stamped — `refresh: True` and `purpose: "mfa_pending"` — are recognized and **rejected** as access, and so is **any other `purpose`**: a token that declares what it is for (`{"purpose": "password_reset"}`) is a single-purpose token, never a session. A single-purpose token you sign yourself — a reset link, an invite — should stamp its own `typ` (`{"sub": ..., "typ": "password_reset"}`) and check it when it is consumed; then no access guard accepts it, `strict` or not. Use `token_type_allowed()` when you need the same decision outside a dependency.
 
 !!! warning "If **your** service already spelled the type under another claim"
     The default above is safe for tokens this SDK minted, and a hole for tokens

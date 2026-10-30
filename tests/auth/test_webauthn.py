@@ -548,7 +548,11 @@ class TestRouter:
         headers = {"Authorization": f"Bearer {access}"}
         device = SoftwareAuthenticator(rp_id=RP_ID)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
-            begin = await client.post("/auth/webauthn/register/begin", headers=headers)
+            begin = await client.post(
+                "/auth/webauthn/register/begin",
+                headers=headers,
+                json={"current_password": "strong-pass-12-chars"},
+            )
             assert begin.status_code == 200
             payload = begin.json()
             complete = await client.post(
