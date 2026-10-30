@@ -3133,7 +3133,7 @@ POST /api/genai/generate {"prompt": "hi", "config": {"max_new_tokens": 100000000
 `max_upload_bytes` limita o que o cliente envia, mas não o que o upload vira
 depois de decodificado: o cabeçalho do arquivo declara a própria taxa de
 amostragem e um codec comprime silêncio a quase nada (dez minutos de FLAC
-silencioso cabem em ~114 KB). Por isso o `SpeechToText`, o
+silencioso, mono a 16 kHz, cabem em ~114 KB no encoder FLAC do PyAV). Por isso o `SpeechToText`, o
 `SpeakerDiarizer` e o `VoiceEmbedder` decodificam o áudio pelo mesmo
 decodificador limitado, antes de o modelo ver qualquer coisa:
 

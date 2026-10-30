@@ -86,6 +86,31 @@ def upgrade() -> None:
 Without this step, an account that wants to link social login by email
 verifies its address once, and linking works again.
 
+## Unreleased — security fixes that change behaviour
+
+This release closes vulnerabilities, and several fixes swap an unsafe default
+for a safe one. The table says what changes for existing users of the SDK and
+what to do. Each item is detailed in the CHANGELOG and in the recipe named.
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `ENV=production` | `AUTH_AUTO_ACTIVATE=true` or `AUTH_RETURN_TOKEN_IN_RESPONSE=true` stop the boot; without `EmailUtils` on `UserAuthService` (with an `auth_settings` that composes `EnvironmentSettings`), the flows that send a link answer `503 INTEGRATION_DISABLED` | Turn both flags off in production and pass `email=` to the service |
+| `key_by_header` | `is_known=` is required; without it, `TypeError` | Pass a synchronous check that says whether the header value is a key you issued |
+| `IdempotencyMiddleware` | Requests without a credential are not deduplicated; entries written by an older version answer `422 IDEMPOTENCY_KEY_REUSED` until they expire | Pass `allow_anonymous=True` only if you need to deduplicate anonymous `POST`s; wait out the TTL of old entries |
+| `WebhookSignatureVerifier`, `make_stripe_webhook_dependency` | An empty secret raises `ValueError` at construction | Configure the webhook secret before booting |
+| `POST /auth/webauthn/register/begin` | Requires a `WebAuthnRegisterBeginSchema` body (`current_password` and, with MFA, `code`); without it, `422` | Update the client to ask for the password before registering a passkey |
+| Password reset and `mfa_reset` | Delete the user's passkeys | `revoke_passkeys=False` keeps the old behaviour; tell users they register their passkey again |
+| `make_admin_router` with `access_policy` | The SQL console, tasks and logs are denied to everyone | Pass `surface_policy=` granting whoever should see them |
+| Admin | The SDK's credential columns (`totp_secret`, push keys, token digests) disappear from the screens, `list_display` included; cookies issued before the upgrade are refused once | Nothing; operators log in again |
+| Custom `SessionStore` | The protocol gained `touch`; a store without it works with a `DeprecationWarning` | Implement `touch`, which updates only a session that still exists |
+| `TaskQueue` (results) | Results are stored as JSON; pickled results from before the upgrade are unreadable until their TTL | `result_serializer="pickle"` only for a Redis nobody else writes |
+| `WebPushDispatcher` | Endpoints resolving to an internal network are not delivered; sending has a 10 s timeout | `allow_private_networks=True` only in test environments; behind a proxy with no external DNS, pass `resolver=` |
+| `describe_image_tool`, `transcribe_audio_tool` | The `path` argument exists only with `path_root=` | Pass `path_root=` with the folder the model may read |
+| `ChatMemory.delete_for_chat` | Requires `user_id` | Pass the chat's owner |
+| `HoneypotMiddleware` | `patterns=` matches the path only; the query has `query_patterns=` | Move query patterns to `query_patterns=` |
+| STT, diarization, voiceprint | Audio longer than 1 h once decoded is refused (`422`) | `max_audio_seconds=None` for trusted long files |
+| WebSocket login | Use `make_jwt_bearer_resolver`, which checks the token type | Replace the hand-written resolver |
+
 ## 0.332.0 — the DLQ pins the consumer's ack policy
 
 On a `QueueSpec` with a dead-letter, `MessageBroker.on` / `register` and

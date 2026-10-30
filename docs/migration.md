@@ -84,6 +84,31 @@ def upgrade() -> None:
 Sem esse passo, a conta que quiser ligar o login social por e-mail verifica o
 endereço uma vez, e a ligação volta a funcionar.
 
+## Não publicado — correções de segurança que mudam comportamento
+
+Esta release fecha vulnerabilidades, e várias correções trocam um default
+inseguro por um seguro. A tabela diz o que muda para quem já usa o SDK e o que
+fazer. O detalhe de cada item está no CHANGELOG e na receita citada.
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `ENV=production` | `AUTH_AUTO_ACTIVATE=true` ou `AUTH_RETURN_TOKEN_IN_RESPONSE=true` impedem o boot; sem `EmailUtils` no `UserAuthService` (com um `auth_settings` que compõe `EnvironmentSettings`), os fluxos que mandam link respondem `503 INTEGRATION_DISABLED` | Desligue as duas flags em produção e passe `email=` ao service |
+| `key_by_header` | `is_known=` passa a ser obrigatório; sem ele, `TypeError` | Passe um verificador síncrono que diga se o valor do header é uma chave que você emitiu |
+| `IdempotencyMiddleware` | Requisição sem credencial não é deduplicada; entrada gravada por versão antiga responde `422 IDEMPOTENCY_KEY_REUSED` até expirar | Passe `allow_anonymous=True` só se precisar deduplicar `POST` anônimo; espere o TTL das entradas antigas |
+| `WebhookSignatureVerifier`, `make_stripe_webhook_dependency` | Segredo vazio levanta `ValueError` na construção | Configure o segredo do webhook antes de subir |
+| `POST /auth/webauthn/register/begin` | Exige corpo `WebAuthnRegisterBeginSchema` (`current_password` e, com MFA, `code`); sem corpo, `422` | Atualize o cliente para pedir a senha antes de cadastrar a passkey |
+| Reset de senha e `mfa_reset` | Apagam as passkeys do usuário | `revoke_passkeys=False` mantém o comportamento antigo; avise os usuários que eles cadastram a passkey de novo |
+| `make_admin_router` com `access_policy` | Console SQL, tasks e logs ficam negados a todos | Passe `surface_policy=` liberando quem deve vê-los |
+| Admin | Colunas de credencial do SDK (`totp_secret`, chaves de push, digests de token) somem das telas, inclusive de `list_display`; cookies emitidos antes da atualização são recusados uma vez | Nada; os operadores fazem login de novo |
+| `SessionStore` próprio | O protocolo ganhou `touch`; store sem ele funciona com `DeprecationWarning` | Implemente `touch`, que atualiza só sessão que ainda existe |
+| `TaskQueue` (resultados) | Resultado gravado em JSON; resultado em pickle de antes da atualização fica ilegível até o TTL | `result_serializer="pickle"` só para Redis que ninguém mais escreve |
+| `WebPushDispatcher` | Endpoint que resolve para rede interna não é entregue; o envio tem timeout de 10 s | `allow_private_networks=True` só em ambiente de teste; atrás de proxy sem DNS externo, passe `resolver=` |
+| `describe_image_tool`, `transcribe_audio_tool` | O argumento `path` só existe com `path_root=` | Passe `path_root=` com a pasta que o modelo pode ler |
+| `ChatMemory.delete_for_chat` | Exige `user_id` | Passe o dono do chat |
+| `HoneypotMiddleware` | `patterns=` casa só com o path; a query tem `query_patterns=` | Mova padrões de query para `query_patterns=` |
+| STT, diarização, voiceprint | Áudio acima de 1 h decodificada é recusado (`422`) | `max_audio_seconds=None` para arquivos confiáveis e longos |
+| Login por WebSocket | Use `make_jwt_bearer_resolver`, que confere o tipo do token | Troque o resolver escrito à mão |
+
 ## 0.332.0 — DLQ fixa a política de ack do consumidor
 
 Num `QueueSpec` com dead-letter, o `MessageBroker.on` / `register` e o
