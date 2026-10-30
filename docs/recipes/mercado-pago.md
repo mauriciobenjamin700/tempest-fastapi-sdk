@@ -263,11 +263,16 @@ O que os adapters decidem por você, cada item medido no sandbox:
   mesma chave com o mesmo corpo devolve a **mesma** order, e com outro corpo
   volta `409 idempotency_key_already_used`. Para colapsar duas chamadas do
   mesmo pedido, passe `idempotency_key=lambda reference: reference`.
-- **Parcelas dependem da conta.** Para a vendedora de teste, a consulta de
-  parcelas do Visa ofereceu só 1x, em R$ 100,00 e em R$ 1.000,00, e pedir 3x
-  ou 6x voltou
-  `400 invalid_transaction_amount`. Consulte as parcelas
-  (`get_installments`) e mande uma das oferecidas.
+- **Parcelas dependem do cartão e do valor.** A consulta de parcelas
+  (`get_installments`) responde pelo BIN: o Visa de teste (`423564`) oferece
+  só 1x, na vendedora de teste e na conta real, e pedir 3x volta
+  `400 invalid_transaction_amount`; o Amex de teste (`375365`) oferece de 1x a
+  18x em R$ 1.000,00. Consulte as parcelas e mande uma das oferecidas.
+- **Com parcelas, `amount_cents` continua sendo o preço.** Não mande o total
+  da oferta: o provedor soma os juros. Medido em 2026-10-30 com 3x de
+  R$ 1.000,00 no Amex: `amount_cents` 100000, `installment_amount_cents`
+  37077, `payer_total_cents` 111231. O estorno total devolveu R$ 1.000,00 — o
+  preço, não o que o pagador pagou.
 
 !!! note "O cliente gerado, para ir além"
     `MercadoPagoClient` traz a API de Orders inteira (`create_order`,

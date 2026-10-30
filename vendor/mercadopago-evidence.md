@@ -596,3 +596,108 @@ template; ali só conta uma resposta que nomeia o domínio ou o parâmetro.
 nos dois).
 
 O `PROBED_OPERATIONS` ficou só com entradas que o SDK oficial também chama.
+
+## 10. Conta real e parcelamento (2026-10-30)
+
+### 10.1 Conta real liberada para Orders
+
+A aplicação de produção do integrador (conta pessoal, `tags: normal`) teve a
+API de Orders liberada pelo suporte do provedor. Com o access token de
+produção dela (`APP_USR-…`, redigido, lido por prompt oculto e nunca gravado):
+`POST /v1/orders` Pix de R$ 1,00 → `201`, `action_required` /
+`waiting_transfer`, QR gerado; `POST /v1/orders/{id}/cancel` → `200`,
+`canceled`. Antes, a mesma requisição respondia
+`403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES`.
+
+Sondagem com essa credencial, comparada com a vendedora de teste da 9.5 (só
+`GET` e `POST` com corpo que não pode dar certo; id `999999999999`):
+
+| Requisição | Conta real | Vendedora de teste |
+| --- | --- | --- |
+| `GET /v1/advanced_payments/search`, `GET …/{id}`, `GET …/{id}/refunds` | `403` PolicyAgent | `403` PolicyAgent |
+| `POST …/{id}/refunds`, `…/{id}/disburses`, `…/disbursements/{id}/refunds`, `POST /v1/advanced_payments` com `{}` | `403` | `403` |
+| `GET /v1/advanced_payments/{id}/zz-not-a-route` (inventado) | `403` | `403` |
+| `GET /v1/chargebacks/search?payment_id=<real>` | `200`, envelope vazio | `200`, envelope vazio |
+| `POST /v1/transaction-intents/process` com `{}` / `{"receiver": {}}` | `403` PolicyAgent | **`400 Invalid signature`** |
+| `GET /v1/transaction-intents/{id}` | `403` | `400 The ID format is invalid` |
+| `GET /v1/transaction-intents/{id}/zz-not-a-route` (inventado) | `403` | `404 not_found` |
+| `POST /v1/transaction-intents/zz-not-a-route` (inventado) | `403` | `405` |
+
+Advanced payments: as duas credenciais barradas antes do roteamento — liberar
+Orders não destrava (#226). Transaction intents: na vendedora de teste a
+política deixou de barrar desde a 9.7 (10/10), e a rota é distinguível; na
+conta real, Money Out não está habilitado.
+
+### 10.2 Parcelas: o limite era o BIN
+
+`GET /v1/payment_methods/installments`, `amount=1000`:
+
+| Consulta | Vendedora de teste | Conta real |
+| --- | --- | --- |
+| `bin=423564` (Visa de teste), também `amount=100` e `amount=5000` | `[1]` | `[1]` |
+| sem `bin`, `payment_method_id=visa` | 1–18x | 1–18x |
+| `bin=375365` (Amex de teste `3753 651535 56885`) | 1–18x | — |
+| `bin=371180` (Amex) | 1–18x | — |
+| `bin=506776` (Elo de teste) | `[1]` | — |
+| `bin=503143`, `545301`, `411111` | `404 payment method not found` | — |
+
+A conclusão da 9.6 ("parcelamento não é mensurável com esta conta") estava
+errada: a conta parcela, o Visa de teste não.
+
+Cobrança Amex de teste, titular `APRO`, `total_amount` e `amount`
+`"1000.00"`, `installments: 3` (oferta: `installment_rate` 11.23,
+`installment_amount` 370.77, `total_amount` 1112.3):
+
+| Campo | Valor |
+| --- | --- |
+| HTTP / estado | `201`, `processed` / `accredited` |
+| `total_amount` (order) | `"1000.00"` |
+| `total_paid_amount` (order) | `"1112.30"` |
+| `amount` (pagamento) | `"1000.00"` |
+| `paid_amount` (pagamento) | **`"1112.31"`** = 3 × `370.77` |
+| `payment_method.installments` / `installment_amount` | `3` / `"370.77"` |
+| `GET /v1/orders/{id}` depois | os mesmos valores |
+| `POST /v1/orders/{id}/refund` sem corpo | `422` na primeira tentativa logo após o `GET` (o "ainda não" da 9.4); `201`, `refunded`, na seguinte, com `transactions.refunds[0].amount` **`"1000.00"`** |
+
+Duas rodadas, a mesma resposta. Fixtures redigidas:
+`tests/integrations/payment/adapters/fixtures/mercado_pago_orders/card_installments{,_get}.json`.
+
+Consequências: manda-se o preço, o provedor soma os juros; o total do
+pagador é o `paid_amount` do pagamento (o da order fica um centavo abaixo); o
+estorno total devolve o preço. `CardCharge` ganhou
+`installment_amount_cents` e `payer_total_cents`.
+
+### 10.3 Transaction intents em modo de teste (#499)
+
+Vendedora de teste, headers `X-test-token: true` e
+`X-enforce-signature: false` (a documentação de Money Out descreve o par para
+o ambiente de teste; só `X-test-token` continua `400 Invalid signature`).
+Corpos inválidos de propósito:
+
+| Corpo | Resposta |
+| --- | --- |
+| `{}`, `{"transaction": {}}`, `{"transaction": {"to": {}}}` | `400 invalid request payload`, `causes`: `point_of_interaction.type`, `transaction.to.accounts` |
+| `{"transaction": {"to": {"accounts": []}}}` | `causes`: `point_of_interaction.type` |
+| `amount: 0` em `from.accounts[0]` e `to.accounts[0]` | `causes`: `point_of_interaction.type` e os dois `amount` |
+| `point_of_interaction.type` `PIX_TRANSFER`, `pix`, `PIX`, `bank_transfer`, `DISBURSEMENT`, `x` | `point_of_interaction.type` inválido |
+| `point_of_interaction.type` **`PSP_TRANSFER`** | aceito |
+| `amount` `"1.00"` (string) | `400`, `expected: (float64)` — o valor é número, em reais |
+
+Com `PSP_TRANSFER` e `amount: 1` em `from` e `to`, **sem destino nenhum**, a
+API respondeu `202`, `status: processed`. Em modo de teste o destino não é
+validado, então o modo de teste não revela onde vai a chave Pix.
+
+Campos que voltam no eco (e na releitura `GET`, `200`): `external_reference`,
+`point_of_interaction.type`, `transaction.{from,to}.accounts[].amount`,
+`to.accounts[].currency_id`, `description`, `number`, `origin_id`,
+`owner.identification.{type,number}`, `status_details`,
+`transaction.total_amount`, `statement_descriptor`, `binary_mode`,
+`paid_amount`, `refunded_amount`, `payer.id`. Candidatos mandados e **não**
+ecoados: `chave`, `pix`, `pix_key`, `key`, `keys`, `bank_id`, `type`,
+`branch`, `holder`, `account_type`, `ispb`, `bank`, `receiver`, `owner.name`,
+`owner.email`, entre outros. O eco é o corpo de resposta, que pode não
+espelhar todo campo de request, então "não ecoado" não prova "desconhecido".
+
+Bloqueado: o shape do destino Pix e o algoritmo do `X-Signature` (assinatura
+do corpo com o par de chaves do integrador, obrigatória em produção). Seis
+intents de teste criadas, sem dinheiro.

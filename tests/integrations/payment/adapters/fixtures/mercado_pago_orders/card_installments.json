@@ -1,0 +1,51 @@
+{
+  "status": 201,
+  "body": {
+    "id": "ORDTST00000000000000000000000001",
+    "type": "online",
+    "processing_mode": "automatic",
+    "external_reference": "tempest-orders-card-installments",
+    "total_amount": "1000.00",
+    "total_paid_amount": "1112.30",
+    "country_code": "BRA",
+    "user_id": "1000000001",
+    "status": "processed",
+    "status_detail": "accredited",
+    "capture_mode": "automatic_async",
+    "currency": "BRL",
+    "created_date": "2026-10-30T21:12:10.714Z",
+    "last_updated_date": "2026-10-30T21:12:11.93Z",
+    "integration_data": {
+      "application_id": "2000000002"
+    },
+    "config": {
+      "online": {
+        "transaction_security": {
+          "validation": "never"
+        }
+      }
+    },
+    "transactions": {
+      "payments": [
+        {
+          "id": "PAY00000000000000000000000002",
+          "amount": "1000.00",
+          "paid_amount": "1112.31",
+          "reference_id": "0000000000",
+          "status": "processed",
+          "status_detail": "accredited",
+          "payment_method": {
+            "id": "amex",
+            "type": "credit_card",
+            "token": "00000000000000000000000000000000",
+            "installments": 3,
+            "installment_amount": "370.77",
+            "transaction_security": {
+              "validation": "never"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

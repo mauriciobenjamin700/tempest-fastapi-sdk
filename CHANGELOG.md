@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.337.0] — 2026-10-30
+
+### Added
+
+- `CardCharge.installment_amount_cents` e `CardCharge.payer_total_cents`: a
+  parcela e o total que o pagador deve, com juros. O adapter do Mercado Pago
+  lê `payment_method.installment_amount` e o `paid_amount` do pagamento
+  (não o `total_paid_amount` da order, que arredonda a oferta um centavo
+  abaixo). Valor ausente ou ilegível vira `None`, nunca recusa a order.
+
+### Fixed
+
+- `CardChargeRequest.amount_cents` documentava o valor da oferta de parcelas;
+  é o preço, e o provedor soma os juros (medido com 3x de R$ 1.000,00 no
+  Amex de teste). A receita do Mercado Pago dizia que as parcelas dependiam
+  da conta: dependem do BIN e do valor.
+
 ## [0.336.0] — 2026-10-30
 
 ### Security
