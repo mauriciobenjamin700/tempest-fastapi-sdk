@@ -37,8 +37,13 @@ from tempest_fastapi_sdk import (
     BaseUserModel,
     UserModelAuthBackend,
 )
-from tempest_fastapi_sdk.admin import SqlShellService, TaskPanelService
+from tempest_fastapi_sdk.admin import (
+    SqlShellService,
+    StorageBrowserService,
+    TaskPanelService,
+)
 from tempest_fastapi_sdk.admin.router import make_admin_router
+from tempest_fastapi_sdk.storage import LocalObjectStorageClient
 from tempest_fastapi_sdk.tasks import JobStore, make_job_model
 
 _SESSION_GUARD = "_require_session"
@@ -52,6 +57,9 @@ _MOUNTED_PATHS = {
     "/admin/logs/export",
     "/admin/sql",
     "/admin/tasks/{job_id}/cancel",
+    "/admin/storage/raw",
+    "/admin/storage/upload",
+    "/admin/storage/object/delete",
 }
 """The paths this guard is expected to be reading when it reports nothing."""
 
@@ -129,8 +137,9 @@ def _routes_without_reload(router: APIRouter) -> list[str]:
 async def admin_router(tmp_path: Path) -> AsyncIterator[APIRouter]:
     """Yield the router with every optional admin surface mounted.
 
-    A router without the SQL shell or the task panel would have nothing to
-    check on those routes, and the point of the guard is that they exist.
+    A router without the SQL shell, the task panel or the storage browser
+    would have nothing to check on those routes, and the point of the guard
+    is that they exist.
 
     Args:
         tmp_path (Path): Pytest temporary directory, for the log directory.
@@ -154,6 +163,13 @@ async def admin_router(tmp_path: Path) -> AsyncIterator[APIRouter]:
         log_dir=str(log_dir),
         sql_shell=SqlShellService(db, dialect="sqlite"),
         tasks=TaskPanelService(job_store=store),
+        storage=StorageBrowserService(
+            LocalObjectStorageClient(
+                tmp_path / "storage",
+                public_url="http://test",
+                signing_secret="s" * 32,
+            )
+        ),
     )
     yield router
     await db.drop_tables()

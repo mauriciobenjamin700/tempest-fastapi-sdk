@@ -25,6 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Protocolo `SupportsAudioGeneration`: `make_genai_router(audio_generator=)`
   aceita `AudioGenerator` ou `MusicGenerator` em `POST /audio`.
 
+- Navegador de storage no admin: `make_admin_router(storage=StorageBrowserService(store))`
+  monta `GET /admin/storage` (pasta, subpastas primeiro, paginada),
+  `GET /admin/storage/object` (metadados, pré-visualização, editor de texto),
+  `GET /admin/storage/raw` (os bytes, `Range` incluído) e os `POST` de upload,
+  troca de conteúdo, edição de texto, renomeação e exclusão, com o item
+  "Storage" na barra lateral e a superfície nova `AdminSurface.STORAGE` na
+  `surface_policy`. Serve `AsyncMinIOClient` e `LocalObjectStorageClient`
+  (protocolo `AdminStorageClient`: `list_objects`, `stat_object`,
+  `stream_object`, `put_object`, `remove_object`). Imagem, vídeo, áudio e PDF
+  são pré-visualizados pela rota `raw`, que só concede `inline` a
+  `INLINE_SAFE_MEDIA_TYPES` — SVG e HTML saem como `attachment` e aparecem na
+  página como código-fonte escapado. A edição de texto devolve o ETag em que
+  abriu e recusa o save quando o arquivo mudou no meio; renomear copia bytes,
+  tipo e metadados e apaga a chave antiga; upload em chave ocupada exige
+  "Overwrite". `read_only=True` esconde os forms e responde `403` às escritas.
+  Limites: `max_upload_bytes` (25 MiB), `max_text_bytes` (256 KiB),
+  `page_size` (100); chave com segmento vazio, `.`/`..`, barra invertida,
+  caractere de controle ou acima de 1024 bytes é recusada.
+
 ### Changed
 
 - `AudioGenerationConfig.seed` passa a aceitar só `0` a `2**64 - 1`, o
