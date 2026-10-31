@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}{{ item.name if item else "Object" }} · Storage · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-storage">
+  {% if item is none %}
+  <header class="tempest-admin-list__header">
+    <div class="tempest-admin-page-title"><h1>Object not found</h1></div>
+  </header>
+  <div class="tempest-admin-flash tempest-admin-flash--error" role="alert">{{ error }}</div>
+  <p><a href="{{ storage_url }}">Back to storage</a></p>
+  {% else %}
+  {% set raw_url = storage_url ~ "/raw?" ~ ({'key': item.key}|urlencode) %}
+  <nav class="tempest-admin-storage__crumbs" aria-label="Folder">
+    {% for crumb in item.crumbs %}
+    <a href="{{ storage_url }}?{{ {'prefix': crumb.prefix}|urlencode }}">{{ crumb.name }}</a>
+    <span class="tempest-admin-storage__sep" aria-hidden="true">/</span>
+    {% endfor %}
+    <span aria-current="page">{{ item.name }}</span>
+  </nav>
+
+  <header class="tempest-admin-list__header">
+    <div class="tempest-admin-page-title">
+      <h1 class="tempest-admin-storage__title">{{ item.name }}</h1>
+      <span class="tempest-admin-count">{{ item.size|filesizeformat(true) }}</span>
+    </div>
+    <div class="tempest-admin-list__actions">
+      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ raw_url }}" target="_blank" rel="noopener">Open</a>
+      <a class="tempest-admin-btn" href="{{ raw_url }}&amp;download=true">Download</a>
+    </div>
+  </header>
+
+  {% if flash %}
+  <div class="tempest-admin-flash tempest-admin-flash--{{ flash_cat }}" role="status">{{ flash }}</div>
+  {% endif %}
+
+  <div class="tempest-admin-storage__layout">
+    <div class="tempest-admin-storage__preview tempest-admin-storage__preview--{{ item.preview }}">
+      {% if item.preview == "image" %}
+      <img src="{{ raw_url }}" alt="{{ item.name }}" loading="lazy">
+      {% elif item.preview == "video" %}
+      <video src="{{ raw_url }}" controls preload="metadata"></video>
+      {% elif item.preview == "audio" %}
+      <audio src="{{ raw_url }}" controls preload="metadata"></audio>
+      {% elif item.preview == "pdf" %}
+      <iframe src="{{ raw_url }}" title="{{ item.name }}"></iframe>
+      {% elif item.preview == "text" and item.text is not none %}
+      {% if item.editable %}
+      <form method="post" action="{{ storage_url }}/object/edit" class="tempest-admin-storage__editor">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <input type="hidden" name="key" value="{{ item.key }}">
+        <input type="hidden" name="etag" value="{{ item.etag or '' }}">
+        <label class="tempest-admin-sr" for="tempest-storage-text">Content</label>
+        <textarea id="tempest-storage-text" name="text" spellcheck="false" rows="20">{{ item.text }}</textarea>
+        <div class="tempest-admin-storage__row">
+          <button type="submit" class="tempest-admin-btn">Save</button>
+          <span class="tempest-admin-form__hint">Saving is refused if the file changed since this page loaded.</span>
+        </div>
+      </form>
+      {% else %}
+      <pre class="tempest-admin-storage__text">{{ item.text }}</pre>
+      {% endif %}
+      {% elif item.preview == "text" %}
+      <p class="tempest-admin-empty">
+        Too large to preview here (over {{ browser.max_text_bytes|filesizeformat(true) }}). Download it to read.
+      </p>
+      {% else %}
+      <p class="tempest-admin-empty">No preview for <code>{{ item.content_type }}</code>. Download it to open.</p>
+      {% endif %}
+    </div>
+
+    <aside class="tempest-admin-storage__side">
+      <dl class="tempest-admin-storage__facts">
+        <dt>Key</dt><dd><code>{{ item.key }}</code></dd>
+        <dt>Type</dt><dd><code>{{ item.content_type }}</code></dd>
+        <dt>Size</dt><dd>{{ item.size|filesizeformat(true) }} ({{ item.size|number }} bytes)</dd>
+        <dt>Modified</dt><dd>{{ item.last_modified.strftime("%Y-%m-%d %H:%M:%S %Z") if item.last_modified else "—" }}</dd>
+        <dt>ETag</dt><dd><code>{{ item.etag or "—" }}</code></dd>
+        {% for name, value in item.metadata|dictsort %}
+        <dt>{{ name }}</dt><dd>{{ value }}</dd>
+        {% endfor %}
+      </dl>
+
+      {% if not browser.read_only %}
+      <form method="post" action="{{ storage_url }}/object/rename" class="tempest-admin-storage__form">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <input type="hidden" name="key" value="{{ item.key }}">
+        <label class="tempest-admin-storage__field">
+          <span>Rename or move to</span>
+          <input type="text" name="new_key" value="{{ item.key }}" required autocomplete="off">
+        </label>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Rename</button>
+      </form>
+
+      <form method="post" action="{{ storage_url }}/object/replace" enctype="multipart/form-data"
+            class="tempest-admin-storage__form">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <input type="hidden" name="key" value="{{ item.key }}">
+        <label class="tempest-admin-storage__field">
+          <span>Replace content</span>
+          <input type="file" name="file" required>
+        </label>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Replace</button>
+      </form>
+
+      <form method="post" action="{{ storage_url }}/object/delete" class="tempest-admin-storage__form"
+            onsubmit="return confirm('Delete this file? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <input type="hidden" name="key" value="{{ item.key }}">
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--danger">Delete</button>
+      </form>
+      {% endif %}
+    </aside>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

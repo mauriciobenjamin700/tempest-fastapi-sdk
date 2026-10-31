@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Storage · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-storage">
+  <header class="tempest-admin-list__header">
+    <div class="tempest-admin-page-title">
+      <h1>Storage</h1>
+      {% if listing %}
+      <span class="tempest-admin-count">{{ listing.total }} item{{ listing.total|pluralize }}</span>
+      {% endif %}
+    </div>
+    {% if browser.read_only %}
+    <span class="tempest-admin-storage__badge">Read-only</span>
+    {% endif %}
+  </header>
+
+  {% if flash %}
+  <div class="tempest-admin-flash tempest-admin-flash--{{ flash_cat }}" role="status">{{ flash }}</div>
+  {% endif %}
+
+  {% if listing is none %}
+  <div class="tempest-admin-flash tempest-admin-flash--error" role="alert">{{ error }}</div>
+  <p><a href="{{ storage_url }}">Back to the root</a></p>
+  {% else %}
+
+  <nav class="tempest-admin-storage__crumbs" aria-label="Folder">
+    {% for crumb in listing.crumbs %}
+    {% if not loop.last %}
+    <a href="{{ storage_url }}?{{ {'prefix': crumb.prefix}|urlencode }}">{{ crumb.name }}</a>
+    <span class="tempest-admin-storage__sep" aria-hidden="true">/</span>
+    {% else %}
+    <span aria-current="page">{{ crumb.name }}</span>
+    {% endif %}
+    {% endfor %}
+  </nav>
+
+  {% if not browser.read_only %}
+  <form method="post" action="{{ storage_url }}/upload" enctype="multipart/form-data"
+        class="tempest-admin-storage__upload">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <input type="hidden" name="prefix" value="{{ listing.prefix }}">
+    <label class="tempest-admin-storage__field">
+      <span>File</span>
+      <input type="file" name="file" required>
+    </label>
+    <label class="tempest-admin-storage__field">
+      <span>Save as <small>(optional; <code>a/b.txt</code> creates folders)</small></span>
+      <input type="text" name="name" placeholder="keep the file's name" autocomplete="off">
+    </label>
+    <label class="tempest-admin-storage__check">
+      <input type="checkbox" name="overwrite" value="true">
+      <span>Overwrite</span>
+    </label>
+    <button type="submit" class="tempest-admin-btn">Upload</button>
+    <p class="tempest-admin-form__hint">
+      Up to {{ browser.max_upload_bytes|filesizeformat(true) }} per file, into
+      <code>{{ listing.prefix or "/" }}</code>.
+    </p>
+  </form>
+  {% endif %}
+
+  {% if listing.entries %}
+  <div class="tempest-admin-table-wrap">
+    <table class="tempest-admin-list__table tempest-admin-storage__table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th class="tempest-admin-storage__num">Size</th>
+          <th class="tempest-admin-storage__wide">Type</th>
+          <th class="tempest-admin-storage__wide">Modified</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in listing.entries %}
+        <tr>
+          {% if entry.is_folder %}
+          <td>
+            <a class="tempest-admin-storage__name tempest-admin-storage__name--folder"
+               href="{{ storage_url }}?{{ {'prefix': entry.key}|urlencode }}">{{ entry.name }}/</a>
+          </td>
+          <td class="tempest-admin-storage__num">—</td>
+          <td class="tempest-admin-storage__wide">folder</td>
+          <td class="tempest-admin-storage__wide">—</td>
+          {% else %}
+          <td>
+            <a class="tempest-admin-storage__name"
+               href="{{ storage_url }}/object?{{ {'key': entry.key}|urlencode }}">{{ entry.name }}</a>
+          </td>
+          <td class="tempest-admin-storage__num">{% if entry.size is not none %}{{ entry.size|filesizeformat(true) }}{% else %}—{% endif %}</td>
+          <td class="tempest-admin-storage__wide"><code>{{ entry.content_type or "—" }}</code></td>
+          <td class="tempest-admin-storage__wide">{{ entry.last_modified.strftime("%Y-%m-%d %H:%M") if entry.last_modified else "—" }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="tempest-admin-empty">
+    {% if listing.prefix %}Nothing under <code>{{ listing.prefix }}</code>.{% else %}The bucket is empty.{% endif %}
+  </p>
+  {% endif %}
+
+  {% if listing.pages > 1 %}
+  <nav class="tempest-admin-list__pagination" aria-label="Pagination">
+    {% if listing.page > 1 %}
+    <a href="{{ storage_url }}?{{ {'prefix': listing.prefix, 'page': listing.page - 1}|urlencode }}">← Prev</a>
+    {% endif %}
+    <span>Page {{ listing.page }} of {{ listing.pages }}</span>
+    {% if listing.page < listing.pages %}
+    <a href="{{ storage_url }}?{{ {'prefix': listing.prefix, 'page': listing.page + 1}|urlencode }}">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

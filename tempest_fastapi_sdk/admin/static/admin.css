@@ -2254,3 +2254,280 @@ input[type="file"] {
     max-height: 50vh;
   }
 }
+
+/* Storage browser — one bucket of an object store. */
+.tempest-admin-storage__badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--tempest-border-strong);
+  color: var(--tempest-fg-soft);
+  font-size: 0.8rem;
+}
+
+.tempest-admin-storage__crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--tempest-fg-soft);
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-storage__crumbs [aria-current="page"] {
+  color: var(--tempest-fg);
+  font-weight: 600;
+}
+
+.tempest-admin-storage__sep {
+  color: var(--tempest-border-strong);
+}
+
+.tempest-admin-storage__upload {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-storage__upload .tempest-admin-form__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.tempest-admin-storage__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.tempest-admin-storage__field small {
+  font-weight: 400;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-storage__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.55rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.tempest-admin-storage__num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tempest-admin-storage__name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* The admin list table clips cells with nowrap + ellipsis; a storage key is
+   the one value an operator must read whole, so its cell wraps instead. */
+.tempest-admin-storage__table td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-storage__name--folder::before {
+  content: "";
+  display: inline-block;
+  width: 0.8em;
+  height: 0.6em;
+  margin-right: 0.45em;
+  border: 2px solid currentColor;
+  border-radius: 2px 2px 3px 3px;
+  vertical-align: -0.05em;
+}
+
+.tempest-admin-storage__title {
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-storage__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.tempest-admin-storage__preview {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+  box-shadow: var(--tempest-shadow);
+}
+
+/* A checkerboard behind images, so a transparent PNG does not read as a
+   blank box on the surface colour. */
+.tempest-admin-storage__preview--image {
+  display: flex;
+  justify-content: center;
+  background-color: var(--tempest-surface-muted);
+  background-image:
+    linear-gradient(45deg, var(--tempest-border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--tempest-border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--tempest-border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--tempest-border) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.tempest-admin-storage__preview img,
+.tempest-admin-storage__preview video {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  height: auto;
+}
+
+.tempest-admin-storage__preview audio {
+  width: 100%;
+}
+
+.tempest-admin-storage__preview iframe {
+  display: block;
+  width: 100%;
+  height: 75vh;
+  border: 0;
+  border-radius: var(--tempest-radius);
+}
+
+.tempest-admin-storage__text,
+.tempest-admin-storage__editor textarea {
+  width: 100%;
+  margin: 0;
+  font-family: var(--tempest-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+.tempest-admin-storage__text {
+  max-height: 70vh;
+  overflow: auto;
+  white-space: pre;
+}
+
+.tempest-admin-storage__editor textarea {
+  min-height: 50vh;
+  resize: vertical;
+  white-space: pre;
+}
+
+.tempest-admin-storage__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.tempest-admin-storage__row .tempest-admin-form__hint {
+  margin: 0;
+}
+
+.tempest-admin-storage__side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.tempest-admin-storage__facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.4rem 0.75rem;
+  margin: 0;
+  padding: 1rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+  font-size: 0.85rem;
+}
+
+.tempest-admin-storage__facts dt {
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-storage__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-storage__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+}
+
+.tempest-admin-storage__form .tempest-admin-btn {
+  align-self: flex-start;
+}
+
+@media (max-width: 1023px) {
+  .tempest-admin-storage__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .tempest-admin-storage__upload {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem;
+  }
+
+  .tempest-admin-storage__check {
+    padding-bottom: 0;
+  }
+
+  .tempest-admin-storage__upload .tempest-admin-btn,
+  .tempest-admin-storage__form .tempest-admin-btn {
+    align-self: stretch;
+    width: 100%;
+  }
+
+  .tempest-admin-storage__preview iframe {
+    height: 60vh;
+  }
+}
+
+/* On a phone the table keeps Name and Size only, and the name column wraps:
+   with table-layout: auto a long key sized the column to its max-content
+   and pushed Size, Type and Modified behind a horizontal scroll. */
+@media (max-width: 640px) {
+  .tempest-admin-storage__wide {
+    display: none;
+  }
+
+  .tempest-admin-storage__table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .tempest-admin-storage__table .tempest-admin-storage__num {
+    width: 6.5rem;
+  }
+}
