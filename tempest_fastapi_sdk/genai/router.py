@@ -43,7 +43,7 @@ from tempest_fastapi_sdk.utils.upload import read_upload_capped
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.audio import SpeechSynthesizer, SpeechTranscriber
-    from tempest_fastapi_sdk.genai.audio_generation import AudioGenerator
+    from tempest_fastapi_sdk.genai.audio_generation import SupportsAudioGeneration
     from tempest_fastapi_sdk.genai.image import ImageGenerator
     from tempest_fastapi_sdk.genai.rag import SupportsEmbed, SupportsRetrieve
     from tempest_fastapi_sdk.genai.registry import ModelRegistry
@@ -207,7 +207,7 @@ def make_genai_router(
     speech_to_text: SpeechTranscriber | None = None,
     text_to_speech: SpeechSynthesizer | None = None,
     image_generator: ImageGenerator | None = None,
-    audio_generator: AudioGenerator | None = None,
+    audio_generator: SupportsAudioGeneration | None = None,
     models: ModelRegistry | dict[str, Any] | list[Any] | None = None,
     prefix: str = "/api/genai",
     tags: list[str] | None = None,
@@ -262,7 +262,9 @@ def make_genai_router(
             ``TextToSpeech``, an ``OllamaSpeech``, or any
             ``SpeechSynthesizer``.
         image_generator (ImageGenerator | None): Backs ``/image``.
-        audio_generator (AudioGenerator | None): Backs ``/audio``.
+        audio_generator (SupportsAudioGeneration | None): Backs ``/audio``
+            -- an ``AudioGenerator``, a ``MusicGenerator``, or any
+            ``SupportsAudioGeneration``.
         models (ModelRegistry | dict[str, Any] | list[Any] | None): Backs
             ``/models`` — a ``ModelRegistry``, or a dict/list of handles you
             hold yourself.

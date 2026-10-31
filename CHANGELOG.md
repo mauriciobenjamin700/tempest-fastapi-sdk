@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `MusicGenerator` (extra `[genai]`, sem `diffusers`): música local com o
+  MusicGen pelo `transformers` (`facebook/musicgen-small`,
+  `facebook/musicgen-stereo-small`), devolvendo `GeneratedAudio` com o mesmo
+  `AudioGenerationConfig` do `AudioGenerator`. `seconds` vira orçamento de
+  tokens (50 por segundo; o clipe sai 60 ms mais curto, e
+  `GeneratedAudio.seconds` traz a duração real); `steps` e
+  `negative_prompt` respondem `422`; estéreo vem do checkpoint. Duração
+  acima da janela do decoder (2048 posições = 40,96 s, `max_seconds`) é
+  recusada com `422` antes do modelo: medido, 2049 tokens disparam um
+  device-side assert do CUDA que envenena o processo inteiro. A seed vai em
+  `torch.manual_seed` (global). Medido numa RTX 4070 Ti SUPER com
+  transformers 4.57.6 e 5.22.1: 10 s em ~9,2 s (bf16), mesma seed repete os
+  mesmos bytes. Pesos `cc-by-nc-4.0`.
+- Protocolo `SupportsAudioGeneration`: `make_genai_router(audio_generator=)`
+  aceita `AudioGenerator` ou `MusicGenerator` em `POST /audio`.
+
+### Changed
+
+- `AudioGenerationConfig.seed` passa a aceitar só `0` a `2**64 - 1`, o
+  intervalo do `torch.manual_seed` (`2**64` levantava `ValueError` no torch
+  2.14 e chegava como `500`); fora dele, a validação responde `422`. Vale
+  também para o `AudioGenerator`.
+
 ## [0.339.0] — 2026-10-31
 
 ### Added

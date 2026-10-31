@@ -50,7 +50,8 @@ import inspect
 import io
 import secrets
 import wave
-from typing import Any
+from collections.abc import Awaitable
+from typing import Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
@@ -71,6 +72,35 @@ AUDIO_LENGTH_KEYWORD: str = "audio_length_in_s"
 
 AUDIOLDM2_UPSTREAM_ISSUE: str = "https://github.com/huggingface/diffusers/pull/13111"
 """Where the AudioLDM2 ``GPT2Model`` breakage was proposed fixed (unmerged)."""
+
+
+@runtime_checkable
+class SupportsAudioGeneration(Protocol):
+    """Anything that turns a prompt into :class:`GeneratedAudio` clips.
+
+    The shape ``POST /audio`` on ``make_genai_router`` calls. Satisfied by
+    :class:`AudioGenerator` (diffusion) and
+    :class:`~tempest_fastapi_sdk.genai.MusicGenerator` (MusicGen).
+    """
+
+    def generate(
+        self,
+        prompt: str,
+        /,
+        *,
+        config: AudioGenerationConfig | None = None,
+    ) -> Awaitable[list[GeneratedAudio]]:
+        """Generate clips for ``prompt``.
+
+        Args:
+            prompt (str): The sound or music to generate.
+            config (AudioGenerationConfig | None): Length, guidance, seed
+                and count; ``None`` for the model's defaults.
+
+        Returns:
+            Awaitable[list[GeneratedAudio]]: The clips.
+        """
+        ...
 
 
 def _require_diffusers() -> tuple[Any, Any]:
@@ -548,6 +578,7 @@ class AudioGenerator:
 __all__: list[str] = [
     "AUDIO_LENGTH_KEYWORD",
     "AudioGenerator",
+    "SupportsAudioGeneration",
     "check_audio_pipeline",
     "encode_wav",
     "pipeline_sample_rate",

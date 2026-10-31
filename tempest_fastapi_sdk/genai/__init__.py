@@ -31,6 +31,9 @@ from tempest_fastapi_sdk.genai.anthropic import (
 from tempest_fastapi_sdk.genai.audio_generation import (
     AudioGenerator as AudioGenerator,
 )
+from tempest_fastapi_sdk.genai.audio_generation import (
+    SupportsAudioGeneration as SupportsAudioGeneration,
+)
 from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
 from tempest_fastapi_sdk.genai.catalog import EmbeddingModel as EmbeddingModel
 from tempest_fastapi_sdk.genai.catalog import ImageModel as ImageModel
@@ -134,6 +137,9 @@ from tempest_fastapi_sdk.genai.moderation import (
 from tempest_fastapi_sdk.genai.moderation import ModerationBackend as ModerationBackend
 from tempest_fastapi_sdk.genai.moderation import ModerationResult as ModerationResult
 from tempest_fastapi_sdk.genai.moderation import RuleModerator as RuleModerator
+from tempest_fastapi_sdk.genai.music_generation import (
+    MusicGenerator as MusicGenerator,
+)
 from tempest_fastapi_sdk.genai.ollama import (
     DEFAULT_OLLAMA_URL as DEFAULT_OLLAMA_URL,
 )
@@ -346,6 +352,7 @@ __all__: list[str] = [
     "ModelSnapshot",
     "ModerationBackend",
     "ModerationResult",
+    "MusicGenerator",
     "OllamaEmbedder",
     "OllamaError",
     "OllamaGenerator",
@@ -368,6 +375,7 @@ __all__: list[str] = [
     "StructuredOutputMode",
     "StructuredTextBackend",
     "SubjectUsage",
+    "SupportsAudioGeneration",
     "TextBackend",
     "TextGenerator",
     "TextModel",
