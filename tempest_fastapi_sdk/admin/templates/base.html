@@ -70,7 +70,7 @@
         </a>
         {% endfor %}
         {% endif %}
-        {% if nav_logs_url or nav_sql_url or nav_tasks_url %}
+        {% if nav_logs_url or nav_sql_url or nav_tasks_url or nav_storage_url %}
         <span class="tempest-admin-sidebar__heading">System</span>
         {% endif %}
         {% if nav_logs_url %}
@@ -89,6 +89,12 @@
         <a href="{{ nav_tasks_url }}"
            class="tempest-admin-sidebar__link{% if path.startswith(nav_tasks_url) %} tempest-admin-sidebar__link--active{% endif %}">
           Tasks
+        </a>
+        {% endif %}
+        {% if nav_storage_url %}
+        <a href="{{ nav_storage_url }}"
+           class="tempest-admin-sidebar__link{% if path.startswith(nav_storage_url) %} tempest-admin-sidebar__link--active{% endif %}">
+          Storage
         </a>
         {% endif %}
       </nav>

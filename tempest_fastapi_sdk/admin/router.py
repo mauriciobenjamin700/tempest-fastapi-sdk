@@ -80,6 +80,12 @@ from tempest_fastapi_sdk.admin.sql_shell import (
     SqlShellError,
     SqlShellService,
 )
+from tempest_fastapi_sdk.admin.storage import (
+    StorageBrowserError,
+    StorageBrowserService,
+    StorageObjectMissingError,
+    check_storage_key,
+)
 from tempest_fastapi_sdk.admin.tasks import TaskPanelService
 from tempest_fastapi_sdk.api.routers.logs import (
     LogSource,
@@ -94,6 +100,7 @@ from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.search import like_search_condition
 from tempest_fastapi_sdk.exceptions import AppException
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router
+from tempest_fastapi_sdk.storage import object_download_response
 from tempest_fastapi_sdk.tasks.jobs import (
     CANCELLABLE_JOB_STATUSES,
     JobStatus,
@@ -263,6 +270,7 @@ def make_admin_router(
     surface_policy: AdminSurfacePolicy | None = None,
     sql_shell: SqlShellService | None = None,
     tasks: TaskPanelService[Any] | None = None,
+    storage: StorageBrowserService | None = None,
     mfa_throttle: AttemptThrottle | None = None,
     login_throttle: AttemptThrottle | Literal[False] | None = None,
     login_ip_throttle: AttemptThrottle | Literal[False] | None = None,
@@ -360,6 +368,14 @@ def make_admin_router(
             the cancel action at ``POST {prefix}/tasks/{job_id}/cancel``,
             and adds its nav entry. Either half of the service may be
             absent; a section with no source is not rendered.
+        storage (StorageBrowserService | None): When given, mounts the
+            storage browser at ``GET {prefix}/storage`` (folder listing),
+            ``GET {prefix}/storage/object`` (one object: metadata, preview,
+            text editor), ``GET {prefix}/storage/raw`` (the bytes, ``inline``
+            only for inline-safe types) and the ``POST`` writes under
+            ``{prefix}/storage/`` (upload, replace, edit, rename, delete),
+            and adds its nav entry. A ``read_only`` service answers ``403``
+            to every write.
         mfa_throttle (AttemptThrottle | None): Failure budget for the
             ``POST {prefix}/mfa`` challenge, keyed on the principal, so a
             fresh password login does not reset it. Once spent, the
@@ -435,6 +451,7 @@ def make_admin_router(
             (AdminSurface.LOGS, show_logs),
             (AdminSurface.SQL, sql_shell is not None),
             (AdminSurface.TASKS, tasks is not None),
+            (AdminSurface.STORAGE, storage is not None),
         )
         if mounted
     )
@@ -735,6 +752,10 @@ def make_admin_router(
         context.setdefault(
             "nav_tasks_url",
             f"{prefix}/tasks" if AdminSurface.TASKS in allowed else None,
+        )
+        context.setdefault(
+            "nav_storage_url",
+            f"{prefix}/storage" if AdminSurface.STORAGE in allowed else None,
         )
         return templates.TemplateResponse(
             request,
@@ -3239,6 +3260,432 @@ def make_admin_router(
             return RedirectResponse(
                 f"{prefix}/tasks/{job_id}",
                 status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+    if storage is not None:
+        _browser = storage
+        storage_url = f"{prefix}/storage"
+
+        def _storage_redirect(path: str, params: dict[str, str]) -> RedirectResponse:
+            """Redirect back to a storage page carrying a flash message.
+
+            Args:
+                path (str): Path under ``{prefix}/storage``; ``""`` for the
+                    listing, ``"/object"`` for an object page.
+                params (dict[str, str]): Query parameters, ``flash`` and
+                    ``flash_cat`` included.
+
+            Returns:
+                RedirectResponse: ``303`` to the page.
+            """
+            return RedirectResponse(
+                f"{storage_url}{path}?{urlencode(params)}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        def _folder_of(key: str) -> str:
+            """Return the folder holding ``key``.
+
+            Args:
+                key (str): Object key.
+
+            Returns:
+                str: ``""`` for the root, otherwise the folder with a
+                trailing ``/``.
+            """
+            folder, _, _ = key.rpartition("/")
+            return f"{folder}/" if folder else ""
+
+        def _refuse_read_only() -> None:
+            """Refuse a write on a read-only browser, after auth and CSRF.
+
+            Every write route resolves the principal and compares the CSRF
+            token first, so a revoked operator learns nothing from the
+            response, then calls this before the store is touched.
+
+            Raises:
+                HTTPException: ``403`` when the browser is read-only.
+            """
+            if _browser.read_only:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN, "storage browser is read-only"
+                )
+
+        @router.get("/storage", response_class=HTMLResponse, name="admin_storage")
+        async def storage_list(
+            request: Request,
+            prefix: str = "",
+            page: int = 1,
+            flash: str = "",
+            flash_cat: str = "success",
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Render one folder of the bucket, with the upload form.
+
+            Args:
+                request (Request): The incoming request.
+                prefix (str): Folder to list; ``""`` for the root.
+                page (int): 1-based page of the folder.
+                flash (str): Message from the write that redirected here.
+                flash_cat (str): ``success`` or ``error``.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal the chrome renders.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: The listing page; ``400`` with the reason when
+                ``prefix`` is not a valid folder.
+            """
+            principal = await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            chrome: dict[str, Any] = {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "storage_url": storage_url,
+                "browser": _browser,
+                "flash": flash,
+                "flash_cat": "error" if flash_cat == "error" else "success",
+            }
+            try:
+                listing = await _browser.browse(prefix, page=page)
+            except StorageBrowserError as exc:
+                return _render(
+                    request,
+                    "storage.html",
+                    {**chrome, "listing": None, "error": str(exc)},
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            return _render(request, "storage.html", {**chrome, "listing": listing})
+
+        @router.get(
+            "/storage/object",
+            response_class=HTMLResponse,
+            name="admin_storage_object",
+        )
+        async def storage_object(
+            request: Request,
+            key: str = "",
+            flash: str = "",
+            flash_cat: str = "success",
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Render one object: metadata, preview and the edit forms.
+
+            Args:
+                request (Request): The incoming request.
+                key (str): Object key.
+                flash (str): Message from the write that redirected here.
+                flash_cat (str): ``success`` or ``error``.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal the chrome renders.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: The object page; ``404`` when it is not stored,
+                ``400`` when the key is invalid.
+            """
+            principal = await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            chrome: dict[str, Any] = {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "storage_url": storage_url,
+                "browser": _browser,
+                "flash": flash,
+                "flash_cat": "error" if flash_cat == "error" else "success",
+                "key": key,
+            }
+            try:
+                view = await _browser.describe(key)
+            except StorageObjectMissingError as exc:
+                return _render(
+                    request,
+                    "storage_object.html",
+                    {**chrome, "item": None, "error": str(exc)},
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+            except StorageBrowserError as exc:
+                return _render(
+                    request,
+                    "storage_object.html",
+                    {**chrome, "item": None, "error": str(exc)},
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            return _render(request, "storage_object.html", {**chrome, "item": view})
+
+        @router.get("/storage/raw", name="admin_storage_raw")
+        async def storage_raw(
+            request: Request,
+            key: str = "",
+            download: bool = False,
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Stream an object's bytes, for the preview or a download.
+
+            ``download=false`` asks for ``inline``, which
+            :func:`~tempest_fastapi_sdk.storage.object_download_response`
+            grants only to inline-safe types — HTML and SVG always arrive as
+            attachments — and every response carries ``nosniff`` and a
+            sandboxing CSP. ``Range`` is honoured, so audio and video seek.
+
+            Args:
+                request (Request): The incoming request.
+                key (str): Object key.
+                download (bool): Force ``attachment``.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: The bytes, ``private, no-store``.
+
+            Raises:
+                HTTPException: ``400`` for an invalid key, ``404`` when the
+                    object is not stored.
+            """
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            try:
+                check_storage_key(key)
+                if not await _browser.exists(key):
+                    raise HTTPException(status.HTTP_404_NOT_FOUND, "object not found")
+            except StorageBrowserError as exc:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+            return await object_download_response(
+                _browser.client,
+                key,
+                request=request,
+                bucket=_browser.bucket,
+                filename=key.rpartition("/")[2],
+                as_attachment=download,
+                cache_control="private, no-store",
+            )
+
+        @router.post("/storage/upload", name="admin_storage_upload")
+        async def storage_upload(
+            request: Request,
+            file: UploadFile = File(...),
+            prefix: str = Form(default=""),
+            name: str = Form(default=""),
+            overwrite: bool = Form(default=False),
+            csrf_token: str = Form(...),
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Store an uploaded file in the current folder.
+
+            Args:
+                request (Request): The incoming request.
+                file (UploadFile): The file.
+                prefix (str): Folder to store it in.
+                name (str): Name to store it under, which may hold ``/`` to
+                    create sub-folders; empty keeps the file's own name.
+                overwrite (bool): Replace an object already under that key.
+                csrf_token (str): CSRF token from the form.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: A redirect to the new object's page, or back to
+                the folder with the reason it was refused.
+            """
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            _check_csrf(session, csrf_token)
+            _refuse_read_only()
+            try:
+                key = await _browser.upload(
+                    prefix,
+                    name.strip() or (file.filename or ""),
+                    file.read,
+                    content_type=file.content_type,
+                    overwrite=overwrite,
+                )
+            except StorageBrowserError as exc:
+                return _storage_redirect(
+                    "",
+                    {"prefix": prefix, "flash": str(exc), "flash_cat": "error"},
+                )
+            finally:
+                await file.close()
+            return _storage_redirect(
+                "/object", {"key": key, "flash": f"Uploaded {key}."}
+            )
+
+        @router.post("/storage/object/replace", name="admin_storage_replace")
+        async def storage_replace(
+            request: Request,
+            file: UploadFile = File(...),
+            key: str = Form(...),
+            csrf_token: str = Form(...),
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Overwrite an object's content with an uploaded file.
+
+            Args:
+                request (Request): The incoming request.
+                file (UploadFile): The new content.
+                key (str): Object key.
+                csrf_token (str): CSRF token from the form.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: A redirect back to the object page with the
+                outcome.
+            """
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            _check_csrf(session, csrf_token)
+            _refuse_read_only()
+            try:
+                await _browser.replace(
+                    key,
+                    file.read,
+                    content_type=file.content_type,
+                    filename=file.filename,
+                )
+            except StorageBrowserError as exc:
+                return _storage_redirect(
+                    "/object", {"key": key, "flash": str(exc), "flash_cat": "error"}
+                )
+            finally:
+                await file.close()
+            return _storage_redirect(
+                "/object", {"key": key, "flash": f"Replaced {key}."}
+            )
+
+        @router.post("/storage/object/edit", name="admin_storage_edit")
+        async def storage_edit(
+            request: Request,
+            key: str = Form(...),
+            text: str = Form(default=""),
+            etag: str = Form(default=""),
+            csrf_token: str = Form(...),
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Save the text editor back to the object.
+
+            Args:
+                request (Request): The incoming request.
+                key (str): Object key.
+                text (str): The edited content.
+                etag (str): ETag the editor was opened at; a mismatch means
+                    someone wrote in between and the save is refused.
+                csrf_token (str): CSRF token from the form.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: A redirect back to the object page with the
+                outcome.
+            """
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            _check_csrf(session, csrf_token)
+            _refuse_read_only()
+            try:
+                await _browser.save_text(key, text, expected_etag=etag or None)
+            except StorageBrowserError as exc:
+                return _storage_redirect(
+                    "/object", {"key": key, "flash": str(exc), "flash_cat": "error"}
+                )
+            return _storage_redirect("/object", {"key": key, "flash": f"Saved {key}."})
+
+        @router.post("/storage/object/rename", name="admin_storage_rename")
+        async def storage_rename(
+            request: Request,
+            key: str = Form(...),
+            new_key: str = Form(...),
+            csrf_token: str = Form(...),
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Move an object to another key.
+
+            Args:
+                request (Request): The incoming request.
+                key (str): Current key.
+                new_key (str): Target key, folders included.
+                csrf_token (str): CSRF token from the form.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: A redirect to the moved object's page, or back to
+                the current one with the reason it was refused.
+            """
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            _check_csrf(session, csrf_token)
+            _refuse_read_only()
+            try:
+                target = await _browser.rename(key, new_key)
+            except StorageBrowserError as exc:
+                return _storage_redirect(
+                    "/object", {"key": key, "flash": str(exc), "flash_cat": "error"}
+                )
+            return _storage_redirect(
+                "/object", {"key": target, "flash": f"Moved {key} to {target}."}
+            )
+
+        @router.post("/storage/object/delete", name="admin_storage_delete")
+        async def storage_delete(
+            request: Request,
+            key: str = Form(...),
+            csrf_token: str = Form(...),
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Delete an object and return to its folder.
+
+            Args:
+                request (Request): The incoming request.
+                key (str): Object key.
+                csrf_token (str): CSRF token from the form.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: A redirect to the holding folder with the outcome.
+            """
+            await _resolve_principal(
+                request, db_session, session, surface=AdminSurface.STORAGE
+            )
+            _check_csrf(session, csrf_token)
+            _refuse_read_only()
+            try:
+                await _browser.delete(key)
+            except StorageBrowserError as exc:
+                return _storage_redirect(
+                    "",
+                    {
+                        "prefix": _folder_of(key),
+                        "flash": str(exc),
+                        "flash_cat": "error",
+                    },
+                )
+            return _storage_redirect(
+                "", {"prefix": _folder_of(key), "flash": f"Deleted {key}."}
             )
 
     return router

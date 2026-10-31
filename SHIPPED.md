@@ -1573,6 +1573,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   lugar apaga a classe `ChargeStatus` gerada, que é superfície pública, então
   os valores viraram componente próprio e a propriedade virou
   `ChargeStatus | str | None`.
+- **Navegador de storage no admin (não lançado)** — `StorageBrowserService`
+  + `storage=` no `make_admin_router` montam `{prefix}/storage`: pasta
+  paginada (subpastas primeiro), página do objeto com metadados e
+  pré-visualização (imagem, vídeo, áudio, PDF pela rota `raw`; texto escapado
+  num editor in-place com checagem de ETag), upload, troca de conteúdo,
+  renomeação (cópia + exclusão) e exclusão, `read_only=True` e
+  `AdminSurface.STORAGE` na `surface_policy`. Protocolo `AdminStorageClient`
+  com as cinco chamadas que `AsyncMinIOClient` e `LocalObjectStorageClient`
+  já tinham — nenhum método novo nos clientes. SVG/HTML **nunca** renderizam:
+  a rota `raw` reaproveita `object_download_response` (allowlist inline +
+  `nosniff` + CSP `sandbox`).
 - **Painel de tasks no admin (v0.268.0)** — issue #234.
   `TaskPanelService` + `tasks=` no `make_admin_router` montam
   `{prefix}/tasks` (execuções filtráveis do `JobStore` + agenda lida do

@@ -85,6 +85,18 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+### `tempest_fastapi_sdk.admin.storage`
+
+::: tempest_fastapi_sdk.admin.storage
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ### `tempest_fastapi_sdk.admin.tasks`
 
 ::: tempest_fastapi_sdk.admin.tasks

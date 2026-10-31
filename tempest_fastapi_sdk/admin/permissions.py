@@ -87,6 +87,7 @@ class AdminSurface(BaseStrEnum):
     SQL = "sql"
     TASKS = "tasks"
     LOGS = "logs"
+    STORAGE = "storage"
 
 
 #: A policy deciding whether ``principal`` may perform ``action`` on the
@@ -98,8 +99,8 @@ AdminAccessPolicy = Callable[
 
 
 #: A policy deciding whether ``principal`` may open ``surface`` (the SQL
-#: console, the task panel or the logs page). Sync or ``async``; return
-#: truthy to allow.
+#: console, the task panel, the logs page or the storage browser). Sync or
+#: ``async``; return truthy to allow.
 AdminSurfacePolicy = Callable[
     [Any, AdminSurface],
     bool | Awaitable[bool],
