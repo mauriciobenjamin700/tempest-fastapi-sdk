@@ -63,6 +63,9 @@ from tempest_fastapi_sdk.integrations.payment.stripe.client import (
     StripeError as StripeError,
 )
 from tempest_fastapi_sdk.integrations.payment.stripe.client import (
+    StripeObjectMismatchError as StripeObjectMismatchError,
+)
+from tempest_fastapi_sdk.integrations.payment.stripe.client import (
     StripeResource as StripeResource,
 )
 from tempest_fastapi_sdk.integrations.payment.stripe.environment import (
@@ -223,6 +226,7 @@ __all__: list[str] = [
     "StripeInvoice",
     "StripeList",
     "StripeObject",
+    "StripeObjectMismatchError",
     "StripePaymentIntent",
     "StripePrice",
     "StripeProduct",

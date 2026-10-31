@@ -165,6 +165,17 @@ class TestBuildContentDisposition:
         )
         assert value.startswith("attachment;")
 
+    @pytest.mark.parametrize(
+        "media_type",
+        ["image/png;x=,text/html", "image/png, text/html", "image/png\r\nX: 1"],
+    )
+    def test_comma_or_line_break_is_attachment(self, media_type: str) -> None:
+        """A comma lets the browser pick a later type; the essence is not trusted."""
+        value = build_content_disposition(
+            "a.png", as_attachment=False, media_type=media_type
+        )
+        assert value.startswith("attachment;")
+
     def test_type_parameters_and_case_are_ignored(self) -> None:
         value = build_content_disposition(
             "notes.txt", as_attachment=False, media_type="Text/Plain; charset=utf-8"

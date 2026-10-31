@@ -1407,6 +1407,9 @@ if TYPE_CHECKING:
         PageSizeTooLargeException as PageSizeTooLargeException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        PushEndpointNotPublicException as PushEndpointNotPublicException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         TooManyRequestsException as TooManyRequestsException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -2265,6 +2268,9 @@ if TYPE_CHECKING:
         WebPushDispatcher as WebPushDispatcher,
     )
     from tempest_fastapi_sdk.webpush import (
+        WebPushEndpointRefusedError as WebPushEndpointRefusedError,
+    )
+    from tempest_fastapi_sdk.webpush import (
         WebPushError as WebPushError,
     )
     from tempest_fastapi_sdk.webpush import (
@@ -2310,7 +2316,7 @@ if TYPE_CHECKING:
         make_websocket_router as make_websocket_router,
     )
 
-__version__: str = "0.335.0"
+__version__: str = "0.337.0"
 
 _LAZY_ATTRIBUTES: dict[str, str] = {
     "AllowedImageMediaTypes": "tempest_fastapi_sdk.utils",
@@ -2751,6 +2757,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "NotFoundException": "tempest_fastapi_sdk.exceptions",
     "OrderByNotAllowedException": "tempest_fastapi_sdk.exceptions",
     "PageSizeTooLargeException": "tempest_fastapi_sdk.exceptions",
+    "PushEndpointNotPublicException": "tempest_fastapi_sdk.exceptions",
     "TooManyRequestsException": "tempest_fastapi_sdk.exceptions",
     "UnauthorizedException": "tempest_fastapi_sdk.exceptions",
     "UnknownFilterKeyException": "tempest_fastapi_sdk.exceptions",
@@ -3032,6 +3039,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "verify_opaque_token": "tempest_fastapi_sdk.utils",
     "verify_path": "tempest_fastapi_sdk.utils",
     "WebPushDispatcher": "tempest_fastapi_sdk.webpush",
+    "WebPushEndpointRefusedError": "tempest_fastapi_sdk.webpush",
     "WebPushError": "tempest_fastapi_sdk.webpush",
     "WebPushGoneError": "tempest_fastapi_sdk.webpush",
     "WebPushKeysSchema": "tempest_fastapi_sdk.webpush",
@@ -3524,6 +3532,7 @@ __all__: list[str] = [
     "PushDevice",
     "PushDeviceGoneError",
     "PushDispatcher",
+    "PushEndpointNotPublicException",
     "PushError",
     "PushFanoutResult",
     "PushPayloadSchema",
@@ -3650,6 +3659,7 @@ __all__: list[str] = [
     "WebAuthnRegisterCompleteSchema",
     "WebAuthnService",
     "WebPushDispatcher",
+    "WebPushEndpointRefusedError",
     "WebPushError",
     "WebPushGoneError",
     "WebPushKeysSchema",

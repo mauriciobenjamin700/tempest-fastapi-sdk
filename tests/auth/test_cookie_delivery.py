@@ -226,7 +226,37 @@ class TestCookieMode:
                 },
             )
 
-        assert r.status_code == 204, r.text
+        assert r.status_code == 200, r.text
+
+    async def test_password_change_sets_a_fresh_pair_as_cookies(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """The change revokes every session, so the cookies carry a new pair (#662)."""
+        service = _service("cookie")
+        await _make_user(service, session, email="cookie-rotate@a.com")
+
+        async with _client(service, session) as c:
+            await c.post(
+                "/auth/login",
+                json={"email": "cookie-rotate@a.com", "password": _PASSWORD},
+            )
+            changed = await c.post(
+                "/auth/password-change",
+                json={
+                    "current_password": _PASSWORD,
+                    "new_password": "another-strong-pass-12",
+                },
+            )
+            refreshed = await c.post("/auth/refresh")
+
+        set_cookies = " ".join(changed.headers.get_list("set-cookie"))
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["access_token"] is None
+        assert changed.json()["refresh_token"] is None
+        assert "access_token=ey" in set_cookies
+        assert "refresh_token=ey" in set_cookies
+        assert refreshed.status_code == 200, refreshed.text
 
     async def test_logout_clears_cookies(
         self,

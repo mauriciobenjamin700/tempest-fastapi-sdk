@@ -130,6 +130,14 @@ That gives you `POST /api/push/register`, `POST /api/push/unregister` and
     the old signature (no `user_id`), the router checks ownership through
     `list_for_user` before calling your override.
 
+!!! info "An internal web endpoint is refused at `/register`"
+    A `web` registration goes through the `WebPushTransport` dispatcher
+    before it is stored (`WebPushDispatcher.check_endpoint`): an endpoint
+    that is not `https`, or that is or resolves to loopback, a private
+    network or link-local, answers `422 PUSH_ENDPOINT_NOT_PUBLIC`. It is the
+    same rule as delivery, with the same `allow_private_networks` — details
+    in [Web Push](webpush.md#where-a-dispatch-goes).
+
 ### 4. Notify
 
 ```python

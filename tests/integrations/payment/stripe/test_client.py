@@ -20,6 +20,8 @@ from tempest_fastapi_sdk.integrations.payment.stripe import (
     StripeClient,
     StripeCustomer,
     StripeError,
+    StripeObjectMismatchError,
+    StripeResource,
     stripe_http_client,
 )
 from tempest_fastapi_sdk.utils.http_client import HTTPClient
@@ -383,3 +385,79 @@ async def test_error_body_that_is_not_json_does_not_mask_the_status() -> None:
         await client.customers.retrieve("cus_123")
 
     assert error.value.status_code == 502
+
+
+SUBSCRIPTION: dict[str, Any] = {
+    "id": "sub_1",
+    "object": "subscription",
+    "status": "active",
+}
+"""A body of another object family, answered where a customer was asked for."""
+
+
+class TestObjectTypeCheck:
+    """A ``2xx`` body of another object type is refused, not returned."""
+
+    async def test_retrieve_refuses_another_object_type(self) -> None:
+        recorder = _Recorder((200, SUBSCRIPTION))
+        client = _client(recorder)
+
+        with pytest.raises(StripeObjectMismatchError) as caught:
+            await client.customers.retrieve("cus_123")
+
+        assert caught.value.expected_object == "customer"
+        assert caught.value.received_object == "subscription"
+        assert caught.value.status_code == 200
+        assert caught.value.payload == SUBSCRIPTION
+        assert isinstance(caught.value, StripeError)
+
+    async def test_update_refuses_another_object_type(self) -> None:
+        client = _client(_Recorder((200, SUBSCRIPTION)))
+
+        with pytest.raises(StripeObjectMismatchError):
+            await client.customers.update("cus_123", {"email": "b@example.com"})
+
+    async def test_create_refuses_another_object_type(self) -> None:
+        client = _client(_Recorder((200, SUBSCRIPTION)))
+
+        with pytest.raises(StripeObjectMismatchError):
+            await client.payment_intents.create({"amount": 100, "currency": "brl"})
+
+    async def test_delete_checks_the_tombstone_type(self) -> None:
+        client = _client(
+            _Recorder((200, {"id": "sub_1", "object": "subscription", "deleted": True}))
+        )
+
+        with pytest.raises(StripeObjectMismatchError):
+            await client.customers.delete("cus_123")
+
+    async def test_missing_object_field_is_refused(self) -> None:
+        client = _client(_Recorder((200, {"id": "cus_123", "email": "a@x.com"})))
+
+        with pytest.raises(StripeObjectMismatchError) as caught:
+            await client.customers.retrieve("cus_123")
+
+        assert caught.value.received_object == ""
+
+    async def test_dotted_object_type_matches(self) -> None:
+        """Checkout sessions are ``checkout.session``, not the path."""
+        client = _client(
+            _Recorder(
+                (200, {"id": "cs_1", "object": "checkout.session", "status": "open"})
+            )
+        )
+
+        session = await client.checkout_sessions.retrieve("cs_1")
+
+        assert session.id == "cs_1"
+
+    async def test_resource_without_object_type_skips_the_check(self) -> None:
+        """A consumer-built resource keeps the old behaviour unless it opts in."""
+        client = _client(_Recorder((200, SUBSCRIPTION)))
+        resource: StripeResource[StripeCustomer] = StripeResource(
+            client, "customers", StripeCustomer
+        )
+
+        customer = await resource.retrieve("cus_123")
+
+        assert customer.id == "sub_1"

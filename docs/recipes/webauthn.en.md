@@ -312,13 +312,14 @@ decision, and the SDK cannot know it.
 A passkey signs in without the password and without the second factor. If
 someone held the account for a while and registered one, revoking the sessions
 is not enough: the passkey keeps signing in after the owner recovers the
-account. So both recovery flows delete **every** passkey of the user, in the
+account. So the recovery flows delete **every** passkey of the user, in the
 same transaction:
 
 | Flow | Deletes the passkeys? | Explicit opt-out |
 | --- | --- | --- |
 | `confirm_password_reset` (and `POST /auth/password-reset/confirm`) | yes | `revoke_passkeys=False` |
 | `mfa_reset` (and `tempest user mfa-reset`) | yes | `revoke_passkeys=False` / `--keep-passkeys` |
+| `tempest user set-password` (operator-side change) | yes | `--keep-passkeys` |
 | `change_password` (authenticated user, with the current password) | no | — |
 | `mfa_disable` (authenticated user, with password and code) | no | — |
 

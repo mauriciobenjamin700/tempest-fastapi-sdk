@@ -378,9 +378,10 @@ class CardChargeRequest(BaseSchema):
     DSS scope.
 
     Attributes:
-        amount_cents (int): The amount, in cents. With installments, the
-            amount the provider's installment options quote for the choice
-            the payer made.
+        amount_cents (int): The price, in cents. With installments it is
+            still the price, not the total the installment options quote:
+            the provider adds the interest on top and reports what the payer
+            owes in :attr:`CardCharge.payer_total_cents`.
         reference (str): The identifier the service owns, as in
             :attr:`PixChargeRequest.reference`.
         card_token (str): The single-use token the client-side tokenizer
@@ -438,6 +439,14 @@ class CardCharge(_EnumSafeSchema):
             What a service shows the payer on a decline comes from here.
         payment_method_id (str | None): The card brand.
         installments (int | None): How many installments were charged.
+        installment_amount_cents (int | None): Each installment, in cents,
+            interest included, as the provider reports it.
+        payer_total_cents (int | None): What the payer owes, in cents:
+            :attr:`amount_cents` plus installment interest. Equal to
+            :attr:`amount_cents` for a single installment. It is the amount
+            the charge was submitted for, not proof of payment — read
+            :attr:`status` for that. ``None`` when the provider does not
+            report it.
         raw (dict[str, Any]): The provider's payload as decoded.
     """
 
@@ -456,6 +465,13 @@ class CardCharge(_EnumSafeSchema):
     )
     payment_method_id: str | None = Field(default=None, description="Bandeira.")
     installments: int | None = Field(default=None, description="Parcelas cobradas.")
+    installment_amount_cents: int | None = Field(
+        default=None, description="Valor de cada parcela, com juros, em centavos."
+    )
+    payer_total_cents: int | None = Field(
+        default=None,
+        description="Total devido pelo pagador, com juros, em centavos.",
+    )
     raw: dict[str, Any] = Field(
         default_factory=dict, description="Payload cru do provedor."
     )

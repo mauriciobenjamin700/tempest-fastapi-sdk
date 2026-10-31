@@ -265,10 +265,17 @@ What the adapters decide for you, each item measured in the sandbox:
   same key with the same body returns the **same** order, and with another
   body answers `409 idempotency_key_already_used`. To collapse two calls for
   the same order, pass `idempotency_key=lambda reference: reference`.
-- **Installments depend on the account.** For the test seller, the Visa
-  installment options offered only 1x, at R$ 100.00 and at R$ 1,000.00, and
-  asking for 3x or 6x came back `400 invalid_transaction_amount`. Query the options
-  (`get_installments`) and send one that was offered.
+- **Installments depend on the card and the amount.** The installment
+  options (`get_installments`) answer by BIN: the test Visa (`423564`)
+  offers only 1x, for the test seller and for a real account, and asking for
+  3x comes back `400 invalid_transaction_amount`; the test Amex (`375365`)
+  offers 1x to 18x at R$ 1,000.00. Query the options and send one that was
+  offered.
+- **With installments, `amount_cents` is still the price.** Do not send the
+  quoted total: the provider adds the interest. Measured on 2026-10-30 with
+  3x of R$ 1,000.00 on Amex: `amount_cents` 100000,
+  `installment_amount_cents` 37077, `payer_total_cents` 111231. A full refund
+  returned R$ 1,000.00 — the price, not what the payer paid.
 
 !!! note "The generated client, to go further"
     `MercadoPagoClient` carries the whole Orders API (`create_order`,

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
+import fakeredis
 import fakeredis.aioredis as fakeredis_async
 import pytest
 
@@ -207,3 +209,126 @@ class TestLocalChannels:
         assert broker.local_channels() == ["a-room", "b-room"]
         broker.unregister("a-room", stream)
         assert broker.local_channels() == ["b-room"]
+
+
+class TestRunSurvivesMalformedMessages:
+    """A frame the broker did not write must not end the fan-out loop."""
+
+    @pytest.mark.parametrize(
+        "poison",
+        ["not-json", "[1]", "null", '"s"', '{"event": 7}', '{"retry": "soon"}'],
+    )
+    async def test_later_publish_still_delivered(
+        self, poison: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Malformed payloads are logged and skipped; delivery continues."""
+        redis = fakeredis_async.FakeRedis(decode_responses=True)
+        broker = SSEBroker(
+            redis=redis, heartbeat_seconds=None, channel_prefix="app-a:sse"
+        )
+        task = asyncio.create_task(broker.run())
+        await _until_subscribed(redis)
+        stream = broker.register("42")
+        frames = stream.stream()
+
+        with caplog.at_level(logging.WARNING, logger="tempest_fastapi_sdk.sse.broker"):
+            await redis.publish("app-a:sse:42", poison)
+            await redis.publish("app-a:sse:42", "[1]")
+            await broker.publish("42", {"ok": True}, event="after")
+            frame = await _first_frame(frames, timeout=2.0)
+
+        assert b"event: after" in frame
+        assert b'"ok": true' in frame
+        assert not task.done()
+        skipped = [r for r in caplog.records if "undeliverable" in r.getMessage()]
+        assert len(skipped) == 2
+        assert all(poison not in r.getMessage() for r in skipped if poison != "[1]")
+
+        await broker.aclose()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
+class TestChannelPrefixIsolation:
+    """Redis pub/sub ignores the DB index; the prefix is the namespace."""
+
+    async def _pair_on_one_server(
+        self,
+    ) -> tuple[fakeredis_async.FakeRedis, fakeredis_async.FakeRedis]:
+        """Return two clients on separate DB indexes of one fake server.
+
+        Returns:
+            tuple[fakeredis_async.FakeRedis, fakeredis_async.FakeRedis]:
+            Clients on DB 0 and DB 1 that share the pub/sub bus.
+        """
+        server = fakeredis.FakeServer()
+        return (
+            fakeredis_async.FakeRedis(server=server, db=0, decode_responses=True),
+            fakeredis_async.FakeRedis(server=server, db=1, decode_responses=True),
+        )
+
+    async def test_distinct_prefixes_do_not_cross_deliver(self) -> None:
+        """Neither ``publish`` nor ``broadcast`` leaks into the other service."""
+        redis_a, redis_b = await self._pair_on_one_server()
+        service_a = SSEBroker(
+            redis=redis_a, heartbeat_seconds=None, channel_prefix="app-a:sse"
+        )
+        service_b = SSEBroker(
+            redis=redis_b, heartbeat_seconds=None, channel_prefix="app-b:sse"
+        )
+        task_a = asyncio.create_task(service_a.run())
+        task_b = asyncio.create_task(service_b.run())
+        async with asyncio.timeout(10.0):
+            while await redis_a.pubsub_numpat() < 2:
+                await asyncio.sleep(0.01)
+
+        own = service_b.register("42")
+        own_frames = own.stream()
+        foreign = service_a.register("42")
+        foreign_frames = foreign.stream()
+
+        await service_a.publish("42", "a-private", event="a")
+        await service_a.broadcast("a-maintenance", event="notice")
+        await service_b.publish("42", "b-private", event="b")
+
+        frame = await _first_frame(own_frames, timeout=2.0)
+        assert b"data: b-private" in frame
+        with pytest.raises(asyncio.TimeoutError):
+            await _first_frame(own_frames, timeout=0.3)
+
+        received_by_a = [
+            await _first_frame(foreign_frames, timeout=2.0),
+            await _first_frame(foreign_frames, timeout=2.0),
+        ]
+        assert b"data: a-private" in received_by_a[0]
+        assert b"data: a-maintenance" in received_by_a[1]
+        with pytest.raises(asyncio.TimeoutError):
+            await _first_frame(foreign_frames, timeout=0.3)
+
+        for broker, task in ((service_a, task_a), (service_b, task_b)):
+            await broker.aclose()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    def test_default_prefix_with_redis_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The shared default is allowed but never silent in Redis mode."""
+        redis = fakeredis_async.FakeRedis(decode_responses=True)
+        with caplog.at_level(logging.WARNING, logger="tempest_fastapi_sdk.sse.broker"):
+            SSEBroker(redis=redis, heartbeat_seconds=None)
+            SSEBroker(redis=redis, heartbeat_seconds=None, channel_prefix="sse")
+        warnings = [r for r in caplog.records if "channel_prefix" in r.getMessage()]
+        assert len(warnings) == 2
+
+    def test_unique_prefix_or_memory_mode_does_not_warn(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Only the Redis + shared-default combination is flagged."""
+        redis = fakeredis_async.FakeRedis(decode_responses=True)
+        with caplog.at_level(logging.WARNING, logger="tempest_fastapi_sdk.sse.broker"):
+            SSEBroker(redis=redis, heartbeat_seconds=None, channel_prefix="app-a:sse")
+            SSEBroker(heartbeat_seconds=None)
+        assert [r for r in caplog.records if "channel_prefix" in r.getMessage()] == []

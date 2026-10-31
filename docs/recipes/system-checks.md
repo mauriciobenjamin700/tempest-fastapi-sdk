@@ -212,7 +212,7 @@ regras no método `production_violations()`:
 | `ServerSettings` | `SERVER_DEBUG=true`, `SERVER_RELOAD=true` |
 | `DatabaseSettings` | `DATABASE_URL` com dialeto `sqlite` |
 | `JWTSettings` | `JWT_SECRET` igual ao default declarado no mixin |
-| `CORSSettings` | `"*"` em `CORS_ORIGINS` |
+| `CORSSettings` | `"*"` em `CORS_ORIGINS`; com `CORS_ALLOW_CREDENTIALS=true`, também `"null"` em `CORS_ORIGINS` e um `CORS_ORIGIN_REGEX` que casa com uma origem reservada `.invalid` (`.*`, `https://.*`; regex parcialmente ancorado como `https://.*example\.com` não é detectado) — o Starlette devolve a própria `Origin` do chamador com `Access-Control-Allow-Credentials: true` |
 | `TokenSettings` | `TOKEN_SECRET` vazio (desliga o `X-Token`) |
 | `TaskIQSettings` | `TASKIQ_BROKER_URL` vazio (cai no broker em memória) |
 | `StorageSettings` | chaves `minioadmin` do default, `STORAGE_SECURE=false` (exceto bucket privado atrás de endpoint público HTTPS — veja [Storage](storage.md#bucket-privado-atras-de-https)), `STORAGE_PUBLIC_SECURE=false` explícito |

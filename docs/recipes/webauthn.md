@@ -309,13 +309,14 @@ O endpoint de delete não impede remover a última credencial. Se uma senha aind
 
 Uma passkey entra sem a senha e sem o segundo fator. Se alguém segurou a conta
 por um tempo e cadastrou uma, revogar as sessões não basta: a passkey continua
-entrando depois que o dono recupera a conta. Por isso os dois fluxos de
+entrando depois que o dono recupera a conta. Por isso os fluxos de
 recuperação apagam **todas** as passkeys do usuário, na mesma transação:
 
 | Fluxo | Apaga as passkeys? | Saída explícita |
 | --- | --- | --- |
 | `confirm_password_reset` (e `POST /auth/password-reset/confirm`) | sim | `revoke_passkeys=False` |
 | `mfa_reset` (e `tempest user mfa-reset`) | sim | `revoke_passkeys=False` / `--keep-passkeys` |
+| `tempest user set-password` (troca feita pelo operador) | sim | `--keep-passkeys` |
 | `change_password` (usuário autenticado, com a senha atual) | não | — |
 | `mfa_disable` (usuário autenticado, com senha e código) | não | — |
 

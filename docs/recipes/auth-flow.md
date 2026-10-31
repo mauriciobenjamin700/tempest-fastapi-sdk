@@ -193,7 +193,7 @@ uv run tempest db upgrade
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + revoga as sessões + emite JWT pair. Com MFA inscrito na conta, responde o desafio (`mfa_required=true` + `mfa_token`) em vez do par — conclua em `/auth/mfa/verify`. |
-| POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual + grava a nova. Sem token de e-mail. |
+| POST | `/auth/password-change` | `PasswordChangeSchema` → `LoginResponseSchema` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual (e o `code` numa conta com MFA) + grava a nova. Sem token de e-mail. |
 | POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Autenticado.** Confirma a senha atual + envia link de confirmação pro **novo** e-mail. Sempre 202. |
 | POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consome o token + aplica o novo e-mail + (opcional) avisa o e-mail antigo. |
 | POST | `/auth/email-verify/request` *(v0.92.0+)* | — → `EmailChangeResponseSchema` | **Autenticado.** Reenvia link de verificação pro e-mail **atual**. |
@@ -214,8 +214,9 @@ uv run tempest db upgrade
     - **`/auth/password-change`** — o usuário **lembra** a senha e está
       **logado**. Manda o `access_token` no header `Authorization:
       Bearer …` e reconfirma a `current_password`. Não envolve e-mail
-      nem token de reset. Retorna **204** e os tokens atuais continuam
-      válidos.
+      nem token de reset. Responde **200**: todas as sessões são
+      revogadas e quem chamou recebe um par novo (ou, numa conta com MFA
+      sem `code`, o desafio do login).
 
 ### Sistema fechado — sem porta de cadastro *(v0.272.0+)*
 
@@ -420,11 +421,15 @@ catalog=default_message_catalog())` ele sai traduzido (`Conflito de recurso`),
 e `code`, `details` e `field` não mudam.
 
 !!! warning "Coluna protegida nunca vem do corpo"
-    `id`, `email`, `hashed_password`, `is_active`, `is_admin` e
-    `email_verified_at` (`SIGNUP_PROTECTED_FIELDS`) são do SDK. Um `signup_schema` com um campo
-    `is_admin` não promove ninguém: a rota descarta esses nomes antes de
-    gravar. Chamando o service direto, `signup(fields={"is_admin": True})`
-    levanta `ValueError`.
+    `id`, `email`, `hashed_password`, `is_active`, `is_admin`,
+    `email_verified_at` e as colunas do `MFAMixin` (`totp_secret`,
+    `totp_enabled_at`, `totp_last_step`) — o `SIGNUP_PROTECTED_FIELDS` — são
+    do SDK, e toda coluna que o seu model declara em `__secret_columns__`
+    entra junto (`service.signup_protected_fields()` devolve o conjunto do
+    seu model). Um `signup_schema` com um campo `is_admin` não promove
+    ninguém, e um com `totp_enabled_at` não liga fator nenhum: a rota
+    descarta esses nomes antes de gravar. Chamando o service direto,
+    `signup(fields={"is_admin": True})` levanta `ValueError`.
 
 Anote o hook com as **suas** classes — o model concreto e o schema concreto —
 como acima: é o que faz `payload.accept_terms` passar no type-checker do seu
@@ -1251,12 +1256,50 @@ curl -X POST localhost:8000/auth/password-change \
   -d '{"current_password": "senha-atual", "new_password": "nova-senha-forte-12"}'
 ```
 
-Retorna **204** e **revoga as sessões** do usuário na mesma transação que
-grava a senha nova, como o reset: refresh token emitido antes da troca —
-inclusive o de quem chamou — deixa de ser trocável, e o cookie de sessão
-das [páginas de auth](auth-pages.md) também cai. O access token atual vale
-até o TTL curto acabar; a próxima sessão começa no login.
-`current_password` errada → **401**. Chamando o service direto,
+**Revoga as sessões** do usuário na mesma transação que grava a senha
+nova, como o reset: refresh token emitido antes da troca — inclusive o de
+quem chamou — deixa de ser trocável, e o cookie de sessão das
+[páginas de auth](auth-pages.md) também cai. Para o dispositivo que trocou
+a senha continuar logado, a resposta é **200** com um **par novo**
+(até a 0.335.0 era `204` sem corpo — veja o
+[guia de migração](../migration.md)), emitido depois da revogação — é o único refresh token que
+sobra:
+
+```json
+{
+  "user_id": "7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab",
+  "access_token": "eyJhbGciOi…",
+  "refresh_token": "Zm9vYmFy…",
+  "mfa_required": false,
+  "mfa_token": null
+}
+```
+
+Guarde os dois e descarte os antigos. Quem se autenticou pelo cookie de
+acesso recebe o par em cookies, e o corpo traz só o `user_id`.
+`current_password` errada → **401**, sem par.
+
+A regra é: a rota **nunca** devolve uma sessão mais forte do que o
+`/auth/login` devolveria para as mesmas provas. A senha atual prova só o
+primeiro fator, então numa conta **com MFA**:
+
+| Corpo | O que acontece |
+| --- | --- |
+| sem `code` | A senha muda e as sessões caem; a resposta é o desafio do login (`mfa_required: true`, `mfa_token`), sem par. Complete em `POST /auth/mfa/verify` como depois do login |
+| `code` válido (TOTP ou recovery code) | O código é gasto antes da troca (o mesmo passo TOTP não vale duas vezes); a senha muda e vem um par com `amr == ["pwd", "otp"]` |
+| `code` errado | **401**: nada muda, nem a senha nem as sessões |
+
+```bash
+curl -X POST localhost:8000/auth/password-change \
+  -H "Authorization: Bearer eyJhbGciOi…" \
+  -H "Content-Type: application/json" \
+  -d '{"current_password": "senha-atual", "new_password": "nova-senha-forte-12", "code": "123456"}'
+```
+
+O `amr` do access token atual **não** é copiado para o par novo: numa conta
+sem MFA o par sai com `["pwd"]` (ou os métodos do token que não são segundo
+fator), e o segundo fator só aparece quando um `code` foi provado nesta
+requisição. Chamando o service direto,
 `change_password(..., revoke_sessions=False)` é a saída explícita. As
 passkeys ficam: quem chama acabou de provar a senha atual, então não é
 recuperação de conta.

@@ -2,6 +2,32 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.336.0 — security fixes (real time)
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `SSEBroker` with Redis | With the default `channel_prefix` `"sse"`, construction logs a `WARNING`: Redis pub/sub ignores the DB index, and another service on the same instance with the same prefix exchanges events with this one | Pass a service-specific `channel_prefix` (`"orders-api:sse"`) on every worker at once — workers with different prefixes do not see each other |
+| Web Push subscription (`WebPushSubscriptionService.subscribe`, `make_web_push_router`, `web` registration on `make_push_router`) | An endpoint that is or resolves to a non-public address answers `422 PUSH_ENDPOINT_NOT_PUBLIC` and is not stored; `send_many` returns for pruning a previously stored endpoint that is not `https` or whose host is a non-public IP literal | Nothing, if the push service is public. Self-hosted push service on the internal network: `allow_private_networks=True` on the `WebPushDispatcher` opens subscription and delivery together |
+
+## 0.336.0 — `password-change` returns a fresh pair, `set-password` deletes passkeys
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `POST /auth/password-change` | Answers **200** with `LoginResponseSchema` instead of `204` with no body, and the body takes an optional `code`. Account without MFA: a fresh pair, issued after every session is revoked (in cookies for a caller that authenticated with the access cookie). Account with MFA and no `code`: the password changes and the response is the login challenge (`mfa_required: true`, `mfa_token`), with no pair. With a valid `code`: a pair with an MFA `amr`; a wrong `code`: **401** and nothing changes | Bearer client: store the response's pair and drop the old one; on an MFA account, send the `code` along or handle `mfa_required` as at login. A client that treated any `2xx` as success does not break, but still gets signed out when the access token's TTL ends unless it stores the pair |
+| `tempest user set-password` | Deletes the user's WebAuthn passkeys in the same transaction when it finds the table (`--webauthn-credential-model`, default `src.db.models:UserWebAuthnCredentialModel`) | `--keep-passkeys` keeps the old behaviour; tell the user they register their passkey again |
+| `signup(fields=...)` and `signup_schema` | `totp_secret`, `totp_enabled_at`, `totp_last_step` and every `__secret_columns__` column of the user model are refused (`ValueError` in the service, dropped by the route) | Nothing for the MFA columns, which only the enrollment flow writes. If your signup writes a `__secret_columns__` column of your own, move that write to `on_signup` |
+| `IntrospectionAuth` | New `audiences=`; without it, one `WARNING` per instance at construction | Pass `audiences=` with the service's client id at the provider. See [Bind the token to this service](recipes/introspection-auth.md#bind-the-token-to-this-service-audiences) |
+
+## 0.336.0 — CORS, storage, text search and Stripe
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `CORSSettings` with `ENV=production` | With `CORS_ALLOW_CREDENTIALS=true`, `"null"` in `CORS_ORIGINS` or a `CORS_ORIGIN_REGEX` that matches a `.invalid` origin (`.*`, `https://.*`) stop the boot, as `"*"` already did | List the frontend origins in `CORS_ORIGINS`, or anchor the regex to your domain |
+| `accel_redirect_response`, `serve_object(accel_redirect=True)` | A `media_type` outside `type/subtype` (parameter, comma, CR/LF) raises `ValueError`, as in `presigned_get_url`; `text/plain; charset=utf-8` is no longer accepted on this path | Pass the type without parameters (`text/plain`) |
+| Text search (`search`, `search_condition`, `full_text_search`) | `hashed_password` and the `__secret_columns__` answer `422`; the message becomes `... has no searchable column ...`, and `details["allowed"]` only appears when the repository declares `searchable_columns` | If the search takes the field from the request, declare `searchable_columns` on the repository |
+| `StripeClient` | `create`, `retrieve`, `update` and `delete` raise `StripeObjectMismatchError` when the response's `object` is not the resource's | Handle it where you handle `StripeError` today (it is a subclass) |
+| `ps_single_quote` (hostbridge) | Also doubles the typographic quotes U+2018–U+201B | Nothing |
+
 ## 0.335.0 — `BaseUserModel` gains the `email_verified_at` column
 
 `BaseUserModel` now maps `email_verified_at` (timezone-aware timestamp,

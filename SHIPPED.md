@@ -1650,6 +1650,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   declara `AdminAuthBackend[BaseUserModel]`. Runtime intocado; `mypy --strict`
   passa a exigir o parâmetro em subclasse de consumidor
   (`disallow_any_generics`), o que o guia de migração cobre com a linha exata.
+- **Segunda rodada de segurança (v0.336.0)** — os 7 achados
+  `needs_validation` da auditoria de 2026-10-29 ganharam conserto do lado do
+  SDK e as issues #659–#663 foram fechadas: guard de produção do CORS cobre
+  `"null"` e regex aberto com credenciais, `accel_redirect` valida o
+  `media_type`, a busca textual exclui colunas secretas e ganha
+  `searchable_columns`, `StripeObjectMismatchError`, `set-password` apaga
+  passkeys, `/auth/password-change` responde `200` (par, ou o desafio do
+  login em conta com MFA sem `code`), `SIGNUP_PROTECTED_FIELDS` cobre o TOTP,
+  `IntrospectionAuth(audiences=)`, `SSEBroker` sobrevive a mensagem malformada,
+  inscrição Web Push recusa endpoint interno (`PUSH_ENDPOINT_NOT_PUBLIC`) e
+  `ps_single_quote` dobra as aspas tipográficas. Defaults trocados em
+  `docs/migration.md` (seções 0.336.0).
 - **Release de segurança da auditoria (v0.335.0)** — 45 achados confirmados
   da auditoria completa de 2026-10-29 (artefatos fora do repo, em
   `~/security-audit-skill/tempest-fastapi-sdk/run-1`), mais três itens que o
@@ -3966,3 +3978,15 @@ obrigatório em `text` e status sem `update`.
 - Testes: `tests/integrations/messaging/zap/test_inbox.py`.
 - Fora de escopo: decidir a resposta (regra do consumidor) e baixar mídia
   (continua `client.get_message_media`).
+
+## Parcelas do cartão no Mercado Pago, v0.337.0 (2026-10-30)
+
+Issue #502, segunda metade. A trava de "só 1x" da vendedora de teste era o
+BIN do Visa de teste, não a conta: o Amex de teste parcela de 1x a 18x, e uma
+cobrança 3x de R$ 1.000,00 foi medida (`vendor/mercadopago-evidence.md` §10).
+`CardCharge` ganhou `installment_amount_cents` e `payer_total_cents` (o
+`paid_amount` do pagamento, juros incluídos); `CardChargeRequest.amount_cents`
+passou a documentar o que o provedor faz — recebe o preço e soma os juros. A
+mesma seção registra a conta real liberada para Orders e o shape mínimo do
+`transaction-intents` em modo de teste (#499, ainda sem `PayoutProvider`).
+

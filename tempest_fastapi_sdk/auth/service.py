@@ -153,6 +153,9 @@ SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
         "is_active",
         "is_admin",
         "email_verified_at",
+        "totp_secret",
+        "totp_enabled_at",
+        "totp_last_step",
     }
 )
 """User columns ``signup(fields=...)`` refuses to set.
@@ -160,10 +163,16 @@ SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
 The service owns each of them: ``email`` is normalized and checked for
 duplicates, ``hashed_password`` comes from the policy-checked password,
 ``is_active`` from ``AUTH_AUTO_ACTIVATE``, ``email_verified_at`` from a
-confirmed mailed link. ``is_admin`` and ``id`` are never something a
-sign-up form decides. ``make_auth_router`` drops them
-from a ``signup_schema`` before forwarding, so a schema field named
-``is_admin`` cannot reach the row.
+confirmed mailed link, and the :class:`~tempest_fastapi_sdk.MFAMixin`
+columns (``totp_secret``, ``totp_enabled_at``, ``totp_last_step``) from the
+enrollment flow, which proves the authenticator holds the secret before the
+factor turns on. ``is_admin`` and ``id`` are never something a sign-up form
+decides. On top of this set, every column the user model declares in
+``__secret_columns__`` (:meth:`~tempest_fastapi_sdk.BaseModel.get_secret_columns`)
+is refused too, so a credential column a project adds is covered without
+editing this list. ``make_auth_router`` drops them from a ``signup_schema``
+before forwarding, so a schema field named ``is_admin`` cannot reach the
+row.
 """
 
 
@@ -394,8 +403,9 @@ class UserAuthService:
                 product fill a ``NOT NULL`` column the SDK does not know
                 about (a phone, a document). Each key must be a mapped
                 column of ``user_model`` outside
-                :data:`SIGNUP_PROTECTED_FIELDS`. ``None`` (default) sets
-                nothing extra.
+                :data:`SIGNUP_PROTECTED_FIELDS` and the model's
+                ``__secret_columns__``. ``None`` (default) sets nothing
+                extra.
 
         Returns:
             tuple[BaseUserModel, ActivationToken | ActivationWithheld | None]:
@@ -485,7 +495,7 @@ class UserAuthService:
         """Return the ``user_model`` columns ``signup(fields=...)`` accepts.
 
         Every mapped column attribute, minus
-        :data:`SIGNUP_PROTECTED_FIELDS`. ``make_auth_router`` uses it to
+        :meth:`signup_protected_fields`. ``make_auth_router`` uses it to
         forward only those fields of a ``signup_schema`` that are columns,
         leaving the rest (a terms checkbox, a captcha answer) to
         ``on_signup``.
@@ -494,7 +504,21 @@ class UserAuthService:
             frozenset[str]: The assignable column attribute names.
         """
         columns = {attribute.key for attribute in inspect(self.user_model).column_attrs}
-        return frozenset(columns - SIGNUP_PROTECTED_FIELDS)
+        return frozenset(columns - self.signup_protected_fields())
+
+    def signup_protected_fields(self) -> frozenset[str]:
+        """Return the ``user_model`` columns ``signup(fields=...)`` refuses.
+
+        :data:`SIGNUP_PROTECTED_FIELDS` plus every column the model declares
+        in ``__secret_columns__`` along its MRO
+        (:meth:`~tempest_fastapi_sdk.BaseModel.get_secret_columns`): a
+        column the project marks as a secret is a credential, and a sign-up
+        form never decides a credential.
+
+        Returns:
+            frozenset[str]: The protected column names.
+        """
+        return SIGNUP_PROTECTED_FIELDS | self.user_model.get_secret_columns()
 
     def _check_signup_fields(self, fields: Mapping[str, Any]) -> None:
         """Refuse ``signup(fields=...)`` keys the service will not set.
@@ -505,7 +529,7 @@ class UserAuthService:
         Raises:
             ValueError: When a key is protected or not a column.
         """
-        protected = sorted(set(fields) & SIGNUP_PROTECTED_FIELDS)
+        protected = sorted(set(fields) & self.signup_protected_fields())
         if protected:
             raise ValueError(
                 f"signup(fields=...) cannot set protected columns: {protected}"
@@ -1599,8 +1623,8 @@ class UserAuthService:
         same transaction (:meth:`revoke_user_sessions`), as in
         :meth:`confirm_password_reset`: a refresh token minted before the
         change no longer rotates. That includes the caller's own refresh
-        token — the access token it holds lives until its short TTL ends,
-        and the next session starts at login.
+        token; the bundled ``POST /auth/password-change`` issues the caller
+        a fresh pair after this returns, in the same transaction.
 
         Passkeys are kept: the caller is authenticated and just proved the
         current password, so this is not account recovery. Only the

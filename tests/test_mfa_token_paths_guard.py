@@ -86,6 +86,12 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "rotates an existing session and repeats the amr stored on it",
     ),
     "refresh_cookie": ("rotation", "same as /refresh, from the refresh cookie"),
+    "password_change": (
+        "gated",
+        "the current password proves the first factor only; an MFA account "
+        "without a code in the body gets the /login challenge, and with one "
+        "the code is spent by reauthenticate before the pair (#662)",
+    ),
     "mfa_confirm": (
         "completes-mfa",
         "the request proves a fresh TOTP code; issues with MFA_AMR",
@@ -371,3 +377,34 @@ def make_auth_router(service, session_dep):
     found = violations(issuing_paths(source))
     assert len(found) == 1
     assert found[0].startswith("mfa_verify: completes MFA but issues through")
+
+
+UNGATED_PASSWORD_CHANGE: str = """
+def make_auth_router(service, session_dep):
+    async def password_change(payload, session=session_dep, user=None, claims=None):
+        user = await service.change_password(
+            session,
+            user=user,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+        )
+        access, refresh = await _issue_pair(session, user, token_amr(claims))
+        await session.commit()
+        return LoginResponseSchema(
+            user_id=user.id, access_token=access, refresh_token=refresh
+        )
+"""
+"""``/password-change`` reissuing the pair with the caller's ``amr`` (#662 draft).
+
+The current password alone would mint a pair for an MFA account, and the
+copied ``amr`` would claim a factor this request never proved.
+"""
+
+
+def test_guard_fires_on_a_password_change_that_skips_the_factor() -> None:
+    """The draft shape of #662 is flagged: it issues without the MFA branch."""
+    found = violations(issuing_paths(UNGATED_PASSWORD_CHANGE))
+    assert found == [
+        "password_change: listed as gated but issues without first "
+        "returning from an `if service.is_mfa_enrolled(...)` branch"
+    ]

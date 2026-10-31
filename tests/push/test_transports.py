@@ -27,7 +27,10 @@ from tempest_fastapi_sdk import (
     WebPushSubscriptionSchema,
     WebPushTransport,
 )
-from tempest_fastapi_sdk.webpush.dispatcher import WebPushError
+from tempest_fastapi_sdk.webpush.dispatcher import (
+    WebPushEndpointRefusedError,
+    WebPushError,
+)
 
 firebase_admin = pytest.importorskip(
     "firebase_admin", reason="needs the optional [firebase] extra"
@@ -115,6 +118,30 @@ class TestWebPushTransport:
         """A 500 from the push service must not delete the device."""
         transport = WebPushTransport(
             _StubWebPushDispatcher(WebPushError("boom", status_code=500))
+        )
+
+        with pytest.raises(PushError) as error:
+            await transport.send(WEB_DEVICE, PushPayloadSchema(title="Hi"))
+
+        assert not isinstance(error.value, PushDeviceGoneError)
+
+    async def test_permanent_egress_refusal_prunes_the_device(self) -> None:
+        """An internal IP-literal endpoint can never be delivered to."""
+        transport = WebPushTransport(
+            _StubWebPushDispatcher(
+                WebPushEndpointRefusedError("refused", permanent=True)
+            )
+        )
+
+        with pytest.raises(PushDeviceGoneError):
+            await transport.send(WEB_DEVICE, PushPayloadSchema(title="Hi"))
+
+    async def test_dns_egress_refusal_stays_retryable(self) -> None:
+        """A refusal decided by a DNS answer must not delete the device."""
+        transport = WebPushTransport(
+            _StubWebPushDispatcher(
+                WebPushEndpointRefusedError("refused", permanent=False)
+            )
         )
 
         with pytest.raises(PushError) as error:

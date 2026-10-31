@@ -34,6 +34,7 @@ box.
 from __future__ import annotations
 
 import ipaddress
+import re
 import warnings
 from collections.abc import Mapping
 from datetime import timedelta
@@ -130,6 +131,18 @@ _PLACEHOLDER_EMAIL_SUFFIXES: tuple[str, ...] = (
     ".test",
 )
 """Reserved top-level domains (RFC 2606 / RFC 6761) refused as sender domain."""
+
+_CORS_PROBE_ORIGINS: tuple[str, ...] = (
+    "https://tempest-cors-probe.invalid",
+    "http://tempest-cors-probe.invalid",
+)
+"""Origins no deployment trusts, used to test ``CORS_ORIGIN_REGEX``.
+
+``.invalid`` is reserved by RFC 2606, so a regex that fully matches one of
+these accepts origins its author never listed (``.*``, ``https://.*``).
+Starlette's ``CORSMiddleware`` matches the regex with ``fullmatch`` and,
+with credentials allowed, echoes the matched ``Origin`` back.
+"""
 
 AUTH_EMAIL_LINK_FIELDS: tuple[str, ...] = (
     "AUTH_ACTIVATION_URL_TEMPLATE",
@@ -971,9 +984,16 @@ class CORSSettings(BaseAppSettings):
         The default ``CORS_ORIGINS=["*"]`` is permissive on purpose
         so local development works out of the box. **Never** ship
         this default to production — set ``CORS_ORIGINS`` to the
-        explicit list of trusted frontend origins. ``"*"`` is also
-        incompatible with ``CORS_ALLOW_CREDENTIALS=True`` (browsers
-        ignore credentialed requests sent to a wildcard origin).
+        explicit list of trusted frontend origins. Do not combine
+        ``"*"`` with ``CORS_ALLOW_CREDENTIALS=True``: Starlette's
+        ``CORSMiddleware`` then answers every request with the caller's
+        own ``Origin`` plus ``Access-Control-Allow-Credentials: true``,
+        so every site may make credentialed reads. With ``ENV=production``
+        (:class:`EnvironmentSettings`) the settings refuse to build in
+        that case, and also when credentials are allowed together with a
+        ``CORS_ORIGIN_REGEX`` that accepts arbitrary origins or with the
+        ``"null"`` origin. Development and test builds keep accepting the
+        pair.
 
     Each attribute below is also the name of the environment variable
     that sets it (matched case-sensitively, no prefix).
@@ -1025,8 +1045,9 @@ class CORSSettings(BaseAppSettings):
         title="Allow credentials cross-origin",
         description=(
             "Whether the browser may attach cookies / auth headers to "
-            "cross-origin requests. Cannot be ``True`` with "
-            '``CORS_ORIGINS=["*"]``.'
+            'cross-origin requests. With ``CORS_ORIGINS=["*"]`` Starlette '
+            "echoes every request ``Origin`` with credentials allowed; "
+            "``ENV=production`` refuses that pair."
         ),
         examples=[False, True],
     )
@@ -1060,17 +1081,49 @@ class CORSSettings(BaseAppSettings):
     )
 
     def production_violations(self) -> list[str]:
-        """Refuse the wildcard origin in production.
+        """Refuse wildcard and credential-reflecting origins in production.
+
+        With ``CORS_ALLOW_CREDENTIALS=True``, Starlette's ``CORSMiddleware``
+        answers an accepted origin with that exact ``Origin`` plus
+        ``Access-Control-Allow-Credentials: true``. Any rule that accepts
+        origins nobody listed therefore hands credentialed cross-origin
+        reads to arbitrary sites: ``"*"`` in ``CORS_ORIGINS``, a
+        ``CORS_ORIGIN_REGEX`` that fully matches a reserved ``.invalid``
+        probe origin (:data:`_CORS_PROBE_ORIGINS`), and the ``"null"``
+        origin that sandboxed iframes and ``data:`` documents send. A
+        regex that does not compile is left to the middleware, which
+        raises on it.
 
         Returns:
-            list[str]: The parent's entries plus one when
-            ``CORS_ORIGINS`` contains ``"*"``.
+            list[str]: The parent's entries plus one per offending rule.
         """
         violations: list[str] = super().production_violations()
         if "*" in self.CORS_ORIGINS:
             violations.append(
                 'CORS_ORIGINS: contains "*" (list the trusted frontend origins)'
             )
+        if not self.CORS_ALLOW_CREDENTIALS:
+            return violations
+        if "*" in self.CORS_ORIGINS:
+            violations.append(
+                'CORS_ALLOW_CREDENTIALS: true with "*" in CORS_ORIGINS '
+                "(every origin is echoed back with credentials)"
+            )
+        if "null" in self.CORS_ORIGINS:
+            violations.append(
+                'CORS_ALLOW_CREDENTIALS: true with "null" in CORS_ORIGINS '
+                "(any sandboxed document sends that origin)"
+            )
+        if self.CORS_ORIGIN_REGEX:
+            try:
+                pattern: re.Pattern[str] = re.compile(self.CORS_ORIGIN_REGEX)
+            except re.error:
+                return violations
+            if any(pattern.fullmatch(origin) for origin in _CORS_PROBE_ORIGINS):
+                violations.append(
+                    "CORS_ALLOW_CREDENTIALS: true with a CORS_ORIGIN_REGEX "
+                    "that accepts arbitrary origins (anchor it to your domains)"
+                )
         return violations
 
 

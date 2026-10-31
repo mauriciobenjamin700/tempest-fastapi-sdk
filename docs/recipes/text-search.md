@@ -91,6 +91,56 @@ async def find_by_author(
     )
 ```
 
+### Campos escolhidos pela requisição
+
+Buscar é um oráculo sobre a coluna buscada: quais linhas voltam diz, linha a
+linha, se o valor contém o termo. Por isso `search()`,
+`search_condition()`, `full_text_search()` e `full_text_condition()`
+**sempre** recusam `hashed_password` e as colunas que o model declara em
+`__secret_columns__`, com `422`. Quando `fields` vem de um query parameter,
+declare também quais colunas a busca pode nomear — o mesmo formato do
+`orderable_columns`:
+
+```python
+from typing import ClassVar
+
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository
+
+
+class ArticleRepository(BaseRepository[ArticleModel]):
+    """Repositório de artigos com a busca restrita a três colunas."""
+
+    searchable_columns: ClassVar[frozenset[str] | None] = frozenset(
+        {"title", "body", "author"}
+    )
+
+
+async def find(
+    articles: ArticleRepository,
+    term: str,
+    fields: list[str],
+) -> list[ArticleModel]:
+    """Busca nas colunas que o cliente pediu, dentro do conjunto declarado.
+
+    Args:
+        articles (ArticleRepository): Repositório de artigos.
+        term (str): O termo digitado.
+        fields (list[str]): As colunas vindas da query string.
+
+    Returns:
+        list[ArticleModel]: Os artigos encontrados.
+    """
+    return await articles.search(term, fields=fields)
+```
+
+Uma coluna fora do conjunto vira `ValidationException` (`422`) com
+`details={"field": <nome>, "allowed": [...]}`, e `allowed` lista só o
+conjunto declarado. Sem conjunto declarado, `details` traz só o `field`: a
+recusa nunca publica a lista de colunas do model. O construtor também aceita
+`searchable_columns=`, e declarar uma coluna que o model não mapeia ou uma
+coluna secreta falha na construção, com `ValueError`.
+
 ## Paginando uma busca
 
 `search()` devolve uma lista. Para paginar e contar, peça a **condição** e
@@ -269,5 +319,7 @@ def can_rank(articles: BaseRepository[ArticleModel]) -> bool:
 - `full_text_search()` — radicaliza, aceita a sintaxe do usuário, ordena
   por relevância no PostgreSQL; degrada para a camada portátil no resto.
 - `supports_full_text` diz qual das duas você recebeu.
+- `hashed_password` e `__secret_columns__` nunca são buscáveis;
+  `searchable_columns` restringe `fields` quando ele vem da requisição.
 - `TextSearchLanguage`, `TextSearchWeight` e `TokenMatch` são enums: nada
   de string mágica no call site.

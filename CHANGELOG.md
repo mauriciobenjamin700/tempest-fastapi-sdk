@@ -16,6 +16,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   consumidor com `arg-type`. Em runtime nada muda: o `CHECK` preso ao tipo
   continua omitido com `None`, que o renderer do Alembic descarta.
 
+## [0.337.0] — 2026-10-30
+
+### Added
+
+- `CardCharge.installment_amount_cents` e `CardCharge.payer_total_cents`: a
+  parcela e o total que o pagador deve, com juros. O adapter do Mercado Pago
+  lê `payment_method.installment_amount` e o `paid_amount` do pagamento
+  (não o `total_paid_amount` da order, que arredonda a oferta um centavo
+  abaixo). Valor ausente ou ilegível vira `None`, nunca recusa a order.
+
+### Fixed
+
+- `CardChargeRequest.amount_cents` documentava o valor da oferta de parcelas;
+  é o preço, e o provedor soma os juros (medido com 3x de R$ 1.000,00 no
+  Amex de teste). A receita do Mercado Pago dizia que as parcelas dependiam
+  da conta: dependem do BIN e do valor.
+
+## [0.336.0] — 2026-10-30
+
+### Security
+
+- `CORSSettings.production_violations()` passa a recusar, com
+  `CORS_ALLOW_CREDENTIALS=true`: `"*"` em `CORS_ORIGINS` (agora com mensagem própria), `"null"` em
+  `CORS_ORIGINS` e um `CORS_ORIGIN_REGEX` que casa com uma origem reservada
+  `.invalid` (`.*`, `https://.*`). Com credenciais ligadas, o
+  `CORSMiddleware` do Starlette devolve a própria `Origin` do chamador com
+  `Access-Control-Allow-Credentials: true`. Vale só sob `ENV=production`;
+  desenvolvimento e teste continuam aceitando o par. Docstrings do
+  `CORSSettings` e o `hint` do check `security.W003` deixam de afirmar que o
+  navegador bloqueia `*` com credenciais.
+- `AsyncMinIOClient.accel_redirect_response` (e `serve_object` com
+  `accel_redirect=True`) monta os overrides `response-*` pelo mesmo
+  `download_overrides` do `presigned_get_url`: o `media_type=` precisa ser um
+  `tipo/subtipo` puro, e qualquer outro valor sobe `ValueError` antes de
+  assinar. Mudança de comportamento: um `media_type` com parâmetro (`;
+  charset=...`) passa a ser recusado nesse caminho, como já era no link
+  presignado. O `inline` (em todo helper de download) deixa de valer para um
+  tipo com vírgula ou quebra de linha, que o navegador pode ler como outro
+  tipo.
+- Busca textual (`BaseRepository.search`, `search_condition`,
+  `full_text_search`, `full_text_condition` e as funções de `db.search`)
+  passa a recusar sempre `hashed_password` e as colunas de
+  `__secret_columns__` com `422`. Novo `searchable_columns` no
+  `BaseRepository` (atributo de classe ou argumento do construtor, no formato
+  do `orderable_columns`) e novo `searchable=` em `resolve_search_column`,
+  `like_search_condition`, `full_text_condition` e `full_text_rank`
+  restringem `fields` a um conjunto declarado. A recusa de campo
+  desconhecido deixa de listar todas as colunas do model em
+  `details["allowed"]`: a chave só aparece com um conjunto declarado, e
+  lista só ele. Mudança de comportamento: a mensagem passa a ser
+  `... has no searchable column ...`.
+- Stripe: `create`, `retrieve`, `update` e `delete` dos recursos do
+  `StripeClient` conferem o campo `object` da resposta contra o tipo do
+  recurso e levantam o novo `StripeObjectMismatchError` (subclasse de
+  `StripeError`) quando ele difere ou falta. `StripeResource` ganha
+  `object_type=` (default `None`, sem conferência) e `StripeClient.request`
+  ganha `expected_object=`. Mudança de comportamento: um `2xx` de outro tipo
+  de objeto deixa de ser devolvido.
+- `hostbridge.ps_single_quote` dobra também as aspas tipográficas U+2018,
+  U+2019, U+201A e U+201B, que o lexer do PowerShell lê como aspa simples do
+  mesmo jeito que `'` — antes só o apóstrofo ASCII era dobrado. Afeta o script
+  que `HostBridge.pick_file` gera para `title`, `filter` e `initial_dir`.
+- `SSEBroker.run()` isola cada mensagem do pub/sub: payload que não é o
+  envelope do `publish` (não é JSON, não é objeto, `event`/`id`/`retry` com tipo
+  errado) é registrado em `WARNING` — canal e tipo do erro, sem o conteúdo — e
+  pulado. Antes a exceção encerrava o loop e o worker parava de entregar
+  eventos sem aviso.
+- `SSEBroker` com cliente Redis e o `channel_prefix` default `"sse"` registra
+  um `WARNING` na construção: pub/sub do Redis ignora o índice de DB, então
+  serviços na mesma instância com o mesmo prefixo recebem os eventos uns dos
+  outros. O default continua `"sse"` por compatibilidade; a receita de SSE
+  passa a usar um prefixo próprio do serviço.
+- Web Push: `WebPushSubscriptionService.subscribe` (e, por ele, o
+  `POST /subscribe` do `make_web_push_router`) e o registro `web` do
+  `DeviceService.register` / `make_push_router` recusam com
+  `422 PUSH_ENDPOINT_NOT_PUBLIC` o endpoint que o dispatcher recusaria na
+  entrega — não `https`, ou com host que é ou resolve para endereço não
+  público. A checagem é o novo `WebPushDispatcher.check_endpoint`, com o
+  mesmo `resolver` e o mesmo `allow_private_networks` do envio; host que não
+  resolve no momento é aceito. Novos símbolos: `WebPushEndpointRefusedError`
+  (subclasse de `WebPushError`, com `permanent`) e
+  `PushEndpointNotPublicException`. Mudança de comportamento: o
+  `send_many` passa a devolver para poda o endpoint recusado de forma
+  permanente (não `https`, ou IP literal não público), e o
+  `WebPushTransport` o traduz em `PushDeviceGoneError`; recusa decidida por
+  resposta de DNS continua só no log (#660).
+- `tempest user set-password` passa a apagar as passkeys WebAuthn do usuário
+  por padrão, na mesma transação do hash novo, como o `mfa-reset`: a troca
+  feita pelo operador é recuperação de conta. Ganha
+  `--webauthn-credential-model` (default
+  `src.db.models:UserWebAuthnCredentialModel`, usado quando existe) e
+  `--keep-passkeys` como saída explícita; as duas juntas saem com código 2, e
+  a saída diz quantas passkeys foram apagadas (#659). Mudança de
+  comportamento.
+- `POST /auth/password-change` responde **200** com `LoginResponseSchema` em
+  vez de `204`, sem nunca abrir sessão mais forte que o `/auth/login` para as
+  mesmas provas (#662). A troca continua revogando todas as sessões. Conta sem
+  MFA recebe um par novo (em cookies no modo cookie). Conta com MFA: sem o
+  novo campo opcional `code` em `PasswordChangeSchema`, a senha muda e a
+  resposta é o desafio do login (`mfa_required`, `mfa_token`); com `code`
+  válido (TOTP ou recovery code, gasto antes da troca sob o `mfa_throttle`),
+  par com `amr` de MFA; com `code` errado, `401` e nada muda. O segundo
+  fator do `amr` do access token atual nunca é copiado para o par. Mudança de contrato da rota.
+- `SIGNUP_PROTECTED_FIELDS` passa a incluir as colunas do `MFAMixin`
+  (`totp_secret`, `totp_enabled_at`, `totp_last_step`), e o signup recusa
+  também toda coluna que o user model declara em `__secret_columns__`. Novo
+  `UserAuthService.signup_protected_fields()` devolve o conjunto do model; o
+  `signup_schema` do `make_auth_router` descarta esses nomes antes de gravar
+  (#663).
+- `IntrospectionAuth` ganha `audiences=` (keyword-only): com ele, a resposta
+  do `userinfo` precisa nomear um dos valores em `aud` (string ou lista),
+  `azp` ou `client_id`, senão a requisição responde `401` e a resposta não
+  entra no cache. Sem ele o comportamento não muda, e a instância registra um
+  `WARNING` na construção apontando para a receita.
+
 ## [0.335.0] — 2026-10-30
 
 ### Security

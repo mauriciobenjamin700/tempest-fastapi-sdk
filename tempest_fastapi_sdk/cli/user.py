@@ -295,12 +295,15 @@ back empty.
 """
 
 _DEFAULT_WEBAUTHN_CREDENTIAL_MODEL: str = "src.db.models:UserWebAuthnCredentialModel"
-"""Dotted spec ``mfa-reset`` tries when ``--webauthn-credential-model`` is omitted.
+"""Dotted spec ``mfa-reset`` and ``set-password`` try with no passkey flag.
+
+Used when the operator types no ``--webauthn-credential-model``.
 
 The name the WebAuthn recipe gives the table
 ``make_web_authn_credential_model`` builds. Removing the user's passkeys is
-part of the reset — a passkey signs in without the second factor — so it has
-to happen when the operator types nothing. A project without passkeys has
+part of both recoveries — a passkey signs in without the password and
+without the second factor — so it has to happen when the operator types
+nothing. A project without passkeys has
 nothing at this path, which is why the lookup may come back empty.
 """
 
@@ -833,13 +836,19 @@ async def _set_user_password(
     password: str,
     refresh_token_model: type[BaseUserRefreshTokenModel] | None,
     recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
-) -> tuple[str, int] | None:
+    webauthn_credential_model: type[BaseWebAuthnCredentialModel] | None = None,
+) -> tuple[str, int, int] | None:
     """Re-hash one user's password, found by email, and kill its sessions.
 
     The revocation runs inside the same transaction as the new hash, so
     the two land together: a commit that wrote the password but not the
     revocation would leave every stolen refresh token exchangeable
-    against an account whose owner believes it was just secured.
+    against an account whose owner believes it was just secured. With
+    ``webauthn_credential_model`` every passkey of the user is deleted in
+    that same transaction
+    (:meth:`~tempest_fastapi_sdk.UserAuthService.revoke_user_passkeys`):
+    a passkey signs in without the password, so one registered by whoever
+    held the account would survive the rotation.
 
     An account with MFA active (and the ``AUTH_MFA_ENABLED`` kill-switch on,
     as at login) is changed through
@@ -847,8 +856,9 @@ async def _set_user_password(
     the operator types a TOTP code — or a recovery code, when
     ``recovery_code_model`` is known — up to :data:`MFA_CODE_ATTEMPTS`
     times, and without an accepted one nothing is written. Only an account
-    with ``totp_enabled_at`` set builds the service at all, so a project
-    without MFA never has its settings read here.
+    with ``totp_enabled_at`` set, or a run that deletes passkeys, builds the
+    service at all, so a project with neither never has its settings read
+    here.
 
     Args:
         database_url (str): The resolved database URL.
@@ -861,10 +871,14 @@ async def _set_user_password(
         recovery_code_model (type[BaseUserRecoveryCodeModel] | None): The
             project's recovery-code table, or ``None`` to accept TOTP codes
             only.
+        webauthn_credential_model (type[BaseWebAuthnCredentialModel] | None):
+            The project's passkey table, or ``None`` to leave passkeys
+            alone.
 
     Returns:
-        tuple[str, int] | None: The user's id and how many refresh
-        tokens were revoked, or ``None`` when no user matches the email.
+        tuple[str, int, int] | None: The user's id, how many refresh tokens
+        were revoked and how many passkeys were deleted, or ``None`` when no
+        user matches the email.
 
     Raises:
         typer.Exit: With code 1 when the account has MFA active and no
@@ -890,8 +904,9 @@ async def _set_user_password(
             if user is None:
                 return None
             service = (
-                _build_auth_service(user_model, None)
+                _build_auth_service(user_model, None, webauthn_credential_model)
                 if getattr(user, "totp_enabled_at", None) is not None
+                or webauthn_credential_model is not None
                 else None
             )
             if service is not None and service.is_mfa_enrolled(user):
@@ -941,9 +956,15 @@ async def _set_user_password(
                     refresh_token_model,
                     user_id=user.id,
                 )
+            removed = 0
+            if service is not None and webauthn_credential_model is not None:
+                removed = await service.revoke_user_passkeys(
+                    session,
+                    user_id=user.id,
+                )
             await session.commit()
             await session.refresh(user)
-            return str(user.id), revoked
+            return str(user.id), revoked, removed
     finally:
         await db.disconnect()
 
@@ -1836,6 +1857,24 @@ def user_set_password(
             "only TOTP codes are accepted."
         ),
     ),
+    webauthn_credential_model: str | None = typer.Option(
+        None,
+        "--webauthn-credential-model",
+        help=(
+            "Dotted spec for the concrete WebAuthn credential model. Omitted, "
+            f"{_DEFAULT_WEBAUTHN_CREDENTIAL_MODEL!r} is tried, so the user's "
+            "passkeys are deleted along with the password whenever the "
+            "project has that table."
+        ),
+    ),
+    keep_passkeys: bool = typer.Option(
+        False,
+        "--keep-passkeys",
+        help=(
+            "Do not delete the user's passkeys: each one keeps signing in "
+            "after the password changes."
+        ),
+    ),
 ) -> None:
     """Replace an existing user's password, found by email.
 
@@ -1862,6 +1901,14 @@ def user_set_password(
         of the two happened, so a run that left sessions alive is never
         silent about it.
 
+        The rotation is account recovery, so the user's passkeys are
+        deleted **by default** too, in the same transaction, exactly as in
+        ``mfa-reset``: a passkey signs in without the password, and one
+        registered by whoever held the account would survive the new hash.
+        The command resolves ``--webauthn-credential-model``, falling back
+        to ``src.db.models:UserWebAuthnCredentialModel``;
+        ``--keep-passkeys`` is the explicit opt-out.
+
         An account with MFA active (and ``AUTH_MFA_ENABLED`` on, as at
         login) must prove the factor: the command asks for a code from the
         authenticator app — or a recovery code — up to three times and
@@ -1872,12 +1919,19 @@ def user_set_password(
     Raises:
         typer.Exit: With code 1 when no user matches the email or no valid
             MFA code was typed, or code 2 when the password is rejected,
-            the two flags contradict each other, or a dotted spec cannot be
+            two flags contradict each other, or a dotted spec cannot be
             resolved.
     """
     if keep_sessions and refresh_token_model:
         typer.echo(
             "error: --keep-sessions and --refresh-token-model contradict "
+            "each other. Pass one or neither.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if keep_passkeys and webauthn_credential_model:
+        typer.echo(
+            "error: --keep-passkeys and --webauthn-credential-model contradict "
             "each other. Pass one or neither.",
             err=True,
         )
@@ -1896,6 +1950,11 @@ def user_set_password(
         if recovery_code_model
         else _find_default_recovery_code_model()
     )
+    passkey_model: type[BaseWebAuthnCredentialModel] | None = None
+    if not keep_passkeys:
+        passkey_model = _resolve_webauthn_credential_model(
+            webauthn_credential_model or ""
+        )
     password = _read_password(password)
     outcome = asyncio.run(
         _set_user_password(
@@ -1905,29 +1964,44 @@ def user_set_password(
             password=password,
             refresh_token_model=token_model,
             recovery_code_model=codes_model,
+            webauthn_credential_model=passkey_model,
         )
     )
     if outcome is None:
         typer.echo(f"error: no user found with email {email!r}.", err=True)
         raise typer.Exit(1)
-    user_id, revoked = outcome
+    user_id, revoked, removed = outcome
     typer.echo(f"Password updated for {email.lower()} (id={user_id})")
     if token_model is not None:
         typer.echo(f"Revoked {revoked} active refresh token(s).")
-        return
-    if keep_sessions:
+    elif keep_sessions:
         typer.echo(
             "note: --keep-sessions given, so every refresh token the user "
             "holds is still exchangeable.",
             err=True,
         )
-        return
-    typer.echo(
-        f"note: no refresh-token model at {_DEFAULT_REFRESH_TOKEN_MODEL!r}, "
-        "so no session was revoked. Pass --refresh-token-model if yours "
-        "lives elsewhere.",
-        err=True,
-    )
+    else:
+        typer.echo(
+            f"note: no refresh-token model at {_DEFAULT_REFRESH_TOKEN_MODEL!r}, "
+            "so no session was revoked. Pass --refresh-token-model if yours "
+            "lives elsewhere.",
+            err=True,
+        )
+    if passkey_model is not None:
+        typer.echo(f"Deleted {removed} passkey(s).")
+    elif keep_passkeys:
+        typer.echo(
+            "note: --keep-passkeys given, so every passkey of the user still signs in.",
+            err=True,
+        )
+    else:
+        typer.echo(
+            "note: no WebAuthn credential model at "
+            f"{_DEFAULT_WEBAUTHN_CREDENTIAL_MODEL!r}, so no passkey was "
+            "deleted. Pass --webauthn-credential-model if yours lives "
+            "elsewhere.",
+            err=True,
+        )
 
 
 @user_app.command("mfa-reset")

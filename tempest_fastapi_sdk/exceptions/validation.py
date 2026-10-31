@@ -143,6 +143,27 @@ class UnknownFilterKeyException(ValidationException):
         self.filter_key: str = filter_key
 
 
+class PushEndpointNotPublicException(ValidationException):
+    """Raised when a push subscription names an endpoint delivery would refuse.
+
+    The Web Push dispatcher only contacts endpoints that are ``https`` and
+    resolve to public addresses (unless it was built with
+    ``allow_private_networks=True``). An endpoint pointing inside the
+    server's own network is refused at registration with this exception
+    instead of being stored and refused on every send.
+
+    ``details`` is empty on purpose: which address the host resolved to is
+    exactly what a caller probing the internal network wants to learn.
+
+    Subclasses :class:`ValidationException`, so ``except
+    ValidationException`` keeps catching it and the HTTP status is 422.
+    """
+
+    message: str = "Push endpoint must be a public https URL"
+    code: str = "PUSH_ENDPOINT_NOT_PUBLIC"
+    field: str | None = "endpoint"
+
+
 _VALUE_RENDER_CAP: int = 64
 """Longest ``repr`` echoed in an :class:`InvalidFilterValueException` detail."""
 

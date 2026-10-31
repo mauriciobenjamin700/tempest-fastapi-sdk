@@ -499,6 +499,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
 ::: tempest_fastapi_sdk.exceptions.validation.OrderByNotAllowedException
 ::: tempest_fastapi_sdk.exceptions.validation.PageSizeTooLargeException
+::: tempest_fastapi_sdk.exceptions.validation.PushEndpointNotPublicException
 ::: tempest_fastapi_sdk.exceptions.validation.UnknownFilterKeyException
 ::: tempest_fastapi_sdk.exceptions.validation.InvalidFilterValueException
 ::: tempest_fastapi_sdk.exceptions.value_errors.ValidationValueError
@@ -1122,6 +1123,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeClient
 ::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeResource
 ::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeError
+::: tempest_fastapi_sdk.integrations.payment.stripe.client.StripeObjectMismatchError
 ::: tempest_fastapi_sdk.integrations.payment.stripe.environment.stripe_http_client
 ::: tempest_fastapi_sdk.integrations.payment.stripe.environment.STRIPE_API_VERSION
 ::: tempest_fastapi_sdk.integrations.payment.stripe.environment.STRIPE_BASE_URL
@@ -1503,6 +1505,7 @@ então importar o namespace não constrói nenhum modelo.
 ### `tempest_fastapi_sdk.webpush`
 
 ::: tempest_fastapi_sdk.webpush.dispatcher.WebPushDispatcher
+::: tempest_fastapi_sdk.webpush.dispatcher.WebPushEndpointRefusedError
 ::: tempest_fastapi_sdk.webpush.service.WebPushSubscriptionService
 ::: tempest_fastapi_sdk.webpush.router.make_web_push_router
 ::: tempest_fastapi_sdk.db.webpush_subscription_model.BaseWebPushSubscriptionModel

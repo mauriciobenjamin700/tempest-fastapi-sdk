@@ -242,6 +242,25 @@ def _cents(source: Mapping[str, Any], key: str) -> int:
         ) from error
 
 
+def _optional_cents(source: Mapping[str, Any], key: str) -> int | None:
+    """Read an informational amount into cents, leniently.
+
+    Args:
+        source (Mapping[str, Any]): The object carrying the amount.
+        key (str): Its key — ``paid_amount``, ``installment_amount``.
+
+    Returns:
+        int | None: The amount in cents, or ``None`` when absent or
+        unreadable. Unlike :func:`_cents`, this never refuses: these amounts
+        are reported, not compared, and refusing an order over one after the
+        order exists would invite a retry that creates another.
+    """
+    try:
+        return _cents(source, key)
+    except ValueError:
+        return None
+
+
 def _first_payment(order: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return the order's first payment, or an empty mapping.
 
@@ -409,6 +428,11 @@ def _to_card_charge(order: Mapping[str, Any]) -> CardCharge:
 
     Returns:
         CardCharge: The charge. ``raw`` is the order verbatim.
+        ``payer_total_cents`` is the payment's ``paid_amount``, not the
+        order's ``total_paid_amount``: observed on a 3x Amex order of
+        R$ 1.000,00 (2026-10-30), the payment read ``1112.31`` — three
+        installments of ``370.77`` — and the order ``1112.30``, the
+        installment quote rounded.
 
     Raises:
         ValueError: If the order has no id or no readable ``total_amount``.
@@ -435,6 +459,8 @@ def _to_card_charge(order: Mapping[str, Any]) -> CardCharge:
             if isinstance(installments, int) and not isinstance(installments, bool)
             else None
         ),
+        installment_amount_cents=_optional_cents(method, "installment_amount"),
+        payer_total_cents=_optional_cents(_first_payment(order), "paid_amount"),
         raw=dict(order),
     )
 
@@ -876,6 +902,13 @@ class MercadoPagoCardProvider(_OrdersClient):
         ``action_required`` / ``waiting_capture``
         (:attr:`PaymentStatus.AUTHORIZED`). Otherwise the provider's default
         applies, observed as ``automatic_async``.
+
+        With installments, ``amount_cents`` goes out as both ``total_amount``
+        and the payment ``amount``, and the provider adds the interest:
+        observed on a 3x Amex order of R$ 1.000,00 (2026-10-30), ``201``
+        ``processed`` / ``accredited``, ``installment_amount`` ``370.77``,
+        ``paid_amount`` ``1112.31``. A full refund of that order returned
+        ``1000.00`` — the price, not what the payer paid.
 
         Args:
             request (CardChargeRequest): What to charge.
