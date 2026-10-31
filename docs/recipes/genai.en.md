@@ -656,6 +656,11 @@ ollama pull llama3.2
 ollama pull nomic-embed-text
 ```
 
+!!! info "Ollama also speaks and transcribes"
+    Since v0.40.11 Ollama generates speech (`/v1/audio/speech`) and
+    `lfm3-audio` transcribes. What was measured, the limits and the sources
+    are in [Voice through Ollama](#voice-through-ollama).
+
 ### Generate text via Ollama
 
 `OllamaGenerator` mirrors `TextGenerator` — `generate`, `chat` and
@@ -1054,6 +1059,11 @@ web RAG, tool-calling, optional TTS — usually means writing (and
 maintaining) an entire inference microservice. `AIChatPipeline` does it
 **inside your process**: you inject the pieces you've already seen
 (`OllamaGenerator`, `ChatMemory`, `WebSearch`, `Tool`s) and call `respond`.
+
+!!! tip "Picking the chat's voice model"
+    TTS weight licences vary more than they look (F5-TTS and AudioLDM 2 are
+    non-commercial). Measured table and sources in
+    [Picking a voice or audio model](#picking-a-voice-or-audio-model-licence-and-where-it-runs).
 
 ```python
 import asyncio
@@ -1806,6 +1816,120 @@ asyncio.run(main())
 !!! tip "Full voice loop"
     Chain with the LLM: **STT** transcribes speech → `TextGenerator`/RAG
     answers → **TTS** speaks the reply. All local, nothing leaves the box.
+
+### Picking a voice or audio model: licence and where it runs
+
+Before picking a voice model, check two things: **the licence of the
+weights** (which can differ from the code's licence) and **whether it runs
+on what the SDK already depends on**. Generic "best models" guides often get
+both wrong.
+
+The table below was read from the Hugging Face models API
+(`https://huggingface.co/api/models/<id>`, `tags` field) on 2026-10-31.
+Weight licences change; check the model card before shipping.
+
+| Model | Task | Weight licence | Runs on |
+| --- | --- | --- | --- |
+| `hexgrad/Kokoro-82M` | TTS | `apache-2.0` | `kokoro` package (requires Python `<3.13`) |
+| `nari-labs/Dia-1.6B-0626` | TTS | `apache-2.0` | `transformers` (`DiaForConditionalGeneration`, outside the pipeline) |
+| `sesame/csm-1b` | TTS | `apache-2.0` (gated) | `transformers` |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | TTS | `apache-2.0` | not in `transformers` 4.57.6 |
+| `ResembleAI/chatterbox` | TTS | `mit` | `chatterbox-tts` package |
+| `openai/whisper-large-v3-turbo` | STT | `mit` | `SpeechToText` (faster-whisper) |
+| `coqui/XTTS-v2` | TTS | `other` (CPML) | `TextToSpeech` (Coqui) |
+| `SWivid/F5-TTS` | TTS | **`cc-by-nc-4.0`** | `f5-tts` package |
+| `facebook/musicgen-large` | music | **`cc-by-nc-4.0`** | `transformers` |
+| `cvssp/audioldm2-large` | sound effects | **`cc-by-nc-sa-4.0`** | `diffusers` (`AudioLDM2Pipeline`) |
+| `stabilityai/stable-audio-open-1.0` | music/effects | `other` (gated) | `diffusers` (`StableAudioPipeline`) |
+
+!!! warning "MIT code does not mean MIT weights"
+    The F5-TTS repository is MIT, but its published weights are
+    `cc-by-nc-4.0`; AudioLDM 2 is `cc-by-nc-sa-4.0`. Both show up as "MIT,
+    commercial use allowed" in recommendation lists. Commercial use of NC
+    weights needs a separate agreement with the author.
+
+What the extra's environment already has, with no new dependency: in the
+venv the lock resolves (`diffusers` 0.39.0, `transformers` 4.57.6),
+`diffusers` exports `AudioLDM2Pipeline`, `StableAudioPipeline`,
+`MusicLDMPipeline` and `AutoPipelineForText2Audio`, and the `transformers`
+text-to-waveform mapping covers `bark`, `csm`, `musicgen`,
+`musicgen_melody`, `vits`, `seamless_m4t`, `qwen2_5_omni`, `qwen3_omni_moe`
+and `fastspeech2_conformer`. Kokoro is not in that mapping.
+
+!!! info "Packages whose constraints the SDK does not accept"
+    Read from `requires-dist` on PyPI on 2026-10-31: `chatterbox-tts` 0.1.7
+    pins `torch==2.6.0`, `transformers==5.2.0` and `diffusers==0.29.0`;
+    `stable-audio-tools` 0.0.20 pins `torch==2.7.1` and requires Python
+    `<3.11`; `f5-tts` 1.1.22 pulls in `gradio`; `kokoro` 0.9.4 requires
+    Python `<3.13`. Bringing any of them into an extra would pin the lock of
+    everyone who installs the SDK.
+
+#### Voice through Ollama
+
+Ollama started generating speech in v0.40.11 (2026-10-24), through the
+OpenAI-compatible `POST /v1/audio/speech` endpoint, with the `phonon` model
+(31M English checkpoint). v0.40.12 brought `lfm3-audio` (2B, LFM Open
+License v1.0, 18 languages including Portuguese). The v0.40.11 notes mention
+macOS, and the `lfm3-audio` page only shows a text chat.
+
+Measured on 2026-10-31 with the `ollama/ollama:0.40.13` image in Docker,
+Linux (WSL2), RTX 4070 Ti SUPER 16 GB, driver 591.86:
+
+- **Both run on the GPU on Linux.** `ollama ps` shows `phonon` on the `mlx`
+  runner and `lfm3-audio` on `llamacpp`, both `100% GPU`; with both loaded,
+  VRAM use went from 1515 MiB to 4565 MiB.
+- **`/api/show` declares the capability.** `phonon` answers
+  `capabilities: ["speech"]` and 38 voices in `voices`; `lfm3-audio` answers
+  `["completion", "audio", "speech", "tools"]`, with voices such as
+  `female-portuguese` and `male-portuguese`.
+- **TTS.** Output is `audio/wav` 16-bit mono 24 kHz, with the RIFF size
+  field set to `0xFFFFFFFF` (the stream does not know the length up front);
+  `pcm` returns `audio/pcm`. With the model warm, a sentence of 6.3 s of
+  audio came back in 0.14 s (`phonon`) and one of 7.0 s in 0.65 s
+  (`lfm3-audio`). The **first** request after the pull took 116 s
+  (`phonon`) and 55 s (`lfm3-audio`); after unloading with `keep_alive: 0`,
+  reloading took 1.4 s.
+- **Errors are `400` with `invalid_request_error`:** `response_format`
+  `mp3` (`use wav or pcm`), `speed` other than 1
+  (`only speed 1 is supported`), an unknown voice (the message lists the
+  voices), `input` over 4096 characters, and `/api/chat` on a speech-only
+  model (`"phonon" does not support chat`).
+- **STT works, through three undocumented paths:**
+  `POST /v1/audio/transcriptions` (multipart `file` + `model`, as in
+  OpenAI; accepts WAV and MP3, and `response_format=verbose_json` returns
+  `language`, `duration` and `segments`), `POST /v1/chat/completions` with a
+  base64 `input_audio` part, and `POST /api/chat` with base64 audio in the
+  `images` field. With the model warm, transcribing 7 s took 0.13 s. Sending
+  audio to `phonon` answers `400` (`"phonon" does not support audio input`).
+
+!!! note "Transcription quality: one sample is not a rate"
+    On a single 7 s Portuguese clip, `lfm3-audio` transcribed "Lá, este
+    áudio..." (dropping the "O" of "Olá") and
+    `SpeechToText("large-v3-turbo")` got "Olá! Este áudio...". Both wrote
+    "Olama". It is one sample, not an error-rate comparison.
+
+The SDK does not wrap these endpoints yet: `OllamaGenerator` covers text and
+`OllamaEmbedder` covers vectors.
+
+#### Sources
+
+- [Ollama: speech](https://docs.ollama.com/capabilities/speech)
+- [Ollama release notes](https://github.com/ollama/ollama/releases) (v0.40.11 to v0.40.13)
+- [`lfm3-audio` in the Ollama library](https://ollama.com/library/lfm3-audio)
+- [Transformers: text-to-speech](https://huggingface.co/docs/transformers/en/tasks/text-to-speech)
+- [transformers PR #39796: text-to-audio pipeline standardization](https://github.com/huggingface/transformers/pull/39796)
+- [Diffusers: audio pipelines](https://huggingface.co/docs/diffusers/en/api/pipelines/overview)
+- Model cards: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M),
+  [Dia-1.6B](https://huggingface.co/nari-labs/Dia-1.6B-0626),
+  [CSM-1B](https://huggingface.co/sesame/csm-1b),
+  [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base),
+  [Chatterbox](https://huggingface.co/ResembleAI/chatterbox),
+  [Whisper large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo),
+  [XTTS-v2](https://huggingface.co/coqui/XTTS-v2),
+  [F5-TTS](https://huggingface.co/SWivid/F5-TTS),
+  [MusicGen large](https://huggingface.co/facebook/musicgen-large),
+  [AudioLDM 2 large](https://huggingface.co/cvssp/audioldm2-large),
+  [Stable Audio Open](https://huggingface.co/stabilityai/stable-audio-open-1.0)
 
 ## RAG context
 

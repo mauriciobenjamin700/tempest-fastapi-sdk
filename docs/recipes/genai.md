@@ -655,6 +655,11 @@ ollama pull llama3.2
 ollama pull nomic-embed-text
 ```
 
+!!! info "O Ollama também fala e transcreve"
+    Desde a v0.40.11 o Ollama gera voz (`/v1/audio/speech`) e o `lfm3-audio`
+    transcreve. O que foi medido, os limites e as fontes estão em
+    [Voz pelo Ollama](#voz-pelo-ollama).
+
 ### Gerar texto via Ollama
 
 `OllamaGenerator` espelha o `TextGenerator` — `generate`, `chat` e
@@ -1052,6 +1057,11 @@ memória, RAG por web, tool-calling, TTS opcional — normalmente significa
 escrever (e manter) um microserviço de inferência inteiro. `AIChatPipeline`
 faz isso **dentro do seu processo**: você injeta as peças que já viu
 (`OllamaGenerator`, `ChatMemory`, `WebSearch`, `Tool`s) e chama `respond`.
+
+!!! tip "Escolhendo o modelo de voz do chat"
+    A licença dos pesos de TTS varia mais do que parece (F5-TTS e AudioLDM 2
+    são não comerciais). Tabela medida e fontes em
+    [Escolher modelo de voz e áudio](#escolher-modelo-de-voz-e-audio-licenca-e-onde-roda).
 
 ```python
 import asyncio
@@ -1803,6 +1813,120 @@ no `transcribe`/`synthesize` também aceita o código cru (`"pt"`) ou `None`
 !!! tip "Loop de voz completo"
     Encadeie com o LLM: **STT** transcreve a fala → `TextGenerator`/RAG
     responde → **TTS** fala a resposta. Tudo local, nada sai da máquina.
+
+### Escolher modelo de voz e áudio: licença e onde roda
+
+Antes de escolher um modelo de voz, confira duas coisas: **a licença dos
+pesos** (que pode ser diferente da licença do código) e **se ele roda pelo
+que o SDK já depende**. Guia genérico de "melhores modelos" costuma errar
+nas duas.
+
+A tabela abaixo foi lida da API de modelos do Hugging Face
+(`https://huggingface.co/api/models/<id>`, campo `tags`) em 2026-10-31.
+Licença de peso muda; confira o model card antes de shippar.
+
+| Modelo | Tarefa | Licença dos pesos | Roda por |
+| --- | --- | --- | --- |
+| `hexgrad/Kokoro-82M` | TTS | `apache-2.0` | pacote `kokoro` (exige Python `<3.13`) |
+| `nari-labs/Dia-1.6B-0626` | TTS | `apache-2.0` | `transformers` (`DiaForConditionalGeneration`, fora do pipeline) |
+| `sesame/csm-1b` | TTS | `apache-2.0` (gated) | `transformers` |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | TTS | `apache-2.0` | fora do `transformers` 4.57.6 |
+| `ResembleAI/chatterbox` | TTS | `mit` | pacote `chatterbox-tts` |
+| `openai/whisper-large-v3-turbo` | STT | `mit` | `SpeechToText` (faster-whisper) |
+| `coqui/XTTS-v2` | TTS | `other` (CPML) | `TextToSpeech` (Coqui) |
+| `SWivid/F5-TTS` | TTS | **`cc-by-nc-4.0`** | pacote `f5-tts` |
+| `facebook/musicgen-large` | música | **`cc-by-nc-4.0`** | `transformers` |
+| `cvssp/audioldm2-large` | efeitos | **`cc-by-nc-sa-4.0`** | `diffusers` (`AudioLDM2Pipeline`) |
+| `stabilityai/stable-audio-open-1.0` | música/efeitos | `other` (gated) | `diffusers` (`StableAudioPipeline`) |
+
+!!! warning "Código MIT não quer dizer peso MIT"
+    O repositório do F5-TTS é MIT, mas os pesos publicados são
+    `cc-by-nc-4.0`; o AudioLDM 2 é `cc-by-nc-sa-4.0`. Os dois aparecem como
+    "MIT, uso comercial liberado" em listas de recomendação. Uso comercial
+    de pesos NC exige outro acordo com o autor.
+
+O que já está no ambiente do extra, sem dependência nova: no venv que o
+lock resolve (`diffusers` 0.39.0, `transformers` 4.57.6), o `diffusers`
+exporta `AudioLDM2Pipeline`, `StableAudioPipeline`, `MusicLDMPipeline` e
+`AutoPipelineForText2Audio`, e o mapeamento text-to-waveform do
+`transformers` cobre `bark`, `csm`, `musicgen`, `musicgen_melody`, `vits`,
+`seamless_m4t`, `qwen2_5_omni`, `qwen3_omni_moe` e `fastspeech2_conformer`.
+Kokoro não está nesse mapeamento.
+
+!!! info "Pacotes cujas restrições o SDK não aceita"
+    Lido do `requires-dist` no PyPI em 2026-10-31: `chatterbox-tts` 0.1.7
+    fixa `torch==2.6.0`, `transformers==5.2.0` e `diffusers==0.29.0`;
+    `stable-audio-tools` 0.0.20 fixa `torch==2.7.1` e exige Python `<3.11`;
+    `f5-tts` 1.1.22 puxa `gradio`; `kokoro` 0.9.4 exige Python `<3.13`.
+    Trazer qualquer um para um extra prenderia o lock de quem instala o SDK.
+
+#### Voz pelo Ollama
+
+O Ollama passou a gerar fala na v0.40.11 (2026-10-24), pelo endpoint
+compatível com a OpenAI `POST /v1/audio/speech`, com o modelo `phonon`
+(checkpoint inglês de 31M). A v0.40.12 trouxe o `lfm3-audio` (2B, licença LFM
+Open License v1.0, 18 línguas incluindo português). As notas da v0.40.11
+falam em macOS, e a página do `lfm3-audio` mostra só chat em texto.
+
+Medido em 2026-10-31 com a imagem `ollama/ollama:0.40.13` em Docker, Linux
+(WSL2), RTX 4070 Ti SUPER 16 GB, driver 591.86:
+
+- **Os dois rodam na GPU no Linux.** `ollama ps` mostra `phonon` com runner
+  `mlx` e `lfm3-audio` com `llamacpp`, ambos `100% GPU`; com os dois
+  carregados, o uso de VRAM subiu de 1515 MiB para 4565 MiB.
+- **`/api/show` declara a capacidade.** `phonon` responde
+  `capabilities: ["speech"]` e 38 vozes em `voices`; `lfm3-audio` responde
+  `["completion", "audio", "speech", "tools"]`, com vozes como
+  `female-portuguese` e `male-portuguese`.
+- **TTS.** Saída `audio/wav` 16-bit mono 24 kHz, com o tamanho do cabeçalho
+  RIFF em `0xFFFFFFFF` (o stream não sabe o tamanho de antemão); `pcm`
+  devolve `audio/pcm`. Com o modelo quente, uma frase de 6,3 s de áudio saiu
+  em 0,14 s (`phonon`) e uma de 7,0 s em 0,65 s (`lfm3-audio`). A
+  **primeira** requisição depois do pull levou 116 s (`phonon`) e 55 s
+  (`lfm3-audio`); depois de descarregar com `keep_alive: 0`, recarregar levou
+  1,4 s.
+- **Erros são `400` com `invalid_request_error`:** `response_format` `mp3`
+  (`use wav or pcm`), `speed` diferente de 1 (`only speed 1 is supported`),
+  voz desconhecida (a mensagem lista as vozes), `input` acima de 4096
+  caracteres, e `/api/chat` num modelo só de fala
+  (`"phonon" does not support chat`).
+- **STT funciona, por três caminhos não documentados:**
+  `POST /v1/audio/transcriptions` (multipart `file` + `model`, como na
+  OpenAI; aceita WAV e MP3, e `response_format=verbose_json` devolve
+  `language`, `duration` e `segments`), `POST /v1/chat/completions` com uma
+  parte `input_audio` em base64, e `POST /api/chat` com o áudio em base64 no
+  campo `images`. Com o modelo quente, transcrever 7 s levou 0,13 s.
+  Mandar áudio para o `phonon` responde `400`
+  (`"phonon" does not support audio input`).
+
+!!! note "Qualidade de transcrição: uma amostra não é taxa"
+    Num único clipe de 7 s em português, o `lfm3-audio` transcreveu "Lá, este
+    áudio..." (perdeu o "O" de "Olá") e o `SpeechToText("large-v3-turbo")`
+    acertou "Olá! Este áudio...". Os dois escreveram "Olama". É uma amostra,
+    não uma comparação de taxa de erro.
+
+O SDK ainda não embrulha esses endpoints: o `OllamaGenerator` cobre texto e
+o `OllamaEmbedder`, vetores.
+
+#### Fontes
+
+- [Ollama: speech](https://docs.ollama.com/capabilities/speech)
+- [Release notes do Ollama](https://github.com/ollama/ollama/releases) (v0.40.11 a v0.40.13)
+- [`lfm3-audio` na biblioteca do Ollama](https://ollama.com/library/lfm3-audio)
+- [Transformers: text-to-speech](https://huggingface.co/docs/transformers/en/tasks/text-to-speech)
+- [transformers PR #39796: padronização do pipeline text-to-audio](https://github.com/huggingface/transformers/pull/39796)
+- [Diffusers: pipelines de áudio](https://huggingface.co/docs/diffusers/en/api/pipelines/overview)
+- Model cards: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M),
+  [Dia-1.6B](https://huggingface.co/nari-labs/Dia-1.6B-0626),
+  [CSM-1B](https://huggingface.co/sesame/csm-1b),
+  [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base),
+  [Chatterbox](https://huggingface.co/ResembleAI/chatterbox),
+  [Whisper large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo),
+  [XTTS-v2](https://huggingface.co/coqui/XTTS-v2),
+  [F5-TTS](https://huggingface.co/SWivid/F5-TTS),
+  [MusicGen large](https://huggingface.co/facebook/musicgen-large),
+  [AudioLDM 2 large](https://huggingface.co/cvssp/audioldm2-large),
+  [Stable Audio Open](https://huggingface.co/stabilityai/stable-audio-open-1.0)
 
 ## Contexto RAG
 
