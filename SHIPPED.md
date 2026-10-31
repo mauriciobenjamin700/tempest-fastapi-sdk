@@ -3998,10 +3998,16 @@ mesma seção registra a conta real liberada para Orders e o shape mínimo do
 Funciona com `cvssp/audioldm-s-full-v2` (efeitos) e `ucsd-reach/musicldm`
 (música; medido: gera no `transformers` 4.57.6, recusado no 5.22.1); AudioLDM2 e Stable Audio são
 recusados na carga. As classes AudioLDM/MusicLDM estão em
-`diffusers/pipelines/deprecated` (código congelado). MusicGen, que roda pelo
-`transformers` (`MusicgenForConditionalGeneration`, medido: 10 s em 5,8 s,
-32 kHz, 1,25 GiB, seed reproduz), ficou fora desta fatia por ser outro
-caminho de carga.
+`diffusers/pipelines/deprecated` (código congelado).
+
+## Música com MusicGen (Unreleased)
+
+`MusicGenerator` em `genai/music_generation.py`, extra `[genai]` (sem
+`diffusers`), atrás do protocolo `SupportsAudioGeneration` que a rota
+`/audio` aceita. Recusa duração acima de 40,96 s (janela do decoder; passar
+dela envenena o CUDA do processo), `steps` e `negative_prompt`. Seed global
+via `torch.manual_seed`. Fora de escopo: `musicgen-melody` (condicionamento
+por áudio).
 
 ## Voz e transcrição pelo Ollama (0.339.0)
 

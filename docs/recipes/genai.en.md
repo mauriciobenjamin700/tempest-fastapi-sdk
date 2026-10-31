@@ -2132,6 +2132,65 @@ Peak VRAM stayed under 1.1 GiB for both.
     - **Stable Audio** takes `audio_end_in_s` instead of
       `audio_length_in_s` and is refused too.
 
+### Music with MusicGen
+
+`MusicGenerator` runs Meta's MusicGen through `transformers`, with no
+diffusion and no `diffusers`: the `[genai]` extra is enough. Same
+`AudioGenerationConfig`, same `GeneratedAudio`, same `/audio` route.
+
+```python
+import asyncio
+from pathlib import Path
+
+from tempest_fastapi_sdk.genai import AudioGenerationConfig, MusicGenerator
+
+music = MusicGenerator("facebook/musicgen-stereo-small")
+
+
+async def main() -> None:
+    """Generate 5 s of stereo rock and save it."""
+    clips = await music.generate(
+        "upbeat rock riff",
+        config=AudioGenerationConfig(seconds=5.0, seed=0),
+    )
+    clip = clips[0]
+    Path("rock.wav").write_bytes(clip.data)
+    print(clip.channels, clip.seconds, clip.sample_rate)
+
+
+asyncio.run(main())
+```
+
+```text
+2 4.94 32000
+```
+
+What differs from diffusion, all measured on an RTX 4070 Ti SUPER with
+`transformers` 4.57.6 and 5.22.1 (both behaved the same):
+
+- **Length is a token budget.** It runs at 50 frames per second, and the
+  clip comes out 60 ms shorter than asked (5 s becomes 4.94 s).
+  `GeneratedAudio.seconds` carries the real length. Without `seconds`, the
+  model default applies: 29.92 s.
+- **There is a ceiling: 40.96 s.** The decoder has 2048 positions; 2048
+  tokens rendered 40.9 s and 2049 fired a CUDA device-side assert that
+  **poisons the process**: every later CUDA call failed. So `generate`
+  refuses with `422` (`details={"field": "seconds", "limit": 40.96}`) before
+  calling the model, and `max_seconds` exposes the ceiling.
+- **`steps` and `negative_prompt` do not exist here** and answer `422`
+  instead of being ignored. `guidance_scale` and `num_waveforms` work.
+- **Stereo comes from the checkpoint**: `musicgen-stereo-small` returns 2
+  channels.
+- **Time**: 10 s of audio took ~9.2 s in bf16, ~9.3 s in fp16 and ~10 s in
+  fp32 (`musicgen-small`, one prompt); 30 s, ~31 to 33 s. Peak VRAM from
+  1.3 GiB (5 s) to 2.5 GiB (35 s), for two clips per call.
+- **The seed is global.** transformers' `generate` takes no generator, so
+  the seed goes through `torch.manual_seed`, which seeds the whole process.
+  The same seed repeated the same bytes.
+
+!!! warning "Non-commercial weights"
+    MusicGen checkpoints are `cc-by-nc-4.0`.
+
 ### Serving over HTTP: `/audio`
 
 ```python
@@ -2146,6 +2205,9 @@ app.include_router(
     make_genai_router(audio_generator=AudioGenerator("cvssp/audioldm-s-full-v2")),
 )
 ```
+
+`audio_generator` takes any `SupportsAudioGeneration`: an `AudioGenerator` or a `MusicGenerator`.
+With `MusicGenerator("facebook/musicgen-small")`, `{"seconds": 4.0, "seed": 7}` answered `200` with 126080 frames at 32 kHz, and `{"steps": 5}`, `422`.
 
 `POST /api/genai/audio` with
 `{"prompt": "dog barking in the distance", "config": {"seconds": 4.0, "seed": 42}}`
