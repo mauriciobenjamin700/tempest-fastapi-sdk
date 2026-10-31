@@ -3991,7 +3991,7 @@ mesma seção registra a conta real liberada para Orders e o shape mínimo do
 `transaction-intents` em modo de teste (#499, ainda sem `PayoutProvider`).
 
 
-## Slides, gabaritos e Markdown em PDF (Unreleased)
+## Slides, gabaritos e Markdown em PDF (0.338.0)
 
 `tempest_fastapi_sdk.slides`, portado do `slide-generator` do Leviathan
 (serviço separado que o Leviathan proxiava). Extras `[slides]` (no `[all]`) e
