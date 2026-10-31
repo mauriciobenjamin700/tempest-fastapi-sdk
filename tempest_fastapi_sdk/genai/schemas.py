@@ -512,8 +512,10 @@ class AudioGenerationConfig(BaseSchema):
         seconds (float | None): Length of each clip, at most ``120``.
         steps (int | None): Denoising steps, at most ``1000``.
         guidance_scale (float | None): How hard to follow the prompt.
-        seed (int | None): RNG seed. Set it and the same prompt gives the
-            same waveform on the same hardware.
+        seed (int | None): RNG seed, ``0`` to ``2**64 - 1`` -- the range
+            ``torch.manual_seed`` accepts (``2**64`` raised ``ValueError:
+            Overflow when unpacking long long`` on torch 2.14). Set it and the
+            same prompt gives the same waveform on the same hardware.
         num_waveforms (int): Clips per call, at most ``8``. These ceilings
             are the schema's absolute bounds; ``make_genai_router``
             enforces tighter per-request limits from
@@ -551,8 +553,10 @@ class AudioGenerationConfig(BaseSchema):
     )
     seed: int | None = Field(
         default=None,
+        ge=0,
+        le=2**64 - 1,
         title="Seed",
-        description="RNG seed for a reproducible clip.",
+        description="RNG seed for a reproducible clip, 0 to 2**64 - 1.",
         examples=[0],
     )
     num_waveforms: int = Field(

@@ -25,6 +25,7 @@ from tempest_fastapi_sdk import register_exception_handlers
 from tempest_fastapi_sdk.exceptions import ValidationException
 from tempest_fastapi_sdk.genai import (
     AudioGenerationConfig,
+    AudioGenerator,
     MusicGenerator,
     SupportsAudioGeneration,
     make_genai_router,
@@ -149,6 +150,17 @@ class TestMusicTokens:
         assert music_tokens(0.001, FRAME_RATE) == 1
 
 
+class TestSeedBounds:
+    @pytest.mark.parametrize("seed", [-1, 2**64])
+    def test_out_of_torch_range_is_refused_by_the_schema(self, seed: int) -> None:
+        with pytest.raises(ValueError):
+            AudioGenerationConfig(seed=seed)
+
+    def test_the_edges_are_accepted(self) -> None:
+        assert AudioGenerationConfig(seed=2**64 - 1).seed == 2**64 - 1
+        assert AudioGenerationConfig(seed=0).seed == 0
+
+
 class TestCheckMusicConfig:
     def test_none_passes(self) -> None:
         check_music_config(None, frame_rate=FRAME_RATE, max_positions=MAX_POSITIONS)
@@ -244,6 +256,26 @@ class TestGenerate:
             await generator.generate("x", config=AudioGenerationConfig(seconds=60.0))
         assert fakes.model.calls == []
 
+    async def test_diffusion_fields_refused_before_loading(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _install(monkeypatch)
+        generator = MusicGenerator("m", device="cpu")
+        with pytest.raises(ValidationException):
+            await generator.generate("x", config=AudioGenerationConfig(steps=5))
+        assert generator.is_loaded is False
+
+    async def test_unset_guidance_is_not_sent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fakes = _install(monkeypatch)
+        await MusicGenerator("m", device="cpu").generate(
+            "x",
+            config=AudioGenerationConfig(seconds=1.0),
+        )
+        assert "guidance_scale" not in fakes.model.calls[0]
+
     async def test_max_seconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _install(monkeypatch)
         assert MusicGenerator("m", device="cpu").max_seconds == 40.96
@@ -263,7 +295,47 @@ class TestLifecycle:
         assert generator.is_loaded is False
 
     def test_satisfies_the_router_protocol(self) -> None:
-        assert isinstance(MusicGenerator("m", device="cpu"), SupportsAudioGeneration)
+        music: SupportsAudioGeneration = MusicGenerator("m", device="cpu")
+        sound: SupportsAudioGeneration = AudioGenerator("m", device="cpu")
+        assert isinstance(music, SupportsAudioGeneration)
+        assert isinstance(sound, SupportsAudioGeneration)
+
+    def test_failure_moving_to_the_device_releases(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        fakes = _install(monkeypatch)
+
+        def out_of_memory(device: str) -> FakeModel:
+            raise RuntimeError("CUDA out of memory")
+
+        fakes.model.to = out_of_memory
+        generator = MusicGenerator("m", device="cpu")
+        released: list[bool] = []
+        monkeypatch.setattr(generator, "_release", lambda: released.append(True))
+        with pytest.raises(RuntimeError, match="out of memory"):
+            generator.load()
+        assert released == [True]
+        assert generator.is_loaded is False
+
+    def test_config_without_codec_fields_fails_before_the_move(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        fakes = _install(monkeypatch)
+        fakes.model.config = SimpleNamespace(decoder=SimpleNamespace())
+        moved: list[str] = []
+        fakes.model.to = lambda device: moved.append(device)
+        with pytest.raises(AttributeError):
+            MusicGenerator("m", device="cpu").load()
+        assert moved == []
+
+    def test_idle_unload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _install(monkeypatch)
+        generator = MusicGenerator("m", device="cpu", idle_unload_seconds=0.0)
+        generator.load()
+        assert generator.unload_if_idle() is True
+        assert generator.is_loaded is False
 
 
 class TestRouter:

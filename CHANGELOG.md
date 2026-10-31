@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Protocolo `SupportsAudioGeneration`: `make_genai_router(audio_generator=)`
   aceita `AudioGenerator` ou `MusicGenerator` em `POST /audio`.
 
+### Changed
+
+- `AudioGenerationConfig.seed` passa a aceitar só `0` a `2**64 - 1`, o
+  intervalo do `torch.manual_seed` (`2**64` levantava `ValueError` no torch
+  2.14 e chegava como `500`); fora dele, a validação responde `422`. Vale
+  também para o `AudioGenerator`.
+
 ## [0.339.0] — 2026-10-31
 
 ### Added

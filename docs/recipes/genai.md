@@ -2165,7 +2165,8 @@ O que muda em relação à difusão, tudo medido numa RTX 4070 Ti SUPER com
 - **A duração é um orçamento de tokens.** São 50 frames por segundo, e o
   clipe sai 60 ms mais curto que o pedido (5 s viram 4,94 s).
   `GeneratedAudio.seconds` traz a duração real. Sem `seconds`, vale o
-  default do modelo: 29,92 s.
+  default do checkpoint: 29,92 s no `musicgen-small` e no
+  `musicgen-stereo-small`.
 - **Há um teto: 40,96 s.** O decoder tem 2048 posições; 2048 tokens geraram
   40,9 s e 2049 dispararam um device-side assert do CUDA que **envenena o
   processo**: toda chamada CUDA seguinte falhou. Por isso `generate` recusa

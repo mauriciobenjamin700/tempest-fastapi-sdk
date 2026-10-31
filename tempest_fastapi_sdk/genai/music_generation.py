@@ -24,7 +24,8 @@ config. Measured on an RTX 4070 Ti SUPER with transformers 4.57.6 and 5.22.1
   past the window with ``422`` before the model runs.
 * ``steps`` and ``negative_prompt`` have no MusicGen equivalent and are
   refused with ``422`` rather than ignored.
-* Without ``seconds`` the model's own default applies: 29.92 s.
+* Without ``seconds`` the checkpoint's own default applies: 29.92 s for
+  ``musicgen-small`` and ``musicgen-stereo-small`` (``max_length`` 1500).
 * The same seed reproduced the same waveform, and the clips of one batched
   call differed from each other. transformers' ``generate`` takes no RNG
   object, so the seed is applied with ``torch.manual_seed``, which seeds the
@@ -38,6 +39,7 @@ module imports without the ``[genai]`` extra.
 from __future__ import annotations
 
 import asyncio
+import gc
 import secrets
 from typing import Any
 
@@ -96,6 +98,29 @@ def music_tokens(seconds: float, frame_rate: int) -> int:
     return max(1, round(seconds * frame_rate))
 
 
+def refuse_unsupported_fields(config: AudioGenerationConfig | None) -> None:
+    """Refuse the diffusion-only fields, without needing the model.
+
+    Called before the model loads, so a request MusicGen cannot honour never
+    triggers a multi-gigabyte download just to answer ``422``.
+
+    Args:
+        config (AudioGenerationConfig | None): The call's config.
+
+    Raises:
+        ValidationException: ``422`` with ``details={"field": ...}`` for
+            ``steps`` or ``negative_prompt``.
+    """
+    if config is None:
+        return
+    for field in UNSUPPORTED_FIELDS:
+        if getattr(config, field) is not None:
+            raise ValidationException(
+                message=f"MusicGen has no {field}; leave it unset",
+                details={"field": field},
+            )
+
+
 def check_music_config(
     config: AudioGenerationConfig | None,
     *,
@@ -116,15 +141,8 @@ def check_music_config(
             budget would pass the decoder window -- which, measured, poisons
             the CUDA context of the whole process.
     """
-    if config is None:
-        return
-    for field in UNSUPPORTED_FIELDS:
-        if getattr(config, field) is not None:
-            raise ValidationException(
-                message=f"MusicGen has no {field}; leave it unset",
-                details={"field": field},
-            )
-    if config.seconds is None:
+    refuse_unsupported_fields(config)
+    if config is None or config.seconds is None:
         return
     if music_tokens(config.seconds, frame_rate) > max_positions:
         limit = max_positions / frame_rate
@@ -252,7 +270,10 @@ class MusicGenerator:
     def max_seconds(self) -> float:
         """Return the longest clip the decoder window allows.
 
-        Loads the model on first access (it reads the model config).
+        Loads the model on first access (it reads the model config), which
+        blocks for the whole download and load: from a coroutine, read it
+        through ``await asyncio.to_thread(lambda: generator.max_seconds)``
+        or after an awaited :meth:`generate`.
 
         Returns:
             float: ``max_position_embeddings / frame_rate`` (40.96 s for the
@@ -268,14 +289,24 @@ class MusicGenerator:
 
         Raises:
             ImportError: When the ``[genai]`` extra is missing.
+            OSError: When the checkpoint cannot be downloaded or read.
+            ValueError: When the checkpoint is not a MusicGen model (raised
+                by ``from_pretrained``).
         """
         self._lifecycle.load()
 
     def _build(self) -> None:
         """Load processor and model; called once, under the load lock.
 
+        The config fields are read before the move to the device, so a
+        checkpoint missing them fails without occupying VRAM. A failure of
+        the move itself drops the model and collects it before re-raising,
+        so its traceback does not pin the memory.
+
         Raises:
             ImportError: When the ``[genai]`` extra is missing.
+            OSError: When the checkpoint cannot be downloaded or read.
+            ValueError: When the checkpoint is not a MusicGen model.
         """
         torch, transformers = _require_transformers()
         loader = self.source.loader_kwargs()
@@ -285,16 +316,20 @@ class MusicGenerator:
             **precision_kwarg(getattr(torch, self.dtype.value)),
             **loader,
         )
+        config = model.config
+        sample_rate = int(config.audio_encoder.sampling_rate)
+        frame_rate = int(config.audio_encoder.frame_rate)
+        max_positions = int(config.decoder.max_position_embeddings)
         try:
             model = model.to(self.device)
         except BaseException:
             del model
+            gc.collect()
             self._release()
             raise
-        config = model.config
-        self._sample_rate = int(config.audio_encoder.sampling_rate)
-        self._frame_rate = int(config.audio_encoder.frame_rate)
-        self._max_positions = int(config.decoder.max_position_embeddings)
+        self._sample_rate = sample_rate
+        self._frame_rate = frame_rate
+        self._max_positions = max_positions
         self._processor = processor
         self._model = model
 
@@ -403,10 +438,17 @@ class MusicGenerator:
             ``num_waveforms`` above 1 they differ, so reproducing clip ``i``
             takes the same seed, the same ``num_waveforms`` and index ``i``.
 
+        Reproducibility holds while nothing else draws from torch's
+        process-wide RNG during the render: keep ``max_concurrent=1`` and do
+        not run other torch sampling in the same process concurrently.
+
         Raises:
             ImportError: When the ``[genai]`` extra is missing.
-            ValidationException: When the config cannot be honoured.
+            ValidationException: When the config cannot be honoured;
+                ``steps`` and ``negative_prompt`` are refused before the
+                model loads.
         """
+        refuse_unsupported_fields(config)
         seed = (
             config.seed
             if config is not None and config.seed is not None
@@ -443,4 +485,5 @@ __all__: list[str] = [
     "MusicGenerator",
     "check_music_config",
     "music_tokens",
+    "refuse_unsupported_fields",
 ]
