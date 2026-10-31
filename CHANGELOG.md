@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.339.0] — 2026-10-31
+
 ### Added
 
 - `OllamaSpeech` (extra `[genai-ollama]`, só `httpx`): voz e transcrição por

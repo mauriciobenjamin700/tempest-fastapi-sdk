@@ -3991,7 +3991,7 @@ mesma seção registra a conta real liberada para Orders e o shape mínimo do
 `transaction-intents` em modo de teste (#499, ainda sem `PayoutProvider`).
 
 
-## Efeitos sonoros e música (Unreleased)
+## Efeitos sonoros e música (0.339.0)
 
 `AudioGenerator` em `genai/audio_generation.py`, extras `[genai,genai-sound]`
 (`[genai-sound]` = `diffusers`), rota `POST /audio` no `make_genai_router`.
@@ -4003,7 +4003,7 @@ recusados na carga. As classes AudioLDM/MusicLDM estão em
 32 kHz, 1,25 GiB, seed reproduz), ficou fora desta fatia por ser outro
 caminho de carga.
 
-## Voz e transcrição pelo Ollama (Unreleased)
+## Voz e transcrição pelo Ollama (0.339.0)
 
 `OllamaSpeech` em `genai/ollama_speech.py`, extra `[genai-ollama]`:
 `synthesize` (`/v1/audio/speech`, WAV com cabeçalho corrigido ou PCM),
