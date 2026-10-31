@@ -1845,8 +1845,11 @@ asyncio.run(main())
 
 - **`language`** escolhe a primeira voz da língua (`v2/pt_speaker_0`);
   **`speaker`** escolhe uma voz específica (`v2/pt_speaker_1`). `voices()`
-  lista as 261 que o checkpoint traz.
-- **Texto longo é dividido por frase.** Uma chamada do Bark para em 13,95 s
+  lista os 261 presets do checkpoint: 130 com `v2/` e 131 nomes legados sem
+  o prefixo.
+- **Texto longo é dividido por frase** (`.`, `!`, `?`, `…`, `;` ou `:`
+  seguidos de espaço; `Dr.`, `Sra.`, `Av.` e afins não quebram a frase, e
+  números como `R$ 3,50` ou `1.000` nunca são partidos). Uma chamada do Bark para em 13,95 s
   de áudio: medido, 180 caracteres de português saíram inteiros e 240 foram
   cortados. `synthesize` parte o texto em pedaços de até `max_chunk_chars`
   (160), fala cada um e junta com `pause_seconds` (0,25 s) de silêncio. Um
@@ -1855,11 +1858,13 @@ asyncio.run(main())
 - **É lento.** Na RTX 4070 Ti SUPER, em bf16 (o default), os 35,75 s levaram
   88,6 s; em fp16, 12,7 s levaram de 24 a 27 s. Para resposta em tempo real,
   prefira o `OllamaSpeech`.
-- **Erros respondem `422`**, com `details={"field": ...}`: texto em branco
-  (`text`), preset que não existe (`speaker`, ou `language` quando a língua
-  não tem voz) e `speaker` de outra língua que não a pedida.
-- **A seed é global**, aplicada com `torch.manual_seed`. A mesma seed
-  repetiu os mesmos bytes.
+- **Erros respondem `422`**, com `details={"field": ...}`. Antes de carregar
+  o modelo: texto sem nada para falar (`text`), seed fora de `0..2**64 - 1`
+  (`seed`) e `speaker` que não é voz da `language` pedida (`speaker`).
+  Depois: preset que o checkpoint não traz (`speaker`, ou `language` quando a
+  língua não tem voz).
+- **A seed é global**, aplicada com `torch.manual_seed`. Em bf16, a mesma
+  seed repetiu os mesmos bytes.
 
 !!! note "Os pesos são um pickle"
     O `suno/bark-small` publica `pytorch_model.bin`, não safetensors. O

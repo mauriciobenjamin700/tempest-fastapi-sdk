@@ -6,20 +6,23 @@ voice presets for 13 languages, Portuguese included. It satisfies
 :class:`~tempest_fastapi_sdk.genai.audio.SpeechSynthesizer`, so it backs
 ``POST /tts`` on :func:`~tempest_fastapi_sdk.genai.make_genai_router`.
 
-Measured on an RTX 4070 Ti SUPER with ``suno/bark-small`` in fp16, on
-transformers 4.57.6 and 5.22.1 alike (2026-10-31):
+Measured on an RTX 4070 Ti SUPER with ``suno/bark-small`` on transformers
+4.57.6 and 5.22.1 alike (2026-10-31); the ceiling and the fp16 timing through
+the raw model, the rest through this class in bf16 (its default on CUDA):
 
 * One ``generate`` call stops at 13.95 s of audio. Portuguese text of 180
   characters came out whole (12.68 s); 240 characters were cut at 13.95 s.
   :meth:`BarkSpeech.synthesize` therefore splits the text at sentence
   boundaries into pieces of at most ``max_chunk_chars`` (160 by default),
   speaks each, and joins them with a short pause.
-* It runs at about half real time: 12.7 s of audio took 24 to 27 s.
+* It is slower than real time: 12.7 s of audio took 24 to 27 s in fp16, and
+  35.75 s took 88.6 s in bf16.
 * The output is mono at 24 kHz, and the same seed reproduced the same
   samples. ``generate`` takes no RNG object, so the seed goes through
   ``torch.manual_seed`` (process-wide).
-* ``processor.speaker_embeddings`` lists 261 presets (``v2/pt_speaker_0`` to
-  ``v2/pt_speaker_9`` among them). An unknown preset made the processor
+* ``processor.speaker_embeddings`` lists 261 presets: 130 ``v2/`` ones
+  (``v2/pt_speaker_0`` to ``v2/pt_speaker_9`` among them) and 131 legacy
+  names without the prefix. An unknown preset made the processor
   raise ``FileNotFoundError`` with a file path; here it answers ``422``.
 * The weights are a pickle (``pytorch_model.bin``); torch 2.14 loads it with
   ``weights_only=True``.
@@ -58,6 +61,30 @@ did not; 160 leaves room for slower speech.
 
 _SENTENCE_END = re.compile(r"(?<=[.!?…;:])\s+")
 _CLAUSE_END = re.compile(r"(?<=[,])\s+")
+_SPEAKABLE = re.compile(r"\w")
+
+ABBREVIATIONS: frozenset[str] = frozenset(
+    {
+        "dr.",
+        "dra.",
+        "sr.",
+        "sra.",
+        "srta.",
+        "prof.",
+        "profa.",
+        "av.",
+        "nº.",
+        "no.",
+        "mr.",
+        "mrs.",
+        "ms.",
+        "st.",
+    },
+)
+"""Abbreviations after which a period does not end the sentence."""
+
+MAX_SEED: int = 2**64 - 1
+"""Largest seed ``torch.manual_seed`` accepts (``2**64`` overflowed on 2.14)."""
 
 
 def _require_transformers() -> tuple[Any, Any]:
@@ -80,70 +107,93 @@ def _require_transformers() -> tuple[Any, Any]:
     return torch, transformers
 
 
-def _split_long(piece: str, max_chars: int) -> list[str]:
-    """Split one over-long sentence at commas, then at spaces.
+def _pack(parts: list[str], max_chars: int) -> list[str]:
+    """Join parts with spaces, greedily, without passing ``max_chars``.
 
     Args:
-        piece (str): A sentence longer than ``max_chars``.
-        max_chars (int): The largest piece allowed.
+        parts (list[str]): Pieces in order.
+        max_chars (int): The largest joined piece allowed.
 
     Returns:
-        list[str]: Pieces of at most ``max_chars`` characters (a single word
-        longer than that is kept whole rather than cut mid-word).
+        list[str]: The joined pieces; a part longer than ``max_chars`` stays
+        whole as its own piece.
     """
-    parts: list[str] = []
+    packed: list[str] = []
     current = ""
-    words = [word for clause in _CLAUSE_END.split(piece) for word in clause.split(" ")]
-    for word in words:
-        candidate = f"{current} {word}".strip()
+    for part in parts:
+        candidate = f"{current} {part}".strip()
         if current and len(candidate) > max_chars:
-            parts.append(current)
-            current = word
+            packed.append(current)
+            current = part
         else:
             current = candidate
     if current:
-        parts.append(current)
-    return parts
+        packed.append(current)
+    return packed
+
+
+def _sentences(text: str) -> list[str]:
+    """Split normalized text at sentence ends, keeping abbreviations attached.
+
+    A boundary is ``.``, ``!``, ``?``, ``…``, ``;`` or ``:`` followed by
+    whitespace -- ``;`` and ``:`` included because Bark pauses there anyway
+    and they are the natural cut in long Portuguese clauses. A break right
+    after one of :data:`ABBREVIATIONS` is undone, so ``Dr. Silva`` stays in
+    one sentence. A number like ``R$ 3,50`` or ``1.000`` is never split:
+    the boundary needs whitespace after the mark.
+
+    Args:
+        text (str): The text, whitespace already collapsed.
+
+    Returns:
+        list[str]: The sentences, in order.
+    """
+    sentences: list[str] = []
+    for raw in _SENTENCE_END.split(text):
+        sentence = raw.strip()
+        if not sentence:
+            continue
+        if sentences and sentences[-1].rsplit(" ", 1)[-1].lower() in ABBREVIATIONS:
+            sentences[-1] = f"{sentences[-1]} {sentence}"
+        else:
+            sentences.append(sentence)
+    return sentences
 
 
 def split_for_bark(text: str, max_chars: int = DEFAULT_MAX_CHUNK_CHARS) -> list[str]:
     """Split text into pieces Bark speaks without cutting.
 
-    Sentences are kept together and grouped greedily up to ``max_chars``;
-    a sentence longer than that is split at commas, then at spaces.
+    Sentences (see :func:`_sentences`) are grouped greedily up to
+    ``max_chars``; a longer sentence is split at commas, then at spaces. No
+    word is dropped or reordered, and a single word longer than
+    ``max_chars`` is kept whole. Pieces with no letter or digit (``"..."``)
+    are dropped, since Bark has nothing to say for them.
 
     Args:
         text (str): The text to speak.
         max_chars (int): The largest piece allowed.
 
     Returns:
-        list[str]: The pieces, in order; empty for blank text.
+        list[str]: The pieces, in order; empty when nothing is speakable.
 
     Raises:
         ValueError: When ``max_chars`` is not positive.
     """
     if max_chars <= 0:
         raise ValueError("max_chars must be positive")
-    sentences = [
-        s.strip() for s in _SENTENCE_END.split(" ".join(text.split())) if s.strip()
-    ]
-    pieces: list[str] = []
-    current = ""
-    for sentence in sentences:
-        for part in (
-            [sentence]
-            if len(sentence) <= max_chars
-            else _split_long(sentence, max_chars)
-        ):
-            candidate = f"{current} {part}".strip()
-            if current and len(candidate) > max_chars:
-                pieces.append(current)
-                current = part
-            else:
-                current = candidate
-    if current:
-        pieces.append(current)
-    return pieces
+    parts: list[str] = []
+    for sentence in _sentences(" ".join(text.split())):
+        if len(sentence) <= max_chars:
+            parts.append(sentence)
+            continue
+        words = [
+            word
+            for clause in _CLAUSE_END.split(sentence)
+            for word in clause.split(" ")
+            if word
+        ]
+        parts.extend(_pack(words, max_chars))
+    return [piece for piece in _pack(parts, max_chars) if _SPEAKABLE.search(piece)]
 
 
 def bark_language_code(language: Language | str) -> str:
@@ -348,97 +398,146 @@ class BarkSpeech:
         embeddings = getattr(self._processor, "speaker_embeddings", None) or {}
         return sorted(key for key in embeddings if key != "repo_or_path")
 
-    def _resolve_preset(
-        self,
-        language: Language | str | None,
-        speaker: str | None,
-    ) -> str | None:
-        """Pick the voice preset from ``speaker`` and ``language``.
-
-        Args:
-            language (Language | str | None): The requested language; picks
-                ``v2/<code>_speaker_0`` when no speaker is given.
-            speaker (str | None): An explicit preset name.
-
-        Returns:
-            str | None: The preset, or ``None`` for Bark's unconditioned
-            voice when neither is given.
-
-        Raises:
-            ValidationException: ``422`` when the preset is not shipped, or
-                when ``speaker`` belongs to another language than
-                ``language``.
-        """
-        code = bark_language_code(language) if language is not None else None
-        preset = speaker
-        if preset is None and code is not None:
-            preset = f"v2/{code}_speaker_0"
-        if preset is None:
-            return None
-        available = self.voices()
-        if preset not in available:
-            field = "speaker" if speaker is not None else "language"
-            raise ValidationException(
-                message=(
-                    f"Bark has no voice preset {preset!r}; "
-                    "presets look like 'v2/pt_speaker_0'"
-                ),
-                details={"field": field},
-            )
-        if speaker is not None and code is not None and f"{code}_" not in speaker:
-            raise ValidationException(
-                message=f"speaker {speaker!r} is not a {code!r} voice",
-                details={"field": "speaker"},
-            )
-        return preset
-
-    def _synthesize_sync(
+    def _check_request(
         self,
         text: str,
         language: Language | str | None,
         speaker: str | None,
         seed: int | None,
+    ) -> tuple[list[str], str | None]:
+        """Validate everything that does not need the model, before loading.
+
+        Args:
+            text (str): The text to speak.
+            language (Language | str | None): The requested language.
+            speaker (str | None): An explicit preset name.
+            seed (int | None): The requested seed.
+
+        Returns:
+            tuple[list[str], str | None]: The pieces to speak and the preset
+            to speak them with (``None`` for Bark's unconditioned voice).
+
+        Raises:
+            ValidationException: ``422`` for text with nothing speakable
+                (``text``), a seed outside ``0..2**64 - 1`` (``seed``), or a
+                ``speaker`` that is not a voice of ``language``
+                (``speaker``).
+        """
+        pieces = split_for_bark(text, self.max_chunk_chars)
+        if not pieces:
+            raise ValidationException(
+                message="text has nothing to speak",
+                details={"field": "text"},
+            )
+        if seed is not None and not 0 <= seed <= MAX_SEED:
+            raise ValidationException(
+                message=f"seed must be between 0 and {MAX_SEED}",
+                details={"field": "seed"},
+            )
+        code = bark_language_code(language) if language is not None else None
+        if speaker is not None and code is not None:
+            pattern = rf"(v2/)?{re.escape(code)}_speaker_\d+"
+            if not re.fullmatch(pattern, speaker):
+                raise ValidationException(
+                    message=f"speaker {speaker!r} is not a {code!r} voice",
+                    details={"field": "speaker"},
+                )
+        if speaker is not None:
+            return pieces, speaker
+        if code is not None:
+            return pieces, f"v2/{code}_speaker_0"
+        return pieces, None
+
+    def _check_preset_exists(self, preset: str, *, from_speaker: bool) -> None:
+        """Refuse a preset the checkpoint does not ship (needs the processor).
+
+        Args:
+            preset (str): The resolved preset.
+            from_speaker (bool): Whether the caller named it (``speaker``)
+                or it was derived from ``language``.
+
+        Raises:
+            ValidationException: ``422`` with ``details={"field": ...}``.
+        """
+        if preset not in self.voices():
+            raise ValidationException(
+                message=(
+                    f"Bark has no voice preset {preset!r}; "
+                    "presets look like 'v2/pt_speaker_0'"
+                ),
+                details={"field": "speaker" if from_speaker else "language"},
+            )
+
+    def _speak(self, piece: str, preset: str | None, torch: Any) -> Any:
+        """Speak one piece and return its samples as a NumPy array.
+
+        The device tensors are locals of this frame. On a failure (a CUDA
+        out-of-memory, say) they are dropped before re-raising, so the
+        traceback does not keep them on the GPU.
+
+        Args:
+            piece (str): The text piece.
+            preset (str | None): The voice preset.
+            torch (Any): The imported ``torch`` module.
+
+        Returns:
+            Any: The mono samples, ``float32``.
+        """
+        inputs: Any = None
+        audio: Any = None
+        try:
+            inputs = self._processor(piece, voice_preset=preset).to(self.device)
+            with torch.no_grad():
+                audio = self._model.generate(**inputs)
+            return audio.float().cpu().numpy().reshape(-1)
+        except BaseException:
+            inputs = None
+            audio = None
+            raise
+
+    def _synthesize_sync(
+        self,
+        pieces: list[str],
+        preset: str | None,
+        from_speaker: bool,
+        seed: int | None,
     ) -> bytes:
         """Load if needed, speak every piece and join them into one WAV.
 
         Args:
-            text (str): The text to speak.
-            language (Language | str | None): See :meth:`synthesize`.
-            speaker (str | None): See :meth:`synthesize`.
+            pieces (list[str]): The text pieces, already validated.
+            preset (str | None): The resolved voice preset.
+            from_speaker (bool): Whether ``preset`` came from ``speaker``.
             seed (int | None): Seed for ``torch.manual_seed``, or ``None``.
 
         Returns:
             bytes: The WAV payload.
 
         Raises:
-            ValidationException: When the text is blank or the voice is
-                invalid.
+            ValidationException: When the checkpoint does not ship the
+                preset.
         """
-        pieces = split_for_bark(text, self.max_chunk_chars)
-        if not pieces:
-            raise ValidationException(
-                message="text must not be blank",
-                details={"field": "text"},
-            )
         with self._lifecycle.use():
-            preset = self._resolve_preset(language, speaker)
-            torch, _ = _require_transformers()
+            if preset is not None:
+                self._check_preset_exists(preset, from_speaker=from_speaker)
+            torch, _transformers = _require_transformers()
             import numpy as np
 
             if seed is not None:
                 torch.manual_seed(seed)
             pause = np.zeros(
-                int(self.pause_seconds * self._sample_rate), dtype=np.float32
+                int(self.pause_seconds * self._sample_rate),
+                dtype=np.float32,
             )
             segments: list[Any] = []
             for index, piece in enumerate(pieces):
-                inputs = self._processor(piece, voice_preset=preset).to(self.device)
-                with torch.no_grad():
-                    audio = self._model.generate(**inputs)
                 if index:
                     segments.append(pause)
-                segments.append(audio.float().cpu().numpy().reshape(-1))
-            data, _, _ = encode_wav(np.concatenate(segments), self._sample_rate)
+                segments.append(self._speak(piece, preset, torch))
+            data, _channels, _seconds = encode_wav(
+                np.concatenate(segments),
+                self._sample_rate,
+            )
             return data
 
     async def synthesize(
@@ -465,40 +564,47 @@ class BarkSpeech:
             speaker (str | None): A preset from :meth:`voices`, such as
                 ``"v2/pt_speaker_1"``.
             seed (int | None): Seed applied with ``torch.manual_seed`` before
-                the first piece; the same seed repeats the same audio.
+                the first piece, ``0`` to ``2**64 - 1``; the same seed
+                repeated the same bytes (measured in bf16).
             out_path (str | Path | None): When given, also write the WAV.
 
         Returns:
             bytes: The WAV payload.
 
         Raises:
-            ValidationException: ``422`` for blank text, an unknown preset,
-                or a speaker of another language than ``language``.
+            ValidationException: ``422``, with ``details={"field": ...}``:
+                text with nothing speakable (``text``), a seed outside
+                ``0..2**64 - 1`` (``seed``) and a ``speaker`` that is not a
+                ``language`` voice (``speaker``) are refused before the model
+                loads; a preset the checkpoint does not ship (``speaker``, or
+                ``language`` when that language has no voice) after.
             ImportError: When the ``[genai]`` extra is missing.
         """
+        pieces, preset = self._check_request(text, language, speaker, seed)
+        from_speaker = speaker is not None
         async with genai_span("tts", self.model_id):
             if self.metrics is None:
-                data = await self._render(text, language, speaker, seed)
+                data = await self._render(pieces, preset, from_speaker, seed)
             else:
                 async with self.metrics.track(self.model_id, "tts"):
-                    data = await self._render(text, language, speaker, seed)
+                    data = await self._render(pieces, preset, from_speaker, seed)
         if out_path is not None:
             await asyncio.to_thread(Path(out_path).write_bytes, data)
         return data
 
     async def _render(
         self,
-        text: str,
-        language: Language | str | None,
-        speaker: str | None,
+        pieces: list[str],
+        preset: str | None,
+        from_speaker: bool,
         seed: int | None,
     ) -> bytes:
         """Run the blocking synthesis off the event loop, one at a time.
 
         Args:
-            text (str): The text to speak.
-            language (Language | str | None): See :meth:`synthesize`.
-            speaker (str | None): See :meth:`synthesize`.
+            pieces (list[str]): The validated text pieces.
+            preset (str | None): The resolved voice preset.
+            from_speaker (bool): Whether ``preset`` came from ``speaker``.
             seed (int | None): See :meth:`synthesize`.
 
         Returns:
@@ -507,16 +613,18 @@ class BarkSpeech:
         async with self._semaphore:
             return await asyncio.to_thread(
                 self._synthesize_sync,
-                text,
-                language,
-                speaker,
+                pieces,
+                preset,
+                from_speaker,
                 seed,
             )
 
 
 __all__: list[str] = [
+    "ABBREVIATIONS",
     "DEFAULT_BARK_MODEL",
     "DEFAULT_MAX_CHUNK_CHARS",
+    "MAX_SEED",
     "BarkSpeech",
     "bark_language_code",
     "split_for_bark",

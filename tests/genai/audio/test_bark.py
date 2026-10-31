@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import random
 import wave
 from collections.abc import Iterator
 from types import SimpleNamespace
@@ -156,6 +157,53 @@ class TestSplitForBark:
         pieces = split_for_bark(text, max_chars=20)
         assert " ".join(pieces).split() == text.split()
 
+    def test_abbreviations_stay_with_the_next_word(self) -> None:
+        text = "O Dr. Silva pagou R$ 3,50. Depois a Sra. Lima saiu."
+        assert split_for_bark(text, max_chars=40) == [
+            "O Dr. Silva pagou R$ 3,50.",
+            "Depois a Sra. Lima saiu.",
+        ]
+
+    def test_numbers_are_never_split(self) -> None:
+        assert split_for_bark("Custa 1.000,00 reais.", max_chars=8) == [
+            "Custa",
+            "1.000,00",
+            "reais.",
+        ]
+
+    def test_a_word_longer_than_the_limit_stays_whole(self) -> None:
+        assert split_for_bark("a supercalifragilistico b", max_chars=5) == [
+            "a",
+            "supercalifragilistico",
+            "b",
+        ]
+
+    def test_punctuation_only_pieces_are_dropped(self) -> None:
+        assert split_for_bark("... ?! ;") == []
+        assert split_for_bark("Oi. ... Tchau.", max_chars=4) == ["Oi.", "Tchau."]
+
+    @pytest.mark.parametrize("seed", range(20))
+    def test_random_text_keeps_every_word_in_order(self, seed: int) -> None:
+        rng = random.Random(seed)
+        vocabulary = [
+            "ônibus",
+            "Dr.",
+            "R$",
+            "3,50",
+            "rota,",
+            "fim.",
+            "sim!",
+            "não?",
+            "a;",
+            "b:",
+        ]
+        words = [rng.choice(vocabulary) for _ in range(rng.randint(1, 120))]
+        text = " ".join(words)
+        limit = rng.randint(5, 80)
+        pieces = split_for_bark(text, max_chars=limit)
+        assert " ".join(pieces).split() == words
+        assert all(len(p) <= limit or " " not in p for p in pieces)
+
     def test_whitespace_is_normalized_and_blank_is_empty(self) -> None:
         assert split_for_bark("  a.\n\n  b.  ") == ["a. b."]
         assert split_for_bark("   ") == []
@@ -220,6 +268,9 @@ class TestSynthesize:
             ({"speaker": "v2/xx_speaker_9"}, "speaker"),
             ({"language": "xx"}, "language"),
             ({"language": "en", "speaker": "v2/pt_speaker_1"}, "speaker"),
+            ({"language": "pt", "speaker": "v2/en_speaker_6_pt_speaker_1"}, "speaker"),
+            ({"seed": -1}, "seed"),
+            ({"seed": 2**64}, "seed"),
         ],
     )
     async def test_invalid_voice_is_a_422(
@@ -232,6 +283,57 @@ class TestSynthesize:
         with pytest.raises(ValidationException) as caught:
             await BarkSpeech(device="cpu").synthesize("oi", **kwargs)
         assert caught.value.details == {"field": field}
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"language": "en", "speaker": "v2/pt_speaker_1"},
+            {"seed": 2**64},
+            {"language": "pt", "speaker": "announcer"},
+        ],
+    )
+    async def test_pure_checks_run_before_loading(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        kwargs: dict[str, Any],
+    ) -> None:
+        _install(monkeypatch)
+        speech = BarkSpeech(device="cpu")
+        with pytest.raises(ValidationException):
+            await speech.synthesize("oi", **kwargs)
+        assert speech.is_loaded is False
+
+    async def test_legacy_speaker_matches_its_language(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        fakes = _install(monkeypatch)
+        fakes.processor.speaker_embeddings = {**PRESETS, "pt_speaker_1": {}}
+        await BarkSpeech(device="cpu").synthesize(
+            "oi", language="pt-BR", speaker="pt_speaker_1"
+        )
+        assert fakes.processor.calls[0][1] == "pt_speaker_1"
+
+    async def test_generate_failure_drops_the_device_tensors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        fakes = _install(monkeypatch)
+
+        def out_of_memory(**kwargs: Any) -> FakeArray:
+            raise RuntimeError("CUDA out of memory")
+
+        fakes.model.generate = out_of_memory
+        with pytest.raises(RuntimeError) as caught:
+            await BarkSpeech(device="cpu").synthesize("oi")
+        frames = []
+        traceback = caught.value.__traceback__
+        while traceback is not None:
+            frames.append(traceback.tb_frame)
+            traceback = traceback.tb_next
+        speak = [f for f in frames if f.f_code.co_name == "_speak"]
+        assert speak
+        assert speak[0].f_locals["inputs"] is None
 
     async def test_blank_text_is_a_422_without_loading(
         self,

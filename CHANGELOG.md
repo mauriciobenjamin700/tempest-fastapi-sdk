@@ -10,15 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `BarkSpeech` (`tempest_fastapi_sdk.genai.audio`, extra `[genai]`): TTS
-  local com o Bark (`suno/bark-small`, pesos MIT) e as 261 vozes do
-  checkpoint, português incluído. Satisfaz `SpeechSynthesizer`, então serve o
+  local com o Bark (`suno/bark-small`, pesos MIT) e os 261 presets de voz do
+  checkpoint (130 `v2/` e 131 legados), português incluído. Satisfaz `SpeechSynthesizer`, então serve o
   `/tts` do `make_genai_router`. `language` escolhe `v2/<código>_speaker_0`,
-  `speaker` escolhe a voz; voz inexistente, voz de outra língua e texto em
-  branco respondem `422`. Medido: uma chamada do Bark para em 13,95 s
+  `speaker` escolhe a voz; voz inexistente, voz de outra língua, seed fora
+  de `0..2**64 - 1` e texto sem nada falável respondem `422`, os que não
+  dependem do modelo antes de carregá-lo. Medido: uma chamada do Bark para em 13,95 s
   (180 caracteres de PT inteiros, 240 cortados), então o texto é partido por
   frase em pedaços de até 160 caracteres (`split_for_bark`) e juntado com
   pausa; 442 caracteres viraram 35,75 s completos. Lento: 35,75 s em 88,6 s
-  na RTX 4070 Ti SUPER (bf16). Mesma seed, mesmos bytes (seed global).
+  na RTX 4070 Ti SUPER (bf16). Em bf16, mesma seed, mesmos bytes (seed global).
 
 - `MusicGenerator` (extra `[genai]`, sem `diffusers`): música local com o
   MusicGen pelo `transformers` (`facebook/musicgen-small`,
