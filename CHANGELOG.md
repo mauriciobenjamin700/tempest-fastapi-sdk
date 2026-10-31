@@ -26,6 +26,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   o resultado (o `language` só volta como rótulo), por isso não são expostos
   e `Transcription.language` fica vazio; `keep_alive` é ignorado por esses
   endpoints e também não é exposto.
+- `AudioGenerator` (extras `[genai,genai-sound]`; o `[genai-sound]` é novo e
+  traz só `diffusers`): efeitos sonoros e música locais sobre pipelines da
+  família AudioLDM, carregados pelo `DiffusionPipeline` (o
+  `AutoPipelineForText2Audio` recusa AudioLDM e MusicLDM no diffusers
+  0.39.0). `generate` devolve `GeneratedAudio` (WAV PCM 16 bits com
+  `sample_rate`, `channels`, `seconds` e a `seed`, sorteada quando o config
+  não traz uma), configurado por `AudioGenerationConfig` (`seconds`,
+  `steps`, `guidance_scale`, `negative_prompt`, `seed`, `num_waveforms`).
+  `load()` recusa com `ValueError`, em vez de falhar no meio da geração: o
+  AudioLDM2 (`GPT2Model` sem `_update_model_kwargs_for_generation` no
+  transformers 4.57.6; diffusers#13111 fechado sem merge), o MusicLDM quando
+  `get_text_features` não devolve tensor (medido no transformers 5.22.1; a
+  carga sonda a chamada em vez de adivinhar versão) e pipeline sem
+  `audio_length_in_s` (Stable Audio). Medido numa RTX 4070 Ti SUPER em bf16:
+  10 s em ~1,1 s com pico abaixo de 1,1 GiB nos dois modelos que funcionam,
+  e a mesma seed repete os mesmos bytes. Ambos têm pesos `cc-by-nc-sa-4.0`.
+- Rota `POST /audio` no `make_genai_router` (`audio_generator=`): um clipe
+  `audio/wav` com a seed em `X-Audio-Seed`; novos limites
+  `GenAIRequestLimits.max_audio_seconds` (30) e `max_audio_steps` (200).
 - Protocolos `SpeechTranscriber` e `SpeechSynthesizer` em
   `tempest_fastapi_sdk.genai.audio`, com o formato que as rotas chamam.
 

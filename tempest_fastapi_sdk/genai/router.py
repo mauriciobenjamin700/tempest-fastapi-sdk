@@ -30,6 +30,7 @@ from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
 from tempest_fastapi_sdk.genai.inventory import ModelRuntimeReport, runtime_report
 from tempest_fastapi_sdk.genai.schemas import (
+    AudioGenerationConfig,
     GenAIRequestLimits,
     GenerationConfig,
     ImageGenerationConfig,
@@ -40,6 +41,7 @@ from tempest_fastapi_sdk.utils.upload import read_upload_capped
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.audio import SpeechSynthesizer, SpeechTranscriber
+    from tempest_fastapi_sdk.genai.audio_generation import AudioGenerator
     from tempest_fastapi_sdk.genai.image import ImageGenerator
     from tempest_fastapi_sdk.genai.rag import SupportsEmbed, SupportsRetrieve
     from tempest_fastapi_sdk.genai.registry import ModelRegistry
@@ -182,6 +184,19 @@ class ImageRequestSchema(BaseSchema):
     config: ImageGenerationConfig | None = None
 
 
+class AudioRequestSchema(BaseSchema):
+    """Request body for ``POST /audio``.
+
+    Attributes:
+        prompt (str): The sound or music to generate.
+        config (AudioGenerationConfig | None): Length, steps, guidance and
+            seed. Left unset, the model's own defaults apply.
+    """
+
+    prompt: str
+    config: AudioGenerationConfig | None = None
+
+
 def make_genai_router(
     *,
     text_generator: TextBackend | None = None,
@@ -190,6 +205,7 @@ def make_genai_router(
     speech_to_text: SpeechTranscriber | None = None,
     text_to_speech: SpeechSynthesizer | None = None,
     image_generator: ImageGenerator | None = None,
+    audio_generator: AudioGenerator | None = None,
     models: ModelRegistry | dict[str, Any] | list[Any] | None = None,
     prefix: str = "/api/genai",
     tags: list[str] | None = None,
@@ -209,6 +225,8 @@ def make_genai_router(
     * ``text_to_speech`` -> ``POST {prefix}/tts`` (returns ``audio/wav``).
     * ``image_generator`` -> ``POST {prefix}/image`` (returns the encoded
       image, with the seed in ``X-Image-Seed``).
+    * ``audio_generator`` -> ``POST {prefix}/audio`` (returns one
+      ``audio/wav`` clip, with the seed in ``X-Audio-Seed``).
     * ``models`` -> ``GET {prefix}/models`` (what is resident in memory
       right now, next to the host's memory picture).
 
@@ -242,6 +260,7 @@ def make_genai_router(
             ``TextToSpeech``, an ``OllamaSpeech``, or any
             ``SpeechSynthesizer``.
         image_generator (ImageGenerator | None): Backs ``/image``.
+        audio_generator (AudioGenerator | None): Backs ``/audio``.
         models (ModelRegistry | dict[str, Any] | list[Any] | None): Backs
             ``/models`` — a ``ModelRegistry``, or a dict/list of handles you
             hold yourself.
@@ -273,13 +292,14 @@ def make_genai_router(
         speech_to_text,
         text_to_speech,
         image_generator,
+        audio_generator,
         models,
     )
     if all(item is None for item in injected):
         raise ValueError(
             "make_genai_router needs at least one GenAI object "
             "(text_generator / embedder / retriever / speech_to_text / "
-            "text_to_speech / image_generator / models).",
+            "text_to_speech / image_generator / audio_generator / models).",
         )
 
     route_docs: RouteDocs = RouteDocs(docs_locale)
@@ -530,17 +550,50 @@ def make_genai_router(
                 headers={"X-Image-Seed": str(first.seed)},
             )
 
+    if audio_generator is not None:
+        sounds = audio_generator
+
+        @router.post(
+            "/audio",
+            status_code=status.HTTP_200_OK,
+            response_class=Response,
+            summary=route_docs.summary("genai.render_audio"),
+            description=route_docs.description("genai.render_audio"),
+        )
+        async def render_audio(body: AudioRequestSchema) -> Response:
+            """Generate one clip and return it as a WAV.
+
+            Exactly one clip is generated, because the response body is the
+            clip itself: ``config.num_waveforms`` above ``1`` is refused
+            with ``422``. The seed that produced it travels in the
+            ``X-Audio-Seed`` header.
+
+            Args:
+                body (AudioRequestSchema): Prompt + optional config.
+
+            Returns:
+                Response: The ``audio/wav`` payload.
+            """
+            _check_audio(body, bounds)
+            clips = await sounds.generate(body.prompt, config=body.config)
+            first = clips[0]
+            return Response(
+                content=first.data,
+                media_type="audio/wav",
+                headers={"X-Audio-Seed": str(first.seed)},
+            )
+
     return router
 
 
-def _check_at_most(field: str, value: int, limit: int) -> None:
+def _check_at_most(field: str, value: float, limit: float) -> None:
     """Refuse a request whose ``field`` measures above ``limit``.
 
     Args:
         field (str): The request field being measured, reported back in
             ``details``.
-        value (int): The measured size (characters, items or the value).
-        limit (int): The largest accepted size.
+        value (float): The measured size (characters, items or the value).
+        limit (float): The largest accepted size.
 
     Raises:
         ValidationException: When ``value`` exceeds ``limit`` (``422``,
@@ -637,7 +690,36 @@ def _check_image(body: ImageRequestSchema, bounds: GenAIRequestLimits) -> None:
     _check_at_most("num_images", config.num_images, 1)
 
 
+def _check_audio(body: AudioRequestSchema, bounds: GenAIRequestLimits) -> None:
+    """Refuse an ``/audio`` request over the router's limits.
+
+    Args:
+        body (AudioRequestSchema): The request.
+        bounds (GenAIRequestLimits): The router's limits.
+
+    Raises:
+        ValidationException: When the prompt, negative prompt, length, step
+            count or ``num_waveforms`` is over its limit.
+    """
+    _check_prompt(body.prompt, bounds)
+    config = body.config
+    if config is None:
+        return
+    if config.negative_prompt is not None:
+        _check_at_most(
+            "negative_prompt",
+            len(config.negative_prompt),
+            bounds.max_prompt_chars,
+        )
+    if config.seconds is not None:
+        _check_at_most("seconds", config.seconds, bounds.max_audio_seconds)
+    if config.steps is not None:
+        _check_at_most("steps", config.steps, bounds.max_audio_steps)
+    _check_at_most("num_waveforms", config.num_waveforms, 1)
+
+
 __all__: list[str] = [
+    "AudioRequestSchema",
     "ChatMessageSchema",
     "ChatRequestSchema",
     "ChatResponseSchema",

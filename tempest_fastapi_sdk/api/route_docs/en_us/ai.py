@@ -30,6 +30,7 @@ AI_ROUTES: dict[str, RouteDoc] = {
     "genai.synthesize": RouteDoc(),
     "genai.list_models": RouteDoc(),
     "genai.render_image": RouteDoc(),
+    "genai.render_audio": RouteDoc(),
     "prediction.predict": RouteDoc(),
     "prediction.model_info": RouteDoc(),
     "prediction.sync_model": RouteDoc(),

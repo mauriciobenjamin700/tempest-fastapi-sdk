@@ -283,6 +283,9 @@ genai-image = [
     "diffusers>=0.39.0",
     "pillow>=13.0.0",
 ]
+genai-sound = [
+    "diffusers>=0.39.0",
+]
 modelops = [
     "psutil>=7.2.2",
     "nvidia-ml-py>=13.610.43",

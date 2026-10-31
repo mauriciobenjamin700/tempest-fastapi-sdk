@@ -6413,6 +6413,9 @@ genai-rag = [
     { name = "rank-bm25" },
     { name = "trafilatura" },
 ]
+genai-sound = [
+    { name = "diffusers" },
+]
 genai-structured = [
     { name = "lm-format-enforcer" },
 ]
@@ -6630,6 +6633,7 @@ requires-dist = [
     { name = "cryptography", marker = "extra == 'oidc'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'webpush'", specifier = ">=50.0.1" },
     { name = "diffusers", marker = "extra == 'genai-image'", specifier = ">=0.39.0" },
+    { name = "diffusers", marker = "extra == 'genai-sound'", specifier = ">=0.39.0" },
     { name = "email-validator", specifier = ">=2.3.0" },
     { name = "email-validator", marker = "extra == 'all'", specifier = ">=2.3.0" },
     { name = "email-validator", marker = "extra == 'email'", specifier = ">=2.3.0" },
@@ -6763,7 +6767,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'all'", specifier = ">=17.1" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=17.1" },
 ]
-provides-extras = ["cli-ops", "cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "slides", "slides-mermaid", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
+provides-extras = ["cli-ops", "cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "slides", "slides-mermaid", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "genai-sound", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
 
 [package.metadata.requires-dev]
 dev = [
