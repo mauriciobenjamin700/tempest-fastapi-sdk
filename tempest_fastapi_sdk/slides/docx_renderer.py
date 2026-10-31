@@ -246,12 +246,13 @@ def write_answer_key_docx(
         )
     for section in answer_key.sections:
         document.add_paragraph()
-        _style(
-            document.add_paragraph().add_run(section.title),
-            size=14,
-            color=ACCENT_COLOR,
-            bold=True,
-        )
+        if section.title:
+            _style(
+                document.add_paragraph().add_run(section.title),
+                size=14,
+                color=ACCENT_COLOR,
+                bold=True,
+            )
         for item in section.items:
             question = document.add_paragraph()
             question.paragraph_format.space_before = Pt(8)

@@ -79,8 +79,9 @@ Quatro slides, e cada linha do texto caiu num lugar:
 - **`Lesson 1: Logic gates`** abre uma aula e vira a capa dela
   (`lesson_title`). O título do deck, quando você não passa `deck_title=`, é o
   da primeira aula.
-- **Linha curta, com inicial maiúscula e sem pontuação no fim**
-  (`What a gate is`) abre uma seção. O título da seção é o título do slide.
+- **Linha curta (4 a 90 caracteres), com inicial maiúscula e sem pontuação
+  no fim** (`What a gate is`) abre uma seção; uma palavra sozinha precisa de
+  pelo menos 8 caracteres, para um `Yes` solto não virar seção. O título da seção é o título do slide.
 - **Parágrafo** abaixo de uma seção vira slide de conteúdo (`content`).
 - **`Termo: descrição`** vira tópico, e os tópicos de uma seção dividem o
   mesmo slide (`bullets`). O traço na frente é opcional.
@@ -98,7 +99,8 @@ um deck longo não travar o event loop.
     8 palavras e 80 caracteres, não ter `.,!?;` nem parêntese desbalanceado, e
     não conter verbo de frase (` is `, ` are `, ` means `, …); a descrição
     precisa de pelo menos 20 caracteres. `The result is: 42 after the second
-    pass` continua parágrafo.
+    pass.` continua parágrafo — sem o ponto final, a mesma linha sozinha
+    vira título de seção.
 
 ### Slide que não estoura
 
@@ -609,6 +611,16 @@ n}` — a URL é o próprio texto do usuário ecoado de volta e, dentro de um zi
 revelaria o caminho do diretório temporário do servidor. O WeasyPrint para na
 primeira recusa, então `n` é 1 na prática: medido com duas referências
 recusadas no mesmo documento, `{"refused_count": 1}`.
+
+!!! warning "Sem o extra, é `ImportError`, não envelope"
+    O parser e os schemas importam sem dependência nenhuma, mas o primeiro
+    render sem o `[slides]` instalado levanta `ImportError` — não um
+    `AppException` — e a rota responde 500. A mensagem nomeia o extra, igual
+    para HTML, PDF, PPTX, DOCX e Markdown → PDF:
+    `Rendering slides needs python-pptx. Install the extra: pip install
+    "tempest-fastapi-sdk[slides]"` (com `jinja2`, `weasyprint`, `python-docx`
+    ou `markdown` no lugar do pacote que faltou). É defeito de instalação, não
+    de entrada: instale o extra em vez de tratar o erro na rota.
 
 ## Servindo por HTTP
 

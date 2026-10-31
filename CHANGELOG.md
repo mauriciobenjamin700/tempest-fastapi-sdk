@@ -55,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     de um por bloco. Diagrama que falha — sem Playwright, sem Chromium,
     sintaxe inválida, prazo estourado — vira uma caixa com o código escapado,
     e o PDF sai.
+- Renderizar sem o extra levanta `ImportError` nomeando
+  `pip install "tempest-fastapi-sdk[slides]"`, também para PDF (o `PdfRenderer`
+  nomearia o `[pdf]`).
 
 ## [0.337.1] — 2026-10-31
 

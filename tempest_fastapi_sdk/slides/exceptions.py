@@ -50,8 +50,8 @@ class MarkdownArchiveError(ValidationException):
     """Raised when a Markdown archive cannot be turned into a document.
 
     ``details["reason"]`` says which check failed — ``not_a_zip``,
-    ``unsafe_member``, ``too_large``, ``too_many_members`` or
-    ``no_markdown`` — so a client can branch without parsing prose. The
+    ``unsafe_member``, ``too_large``, ``too_many_members``,
+    ``no_markdown`` or ``not_utf8`` — so a client can branch without parsing prose. The
     member name of an unsafe entry is never included: it is attacker-chosen
     text.
     """

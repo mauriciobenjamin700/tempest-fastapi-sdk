@@ -87,7 +87,8 @@ def write_answer_key_markdown(
     if answer_key.subtitle:
         lines.extend([f"_{answer_key.subtitle}_", ""])
     for section in answer_key.sections:
-        lines.extend([f"## {section.title}", ""])
+        if section.title:
+            lines.extend([f"## {section.title}", ""])
         for item in section.items:
             question = strip_tags(item.question).strip()
             answer = strip_tags(item.answer).strip()

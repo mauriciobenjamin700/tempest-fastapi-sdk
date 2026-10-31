@@ -18,6 +18,7 @@ from tempest_fastapi_sdk.slides.docx_renderer import (
     write_answer_key_docx,
     write_slides_docx,
 )
+from tempest_fastapi_sdk.slides.exceptions import missing_extra_message
 from tempest_fastapi_sdk.slides.html_renderer import (
     write_answer_key_html,
     write_slides_html,
@@ -105,7 +106,10 @@ class SlideRenderer:
             ImportError: When the ``[slides]`` extra is missing.
         """
         async with self._semaphore:
-            return await self._pdf.render_html(self.html(deck, theme=theme))
+            try:
+                return await self._pdf.render_html(self.html(deck, theme=theme))
+            except ImportError as exc:  # pragma: no cover - extra-gated
+                raise ImportError(missing_extra_message("weasyprint")) from exc
 
     async def pptx(
         self, deck: SlideDeck, *, theme: SlideTheme = SlideTheme.DEFAULT
@@ -218,7 +222,10 @@ class AnswerKeyRenderer:
             ImportError: When the ``[slides]`` extra is missing.
         """
         async with self._semaphore:
-            return await self._pdf.render_html(self.html(answer_key, theme=theme))
+            try:
+                return await self._pdf.render_html(self.html(answer_key, theme=theme))
+            except ImportError as exc:  # pragma: no cover - extra-gated
+                raise ImportError(missing_extra_message("weasyprint")) from exc
 
     async def docx(self, answer_key: AnswerKey) -> bytes:
         """Render the answer key as a Word document.

@@ -333,9 +333,13 @@ async def _without_echo(
 
     Raises:
         AssetRefused: With ``details={"refused_count": n}``.
+        ImportError: When WeasyPrint is missing, naming the ``[slides]``
+            extra rather than the ``[pdf]`` one the renderer would.
     """
     try:
         return await renderer.render_html(html_document, base_url=base_url)
+    except ImportError as exc:  # pragma: no cover - extra-gated
+        raise ImportError(missing_extra_message("weasyprint")) from exc
     except AssetRefused as exc:
         refused = exc.details.get("refused", [])
         count = len(refused) if isinstance(refused, list) else 1

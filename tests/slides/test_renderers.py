@@ -272,3 +272,24 @@ class TestMissingExtra:
                 theme=SlideTheme.DEFAULT,
                 vocabulary=DEFAULT_SLIDE_VOCABULARY,
             )
+
+
+class TestUntitledSection:
+    async def test_no_empty_heading_for_questions_without_a_part(self) -> None:
+        """A key whose questions sit under no heading writes no blank title."""
+        key = AnswerKey(
+            title="Quiz",
+            sections=[
+                AnswerKeySection(
+                    title="",
+                    items=[AnswerKeyItem(question="1. Why?", answer="Because.")],
+                )
+            ],
+        )
+        renderer = AnswerKeyRenderer()
+        assert "\n## \n" not in renderer.markdown(key)
+        document = docx.Document(io.BytesIO(await renderer.docx(key)))
+        bold_empty = [
+            p for p in document.paragraphs if not p.text and any(r.bold for r in p.runs)
+        ]
+        assert bold_empty == []

@@ -81,8 +81,9 @@ Four slides, and every line of the text landed somewhere:
 - **`Lesson 1: Logic gates`** opens a lesson and becomes its cover
   (`lesson_title`). The deck title, when you pass no `deck_title=`, is the
   first lesson's.
-- **A short line, capitalized, with no closing punctuation**
-  (`What a gate is`) opens a section. The section title is the slide title.
+- **A short line (4 to 90 characters), capitalized, with no closing
+  punctuation** (`What a gate is`) opens a section; a single word needs at
+  least 8 characters, so a stray `Yes` does not open one. The section title is the slide title.
 - **A paragraph** under a section becomes a content slide (`content`).
 - **`Term: description`** becomes a bullet, and the bullets of a section share
   one slide (`bullets`). The leading dash is optional.
@@ -100,7 +101,8 @@ thread, so a long deck does not block the event loop.
     8 words and 80 characters, carry no `.,!?;` and no unbalanced
     parenthesis, and contain no sentence verb (` is `, ` are `, ` means `, …);
     the description needs at least 20 characters. `The result is: 42 after
-    the second pass` stays a paragraph.
+    the second pass.` stays a paragraph — without the full stop, the same
+    line on its own becomes a section title.
 
 ### Slides that do not overflow
 
@@ -611,6 +613,17 @@ under `details["refused"]`; raised from Markdown, it carries only
 and, inside a zip, would disclose the server's temporary directory path.
 WeasyPrint stops at the first refusal, so `n` is 1 in practice: measured with
 two refused references in one document, `{"refused_count": 1}`.
+
+!!! warning "Without the extra it is an `ImportError`, not an envelope"
+    The parser and the schemas import with no dependency, but the first
+    render without `[slides]` installed raises `ImportError` — not an
+    `AppException` — and the route answers 500. The message names the extra,
+    the same for HTML, PDF, PPTX, DOCX and Markdown to PDF:
+    `Rendering slides needs python-pptx. Install the extra: pip install
+    "tempest-fastapi-sdk[slides]"` (with `jinja2`, `weasyprint`,
+    `python-docx` or `markdown` in place of the missing package). It is an
+    installation defect, not an input one: install the extra rather than
+    handling the error in the route.
 
 ## Serving over HTTP
 
