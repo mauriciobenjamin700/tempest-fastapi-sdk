@@ -1814,6 +1814,58 @@ no `transcribe`/`synthesize` também aceita o código cru (`"pt"`) ou `None`
     Encadeie com o LLM: **STT** transcreve a fala → `TextGenerator`/RAG
     responde → **TTS** fala a resposta. Tudo local, nada sai da máquina.
 
+### Voz multilíngue com Bark (licença MIT)
+
+`BarkSpeech` roda o Bark da Suno pelo `transformers`. É a opção de TTS local
+com pesos de **uso comercial liberado** (MIT) e vozes em português. Basta o
+extra `[genai]`, e ele serve o `/tts` do `make_genai_router` como o
+`TextToSpeech` e o `OllamaSpeech`.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import BarkSpeech, Language
+
+voz = BarkSpeech("suno/bark-small")
+
+
+async def main() -> None:
+    """Lê um aviso longo em português e grava o WAV."""
+    aviso = (
+        "O sistema de transporte da cidade passa por mudanças nesta semana. "
+        "As linhas que atendem o centro terão novos horários a partir de "
+        "segunda-feira. Quem usa o ônibus das oito deve chegar ao ponto dez "
+        "minutos antes."
+    )
+    await voz.synthesize(aviso, language=Language.PT_BR, seed=0, out_path="aviso.wav")
+
+
+asyncio.run(main())
+```
+
+- **`language`** escolhe a primeira voz da língua (`v2/pt_speaker_0`);
+  **`speaker`** escolhe uma voz específica (`v2/pt_speaker_1`). `voices()`
+  lista as 261 que o checkpoint traz.
+- **Texto longo é dividido por frase.** Uma chamada do Bark para em 13,95 s
+  de áudio: medido, 180 caracteres de português saíram inteiros e 240 foram
+  cortados. `synthesize` parte o texto em pedaços de até `max_chunk_chars`
+  (160), fala cada um e junta com `pause_seconds` (0,25 s) de silêncio. Um
+  texto de 442 caracteres virou 35,75 s de áudio completo; sem a divisão,
+  parava em 13,95 s.
+- **É lento.** Na RTX 4070 Ti SUPER, em bf16 (o default), os 35,75 s levaram
+  88,6 s; em fp16, 12,7 s levaram de 24 a 27 s. Para resposta em tempo real,
+  prefira o `OllamaSpeech`.
+- **Erros respondem `422`**, com `details={"field": ...}`: texto em branco
+  (`text`), preset que não existe (`speaker`, ou `language` quando a língua
+  não tem voz) e `speaker` de outra língua que não a pedida.
+- **A seed é global**, aplicada com `torch.manual_seed`. A mesma seed
+  repetiu os mesmos bytes.
+
+!!! note "Os pesos são um pickle"
+    O `suno/bark-small` publica `pytorch_model.bin`, não safetensors. O
+    `torch` 2.14 carrega com `weights_only=True`, que não executa código do
+    arquivo.
+
 ### Escolher modelo de voz e áudio: licença e onde roda
 
 Antes de escolher um modelo de voz, confira duas coisas: **a licença dos
@@ -1832,6 +1884,7 @@ Licença de peso muda; confira o model card antes de shippar.
 | `sesame/csm-1b` | TTS | `apache-2.0` (gated) | `transformers` |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | TTS | `apache-2.0` | fora do `transformers` 4.57.6 |
 | `ResembleAI/chatterbox` | TTS | `mit` | pacote `chatterbox-tts` |
+| `suno/bark-small` | TTS | `mit` | `BarkSpeech` ([Bark](#voz-multilingue-com-bark-licenca-mit)) |
 | `openai/whisper-large-v3-turbo` | STT | `mit` | `SpeechToText` (faster-whisper) |
 | `coqui/XTTS-v2` | TTS | `other` (CPML) | `TextToSpeech` (Coqui) |
 | `SWivid/F5-TTS` | TTS | **`cc-by-nc-4.0`** | pacote `f5-tts` |
