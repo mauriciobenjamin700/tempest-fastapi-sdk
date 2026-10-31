@@ -37,6 +37,7 @@ from tempest_fastapi_sdk.slides.exceptions import (
     MarkdownArchiveError,
     SlideSourceEmptyError,
     SlideSourceTooLargeError,
+    missing_extra_message,
 )
 from tempest_fastapi_sdk.slides.mermaid import (
     DEFAULT_MERMAID_TIMEOUT,
@@ -356,7 +357,10 @@ def _markdown_to_html(source: str) -> str:
     Raises:
         ImportError: When ``markdown`` is missing.
     """
-    import markdown
+    try:
+        import markdown
+    except ImportError as exc:  # pragma: no cover - extra-gated
+        raise ImportError(missing_extra_message("markdown")) from exc
 
     converted: str = markdown.markdown(source, extensions=list(MARKDOWN_EXTENSIONS))
     return converted

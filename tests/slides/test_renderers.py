@@ -232,3 +232,43 @@ class TestRendererConfiguration:
         names = zipfile.ZipFile(io.BytesIO(await SlideRenderer().pptx(deck))).namelist()
         assert "[Content_Types].xml" in names
         assert "ppt/presentation.xml" in names
+
+
+class TestMissingExtra:
+    def test_missing_engine_names_the_extra(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without python-pptx the error says which extra to install."""
+        import builtins
+        from typing import Any
+
+        real_import = builtins.__import__
+
+        def refuse_pptx(name: str, *args: Any, **kwargs: Any) -> Any:
+            """Fail the python-pptx import only.
+
+            Args:
+                name (str): Module name.
+                *args (Any): Forwarded.
+                **kwargs (Any): Forwarded.
+
+            Returns:
+                Any: The imported module.
+
+            Raises:
+                ImportError: For ``pptx``.
+            """
+            if name == "pptx" or name.startswith("pptx."):
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", refuse_pptx)
+        from tempest_fastapi_sdk.slides.pptx_renderer import write_slides_pptx
+        from tempest_fastapi_sdk.slides.vocabulary import DEFAULT_SLIDE_VOCABULARY
+
+        with pytest.raises(ImportError, match=r"tempest-fastapi-sdk\[slides\]"):
+            write_slides_pptx(
+                parse_slides(DECK_SOURCE),
+                theme=SlideTheme.DEFAULT,
+                vocabulary=DEFAULT_SLIDE_VOCABULARY,
+            )

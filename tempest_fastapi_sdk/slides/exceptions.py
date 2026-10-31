@@ -67,3 +67,22 @@ class MarkdownArchiveError(ValidationException):
             reason (str): Which check failed.
         """
         super().__init__(details={"reason": reason})
+
+
+def missing_extra_message(package: str) -> str:
+    """Build the error raised when a renderer's engine is not installed.
+
+    Every engine of this module is imported at first use, so a service
+    without the extra fails at the first render — with the extra to install
+    named, instead of a bare ``No module named 'pptx'``.
+
+    Args:
+        package (str): The distribution that failed to import.
+
+    Returns:
+        str: The message, naming the ``[slides]`` extra.
+    """
+    return (
+        f"Rendering slides needs {package}. Install the extra: "
+        'pip install "tempest-fastapi-sdk[slides]"'
+    )

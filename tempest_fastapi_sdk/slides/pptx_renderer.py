@@ -16,6 +16,7 @@ import io
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from tempest_fastapi_sdk.slides.exceptions import missing_extra_message
 from tempest_fastapi_sdk.slides.schemas import Slide, SlideDeck, SlideKind, SlideTheme
 from tempest_fastapi_sdk.slides.vocabulary import SlideVocabulary
 
@@ -113,7 +114,10 @@ class _Writer:
         Returns:
             bytes: The ``.pptx`` file.
         """
-        from pptx import Presentation
+        try:
+            from pptx import Presentation
+        except ImportError as exc:  # pragma: no cover - extra-gated
+            raise ImportError(missing_extra_message("python-pptx")) from exc
         from pptx.util import Inches
 
         presentation = Presentation()

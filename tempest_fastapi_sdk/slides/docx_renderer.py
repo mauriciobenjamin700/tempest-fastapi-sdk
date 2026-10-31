@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING
 
+from tempest_fastapi_sdk.slides.exceptions import missing_extra_message
 from tempest_fastapi_sdk.slides.html_renderer import strip_tags
 from tempest_fastapi_sdk.slides.schemas import AnswerKey, Slide, SlideDeck, SlideKind
 from tempest_fastapi_sdk.slides.vocabulary import AnswerKeyVocabulary, SlideVocabulary
@@ -177,7 +178,10 @@ def write_slides_docx(deck: SlideDeck, *, vocabulary: SlideVocabulary) -> bytes:
     Raises:
         ImportError: When ``python-docx`` is missing.
     """
-    from docx import Document
+    try:
+        from docx import Document
+    except ImportError as exc:  # pragma: no cover - extra-gated
+        raise ImportError(missing_extra_message("python-docx")) from exc
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     document = Document()
@@ -215,7 +219,10 @@ def write_answer_key_docx(
     Raises:
         ImportError: When ``python-docx`` is missing.
     """
-    from docx import Document
+    try:
+        from docx import Document
+    except ImportError as exc:  # pragma: no cover - extra-gated
+        raise ImportError(missing_extra_message("python-docx")) from exc
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 

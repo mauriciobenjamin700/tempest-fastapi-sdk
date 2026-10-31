@@ -22,6 +22,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tempest_fastapi_sdk.slides.exceptions import missing_extra_message
 from tempest_fastapi_sdk.slides.schemas import AnswerKey, SlideDeck, SlideTheme
 from tempest_fastapi_sdk.slides.vocabulary import AnswerKeyVocabulary, SlideVocabulary
 
@@ -59,7 +60,10 @@ def _environment() -> Environment:
     Raises:
         ImportError: When ``jinja2`` is missing.
     """
-    from jinja2 import Environment, FileSystemLoader
+    try:
+        from jinja2 import Environment, FileSystemLoader
+    except ImportError as exc:  # pragma: no cover - extra-gated
+        raise ImportError(missing_extra_message("jinja2")) from exc
 
     environment = Environment(
         loader=FileSystemLoader(str(TEMPLATE_DIR)),
