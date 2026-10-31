@@ -184,8 +184,22 @@ class TestFallbacks:
             assert "tempest db upgrade" in result.stdout + result.stderr, argv
 
 
+REPRO_TABLE: str = "alembic_repro_widget"
+"""Table the seeded model declares; unique to this module on purpose.
+
+The CLI imports the seeded ``src/db/models.py`` in-process, so its table
+lands on the interpreter-wide ``BaseModel.metadata``. ``tests/db/test_outbox.py``
+declares a ``widget`` table there at import time, and a seeded ``widget``
+then raised ``Table 'widget' is already defined for this MetaData instance``
+instead of the Alembic refusal this module tests -- whenever xdist put both
+on one worker (#669). Merely collecting that module was enough.
+"""
+
+
 def _seed_model_module(target: Path) -> None:
     """Seed a ``src/db/models.py`` with one table, so autogenerate has work.
+
+    The table is named :data:`REPRO_TABLE`, not ``widget``; see there.
 
     Args:
         target (Path): The project root to write into.
@@ -197,7 +211,7 @@ def _seed_model_module(target: Path) -> None:
         "from sqlalchemy.orm import Mapped, mapped_column\n"
         "from tempest_fastapi_sdk import BaseModel\n\n\n"
         "class WidgetModel(BaseModel):\n"
-        '    __tablename__ = "widget"\n'
+        f'    __tablename__ = "{REPRO_TABLE}"\n'
         "    name: Mapped[str] = mapped_column()\n",
         encoding="utf-8",
     )
