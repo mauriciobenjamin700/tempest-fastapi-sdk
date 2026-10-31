@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.337.1] — 2026-10-30
+## [0.337.1] — 2026-10-31
+
+### Security
+
+- `pypdf` sobe o piso para `>=6.21.4` (extra `[pdf-read]` e grupos que o
+  carregam) e o lock resolve `pypdf` 6.21.4 e `pyasn1` 0.6.5, fechando 7
+  CVEs do `pypdf` 6.21.2 e 4 do `pyasn1` 0.6.4 que o `make audit` acusou
+  (CVE-2026-119203 a 119209 e CVE-2026-119194 a 119197).
 
 ### Fixed
 
