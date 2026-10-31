@@ -47,7 +47,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-hosted]` | `httpx` (already in the base package) | hosted providers: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. No vendor SDK |
 | `[genai-hub]` | `huggingface-hub` | weight lifecycle: `resolve_revision` (pin a sha), `download_model` (fetch before serving, with a disk preflight), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
 | `[genai-image]` | `diffusers`, `pillow` | local image generation: `ImageGenerator` (`generate` text→image, `edit` image→image), `ImageGenerationConfig`, `POST /image` route |
-| `[genai-ollama]` | `httpx` | Ollama backend: `OllamaGenerator`, `OllamaEmbedder` |
+| `[genai-ollama]` | `httpx` | Ollama backend: `OllamaGenerator`, `OllamaEmbedder`, `OllamaSpeech` (speech and transcription) |
 | `[genai-quant]` | `bitsandbytes` | 4/8-bit quantization for the local `[genai]` models |
 | `[genai-rag]` | `trafilatura`, `pymupdf`, `pgvector`, `httpx` | RAG ingestion: web scraping, PDF extraction, and pgvector embeddings |
 | `[geo]` | `httpx` | geospatial helpers: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + routing), `GeoPointMixin` |

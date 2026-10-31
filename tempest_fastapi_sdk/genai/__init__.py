@@ -137,6 +137,8 @@ from tempest_fastapi_sdk.genai.ollama import (
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
 from tempest_fastapi_sdk.genai.ollama import OllamaError as OllamaError
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
+from tempest_fastapi_sdk.genai.ollama_speech import OllamaSpeech as OllamaSpeech
+from tempest_fastapi_sdk.genai.ollama_speech import SpeechFormat as SpeechFormat
 from tempest_fastapi_sdk.genai.onnx_embed import OnnxEmbedder as OnnxEmbedder
 from tempest_fastapi_sdk.genai.openai_compat import (
     DEFAULT_DEEPSEEK_MODEL as DEFAULT_DEEPSEEK_MODEL,
@@ -335,6 +337,7 @@ __all__: list[str] = [
     "OllamaEmbedder",
     "OllamaError",
     "OllamaGenerator",
+    "OllamaSpeech",
     "OnnxEmbedder",
     "OpenAICompatEmbedder",
     "OpenAICompatGenerator",
@@ -343,6 +346,7 @@ __all__: list[str] = [
     "RerankerModel",
     "RuleModerator",
     "ServiceUsage",
+    "SpeechFormat",
     "SpeechToTextModel",
     "StopReason",
     "StreamModeration",

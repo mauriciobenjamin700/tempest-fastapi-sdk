@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OllamaSpeech` (extra `[genai-ollama]`, só `httpx`): voz e transcrição por
+  um daemon Ollama. `synthesize` usa o `POST /v1/audio/speech` (WAV ou PCM,
+  `voice=`, `out_path=`), `transcribe` usa o `POST /v1/audio/transcriptions`
+  com `verbose_json` e devolve `Transcription`, e `voices` lê o `voices` do
+  `/api/show`. Recusa do daemon vira `OllamaError` com a mensagem dele, nos
+  dois formatos de corpo (nativo e OpenAI). Medido no Ollama 0.40.13 (Docker,
+  Linux, RTX 4070 Ti SUPER) com `phonon` e `lfm3-audio`: o WAV do stream sai
+  com os tamanhos RIFF e `data` em `0xFFFFFFFF` (o `wave` do Python lê
+  `2147483647` frames), então `synthesize` reescreve os dois
+  (`fix_streamed_wav_sizes`); `language` e `prompt` na transcrição não mudam
+  o resultado (o `language` só volta como rótulo), por isso não são expostos
+  e `Transcription.language` fica vazio; `keep_alive` é ignorado por esses
+  endpoints e também não é exposto.
+
 ## [0.338.0] — 2026-10-31
 
 ### Added

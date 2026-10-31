@@ -657,8 +657,8 @@ ollama pull nomic-embed-text
 
 !!! info "O Ollama também fala e transcreve"
     Desde a v0.40.11 o Ollama gera voz (`/v1/audio/speech`) e o `lfm3-audio`
-    transcreve. O que foi medido, os limites e as fontes estão em
-    [Voz pelo Ollama](#voz-pelo-ollama).
+    transcreve; o `OllamaSpeech` embrulha os dois. O que foi medido, os limites
+    e as fontes estão em [Voz pelo Ollama](#voz-pelo-ollama).
 
 ### Gerar texto via Ollama
 
@@ -1905,8 +1905,76 @@ Medido em 2026-10-31 com a imagem `ollama/ollama:0.40.13` em Docker, Linux
     acertou "Olá! Este áudio...". Os dois escreveram "Olama". É uma amostra,
     não uma comparação de taxa de erro.
 
-O SDK ainda não embrulha esses endpoints: o `OllamaGenerator` cobre texto e
-o `OllamaEmbedder`, vetores.
+#### `OllamaSpeech`: voz e transcrição pelo SDK
+
+`OllamaSpeech` embrulha os dois endpoints e a lista de vozes, com o mesmo
+cliente HTTP (retry, circuit-breaker, `X-Request-ID`) e o mesmo
+`OllamaError` do `OllamaGenerator`. Só precisa do extra `[genai-ollama]`.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaSpeech
+
+speech = OllamaSpeech("lfm3-audio", timeout=180.0)
+
+
+async def main() -> None:
+    """Fala em português e transcreve de volta."""
+    vozes = await speech.voices()
+    print("female-portuguese" in vozes)
+
+    wav = await speech.synthesize(
+        "Bom dia! O SDK agora fala português pelo Ollama.",
+        voice="female-portuguese",
+        out_path="bom-dia.wav",
+    )
+
+    resultado = await speech.transcribe(wav)
+    print(resultado.text, resultado.duration)
+    await speech.aclose()
+
+
+asyncio.run(main())
+```
+
+Uma execução contra o Ollama 0.40.13 na RTX 4070 Ti SUPER:
+
+```text
+True
+Bom dia. O Sicoa agora fala português pelo Olama. 3.84
+```
+
+A síntese não é determinística: o mesmo programa, rodado quatro vezes, deu
+áudios de 3,68 s a 4,32 s, e a sigla "SDK" voltou como "Raskiká", "Sicoa",
+"STEC" e sumiu na quarta ("Bom dia, esta agora, fala português..."). Falada
+pelo `lfm3-audio` e ouvida de volta pelo mesmo modelo, ela não sobreviveu à
+volta nenhuma vez. Escreva siglas por extenso no texto que vai virar voz.
+
+O que o `OllamaSpeech` faz por você:
+
+- **Corrige o cabeçalho do WAV.** O stream do daemon deixa os tamanhos RIFF
+  e `data` em `0xFFFFFFFF`, e o `wave` do Python lê `2147483647` frames.
+  Como `synthesize` junta a resposta inteira, ele reescreve os tamanhos: um
+  clipe de 4,32 s abre com `103680` frames a 24 kHz.
+  `response_format="pcm"` devolve as amostras cruas, sem cabeçalho.
+- **Transforma a recusa do daemon em `OllamaError`**, com a mensagem dele em
+  `detail`: voz desconhecida (com a lista de vozes), modelo sem fala ou sem
+  entrada de áudio, texto vazio ou acima de 4096 caracteres, áudio que não
+  decodifica, modelo não baixado.
+- **Não manda o que o daemon ignora.** `transcribe` não aceita `language`:
+  o Ollama só devolve o rótulo que recebeu (áudio em inglês enviado com
+  `language=pt` voltou em inglês, marcado `"portuguese"`), então
+  `Transcription.language` fica vazio em vez de carregar um rótulo que não
+  saiu do áudio. Também não há `keep_alive`, que esses endpoints ignoram.
+- **Caminho é caminho.** `transcribe("https://...")` levanta
+  `FileNotFoundError` sem ir à rede, como o `SpeechToText`.
+
+!!! tip "O primeiro pedido depois do pull é lento"
+    Ele carrega o modelo: 116 s no `phonon` e 55 s no `lfm3-audio`, contra
+    1,4 s numa recarga depois. Com o `timeout` padrão de 120 s, o primeiro
+    `synthesize` do `phonon` passa raspando; aqueça o modelo no deploy ou
+    suba o `timeout`.
 
 #### Fontes
 

@@ -3991,6 +3991,17 @@ mesma seção registra a conta real liberada para Orders e o shape mínimo do
 `transaction-intents` em modo de teste (#499, ainda sem `PayoutProvider`).
 
 
+## Voz e transcrição pelo Ollama (Unreleased)
+
+`OllamaSpeech` em `genai/ollama_speech.py`, extra `[genai-ollama]`:
+`synthesize` (`/v1/audio/speech`, WAV com cabeçalho corrigido ou PCM),
+`transcribe` (`/v1/audio/transcriptions`, só modelo com capacidade `audio`,
+como o `lfm3-audio`) e `voices` (`/api/show`). Medição, licenças e fontes na
+receita `genai` ("Voz pelo Ollama" e "Escolher modelo de voz e áudio").
+Fora de escopo, de propósito: stream de bytes de áudio (o `HTTPClient.stream`
+entrega linhas), `language`/`prompt` na transcrição (o daemon não usa) e
+rota HTTP própria (o `make_genai_router` serve `SpeechToText`/`TextToSpeech`).
+
 ## Slides, gabaritos e Markdown em PDF (0.338.0)
 
 `tempest_fastapi_sdk.slides`, portado do `slide-generator` do Leviathan
