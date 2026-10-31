@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `render_enum_types` passa a ser anotado como `str | Literal[False]`, o
+  `RenderItemFn` do Alembic (igual na 1.19.1 e na 1.20.0). A anotação
+  antiga, `str | bool | None`, fazia `render_item=render_enum_types` no
+  `env.py` — a ligação que a docstring manda fazer — falhar o mypy do
+  consumidor com `arg-type`. Em runtime nada muda: o `CHECK` preso ao tipo
+  continua omitido com `None`, que o renderer do Alembic descarta.
+
 ## [0.337.0] — 2026-10-30
 
 ### Added

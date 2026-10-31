@@ -45,7 +45,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, Literal, cast
 
 import sqlalchemy as sa
 from alembic.autogenerate import renderers
@@ -1343,11 +1343,24 @@ def _render_drop_enum_type(
     return f"op.drop_enum_type({', '.join(parts)})"
 
 
+_OMIT_FROM_MIGRATION: Final[Literal[False]] = cast("Literal[False]", None)
+"""What :func:`render_enum_types` answers to leave an object out of the file.
+
+At runtime this is ``None``. Alembic's renderer drops a ``None`` that a
+``render_item`` returns for a constraint (``autogenerate/render.py`` keeps
+only ``rcons is not None``), but its ``RenderItemFn`` type admits only
+``str | Literal[False]``, so a function annotated with ``None`` in its
+return is not assignable to ``render_item=`` and fails the consumer's
+mypy on ``env.py``. Typing the sentinel as the protocol keeps the
+behaviour and the assignment both.
+"""
+
+
 def render_enum_types(
     type_: str,
     obj: Any,
     autogen_context: AutogenContext,
-) -> str | bool | None:
+) -> str | Literal[False]:
     """Render an SDK column type as a self-contained SQLAlchemy type.
 
     Alembic's default renders a type it does not know as a dotted path
@@ -1388,12 +1401,14 @@ def render_enum_types(
         autogen_context (AutogenContext): Alembic's rendering context.
 
     Returns:
-        str | bool | None: The rendered expression; ``None`` to omit
-        the object from the migration; or ``False`` to let Alembic
-        render it its own way.
+        str | Literal[False]: The rendered expression; ``None`` (typed as
+        ``Literal[False]``, see ``_OMIT_FROM_MIGRATION``) to omit the
+        object from the migration; or ``False`` to let Alembic render it
+        its own way. The annotation is Alembic's ``RenderItemFn``, so the
+        function is assignable to ``render_item=`` under a type checker.
     """
     if type_ == "check":
-        return None if getattr(obj, "_type_bound", False) else False
+        return _OMIT_FROM_MIGRATION if getattr(obj, "_type_bound", False) else False
     if type_ != "type":
         return False
     if isinstance(obj, UtcDateTime):
