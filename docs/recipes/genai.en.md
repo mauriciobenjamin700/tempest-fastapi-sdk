@@ -1840,7 +1840,9 @@ Weight licences change; check the model card before shipping.
 | `coqui/XTTS-v2` | TTS | `other` (CPML) | `TextToSpeech` (Coqui) |
 | `SWivid/F5-TTS` | TTS | **`cc-by-nc-4.0`** | `f5-tts` package |
 | `facebook/musicgen-large` | music | **`cc-by-nc-4.0`** | `transformers` |
-| `cvssp/audioldm2-large` | sound effects | **`cc-by-nc-sa-4.0`** | `diffusers` (`AudioLDM2Pipeline`) |
+| `cvssp/audioldm-s-full-v2` | sound effects | **`cc-by-nc-sa-4.0`** | `AudioGenerator` ([sound effects and music](#sound-effects-and-music)) |
+| `ucsd-reach/musicldm` | music | **`cc-by-nc-sa-4.0`** | `AudioGenerator`, only with `transformers` 4.57.6 |
+| `cvssp/audioldm2-large` | sound effects | **`cc-by-nc-sa-4.0`** | `diffusers` (`AudioLDM2Pipeline`), broken on current `transformers` |
 | `stabilityai/stable-audio-open-1.0` | music/effects | `other` (gated) | `diffusers` (`StableAudioPipeline`) |
 
 !!! warning "MIT code does not mean MIT weights"
@@ -2035,6 +2037,120 @@ app:
   [MusicGen large](https://huggingface.co/facebook/musicgen-large),
   [AudioLDM 2 large](https://huggingface.co/cvssp/audioldm2-large),
   [Stable Audio Open](https://huggingface.co/stabilityai/stable-audio-open-1.0)
+
+## Sound effects and music
+
+Generate a thunderclap, footsteps on dry leaves or a lo-fi track on your own
+hardware, with no external API: `AudioGenerator` loads a HuggingFace audio
+diffusion pipeline and follows the same conventions as `ImageGenerator`
+(lazy load on a thread, idle unload, one render at a time, the seed returned
+with every clip).
+
+Requires the `[genai]` (torch + transformers) and `[genai-sound]`
+(`diffusers`) extras:
+
+```bash
+uv add "tempest-fastapi-sdk[genai,genai-sound]"
+```
+
+```python
+import asyncio
+from pathlib import Path
+
+from tempest_fastapi_sdk.genai import AudioGenerationConfig, AudioGenerator
+
+effects = AudioGenerator("cvssp/audioldm-s-full-v2")
+
+
+async def main() -> None:
+    """Generate 10 s of thunderstorm and save it."""
+    clips = await effects.generate(
+        "thunderstorm with heavy rain on a tin roof",
+        config=AudioGenerationConfig(seconds=10.0, steps=50, seed=0),
+    )
+    clip = clips[0]
+    Path("storm.wav").write_bytes(clip.data)
+    print(clip.sample_rate, clip.seconds, clip.seed)
+
+
+asyncio.run(main())
+```
+
+```text
+16000 10.0 0
+```
+
+Each `GeneratedAudio` is a 16-bit PCM WAV with `sample_rate`, `channels`,
+`seconds` and the `seed`. Without a `seed` in the config one is drawn and
+returned, so every clip is reproducible: measured, the same seed produced
+the same bytes, and `num_waveforms=2` produced two different clips in one
+call.
+
+### Which model to use
+
+Measured on 2026-10-31 on an RTX 4070 Ti SUPER (bf16, 10 s, 50 steps,
+model already loaded):
+
+| Model | For | Time | Model default | Licence |
+| --- | --- | --- | --- | --- |
+| `cvssp/audioldm-s-full-v2` | sound effects | ~1.1 s | 5.12 s of audio, 10 steps | `cc-by-nc-sa-4.0` |
+| `ucsd-reach/musicldm` | music | ~1.1 s | 10.24 s of audio, 200 steps | `cc-by-nc-sa-4.0` |
+
+Peak VRAM stayed under 1.1 GiB for both.
+
+!!! warning "Both models are non-commercial"
+    `cc-by-nc-sa-4.0` forbids commercial use. Check the model card before
+    putting it in a product.
+
+!!! danger "Where each model works"
+    diffusers keeps `AudioLDMPipeline` and `MusicLDMPipeline` under
+    `pipelines/deprecated` ("will not receive bug fixes or feature updates
+    after Diffusers version 0.33.1"): the code is frozen. Measured on two
+    resolutions:
+
+    | Environment | AudioLDM | MusicLDM | AudioLDM2 |
+    | --- | --- | --- | --- |
+    | `transformers` 4.57.6 + `diffusers` 0.39.0 (the lock, with `[genai-audio]`) | generates | generates | refused |
+    | `transformers` 5.22.1 + `diffusers` 0.42.1 (`[genai,genai-sound]` alone) | generates | refused | refused |
+
+    "Refused" means `load()` raises `ValueError` with the reason, instead of
+    the first `generate` blowing up with an `AttributeError` deep inside:
+
+    - **AudioLDM2** loads but fails on the first call with
+      `'GPT2Model' object has no attribute '_update_model_kwargs_for_generation'`;
+      the upstream fix
+      ([diffusers#13111](https://github.com/huggingface/diffusers/pull/13111))
+      was closed unmerged.
+    - **MusicLDM** on `transformers` 5.22.1: `ClapModel.get_text_features`
+      returns a `BaseModelOutputWithPooling` instead of a tensor, and the
+      pipeline breaks with `'BaseModelOutputWithPooling' object has no
+      attribute 'to'`. The load runs that call once to decide, without
+      guessing a version, and frees the VRAM when it refuses.
+    - **Stable Audio** takes `audio_end_in_s` instead of
+      `audio_length_in_s` and is refused too.
+
+### Serving over HTTP: `/audio`
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import AudioGenerator, make_genai_router
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_genai_router(audio_generator=AudioGenerator("cvssp/audioldm-s-full-v2")),
+)
+```
+
+`POST /api/genai/audio` with
+`{"prompt": "dog barking in the distance", "config": {"seconds": 4.0, "seed": 42}}`
+answered `200`, `audio/wav` with 64000 frames at 16 kHz, and
+`X-Audio-Seed: 42`. The route generates one clip (`num_waveforms` above 1 is
+`422`) and applies the `max_audio_seconds` (30) and `max_audio_steps` (200,
+MusicLDM's default) limits from `GenAIRequestLimits`, answering `422` with
+`details={"field": ..., "limit": ...}`.
 
 ## RAG context
 

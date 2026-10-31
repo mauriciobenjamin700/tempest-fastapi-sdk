@@ -28,6 +28,9 @@ from tempest_fastapi_sdk.genai.anthropic import (
 from tempest_fastapi_sdk.genai.anthropic import (
     to_anthropic_image as to_anthropic_image,
 )
+from tempest_fastapi_sdk.genai.audio_generation import (
+    AudioGenerator as AudioGenerator,
+)
 from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
 from tempest_fastapi_sdk.genai.catalog import EmbeddingModel as EmbeddingModel
 from tempest_fastapi_sdk.genai.catalog import ImageModel as ImageModel
@@ -187,10 +190,16 @@ from tempest_fastapi_sdk.genai.providers import resolve_provider as resolve_prov
 from tempest_fastapi_sdk.genai.registry import ModelRegistry as ModelRegistry
 from tempest_fastapi_sdk.genai.router import make_genai_router as make_genai_router
 from tempest_fastapi_sdk.genai.schemas import (
+    AudioGenerationConfig as AudioGenerationConfig,
+)
+from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport as CapacityReport,
 )
 from tempest_fastapi_sdk.genai.schemas import (
     GenAIRequestLimits as GenAIRequestLimits,
+)
+from tempest_fastapi_sdk.genai.schemas import (
+    GeneratedAudio as GeneratedAudio,
 )
 from tempest_fastapi_sdk.genai.schemas import (
     GeneratedImage as GeneratedImage,
@@ -297,6 +306,8 @@ __all__: list[str] = [
     "AnthropicGenerator",
     "AsyncEmbeddingCache",
     "AsyncGenerationCache",
+    "AudioGenerationConfig",
+    "AudioGenerator",
     "BaseAIUsageModel",
     "BatchScheduler",
     "CachedModel",
@@ -311,6 +322,7 @@ __all__: list[str] = [
     "GPUInfo",
     "GenAIMetrics",
     "GenAIRequestLimits",
+    "GeneratedAudio",
     "GeneratedImage",
     "GenerationCache",
     "GenerationConfig",

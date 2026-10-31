@@ -416,6 +416,10 @@ class GenAIRequestLimits(BaseSchema):
             accepted by ``/image``, in pixels.
         max_image_steps (int): Largest ``config.steps`` accepted by
             ``/image``.
+        max_audio_seconds (float): Largest ``config.seconds`` accepted by
+            ``/audio``.
+        max_audio_steps (int): Largest ``config.steps`` accepted by
+            ``/audio``. The default admits MusicLDM's own default of 200.
         max_upload_bytes (int): Largest ``/transcribe`` upload, in bytes.
             The default equals ``DEFAULT_MAX_UPLOAD_BYTES`` (25 MiB), the
             ceiling ``make_voice_router`` uses.
@@ -469,11 +473,158 @@ class GenAIRequestLimits(BaseSchema):
         title="Max image steps",
         description="Largest denoising step count accepted by /image.",
     )
+    max_audio_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        title="Max audio seconds",
+        description="Longest clip accepted by /audio, in seconds.",
+    )
+    max_audio_steps: int = Field(
+        default=200,
+        gt=0,
+        title="Max audio steps",
+        description="Largest denoising step count accepted by /audio.",
+    )
     max_upload_bytes: int = Field(
         default=25 * 1024 * 1024,
         gt=0,
         title="Max upload bytes",
         description="Largest /transcribe upload, in bytes.",
+    )
+
+
+class AudioGenerationConfig(BaseSchema):
+    """Typed parameters for local text-to-audio generation.
+
+    Passed to :class:`~tempest_fastapi_sdk.genai.AudioGenerator`. Only the
+    fields you set reach the pipeline, so a partial config layers on top of
+    the model's own defaults. Those differ a lot: read from diffusers 0.39,
+    ``AudioLDMPipeline`` defaults to 10 steps and guidance 2.5,
+    ``MusicLDMPipeline`` to 200 steps and guidance 2.0.
+
+    Example:
+
+        >>> cfg = AudioGenerationConfig(seconds=10.0, steps=50, seed=0)
+        >>> clips = await generator.generate("rain on a tin roof", config=cfg)
+
+    Attributes:
+        negative_prompt (str | None): What to steer the sound away from.
+        seconds (float | None): Length of each clip, at most ``120``.
+        steps (int | None): Denoising steps, at most ``1000``.
+        guidance_scale (float | None): How hard to follow the prompt.
+        seed (int | None): RNG seed. Set it and the same prompt gives the
+            same waveform on the same hardware.
+        num_waveforms (int): Clips per call, at most ``8``. These ceilings
+            are the schema's absolute bounds; ``make_genai_router``
+            enforces tighter per-request limits from
+            :class:`GenAIRequestLimits` on top.
+    """
+
+    negative_prompt: str | None = Field(
+        default=None,
+        title="Negative prompt",
+        description="What to steer the sound away from.",
+        examples=["low quality, noise"],
+    )
+    seconds: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=120.0,
+        title="Seconds",
+        description="Length of each generated clip, in seconds.",
+        examples=[5.0, 10.0],
+    )
+    steps: int | None = Field(
+        default=None,
+        gt=0,
+        le=1000,
+        title="Steps",
+        description="Denoising steps.",
+        examples=[50, 200],
+    )
+    guidance_scale: float | None = Field(
+        default=None,
+        ge=0.0,
+        title="Guidance scale",
+        description="Prompt adherence.",
+        examples=[2.5],
+    )
+    seed: int | None = Field(
+        default=None,
+        title="Seed",
+        description="RNG seed for a reproducible clip.",
+        examples=[0],
+    )
+    num_waveforms: int = Field(
+        default=1,
+        gt=0,
+        le=8,
+        title="Number of clips",
+        description="How many clips to generate per call.",
+        examples=[1, 3],
+    )
+
+    def to_pipeline_kwargs(self) -> dict[str, Any]:
+        """Return the explicitly-set pipeline keywords, in diffusers names.
+
+        ``seed`` is excluded (it binds a ``torch.Generator``), and
+        ``seconds`` / ``steps`` / ``num_waveforms`` become
+        ``audio_length_in_s`` / ``num_inference_steps`` /
+        ``num_waveforms_per_prompt``.
+
+        Returns:
+            dict[str, Any]: Keywords to splat into the pipeline call.
+        """
+        data = self.model_dump(exclude_none=True, exclude_unset=True)
+        data.pop("seed", None)
+        renames = {
+            "seconds": "audio_length_in_s",
+            "steps": "num_inference_steps",
+            "num_waveforms": "num_waveforms_per_prompt",
+        }
+        for short, long in renames.items():
+            if short in data:
+                data[long] = data.pop(short)
+        return data
+
+
+class GeneratedAudio(BaseSchema):
+    """One generated clip plus what it takes to generate it again.
+
+    Attributes:
+        data (bytes): The clip as a 16-bit PCM WAV.
+        sample_rate (int): Samples per second (16 000 for AudioLDM and
+            MusicLDM, read from the pipeline's vocoder).
+        channels (int): Channel count of the WAV.
+        seconds (float): Duration of the clip.
+        seed (int): The seed this clip was generated with.
+    """
+
+    data: bytes = Field(
+        title="WAV bytes",
+        description="The clip as a 16-bit PCM WAV.",
+        examples=[b"<binary wav data>"],
+    )
+    sample_rate: int = Field(
+        title="Sample rate",
+        description="Samples per second.",
+        examples=[16000],
+    )
+    channels: int = Field(
+        default=1,
+        title="Channels",
+        description="Channel count of the WAV.",
+        examples=[1],
+    )
+    seconds: float = Field(
+        title="Seconds",
+        description="Duration of the clip.",
+        examples=[10.0],
+    )
+    seed: int = Field(
+        title="Seed",
+        description="The seed this clip was generated with.",
+        examples=[0],
     )
 
 
@@ -573,9 +724,11 @@ def precision_kwarg(dtype: Any) -> dict[str, Any]:
 
 __all__: list[str] = [
     "DTYPE_KWARG_RENAMED_IN",
+    "AudioGenerationConfig",
     "CapacityReport",
     "GPUInfo",
     "GenAIRequestLimits",
+    "GeneratedAudio",
     "GeneratedImage",
     "GenerationConfig",
     "HardwareInfo",

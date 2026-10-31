@@ -139,6 +139,16 @@ AI_ROUTES: dict[str, RouteDoc] = {
             "para o cliente conseguir reproduzi-la."
         ),
     ),
+    "genai.render_audio": RouteDoc(
+        summary="Gerar um efeito sonoro ou trecho de música a partir de um prompt",
+        description=(
+            "Gera exatamente um clipe e devolve um WAV PCM de 16 bits, porque "
+            "o corpo da resposta é o próprio áudio: ``config.num_waveforms`` "
+            "acima de ``1`` responde **422**.\n\n"
+            "A seed que produziu o clipe vem no header ``X-Audio-Seed``, "
+            "para o cliente conseguir reproduzi-lo."
+        ),
+    ),
     "prediction.predict": RouteDoc(
         summary="Fazer a predição de um lote de linhas",
         description=(

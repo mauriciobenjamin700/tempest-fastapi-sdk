@@ -3991,6 +3991,18 @@ mesma seção registra a conta real liberada para Orders e o shape mínimo do
 `transaction-intents` em modo de teste (#499, ainda sem `PayoutProvider`).
 
 
+## Efeitos sonoros e música (Unreleased)
+
+`AudioGenerator` em `genai/audio_generation.py`, extras `[genai,genai-sound]`
+(`[genai-sound]` = `diffusers`), rota `POST /audio` no `make_genai_router`.
+Funciona com `cvssp/audioldm-s-full-v2` (efeitos) e `ucsd-reach/musicldm`
+(música, só com `transformers` 4.57.6); AudioLDM2 e Stable Audio são
+recusados na carga. As classes AudioLDM/MusicLDM estão em
+`diffusers/pipelines/deprecated` (código congelado). MusicGen, que roda pelo
+`transformers` (`MusicgenForConditionalGeneration`, medido: 10 s em 5,8 s,
+32 kHz, 1,25 GiB, seed reproduz), ficou fora desta fatia por ser outro
+caminho de carga.
+
 ## Voz e transcrição pelo Ollama (Unreleased)
 
 `OllamaSpeech` em `genai/ollama_speech.py`, extra `[genai-ollama]`:
