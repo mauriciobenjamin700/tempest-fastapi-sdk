@@ -65,6 +65,8 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
+| `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | Slides and answer keys from structured text (HTML, PDF, PPTX, DOCX, Markdown) and Markdown to PDF with your own or the ABNT stylesheet: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Needs Pango + fontconfig on the system**, like `[pdf]`. [Recipe](recipes/slides.md) |
+| `[slides-mermaid]` | `playwright` | Drawing `` ```mermaid `` blocks in `MarkdownPdfRenderer` (`render_mermaid=True`). Needs `playwright install chromium`; that is why it stays **out of `[all]`** |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
 | `[ssr]` | `tempestweb` | HTMX-based SSR: `build_web_app`, `make_htmx_router`, `Page`, the `htmx` helper |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
@@ -74,7 +76,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | Passkeys / security keys: `WebAuthnService`, `make_web_authn_credential_model`, the `/auth/webauthn/*` routes — passwordless, phishing-resistant login |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the 15 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | the application helpers — install the 15 above separately (and `[tests]`, which is test tooling, in the dev group) |
+| `[all]` | everything above **except** the 16 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 16 above separately (and `[tests]`, which is test tooling, in the dev group) |
 
 === "Subset (recommended)"
 

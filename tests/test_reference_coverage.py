@@ -37,6 +37,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "tempest_fastapi_sdk.privacy",
     "tempest_fastapi_sdk.queue",
     "tempest_fastapi_sdk.reviews",
+    "tempest_fastapi_sdk.slides",
     "tempest_fastapi_sdk.spreadsheet",
     "tempest_fastapi_sdk.ssr",
     "tempest_fastapi_sdk.tasks",

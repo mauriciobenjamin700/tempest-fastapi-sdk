@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="{{ vocabulary.language }}">
+<head>
+<meta charset="UTF-8">
+<title>{{ deck.title }}</title>
+<style>
+{{ styles | safe }}
+</style>
+</head>
+<body class="theme-{{ theme }}">
+<div class="deck">
+{% for slide in deck.slides %}
+<div class="slide-frame">
+<section class="slide slide--{{ slide.kind }}" data-number="{{ slide.slide_number }}">
+    {% if slide.kind == "lesson_title" %}
+        <div class="slide__inner slide__inner--center">
+            <p class="slide__eyebrow">{{ slide.subtitle or "" }}</p>
+            <h1 class="slide__title slide__title--hero">{{ slide.title }}</h1>
+            <div class="slide__accent-line"></div>
+        </div>
+    {% elif slide.kind == "bullets" %}
+        <div class="slide__inner">
+            {% if slide.lesson_index %}
+            <p class="slide__eyebrow">{{ vocabulary.lesson(slide.lesson_index) }}</p>
+            {% endif %}
+            <h2 class="slide__title">{{ slide.title }}</h2>
+            <ul class="slide__bullets">
+                {% for bullet in slide.bullets %}
+                <li class="slide__bullet">
+                    {% if bullet.term %}<span class="slide__bullet-term">{{ bullet.term }}</span>{% endif %}
+                    <span class="slide__bullet-description">{{ bullet.description }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% else %}
+        <div class="slide__inner">
+            {% if slide.kind == "conclusion" %}
+            <p class="slide__eyebrow">{{ vocabulary.conclusion_label }}</p>
+            {% elif slide.lesson_index %}
+            <p class="slide__eyebrow">{{ vocabulary.lesson(slide.lesson_index) }}</p>
+            {% endif %}
+            <h2 class="slide__title">{{ slide.title }}</h2>
+            <div class="slide__body">
+                {% for paragraph in slide.paragraphs %}
+                <p class="slide__paragraph">{{ paragraph }}</p>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+    <footer class="slide__footer">
+        <span class="slide__footer-deck">{{ deck.title }}</span>
+        <span class="slide__footer-number">{{ slide.slide_number }} / {{ deck.total }}</span>
+    </footer>
+</section>
+</div>
+{% endfor %}
+</div>
+</body>
+</html>

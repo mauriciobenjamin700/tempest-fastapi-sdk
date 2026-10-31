@@ -557,6 +557,13 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "PDF_PAGE_EXTRACT_FAILED": "Não foi possível extrair a página {page} do PDF",
         "PDF_ASSET_REFUSED": ("O documento referenciou um recurso que não é permitido"),
         "PDF_TEMPLATE_NOT_FOUND": "Template não encontrado",
+        "SLIDES_SOURCE_EMPTY": "O texto de origem está vazio",
+        "SLIDES_SOURCE_TOO_LARGE": (
+            "O texto de origem passa do limite de {limit} caracteres"
+        ),
+        "MARKDOWN_ARCHIVE_INVALID": (
+            "O arquivo enviado não é um pacote Markdown válido"
+        ),
         "OAUTH_ERROR": "O provedor de identidade respondeu com um erro",
         "OAUTH_PROVIDER_UNAVAILABLE": (
             "Não foi possível falar com o provedor de identidade"
@@ -681,6 +688,11 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "PDF_PAGE_EXTRACT_FAILED": "Could not extract page {page} of the PDF",
         "PDF_ASSET_REFUSED": ("The document referenced an asset that is not allowed"),
         "PDF_TEMPLATE_NOT_FOUND": "Template not found",
+        "SLIDES_SOURCE_EMPTY": "The source text is empty",
+        "SLIDES_SOURCE_TOO_LARGE": (
+            "The source text exceeds the maximum of {limit} characters"
+        ),
+        "MARKDOWN_ARCHIVE_INVALID": "The archive is not a valid Markdown bundle",
         "OAUTH_ERROR": "The identity provider answered with an error",
         "OAUTH_PROVIDER_UNAVAILABLE": ("The identity provider could not be reached"),
         "FIREBASE_TOKEN_MISSING": "Authentication required",

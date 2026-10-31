@@ -559,6 +559,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Segurança »](security.md)** | `AttemptThrottle`, helpers de token opaco, `HardenedStaticFiles`, headers de segurança |
 | **[Server-Sent Events (SSE) »](sse.md)** | `EventStream`, `sse_response`, `ServerSentEvent`, `SSEBroker` (fan-out por canal, ponte Redis) |
 | **[Sessões server-side »](sessions.md)** | `SessionMiddleware`, `SessionAuth`, `make_session_router`, `MemorySessionStore` / `RedisSessionStore` |
+| **[Slides, gabaritos e Markdown em PDF »](slides.md)** | `parse_slides` + `SlideRenderer` (HTML, PDF, PPTX com notas, DOCX de roteiro, Markdown reveal.js), `SlideVocabulary` para texto em português, `parse_answer_key` + `AnswerKeyRenderer`, `MarkdownPdfRenderer` com folha de estilo como parâmetro (`ABNT_MARKDOWN_CSS`), zip com imagens conferido antes de extrair, Mermaid via `[slides-mermaid]` |
 | **[SPA React no FastAPI »](react-spa.md)** | `make_spa_router` — servir o build do Vite pelo mesmo processo, com history fallback |
 | **[SSR (páginas tipadas) »](../ssr.md)** | `Page`, `html_response`, `make_htmx_router`, hospedar um build do `tempestweb` |
 | **[Storage (MinIO/S3) »](storage.md)** | `AsyncMinIOClient`, `MinIOUploadStorage`, `presigned_get_url` / `presigned_put_url`, `list_objects` |

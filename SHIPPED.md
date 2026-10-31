@@ -3990,3 +3990,30 @@ passou a documentar o que o provedor faz — recebe o preço e soma os juros. A
 mesma seção registra a conta real liberada para Orders e o shape mínimo do
 `transaction-intents` em modo de teste (#499, ainda sem `PayoutProvider`).
 
+
+## Slides, gabaritos e Markdown em PDF (Unreleased)
+
+`tempest_fastapi_sdk.slides`, portado do `slide-generator` do Leviathan
+(serviço separado que o Leviathan proxiava). Extras `[slides]` (no `[all]`) e
+`[slides-mermaid]` (fora do `[all]`, pede `playwright install chromium`).
+
+- Decks: `parse_slides` → `SlideDeck`; `SlideRenderer` com `html` /
+  `markdown` (síncronos) e `pdf` / `pptx` / `docx` (`async`, thread,
+  `max_concurrent`). PPTX leva as notas no painel de notas; DOCX é o roteiro
+  do apresentador. Seção grande quebra em 6 tópicos ou 700 caracteres de
+  parágrafo por slide.
+- Gabaritos: `parse_answer_key` → `AnswerKey`; `AnswerKeyRenderer` com
+  `html` / `markdown` / `pdf` / `docx`. Tag HTML do texto removida em todo
+  formato.
+- Vocabulário: `SlideVocabulary` / `AnswerKeyVocabulary` (marcadores e
+  rótulos, padrão inglês; pt-BR é um vocabulário que o serviço passa).
+- Markdown → PDF: `MarkdownPdfRenderer.render` / `render_archive`, folha de
+  estilo como parâmetro (`DEFAULT_MARKDOWN_CSS`, `ABNT_MARKDOWN_CSS` com as
+  margens da NBR 14724 corrigidas). Assets negados por padrão via
+  `AssetPolicy`; `AssetRefused` daqui leva só `refused_count`. Zip limitado
+  por entradas e tamanho declarado antes de extrair. Mermaid opcional, fixado
+  em `mermaid@10.9.8`, com caixa de erro quando não desenha.
+- Erros: `SlideSourceEmptyError`, `SlideSourceTooLargeError`,
+  `MarkdownArchiveError` (catálogo pt-BR + en-US).
+- Testes: `tests/slides/`. Receita: `docs/recipes/slides.md`.
+- Fora de escopo: router pronto (a receita mostra as rotas à mão) e OCR.

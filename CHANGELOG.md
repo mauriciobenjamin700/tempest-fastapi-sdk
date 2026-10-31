@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Módulo `tempest_fastapi_sdk.slides`, portado do serviço `slide-generator`
+  do Leviathan. `parse_slides` lê texto estruturado (cabeçalho de aula,
+  seção, `Termo: descrição`, linha de notas) num `SlideDeck`, e
+  `SlideRenderer` escreve HTML e Markdown reveal.js (síncronos) e PDF
+  (1280 × 720 px por slide), PPTX 16:9 com as notas no painel de notas e um
+  DOCX de roteiro do apresentador (`async`, numa thread, limitados por
+  `max_concurrent`). `parse_answer_key` + `AnswerKeyRenderer` fazem o mesmo
+  para gabarito (HTML, PDF A4, DOCX, Markdown). Os marcadores lidos e os
+  rótulos impressos moram em `SlideVocabulary` / `AnswerKeyVocabulary`, com
+  padrão inglês; regex inválido ou sem os grupos esperados levanta
+  `ValueError` na construção. `MarkdownPdfRenderer` diagrama Markdown cru
+  (`render`) ou um zip com imagens (`render_archive`) com a folha de estilo
+  como parâmetro: `DEFAULT_MARKDOWN_CSS`, `ABNT_MARKDOWN_CSS` ou a do
+  serviço. Erros: `SlideSourceEmptyError` (422, `SLIDES_SOURCE_EMPTY`),
+  `SlideSourceTooLargeError` (413, `SLIDES_SOURCE_TOO_LARGE`, limite padrão
+  de 200 000 caracteres em `details["limit"]`) e `MarkdownArchiveError`
+  (422, `MARKDOWN_ARCHIVE_INVALID`, com `details["reason"]`), todos com frase
+  em pt-BR e en-US no catálogo padrão. Receita nova: `recipes/slides.md`.
+- Extras `[slides]` (`weasyprint`, `jinja2`, `python-pptx`, `python-docx`,
+  `markdown`; entra no `[all]`) e `[slides-mermaid]` (`playwright`, mais
+  `playwright install chromium`; fica fora do `[all]`). Parser e schemas
+  importam sem nenhum dos dois.
+- Diferenças de comportamento em relação ao `slide-generator` original:
+  - O HTML é autoescapado. O template do gabarito marcava pergunta e resposta
+    com `| safe`; agora a tag HTML do texto é removida em todo formato e o
+    resto é escapado.
+  - Markdown em PDF passa pela `AssetPolicy` do SDK: texto cru não busca
+    nada (`file:///etc/passwd` e `http://` levantam `AssetRefused`), e um zip
+    lê só o próprio diretório de extração. Vindo do Markdown, o
+    `AssetRefused` leva `details={"refused_count": n}` em vez da lista de URLs
+    que o resto do SDK devolve em `details["refused"]` — a URL é o texto do
+    usuário ecoado e, no zip, revelava o caminho do diretório temporário. O
+    WeasyPrint para na primeira recusa, então `n` é 1 na prática.
+  - O zip é limitado por número de entradas (500) e tamanho descompactado
+    declarado (50 MiB), conferidos no diretório central antes de extrair;
+    entrada com `../` ou caminho absoluto é recusada (`unsafe_member`).
+  - `ABNT_MARKDOWN_CSS` aplica as margens da NBR 14724 (3 cm em cima e à
+    esquerda, 2 cm embaixo e à direita). O original tinha `margin: 3cm 2cm`,
+    que punha 3 cm embaixo e 2 cm à esquerda.
+  - O Mermaid é fixado em `mermaid@10.9.8` (o original carregava o flutuante
+    `mermaid@10`) e um Chromium desenha todos os blocos do documento, em vez
+    de um por bloco. Diagrama que falha — sem Playwright, sem Chromium,
+    sintaxe inválida, prazo estourado — vira uma caixa com o código escapado,
+    e o PDF sai.
+
 ## [0.337.1] — 2026-10-31
 
 ### Security
