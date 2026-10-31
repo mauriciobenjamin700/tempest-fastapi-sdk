@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tempest_fastapi_sdk.genai import make_genai_router
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import OllamaSpeech, make_genai_router
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
@@ -59,6 +61,7 @@ class _FakeTTS:
 
 def _client(**objects: Any) -> TestClient:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(make_genai_router(**objects))
     return TestClient(app)
 
@@ -136,3 +139,68 @@ class TestOtherEndpoints:
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "audio/wav"
         assert resp.content == b"WAVDATA:oi"
+
+
+class TestOllamaSpeechBackend:
+    """``OllamaSpeech`` backs both audio routes through the protocols."""
+
+    @staticmethod
+    def _speech(handler: Any) -> OllamaSpeech:
+        return OllamaSpeech("lfm3-audio", transport=httpx.MockTransport(handler))
+
+    def test_tts_speaker_reaches_the_daemon_as_voice(self) -> None:
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["body"] = request.content
+            return httpx.Response(200, content=b"RIFF")
+
+        speech = self._speech(handler)
+        resp = _client(text_to_speech=speech).post(
+            "/api/genai/tts",
+            json={"text": "oi", "speaker": "female-portuguese"},
+        )
+        assert resp.status_code == 200
+        assert b'"voice":"female-portuguese"' in seen["body"]
+
+    def test_transcribe_route(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"text": "oi", "duration": 1.0})
+
+        resp = _client(speech_to_text=self._speech(handler)).post(
+            "/api/genai/transcribe",
+            files={"file": ("clip.wav", b"1234", "audio/wav")},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["text"] == "oi"
+
+    def test_language_is_a_422_not_a_silent_drop(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no request expected")
+
+        client = _client(
+            speech_to_text=self._speech(handler),
+            text_to_speech=self._speech(handler),
+        )
+        tts = client.post("/api/genai/tts", json={"text": "oi", "language": "pt"})
+        stt = client.post(
+            "/api/genai/transcribe?language=pt",
+            files={"file": ("clip.wav", b"1234", "audio/wav")},
+        )
+        assert tts.status_code == 422
+        assert stt.status_code == 422
+        assert tts.json()["details"] == {"field": "language"}
+
+    def test_unknown_voice_is_a_422_not_a_500(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                400,
+                json={"error": {"message": 'voice "nope" is not supported'}},
+            )
+
+        resp = _client(text_to_speech=self._speech(handler)).post(
+            "/api/genai/tts",
+            json={"text": "oi", "speaker": "nope"},
+        )
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == 'voice "nope" is not supported'

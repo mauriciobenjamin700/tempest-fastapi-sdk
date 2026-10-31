@@ -17,7 +17,9 @@ from typing import Any
 import httpx
 import pytest
 
+from tempest_fastapi_sdk.exceptions import ValidationException
 from tempest_fastapi_sdk.genai import OllamaError, OllamaSpeech
+from tempest_fastapi_sdk.genai.audio import SpeechSynthesizer, SpeechTranscriber
 from tempest_fastapi_sdk.genai.ollama_speech import (
     STREAMED_WAV_SIZE,
     fix_streamed_wav_sizes,
@@ -179,7 +181,7 @@ class TestSynthesize:
         audio = await _speech(handler).synthesize("hi", out_path=target)
         assert target.read_bytes() == audio
 
-    async def test_openai_error_body_becomes_ollama_error(self) -> None:
+    async def test_daemon_400_becomes_validation_exception(self) -> None:
         detail = 'voice "nope" not found; available voices: Alfie, default'
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -195,10 +197,53 @@ class TestSynthesize:
                 },
             )
 
-        with pytest.raises(OllamaError) as caught:
+        with pytest.raises(ValidationException) as caught:
             await _speech(handler).synthesize("x", voice="nope")
+        assert caught.value.status_code == 422
+        assert caught.value.message == detail
+        assert caught.value.details == {"backend": "ollama", "model": "lfm3-audio"}
+
+    async def test_model_not_pulled_stays_ollama_error(self) -> None:
+        detail = 'model "nao-existe" not found, try pulling it first'
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                404,
+                json={"error": {"message": detail, "type": "not_found_error"}},
+            )
+
+        with pytest.raises(OllamaError) as caught:
+            await _speech(handler).synthesize("x")
         assert caught.value.detail == detail
         assert caught.value.model == "lfm3-audio"
+
+    async def test_speaker_is_sent_as_voice(self) -> None:
+        captured: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(200, content=STREAMED_WAV)
+
+        await _speech(handler).synthesize("hi", speaker="male-portuguese")
+        assert captured["body"]["voice"] == "male-portuguese"
+        assert "speaker" not in captured["body"]
+
+    async def test_voice_and_speaker_must_agree(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no request expected")
+
+        speech = _speech(handler)
+        with pytest.raises(ValidationException) as caught:
+            await speech.synthesize("hi", voice="a", speaker="b")
+        assert caught.value.details == {"field": "speaker"}
+
+    async def test_language_is_refused_before_the_request(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no request expected")
+
+        with pytest.raises(ValidationException) as caught:
+            await _speech(handler).synthesize("hi", language="pt")
+        assert caught.value.details == {"field": "language"}
 
 
 class TestTranscribe:
@@ -297,8 +342,17 @@ class TestTranscribe:
                 },
             )
 
-        with pytest.raises(OllamaError, match="Failed to load image or audio file"):
+        with pytest.raises(ValidationException) as caught:
             await _speech(handler).transcribe(b"\x00" * 16)
+        assert caught.value.message == "Failed to load image or audio file"
+
+    async def test_language_is_refused_before_the_request(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no request expected")
+
+        with pytest.raises(ValidationException) as caught:
+            await _speech(handler).transcribe(SAMPLES, language="pt")
+        assert caught.value.details == {"field": "language"}
 
 
 class TestVoices:
@@ -359,3 +413,10 @@ class TestClientLifecycle:
         response = await client.get("http://127.0.0.1:11434/api/version")
         assert response.status_code == 200
         await client.aclose()
+
+
+class TestProtocols:
+    def test_satisfies_both_router_protocols(self) -> None:
+        speech = OllamaSpeech("lfm3-audio")
+        assert isinstance(speech, SpeechTranscriber)
+        assert isinstance(speech, SpeechSynthesizer)

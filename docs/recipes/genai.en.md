@@ -1963,18 +1963,52 @@ What `OllamaSpeech` does for you:
   Since `synthesize` buffers the whole response, it rewrites the sizes: a
   4.32 s clip opens with `103680` frames at 24 kHz.
   `response_format="pcm"` returns the raw samples, with no header.
-- **Turns the daemon's refusal into `OllamaError`**, with its message in
-  `detail`: unknown voice (with the voice list), model without speech or
+- **Separates a bad request from a server failure.** When the daemon
+  refuses the request with `400` (unknown voice, model without speech or
   without audio input, empty input or input over 4096 characters, audio that
-  does not decode, model not pulled.
-- **Does not send what the daemon ignores.** `transcribe` takes no
-  `language`: Ollama only echoes the label it received (English audio sent
-  with `language=pt` came back in English, tagged `"portuguese"`), so
-  `Transcription.language` stays empty instead of carrying a label that did
-  not come from the audio. There is no `keep_alive` either, which these
-  endpoints ignore.
+  does not decode), it raises `ValidationException` (`422`) with the
+  daemon's message and `details={"backend": "ollama", "model": ...}`. A model
+  that is not pulled, or a daemon failure, stays an `OllamaError`.
+- **Refuses what the daemon would ignore.** Ollama only echoes back the
+  `language` label it received (English audio sent with `language=pt` came
+  back in English, tagged `"portuguese"`), and for speech the voice decides
+  the language. So `transcribe` and `synthesize` accept `language` only as
+  `None`: any value raises `ValidationException` with
+  `details={"field": "language"}`, before any request. `Transcription.language`
+  stays empty. There is no `keep_alive` either, which these endpoints ignore.
 - **A path is a path.** `transcribe("https://...")` raises
   `FileNotFoundError` without touching the network, like `SpeechToText`.
+
+#### Serving over HTTP: `/tts` and `/transcribe`
+
+`make_genai_router` takes any object that satisfies `SpeechTranscriber`
+(for `/transcribe`) and `SpeechSynthesizer` (for `/tts`), from
+`tempest_fastapi_sdk.genai.audio`. `SpeechToText`, `TextToSpeech` and
+`OllamaSpeech` all do; the `/tts` body's `speaker` becomes Ollama's `voice`.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import OllamaSpeech, make_genai_router
+
+speech = OllamaSpeech("lfm3-audio", timeout=180.0)
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(make_genai_router(speech_to_text=speech, text_to_speech=speech))
+```
+
+Measured against Ollama 0.40.13, with `httpx.ASGITransport` in front of the
+app:
+
+| Request | Response |
+| --- | --- |
+| `POST /api/genai/tts` `{"text": "Olá pelo roteador.", "speaker": "male-portuguese"}` | `200`, `audio/wav` with 34560 frames |
+| `POST /api/genai/transcribe` with that WAV | `200`, `"text": "Olá pelo roteador."` |
+| `POST /api/genai/tts` `{"text": "x", "speaker": "nope"}` | `422`, `VALIDATION_ERROR`, the daemon's message in `detail` |
+| `POST /api/genai/tts` `{"text": "x", "language": "pt"}` | `422`, `details: {"field": "language"}` |
+| `POST /api/genai/transcribe` with 3000 zero bytes | `422`, `"detail": "Failed to load image or audio file"` |
 
 !!! tip "The first request after the pull is slow"
     It loads the model: 116 s for `phonon` and 55 s for `lfm3-audio`, against
@@ -3260,8 +3294,8 @@ app.include_router(
 | `text_generator` | `POST /generate`, `POST /generate/stream` (token-by-token SSE), `POST /chat` |
 | `embedder` | `POST /embed` |
 | `retriever` | `POST /rag` (query → context block) |
-| `speech_to_text` | `POST /transcribe` (audio upload) |
-| `text_to_speech` | `POST /tts` (returns `audio/wav`) |
+| `speech_to_text` | `POST /transcribe` (audio upload; `SpeechToText`, `OllamaSpeech` or any `SpeechTranscriber`) |
+| `text_to_speech` | `POST /tts` (returns `audio/wav`; `TextToSpeech`, `OllamaSpeech` or any `SpeechSynthesizer`) |
 
 !!! tip "Streaming"
     `/generate/stream` returns `text/event-stream`: each token becomes an

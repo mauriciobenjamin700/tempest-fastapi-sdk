@@ -39,7 +39,7 @@ from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 from tempest_fastapi_sdk.utils.upload import read_upload_capped
 
 if TYPE_CHECKING:
-    from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
+    from tempest_fastapi_sdk.genai.audio import SpeechSynthesizer, SpeechTranscriber
     from tempest_fastapi_sdk.genai.image import ImageGenerator
     from tempest_fastapi_sdk.genai.rag import SupportsEmbed, SupportsRetrieve
     from tempest_fastapi_sdk.genai.registry import ModelRegistry
@@ -187,8 +187,8 @@ def make_genai_router(
     text_generator: TextBackend | None = None,
     embedder: SupportsEmbed | None = None,
     retriever: SupportsRetrieve | None = None,
-    speech_to_text: SpeechToText | None = None,
-    text_to_speech: TextToSpeech | None = None,
+    speech_to_text: SpeechTranscriber | None = None,
+    text_to_speech: SpeechSynthesizer | None = None,
     image_generator: ImageGenerator | None = None,
     models: ModelRegistry | dict[str, Any] | list[Any] | None = None,
     prefix: str = "/api/genai",
@@ -235,8 +235,12 @@ def make_genai_router(
             an ``OllamaEmbedder``, or any ``SupportsEmbed``).
         retriever (SupportsRetrieve | None): Backs ``/rag`` — a ``Retriever``
             (rerank via ``Retriever(reranker=...)``) or a ``HybridRetriever``.
-        speech_to_text (SpeechToText | None): Backs ``/transcribe``.
-        text_to_speech (TextToSpeech | None): Backs ``/tts``.
+        speech_to_text (SpeechTranscriber | None): Backs ``/transcribe`` —
+            a ``SpeechToText``, an ``OllamaSpeech``, or any
+            ``SpeechTranscriber``.
+        text_to_speech (SpeechSynthesizer | None): Backs ``/tts`` — a
+            ``TextToSpeech``, an ``OllamaSpeech``, or any
+            ``SpeechSynthesizer``.
         image_generator (ImageGenerator | None): Backs ``/image``.
         models (ModelRegistry | dict[str, Any] | list[Any] | None): Backs
             ``/models`` — a ``ModelRegistry``, or a dict/list of handles you

@@ -13,8 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   um daemon Ollama. `synthesize` usa o `POST /v1/audio/speech` (WAV ou PCM,
   `voice=`, `out_path=`), `transcribe` usa o `POST /v1/audio/transcriptions`
   com `verbose_json` e devolve `Transcription`, e `voices` lê o `voices` do
-  `/api/show`. Recusa do daemon vira `OllamaError` com a mensagem dele, nos
-  dois formatos de corpo (nativo e OpenAI). Medido no Ollama 0.40.13 (Docker,
+  `/api/show`. Recusa do daemon com `400` (voz desconhecida, texto vazio ou
+  longo demais, áudio que não decodifica, modelo sem a capacidade) vira
+  `ValidationException` (`422`) com a mensagem dele; modelo não baixado e
+  falha do daemon viram `OllamaError`. `language` só é aceito como `None`
+  (outro valor levanta `ValidationException` antes da rede), e `speaker` é
+  sinônimo de `voice`. Medido no Ollama 0.40.13 (Docker,
   Linux, RTX 4070 Ti SUPER) com `phonon` e `lfm3-audio`: o WAV do stream sai
   com os tamanhos RIFF e `data` em `0xFFFFFFFF` (o `wave` do Python lê
   `2147483647` frames), então `synthesize` reescreve os dois
@@ -22,6 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   o resultado (o `language` só volta como rótulo), por isso não são expostos
   e `Transcription.language` fica vazio; `keep_alive` é ignorado por esses
   endpoints e também não é exposto.
+- Protocolos `SpeechTranscriber` e `SpeechSynthesizer` em
+  `tempest_fastapi_sdk.genai.audio`, com o formato que as rotas chamam.
+
+### Changed
+
+- `make_genai_router(speech_to_text=..., text_to_speech=...)` passa a ser
+  tipado pelos protocolos `SpeechTranscriber` / `SpeechSynthesizer` em vez de
+  `SpeechToText` / `TextToSpeech`. As duas classes continuam aceitas, e o
+  `OllamaSpeech` serve `/transcribe` e `/tts` (o `speaker` do corpo vira a
+  `voice` do Ollama; voz desconhecida responde `422`, não `500`).
 
 ## [0.338.0] — 2026-10-31
 

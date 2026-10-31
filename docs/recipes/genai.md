@@ -1958,17 +1958,53 @@ O que o `OllamaSpeech` faz por você:
   Como `synthesize` junta a resposta inteira, ele reescreve os tamanhos: um
   clipe de 4,32 s abre com `103680` frames a 24 kHz.
   `response_format="pcm"` devolve as amostras cruas, sem cabeçalho.
-- **Transforma a recusa do daemon em `OllamaError`**, com a mensagem dele em
-  `detail`: voz desconhecida (com a lista de vozes), modelo sem fala ou sem
-  entrada de áudio, texto vazio ou acima de 4096 caracteres, áudio que não
-  decodifica, modelo não baixado.
-- **Não manda o que o daemon ignora.** `transcribe` não aceita `language`:
-  o Ollama só devolve o rótulo que recebeu (áudio em inglês enviado com
-  `language=pt` voltou em inglês, marcado `"portuguese"`), então
-  `Transcription.language` fica vazio em vez de carregar um rótulo que não
-  saiu do áudio. Também não há `keep_alive`, que esses endpoints ignoram.
+- **Separa erro do pedido de erro do servidor.** Quando o daemon recusa o
+  pedido com `400` (voz desconhecida, modelo sem fala ou sem entrada de
+  áudio, texto vazio ou acima de 4096 caracteres, áudio que não decodifica),
+  levanta `ValidationException` (`422`) com a mensagem dele e
+  `details={"backend": "ollama", "model": ...}`. Modelo não baixado ou falha
+  do daemon continuam `OllamaError`.
+- **Recusa o que o daemon ignoraria.** O Ollama só devolve o rótulo de
+  `language` que recebeu (áudio em inglês enviado com `language=pt` voltou em
+  inglês, marcado `"portuguese"`), e na fala a língua vem da voz. Por isso
+  `transcribe` e `synthesize` aceitam `language` só como `None`: qualquer
+  valor levanta `ValidationException` com `details={"field": "language"}`,
+  antes de ir à rede. `Transcription.language` fica vazio. Também não há
+  `keep_alive`, que esses endpoints ignoram.
 - **Caminho é caminho.** `transcribe("https://...")` levanta
   `FileNotFoundError` sem ir à rede, como o `SpeechToText`.
+
+#### Servindo por HTTP: `/tts` e `/transcribe`
+
+O `make_genai_router` aceita qualquer objeto que satisfaça
+`SpeechTranscriber` (para `/transcribe`) e `SpeechSynthesizer` (para
+`/tts`), de `tempest_fastapi_sdk.genai.audio`. `SpeechToText`,
+`TextToSpeech` e `OllamaSpeech` satisfazem; o `speaker` do corpo do `/tts`
+vira a `voice` do Ollama.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import OllamaSpeech, make_genai_router
+
+speech = OllamaSpeech("lfm3-audio", timeout=180.0)
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(make_genai_router(speech_to_text=speech, text_to_speech=speech))
+```
+
+Medido contra o Ollama 0.40.13, com o `httpx.ASGITransport` na frente do
+app:
+
+| Pedido | Resposta |
+| --- | --- |
+| `POST /api/genai/tts` `{"text": "Olá pelo roteador.", "speaker": "male-portuguese"}` | `200`, `audio/wav` de 34560 frames |
+| `POST /api/genai/transcribe` com esse WAV | `200`, `"text": "Olá pelo roteador."` |
+| `POST /api/genai/tts` `{"text": "x", "speaker": "nope"}` | `422`, `VALIDATION_ERROR`, a mensagem do daemon em `detail` |
+| `POST /api/genai/tts` `{"text": "x", "language": "pt"}` | `422`, `details: {"field": "language"}` |
+| `POST /api/genai/transcribe` com 3000 bytes zerados | `422`, `"detail": "Failed to load image or audio file"` |
 
 !!! tip "O primeiro pedido depois do pull é lento"
     Ele carrega o modelo: 116 s no `phonon` e 55 s no `lfm3-audio`, contra
@@ -3255,8 +3291,8 @@ app.include_router(
 | `text_generator` | `POST /generate`, `POST /generate/stream` (SSE token a token), `POST /chat` |
 | `embedder` | `POST /embed` |
 | `retriever` | `POST /rag` (query → bloco de contexto) |
-| `speech_to_text` | `POST /transcribe` (upload de áudio) |
-| `text_to_speech` | `POST /tts` (devolve `audio/wav`) |
+| `speech_to_text` | `POST /transcribe` (upload de áudio; `SpeechToText`, `OllamaSpeech` ou qualquer `SpeechTranscriber`) |
+| `text_to_speech` | `POST /tts` (devolve `audio/wav`; `TextToSpeech`, `OllamaSpeech` ou qualquer `SpeechSynthesizer`) |
 
 !!! tip "Streaming"
     `/generate/stream` devolve `text/event-stream`: cada token vira um
