@@ -3998,9 +3998,12 @@ mesma seção registra a conta real liberada para Orders e o shape mínimo do
 `transcribe` (`/v1/audio/transcriptions`, só modelo com capacidade `audio`,
 como o `lfm3-audio`) e `voices` (`/api/show`). Medição, licenças e fontes na
 receita `genai` ("Voz pelo Ollama" e "Escolher modelo de voz e áudio").
-Fora de escopo, de propósito: stream de bytes de áudio (o `HTTPClient.stream`
-entrega linhas), `language`/`prompt` na transcrição (o daemon não usa) e
-rota HTTP própria (o `make_genai_router` serve `SpeechToText`/`TextToSpeech`).
+Serve `/tts` e `/transcribe` do `make_genai_router`, que agora tipa esses
+parâmetros pelos protocolos `SpeechTranscriber` / `SpeechSynthesizer`
+(`genai/audio/backends.py`). `400` do daemon vira `ValidationException`
+(422); `language` diferente de `None` é recusado. Fora de escopo, de
+propósito: stream de bytes de áudio (o `HTTPClient.stream` entrega linhas) e
+`prompt` na transcrição (o daemon não usa).
 
 ## Slides, gabaritos e Markdown em PDF (0.338.0)
 

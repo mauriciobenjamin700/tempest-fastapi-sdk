@@ -41,6 +41,7 @@ import struct
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from tempest_fastapi_sdk.exceptions.validation import ValidationException
 from tempest_fastapi_sdk.genai.audio.schemas import (
     Transcription,
     TranscriptionSegment,
@@ -90,6 +91,62 @@ def _json_body(model: str, response: httpx.Response) -> dict[str, Any]:
             f"expected a JSON object, got: {response.text[:200]!r}",
         )
     return body
+
+
+def _refuse_language(language: str | None) -> None:
+    """Refuse a language Ollama would silently drop.
+
+    The speech endpoints take the language from the voice
+    (``female-portuguese``), and the transcription endpoint only echoes a
+    ``language`` back as a label. Accepting the keyword and ignoring it
+    would answer a request that asked for something it did not get.
+
+    Args:
+        language (str | None): The requested language.
+
+    Raises:
+        ValidationException: When ``language`` is not ``None`` (``422``,
+            ``details={"field": "language"}``).
+    """
+    if language is not None:
+        raise ValidationException(
+            message=(
+                "This Ollama speech backend does not take a language: pick a "
+                "voice for synthesis, and transcription detects it from the audio"
+            ),
+            details={"field": "language"},
+        )
+
+
+def _raise_for_response(model: str, response: httpx.Response) -> None:
+    """Raise the right error for a non-success daemon response.
+
+    A ``400`` is the daemon refusing the request itself (unknown voice,
+    empty or over-long input, an unsupported format, audio that does not
+    decode, a model without the capability), so it becomes a
+    :class:`~tempest_fastapi_sdk.exceptions.ValidationException` -- ``422``
+    behind ``make_genai_router`` instead of a ``500``. Anything else (model
+    not pulled, daemon failure) is the deployment's problem and stays an
+    :class:`~tempest_fastapi_sdk.genai.OllamaError`.
+
+    Args:
+        model (str): The model tag, used in the error.
+        response (httpx.Response): The response to check.
+
+    Raises:
+        ValidationException: On a ``400``, with the daemon's message and
+            ``details={"backend": "ollama", "model": model}``.
+        OllamaError: On any other non-success status.
+    """
+    if not response.is_error:
+        return
+    detail = _error_detail(response)
+    if response.status_code == 400:
+        raise ValidationException(
+            message=detail,
+            details={"backend": "ollama", "model": model},
+        )
+    raise OllamaError(model, detail)
 
 
 def _error_detail(response: httpx.Response) -> str:
@@ -154,10 +211,16 @@ class OllamaSpeech(_OllamaClientMixin):
     """Text-to-speech and speech-to-text backed by an Ollama daemon.
 
     Pull the model first (``ollama pull phonon`` for English speech,
-    ``ollama pull lfm3-audio`` for 18 languages and transcription). A model
-    without the ``speech`` or ``audio`` capability makes the daemon answer
-    ``400``, raised here as :class:`~tempest_fastapi_sdk.genai.OllamaError`
-    with the daemon's message.
+    ``ollama pull lfm3-audio`` for 18 languages and transcription). A
+    request the daemon refuses with ``400`` (a model without the ``speech``
+    or ``audio`` capability, an unknown voice, bad input) raises
+    :class:`~tempest_fastapi_sdk.exceptions.ValidationException` with the
+    daemon's message; a model that is not pulled, or a daemon failure,
+    raises :class:`~tempest_fastapi_sdk.genai.OllamaError`. It satisfies
+    :class:`~tempest_fastapi_sdk.genai.audio.SpeechTranscriber` and
+    :class:`~tempest_fastapi_sdk.genai.audio.SpeechSynthesizer`, so it backs
+    ``/transcribe`` and ``/tts`` in
+    :func:`~tempest_fastapi_sdk.genai.make_genai_router`.
 
     ``keep_alive``, ``metrics`` and ``generation_cache`` from the shared
     Ollama client stay ``None``: the speech endpoints ignore ``keep_alive``,
@@ -212,8 +275,11 @@ class OllamaSpeech(_OllamaClientMixin):
     async def synthesize(
         self,
         text: str,
+        /,
         *,
         voice: str | None = None,
+        speaker: str | None = None,
+        language: str | None = None,
         response_format: SpeechFormat = "wav",
         out_path: str | Path | None = None,
     ) -> bytes:
@@ -225,6 +291,12 @@ class OllamaSpeech(_OllamaClientMixin):
             voice (str | None): A voice name from :meth:`voices`
                 (case-insensitive on the daemon). ``None`` uses the model's
                 ``default`` voice.
+            speaker (str | None): The same as ``voice``, under the name
+                :class:`~tempest_fastapi_sdk.genai.audio.TextToSpeech` and
+                the ``/tts`` route use, so this class satisfies
+                :class:`~tempest_fastapi_sdk.genai.audio.SpeechSynthesizer`.
+            language (str | None): Must stay ``None``; the voice decides
+                the language.
             response_format (SpeechFormat): ``"wav"`` (16-bit mono 24 kHz
                 with real header sizes) or ``"pcm"`` (the same samples, raw
                 little-endian, no header). The daemon refuses other formats.
@@ -237,11 +309,21 @@ class OllamaSpeech(_OllamaClientMixin):
             bytes: The synthesized audio.
 
         Raises:
-            OllamaError: When the daemon rejects the request (unknown voice,
-                model without speech, input too long, model not pulled).
+            ValidationException: When ``language`` is given, when ``voice``
+                and ``speaker`` name different voices, or when the daemon
+                refuses the request with ``400`` (unknown voice, model
+                without speech, empty input or input over 4096 characters).
+            OllamaError: When the model is not pulled or the daemon fails.
             httpx.HTTPError: When the daemon cannot be reached or does not
                 answer in time.
         """
+        _refuse_language(language)
+        if voice is not None and speaker is not None and voice != speaker:
+            raise ValidationException(
+                message="voice and speaker name different voices",
+                details={"field": "speaker"},
+            )
+        voice = voice if voice is not None else speaker
         payload: dict[str, Any] = {
             "model": self.model,
             "input": text,
@@ -254,8 +336,7 @@ class OllamaSpeech(_OllamaClientMixin):
                 f"{self.base_url}/v1/audio/speech",
                 json=payload,
             )
-            if response.is_error:
-                raise OllamaError(self.model, _error_detail(response))
+            _raise_for_response(self.model, response)
             audio = response.content
         if response_format == "wav":
             audio = fix_streamed_wav_sizes(audio)
@@ -263,7 +344,13 @@ class OllamaSpeech(_OllamaClientMixin):
             await asyncio.to_thread(Path(out_path).write_bytes, audio)
         return audio
 
-    async def transcribe(self, audio: str | Path | bytes) -> Transcription:
+    async def transcribe(
+        self,
+        audio: str | Path | bytes,
+        /,
+        *,
+        language: str | None = None,
+    ) -> Transcription:
         """Transcribe speech with a model that has the ``audio`` capability.
 
         The daemon sniffs the container itself: MP3 bytes uploaded under a
@@ -274,21 +361,27 @@ class OllamaSpeech(_OllamaClientMixin):
         Args:
             audio (str | Path | bytes): A local file path or the audio
                 bytes. A string is always a path; it is never fetched.
+            language (str | None): Must stay ``None``; present so this class
+                satisfies
+                :class:`~tempest_fastapi_sdk.genai.audio.SpeechTranscriber`.
 
         Returns:
             Transcription: The text, the duration the daemon measured, and
                 its segments.
 
         Raises:
+            ValidationException: When ``language`` is given, or when the
+                daemon refuses the request with ``400`` (audio that does not
+                decode, model without audio input).
             FileNotFoundError: When ``audio`` is not an existing regular
                 file. The message carries the file name only, never the full
                 path, since the string may come from a form field.
-            OllamaError: When the daemon rejects the request (undecodable
-                audio, model without audio input, model not pulled) or
-                answers with something other than a JSON object.
+            OllamaError: When the model is not pulled, the daemon fails, or
+                it answers with something other than a JSON object.
             httpx.HTTPError: When the daemon cannot be reached or does not
                 answer in time.
         """
+        _refuse_language(language)
         if isinstance(audio, bytes):
             content, filename = audio, "audio"
         else:
@@ -305,8 +398,7 @@ class OllamaSpeech(_OllamaClientMixin):
                 data={"model": self.model, "response_format": "verbose_json"},
                 files={"file": (filename, content)},
             )
-            if response.is_error:
-                raise OllamaError(self.model, _error_detail(response))
+            _raise_for_response(self.model, response)
             data = _json_body(self.model, response)
         return Transcription(
             text=str(data.get("text") or "").strip(),
@@ -339,8 +431,7 @@ class OllamaSpeech(_OllamaClientMixin):
                 f"{self.base_url}/api/show",
                 json={"model": self.model},
             )
-            if response.is_error:
-                raise OllamaError(self.model, _error_detail(response))
+            _raise_for_response(self.model, response)
             data = _json_body(self.model, response)
         return [str(voice) for voice in data.get("voices") or []]
 
