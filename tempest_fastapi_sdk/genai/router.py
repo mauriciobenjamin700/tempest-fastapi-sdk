@@ -586,14 +586,14 @@ def make_genai_router(
     return router
 
 
-def _check_at_most(field: str, value: int, limit: int) -> None:
+def _check_at_most(field: str, value: float, limit: float) -> None:
     """Refuse a request whose ``field`` measures above ``limit``.
 
     Args:
         field (str): The request field being measured, reported back in
             ``details``.
-        value (int): The measured size (characters, items or the value).
-        limit (int): The largest accepted size.
+        value (float): The measured size (characters, items or the value).
+        limit (float): The largest accepted size.
 
     Raises:
         ValidationException: When ``value`` exceeds ``limit`` (``422``,
@@ -711,11 +711,8 @@ def _check_audio(body: AudioRequestSchema, bounds: GenAIRequestLimits) -> None:
             len(config.negative_prompt),
             bounds.max_prompt_chars,
         )
-    if config.seconds is not None and config.seconds > bounds.max_audio_seconds:
-        raise ValidationException(
-            message=f"seconds exceeds the limit of {bounds.max_audio_seconds}",
-            details={"field": "seconds", "limit": bounds.max_audio_seconds},
-        )
+    if config.seconds is not None:
+        _check_at_most("seconds", config.seconds, bounds.max_audio_seconds)
     if config.steps is not None:
         _check_at_most("steps", config.steps, bounds.max_audio_steps)
     _check_at_most("num_waveforms", config.num_waveforms, 1)

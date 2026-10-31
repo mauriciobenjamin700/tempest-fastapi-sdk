@@ -2091,7 +2091,7 @@ call.
 Measured on 2026-10-31 on an RTX 4070 Ti SUPER (bf16, 10 s, 50 steps,
 model already loaded):
 
-| Model | For | Time | Model default | Licence |
+| Model | For | 10 s at 50 steps | No config (model default) | Licence |
 | --- | --- | --- | --- | --- |
 | `cvssp/audioldm-s-full-v2` | sound effects | ~1.1 s | 5.12 s of audio, 10 steps | `cc-by-nc-sa-4.0` |
 | `ucsd-reach/musicldm` | music | ~1.1 s | 10.24 s of audio, 200 steps | `cc-by-nc-sa-4.0` |
@@ -2125,7 +2125,8 @@ Peak VRAM stayed under 1.1 GiB for both.
       returns a `BaseModelOutputWithPooling` instead of a tensor, and the
       pipeline breaks with `'BaseModelOutputWithPooling' object has no
       attribute 'to'`. The load runs that call once to decide, without
-      guessing a version, and frees the VRAM when it refuses.
+      guessing a version, and frees the VRAM when it refuses: measured,
+      8 MiB stay allocated while the exception is still alive.
     - **Stable Audio** takes `audio_end_in_s` instead of
       `audio_length_in_s` and is refused too.
 

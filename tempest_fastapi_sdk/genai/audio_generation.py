@@ -12,7 +12,8 @@ refuses both ``cvssp/audioldm-s-full-v2`` and ``ucsd-reach/musicldm``
 ("can't find a pipeline linked to AudioLDMPipeline").
 
 Supported: pipelines whose call takes ``audio_length_in_s`` -- the AudioLDM
-family. Measured on an RTX 4070 Ti SUPER (fp16, 50 steps, 2026-10-31):
+family. Measured on an RTX 4070 Ti SUPER (bf16 through this class, and fp16
+through the raw pipeline; 50 steps, 2026-10-31):
 ``cvssp/audioldm-s-full-v2`` (sound effects) and ``ucsd-reach/musicldm``
 (music) both rendered 10 s at 16 kHz in about 1.1 s with under 1.1 GiB of
 peak VRAM, and the same seed reproduced the same waveform. diffusers keeps
@@ -21,10 +22,11 @@ feature updates after Diffusers version 0.33.1"), so they are frozen code.
 Three exclusions, each refused by :meth:`AudioGenerator.load` instead of
 failing mid-call:
 
-* ``AudioLDM2Pipeline`` loads but fails on the first call with
+* ``AudioLDM2Pipeline`` whose language model is a bare ``GPT2Model`` (as
+  ``cvssp/audioldm2`` ships it) loads but fails on the first call with
   ``'GPT2Model' object has no attribute '_update_model_kwargs_for_generation'``
-  under transformers 4.57.6 (the upstream fix, huggingface/diffusers#13111,
-  was closed unmerged). :meth:`AudioGenerator.load` refuses it up front.
+  under transformers 4.57.6; ``GPT2Model`` lacks the method on 5.22.1 too.
+  The upstream fix (huggingface/diffusers#13111) was closed unmerged.
 * ``MusicLDMPipeline`` under transformers 5.22.1 (with diffusers 0.42.1):
   ``ClapModel.get_text_features`` returns a ``BaseModelOutputWithPooling``
   where the pipeline expects a tensor, and the call fails with
@@ -43,6 +45,7 @@ need them, so this module imports without the ``[genai-sound]`` extra.
 from __future__ import annotations
 
 import asyncio
+import gc
 import inspect
 import io
 import secrets
@@ -102,7 +105,9 @@ def check_audio_pipeline(pipeline: Any) -> None:
             ``audio_length_in_s`` (``StableAudioPipeline``, or an image
             pipeline), or when it is an ``AudioLDM2Pipeline`` whose language
             model lacks ``_update_model_kwargs_for_generation`` -- the
-            combination that fails mid-call under transformers 4.57.6.
+            combination that failed mid-call under transformers 4.57.6.
+            The check is on the attribute, so a transformers release that
+            puts the method back on ``GPT2Model`` passes it.
     """
     name = type(pipeline).__name__
     parameters = inspect.signature(pipeline.__call__).parameters
@@ -126,8 +131,8 @@ def check_audio_pipeline(pipeline: Any) -> None:
         )
 
 
-def check_text_features(pipeline: Any, torch: Any) -> None:
-    """Probe a CLAP text encoder once and refuse one the pipeline cannot use.
+def text_features_problem(pipeline: Any, torch: Any) -> str | None:
+    """Probe a CLAP text encoder once and say why the pipeline cannot use it.
 
     ``MusicLDMPipeline`` calls ``text_encoder.get_text_features(...)`` and
     then ``.to(...)`` on the result. That result is a tensor on
@@ -139,20 +144,26 @@ def check_text_features(pipeline: Any, torch: Any) -> None:
     Pipelines whose text encoder has no ``get_text_features`` (AudioLDM
     calls the encoder directly) are not probed.
 
+    The reason is returned, not raised, on purpose: an exception raised
+    here keeps this frame -- and with it the whole pipeline already on the
+    GPU -- alive in its traceback. Measured on the RTX 4070 Ti SUPER with
+    MusicLDM: 962 MiB stayed allocated while such an exception was held,
+    and 8 MiB after it was dropped and collected.
+
     Args:
         pipeline (Any): A loaded diffusers pipeline, already on its device.
         torch (Any): The imported ``torch`` module.
 
-    Raises:
-        ValueError: When ``get_text_features`` returns something other than
-            a tensor.
+    Returns:
+        str | None: Why the pipeline would fail, or ``None`` when it can
+        generate (or has no ``get_text_features`` to probe).
     """
     encoder = getattr(pipeline, "text_encoder", None)
     tokenizer = getattr(pipeline, "tokenizer", None)
     if encoder is None or tokenizer is None:
-        return
+        return None
     if not hasattr(encoder, "get_text_features"):
-        return
+        return None
     tokens = tokenizer(["probe"], padding=True, return_tensors="pt")
     device = getattr(encoder, "device", "cpu")
     with torch.no_grad():
@@ -160,17 +171,18 @@ def check_text_features(pipeline: Any, torch: Any) -> None:
             tokens.input_ids.to(device),
             attention_mask=tokens.attention_mask.to(device),
         )
-    if not isinstance(features, torch.Tensor):
-        import transformers
+    if isinstance(features, torch.Tensor):
+        return None
+    import transformers
 
-        raise ValueError(
-            f"{type(pipeline).__name__} cannot generate with transformers "
-            f"{transformers.__version__}: {type(encoder).__name__}."
-            f"get_text_features returns {type(features).__name__}, not a "
-            "tensor, so the first call fails. It works with transformers "
-            "4.57.6 (installing [genai-audio] holds transformers below 5); "
-            "cvssp/audioldm-s-full-v2 works on both",
-        )
+    return (
+        f"{type(pipeline).__name__} cannot generate with transformers "
+        f"{transformers.__version__}: {type(encoder).__name__}."
+        f"get_text_features returns {type(features).__name__}, not a "
+        "tensor, so the first call fails. It works with transformers "
+        "4.57.6 (installing [genai-audio] holds transformers below 5); "
+        "cvssp/audioldm-s-full-v2 works on both"
+    )
 
 
 def pipeline_sample_rate(pipeline: Any) -> int:
@@ -198,7 +210,8 @@ def encode_wav(samples: Any, sample_rate: int) -> tuple[bytes, int, float]:
     """Encode a float waveform as a 16-bit PCM WAV.
 
     Values are clipped to ``[-1, 1]`` before scaling, so an overshooting
-    sample saturates instead of wrapping around.
+    sample saturates instead of wrapping around. ``NaN`` becomes silence and
+    ``±inf`` saturates, since casting them to ``int16`` is undefined.
 
     Args:
         samples (Any): A NumPy-compatible array, ``(frames,)`` for mono or
@@ -220,7 +233,8 @@ def encode_wav(samples: Any, sample_rate: int) -> tuple[bytes, int, float]:
     if array.ndim != 2:
         raise ValueError(f"expected 1-D or 2-D audio, got shape {array.shape}")
     channels, frames = array.shape
-    pcm = (np.clip(array, -1.0, 1.0) * 32767.0).astype("<i2")
+    finite = np.nan_to_num(array, nan=0.0, posinf=1.0, neginf=-1.0)
+    pcm = (np.clip(finite, -1.0, 1.0) * 32767.0).astype("<i2")
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as writer:
         writer.setnchannels(channels)
@@ -383,7 +397,12 @@ class AudioGenerator:
 
         The class-level checks run before the move to the device, so a
         pipeline refused by them never occupies VRAM. The text-encoder probe
-        needs the device, and a refusal there frees the memory again.
+        needs the device; a refusal there, or any failure from the move on
+        (an out-of-memory included), drops the pipeline and collects it
+        before raising, so the memory is returned. A ``ValueError`` from
+        the probe is raised only after the pipeline is gone, which is what
+        keeps the traceback from pinning it (see
+        :func:`text_features_problem`).
 
         Raises:
             ImportError: When the extras are missing.
@@ -401,13 +420,19 @@ class AudioGenerator:
         )
         check_audio_pipeline(pipeline)
         sample_rate = pipeline_sample_rate(pipeline)
-        pipeline = pipeline.to(self.device)
         try:
-            check_text_features(pipeline, torch)
-        except ValueError:
+            pipeline = pipeline.to(self.device)
+            problem = text_features_problem(pipeline, torch)
+        except BaseException:
             del pipeline
+            gc.collect()
             self._release()
             raise
+        if problem is not None:
+            del pipeline
+            gc.collect()
+            self._release()
+            raise ValueError(problem)
         self._sample_rate = sample_rate
         self._pipeline = pipeline
 
@@ -493,9 +518,11 @@ class AudioGenerator:
                 defaults.
 
         Returns:
-            list[GeneratedAudio]: The clips, each a WAV carrying the seed
-            that reproduces it. Without a seed in ``config`` one is drawn,
-            so every clip is reproducible.
+            list[GeneratedAudio]: The clips. Every clip carries the call's
+            seed; with ``num_waveforms`` above 1 they differ from each other,
+            so reproducing clip ``i`` takes the same seed, the same
+            ``num_waveforms`` and index ``i``. Without a seed in ``config``
+            one is drawn.
 
         Raises:
             ImportError: When the extras are missing.
@@ -520,7 +547,7 @@ __all__: list[str] = [
     "AUDIO_LENGTH_KEYWORD",
     "AudioGenerator",
     "check_audio_pipeline",
-    "check_text_features",
     "encode_wav",
     "pipeline_sample_rate",
+    "text_features_problem",
 ]

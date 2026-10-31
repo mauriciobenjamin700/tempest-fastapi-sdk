@@ -597,7 +597,10 @@ class GeneratedAudio(BaseSchema):
             MusicLDM, read from the pipeline's vocoder).
         channels (int): Channel count of the WAV.
         seconds (float): Duration of the clip.
-        seed (int): The seed this clip was generated with.
+        seed (int): The seed of the call that generated this clip. A call
+            with ``num_waveforms`` above 1 gives every clip the same seed, so
+            reproducing one also takes the same ``num_waveforms`` and its
+            position in the result.
     """
 
     data: bytes = Field(

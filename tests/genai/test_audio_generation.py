@@ -32,9 +32,9 @@ from tempest_fastapi_sdk.genai import (
 from tempest_fastapi_sdk.genai import audio_generation as audio_module
 from tempest_fastapi_sdk.genai.audio_generation import (
     check_audio_pipeline,
-    check_text_features,
     encode_wav,
     pipeline_sample_rate,
+    text_features_problem,
 )
 
 
@@ -211,6 +211,13 @@ class TestEncodeWav:
             samples = np.frombuffer(reader.readframes(2), dtype="<i2")
         assert samples.tolist() == [16383, -16383, 16383, -16383]
 
+    def test_nan_is_silence_and_inf_saturates(self) -> None:
+        samples = np.array([np.nan, np.inf, -np.inf], dtype=np.float32)
+        data, _, _ = encode_wav(samples, 8000)
+        with wave.open(io.BytesIO(data)) as reader:
+            pcm = np.frombuffer(reader.readframes(3), dtype="<i2")
+        assert pcm.tolist() == [0, 32767, -32767]
+
     def test_rejects_three_dimensions(self) -> None:
         with pytest.raises(ValueError, match="1-D or 2-D"):
             encode_wav(np.zeros((1, 1, 4)), 16000)
@@ -237,24 +244,25 @@ class TestPipelineChecks:
         )
         check_audio_pipeline(pipeline)
 
-    def test_text_features_output_object_is_refused(self) -> None:
+    def test_text_features_output_object_is_reported(self) -> None:
         pipeline = FakePipeline()
         pipeline.text_encoder = FakeEncoder(SimpleNamespace())  # type: ignore[attr-defined]
         pipeline.tokenizer = lambda *args, **kwargs: FakeTokens()  # type: ignore[attr-defined]
-        with pytest.raises(ValueError, match="not a tensor"):
-            check_text_features(pipeline, FakeTorch())
+        problem = text_features_problem(pipeline, FakeTorch())
+        assert problem is not None
+        assert "not a tensor" in problem
 
     def test_text_features_tensor_passes(self) -> None:
         pipeline = FakePipeline()
         pipeline.text_encoder = FakeEncoder(FakeTensor())  # type: ignore[attr-defined]
         pipeline.tokenizer = lambda *args, **kwargs: FakeTokens()  # type: ignore[attr-defined]
-        check_text_features(pipeline, FakeTorch())
+        assert text_features_problem(pipeline, FakeTorch()) is None
 
     def test_encoder_without_text_features_is_not_probed(self) -> None:
         pipeline = FakePipeline()
         pipeline.text_encoder = SimpleNamespace()  # type: ignore[attr-defined]
         pipeline.tokenizer = lambda *args, **kwargs: FakeTokens()  # type: ignore[attr-defined]
-        check_text_features(pipeline, FakeTorch())
+        assert text_features_problem(pipeline, FakeTorch()) is None
 
     def test_sample_rate_from_vocoder_then_vae(self) -> None:
         assert pipeline_sample_rate(FakePipeline(22050)) == 22050
@@ -289,8 +297,44 @@ class TestLoad:
         pipeline.tokenizer = lambda *args, **kwargs: FakeTokens()  # type: ignore[attr-defined]
         _install(monkeypatch, pipeline)
         generator = AudioGenerator("ucsd-reach/musicldm", device="cpu")
-        with pytest.raises(ValueError, match="not a tensor"):
+        released: list[bool] = []
+        monkeypatch.setattr(generator, "_release", lambda: released.append(True))
+        with pytest.raises(ValueError, match="not a tensor") as caught:
             generator.load()
+        assert generator.is_loaded is False
+        assert released == [True]
+        frames = []
+        traceback = caught.value.__traceback__
+        while traceback is not None:
+            frames.append(traceback.tb_frame)
+            traceback = traceback.tb_next
+        module_frames = [
+            frame
+            for frame in frames
+            if frame.f_code.co_filename == audio_module.__file__
+        ]
+        assert module_frames
+        assert all(
+            frame.f_locals.get("pipeline") is not pipeline for frame in module_frames
+        )
+
+    def test_failure_moving_to_the_device_releases(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        pipeline = FakePipeline()
+
+        def out_of_memory(device: str) -> FakePipeline:
+            raise RuntimeError("CUDA out of memory")
+
+        pipeline.to = out_of_memory  # type: ignore[method-assign]
+        _install(monkeypatch, pipeline)
+        generator = AudioGenerator("m", device="cpu")
+        released: list[bool] = []
+        monkeypatch.setattr(generator, "_release", lambda: released.append(True))
+        with pytest.raises(RuntimeError, match="out of memory"):
+            generator.load()
+        assert released == [True]
         assert generator.is_loaded is False
 
     def test_rejects_non_positive_concurrency(self) -> None:
@@ -392,9 +436,59 @@ class TestRouter:
         assert response.status_code == 422
         assert response.json()["details"]["field"] == field
 
-    def test_limits_are_configurable(self) -> None:
-        limits = GenAIRequestLimits(max_audio_seconds=60.0, max_audio_steps=500)
-        assert (limits.max_audio_seconds, limits.max_audio_steps) == (60.0, 500)
+    def test_seconds_at_the_limit_pass(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response = self._client(monkeypatch).post(
+            "/api/genai/audio",
+            json={"prompt": "rain", "config": {"seconds": 30.0}},
+        )
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        ("body", "field"),
+        [
+            ({"prompt": "x" * 4001}, "prompt"),
+            (
+                {"prompt": "rain", "config": {"negative_prompt": "x" * 4001}},
+                "negative_prompt",
+            ),
+        ],
+    )
+    def test_prompt_limits_answer_422(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        body: dict[str, Any],
+        field: str,
+    ) -> None:
+        _install(monkeypatch)
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_genai_router(
+                audio_generator=AudioGenerator("m", device="cpu"),
+                limits=GenAIRequestLimits(max_prompt_chars=4000),
+            ),
+        )
+        response = TestClient(app).post("/api/genai/audio", json=body)
+        assert response.status_code == 422
+        assert response.json()["details"]["field"] == field
+
+    def test_raised_limits_reach_the_route(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _install(monkeypatch)
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_genai_router(
+                audio_generator=AudioGenerator("m", device="cpu"),
+                limits=GenAIRequestLimits(max_audio_seconds=60.0, max_audio_steps=500),
+            ),
+        )
+        response = TestClient(app).post(
+            "/api/genai/audio",
+            json={"prompt": "rain", "config": {"seconds": 45.0, "steps": 400}},
+        )
+        assert response.status_code == 200
 
 
 class TestMissingExtra:

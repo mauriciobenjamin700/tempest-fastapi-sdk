@@ -2086,7 +2086,7 @@ mesmos bytes, e `num_waveforms=2` gerou dois clipes diferentes numa chamada.
 Medido em 2026-10-31 numa RTX 4070 Ti SUPER (bf16, 10 s, 50 passos, modelo
 já carregado):
 
-| Modelo | Para | Tempo | Default do modelo | Licença |
+| Modelo | Para | 10 s com 50 passos | Sem config (default do modelo) | Licença |
 | --- | --- | --- | --- | --- |
 | `cvssp/audioldm-s-full-v2` | efeitos sonoros | ~1,1 s | 5,12 s de áudio, 10 passos | `cc-by-nc-sa-4.0` |
 | `ucsd-reach/musicldm` | música | ~1,1 s | 10,24 s de áudio, 200 passos | `cc-by-nc-sa-4.0` |
@@ -2119,7 +2119,8 @@ O pico de VRAM ficou abaixo de 1,1 GiB nos dois.
       devolve um `BaseModelOutputWithPooling` em vez de um tensor, e o
       pipeline quebra com `'BaseModelOutputWithPooling' object has no
       attribute 'to'`. A carga roda essa chamada uma vez para decidir, sem
-      adivinhar versão, e libera a VRAM ao recusar.
+      adivinhar versão, e libera a VRAM ao recusar: medido, ficam 8 MiB
+      alocados com a exceção ainda viva.
     - **Stable Audio** usa `audio_end_in_s` no lugar de `audio_length_in_s`
       e também é recusado.
 
