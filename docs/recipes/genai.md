@@ -1837,7 +1837,7 @@ Licença de peso muda; confira o model card antes de shippar.
 | `SWivid/F5-TTS` | TTS | **`cc-by-nc-4.0`** | pacote `f5-tts` |
 | `facebook/musicgen-large` | música | **`cc-by-nc-4.0`** | `transformers` |
 | `cvssp/audioldm-s-full-v2` | efeitos | **`cc-by-nc-sa-4.0`** | `AudioGenerator` ([efeitos e música](#efeitos-sonoros-e-musica)) |
-| `ucsd-reach/musicldm` | música | **`cc-by-nc-sa-4.0`** | `AudioGenerator`, só com `transformers` 4.57.6 |
+| `ucsd-reach/musicldm` | música | **`cc-by-nc-sa-4.0`** | `AudioGenerator`; medido: gera no `transformers` 4.57.6, recusado no 5.22.1 |
 | `cvssp/audioldm2-large` | efeitos | **`cc-by-nc-sa-4.0`** | `diffusers` (`AudioLDM2Pipeline`), quebrado no `transformers` atual |
 | `stabilityai/stable-audio-open-1.0` | música/efeitos | `other` (gated) | `diffusers` (`StableAudioPipeline`) |
 
@@ -2078,8 +2078,10 @@ asyncio.run(main())
 
 Cada `GeneratedAudio` é um WAV PCM de 16 bits com `sample_rate`,
 `channels`, `seconds` e a `seed`. Sem `seed` no config, uma é sorteada e
-devolvida, então todo clipe é reproduzível: medido, a mesma seed gerou os
-mesmos bytes, e `num_waveforms=2` gerou dois clipes diferentes numa chamada.
+devolvida, então todo clipe é reproduzível no mesmo hardware e precisão:
+medido na RTX 4070 Ti SUPER em bf16, a mesma seed gerou os mesmos bytes, e
+`num_waveforms=2` gerou dois clipes diferentes numa chamada (reproduzir o
+segundo pede a mesma seed, o mesmo `num_waveforms` e a posição dele).
 
 ### Que modelo usar
 

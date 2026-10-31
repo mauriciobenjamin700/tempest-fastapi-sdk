@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ValidationException` (`422`) com a mensagem dele; modelo não baixado e
   falha do daemon viram `OllamaError`. `language` só é aceito como `None`
   (outro valor levanta `ValidationException` antes da rede), e `speaker` é
-  sinônimo de `voice`. Medido no Ollama 0.40.13 (Docker,
+  sinônimo de `voice` (os dois com valores diferentes levantam
+  `ValidationException` com `details={"field": "speaker"}`). Medido no Ollama 0.40.13 (Docker,
   Linux, RTX 4070 Ti SUPER) com `phonon` e `lfm3-audio`: o WAV do stream sai
   com os tamanhos RIFF e `data` em `0xFFFFFFFF` (o `wave` do Python lê
   `2147483647` frames), então `synthesize` reescreve os dois

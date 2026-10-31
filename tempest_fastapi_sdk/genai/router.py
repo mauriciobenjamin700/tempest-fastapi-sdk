@@ -3,9 +3,11 @@
 :func:`make_genai_router` wires the GenAI building blocks
 (:class:`~tempest_fastapi_sdk.genai.TextGenerator`,
 :class:`~tempest_fastapi_sdk.genai.Embedder`,
-:class:`~tempest_fastapi_sdk.genai.rag.Retriever`, and the audio
-:class:`~tempest_fastapi_sdk.genai.audio.SpeechToText` /
-:class:`~tempest_fastapi_sdk.genai.audio.TextToSpeech`) straight onto HTTP
+:class:`~tempest_fastapi_sdk.genai.rag.Retriever`, any
+:class:`~tempest_fastapi_sdk.genai.audio.SpeechTranscriber` /
+:class:`~tempest_fastapi_sdk.genai.audio.SpeechSynthesizer` such as
+``SpeechToText``, ``TextToSpeech`` or ``OllamaSpeech``, and the image and
+audio generators) straight onto HTTP
 endpoints — the same "hand it the pieces, get a working router" shape as
 :func:`tempest_fastapi_sdk.make_auth_router`.
 

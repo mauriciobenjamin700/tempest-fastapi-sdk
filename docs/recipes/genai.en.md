@@ -1841,7 +1841,7 @@ Weight licences change; check the model card before shipping.
 | `SWivid/F5-TTS` | TTS | **`cc-by-nc-4.0`** | `f5-tts` package |
 | `facebook/musicgen-large` | music | **`cc-by-nc-4.0`** | `transformers` |
 | `cvssp/audioldm-s-full-v2` | sound effects | **`cc-by-nc-sa-4.0`** | `AudioGenerator` ([sound effects and music](#sound-effects-and-music)) |
-| `ucsd-reach/musicldm` | music | **`cc-by-nc-sa-4.0`** | `AudioGenerator`, only with `transformers` 4.57.6 |
+| `ucsd-reach/musicldm` | music | **`cc-by-nc-sa-4.0`** | `AudioGenerator`; measured: generates on `transformers` 4.57.6, refused on 5.22.1 |
 | `cvssp/audioldm2-large` | sound effects | **`cc-by-nc-sa-4.0`** | `diffusers` (`AudioLDM2Pipeline`), broken on current `transformers` |
 | `stabilityai/stable-audio-open-1.0` | music/effects | `other` (gated) | `diffusers` (`StableAudioPipeline`) |
 
@@ -2082,9 +2082,11 @@ asyncio.run(main())
 
 Each `GeneratedAudio` is a 16-bit PCM WAV with `sample_rate`, `channels`,
 `seconds` and the `seed`. Without a `seed` in the config one is drawn and
-returned, so every clip is reproducible: measured, the same seed produced
+returned, so every clip is reproducible on the same hardware and
+precision: measured on the RTX 4070 Ti SUPER in bf16, the same seed produced
 the same bytes, and `num_waveforms=2` produced two different clips in one
-call.
+call (reproducing the second takes the same seed, the same `num_waveforms`
+and its position).
 
 ### Which model to use
 

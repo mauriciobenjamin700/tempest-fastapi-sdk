@@ -147,8 +147,10 @@ def text_features_problem(pipeline: Any, torch: Any) -> str | None:
     The reason is returned, not raised, on purpose: an exception raised
     here keeps this frame -- and with it the whole pipeline already on the
     GPU -- alive in its traceback. Measured on the RTX 4070 Ti SUPER with
-    MusicLDM: 962 MiB stayed allocated while such an exception was held,
-    and 8 MiB after it was dropped and collected.
+    MusicLDM: when the probe raised, 962 MiB stayed allocated while the
+    exception was held (8 MiB only after it was dropped and collected);
+    with the reason returned and ``AudioGenerator`` raising after dropping
+    the pipeline, 8 MiB stay allocated with the exception still held.
 
     Args:
         pipeline (Any): A loaded diffusers pipeline, already on its device.

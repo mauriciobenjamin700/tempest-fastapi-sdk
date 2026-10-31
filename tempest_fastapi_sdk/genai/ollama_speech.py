@@ -1,8 +1,9 @@
 """Speech synthesis and transcription through an Ollama daemon.
 
 Since v0.40.11 Ollama serves text-to-speech on the OpenAI-compatible
-``POST /v1/audio/speech`` endpoint (``phonon``, ``lfm3-audio``), and models
-with the ``audio`` capability (``lfm3-audio``) transcribe on
+``POST /v1/audio/speech`` endpoint (``phonon``; ``lfm3-audio`` arrived in
+v0.40.12), and models with the ``audio`` capability (``lfm3-audio``)
+transcribe on
 ``POST /v1/audio/transcriptions``. :class:`OllamaSpeech` wraps both, plus the
 voice list that ``/api/show`` exposes, with the same HTTP client, retry and
 error handling as :class:`~tempest_fastapi_sdk.genai.OllamaGenerator`. The
