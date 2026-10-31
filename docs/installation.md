@@ -65,6 +65,8 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
+| `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | slides e gabaritos a partir de texto estruturado (HTML, PDF, PPTX, DOCX, Markdown) e Markdown em PDF com folha de estilo própria ou ABNT: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Exige Pango + fontconfig no sistema**, como o `[pdf]`. [Receita](recipes/slides.md) |
+| `[slides-mermaid]` | `playwright` | desenhar blocos `` ```mermaid `` no `MarkdownPdfRenderer` (`render_mermaid=True`). Exige `playwright install chromium`; por isso fica **fora do `[all]`** |
 | `[sqlite]` | `aiosqlite` | driver async SQLite para URLs `sqlite+aiosqlite://` (default de dev) |
 | `[ssr]` | `tempestweb` | SSR com HTMX: `build_web_app`, `make_htmx_router`, `Page`, helper `htmx` |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
@@ -74,7 +76,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | tudo acima **exceto** os 15 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | os helpers de aplicação — instale os 15 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev) |
+| `[all]` | tudo acima **exceto** os 16 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 16 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev) |
 
 === "Subconjunto (recomendado)"
 

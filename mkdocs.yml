@@ -188,6 +188,7 @@ plugins:
               - Server-Sent Events (SSE): recipes/sse.md
               - Server-side login and signup: recipes/auth-pages.md
               - Server-side sessions: recipes/sessions.md
+              - "Slides, answer keys and Markdown to PDF": recipes/slides.md
               - "Social login (OAuth2/OIDC)": recipes/oauth.md
               - Spreadsheets (.xlsx): recipes/spreadsheets.md
               - SSR (typed pages): ssr.md
@@ -506,6 +507,7 @@ nav:
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md
       - Sessões server-side: recipes/sessions.md
+      - "Slides, gabaritos e Markdown em PDF": recipes/slides.md
       - "SPA React no FastAPI": recipes/react-spa.md
       - "SSR (páginas tipadas)": ssr.md
       - Storage (MinIO/S3): recipes/storage.md
