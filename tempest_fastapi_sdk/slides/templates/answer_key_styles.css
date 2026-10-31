@@ -1,0 +1,125 @@
+@page {
+    size: A4;
+    margin: 20mm;
+    background-color: var(--page-bg);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "DejaVu Sans", "Liberation Sans", "Helvetica", "Arial",
+        sans-serif;
+    color: var(--text-color);
+    background: var(--page-bg);
+    line-height: 1.55;
+}
+
+.theme-default {
+    --page-bg: #ffffff;
+    --text-color: #1f2937;
+    --muted-color: #6b7280;
+    --primary-color: #1e3a8a;
+    --accent-color: #2563eb;
+    --section-bar: #2563eb;
+    --question-color: #0f172a;
+    --answer-bg: #f8fafc;
+    --answer-border: #94a3b8;
+    --footer-color: #94a3b8;
+    --footer-border: #e5e7eb;
+}
+
+.theme-dark {
+    --page-bg: #ffffff;
+    --text-color: #1f2937;
+    --muted-color: #475569;
+    --primary-color: #0f172a;
+    --accent-color: #1e293b;
+    --section-bar: #0f172a;
+    --question-color: #0f172a;
+    --answer-bg: #f1f5f9;
+    --answer-border: #475569;
+    --footer-color: #64748b;
+    --footer-border: #cbd5e1;
+}
+
+.document {
+    padding: 0;
+}
+
+.document__header {
+    text-align: center;
+    border-bottom: 3px solid var(--primary-color);
+    margin-bottom: 28px;
+    padding-bottom: 12px;
+}
+
+.document__title {
+    color: var(--primary-color);
+    font-size: 22pt;
+    margin: 0 0 6px 0;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.document__subtitle {
+    margin: 0;
+    color: var(--muted-color);
+    font-size: 11pt;
+}
+
+.section {
+    margin-top: 28px;
+}
+
+.section__title {
+    color: var(--accent-color);
+    font-size: 15pt;
+    border-left: 5px solid var(--section-bar);
+    padding-left: 12px;
+    margin: 0 0 14px 0;
+    page-break-after: avoid;
+}
+
+.item {
+    margin-bottom: 18px;
+    page-break-inside: avoid;
+}
+
+.item__question {
+    display: block;
+    font-weight: 700;
+    color: var(--question-color);
+    margin-bottom: 6px;
+}
+
+.item__answer {
+    display: block;
+    background-color: var(--answer-bg);
+    padding: 10px 12px;
+    border-radius: 6px;
+    border-left: 3px solid var(--answer-border);
+    font-style: italic;
+}
+
+.item__answer-label {
+    font-style: normal;
+    font-weight: 700;
+    margin-right: 4px;
+}
+
+.overline {
+    text-decoration: overline;
+}
+
+.document__footer {
+    margin-top: 40px;
+    text-align: center;
+    font-size: 9pt;
+    color: var(--footer-color);
+    border-top: 1px solid var(--footer-border);
+    padding-top: 10px;
+}

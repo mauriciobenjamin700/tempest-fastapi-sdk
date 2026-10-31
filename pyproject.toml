@@ -149,6 +149,25 @@ pdf-layout = [
     # not carry either.
     "pdfplumber>=0.11.7",
 ]
+slides = [
+    # Slide decks and answer keys parsed from structured text, rendered to
+    # HTML, PDF, PPTX, DOCX and Markdown, plus Markdown -> PDF. WeasyPrint and
+    # Jinja2 are the same engine [pdf] uses; python-pptx and python-docx write
+    # the Office formats; markdown turns Markdown into the HTML WeasyPrint
+    # lays out. None of the four declares an upper bound.
+    "weasyprint>=69.0",
+    "jinja2>=3.1.6",
+    "python-pptx>=1.0.2",
+    "python-docx>=1.2.0",
+    "markdown>=3.11.2",
+]
+slides-mermaid = [
+    # Renders ```mermaid blocks to inline SVG through headless Chromium.
+    # Separate from [slides] because Playwright needs a browser download
+    # (`playwright install chromium`) that a service rendering plain decks
+    # should not carry, and kept out of [all] for the same reason.
+    "playwright>=1.64.1",
+]
 spreadsheet = [
     "openpyxl>=3.1.5",
 ]
@@ -337,6 +356,9 @@ all = [
     "pypdf>=6.21.4",
     "pdfplumber>=0.11.7",
     "openpyxl>=3.1.5",
+    "python-pptx>=1.0.2",
+    "python-docx>=1.2.0",
+    "markdown>=3.11.2",
     "email-validator>=2.3.0",
     "aiosqlite>=0.22.1",
     "asyncpg>=0.31.0",
@@ -442,6 +464,10 @@ dev = [
     "pypdf>=6.21.4",
     "openpyxl>=3.1.5",
     "types-openpyxl>=3.1.5.20260827",
+    "types-markdown>=3.11.2.20261029",
+    "python-pptx>=1.0.2",
+    "python-docx>=1.2.0",
+    "markdown>=3.11.2",
     "rank-bm25>=0.2.2",
     "pillow>=13.0.0",
     "onnxruntime>=1.29.0",
