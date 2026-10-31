@@ -1818,6 +1818,63 @@ asyncio.run(main())
     Chain with the LLM: **STT** transcribes speech → `TextGenerator`/RAG
     answers → **TTS** speaks the reply. All local, nothing leaves the box.
 
+### Multilingual voice with Bark (MIT licence)
+
+`BarkSpeech` runs Suno's Bark through `transformers`. It is the local TTS
+option with **commercially usable** weights (MIT) and Portuguese voices. The
+`[genai]` extra is enough, and it backs `/tts` on `make_genai_router` like
+`TextToSpeech` and `OllamaSpeech`.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import BarkSpeech, Language
+
+voice = BarkSpeech("suno/bark-small")
+
+
+async def main() -> None:
+    """Read a long Portuguese notice aloud and save the WAV."""
+    notice = (
+        "O sistema de transporte da cidade passa por mudanças nesta semana. "
+        "As linhas que atendem o centro terão novos horários a partir de "
+        "segunda-feira. Quem usa o ônibus das oito deve chegar ao ponto dez "
+        "minutos antes."
+    )
+    await voice.synthesize(notice, language=Language.PT_BR, seed=0, out_path="notice.wav")
+
+
+asyncio.run(main())
+```
+
+- **`language`** picks the language's first voice (`v2/pt_speaker_0`);
+  **`speaker`** picks a specific one (`v2/pt_speaker_1`). `voices()` lists
+  the checkpoint's 261 presets: 130 with `v2/` and 131 legacy names without
+  the prefix.
+- **Long text is split by sentence** (`.`, `!`, `?`, `…`, `;` or `:`
+  followed by whitespace; `Dr.`, `Sra.`, `Av.` and the like do not end a
+  sentence, and numbers like `R$ 3,50` or `1.000` are never split). One Bark call stops at 13.95 s of
+  audio: measured, 180 Portuguese characters came out whole and 240 were cut.
+  `synthesize` splits the text into pieces of up to `max_chunk_chars` (160),
+  speaks each, and joins them with `pause_seconds` (0.25 s) of silence. A
+  442-character text became 35.75 s of complete audio; without the split it
+  stopped at 13.95 s.
+- **It is slow.** On the RTX 4070 Ti SUPER, in bf16 (the default), those
+  35.75 s took 88.6 s; in fp16, 12.7 s took 24 to 27 s. For real-time
+  replies, prefer `OllamaSpeech`.
+- **Errors answer `422`**, with `details={"field": ...}`. Before the model
+  loads: text with nothing to speak (`text`), a seed outside `0..2**64 - 1`
+  (`seed`) and a `speaker` that is not a voice of the requested `language`
+  (`speaker`). After: a preset the checkpoint does not ship (`speaker`, or
+  `language` when the language has no voice).
+- **The seed is global**, applied with `torch.manual_seed`. In bf16, the
+  same seed repeated the same bytes.
+
+!!! note "The weights are a pickle"
+    `suno/bark-small` publishes `pytorch_model.bin`, not safetensors. torch
+    2.14 loads it with `weights_only=True`, which does not execute code from
+    the file.
+
 ### Picking a voice or audio model: licence and where it runs
 
 Before picking a voice model, check two things: **the licence of the
@@ -1836,6 +1893,7 @@ Weight licences change; check the model card before shipping.
 | `sesame/csm-1b` | TTS | `apache-2.0` (gated) | `transformers` |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | TTS | `apache-2.0` | not in `transformers` 4.57.6 |
 | `ResembleAI/chatterbox` | TTS | `mit` | `chatterbox-tts` package |
+| `suno/bark-small` | TTS | `mit` | `BarkSpeech` ([Bark](#multilingual-voice-with-bark-mit-licence)) |
 | `openai/whisper-large-v3-turbo` | STT | `mit` | `SpeechToText` (faster-whisper) |
 | `coqui/XTTS-v2` | TTS | `other` (CPML) | `TextToSpeech` (Coqui) |
 | `SWivid/F5-TTS` | TTS | **`cc-by-nc-4.0`** | `f5-tts` package |

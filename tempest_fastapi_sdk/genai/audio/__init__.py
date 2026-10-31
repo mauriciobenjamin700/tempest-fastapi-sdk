@@ -12,6 +12,11 @@ from tempest_fastapi_sdk.genai.audio.backends import (
 from tempest_fastapi_sdk.genai.audio.backends import (
     SpeechTranscriber as SpeechTranscriber,
 )
+from tempest_fastapi_sdk.genai.audio.bark import (
+    DEFAULT_BARK_MODEL as DEFAULT_BARK_MODEL,
+)
+from tempest_fastapi_sdk.genai.audio.bark import BarkSpeech as BarkSpeech
+from tempest_fastapi_sdk.genai.audio.bark import split_for_bark as split_for_bark
 from tempest_fastapi_sdk.genai.audio.conversation import (
     ConversationTranscriber as ConversationTranscriber,
 )
@@ -123,6 +128,7 @@ from tempest_fastapi_sdk.genai.audio.voiceprint import (
 
 __all__: list[str] = [
     "DEFAULT_AFFINITY_PERCENTILE",
+    "DEFAULT_BARK_MODEL",
     "DEFAULT_CLUSTERING_THRESHOLD",
     "DEFAULT_MATCH_THRESHOLD",
     "DEFAULT_MAX_AUDIO_SECONDS",
@@ -137,6 +143,7 @@ __all__: list[str] = [
     "MIN_ENROLLMENT_SECONDS",
     "MIN_SOURCE_RATE",
     "SEGMENTATION_MODEL",
+    "BarkSpeech",
     "ConsentRequired",
     "ConversationTranscriber",
     "DiarizationModel",
@@ -167,5 +174,6 @@ __all__: list[str] = [
     "pack_embedding",
     "preset_for",
     "resolve_audio_device",
+    "split_for_bark",
     "unpack_embedding",
 ]

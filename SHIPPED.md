@@ -4011,6 +4011,13 @@ Funciona com `cvssp/audioldm-s-full-v2` (efeitos) e `ucsd-reach/musicldm`
 recusados na carga. As classes AudioLDM/MusicLDM estão em
 `diffusers/pipelines/deprecated` (código congelado).
 
+## Voz com Bark (Unreleased)
+
+`BarkSpeech` em `genai/audio/bark.py`, extra `[genai]`, pesos MIT, vozes PT.
+Serve o `/tts` via `SpeechSynthesizer`. Divide o texto por frase porque uma
+chamada para em 13,95 s; ~2,5x mais lento que tempo real em bf16. Fora de
+escopo: stream por pedaço e `suno/bark` (maior, não medido).
+
 ## Música com MusicGen (Unreleased)
 
 `MusicGenerator` em `genai/music_generation.py`, extra `[genai]` (sem
