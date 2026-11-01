@@ -188,7 +188,7 @@ for row in TestClient(app).get("/call", headers={"X-Correlation-ID": "abc-123"})
   maiúsculas: `x-correlation-id` explícito substitui o id em vez de mandar
   dois valores.
 
-!!! check "Desde a próxima versão"
+!!! check "Desde a 0.341.0"
     Até a 0.340.0 o nome de saída era fixo em `X-Request-ID`, e um
     `x-request-id` explícito em minúsculas era enviado **junto** com o id
     propagado, como dois valores no mesmo header.

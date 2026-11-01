@@ -355,7 +355,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   middleware with contextvar propagation, typed `HTTPClient`
   (httpx wrapper with retry/backoff/circuit-breaker /
   `X-Request-ID` propagation; outbound name configurable via
-  `request_id_header=` since the release after v0.340.0), `async_retry` (v0.280.0 — applies a
+  `request_id_header=` since v0.341.0), `async_retry` (v0.280.0 — applies a
   `RetryPolicy` to any coroutine, not just an HTTP call; `RetryPolicy`
   moved to `utils/retry.py`, old import path kept;
   **`retry_on_read_timeout` since v0.303.2** — `False` stops retrying a
@@ -4086,7 +4086,7 @@ propósito: stream de bytes de áudio (o `HTTPClient.stream` entrega linhas) e
 - Testes: `tests/slides/`. Receita: `docs/recipes/slides.md`.
 - Fora de escopo: router pronto (a receita mostra as rotas à mão) e OCR.
 
-## Segurança, rascunhos antigos (Unreleased)
+## Segurança, rascunhos antigos (v0.341.0)
 
 Dois GHSA de outubro que continuavam abertos: `verify_signature` do Mercado
 Pago e as duas fábricas de dependency conferem o `ts` por padrão

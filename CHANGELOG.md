@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.341.0] — 2026-11-01
+
 ### Security
 
 - `EnvironmentSettings.ENV` deixa de ter default (era `"development"`):

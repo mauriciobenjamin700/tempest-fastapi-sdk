@@ -10,7 +10,7 @@ under test.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -323,30 +323,45 @@ class TestListingAndWatching:
         self,
         store: JobStore[_JobModel],
     ) -> None:
+        """Every write between two polls comes through, in order.
+
+        The next write happens only after ``watch`` yielded the previous
+        state, so the sequence is a property of ``watch`` and not of how
+        fast the event loop ran. The earlier version slept 20 ms between
+        writes against a 10 ms poll, and under the full parallel suite the
+        poll fell behind and saw only ``[0.0, 1.0]`` (#678).
+        """
         job = await store.enqueue("read")
         await store.claim(job.id)
 
-        async def advance() -> None:
-            """Move the bar twice, then finish."""
-            for value in (0.3, 0.6):
-                await asyncio.sleep(0.02)
-                await store.report_progress(job.id, progress=value)
-            await asyncio.sleep(0.02)
+        async def report(value: float) -> None:
+            """Move the bar to ``value``.
+
+            Args:
+                value (float): The new progress.
+            """
+            await store.report_progress(job.id, progress=value)
+
+        async def finish() -> None:
+            """Mark the job done."""
             await store.succeed(job.id)
 
-        mover = asyncio.create_task(advance())
-        seen = [
-            snapshot.progress
-            async for snapshot in store.watch(
-                job.id,
-                interval=0.01,
-                emit_on=("status", "progress"),
-            )
+        steps: list[Callable[[], Awaitable[None]]] = [
+            lambda: report(0.3),
+            lambda: report(0.6),
+            finish,
         ]
-        await mover
-        assert seen == sorted(seen)
-        assert len(seen) >= 3
-        assert seen[-1] == pytest.approx(1.0)
+        seen: list[float] = []
+        async for snapshot in store.watch(
+            job.id,
+            interval=0.01,
+            emit_on=("status", "progress"),
+        ):
+            seen.append(snapshot.progress)
+            if steps:
+                await steps.pop(0)()
+        assert seen == pytest.approx([0.0, 0.3, 0.6, 1.0])
+        assert steps == []
 
     async def test_watching_a_column_that_does_not_exist_is_refused(
         self,

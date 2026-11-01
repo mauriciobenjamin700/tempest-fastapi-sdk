@@ -22,9 +22,15 @@ from tempest_fastapi_sdk.db import (
 
 
 class _WidgetModel(BaseModel):
-    """Business row used by the outbox tests."""
+    """Business row used by the outbox tests.
 
-    __tablename__ = "widget"
+    Not ``widget``: this module registers the table on the shared
+    ``BaseModel.metadata`` at import, so every pytest worker that merely
+    collects it holds the name, and a CLI test seeding ``widget``
+    in-process collided with it (#669, #677).
+    """
+
+    __tablename__ = "outbox_widget"
 
     name: Mapped[str] = mapped_column(String(50), nullable=False)
 

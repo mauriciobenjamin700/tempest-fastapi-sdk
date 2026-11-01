@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tempest_fastapi_sdk import BaseModel
+
 PROJECT_PACKAGES: frozenset[str] = frozenset({"src", "app"})
 """Top-level packages a scaffolded project imports from."""
 
@@ -62,6 +64,13 @@ def isolated_project_imports(
     and again on exit. ``sys.path`` is restored to its previous list
     object afterwards, so whatever the test itself adds goes too.
 
+    Every table the test registered on the interpreter-wide
+    ``BaseModel.metadata`` is removed on exit. The CLI imports the seeded
+    ``src/db/models.py`` in-process, so a seeded ``widget`` stayed on the
+    metadata after its test, and the next test seeding ``widget`` from
+    another project only passed because the leaked ``sys.path`` handed it
+    the cached module instead of declaring the table again (#677).
+
     Args:
         tmp_path_factory (pytest.TempPathFactory): Locates the base
             temporary directory every test project lives under.
@@ -82,6 +91,9 @@ def isolated_project_imports(
         "path",
         [entry for entry in sys.path if not _under(entry, base)],
     )
+    tables_before: frozenset[str] = frozenset(BaseModel.metadata.tables)
     _forget()
     yield
     _forget()
+    for name in set(BaseModel.metadata.tables) - tables_before:
+        BaseModel.metadata.remove(BaseModel.metadata.tables[name])
