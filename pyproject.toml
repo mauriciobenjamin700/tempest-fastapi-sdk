@@ -193,7 +193,7 @@ genai-rag = [
 ]
 genai-audio = [
     "faster-whisper>=1.2.1",
-    "coqui-tts>=0.27.5",
+    "coqui-tts>=0.28.0",
     # coqui-tts keeps its own runtime behind its extras ([cpu]/[cuda]/[codec]),
     # so installing it alone gives a TTS that refuses to import. Measured with
     # coqui-tts 0.27.5 and torch 2.13.0: without torchaudio, `import TTS.api`
@@ -202,33 +202,16 @@ genai-audio = [
     "torch>=2.14.0",
     "torchaudio>=2.11.0",
     "torchcodec>=0.16.0",
-    # `import TTS.api` eagerly loads TTS.tts.layers.tortoise.autoregressive,
-    # which does `from transformers.pytorch_utils import isin_mps_friendly`.
-    # Measured: that symbol is present in transformers 5.0.0 and gone from
-    # 5.1.0 on, so any fresh resolve breaks the import. The upper bound is
-    # confined to this extra, and 5.0.0 is not carved out because it is the
-    # only 5.x that would work.
+    # coqui-tts 0.28.0 imports `six` (TTS/tts/utils/text/punctuation.py) and
+    # does not declare it, so a clean environment dies on `import TTS.api`
+    # with `ModuleNotFoundError: No module named 'six'`. Drop this once
+    # coqui-tts declares it.
     #
-    # Re-measured 2026-09-02 against the newest coqui-tts (0.27.5) with
-    # transformers 5.16.1 and torch 2.14.0: the import still dies with
-    # `ImportError: cannot import name 'isin_mps_friendly' from
-    # 'transformers.pytorch_utils'`, so the bound is still load-bearing.
-    #
-    # What it costs, traced the same day: transformers 4.57.6 declares
-    # `huggingface-hub<1.0` and `tokenizers<=0.23.0`, which holds this lock's
-    # hub at 0.36.2 and tokenizers at 0.22.2 -- and diffusers 0.40.0 requires
-    # `huggingface-hub>=1.23.0`, so [genai-image] is held at 0.39.0 too. One
-    # bound, four packages. Only the lock is affected: a consumer installing
-    # [genai-image] without [genai-audio] resolves diffusers 0.40.0 fine.
-    #
-    # Re-measured 2026-10-09 (coqui-tts 0.27.5, torch 2.14.0): transformers
-    # 5.19.0 still fails the same import. `uv pip compile` on Python 3.12
-    # shows the cost reaches consumers too, not just this lock: with
-    # [genai-audio] alone hub/tokenizers resolve to 0.36.2/0.22.2, and
-    # [genai-audio,genai-image] holds diffusers at 0.39.0; [genai-image]
-    # alone resolves diffusers 0.41.0 and hub 1.33.0. docs/installation.md
-    # carries the same table for readers.
-    "transformers<5",
+    # No `transformers` bound any more: coqui-tts 0.28.0 no longer imports
+    # `isin_mps_friendly`, the symbol transformers 5.1 removed, which is what
+    # held this extra at `transformers<5` (and with it hub, tokenizers and
+    # diffusers) from v0.252.0 to v0.341.0.
+    "six>=1.17.0",
 ]
 genai-diarization = [
     "sherpa-onnx>=1.13.7",

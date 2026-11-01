@@ -41,7 +41,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | reconhecimento facial em ONNX Runtime, sem opencv e sem torch: `FaceRecognizer` (detectar/embutir/comparar), `compare_faces`. Modelos de 16 MB baixados por `ensure_models()`. **Nenhuma biblioteca de sistema** |
 | `[firebase]` | `firebase-admin` | verificação de ID token do Firebase: `FirebaseAuth` (init idempotente, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Pesado — 33 pacotes, 52 MB medidos com `firebase-admin` 7.5.0 — e por isso **fora do `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | GenAI local (pesado): `TextGenerator`, `Embedder`, `MusicGenerator`, `BarkSpeech`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
-| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | STT (Whisper) + TTS (Coqui) — o runtime do Coqui vem junto desde a v0.252.0. O teto `transformers<5` é intencional e rebaixa `huggingface-hub`, `tokenizers` e `diffusers`: veja [o aviso abaixo da tabela](#genai-audio-transformers-bound) |
+| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | STT (Whisper) + TTS (Coqui) — o runtime do Coqui vem junto desde a v0.252.0; desde a 0.342.0 sem o teto `transformers<5` ([detalhes](#genai-audio-transformers-bound)) |
 | `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |
 | `[genai-diarization]` | `sherpa-onnx` | diarização (quem falou quando) via `sherpa-onnx` em ONNX Runtime, sem PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Modelos (46 MB) baixados por `ensure_models()` |
 | `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. Nenhum SDK de fornecedor |
@@ -107,29 +107,26 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 
 <a id="genai-audio-transformers-bound"></a>
 
-!!! warning "O `[genai-audio]` fixa `transformers<5` de propósito, e isso rebaixa outros pacotes"
-    O teto não é um pino acidental. Ao carregar `TTS.api`, o `coqui-tts` importa
-    `isin_mps_friendly` de `transformers.pytorch_utils`, e esse símbolo existe na
-    transformers 5.0.0 e some da 5.1.0 em diante. Remedido em 2026-10-09 com
-    coqui-tts 0.27.5, transformers 5.19.0 e torch 2.14.0, o import ainda morre com
-    `ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'`.
+!!! check "Desde a 0.342.0 o `[genai-audio]` não fixa mais `transformers<5`"
+    Até a 0.341.0 o extra tinha o teto `transformers<5`: o `coqui-tts` 0.27.5
+    importava `isin_mps_friendly`, símbolo que a transformers 5.1 removeu. Isso
+    prendia quem instalava o extra na transformers 4.57.6, e com ela o
+    `huggingface-hub`, o `tokenizers` e, ao lado do `[genai-image]`, o
+    `diffusers`. O `coqui-tts` 0.28.0 não importa mais o símbolo, e o extra passou
+    a exigir essa versão.
 
-    O custo vem de a transformers 4.57.6 declarar `huggingface-hub<1.0` e
-    `tokenizers<=0.23.0`; e o `diffusers` 0.40.0 já exige `huggingface-hub>=1.23.0`.
-    Resolvido com `uv pip compile` (Python 3.12) em 2026-10-09:
+    Resolvido com `uv pip compile` (Python 3.12) em 2026-11-01, o extra não
+    rebaixa mais nada:
 
     | Extras | `transformers` | `huggingface-hub` | `tokenizers` | `diffusers` |
     | --- | --- | --- | --- | --- |
-    | `[genai-audio]` | 4.57.6 | 0.36.2 | 0.22.2 | — |
-    | `[genai-audio,genai-image]` | 4.57.6 | 0.36.2 | 0.22.2 | 0.39.0 |
-    | `[genai-image]` sem o `[genai-audio]` | — | 1.33.0 | — | 0.41.0 |
+    | `[genai-audio]` | 5.22.1 | 2.4.0 | 0.23.3 | — |
+    | `[genai-audio,genai-image]` | 5.22.1 | 2.4.0 | 0.23.3 | 0.42.1 |
+    | `[genai-image]` sem o `[genai-audio]` | — | 2.4.0 | — | 0.42.1 |
 
-    O teto mora só no `[genai-audio]`: sem esse extra, ele não entra na sua resolução.
-    Precisa de `huggingface-hub` 1.x ou de um `diffusers` mais novo no mesmo ambiente
-    do `[genai-audio]`? Não relaxe o teto localmente: o SDK não testa essa
-    combinação, e o TTS deixa de importar. Abra uma
-    [issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues) com a
-    versão de que você precisa.
+    O extra declara `six` porque o `coqui-tts` 0.28.0 o importa sem declarar:
+    numa venv limpa sem ele, `import TTS.api` morre com
+    `ModuleNotFoundError: No module named 'six'`.
 
 !!! warning "O SDK não traz driver de banco por padrão"
     `sqlalchemy[asyncio]` é dependência core, mas o DBAPI async é escolha

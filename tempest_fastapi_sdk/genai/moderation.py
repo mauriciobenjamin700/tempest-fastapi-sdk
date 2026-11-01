@@ -461,6 +461,44 @@ class ClassifierModerator:
             return context
         return min(self.window_tokens, context)
 
+    def _special_frame(self) -> tuple[list[int], list[int]]:
+        """The special tokens the tokenizer wraps one sequence in.
+
+        Each window is tokenized without special tokens and then framed by
+        hand. ``build_inputs_with_special_tokens`` did that up to
+        transformers 4.x and is gone from the fast tokenizers of
+        transformers 5 (``BertTokenizer has no attribute
+        build_inputs_with_special_tokens``), together with
+        ``prepare_for_model``. The frame is read instead through the one call
+        both majors keep: tokenizing a sentinel with and without special
+        tokens and taking what surrounds it.
+
+        Returns:
+            tuple[list[int], list[int]]: The ids before and after the content
+            (``[CLS]`` and ``[SEP]`` for BERT, ``<s>`` and ``</s>`` for
+            RoBERTa).
+
+        Raises:
+            RuntimeError: When the sentinel's ids do not appear contiguously
+                inside the framed encoding, or the frame disagrees with
+                ``num_special_tokens_to_add``; windowing would then build
+                inputs the model never saw in training.
+        """
+        tokenizer = self._tokenizer
+        sentinel = "moderation"
+        bare: list[int] = tokenizer(sentinel, add_special_tokens=False)["input_ids"]
+        framed: list[int] = tokenizer(sentinel, add_special_tokens=True)["input_ids"]
+        for start in range(len(framed) - len(bare) + 1):
+            if framed[start : start + len(bare)] == bare:
+                prefix = framed[:start]
+                suffix = framed[start + len(bare) :]
+                if len(prefix) + len(suffix) == tokenizer.num_special_tokens_to_add():
+                    return prefix, suffix
+                break
+        raise RuntimeError(
+            "cannot derive the tokenizer's special-token frame for windowing"
+        )
+
     def _classify(self, text: str) -> ModerationResult:
         """Blocking windowed classification + policy mapping.
 
@@ -482,9 +520,10 @@ class ClassifierModerator:
             truncation=False,
             verbose=False,
         )["input_ids"]
-        content = self._window_size() - tokenizer.num_special_tokens_to_add()
+        prefix, suffix = self._special_frame()
+        content = self._window_size() - len(prefix) - len(suffix)
         windows = [
-            tokenizer.build_inputs_with_special_tokens(window)
+            [*prefix, *window, *suffix]
             for window in _split_windows(ids, content, self.window_overlap)
         ]
         sigmoid = self._uses_sigmoid()

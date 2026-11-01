@@ -1625,24 +1625,38 @@ preguiçosamente.
     ModuleNotFoundError: No module named 'torchaudio'
     ```
 
-    E com o torchaudio no lugar, um resolve novo trazia transformers 5.x, que
-    removeu o símbolo que `TTS.api` importa de forma eager:
+    E com o torchaudio no lugar, um resolve novo trazia transformers 5.x,
+    que removeu o símbolo que `TTS.api` importava de forma eager:
 
     ```text
     ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'
     ```
 
-    Medido: `isin_mps_friendly` existe na transformers 5.0.0 e desaparece da
-    5.1.0 em diante, e a medição foi repetida em 2026-09-02 contra o
-    coqui-tts mais recente (0.27.5) com transformers 5.16.1: o `ImportError`
-    é o mesmo, então o teto continua load-bearing. `[genai-audio]` declara
-    `torch>=2.14`, `torchaudio>=2.11`, `torchcodec>=0.16` e `transformers<5`
-    — o teto fica confinado a este extra. Quem fixava esses quatro pins à mão
-    pode removê-los.
+    Por isso, da v0.252.0 até a 0.341.0, o extra fixou `transformers<5`. O
+    `coqui-tts` 0.28.0 não importa mais esse símbolo, e desde a 0.342.0
+    `[genai-audio]` exige essa versão e não tem mais o teto. Medido em
+    2026-11-01 com coqui-tts 0.28.0, transformers 5.22.1 e torch 2.14: XTTS v2
+    com voz pronta e com clonagem, e Bark, sintetizaram uma frase em
+    português que o Whisper transcreveu de volta com as mesmas palavras.
+    `[genai-audio]` declara `torch>=2.14`, `torchaudio>=2.11`,
+    `torchcodec>=0.16` e `six` (o coqui-tts 0.28.0 o importa sem declarar).
+    Quem fixava esses pins à mão pode removê-los.
+
+!!! info "No coqui-tts 0.28.0 o XTTS v2 vem do Hugging Face Hub"
+    O modelo é baixado do repositório `tts-hub/XTTS-v2` para o cache do Hub
+    (`~/.cache/huggingface/hub/models--tts-hub--XTTS-v2`), não mais só para
+    `~/.local/share/tts`. O primeiro uso precisa de rede; com o cache cheio,
+    `HF_HUB_OFFLINE=1` funciona (medido: a síntese concluiu offline). Em
+    container, monte esse diretório num volume para não baixar de novo a cada
+    deploy.
+
+    Na carga, a transformers 5 registra no log
+    `bos_token_id must be None or an integer within the vocabulary ... got 50256`
+    (e o mesmo para `eos_token_id`). A síntese conclui normalmente.
 
 !!! danger "XTTS v2 pede aceite de licença, e num servidor não há quem responda"
     O model default do `TextToSpeech` é licence-gated. Lido no coqui-tts
-    0.27.5, `ModelManager.tos_agreed` aceita só um `tos_agreed.txt` ao lado dos
+    0.28.0, `ModelManager.tos_agreed` aceita só um `tos_agreed.txt` ao lado dos
     pesos **ou** `COQUI_TOS_AGREED` igual à string `"1"`; sem isso, `ask_tos`
     chama `input()`. A síntese roda em `asyncio.to_thread`, onde não existe
     tty para responder — então exporte antes do primeiro `synthesize`:

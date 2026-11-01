@@ -116,20 +116,9 @@ ci: check build smoke ## Full local mirror of the GitHub Actions pipeline
 #   PersistentClient / EphemeralClient (genai/rag/chroma.py) and never
 #   starts or exposes that server.
 #   PYSEC-2026-311, PYSEC-2026-3813, PYSEC-2026-3814, PYSEC-2026-3815
-#
-# transformers 4.57.6, held below 5 by the `transformers<5` bound of
-#   [genai-audio] (coqui-tts 0.27.5 still dies importing transformers 5.x;
-#   see the comment on that bound in pyproject.toml). Every fixed version is
-#   a 5.x, and two of the IDs list no fixed version at all. The consumer that
-#   installs [genai] without [genai-audio] resolves 5.x and is not affected
-#   by the lock. Drop these when the coqui-tts bound goes.
-#   PYSEC-2025-217, PYSEC-2026-2288, PYSEC-2026-2289, PYSEC-2026-2290,
-#   PYSEC-2026-3929, PYSEC-2026-4174
 PIP_AUDIT_VERSION := 2.10.1
 AUDIT_IGNORE := \
-	PYSEC-2026-311 PYSEC-2026-3813 PYSEC-2026-3814 PYSEC-2026-3815 \
-	PYSEC-2025-217 PYSEC-2026-2288 PYSEC-2026-2289 PYSEC-2026-2290 \
-	PYSEC-2026-3929 PYSEC-2026-4174
+	PYSEC-2026-311 PYSEC-2026-3813 PYSEC-2026-3814 PYSEC-2026-3815
 AUDIT_ARGS ?=
 
 .PHONY: audit
