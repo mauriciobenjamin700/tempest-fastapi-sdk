@@ -2041,15 +2041,15 @@ What `OllamaSpeech` does for you:
 - **A path is a path.** `transcribe("https://...")` raises
   `FileNotFoundError` without touching the network, like `SpeechToText`.
 
-#### Streamed voice: `stream_speech`
+#### Streamed voice: `stream_speech` and `speech_response`
 
 `synthesize` waits for the whole clip. `stream_speech` yields each piece as
 the daemon flushes it — 16-bit mono 24 kHz PCM by default, no header, the
-format a streaming player wants — with the same errors:
+format a streaming player wants — with the same errors. To serve it over HTTP,
+use `speech_response`, which returns the `StreamingResponse` already:
 
 ```python
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Response
 
 from tempest_fastapi_sdk import register_exception_handlers
 from tempest_fastapi_sdk.genai import OllamaSpeech
@@ -2060,24 +2060,29 @@ register_exception_handlers(app)
 
 
 @app.get("/speak")
-async def speak(text: str) -> StreamingResponse:
+async def speak(text: str) -> Response:
     """Return the speech as PCM while it is generated.
 
     Args:
         text (str): The text to speak.
 
     Returns:
-        StreamingResponse: 16-bit mono 24 kHz PCM.
+        Response: 16-bit mono 24 kHz PCM, streamed.
     """
-    return StreamingResponse(
-        speech.stream_speech(text, voice="female-portuguese"),
-        media_type="audio/L16; rate=24000; channels=1",
-    )
+    return await speech.speech_response(text, voice="female-portuguese")
 ```
 
+!!! warning "Why not build the `StreamingResponse` yourself"
+    A `StreamingResponse` sends its status and headers **before** reading the
+    first chunk. Measured: with `StreamingResponse(speech.stream_speech(...))`
+    and an unknown voice, the client got **200 with an empty body**, and
+    Starlette logged `Caught handled exception, but response already started`.
+    `speech_response` reads the first chunk before building the response: the
+    refusal raises there and becomes the SDK's `422`, and the rest of the audio
+    still streams.
+
 Measured with a warm `lfm3-audio`: on a text of ~18 s of audio, the first
-chunk arrived in 24 to 30 ms, against 1.76 s for the whole `synthesize`. An
-unknown voice becomes a `ValidationException` before the first chunk;
+chunk arrived in 24 to 30 ms, against 1.76 s for the whole `synthesize`.
 `language` is refused before any request.
 
 #### Serving over HTTP: `/tts` and `/transcribe`

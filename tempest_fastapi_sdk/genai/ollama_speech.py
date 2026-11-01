@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import asyncio
 import struct
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -59,10 +59,14 @@ from tempest_fastapi_sdk.genai.tracing import genai_span
 
 if TYPE_CHECKING:
     import httpx
+    from starlette.responses import StreamingResponse
 
     from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
 SpeechFormat = Literal["wav", "pcm"]
+
+PCM_MEDIA_TYPE: str = "audio/L16; rate=24000; channels=1"
+"""Media type of the raw PCM Ollama streams (16-bit mono 24 kHz, RFC 2586)."""
 
 STREAMED_WAV_SIZE: int = 0xFFFFFFFF
 """The placeholder Ollama writes in the RIFF and ``data`` size fields.
@@ -384,7 +388,7 @@ class OllamaSpeech(_OllamaClientMixin):
         speaker: str | None = None,
         language: str | None = None,
         response_format: SpeechFormat = "pcm",
-    ) -> AsyncIterator[bytes]:
+    ) -> AsyncGenerator[bytes, None]:
         """Yield the speech audio as the daemon generates it.
 
         Where :meth:`synthesize` waits for the whole clip, this yields each
@@ -438,6 +442,76 @@ class OllamaSpeech(_OllamaClientMixin):
             except httpx.HTTPStatusError as exc:
                 _raise_for_response(self.model, exc.response)
                 raise
+
+    async def speech_response(
+        self,
+        text: str,
+        /,
+        *,
+        voice: str | None = None,
+        speaker: str | None = None,
+        language: str | None = None,
+        response_format: SpeechFormat = "pcm",
+    ) -> StreamingResponse:
+        """Return a ``StreamingResponse`` that fails as ``422`` when it should.
+
+        A ``StreamingResponse`` sends its status and headers before reading
+        the first chunk, so an error raised by :meth:`stream_speech` on its
+        first chunk (an unknown voice) reaches the client as ``200`` with an
+        empty body, and Starlette logs ``Caught handled exception, but
+        response already started`` -- measured. This method pulls the first
+        chunk before building the response: a refusal raises here, where
+        :func:`~tempest_fastapi_sdk.register_exception_handlers` turns it
+        into the SDK's ``422``, and the audio that follows still streams.
+
+        Args:
+            text (str): The text to speak.
+            voice (str | None): A voice name from :meth:`voices`.
+            speaker (str | None): The same as ``voice``.
+            language (str | None): Must stay ``None``.
+            response_format (SpeechFormat): ``"pcm"`` (served as
+                ``audio/L16; rate=24000; channels=1``) or ``"wav"``
+                (``audio/wav``).
+
+        Returns:
+            StreamingResponse: The audio, streamed.
+
+        Raises:
+            ValidationException: When the request or the daemon refuses
+                (see :meth:`stream_speech`).
+            OllamaError: When the model is not pulled or the daemon fails.
+        """
+        from starlette.responses import StreamingResponse
+
+        chunks = self.stream_speech(
+            text,
+            voice=voice,
+            speaker=speaker,
+            language=language,
+            response_format=response_format,
+        )
+        try:
+            first = await anext(chunks)
+        except StopAsyncIteration:
+            first = b""
+        except BaseException:
+            await chunks.aclose()
+            raise
+
+        async def _rest() -> AsyncIterator[bytes]:
+            """Replay the primed chunk, then stream the rest.
+
+            Yields:
+                bytes: The audio chunks.
+            """
+            async with aclosing(chunks):
+                if first:
+                    yield first
+                async for chunk in chunks:
+                    yield chunk
+
+        media_type = "audio/wav" if response_format == "wav" else PCM_MEDIA_TYPE
+        return StreamingResponse(_rest(), media_type=media_type)
 
     async def transcribe(
         self,
@@ -532,6 +606,7 @@ class OllamaSpeech(_OllamaClientMixin):
 
 
 __all__: list[str] = [
+    "PCM_MEDIA_TYPE",
     "STREAMED_WAV_SIZE",
     "OllamaSpeech",
     "SpeechFormat",
