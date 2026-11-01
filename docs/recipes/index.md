@@ -518,7 +518,6 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Frontend tempestweb + SDK »](tempestweb-frontend.md)** | Frontend tempestweb chamando o backend do SDK: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, mesma origem vs CORS |
 | **[Geolocalização (distância + tempo) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin`, `CachedGeocodingBackend` (cache de geocoding plugável) |
 | **[Geração de imagem (local) »](image-generation.md)** | `ImageGenerator` (diffusers local — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` com a seed que reproduz, `make_genai_router(image_generator=...)` → `POST /image` |
-| **[Geração de PDF »](pdf.md)** | `PdfRenderer`, cinco documentos prontos (recibo/orçamento/relatório/contrato/comprovante) com schema Pydantic, `make_pdf_router`, `tempest pdf render`, política de assets |
 | **[Guards de permissão (@requires) »](permission-guards.md)** | `@requires` + guards `(user) -> user` (com `meta: dict[str, Any]` opcional via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
 | **[Helpers brasileiros »](br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone, incluindo só-celular (`is_valid_mobile_phone_br`, `MobilePhoneBRField`) e `parse_phone_br` (DDD, número, E.164) |
 | **[HTTP client (saída) »](http-client.md)** | `HTTPClient` — httpx tipado com retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
@@ -545,6 +544,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[OpenPix (Pix via Woovi) »](openpix.md)** | Arquitetura em camadas, abrir cobrança, webhook verificado + conferência pela API, reconciliação, estorno, `OpenPixEnvironment`, `to_cents` |
 | **[Outbox transacional »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |
 | **[Painel admin »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
+| **[PDFs »](pdf.md)** | Gerar: `PdfRenderer`, cinco documentos prontos (recibo/orçamento/relatório/contrato/comprovante) com schema Pydantic, `make_pdf_router`, `tempest pdf render`, política de assets. Ler: `extract_pdf_text`, `read_pdf_pages` (upload pela API, página por página, tabelas) |
 | **[Permissões object-level »](authz.md)** | `permission` (decorator de regra), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
 | **[Pesos de modelos (ciclo no Hub) »](model-weights.md)** | `ModelRef` (`revision` / `local_files_only` / `trust_remote_code`), `resolve_revision`, `download_model` com preflight de disco, `list_cached_models` / `remove_cached_model`, `tempest model pull` / `cache-list` / `cache-rm` |
 | **[Pipeline de transcrição (áudio → resumo) »](transcription-pipeline.md)** | os três estágios costurados: `StageMap` no próprio registro, cancelar uma transcrição já rodando por dentro do `on_progress`, `generate_with_usage` + `AIUsageStore` para saber quem pagou, `generate_structured_list` na etapa que devolve lista |

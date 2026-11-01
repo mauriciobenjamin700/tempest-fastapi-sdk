@@ -1,4 +1,4 @@
-# PDF generation
+# PDFs
 
 Every service eventually has to issue a document: a receipt, a quote, a report,
 a contract, a payment slip. The usual path is to assemble HTML by hand and hand
@@ -9,6 +9,11 @@ noticed.
 
 `tempest_fastapi_sdk.pdf` handles the whole document: typed payload → Jinja2
 template → PDF, with real pagination and Brazilian formatting.
+
+The reverse path lives here too: extracting a PDF's text
+([Reading a PDF back](#reading-a-pdf-back)) and receiving a PDF through the
+API to iterate page by page
+([Reading a PDF received by the API](#reading-a-pdf-received-by-the-api)).
 
 !!! info "Required extra"
     ```bash

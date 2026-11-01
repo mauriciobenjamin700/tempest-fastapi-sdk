@@ -1,4 +1,4 @@
-# Geração de PDF
+# PDFs
 
 Todo serviço acaba precisando emitir um documento: recibo, orçamento,
 relatório, contrato, comprovante. O caminho comum é montar HTML na mão e
@@ -9,6 +9,11 @@ percebeu.
 
 `tempest_fastapi_sdk.pdf` resolve o documento inteiro: payload tipado →
 template Jinja2 → PDF, com paginação de verdade e formatação brasileira.
+
+O caminho inverso também mora aqui: extrair o texto de um PDF
+([Lendo um PDF de volta](#lendo-um-pdf-de-volta)) e receber um PDF pela API
+para iterar página por página
+([Lendo um PDF recebido pela API](#lendo-um-pdf-recebido-pela-api)).
 
 !!! info "Extra necessário"
     ```bash

@@ -171,7 +171,7 @@ plugins:
               - Offline-first sync (delta): recipes/offline-sync.md
               - OpenPix (Pix via Woovi): recipes/openpix.md
               - "OpenPix (subscriptions and plans)": recipes/openpix-subscriptions.md
-              - PDF generation: recipes/pdf.md
+              - PDFs: recipes/pdf.md
               - Permission guards (@requires): recipes/permission-guards.md
               - "Pix protocol (one contract, many providers)": recipes/pix-protocol.md
               - "Push (web + mobile)": recipes/push.md
@@ -466,7 +466,6 @@ nav:
       - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
       - "Geolocalização (distância + tempo)": recipes/geo.md
       - "Geração de imagem (local)": recipes/image-generation.md
-      - "Geração de PDF": recipes/pdf.md
       - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md
@@ -493,6 +492,7 @@ nav:
       - "OpenPix (Pix via Woovi)": recipes/openpix.md
       - Outbox transacional: recipes/outbox.md
       - Painel admin: recipes/admin.md
+      - PDFs: recipes/pdf.md
       - "Permissões object-level": recipes/authz.md
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
       - "Pipeline de transcrição (áudio → resumo)": recipes/transcription-pipeline.md
