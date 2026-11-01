@@ -240,7 +240,7 @@ mexer neles. Todos rodam dentro do `make check`.
   é a saída: `HTTP_422_UNPROCESSABLE_CONTENT` não existe no starlette 0.46.0,
   o piso que `fastapi>=0.141.1` aceita, então **meça no piso antes de trocar**
   — [`LESSONS.md`](LESSONS.md#o-aviso-de-depreciação-já-era-um-500-v02750).
-- **Todo enum escrito à mão termina em `Enum`** (v0.342.0). `JobStatusEnum`,
+- **Todo enum escrito à mão termina em `Enum`** (v0.343.0). `JobStatusEnum`,
   não `JobStatus`. A regra existia e foi violada em silêncio: 80 enums públicos
   shipparam sem o sufixo ao lado de sete que o tinham, e o rename foi uma quebra
   de uma vez só, sem alias. Enum gerado da spec de um provedor (marca

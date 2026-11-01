@@ -2,15 +2,7 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## 0.342.0 — `ENV` obrigatório e segredo de `X-Token` vazio
-
-| Onde | O que muda | O que fazer |
-| --- | --- | --- |
-| `EnvironmentSettings.ENV` | **Sem default** (era `development`): settings que compõe o mixin sem `ENV` no ambiente nem no `.env` levanta `ValidationError` (`ENV Field required`) no boot | Defina `ENV` em todo ambiente — `.env` de dev, container, CI, worker, job de migração. No `conftest.py`, `os.environ["ENV"] = "test"` antes de importar o app |
-| `UserAuthService` com `AuthSettings` sem `EnvironmentSettings` | Lê `ENV` do ambiente; **sem `ENV`, conta como produção**: sem mailer (ou com `AUTH_RETURN_TOKEN_IN_RESPONSE`), os fluxos com link respondem `503 INTEGRATION_DISABLED` em vez de devolver o link | Em dev, `ENV=development`; em produção, configure o mailer |
-| `make_token_dependency`, `require_x_token` | Segredo vazio (ou só espaço) levanta `ValueError` em vez de desligar a checagem | Configure o segredo (`tempest secrets init`); para rodar local sem gate, passe `allow_unauthenticated=True`. Projeto gerado pelo `tempest new`: troque a linha de `src/api/dependencies/auth.py` por `make_token_dependency(settings.TOKEN_SECRET, allow_unauthenticated=settings.ENV != "production")` |
-
-### Todo enum do SDK termina em `Enum`
+## 0.343.0 — todo enum do SDK termina em `Enum`
 
 Oitenta enums públicos escritos à mão ganharam o sufixo que os outros já
 tinham (`PdfExtractor` → `PdfExtractorEnum`, `JobStatus` → `JobStatusEnum`,
@@ -115,6 +107,14 @@ Pago, zap-api, `StripeEvent`) ficam com o nome da especificação.
     | `ZapOutboundKind` | `ZapOutboundKindEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.webhooks` |
     | `ZapStatusOutcome` | `ZapStatusOutcomeEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.inbox` |
     | `ZapWebhookEvent` | `ZapWebhookEventEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.webhooks` |
+
+## 0.342.0 — `ENV` obrigatório e segredo de `X-Token` vazio
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `EnvironmentSettings.ENV` | **Sem default** (era `development`): settings que compõe o mixin sem `ENV` no ambiente nem no `.env` levanta `ValidationError` (`ENV Field required`) no boot | Defina `ENV` em todo ambiente — `.env` de dev, container, CI, worker, job de migração. No `conftest.py`, `os.environ["ENV"] = "test"` antes de importar o app |
+| `UserAuthService` com `AuthSettings` sem `EnvironmentSettings` | Lê `ENV` do ambiente; **sem `ENV`, conta como produção**: sem mailer (ou com `AUTH_RETURN_TOKEN_IN_RESPONSE`), os fluxos com link respondem `503 INTEGRATION_DISABLED` em vez de devolver o link | Em dev, `ENV=development`; em produção, configure o mailer |
+| `make_token_dependency`, `require_x_token` | Segredo vazio (ou só espaço) levanta `ValueError` em vez de desligar a checagem | Configure o segredo (`tempest secrets init`); para rodar local sem gate, passe `allow_unauthenticated=True`. Projeto gerado pelo `tempest new`: troque a linha de `src/api/dependencies/auth.py` por `make_token_dependency(settings.TOKEN_SECRET, allow_unauthenticated=settings.ENV != "production")` |
 
 ## 0.341.0 — webhook do Mercado Pago e fórmula em `.xlsx`
 

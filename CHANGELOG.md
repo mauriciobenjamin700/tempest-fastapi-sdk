@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.343.0] — 2026-11-01
+
+### Changed
+
+- **Quebra:** os 80 enums públicos escritos à mão que não terminavam em `Enum`
+  ganham o sufixo (`PdfExtractor` → `PdfExtractorEnum`, `JobStatus` →
+  `JobStatusEnum`, `UF` → `UFEnum`, `PaymentStatus` → `PaymentStatusEnum`…),
+  sem alias para o nome antigo. O componente OpenAPI muda junto
+  (`JobStatus` → `JobStatusEnum`); valor serializado e tipo nativo no
+  Postgres não mudam. Enums gerados da especificação de um provedor
+  (OpenPix, Mercado Pago, zap-api, `StripeEvent`) mantêm o nome. Tabela
+  completa no guia de migração; guard em `tests/test_enum_suffix_guard.py`.
+
+## [0.342.0] — 2026-11-01
+
 ### Added
 
 - `PgChatMemory` em `tempest_fastapi_sdk.genai.rag` (#684): o `ChatMemory`
@@ -26,17 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AIChatPipeline(memory=...)` aceita `ChatMemory | PgChatMemory`.
 
 ### Changed
-
-- **Quebra:** os 80 enums públicos escritos à mão que não terminavam em `Enum`
-  ganham o sufixo (`PdfExtractor` → `PdfExtractorEnum`, `JobStatus` →
-  `JobStatusEnum`, `UF` → `UFEnum`, `PaymentStatus` → `PaymentStatusEnum`…),
-  sem alias para o nome antigo. O componente OpenAPI muda junto
-  (`JobStatus` → `JobStatusEnum`); valor serializado e tipo nativo no
-  Postgres não mudam. Enums gerados da especificação de um provedor
-  (OpenPix, Mercado Pago, zap-api, `StripeEvent`) mantêm o nome. Tabela
-  completa no guia de migração; guard em `tests/test_enum_suffix_guard.py`.
-
-## [0.342.0] — 2026-11-01
 
 - `MemoryHit` e o ranking da memória moram em
   `tempest_fastapi_sdk.genai.rag.memory`, compartilhados pelos dois backends;
