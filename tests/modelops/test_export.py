@@ -107,7 +107,7 @@ class TestOptimizeOnnxGraph:
             attribute = _GRAPH_LEVEL_ATTRS[level]
             assert attribute.startswith("ORT_")
             if level is not GraphOptimizationLevelEnum.LAYOUT:
-                assert hasattr(onnxruntime.GraphOptimizationLevelEnum, attribute)
+                assert hasattr(onnxruntime.GraphOptimizationLevel, attribute)
 
     def test_missing_input_raises(self, tmp_path: Path) -> None:
         pytest.importorskip("onnxruntime")

@@ -760,12 +760,12 @@ entrega como `PixEventType.CHARGE_EXPIRED`. Até a 0.311.0 ela saía
 ramo de cancelamento, trate os dois:
 
 ```python
-from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+from tempest_fastapi_sdk.integrations.payment import PaymentStatusEnum, PixCharge
 
 
 def is_closed_unpaid(charge: PixCharge) -> bool:
     """Tell whether a Pix charge ended without being paid."""
-    return charge.status in {PaymentStatus.CANCELLED, PaymentStatus.EXPIRED}
+    return charge.status in {PaymentStatusEnum.CANCELLED, PaymentStatusEnum.EXPIRED}
 ```
 
 **`search_chargebacks` exige `payment_id`.** A busca respondia `400` sem esse
@@ -1744,7 +1744,7 @@ Se você ramifica exaustivamente em `PaymentStatus` — um `match` sem
 `case _`, um dicionário indexado por membro — acrescente o caso:
 
 ```python
-from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+from tempest_fastapi_sdk.integrations.payment import PaymentStatusEnum, PixCharge
 
 
 def describe(charge: PixCharge) -> str:
@@ -1756,7 +1756,7 @@ def describe(charge: PixCharge) -> str:
     Returns:
         str: A line a human can act on.
     """
-    if charge.status is PaymentStatus.UNKNOWN:
+    if charge.status is PaymentStatusEnum.UNKNOWN:
         return f"estado não classificado: {charge.provider_status}"
     return charge.status.value
 ```

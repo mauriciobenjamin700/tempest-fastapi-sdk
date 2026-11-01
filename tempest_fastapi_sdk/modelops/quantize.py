@@ -86,7 +86,7 @@ _CALIBRATION_ATTRS: dict[CalibrationMethodEnum, str] = {
     CalibrationMethodEnum.PERCENTILE: "Percentile",
     CalibrationMethodEnum.DISTRIBUTION: "Distribution",
 }
-"""Our method names mapped to ``onnxruntime.quantization.CalibrationMethodEnum``."""
+"""Our method names mapped to ``onnxruntime.quantization.CalibrationMethod``."""
 
 
 def _require_onnx_quantization() -> Any:
@@ -528,7 +528,7 @@ def quantize_onnx_static(
         ),
         calibrate_method=_resolve_enum(
             quantization,
-            "CalibrationMethodEnum",
+            "CalibrationMethod",
             _CALIBRATION_ATTRS[calibrate_method],
             calibrate_method.value,
         ),

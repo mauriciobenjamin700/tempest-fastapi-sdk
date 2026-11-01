@@ -53,7 +53,7 @@ class OrtOptimizationStyleEnum(BaseStrEnum):
 class GraphOptimizationLevelEnum(BaseStrEnum):
     """ONNX Runtime graph-optimization level.
 
-    Mirrors ``onnxruntime.GraphOptimizationLevelEnum``. ``ALL`` is the usual
+    Mirrors ``onnxruntime.GraphOptimizationLevel``. ``ALL`` is the usual
     choice when writing an optimized ``.onnx`` back to disk; the lower levels
     exist to isolate a regression introduced by a fusion.
     """

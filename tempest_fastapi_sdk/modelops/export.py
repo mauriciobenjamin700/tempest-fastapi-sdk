@@ -77,7 +77,7 @@ _GRAPH_LEVEL_ATTRS: dict[GraphOptimizationLevelEnum, str] = {
     GraphOptimizationLevelEnum.LAYOUT: "ORT_ENABLE_LAYOUT",
     GraphOptimizationLevelEnum.ALL: "ORT_ENABLE_ALL",
 }
-"""Our level names mapped to ``onnxruntime.GraphOptimizationLevelEnum`` members."""
+"""Our level names mapped to ``onnxruntime.GraphOptimizationLevel`` members."""
 
 
 def _require_ort_converter() -> Any:
@@ -416,7 +416,7 @@ def optimize_onnx_graph(
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     attribute = _GRAPH_LEVEL_ATTRS[GraphOptimizationLevelEnum(level)]
-    if not hasattr(onnxruntime.GraphOptimizationLevelEnum, attribute):
+    if not hasattr(onnxruntime.GraphOptimizationLevel, attribute):
         raise ValueError(
             f"optimization level {level.value!r} needs a newer onnxruntime: "
             f"GraphOptimizationLevelEnum has no {attribute}"
@@ -424,7 +424,7 @@ def optimize_onnx_graph(
 
     options = onnxruntime.SessionOptions()
     options.graph_optimization_level = getattr(
-        onnxruntime.GraphOptimizationLevelEnum, attribute
+        onnxruntime.GraphOptimizationLevel, attribute
     )
     options.optimized_model_filepath = str(destination)
     onnxruntime.InferenceSession(
