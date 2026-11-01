@@ -20,12 +20,28 @@ runner = CliRunner()
 def project_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    isolated_project_imports: None,
 ) -> Path:
     """Move into a fresh tmp dir + clear DATABASE_URL.
 
     The CLI walks ``./src/core/settings.py`` to resolve the URL when
     nothing is set on the environment. Each test runs in an empty
     directory so previous test state doesn't bleed in.
+
+    ``isolated_project_imports`` keeps the bleed out of the interpreter
+    too: without it, ``src.db.models`` resolved against the project an
+    earlier test left on ``sys.path``, so a test that seeds no table
+    imported the previous test's ``widget`` and failed on it (#677).
+
+    Args:
+        tmp_path (Path): The test's temporary directory.
+        monkeypatch (pytest.MonkeyPatch): Changes directory and clears
+            ``DATABASE_URL``.
+        isolated_project_imports (None): Forgets earlier projects' modules
+            and the tables they registered.
+
+    Returns:
+        Path: The project root, already the working directory.
     """
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("DATABASE_URL", raising=False)
@@ -90,18 +106,48 @@ class TestDbWorkflow:
         assert "alembic.ini" in (result.stdout + result.stderr)
 
 
-def _seed_model_module(target: Path) -> None:
-    """Seed a ``src/db/models.py`` with one concrete table for autogenerate."""
+def _model_source(table: str, *, extra_column: bool = False) -> str:
+    """Render a ``src/db/models.py`` declaring one table named ``table``.
+
+    The class name is derived from the table, so two tests seeding
+    different tables in one interpreter never declare the same
+    ``src.db.models.<Class>``: SQLAlchemy keeps every declared class in
+    the shared ``BaseModel`` registry and warns when a second one with the
+    same module and class name replaces it (#677).
+
+    Args:
+        table (str): The ``__tablename__``; unique per test.
+        extra_column (bool): Adds a ``colour`` column, to produce drift.
+
+    Returns:
+        str: The module source.
+    """
+    class_name: str = "".join(part.title() for part in table.split("_")) + "Model"
+    source: str = (
+        "from sqlalchemy.orm import Mapped, mapped_column\n"
+        "from tempest_fastapi_sdk import BaseModel\n\n\n"
+        f"class {class_name}(BaseModel):\n"
+        f'    __tablename__ = "{table}"\n'
+        "    name: Mapped[str] = mapped_column()\n"
+    )
+    if extra_column:
+        source += "    colour: Mapped[str] = mapped_column(default='red')\n"
+    return source
+
+
+def _seed_model_module(target: Path, table: str) -> None:
+    """Seed a ``src/db/models.py`` with one concrete table for autogenerate.
+
+    Args:
+        target (Path): The project root to write into.
+        table (str): The table name; unique per test, see
+            :func:`_model_source`.
+    """
     (target / "src" / "db").mkdir(parents=True, exist_ok=True)
     (target / "src" / "__init__.py").write_text("", encoding="utf-8")
     (target / "src" / "db" / "__init__.py").write_text("", encoding="utf-8")
     (target / "src" / "db" / "models.py").write_text(
-        "from sqlalchemy.orm import Mapped, mapped_column\n"
-        "from tempest_fastapi_sdk import BaseModel\n\n\n"
-        "class WidgetModel(BaseModel):\n"
-        '    __tablename__ = "widget"\n'
-        "    name: Mapped[str] = mapped_column()\n",
-        encoding="utf-8",
+        _model_source(table), encoding="utf-8"
     )
 
 
@@ -111,7 +157,7 @@ class TestDbStamp:
         project_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _seed_model_module(project_root)
+        _seed_model_module(project_root, "db_stamp_widget")
         db_url = f"sqlite+aiosqlite:///{project_root / 'stamp_test.db'}"
         monkeypatch.setenv("DATABASE_URL", db_url)
         runner.invoke(app, ["db", "init", "--metadata-import", "src.db.models"])
@@ -131,7 +177,7 @@ class TestDbSquash:
         project_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _seed_model_module(project_root)
+        _seed_model_module(project_root, "db_squash_flag_widget")
         db_url = f"sqlite+aiosqlite:///{project_root / 'squash_guard.db'}"
         monkeypatch.setenv("DATABASE_URL", db_url)
         runner.invoke(app, ["db", "init", "--metadata-import", "src.db.models"])
@@ -145,7 +191,7 @@ class TestDbSquash:
         project_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _seed_model_module(project_root)
+        _seed_model_module(project_root, "db_squash_widget")
         db_url = f"sqlite+aiosqlite:///{project_root / 'squash_test.db'}"
         monkeypatch.setenv("DATABASE_URL", db_url)
         runner.invoke(app, ["db", "init", "--metadata-import", "src.db.models"])
@@ -304,7 +350,7 @@ class TestDbCheck:
         project_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _seed_model_module(project_root)
+        _seed_model_module(project_root, "db_check_clean_widget")
         db_url = f"sqlite+aiosqlite:///{project_root / 'check_clean.db'}"
         monkeypatch.setenv("DATABASE_URL", db_url)
         for args in (
@@ -324,7 +370,7 @@ class TestDbCheck:
         project_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _seed_model_module(project_root)
+        _seed_model_module(project_root, "db_check_drift_widget")
         db_url = f"sqlite+aiosqlite:///{project_root / 'check_drift.db'}"
         monkeypatch.setenv("DATABASE_URL", db_url)
         for args in (
@@ -336,12 +382,7 @@ class TestDbCheck:
             assert step.returncode == 0, step.stdout + step.stderr
 
         (project_root / "src" / "db" / "models.py").write_text(
-            "from sqlalchemy.orm import Mapped, mapped_column\n"
-            "from tempest_fastapi_sdk import BaseModel\n\n\n"
-            "class WidgetModel(BaseModel):\n"
-            '    __tablename__ = "widget"\n'
-            "    name: Mapped[str] = mapped_column()\n"
-            "    colour: Mapped[str] = mapped_column(default='red')\n",
+            _model_source("db_check_drift_widget", extra_column=True),
             encoding="utf-8",
         )
 
