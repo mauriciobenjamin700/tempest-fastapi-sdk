@@ -46,7 +46,10 @@ from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.utils.retry import RetryPolicy as RetryPolicy
 
 REQUEST_ID_HEADER: str = "X-Request-ID"
-"""Outbound header carrying the inbound correlation id."""
+"""Default outbound header carrying the inbound correlation id.
+
+Override per client with ``HTTPClient(request_id_header=...)``.
+"""
 
 
 def _is_replayable_payload(value: Any) -> bool:
@@ -153,6 +156,7 @@ class HTTPClient:
         default_headers: Mapping[str, str] | None = None,
         verify_tls: bool = True,
         propagate_request_id: bool = True,
+        request_id_header: str = REQUEST_ID_HEADER,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """Initialize.
@@ -176,8 +180,14 @@ class HTTPClient:
                 Default ``True`` — flip only for internal mTLS or
                 dev with self-signed certs.
             propagate_request_id (bool): When ``True`` (default),
-                attach ``X-Request-ID`` from the current
-                contextvar to outbound requests.
+                attach the current request id (from the contextvar
+                ``RequestIDMiddleware`` binds) to outbound requests.
+            request_id_header (str): Header name the propagated id is
+                sent under. Defaults to :data:`REQUEST_ID_HEADER`
+                (``X-Request-ID``). Set it to the name the upstream
+                expects; it is independent of the inbound
+                ``RequestIDMiddleware(header_name=...)``, which only
+                decides where the id is read from.
             transport (httpx.AsyncBaseTransport | None): Explicit
                 transport for the underlying client — pass an
                 ``httpx.MockTransport`` in tests to script responses
@@ -186,6 +196,7 @@ class HTTPClient:
 
         Raises:
             ImportError: When the ``[http]`` extra is missing.
+            ValueError: When ``request_id_header`` is empty or blank.
         """
         if _httpx_mod is None:
             raise ImportError(
@@ -198,6 +209,9 @@ class HTTPClient:
         self.failure_threshold: int = failure_threshold
         self.recovery_seconds: float = recovery_seconds
         self.propagate_request_id: bool = propagate_request_id
+        if not request_id_header.strip():
+            raise ValueError("request_id_header must be a non-empty header name")
+        self.request_id_header: str = request_id_header.strip()
         self._client: httpx.AsyncClient = _httpx_mod.AsyncClient(
             base_url=base_url,
             timeout=_httpx_mod.Timeout(timeout, connect=5.0),
@@ -293,12 +307,28 @@ class HTTPClient:
         self,
         explicit: Mapping[str, str] | None,
     ) -> dict[str, str]:
-        """Merge contextvar / default / explicit headers."""
+        """Merge the propagated request id into the per-call headers.
+
+        A header passed explicitly on the call wins over the propagated
+        id. HTTP header names are case-insensitive, so the presence check
+        is too: an explicit ``x-request-id`` suppresses the propagated
+        ``X-Request-ID`` instead of sending both values.
+
+        Args:
+            explicit (Mapping[str, str] | None): Headers passed on the call.
+
+        Returns:
+            dict[str, str]: The headers to send.
+        """
         headers: dict[str, str] = dict(explicit or {})
-        if self.propagate_request_id and REQUEST_ID_HEADER not in headers:
-            request_id = get_request_id()
-            if request_id is not None:
-                headers[REQUEST_ID_HEADER] = request_id
+        if not self.propagate_request_id:
+            return headers
+        wanted: str = self.request_id_header.lower()
+        if any(name.lower() == wanted for name in headers):
+            return headers
+        request_id = get_request_id()
+        if request_id is not None:
+            headers[self.request_id_header] = request_id
         return headers
 
     async def request(
