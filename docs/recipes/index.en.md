@@ -570,7 +570,7 @@ come back here to plug in each capability as you need it.
 | **[Typing (static + runtime) »](typing.md)** | `strict_types` / `typed` / `require_annotations`, `[tool.tempest] typing_strictness` knob, ruff `ANN` |
 | **[UI layer (pages and components) »](ui.md)** | the `src/ui/` layer (pages, layout, components, styles), `Page` + inherited `shell()`, `Card` / `Alert` / `DataTable` (with `TableColumn` for a link/form in a cell) / `Pagination` / `EmptyState` / `NavBar`, `Shell` (including `width="full"`) / `Grid`, scaffolding with `tempest new --extras "ssr"` |
 | **[Uploads (backends) »](uploads.md)** | `UploadUtils`, extension/MIME validation (`sniff_mime`), local / MinIO backends |
-| **[Utilities »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, opaque tokens (`generate_opaque_token`) |
+| **[Utilities »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, opaque tokens, `generate_password`, signed URLs (`sign_path`), `form_encode`, `is_light` |
 | **[Validated fields (ready-made types) »](fields.md)** | Annotated Pydantic types — `PositiveIntField` / `CentsField` / `PriceField` / `SlugField` / `HexColorField` / `CPFField` / `UFField` |
 | **[Versioned artifacts (models) »](artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — swap the active version without a redeploy |
 | **[Wallet and Pix payouts »](wallet.md)** | `WalletLedger` (credit, debit and reversal in a single `UPDATE`, hold inside the debit, in the caller's transaction), `WalletService` (Pix withdrawal), `WalletBalanceMixin`, `BaseWalletEntryModel`, `claim_once`, `split_net` / `openpix_fee_cents` in basis points, `OpenPixPayoutProvider`, `make_wallet_router` |

@@ -572,7 +572,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Tipagem (estático + runtime) »](typing.md)** | `strict_types` / `typed` / `require_annotations`, knob `[tool.tempest] typing_strictness`, ruff `ANN` |
 | **[Transações (commit e savepoint) »](transactions.md)** | `transaction()` compartilhado pela sessão, `commit()` / `flush()` / `rollback()` no repositório, `autocommit=False`, `savepoint()` para o passo recuperável |
 | **[Uploads (backends) »](uploads.md)** | `UploadUtils`, validação de extensão/MIME (`sniff_mime`), backends local / MinIO |
-| **[Utilitários »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, tokens opacos (`generate_opaque_token`) |
+| **[Utilitários »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, tokens opacos, `generate_password`, URL assinada (`sign_path`), `form_encode`, `is_light` |
 | **[Visão computacional (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + schemas de predição |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, schemas VAPID, broadcast com poda |
 | **[WebAuthn / passkeys »](webauthn.md)** | `WebAuthnService`, `make_web_authn_credential_model`, registro + login sem senha, store de desafios em memória/Redis |
