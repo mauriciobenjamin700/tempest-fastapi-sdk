@@ -2,6 +2,14 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.340.0 — sign-up, Web Push and SSE
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `UserAuthService.signup(fields=...)` | Also refuses `last_login_at`, `created_at`, `updated_at`, `deleted_at`, `created_by` and `updated_by` with `ValueError` (`make_auth_router` already drops those names from a `signup_schema`) | Remove those keys from `fields=`; whoever needs to fill authorship or a timestamp does it after the sign-up, in their own service |
+| `WebPushDispatcher.send_many` | An endpoint refused by a DNS answer is returned for pruning after 3 consecutive refusals spread over at least 1 hour (`prune_after_dns_refusals`, `dns_refusal_window_seconds`); a browser push service host is never pruned this way | Nothing, with a public push service. A self-hosted push service on the internal network without `allow_private_networks=True`: pass `prune_after_dns_refusals=None` to keep the old behaviour |
+| `SSEBroker` with Redis | The published envelope gains a `prefix` field, and the receiver drops another prefix's; an envelope without the field is still delivered | Nothing. During a rolling deploy, old and new workers coexist |
+
 ## 0.336.0 — security fixes (real time)
 
 | Where | What changes | What to do |

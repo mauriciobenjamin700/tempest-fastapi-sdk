@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.340.0] — 2026-10-31
+
 ### Security
 
 - `SIGNUP_PROTECTED_FIELDS` passa a cobrir `last_login_at`, `created_at`,

@@ -4011,7 +4011,7 @@ Funciona com `cvssp/audioldm-s-full-v2` (efeitos) e `ucsd-reach/musicldm`
 recusados na carga. As classes AudioLDM/MusicLDM estão em
 `diffusers/pipelines/deprecated` (código congelado).
 
-## Áudio, rodada 3 (Unreleased)
+## Áudio, rodada 3 (0.340.0)
 
 `OllamaSpeech.stream_speech` sobre o novo `HTTPClient.stream_bytes`;
 `MusicGenerator` com `musicgen-melody` (`melody=`). Medido e documentado,
@@ -4019,7 +4019,7 @@ sem código novo: `suno/bark` grande (mais lento que o small no mesmo PT).
 Fora, de propósito: Kokoro (o `kokoro-onnx` 0.6.1 exige Python `<3.14` e
 espeak nativo) e Stable Audio (gated; depende de aceite da licença no HF).
 
-## Segurança, rodada 3 (Unreleased)
+## Segurança, rodada 3 (0.340.0)
 
 Perguntas abertas da rodada 2 fechadas: colunas de controle no
 `SIGNUP_PROTECTED_FIELDS`; `--audit-model` no `tempest user set-password`;
@@ -4027,14 +4027,14 @@ poda de endpoint Web Push recusado por DNS após N vezes (exceto push service
 de navegador); envelope SSE com o prefixo de quem publicou (prefixos
 aninhados); `BaseSearchSchema` espelhando `searchable_columns`.
 
-## Voz com Bark (Unreleased)
+## Voz com Bark (0.340.0)
 
 `BarkSpeech` em `genai/audio/bark.py`, extra `[genai]`, pesos MIT, vozes PT.
 Serve o `/tts` via `SpeechSynthesizer`. Divide o texto por frase porque uma
 chamada para em 13,95 s; ~2,5x mais lento que tempo real em bf16. Fora de
 escopo: stream por pedaço e `suno/bark` (maior, não medido).
 
-## Música com MusicGen (Unreleased)
+## Música com MusicGen (0.340.0)
 
 `MusicGenerator` em `genai/music_generation.py`, extra `[genai]` (sem
 `diffusers`), atrás do protocolo `SupportsAudioGeneration` que a rota

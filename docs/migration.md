@@ -2,6 +2,14 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.340.0 — cadastro, Web Push e SSE
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `UserAuthService.signup(fields=...)` | Recusa com `ValueError` também `last_login_at`, `created_at`, `updated_at`, `deleted_at`, `created_by` e `updated_by` (o `make_auth_router` já descarta esses nomes de um `signup_schema`) | Tire essas chaves do `fields=`; quem precisa preencher autoria ou timestamp faz isso depois do cadastro, no próprio serviço |
+| `WebPushDispatcher.send_many` | Endpoint recusado por resposta de DNS volta para poda depois de 3 recusas seguidas espalhadas por pelo menos 1 hora (`prune_after_dns_refusals`, `dns_refusal_window_seconds`); host de push service de navegador nunca é podado assim | Nada, com push service público. Push service próprio na rede interna sem `allow_private_networks=True`: passe `prune_after_dns_refusals=None` para manter o comportamento antigo |
+| `SSEBroker` com Redis | O envelope publicado ganha o campo `prefix`, e o receptor descarta o de outro prefixo; envelope sem o campo continua entregue | Nada. Num deploy gradual, workers antigos e novos convivem |
+
 ## 0.336.0 — correções de segurança (tempo real)
 
 | Onde | O que muda | O que fazer |
