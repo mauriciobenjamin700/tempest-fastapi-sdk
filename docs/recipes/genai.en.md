@@ -956,8 +956,10 @@ becomes an indexed embedding, and before answering you recall the most
 relevant snippets from **that same user** — even from old chats. Recall is
 recency-aware: what is semantically close *and* recent floats to the top.
 
-Needs the `[genai-chroma]` extra (ChromaDB). The embedder is any
-`SupportsEmbed` — here an `OllamaEmbedder`, no torch:
+Needs the `[genai-chroma]` extra (ChromaDB) — if the service already runs
+Postgres, see [Memory in Postgres with pgvector](#memory-in-postgres-with-pgvector),
+which does without it. The embedder is any `SupportsEmbed` — here an
+`OllamaEmbedder`, no torch:
 
 ```python
 import asyncio
@@ -992,7 +994,7 @@ async def main() -> None:
     # in a NEW chat, recall what matters for that user:
     hits = await memory.search(
         user_id="u1",
-        query="what stack does he use?",
+        query="Which framework and database does he work with?",
         exclude_chat_id="c2",     # ignore the current chat
     )
     for hit in hits:
@@ -1001,6 +1003,17 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+```text
+0.58  I work with FastAPI and Postgres.
+```
+
+Only one memory comes back. Against this query, "I prefer short, direct
+answers." scores 0.388 similarity, below the 0.55 floor, and is dropped
+before the re-rank. The floor decides what reaches the model: a vague query
+such as "what stack does he use?" scores 0.429 against the right text and
+recalls nothing (measured with `nomic-embed-text`). Calibrate
+`min_similarity` with your product's real queries, not the example's.
 
 `search` filters by `user_id`, applies the similarity floor
 (`min_similarity`), then blends in the recency decay — each `MemoryHit`
@@ -1052,6 +1065,160 @@ the ISO string. Sorting the ISO strings put `10:00+05:00` after
         ChromaVectorStore(collection_name="kb", persist_directory="./kb"),
     )
     ```
+
+### Memory in Postgres with pgvector
+
+Does your service already run Postgres? Then ChromaDB is a **second
+database**: outside the application's backups and outside its transactions —
+deleting a conversation and its memory stops being atomic. `PgChatMemory` is
+the same memory in a pgvector table of the database you already have: same
+methods (`index`, `search`, `delete_for_chat`, `delete_for_user`), same
+parameters and the same ranking (similarity floor, recency re-rank,
+over-fetch, per-user quota).
+
+It does **not** need the `[genai-chroma]` extra nor the `pgvector` package:
+the vector travels as text and Postgres casts it. All it takes is the async
+driver (`[postgres]`, which brings `asyncpg`) and the `vector` extension on
+the server.
+
+Switching backends means switching the class — the rest of the code stays
+the same:
+
+```python
+import asyncio
+from datetime import UTC, datetime
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import PgChatMemory
+
+db = AsyncDatabaseManager("postgresql+asyncpg://app:app@localhost:5432/app")
+memory = PgChatMemory(
+    OllamaEmbedder("nomic-embed-text"),
+    db,
+    dim=768,                 # the embedder's vector size
+    table="chat_memory",
+)
+
+
+async def main() -> None:
+    await db.connect()
+    await memory.ensure_schema()   # CREATE EXTENSION + table + indexes
+
+    await memory.index(
+        user_id="u1", chat_id="c1", message_id="m1",
+        role="user", content="Trabalho com FastAPI e Postgres.",
+        created_at=datetime.now(UTC),
+    )
+    hits = await memory.search(
+        user_id="u1",
+        query="Com que framework e banco ele trabalha?",
+        exclude_chat_id="c2",
+    )
+    for hit in hits:
+        print(f"{hit.score:.2f}  {hit.content}")
+
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+With `nomic-embed-text` (which produces 768-dimension vectors) on a local
+Ollama and `pgvector/pgvector:pg17`, this prints:
+
+```text
+0.68  Trabalho com FastAPI e Postgres.
+```
+
+Every search is `WHERE user_id = :user_id` (plus
+`chat_id <> :exclude_chat_id` when you pass `exclude_chat_id`) **before**
+ordering by the cosine distance `<=>` — one user's memory never shows up for
+another. `message_id` is the primary key: indexing the same message again
+replaces the row, and a `message_id` that already belongs to another user is
+refused with `ValueError`.
+
+#### Delete the conversation and its memory in one transaction
+
+`delete_for_chat` and `delete_for_user` accept **your** session. When you
+pass it, the `DELETE` joins your transaction: if the rest fails, the memory
+comes back with it.
+
+```python
+from sqlalchemy import text
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai.rag import PgChatMemory
+
+
+async def delete_chat(
+    db: AsyncDatabaseManager,
+    memory: PgChatMemory,
+    *,
+    user_id: str,
+    chat_id: str,
+) -> None:
+    async with db.transaction() as session:
+        await session.execute(
+            text("DELETE FROM chats WHERE id = :id AND owner_id = :owner"),
+            {"id": chat_id, "owner": user_id},
+        )
+        await memory.delete_for_chat(
+            user_id=user_id, chat_id=chat_id, session=session,
+        )
+```
+
+Without `session`, each delete opens and commits a session of its own.
+
+#### The `vector` extension on the server
+
+`ensure_schema()` runs `CREATE EXTENSION IF NOT EXISTS vector`, so Postgres
+must have the extension installed **and** the application role must be
+allowed to create it (otherwise run `CREATE EXTENSION vector` once as a
+superuser before starting the service).
+
+!!! warning "The official `postgres:*-alpine` image does not ship pgvector"
+    On `postgres:17-alpine`, `CREATE EXTENSION vector` fails with:
+
+    ```text
+    ERROR:  extension "vector" is not available
+    DETAIL:  Could not open extension control file "/usr/local/share/postgresql/extension/vector.control": No such file or directory.
+    HINT:  The extension must first be installed on the system where PostgreSQL is running.
+    ```
+
+    Use an image that already ships the extension, such as
+    `pgvector/pgvector:pg17`:
+
+    ```yaml
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        environment:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - "127.0.0.1:5432:5432"
+    ```
+
+#### HNSW index (optional)
+
+Without an approximate index the search is exact: the `(user_id,
+created_at)` B-tree finds the user's rows and Postgres sorts only those. At a
+typical user's volume, that is enough. For large tables,
+`ensure_schema(ann_index="hnsw")` builds the HNSW index (`vector_cosine_ops`),
+the same one `PgVectorStore` builds.
+
+!!! info "HNSW with a per-user filter needs pgvector 0.8.0+"
+    The HNSW index returns at most `hnsw.ef_search` rows (of any user) and the
+    `user_id` filter runs afterwards. Measured on pgvector 0.8.6, with 50 000
+    rows and a user owning 500 of them, the plan used HNSW and that user's
+    search came back **empty**. Since 0.8.0 pgvector has *iterative index
+    scans*: `search` turns on `hnsw.iterative_scan` in its own transaction,
+    and the same search returns its 5 hits. That is why
+    `ensure_schema(ann_index=...)` refuses an older pgvector with
+    `RuntimeError` — without an approximate index, the exact search works on
+    any version.
 
 ## AI chat pipeline
 
@@ -1628,23 +1795,36 @@ lazily.
     ```
 
     And with torchaudio in place, a fresh resolve brought transformers 5.x,
-    which removed the symbol `TTS.api` imports eagerly:
+    which removed the symbol `TTS.api` imported eagerly:
 
     ```text
     ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'
     ```
 
-    Measured: `isin_mps_friendly` exists in transformers 5.0.0 and is gone
-    from 5.1.0 on, and the measurement was repeated on 2026-09-02 against
-    the newest coqui-tts (0.27.5) with transformers 5.16.1: the same
-    `ImportError`, so the ceiling is still load-bearing.
-    `[genai-audio]` declares `torch>=2.14`,
-    `torchaudio>=2.11`, `torchcodec>=0.16` and `transformers<5` — the upper
-    bound stays confined to this extra. If you pinned those four by hand, you
-    can drop them.
+    That is why, from v0.252.0 to 0.341.0, the extra pinned
+    `transformers<5`. `coqui-tts` 0.28.0 no longer imports that symbol, and
+    since 0.342.0 `[genai-audio]` requires that version and drops the cap.
+    Measured on 2026-11-01 with coqui-tts 0.28.0, transformers 5.22.1 and
+    torch 2.14: XTTS v2 with a built-in voice and with cloning, and Bark,
+    synthesized a Portuguese sentence that Whisper transcribed back
+    word for word. `[genai-audio]` declares `torch>=2.14`,
+    `torchaudio>=2.11`, `torchcodec>=0.16` and `six` (coqui-tts 0.28.0 imports
+    it without declaring it). If you pinned those by hand, you can drop them.
+
+!!! info "With coqui-tts 0.28.0, XTTS v2 comes from the Hugging Face Hub"
+    The model is downloaded from the `tts-hub/XTTS-v2` repository into the
+    Hub cache (`~/.cache/huggingface/hub/models--tts-hub--XTTS-v2`), no longer
+    only into `~/.local/share/tts`. The first use needs network; with the
+    cache filled, `HF_HUB_OFFLINE=1` works (measured: synthesis completed
+    offline). In a container, mount that directory on a volume so a deploy
+    does not download it again.
+
+    On load, transformers 5 logs
+    `bos_token_id must be None or an integer within the vocabulary ... got 50256`
+    (and the same for `eos_token_id`). Synthesis completes normally.
 
 !!! danger "XTTS v2 asks you to accept a licence, and a server has nobody to answer"
-    `TextToSpeech`'s default model is licence-gated. Read in coqui-tts 0.27.5,
+    `TextToSpeech`'s default model is licence-gated. Read in coqui-tts 0.28.0,
     `ModelManager.tos_agreed` accepts only a `tos_agreed.txt` beside the
     weights **or** `COQUI_TOS_AGREED` equal to the **string** `"1"`; without
     it, `ask_tos` calls `input()`. Synthesis runs in `asyncio.to_thread`,
@@ -4090,6 +4270,8 @@ and threshold before paying for transcription.
 - **`ChatMemory` / `ChromaVectorStore`** — per-user long-term memory with
   similarity + recency recall (`[genai-chroma]`); `ChromaVectorStore` is a
   persistent `VectorStore` for generic RAG.
+- **`PgChatMemory`** — the same memory in a pgvector table of the service's
+  Postgres, without `[genai-chroma]`; deletes join your transaction.
 - **`AIChatPipeline` / `make_ai_chat_router`** — a full chatbot in-process
   (memory + web RAG + tool-calling + optional TTS); one stateless router
   (`/chat` + `/chat/stream` SSE) kills the inference microservice.

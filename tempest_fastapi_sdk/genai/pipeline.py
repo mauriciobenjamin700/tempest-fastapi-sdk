@@ -8,7 +8,8 @@ extras you want wired in; it composes them per turn:
 
 * a :class:`~tempest_fastapi_sdk.genai.text.TextBackend` (required) — the
   LLM that actually generates the reply;
-* a :class:`~tempest_fastapi_sdk.genai.rag.ChatMemory` (optional) — auto
+* a :class:`~tempest_fastapi_sdk.genai.rag.ChatMemory` or
+  :class:`~tempest_fastapi_sdk.genai.rag.PgChatMemory` (optional) — auto
   recall of relevant past messages before the turn + auto indexing of
   both sides of the turn after it;
 * a :class:`~tempest_fastapi_sdk.genai.rag.WebSearch` (optional) — augment
@@ -45,7 +46,7 @@ from pydantic import Field
 from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
-from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit
+from tempest_fastapi_sdk.genai.rag.memory import MemoryHit
 from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
 from tempest_fastapi_sdk.genai.tokens import truncate_messages
 from tempest_fastapi_sdk.schemas.base import BaseSchema
@@ -54,7 +55,7 @@ from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.audio import TextToSpeech
     from tempest_fastapi_sdk.genai.moderation import ModerationBackend
-    from tempest_fastapi_sdk.genai.rag import ChatMemory, WebSearch
+    from tempest_fastapi_sdk.genai.rag import ChatMemory, PgChatMemory, WebSearch
     from tempest_fastapi_sdk.genai.text import TextBackend
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -153,7 +154,8 @@ class AIChatPipeline:
 
     Attributes:
         generator (TextBackend): The LLM backend.
-        memory (ChatMemory | None): Optional long-term chat memory.
+        memory (ChatMemory | PgChatMemory | None): Optional long-term chat
+            memory (ChromaDB or pgvector).
         web_search (WebSearch | None): Optional web-search augmenter.
         tts (TextToSpeech | None): Optional text-to-speech backend.
         tools (list[Tool]): Tools available to the model (may be empty).
@@ -165,7 +167,7 @@ class AIChatPipeline:
         self,
         generator: TextBackend,
         *,
-        memory: ChatMemory | None = None,
+        memory: ChatMemory | PgChatMemory | None = None,
         web_search: WebSearch | None = None,
         tts: TextToSpeech | None = None,
         tools: list[Tool] | None = None,
@@ -181,8 +183,8 @@ class AIChatPipeline:
 
         Args:
             generator (TextBackend): The text-generation backend (required).
-            memory (ChatMemory | None): Long-term memory for recall +
-                indexing, or ``None`` to disable.
+            memory (ChatMemory | PgChatMemory | None): Long-term memory for
+                recall + indexing, or ``None`` to disable.
             web_search (WebSearch | None): Web-search augmenter, or ``None``.
             tts (TextToSpeech | None): Text-to-speech backend, or ``None``.
             tools (list[Tool] | None): Tools the model may call, or ``None``.

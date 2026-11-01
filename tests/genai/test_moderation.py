@@ -120,18 +120,39 @@ TOXIC_BERT_LABELS: dict[int, str] = {
 def _make_tokenizer(tmp_path: Path) -> Any:
     """Build a real word-level BERT tokenizer over a tiny vocabulary.
 
+    Assembled from a ``tokenizers`` WordPiece model with BERT's
+    ``[CLS] ... [SEP]`` post-processor rather than
+    ``BertTokenizerFast(vocab_file=...)``: under transformers 5 that
+    constructor left the vocabulary unloaded, so every word, ``bad``
+    included, came out as ``[UNK]`` and a clean text read as toxic (#683).
+    This form behaves the same on transformers 4 and 5.
+
     Args:
-        tmp_path (Path): Where the vocabulary file is written.
+        tmp_path (Path): Unused; kept so every caller keeps its signature.
 
     Returns:
-        Any: A ``BertTokenizerFast`` whose ``model_max_length`` is 512.
+        Any: A ``PreTrainedTokenizerFast`` whose ``model_max_length`` is 512.
     """
     transformers = pytest.importorskip("transformers")
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordPiece
+    from tokenizers.pre_tokenizers import BertPreTokenizer
+    from tokenizers.processors import BertProcessing
+
     vocab = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "fine", "bad"]
-    vocab_file = tmp_path / "vocab.txt"
-    vocab_file.write_text("\n".join(vocab) + "\n", encoding="utf-8")
-    return transformers.BertTokenizerFast(
-        vocab_file=str(vocab_file),
+    ids: dict[str, int] = {token: index for index, token in enumerate(vocab)}
+    core = Tokenizer(WordPiece(ids, unk_token="[UNK]"))
+    core.pre_tokenizer = BertPreTokenizer()
+    core.post_processor = BertProcessing(
+        ("[SEP]", ids["[SEP]"]), ("[CLS]", ids["[CLS]"])
+    )
+    return transformers.PreTrainedTokenizerFast(
+        tokenizer_object=core,
+        unk_token="[UNK]",
+        pad_token="[PAD]",
+        cls_token="[CLS]",
+        sep_token="[SEP]",
+        mask_token="[MASK]",
         model_max_length=512,
     )
 
@@ -347,6 +368,74 @@ class TestClassifierModeratorWindows:
     def test_negative_overlap_is_refused(self) -> None:
         with pytest.raises(ValueError, match="window_overlap"):
             ClassifierModerator("m", window_overlap=-1)
+
+
+class TestClassifierModeratorSpecialFrame:
+    """Windows are framed without ``build_inputs_with_special_tokens``.
+
+    transformers 5 removed that method (and ``prepare_for_model``) from the
+    fast tokenizers; every windowed ``check`` then raised ``AttributeError``
+    once ``[genai-audio]`` stopped capping ``transformers<5`` (#683).
+    """
+
+    def test_frame_is_cls_and_sep_for_bert(self, tmp_path: Path) -> None:
+        tokenizer = _make_tokenizer(tmp_path)
+        mod = ClassifierModerator("m")
+        _loaded(mod, tokenizer, model=None)
+        cls_id = tokenizer.convert_tokens_to_ids("[CLS]")
+        sep_id = tokenizer.convert_tokens_to_ids("[SEP]")
+        assert mod._special_frame() == ([cls_id], [sep_id])
+
+    def test_frame_matches_the_tokenizer_own_encoding(self, tmp_path: Path) -> None:
+        tokenizer = _make_tokenizer(tmp_path)
+        mod = ClassifierModerator("m")
+        _loaded(mod, tokenizer, model=None)
+        prefix, suffix = mod._special_frame()
+        bare: list[int] = tokenizer("fine bad", add_special_tokens=False)["input_ids"]
+        framed: list[int] = tokenizer("fine bad")["input_ids"]
+        assert [*prefix, *bare, *suffix] == framed
+
+    def test_frame_does_not_need_the_removed_method(self, tmp_path: Path) -> None:
+        """A tokenizer without the transformers 4 helpers still frames."""
+
+        class _NoLegacyHelpers:
+            """Delegates to a real tokenizer, hiding the removed methods."""
+
+            def __init__(self, inner: Any) -> None:
+                """Wrap ``inner``.
+
+                Args:
+                    inner (Any): The real tokenizer.
+                """
+                self._inner = inner
+
+            def __call__(self, *args: Any, **kwargs: Any) -> Any:
+                """Tokenize through the wrapped tokenizer.
+
+                Args:
+                    *args (Any): Forwarded positionally.
+                    **kwargs (Any): Forwarded by keyword.
+
+                Returns:
+                    Any: The wrapped tokenizer's encoding.
+                """
+                return self._inner(*args, **kwargs)
+
+            def num_special_tokens_to_add(self) -> int:
+                """Forward to the wrapped tokenizer.
+
+                Returns:
+                    int: The wrapped tokenizer's count.
+                """
+                return int(self._inner.num_special_tokens_to_add())
+
+        tokenizer = _make_tokenizer(tmp_path)
+        mod = ClassifierModerator("m")
+        _loaded(mod, _NoLegacyHelpers(tokenizer), model=None)
+        assert not hasattr(mod._tokenizer, "build_inputs_with_special_tokens")
+        cls_id = tokenizer.convert_tokens_to_ids("[CLS]")
+        sep_id = tokenizer.convert_tokens_to_ids("[SEP]")
+        assert mod._special_frame() == ([cls_id], [sep_id])
 
 
 class TestModerationResult:

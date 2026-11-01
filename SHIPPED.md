@@ -770,9 +770,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   via `set_config`;
   `ChatMemory(candidate_multiplier=4)` over-fetches before the recency
   re-rank and evicts by UTC instant (`created_at_ts`).
+  **Chat memory on Postgres (#684):** `PgChatMemory(embedder, db, dim=)` —
+  same surface and ranking as `ChatMemory` over a pgvector table
+  (`message_id` PK, `user_id`/`chat_id`/`role`/`content`/`created_at
+  timestamptz`/`embedding vector(dim)`), no `[genai-chroma]` and no `pgvector`
+  package (`[postgres]` + `CREATE EXTENSION vector`); search always filters
+  `user_id` before `<=>`; deletes take `session=` to join the caller's
+  transaction; `ensure_schema(ann_index=)` needs pgvector >= 0.8.0 and search
+  turns on iterative scans so the per-user filter does not empty HNSW recall.
   **Audio (v0.102, `[genai-audio]` = faster-whisper + coqui-tts + the Coqui
-  runtime — torch, torchaudio, torchcodec, `transformers<5`, declared since
-  v0.252.0 because coqui-tts hides all four behind its own extras; XTTS v2 is
+  runtime — torch, torchaudio, torchcodec, declared since v0.252.0 because
+  coqui-tts hides them behind its own extras; `transformers<5` from v0.252.0
+  to v0.341.0, dropped in v0.342.0 with coqui-tts>=0.28.0 (+ `six`, which it
+  imports undeclared); XTTS v2 is
   licence-gated and needs `COQUI_TOS_AGREED=1` on a server):** `tempest_fastapi_sdk.genai.audio` — `SpeechToText`
   (faster-whisper transcribe → `Transcription`) + `TextToSpeech` (Coqui TTS
   synthesize → WAV bytes, XTTS voice cloning via `speaker_wav`), lazy +

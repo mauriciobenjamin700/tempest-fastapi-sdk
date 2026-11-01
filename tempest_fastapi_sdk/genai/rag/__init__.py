@@ -10,7 +10,6 @@ it — you only need the extra to actually fetch and read.
 
 from tempest_fastapi_sdk.genai.rag.chroma import ChatMemory as ChatMemory
 from tempest_fastapi_sdk.genai.rag.chroma import ChromaVectorStore as ChromaVectorStore
-from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit as MemoryHit
 from tempest_fastapi_sdk.genai.rag.chunking import chunk_text as chunk_text
 from tempest_fastapi_sdk.genai.rag.context import build_context as build_context
 from tempest_fastapi_sdk.genai.rag.extract import (
@@ -23,7 +22,9 @@ from tempest_fastapi_sdk.genai.rag.fusion import (
     reciprocal_rank_fusion as reciprocal_rank_fusion,
 )
 from tempest_fastapi_sdk.genai.rag.hybrid import HybridRetriever as HybridRetriever
+from tempest_fastapi_sdk.genai.rag.memory import MemoryHit as MemoryHit
 from tempest_fastapi_sdk.genai.rag.pdf import PdfReader as PdfReader
+from tempest_fastapi_sdk.genai.rag.pg_memory import PgChatMemory as PgChatMemory
 from tempest_fastapi_sdk.genai.rag.rerank import Reranker as Reranker
 from tempest_fastapi_sdk.genai.rag.rerank import SupportsRerank as SupportsRerank
 from tempest_fastapi_sdk.genai.rag.retriever import Retriever as Retriever
@@ -56,6 +57,7 @@ __all__: list[str] = [
     "MemoryHit",
     "PdfPage",
     "PdfReader",
+    "PgChatMemory",
     "PgVectorStore",
     "Reranker",
     "Retriever",

@@ -7,8 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `PgChatMemory` em `tempest_fastapi_sdk.genai.rag` (#684): o `ChatMemory`
+  numa tabela pgvector do Postgres do serviço, sem o extra `[genai-chroma]`
+  nem o pacote `pgvector` — basta `[postgres]` e `CREATE EXTENSION vector`.
+  Mesma superfície (`index`, `search`, `delete_for_chat`, `delete_for_user`),
+  mesmos parâmetros e o mesmo ranking (piso de similaridade, re-rank por
+  recência, over-fetch, cota por usuário com despejo do instante mais
+  antigo). A busca é sempre `WHERE user_id = :user_id` antes de ordenar por
+  `<=>`; `message_id` é a chave do upsert e um id de outro usuário é recusado
+  com `ValueError`; as duas deleções aceitam `session=` e entram na
+  transação de quem chama. `ensure_schema(ann_index="hnsw" | "ivfflat")`
+  constrói o índice aproximado e exige pgvector 0.8.0+: a busca liga
+  `hnsw.iterative_scan` na própria transação, porque sem isso — medido no
+  pgvector 0.8.6, 50 000 linhas, usuário dono de 500 — o HNSW devolvia zero
+  resultados para esse usuário.
+- `AIChatPipeline(memory=...)` aceita `ChatMemory | PgChatMemory`.
+
+### Changed
+
+- `MemoryHit` e o ranking da memória moram em
+  `tempest_fastapi_sdk.genai.rag.memory`, compartilhados pelos dois backends;
+  `from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit` continua
+  funcionando.
+
+- `[genai-audio]` deixa de fixar `transformers<5` e passa a exigir
+  `coqui-tts>=0.28.0`, que não importa mais o `isin_mps_friendly` removido na
+  transformers 5.1. Quem instala o extra sai da transformers 4.57.6: no lock,
+  `transformers` 5.22.1, `huggingface-hub` 2.4.0, `tokenizers` 0.23.3 e
+  `diffusers` 0.42.1. O extra declara `six`, que o coqui-tts 0.28.0 importa
+  sem declarar (`ModuleNotFoundError: No module named 'six'` numa venv
+  limpa). Medido com modelo real: XTTS v2 (voz pronta e clonagem) e Bark
+  sintetizam, e o Whisper transcreve de volta as mesmas palavras.
+
+### Fixed
+
+- `ClassifierModerator` levantava `AttributeError: BertTokenizer has no
+  attribute build_inputs_with_special_tokens` em toda checagem sob a
+  transformers 5, que removeu esse método dos tokenizers rápidos; quem
+  instalava `[genai]` sem `[genai-audio]` já resolvia a 5.x. A moldura de
+  tokens especiais de cada janela agora vem da chamada pública do tokenizer,
+  e o mesmo código passa na transformers 4.57.6 e 5.22.1.
+
 ### Security
 
+- Sem o teto, o lock sai da transformers 4.57.6 e o `make audit` deixa de
+  ignorar os seis avisos dela (`PYSEC-2025-217`, `PYSEC-2026-2288`,
+  `PYSEC-2026-2289`, `PYSEC-2026-2290`, `PYSEC-2026-3929`,
+  `PYSEC-2026-4174`); nenhum se aplica à 5.22.1.
 - `EnvironmentSettings.ENV` deixa de ter default (era `"development"`):
   esquecer `ENV` derruba o boot com `ENV Field required`. Antes, um host de
   produção sem a variável subia com todo valor de desenvolvimento — SQLite,
