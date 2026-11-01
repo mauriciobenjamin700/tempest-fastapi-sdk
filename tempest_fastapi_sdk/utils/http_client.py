@@ -497,7 +497,9 @@ class HTTPClient:
         caller instead of re-sending the request and replaying lines the
         caller already consumed. A non-success status that is not going to be
         retried raises ``httpx.HTTPStatusError`` before any line is yielded, so
-        the caller never has to inspect ``status_code`` on a stream.
+        the caller never has to inspect ``status_code`` on a stream; its body
+        is read first, so ``exc.response.content`` carries the server's
+        message.
 
         Args:
             method (str): HTTP verb.
@@ -505,6 +507,8 @@ class HTTPClient:
             params (Mapping[str, Any] | None): Query-string params.
             json (Any): JSON-serializable body.
             data (Any): Form body.
+            content (Any): Raw body.
+            files (Any): Multipart files.
             headers (Mapping[str, str] | None): Per-request headers merged on
                 top of the defaults + propagated ``X-Request-ID``.
             timeout (float | None): Override for this call.
@@ -519,6 +523,112 @@ class HTTPClient:
                 success and is not retried.
             httpx.HTTPError: When every open attempt failed with a network
                 error (the last exception is re-raised).
+        """
+        async for line in self._stream(
+            method,
+            url,
+            lines=True,
+            params=params,
+            json=json,
+            data=data,
+            content=content,
+            files=files,
+            headers=headers,
+            timeout=timeout,
+        ):
+            yield line if isinstance(line, str) else line.decode()
+
+    async def stream_bytes(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        json: Any = None,
+        data: Any = None,
+        content: Any = None,
+        files: Any = None,
+        headers: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> AsyncIterator[bytes]:
+        """Stream a response body as raw byte chunks (audio, files).
+
+        The same retry, circuit-breaker and error contract as :meth:`stream`
+        -- retries only while opening, the connection committed once the
+        first chunk is yielded -- for a body that is not text: a WAV or PCM
+        stream, a file download. Chunks arrive as the server flushes them.
+
+        Args:
+            method (str): HTTP verb.
+            url (str): Absolute URL or path relative to ``base_url``.
+            params (Mapping[str, Any] | None): Query-string params.
+            json (Any): JSON-serializable body.
+            data (Any): Form body.
+            content (Any): Raw body.
+            files (Any): Multipart files.
+            headers (Mapping[str, str] | None): Per-request headers.
+            timeout (float | None): Override for this call.
+
+        Yields:
+            bytes: The body, chunk by chunk, in order.
+
+        Raises:
+            CircuitOpenError: When the per-host breaker is open.
+            httpx.HTTPStatusError: When the (final) response status is not a
+                success and is not retried; ``exc.response.content`` holds
+                the error body.
+            httpx.HTTPError: When every open attempt failed with a network
+                error.
+        """
+        async for chunk in self._stream(
+            method,
+            url,
+            lines=False,
+            params=params,
+            json=json,
+            data=data,
+            content=content,
+            files=files,
+            headers=headers,
+            timeout=timeout,
+        ):
+            yield chunk if isinstance(chunk, bytes) else chunk.encode()
+
+    async def _stream(
+        self,
+        method: str,
+        url: str,
+        *,
+        lines: bool,
+        params: Mapping[str, Any] | None,
+        json: Any,
+        data: Any,
+        content: Any,
+        files: Any,
+        headers: Mapping[str, str] | None,
+        timeout: float | None,
+    ) -> AsyncIterator[str | bytes]:
+        """Open a streamed response with retries and yield lines or chunks.
+
+        Args:
+            method (str): HTTP verb.
+            url (str): Absolute URL or path relative to ``base_url``.
+            lines (bool): Yield decoded lines (``True``) or raw byte chunks.
+            params (Mapping[str, Any] | None): Query-string params.
+            json (Any): JSON-serializable body.
+            data (Any): Form body.
+            content (Any): Raw body.
+            files (Any): Multipart files.
+            headers (Mapping[str, str] | None): Per-request headers.
+            timeout (float | None): Override for this call.
+
+        Yields:
+            str | bytes: Lines or chunks, in order.
+
+        Raises:
+            CircuitOpenError: When the per-host breaker is open.
+            httpx.HTTPStatusError: When the final status is not a success.
+            httpx.HTTPError: When every open attempt failed.
         """
         assert _httpx_mod is not None, "guarded by __init__"
         host = self._host_of(url)
@@ -551,11 +661,16 @@ class HTTPClient:
                     ):
                         retry_status = True
                     else:
+                        if response.is_error:
+                            await response.aread()
                         response.raise_for_status()
                         await self._breaker_record(host, failed=False)
-                        async for line in response.aiter_lines():
+                        pieces: AsyncIterator[str | bytes] = (
+                            response.aiter_lines() if lines else response.aiter_bytes()
+                        )
+                        async for piece in pieces:
                             yielded = True
-                            yield line
+                            yield piece
                         return
             except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout) as exc:
                 if (

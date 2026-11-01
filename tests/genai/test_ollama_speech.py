@@ -420,3 +420,43 @@ class TestProtocols:
         speech = OllamaSpeech("lfm3-audio")
         assert isinstance(speech, SpeechTranscriber)
         assert isinstance(speech, SpeechSynthesizer)
+
+
+class TestStreamSpeech:
+    async def test_chunks_arrive_and_pcm_is_the_default(self) -> None:
+        captured: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(200, content=SAMPLES)
+
+        chunks = [c async for c in _speech(handler).stream_speech("oi", speaker="v")]
+        assert b"".join(chunks) == SAMPLES
+        assert captured["body"]["response_format"] == "pcm"
+        assert captured["body"]["voice"] == "v"
+
+    async def test_daemon_400_is_a_validation_exception(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": {"message": "bad voice"}})
+
+        with pytest.raises(ValidationException) as caught:
+            async for _ in _speech(handler).stream_speech("oi", voice="nope"):
+                pass
+        assert caught.value.message == "bad voice"
+
+    async def test_model_not_pulled_is_an_ollama_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"error": {"message": "not found"}})
+
+        with pytest.raises(OllamaError, match="not found"):
+            async for _ in _speech(handler).stream_speech("oi"):
+                pass
+
+    async def test_language_is_refused_before_the_request(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no request expected")
+
+        with pytest.raises(ValidationException) as caught:
+            async for _ in _speech(handler).stream_speech("oi", language="pt"):
+                pass
+        assert caught.value.details == {"field": "language"}
