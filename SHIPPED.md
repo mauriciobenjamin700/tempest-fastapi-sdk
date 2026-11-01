@@ -4105,7 +4105,7 @@ Pago e as duas fábricas de dependency conferem o `ts` por padrão
 em `Formula`. No `.xlsx` só o `=` era vetor — `+ - @` já saíam como texto,
 medido no XML gravado pelo `openpyxl` 3.1.5.
 
-## Segurança, `ENV` e `X-Token` (Unreleased)
+## Segurança, `ENV` e `X-Token` (v0.342.0)
 
 Os três GHSA "só em produção" (JWT placeholder, CORS `*` com credenciais,
 `TOKEN_SECRET` vazio) já eram recusados pelo guard com `ENV=production`; o

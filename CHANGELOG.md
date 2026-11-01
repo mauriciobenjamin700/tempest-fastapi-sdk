@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.342.0] — 2026-11-01
+
 ### Added
 
 - `PgChatMemory` em `tempest_fastapi_sdk.genai.rag` (#684): o `ChatMemory`

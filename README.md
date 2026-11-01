@@ -2284,7 +2284,7 @@ Key points:
 - `apply_cors(app, settings)` reads `CORSSettings` defaults; pass keyword overrides for one-off changes.
 - `register_exception_handlers(app)` wires every `AppException` subclass to the canonical `{detail, code, details}` envelope.
 - `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix.
-- `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
+- `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; an empty secret raises `ValueError` when the dependency is built — for a local run without the gate, pass `allow_unauthenticated=True`. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
 
 ### Structured logging & request IDs recipe
 

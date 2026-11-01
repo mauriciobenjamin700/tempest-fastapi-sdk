@@ -3737,8 +3737,10 @@ class UserAuthService:
         The check runs before the account lookup, so a refused reset
         answers the same for a known and an unknown address.
 
-        Under ``ENV=production`` (read from ``auth_settings`` when it
-        composes :class:`~tempest_fastapi_sdk.settings.EnvironmentSettings`)
+        Unless ``ENV`` is ``development`` or ``test`` (read from
+        ``auth_settings`` when it composes
+        :class:`~tempest_fastapi_sdk.settings.EnvironmentSettings`, from the
+        ``ENV`` environment variable otherwise; unset counts as production),
         a flow carrying a link is refused the same way whenever the link
         would travel in the response body instead of the mail — no
         ``EmailUtils`` wired, or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` on. Those
@@ -3756,9 +3758,9 @@ class UserAuthService:
 
         Raises:
             IntegrationDisabledException: When the wired mailer is
-                disabled and the operation would need it, or under
-                ``ENV=production`` when the link would be surfaced in
-                the response.
+                disabled and the operation would need it, or outside
+                ``development``/``test`` (``ENV`` unset included) when the
+                link would be surfaced in the response.
         """
         if carries_token and self._links_surface_in_production():
             raise IntegrationDisabledException("email")
