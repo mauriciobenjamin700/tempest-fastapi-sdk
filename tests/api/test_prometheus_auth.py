@@ -200,8 +200,12 @@ class TestDependencyItems:
         assert await _scrape(app) == 401
         assert await _scrape(app, {"X-Token": SECRET}) == 200
 
-    async def test_empty_secret_disables_the_check(self) -> None:
-        assert await _scrape(_app_with([make_token_dependency("")])) == 200
+    async def test_empty_secret_needs_the_explicit_opt_out(self) -> None:
+        """Empty is refused at build; the opt-out is what opens the scrape."""
+        with pytest.raises(ValueError):
+            make_token_dependency("")
+        gate = make_token_dependency("", allow_unauthenticated=True)
+        assert await _scrape(_app_with([gate])) == 200
 
     @pytest.mark.parametrize(
         "item",

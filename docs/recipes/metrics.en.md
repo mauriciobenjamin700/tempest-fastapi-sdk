@@ -59,12 +59,18 @@ header, never in the URL, so it stays out of access logs. Read
     it without `dependencies=` only when the port already sits on a private
     network that only Prometheus reaches.
 
-!!! warning "An empty secret disables the check"
-    `make_token_dependency("")` protects nothing: with an empty `secret`,
-    `GET /metrics` answers `200` with no header at all. That is on purpose,
-    for local dev, but a `METRICS_TOKEN` forgotten in the production
-    environment leaves the endpoint silently open. Make sure the value is
-    non-empty at boot.
+!!! info "An empty secret fails the boot"
+    Since 0.342.0, `make_token_dependency("")` raises `ValueError` when the
+    dependency is built, instead of letting `GET /metrics` answer `200` with
+    no header:
+
+    ```text
+    ValueError: make_token_dependency() got an empty secret, which would let every request through. Set TOKEN_SECRET (e.g. with `tempest secrets init`), or pass allow_unauthenticated=True for a local run nothing else reaches.
+    ```
+
+    A `METRICS_TOKEN` forgotten in the environment shows up at boot, not
+    later. For a local run without the gate, pass
+    `allow_unauthenticated=True`.
 
 !!! info "Each `dependencies=` item is the function, or a ready `Depends(...)`"
     Pass the **bare** dependency (`[make_token_dependency(token)]`) — the

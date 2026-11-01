@@ -51,14 +51,20 @@ def make_token_dependency(
     *,
     header_name: str = "X-Token",
     error_message: str = "Invalid or missing token",
+    allow_unauthenticated: bool = False,
 ) -> Callable[..., Coroutine[Any, Any, None]]:
     """Build a FastAPI dependency that validates a shared-secret header.
 
     The returned coroutine compares the inbound header value with
-    ``secret`` using :func:`hmac.compare_digest` (constant-time). An
-    empty ``secret`` disables the check entirely — intentional for
-    local development; production deployments should always provide
-    a non-empty value.
+    ``secret`` using :func:`hmac.compare_digest` (constant-time).
+
+    An empty (or whitespace-only) ``secret`` raises :class:`ValueError`
+    here, when the dependency is built — at import, in a typical service.
+    It used to disable the check silently, and a ``TOKEN_SECRET`` left
+    empty in a deployed ``.env`` turned every gated route into a public
+    one. A local run that wants the gate off says so with
+    ``allow_unauthenticated=True``; with a non-empty ``secret`` that flag
+    changes nothing.
 
     While the check is enforced, every response of a route behind it carries
     ``Cache-Control: no-store``. A response cache in front of the app (the
@@ -68,18 +74,28 @@ def make_token_dependency(
     of every such cache, whatever header ``header_name`` names.
 
     Args:
-        secret (str): The shared secret to compare against. Empty
-            string disables enforcement.
+        secret (str): The shared secret to compare against.
         header_name (str): The header to read. Defaults to
             ``"X-Token"``.
         error_message (str): Message attached to the raised
             :class:`UnauthorizedException`.
+        allow_unauthenticated (bool): Accept an empty ``secret`` and let
+            every request through. For a local run nothing else reaches.
 
     Returns:
         Callable[..., Coroutine[Any, Any, None]]: An async FastAPI
         dependency that raises :class:`UnauthorizedException` on
         mismatch and returns ``None`` on success.
+
+    Raises:
+        ValueError: When ``secret`` is empty and ``allow_unauthenticated``
+            is ``False``.
     """
+    _refuse_empty_secret(
+        secret,
+        allow_unauthenticated=allow_unauthenticated,
+        caller="make_token_dependency",
+    )
     alias = header_name
 
     async def _require_token(
@@ -98,26 +114,62 @@ def make_token_dependency(
     return _require_token
 
 
+def _refuse_empty_secret(
+    secret: str,
+    *,
+    allow_unauthenticated: bool,
+    caller: str,
+) -> None:
+    """Refuse an empty shared secret unless the caller opted out.
+
+    Args:
+        secret (str): The configured secret.
+        allow_unauthenticated (bool): The explicit opt-out.
+        caller (str): Function name for the message.
+
+    Raises:
+        ValueError: When ``secret`` is empty or whitespace and
+            ``allow_unauthenticated`` is ``False``.
+    """
+    if secret.strip() or allow_unauthenticated:
+        return
+    raise ValueError(
+        f"{caller}() got an empty secret, which would let every request "
+        "through. Set TOKEN_SECRET (e.g. with `tempest secrets init`), or "
+        "pass allow_unauthenticated=True for a local run nothing else reaches."
+    )
+
+
 async def require_x_token(
     secret: str,
     token: str,
     *,
     error_message: str = "Invalid or missing token",
+    allow_unauthenticated: bool = False,
 ) -> None:
     """Imperative variant of :func:`make_token_dependency`.
 
     Useful when validation happens outside the FastAPI dependency
-    pipeline (e.g. from a websocket handler or background task).
+    pipeline (e.g. from a websocket handler or background task). Same
+    contract for an empty ``secret``: refused unless
+    ``allow_unauthenticated=True``.
 
     Args:
         secret (str): The shared secret.
         token (str): The token to verify.
         error_message (str): Message attached on failure.
+        allow_unauthenticated (bool): Accept an empty ``secret`` and let
+            the call through.
 
     Raises:
-        UnauthorizedException: When ``secret`` is non-empty and the
-            tokens do not match in constant time.
+        ValueError: When ``secret`` is empty and ``allow_unauthenticated``
+            is ``False``.
+        UnauthorizedException: When the tokens do not match in constant
+            time.
     """
+    _refuse_empty_secret(
+        secret, allow_unauthenticated=allow_unauthenticated, caller="require_x_token"
+    )
     if not secret:
         return
     if not hmac.compare_digest(token, secret):

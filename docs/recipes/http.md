@@ -118,7 +118,7 @@ Pontos-chave:
 
     Todos os handlers respeitam `RequestIDMiddleware`: a linha de log carrega o `request_id`, e o envelope expõe ele em `details` para correlacionar com o cliente. Passe `log_traceback=False` se um APM (Sentry, OpenTelemetry) já estiver capturando a trace.
 - `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` monta `GET /health/liveness` e `GET /health/readiness` (retorna `503` quando algum check falha) no prefixo raiz — veja [Liveness e readiness](#liveness-e-readiness).
-- `make_token_dependency(secret)` retorna uma dependência async que valida `X-Token` via `hmac.compare_digest`; passe uma string vazia para desabilitar no dev. A dependência vive ao lado do resto da cola de auth em `src/api/dependencies/auth.py` quando crescer além do one-liner acima.
+- `make_token_dependency(secret)` retorna uma dependência async que valida `X-Token` via `hmac.compare_digest`; segredo vazio levanta `ValueError` ao montar a dependência — para rodar local sem gate, passe `allow_unauthenticated=True`. A dependência vive ao lado do resto da cola de auth em `src/api/dependencies/auth.py` quando crescer além do one-liner acima.
 
 ### Liveness e readiness
 

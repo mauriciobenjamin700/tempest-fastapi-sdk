@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.341.0] — 2026-11-01
-
 ### Security
 
 - `EnvironmentSettings.ENV` deixa de ter default (era `"development"`):
@@ -21,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deixa de voltar na resposta para quem digitou o e-mail.
 - `tempest new`: o conftest gerado fixa `ENV=test` e a migração baseline
   roda com `ENV=development`.
+- `make_token_dependency` e `require_x_token` recusam segredo vazio (ou só
+  espaço) com `ValueError`: antes, segredo vazio desligava a checagem em
+  silêncio, e um `TOKEN_SECRET` esquecido no `.env` de produção deixava
+  público todo endpoint atrás do gate. O opt-out explícito é o novo
+  `allow_unauthenticated=True`. O `src/api/dependencies/auth.py` gerado pelo
+  `tempest new` passa `allow_unauthenticated=settings.ENV != "production"`.
+
+## [0.341.0] — 2026-11-01
+
+### Security
+
 - `verify_signature` do Mercado Pago e as duas fábricas de dependency
   (`make_mercado_pago_webhook_dependency`,
   `make_mercado_pago_webhook_delivery_dependency`) passam a conferir o `ts`
