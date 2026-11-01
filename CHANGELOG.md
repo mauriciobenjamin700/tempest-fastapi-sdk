@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tempest_fastapi_sdk.integrations.payment.mercado_pago`.
 - `Formula` em `tempest_fastapi_sdk.spreadsheet`, para escrever uma fórmula
   viva de propósito; `CellValue` passa a aceitá-lo.
+- `HTTPClient(request_id_header=...)` escolhe o nome do header com que o id
+  do request em curso sai para o upstream. O padrão continua
+  `REQUEST_ID_HEADER` (`X-Request-ID`); antes o nome era fixo, então um
+  serviço com `RequestIDMiddleware(header_name="X-Correlation-ID")` recebia o
+  id em um nome e repassava em outro, e o parceiro que esperava
+  `X-Correlation-ID` não via nada. Nome vazio levanta `ValueError`.
+
+### Fixed
+
+- `HTTPClient`: header de request id passado na chamada com outra caixa
+  (`x-request-id`) era enviado **junto** com o id propagado, como dois valores
+  no mesmo header. A checagem agora ignora maiúsculas e o header explícito
+  vence.
 
 ## [0.340.0] — 2026-11-01
 

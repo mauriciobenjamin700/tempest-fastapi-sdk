@@ -196,6 +196,82 @@ class TestRequestIDPropagation:
             await client.aclose()
 
 
+class TestRequestIDHeaderName:
+    """``request_id_header=`` picks the outbound name; explicit headers win."""
+
+    @staticmethod
+    async def _send(
+        client_kwargs: dict[str, object],
+        call_headers: dict[str, str] | None = None,
+    ) -> list[tuple[str, str]]:
+        """Send one GET with ``trace-xyz`` bound and return the raw headers.
+
+        Args:
+            client_kwargs (dict[str, object]): Extra ``HTTPClient`` keywords.
+            call_headers (dict[str, str] | None): Headers passed on the call.
+
+        Returns:
+            list[tuple[str, str]]: Every header the upstream received,
+            lowercased name first, duplicates preserved.
+        """
+        captured: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.extend(
+                (name.decode().lower(), value.decode())
+                for name, value in request.headers.raw
+            )
+            return httpx.Response(200)
+
+        client = HTTPClient(
+            base_url="http://api.test",
+            failure_threshold=0,
+            transport=_mock_transport(handler),
+            **client_kwargs,  # type: ignore[arg-type]
+        )
+        token = set_request_id("trace-xyz")
+        try:
+            await client.get("/x", headers=call_headers)
+        finally:
+            clear_request_id(token)
+            await client.aclose()
+        return captured
+
+    async def test_custom_header_name_is_used(self) -> None:
+        sent = await self._send({"request_id_header": "X-Correlation-ID"})
+        assert ("x-correlation-id", "trace-xyz") in sent
+        assert all(name != REQUEST_ID_HEADER.lower() for name, _ in sent)
+
+    async def test_default_header_name_unchanged(self) -> None:
+        sent = await self._send({})
+        assert (REQUEST_ID_HEADER.lower(), "trace-xyz") in sent
+
+    async def test_explicit_header_wins_case_insensitively(self) -> None:
+        """Regression: a lowercase explicit header used to be sent twice."""
+        sent = await self._send({}, {"x-request-id": "explicit"})
+        values = [v for name, v in sent if name == REQUEST_ID_HEADER.lower()]
+        assert values == ["explicit"]
+
+    async def test_explicit_custom_header_wins(self) -> None:
+        sent = await self._send(
+            {"request_id_header": "X-Correlation-ID"},
+            {"X-CORRELATION-ID": "explicit"},
+        )
+        values = [v for name, v in sent if name == "x-correlation-id"]
+        assert values == ["explicit"]
+
+    async def test_propagation_off_sends_nothing(self) -> None:
+        sent = await self._send(
+            {"request_id_header": "X-Correlation-ID", "propagate_request_id": False}
+        )
+        assert all(v != "trace-xyz" for _, v in sent)
+
+    @pytest.mark.parametrize("name", ["", "   "])
+    def test_blank_header_name_rejected(self, name: str) -> None:
+        with pytest.raises(ValueError, match="request_id_header"):
+            HTTPClient(request_id_header=name)
+
+
 class TestTransportInjection:
     async def test_transport_param_builds_client(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

@@ -96,51 +96,6 @@ async def call() -> None:
   `X-Request-ID` (from `RequestIDMiddleware`) is forwarded to the upstream,
   stitching logs end-to-end.
 
-!!! warning "The outbound header is always `X-Request-ID`"
-    The name comes from the `REQUEST_ID_HEADER` constant, not from
-    `RequestIDMiddleware`'s `header_name`. With the middleware reading
-    `X-Correlation-ID`, the **id** is propagated, but under `X-Request-ID`:
-
-    ```python
-    import httpx
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    from tempest_fastapi_sdk import REQUEST_ID_HEADER, HTTPClient, RequestIDMiddleware
-
-    seen: dict[str, str | None] = {}
-
-
-    def upstream(request: httpx.Request) -> httpx.Response:
-        seen["X-Request-ID"] = request.headers.get("X-Request-ID")
-        seen["X-Correlation-ID"] = request.headers.get("X-Correlation-ID")
-        return httpx.Response(200, json={})
-
-
-    client: HTTPClient = HTTPClient(base_url="http://upstream", transport=httpx.MockTransport(upstream))
-    app: FastAPI = FastAPI()
-    app.add_middleware(RequestIDMiddleware, header_name="X-Correlation-ID")
-
-
-    @app.get("/call")
-    async def call() -> dict[str, str | None]:
-        await client.get("/")
-        return dict(seen)
-
-
-    print(REQUEST_ID_HEADER)
-    print(TestClient(app).get("/call", headers={"X-Correlation-ID": "abc-123"}).json())
-    ```
-
-    ```text
-    X-Request-ID
-    {'X-Request-ID': 'abc-123', 'X-Correlation-ID': None}
-    ```
-
-    If the upstream expects another name, pass the header explicitly on the
-    call (`headers={"X-Correlation-ID": get_request_id()}`) or turn
-    propagation off with `propagate_request_id=False`.
-
 !!! warning "`stream()` only retries before the first line"
     In `client.stream(...)`, retry and the circuit-breaker cover only
     **opening** the stream. Once the first line was yielded, a mid-stream
@@ -173,6 +128,75 @@ async def call() -> None:
     expose a `get_http_client`, and close it on the lifespan with
     `await client.aclose()` — so the connection pool is reused across
     requests.
+
+### The outbound header name: `request_id_header=`
+
+`RequestIDMiddleware(header_name=...)` decides where the id is **read
+from**. The name it **leaves** under belongs to `HTTPClient`: `X-Request-ID`
+by default (the `REQUEST_ID_HEADER` constant), or whatever you pass in
+`request_id_header=`. They are independent on purpose: each upstream expects
+its own name.
+
+```python
+import httpx
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import HTTPClient, RequestIDMiddleware
+
+seen: list[dict[str, str | None]] = []
+
+
+def upstream(request: httpx.Request) -> httpx.Response:
+    seen.append(
+        {
+            "X-Request-ID": request.headers.get("X-Request-ID"),
+            "X-Correlation-ID": request.headers.get("X-Correlation-ID"),
+        }
+    )
+    return httpx.Response(200, json={})
+
+
+default_client: HTTPClient = HTTPClient(base_url="http://upstream", transport=httpx.MockTransport(upstream))
+partner_client: HTTPClient = HTTPClient(
+    base_url="http://upstream",
+    request_id_header="X-Correlation-ID",
+    transport=httpx.MockTransport(upstream),
+)
+app: FastAPI = FastAPI()
+app.add_middleware(RequestIDMiddleware, header_name="X-Correlation-ID")
+
+
+@app.get("/call")
+async def call() -> list[dict[str, str | None]]:
+    seen.clear()
+    await default_client.get("/")
+    await partner_client.get("/")
+    await partner_client.get("/", headers={"x-correlation-id": "manual"})
+    return list(seen)
+
+
+for row in TestClient(app).get("/call", headers={"X-Correlation-ID": "abc-123"}).json():
+    print(row)
+```
+
+```text
+{'X-Request-ID': 'abc-123', 'X-Correlation-ID': None}
+{'X-Request-ID': None, 'X-Correlation-ID': 'abc-123'}
+{'X-Request-ID': None, 'X-Correlation-ID': 'manual'}
+```
+
+- `default_client` forwards the id under the default name, `X-Request-ID`,
+  even with the middleware reading `X-Correlation-ID`.
+- `partner_client` forwards it under the name the partner expects.
+- A header passed on the call wins over the propagated one, and the
+  comparison ignores case: an explicit `x-correlation-id` replaces the id
+  instead of sending two values.
+
+!!! check "Since the next release"
+    Up to 0.340.0 the outbound name was fixed at `X-Request-ID`, and an
+    explicit lowercase `x-request-id` was sent **alongside** the propagated
+    id, as two values in the same header.
 
 ## The same curve outside HTTP — `async_retry`
 
@@ -254,7 +278,7 @@ async def publish(payload: dict[str, str]) -> None:
 
 ## Recap
 
-- `HTTPClient` = typed `httpx.AsyncClient` + retry/backoff/circuit-breaker + X-Request-ID.
+- `HTTPClient` = typed `httpx.AsyncClient` + retry/backoff/circuit-breaker + X-Request-ID (outbound name via `request_id_header=`).
 - No extra required (`httpx` ships with the base package; `[http]` is optional). Methods `get/post/put/patch/delete/request` → `httpx.Response`.
 - `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controls retries; `retry_on_read_timeout=False` for an expensive call (generation).
 - `async_retry(policy, exceptions, logger=)` applies the curve to any coroutine; `logger=` takes a `logging.Logger` or a `LogUtils`.
