@@ -460,3 +460,12 @@ class TestStreamSpeech:
             async for _ in _speech(handler).stream_speech("oi", language="pt"):
                 pass
         assert caught.value.details == {"field": "language"}
+
+    async def test_wav_stream_is_passed_through_raw(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert json.loads(request.content)["response_format"] == "wav"
+            return httpx.Response(200, content=STREAMED_WAV)
+
+        speech = _speech(handler)
+        chunks = [c async for c in speech.stream_speech("oi", response_format="wav")]
+        assert b"".join(chunks) == STREAMED_WAV

@@ -15,13 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   áudio.
 - `HTTPClient.stream_bytes`: corpo binário em chunks, com o contrato de retry
   e circuit-breaker do `stream`. Nos dois, um status de erro tem o corpo lido
-  antes do `raise` (`exc.response.content` traz a mensagem do servidor).
+  antes do `raise` (`exc.response.content` traz a mensagem do servidor), e
+  fechar o gerador cedo fecha a conexão na hora.
 - `MusicGenerator(melody=...)` e `accepts_melody`: com um checkpoint
   `musicgen-melody`, a música segue a melodia de um clipe de referência
   (decodificado pelo `load_audio`, features convertidas para a precisão do
   modelo, sem o que o bf16 quebra com `mat1 and mat2 must have the same
-  dtype`); melodia num checkpoint sem suporte é `422`. Medido: 10 s em
-  10,8 s, pico de 3,3 GiB.
+  dtype`); melodia num checkpoint sem suporte é `422`, arquivo inexistente é
+  recusado antes de carregar o modelo e clipe acima de `MAX_MELODY_SECONDS`
+  (60) é `422`. Medido com `transformers` 4.57.6 em bf16 na RTX 4070 Ti
+  SUPER: 10 s em 10,8 s, pico de 3,3 GiB.
 
 - `BarkSpeech` (`tempest_fastapi_sdk.genai.audio`, extra `[genai]`): TTS
   local com o Bark (`suno/bark-small`, pesos MIT) e os 261 presets de voz do

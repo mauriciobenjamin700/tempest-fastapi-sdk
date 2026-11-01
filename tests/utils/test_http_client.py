@@ -381,6 +381,31 @@ class TestStreamBytes:
             await client.aclose()
 
 
+class TestStreamEarlyClose:
+    async def test_closing_after_one_chunk_closes_the_response(self) -> None:
+        closed: list[bool] = []
+
+        class _Body(httpx.AsyncByteStream):
+            async def __aiter__(self) -> AsyncIterator[bytes]:
+                for _ in range(100):
+                    yield b"chunk"
+
+            async def aclose(self) -> None:
+                closed.append(True)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, stream=_Body())
+
+        client = HTTPClient(transport=_mock_transport(handler), failure_threshold=0)
+        try:
+            chunks = client.stream_bytes("GET", "http://api.test/a")
+            assert await chunks.__anext__() == b"chunk"
+            await chunks.aclose()
+            assert closed == [True]
+        finally:
+            await client.aclose()
+
+
 class TestReadTimeoutRetry:
     """``RetryPolicy.retry_on_read_timeout`` gates only the read timeout."""
 

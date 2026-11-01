@@ -31,7 +31,11 @@ from tempest_fastapi_sdk.genai import (
     make_genai_router,
 )
 from tempest_fastapi_sdk.genai import music_generation as music_module
-from tempest_fastapi_sdk.genai.music_generation import check_music_config, music_tokens
+from tempest_fastapi_sdk.genai.music_generation import (
+    MAX_MELODY_SECONDS,
+    check_music_config,
+    music_tokens,
+)
 
 FRAME_RATE: int = 50
 MAX_POSITIONS: int = 2048
@@ -473,14 +477,26 @@ class TestMelody:
         assert caught.value.details == {"field": "melody"}
         assert fakes.model.calls == []
 
-    async def test_melody_path_must_exist(
+    async def test_missing_melody_is_refused_before_loading(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
-        _install(monkeypatch, model_type="musicgen_melody")
-        with pytest.raises(FileNotFoundError):
-            await MusicGenerator("m", device="cpu").generate(
-                "x", melody=tmp_path / "missing.wav"
-            )
+        fakes = _install(monkeypatch, model_type="musicgen_melody")
+        generator = MusicGenerator("m", device="cpu")
+        with pytest.raises(FileNotFoundError) as caught:
+            await generator.generate("x", melody=tmp_path / "secret" / "missing.wav")
+        assert generator.is_loaded is False
+        assert fakes.loaded == []
+        assert str(tmp_path) not in str(caught.value)
+
+    async def test_a_melody_past_the_ceiling_is_a_422(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fakes = _install(monkeypatch, model_type="musicgen_melody")
+        too_long = _wav(seconds=MAX_MELODY_SECONDS + 1, rate=8000)
+        with pytest.raises(ValidationException) as caught:
+            await MusicGenerator("m", device="cpu").generate("x", melody=too_long)
+        assert "max_seconds" in caught.value.details
+        assert fakes.model.calls == []
 
     async def test_plain_checkpoint_loads_the_plain_class(
         self, monkeypatch: pytest.MonkeyPatch

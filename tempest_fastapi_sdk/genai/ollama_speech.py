@@ -40,6 +40,7 @@ from __future__ import annotations
 import asyncio
 import struct
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -402,6 +403,13 @@ class OllamaSpeech(_OllamaClientMixin):
                 language.
             response_format (SpeechFormat): ``"pcm"`` or ``"wav"``.
 
+        Closing the iterator early (a client that disconnects from a
+        ``StreamingResponse``) closes the daemon connection right away. The
+        stream runs inside the same ``"speech"`` tracing span as
+        :meth:`synthesize`. A ``"wav"`` stream is passed through as the daemon
+        sends it; only :meth:`synthesize`, which holds the whole clip, can
+        rewrite the header sizes.
+
         Yields:
             bytes: The audio, chunk by chunk.
 
@@ -415,16 +423,18 @@ class OllamaSpeech(_OllamaClientMixin):
         """
         payload = self._speech_payload(text, voice, speaker, language, response_format)
         httpx = _require_httpx()
-        try:
-            async for chunk in self._http().stream_bytes(
-                "POST",
-                f"{self.base_url}/v1/audio/speech",
-                json=payload,
-            ):
-                yield chunk
-        except httpx.HTTPStatusError as exc:
-            _raise_for_response(self.model, exc.response)
-            raise
+        chunks = self._http().stream_bytes(
+            "POST",
+            f"{self.base_url}/v1/audio/speech",
+            json=payload,
+        )
+        async with genai_span("speech", self.model), aclosing(chunks):
+            try:
+                async for chunk in chunks:
+                    yield chunk
+            except httpx.HTTPStatusError as exc:
+                _raise_for_response(self.model, exc.response)
+                raise
 
     async def transcribe(
         self,

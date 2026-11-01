@@ -29,7 +29,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from contextlib import aclosing, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -486,7 +487,7 @@ class HTTPClient:
         files: Any = None,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str, None]:
         """Stream a response body line by line (e.g. NDJSON).
 
         Retries and the circuit-breaker cover **only opening the stream** —
@@ -499,7 +500,10 @@ class HTTPClient:
         retried raises ``httpx.HTTPStatusError`` before any line is yielded, so
         the caller never has to inspect ``status_code`` on a stream; its body
         is read first, so ``exc.response.content`` carries the server's
-        message.
+        message (a failure reading that body is swallowed, so it never turns
+        the status error into a retry). Closing the generator early -- a
+        ``break``, a client that disconnects -- closes the connection right
+        away rather than at garbage collection.
 
         Args:
             method (str): HTTP verb.
@@ -524,7 +528,7 @@ class HTTPClient:
             httpx.HTTPError: When every open attempt failed with a network
                 error (the last exception is re-raised).
         """
-        async for line in self._stream(
+        pieces = self._stream(
             method,
             url,
             lines=True,
@@ -535,8 +539,10 @@ class HTTPClient:
             files=files,
             headers=headers,
             timeout=timeout,
-        ):
-            yield line if isinstance(line, str) else line.decode()
+        )
+        async with aclosing(pieces):
+            async for line in pieces:
+                yield line if isinstance(line, str) else line.decode()
 
     async def stream_bytes(
         self,
@@ -550,7 +556,7 @@ class HTTPClient:
         files: Any = None,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
-    ) -> AsyncIterator[bytes]:
+    ) -> AsyncGenerator[bytes, None]:
         """Stream a response body as raw byte chunks (audio, files).
 
         The same retry, circuit-breaker and error contract as :meth:`stream`
@@ -580,7 +586,7 @@ class HTTPClient:
             httpx.HTTPError: When every open attempt failed with a network
                 error.
         """
-        async for chunk in self._stream(
+        pieces = self._stream(
             method,
             url,
             lines=False,
@@ -591,8 +597,10 @@ class HTTPClient:
             files=files,
             headers=headers,
             timeout=timeout,
-        ):
-            yield chunk if isinstance(chunk, bytes) else chunk.encode()
+        )
+        async with aclosing(pieces):
+            async for chunk in pieces:
+                yield chunk if isinstance(chunk, bytes) else chunk.encode()
 
     async def _stream(
         self,
@@ -607,7 +615,7 @@ class HTTPClient:
         files: Any,
         headers: Mapping[str, str] | None,
         timeout: float | None,
-    ) -> AsyncIterator[str | bytes]:
+    ) -> AsyncGenerator[str | bytes, None]:
         """Open a streamed response with retries and yield lines or chunks.
 
         Args:
@@ -662,7 +670,8 @@ class HTTPClient:
                         retry_status = True
                     else:
                         if response.is_error:
-                            await response.aread()
+                            with suppress(_httpx_mod.HTTPError):
+                                await response.aread()
                         response.raise_for_status()
                         await self._breaker_record(host, failed=False)
                         pieces: AsyncIterator[str | bytes] = (

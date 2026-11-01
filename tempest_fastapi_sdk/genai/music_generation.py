@@ -61,6 +61,14 @@ from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _MAX_SEED: int = 2**32 - 1
 
+MAX_MELODY_SECONDS: float = 60.0
+"""Longest reference melody ``generate`` decodes.
+
+A clip far longer than the output only costs decode time and memory on the
+worker thread, which holds the model while it runs; past this the decode
+refuses with ``422`` (``details["max_seconds"]``).
+"""
+
 MELODY_MODEL_TYPE: str = "musicgen_melody"
 """``config.model_type`` of the checkpoints that accept a reference melody."""
 
@@ -312,6 +320,9 @@ class MusicGenerator:
             ImportError: When the ``[genai]`` extra is missing.
             OSError: When the checkpoint cannot be downloaded or read.
             ValueError: When the checkpoint is not a MusicGen model.
+
+        The checkpoint config is read once more (``AutoConfig``, from the
+        same cache and pinning as the weights) to pick the melody class.
         """
         torch, transformers = _require_transformers()
         loader = self.source.loader_kwargs()
@@ -431,7 +442,11 @@ class MusicGenerator:
             if melody is not None:
                 from tempest_fastapi_sdk.genai.audio.decoding import load_audio
 
-                samples = load_audio(melody, target_rate=self._sample_rate)
+                samples = load_audio(
+                    melody,
+                    target_rate=self._sample_rate,
+                    max_seconds=MAX_MELODY_SECONDS,
+                )
                 processor_kwargs = {
                     "audio": [samples] * count,
                     "sampling_rate": self._sample_rate,
@@ -492,7 +507,10 @@ class MusicGenerator:
                 ``[genai-audio]``), mixed to mono at the model's rate, and
                 its input features are cast to the model's precision -- in
                 bf16 they otherwise fail with ``mat1 and mat2 must have the
-                same dtype``. A string is always a path, never fetched.
+                same dtype``. A string is always a path, never fetched; a
+                missing file is refused before the model loads, and a clip
+                longer than :data:`MAX_MELODY_SECONDS` is refused when
+                decoded.
 
         Returns:
             list[GeneratedAudio]: The clips, mono or stereo as the checkpoint
@@ -513,6 +531,14 @@ class MusicGenerator:
             FileNotFoundError: When ``melody`` is a path that does not exist.
         """
         refuse_unsupported_fields(config)
+        if (
+            melody is not None
+            and not isinstance(melody, bytes)
+            and not await asyncio.to_thread(Path(melody).is_file)
+        ):
+            raise FileNotFoundError(
+                f"melody must be a local file, got {Path(melody).name!r}",
+            )
         seed = (
             config.seed
             if config is not None and config.seed is not None
@@ -547,6 +573,7 @@ class MusicGenerator:
 
 
 __all__: list[str] = [
+    "MAX_MELODY_SECONDS",
     "MELODY_MODEL_TYPE",
     "UNSUPPORTED_FIELDS",
     "MusicGenerator",
