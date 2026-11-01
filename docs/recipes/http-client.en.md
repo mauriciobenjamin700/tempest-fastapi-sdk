@@ -193,7 +193,7 @@ for row in TestClient(app).get("/call", headers={"X-Correlation-ID": "abc-123"})
   comparison ignores case: an explicit `x-correlation-id` replaces the id
   instead of sending two values.
 
-!!! check "Since the next release"
+!!! check "Since 0.341.0"
     Up to 0.340.0 the outbound name was fixed at `X-Request-ID`, and an
     explicit lowercase `x-request-id` was sent **alongside** the propagated
     id, as two values in the same header.
