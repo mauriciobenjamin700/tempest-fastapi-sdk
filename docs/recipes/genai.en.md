@@ -956,8 +956,10 @@ becomes an indexed embedding, and before answering you recall the most
 relevant snippets from **that same user** — even from old chats. Recall is
 recency-aware: what is semantically close *and* recent floats to the top.
 
-Needs the `[genai-chroma]` extra (ChromaDB). The embedder is any
-`SupportsEmbed` — here an `OllamaEmbedder`, no torch:
+Needs the `[genai-chroma]` extra (ChromaDB) — if the service already runs
+Postgres, see [Memory in Postgres with pgvector](#memory-in-postgres-with-pgvector),
+which does without it. The embedder is any `SupportsEmbed` — here an
+`OllamaEmbedder`, no torch:
 
 ```python
 import asyncio
@@ -1052,6 +1054,160 @@ the ISO string. Sorting the ISO strings put `10:00+05:00` after
         ChromaVectorStore(collection_name="kb", persist_directory="./kb"),
     )
     ```
+
+### Memory in Postgres with pgvector
+
+Does your service already run Postgres? Then ChromaDB is a **second
+database**: outside the application's backups and outside its transactions —
+deleting a conversation and its memory stops being atomic. `PgChatMemory` is
+the same memory in a pgvector table of the database you already have: same
+methods (`index`, `search`, `delete_for_chat`, `delete_for_user`), same
+parameters and the same ranking (similarity floor, recency re-rank,
+over-fetch, per-user quota).
+
+It does **not** need the `[genai-chroma]` extra nor the `pgvector` package:
+the vector travels as text and Postgres casts it. All it takes is the async
+driver (`[postgres]`, which brings `asyncpg`) and the `vector` extension on
+the server.
+
+Switching backends means switching the class — the rest of the code stays
+the same:
+
+```python
+import asyncio
+from datetime import UTC, datetime
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import PgChatMemory
+
+db = AsyncDatabaseManager("postgresql+asyncpg://app:app@localhost:5432/app")
+memory = PgChatMemory(
+    OllamaEmbedder("nomic-embed-text"),
+    db,
+    dim=768,                 # the embedder's vector size
+    table="chat_memory",
+)
+
+
+async def main() -> None:
+    await db.connect()
+    await memory.ensure_schema()   # CREATE EXTENSION + table + indexes
+
+    await memory.index(
+        user_id="u1", chat_id="c1", message_id="m1",
+        role="user", content="Trabalho com FastAPI e Postgres.",
+        created_at=datetime.now(UTC),
+    )
+    hits = await memory.search(
+        user_id="u1",
+        query="Com que framework e banco ele trabalha?",
+        exclude_chat_id="c2",
+    )
+    for hit in hits:
+        print(f"{hit.score:.2f}  {hit.content}")
+
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+With `nomic-embed-text` (which produces 768-dimension vectors) on a local
+Ollama and `pgvector/pgvector:pg17`, this prints:
+
+```text
+0.68  Trabalho com FastAPI e Postgres.
+```
+
+Every search is `WHERE user_id = :user_id` (plus
+`chat_id <> :exclude_chat_id` when you pass `exclude_chat_id`) **before**
+ordering by the cosine distance `<=>` — one user's memory never shows up for
+another. `message_id` is the primary key: indexing the same message again
+replaces the row, and a `message_id` that already belongs to another user is
+refused with `ValueError`.
+
+#### Delete the conversation and its memory in one transaction
+
+`delete_for_chat` and `delete_for_user` accept **your** session. When you
+pass it, the `DELETE` joins your transaction: if the rest fails, the memory
+comes back with it.
+
+```python
+from sqlalchemy import text
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai.rag import PgChatMemory
+
+
+async def delete_chat(
+    db: AsyncDatabaseManager,
+    memory: PgChatMemory,
+    *,
+    user_id: str,
+    chat_id: str,
+) -> None:
+    async with db.transaction() as session:
+        await session.execute(
+            text("DELETE FROM chats WHERE id = :id AND owner_id = :owner"),
+            {"id": chat_id, "owner": user_id},
+        )
+        await memory.delete_for_chat(
+            user_id=user_id, chat_id=chat_id, session=session,
+        )
+```
+
+Without `session`, each delete opens and commits a session of its own.
+
+#### The `vector` extension on the server
+
+`ensure_schema()` runs `CREATE EXTENSION IF NOT EXISTS vector`, so Postgres
+must have the extension installed **and** the application role must be
+allowed to create it (otherwise run `CREATE EXTENSION vector` once as a
+superuser before starting the service).
+
+!!! warning "The official `postgres:*-alpine` image does not ship pgvector"
+    On `postgres:17-alpine`, `CREATE EXTENSION vector` fails with:
+
+    ```text
+    ERROR:  extension "vector" is not available
+    DETAIL:  Could not open extension control file "/usr/local/share/postgresql/extension/vector.control": No such file or directory.
+    HINT:  The extension must first be installed on the system where PostgreSQL is running.
+    ```
+
+    Use an image that already ships the extension, such as
+    `pgvector/pgvector:pg17`:
+
+    ```yaml
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        environment:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - "127.0.0.1:5432:5432"
+    ```
+
+#### HNSW index (optional)
+
+Without an approximate index the search is exact: the `(user_id,
+created_at)` B-tree finds the user's rows and Postgres sorts only those. At a
+typical user's volume, that is enough. For large tables,
+`ensure_schema(ann_index="hnsw")` builds the HNSW index (`vector_cosine_ops`),
+the same one `PgVectorStore` builds.
+
+!!! info "HNSW with a per-user filter needs pgvector 0.8.0+"
+    The HNSW index returns at most `hnsw.ef_search` rows (of any user) and the
+    `user_id` filter runs afterwards. Measured on pgvector 0.8.6, with 50 000
+    rows and a user owning 500 of them, the plan used HNSW and that user's
+    search came back **empty**. Since 0.8.0 pgvector has *iterative index
+    scans*: `search` turns on `hnsw.iterative_scan` in its own transaction,
+    and the same search returns its 5 hits. That is why
+    `ensure_schema(ann_index=...)` refuses an older pgvector with
+    `RuntimeError` — without an approximate index, the exact search works on
+    any version.
 
 ## AI chat pipeline
 
@@ -4103,6 +4259,8 @@ and threshold before paying for transcription.
 - **`ChatMemory` / `ChromaVectorStore`** — per-user long-term memory with
   similarity + recency recall (`[genai-chroma]`); `ChromaVectorStore` is a
   persistent `VectorStore` for generic RAG.
+- **`PgChatMemory`** — the same memory in a pgvector table of the service's
+  Postgres, without `[genai-chroma]`; deletes join your transaction.
 - **`AIChatPipeline` / `make_ai_chat_router`** — a full chatbot in-process
   (memory + web RAG + tool-calling + optional TTS); one stateless router
   (`/chat` + `/chat/stream` SSE) kills the inference microservice.

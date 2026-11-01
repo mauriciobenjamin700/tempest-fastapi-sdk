@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `PgChatMemory` em `tempest_fastapi_sdk.genai.rag` (#684): o `ChatMemory`
+  numa tabela pgvector do Postgres do serviço, sem o extra `[genai-chroma]`
+  nem o pacote `pgvector` — basta `[postgres]` e `CREATE EXTENSION vector`.
+  Mesma superfície (`index`, `search`, `delete_for_chat`, `delete_for_user`),
+  mesmos parâmetros e o mesmo ranking (piso de similaridade, re-rank por
+  recência, over-fetch, cota por usuário com despejo do instante mais
+  antigo). A busca é sempre `WHERE user_id = :user_id` antes de ordenar por
+  `<=>`; `message_id` é a chave do upsert e um id de outro usuário é recusado
+  com `ValueError`; as duas deleções aceitam `session=` e entram na
+  transação de quem chama. `ensure_schema(ann_index="hnsw" | "ivfflat")`
+  constrói o índice aproximado e exige pgvector 0.8.0+: a busca liga
+  `hnsw.iterative_scan` na própria transação, porque sem isso — medido no
+  pgvector 0.8.6, 50 000 linhas, usuário dono de 500 — o HNSW devolvia zero
+  resultados para esse usuário.
+- `AIChatPipeline(memory=...)` aceita `ChatMemory | PgChatMemory`.
+
 ### Changed
+
+- `MemoryHit` e o ranking da memória moram em
+  `tempest_fastapi_sdk.genai.rag.memory`, compartilhados pelos dois backends;
+  `from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit` continua
+  funcionando.
 
 - `[genai-audio]` deixa de fixar `transformers<5` e passa a exigir
   `coqui-tts>=0.28.0`, que não importa mais o `isin_mps_friendly` removido na
@@ -33,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignorar os seis avisos dela (`PYSEC-2025-217`, `PYSEC-2026-2288`,
   `PYSEC-2026-2289`, `PYSEC-2026-2290`, `PYSEC-2026-3929`,
   `PYSEC-2026-4174`); nenhum se aplica à 5.22.1.
+
 
 ## [0.341.0] — 2026-11-01
 

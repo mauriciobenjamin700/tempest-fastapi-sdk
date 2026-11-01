@@ -54,6 +54,26 @@ parameters), so anything outside this shape is refused at construction.
 """
 
 
+def _check_pg_target(*, table: str, dim: int) -> None:
+    """Refuse a table name or embedding dimension unsafe to interpolate.
+
+    Args:
+        table (str): Table name, bare or ``schema.table``, unquoted.
+        dim (int): Embedding dimension.
+
+    Raises:
+        ValueError: When ``table`` is not a plain Postgres identifier or
+            ``dim`` is not a positive integer.
+    """
+    if not _PG_TABLE_RE.fullmatch(table):
+        raise ValueError(
+            f"table must be a bare or schema-qualified identifier "
+            f"([A-Za-z_][A-Za-z0-9_]*, at most 63 chars each), got {table!r}",
+        )
+    if isinstance(dim, bool) or not isinstance(dim, int) or dim <= 0:
+        raise ValueError(f"dim must be a positive integer, got {dim!r}")
+
+
 def _positive_int(name: str, value: int | None) -> None:
     """Refuse anything but ``None`` or a positive ``int`` for ``name``.
 
@@ -137,6 +157,125 @@ def _ann_options(
             raise ValueError(f"{name} does not apply to a {ann_index} index")
         options[name] = value
     return options
+
+
+def _embedding_index_name(table: str) -> str:
+    """Name the approximate index of ``table``, schema-qualified like it.
+
+    Args:
+        table (str): The validated bare or ``schema.table`` name.
+
+    Returns:
+        str: ``<table>_embedding_idx``, the bare part truncated so the name
+        fits Postgres' 63-byte identifier limit.
+    """
+    suffix = "_embedding_idx"
+    schema, _, bare = table.rpartition(".")
+    name = f"{bare[: 63 - len(suffix)]}{suffix}"
+    return f"{schema}.{name}" if schema else name
+
+
+async def _ensure_ann_index(
+    session: AsyncSession,
+    *,
+    table: str,
+    index_name: str,
+    ann_index: AnnIndex,
+    options: dict[str, int],
+) -> None:
+    """Build an approximate index on ``embedding``, or confirm the existing one.
+
+    Shared by :class:`PgVectorStore` and
+    :class:`~tempest_fastapi_sdk.genai.rag.PgChatMemory`: both order by
+    ``<=>``, so both build with ``vector_cosine_ops``.
+
+    Args:
+        session (AsyncSession): The open schema session.
+        table (str): The validated table the index belongs to.
+        index_name (str): The index name, schema-qualified like ``table``.
+        ann_index (AnnIndex): The requested method.
+        options (dict[str, int]): The validated ``WITH`` parameters.
+
+    Raises:
+        RuntimeError: When HNSW is requested on pgvector < 0.5.0.
+        ValueError: When an index with the same name exists with another
+            method or other parameters.
+    """
+    from sqlalchemy import text
+
+    raw_version = (
+        await session.execute(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'"),
+        )
+    ).scalar_one()
+    if ann_index == "hnsw" and _parse_version(raw_version) < _HNSW_MIN_PGVECTOR:
+        raise RuntimeError(
+            f"ann_index='hnsw' needs pgvector >= 0.5.0, but the database "
+            f"has {raw_version}; run ALTER EXTENSION vector UPDATE or use "
+            f"ann_index='ivfflat'",
+        )
+    existing = (
+        await session.execute(
+            text(
+                "SELECT am.amname, c.reloptions FROM pg_class c "
+                "JOIN pg_am am ON am.oid = c.relam "
+                "WHERE c.oid = to_regclass(:name)",
+            ),
+            {"name": index_name},
+        )
+    ).first()
+    wanted = {key: str(value) for key, value in options.items()}
+    if existing is not None:
+        found = dict(option.split("=", 1) for option in (existing.reloptions or []))
+        if existing.amname != ann_index or found != wanted:
+            raise ValueError(
+                f"index {index_name} already exists as "
+                f"{existing.amname} {found}, not {ann_index} {wanted}; "
+                f"DROP INDEX {index_name} to rebuild it",
+            )
+        return
+    with_clause = (
+        " WITH (" + ", ".join(f"{k} = {v}" for k, v in options.items()) + ")"
+        if options
+        else ""
+    )
+    bare_name = index_name.rpartition(".")[2]
+    await session.execute(
+        text(
+            f"CREATE INDEX {bare_name} ON {table} "
+            f"USING {ann_index} (embedding vector_cosine_ops){with_clause}",
+        ),
+    )
+
+
+async def _set_search_options(
+    session: AsyncSession,
+    *,
+    ef_search: int | None,
+    probes: int | None,
+) -> None:
+    """Apply per-search index tuning to the current transaction only.
+
+    Uses ``set_config(..., is_local => true)`` — the function form of
+    ``SET LOCAL`` — so the value never leaks to another session sharing the
+    pooled connection.
+
+    Args:
+        session (AsyncSession): The search session.
+        ef_search (int | None): ``hnsw.ef_search``; ``None`` keeps the
+            server setting.
+        probes (int | None): ``ivfflat.probes``; ``None`` keeps the server
+            setting.
+    """
+    from sqlalchemy import text
+
+    settings = {"hnsw.ef_search": ef_search, "ivfflat.probes": probes}
+    for name, value in settings.items():
+        if value is not None:
+            await session.execute(
+                text("SELECT set_config(:name, :value, true)"),
+                {"name": name, "value": str(value)},
+            )
 
 
 @runtime_checkable
@@ -273,13 +412,7 @@ class PgVectorStore:
                 (it is interpolated into SQL, so it is validated here) or
                 ``dim`` is not a positive integer.
         """
-        if not _PG_TABLE_RE.fullmatch(table):
-            raise ValueError(
-                f"table must be a bare or schema-qualified identifier "
-                f"([A-Za-z_][A-Za-z0-9_]*, at most 63 chars each), got {table!r}",
-            )
-        if isinstance(dim, bool) or not isinstance(dim, int) or dim <= 0:
-            raise ValueError(f"dim must be a positive integer, got {dim!r}")
+        _check_pg_target(table=table, dim=dim)
         self._db = db
         self.dim = dim
         self.table = table
@@ -351,7 +484,13 @@ class PgVectorStore:
                 ),
             )
             if ann_index is not None:
-                await self._ensure_ann_index(session, ann_index, options)
+                await _ensure_ann_index(
+                    session,
+                    table=self.table,
+                    index_name=self.ann_index_name,
+                    ann_index=ann_index,
+                    options=options,
+                )
         self._ready = True
 
     @property
@@ -362,74 +501,7 @@ class PgVectorStore:
             str: ``<table>_embedding_idx``, the bare part truncated so the
             name fits Postgres' 63-byte identifier limit.
         """
-        suffix = "_embedding_idx"
-        schema, _, bare = self.table.rpartition(".")
-        name = f"{bare[: 63 - len(suffix)]}{suffix}"
-        return f"{schema}.{name}" if schema else name
-
-    async def _ensure_ann_index(
-        self,
-        session: AsyncSession,
-        ann_index: AnnIndex,
-        options: dict[str, int],
-    ) -> None:
-        """Build the approximate index, or confirm the existing one matches.
-
-        Args:
-            session (AsyncSession): The open schema session.
-            ann_index (AnnIndex): The requested method.
-            options (dict[str, int]): The validated ``WITH`` parameters.
-
-        Raises:
-            RuntimeError: When HNSW is requested on pgvector < 0.5.0.
-            ValueError: When an index with the same name exists with another
-                method or other parameters.
-        """
-        from sqlalchemy import text
-
-        raw_version = (
-            await session.execute(
-                text("SELECT extversion FROM pg_extension WHERE extname = 'vector'"),
-            )
-        ).scalar_one()
-        if ann_index == "hnsw" and _parse_version(raw_version) < _HNSW_MIN_PGVECTOR:
-            raise RuntimeError(
-                f"ann_index='hnsw' needs pgvector >= 0.5.0, but the database "
-                f"has {raw_version}; run ALTER EXTENSION vector UPDATE or use "
-                f"ann_index='ivfflat'",
-            )
-        existing = (
-            await session.execute(
-                text(
-                    "SELECT am.amname, c.reloptions FROM pg_class c "
-                    "JOIN pg_am am ON am.oid = c.relam "
-                    "WHERE c.oid = to_regclass(:name)",
-                ),
-                {"name": self.ann_index_name},
-            )
-        ).first()
-        wanted = {key: str(value) for key, value in options.items()}
-        if existing is not None:
-            found = dict(option.split("=", 1) for option in (existing.reloptions or []))
-            if existing.amname != ann_index or found != wanted:
-                raise ValueError(
-                    f"index {self.ann_index_name} already exists as "
-                    f"{existing.amname} {found}, not {ann_index} {wanted}; "
-                    f"DROP INDEX {self.ann_index_name} to rebuild it",
-                )
-            return
-        with_clause = (
-            " WITH (" + ", ".join(f"{k} = {v}" for k, v in options.items()) + ")"
-            if options
-            else ""
-        )
-        bare_name = self.ann_index_name.rpartition(".")[2]
-        await session.execute(
-            text(
-                f"CREATE INDEX {bare_name} ON {self.table} "
-                f"USING {ann_index} (embedding vector_cosine_ops){with_clause}",
-            ),
-        )
+        return _embedding_index_name(self.table)
 
     async def add(
         self,
@@ -526,14 +598,8 @@ class PgVectorStore:
             await self.ensure_schema()
         from sqlalchemy import text
 
-        settings = {"hnsw.ef_search": ef_search, "ivfflat.probes": probes}
         async with self._db.get_session_context() as session:
-            for name, value in settings.items():
-                if value is not None:
-                    await session.execute(
-                        text("SELECT set_config(:name, :value, true)"),
-                        {"name": name, "value": str(value)},
-                    )
+            await _set_search_options(session, ef_search=ef_search, probes=probes)
             rows = (
                 await session.execute(
                     text(
