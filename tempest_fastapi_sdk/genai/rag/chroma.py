@@ -23,8 +23,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from tempest_fastapi_sdk.genai.rag.memory import (
+    MemoryHit,
+    _check_candidate_multiplier,
+    _MemoryCandidate,
+    _rank_hits,
+)
 from tempest_fastapi_sdk.genai.rag.retriever import _embed_passages, _embed_query
-from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.rag.retriever import SupportsEmbed
@@ -252,29 +257,6 @@ class ChromaVectorStore:
         return results
 
 
-class MemoryHit(BaseSchema):
-    """One recalled chat message, ranked for relevance and recency.
-
-    Attributes:
-        content (str): The message text.
-        role (str): The originating role (``"user"``, ``"assistant"``, …).
-        chat_id (str): The chat the message belongs to.
-        created_at (datetime | None): When the message was created (UTC),
-            or ``None`` when the stored timestamp could not be parsed.
-        similarity (float): Raw cosine similarity in ``[0, 1]`` (the value
-            the similarity floor is applied to).
-        score (float): Final ranking score after the recency-decay blend
-            (equals ``similarity`` when recency re-ranking is disabled).
-    """
-
-    content: str
-    role: str
-    chat_id: str
-    created_at: datetime | None = None
-    similarity: float
-    score: float
-
-
 class ChatMemory:
     """Recency-aware long-term memory for chat messages, backed by ChromaDB.
 
@@ -357,8 +339,7 @@ class ChatMemory:
         Raises:
             ValueError: When ``candidate_multiplier`` is below 1.
         """
-        if candidate_multiplier < 1:
-            raise ValueError("candidate_multiplier must be >= 1")
+        _check_candidate_multiplier(candidate_multiplier)
         self.candidate_multiplier = candidate_multiplier
         self._embedder = embedder
         self.collection_name = collection_name
@@ -617,40 +598,25 @@ class ChatMemory:
         documents: list[str] = (raw.get("documents") or [[]])[0]
         metadatas: list[dict[str, Any]] = (raw.get("metadatas") or [[]])[0]
         distances: list[float] = (raw.get("distances") or [[]])[0]
-
-        now = datetime.now(UTC)
-        scored: list[tuple[float, MemoryHit]] = []
+        candidates: list[_MemoryCandidate] = []
         for idx in range(len(ids_outer[0])):
-            doc: str = documents[idx] if idx < len(documents) else ""
             meta: dict[str, Any] = metadatas[idx] if idx < len(metadatas) else {}
-            distance: float = float(distances[idx]) if idx < len(distances) else 1.0
-            similarity: float = max(0.0, min(1.0, 1.0 - distance))
-            if similarity < floor:
-                continue
-            created_at: datetime | None = _parse_iso(meta.get("created_at"))
-            if self.recency_weight > 0 and self.recency_halflife_days > 0:
-                decay = _recency_decay(created_at, self.recency_halflife_days, now)
-                effective = (
-                    1.0 - self.recency_weight
-                ) * similarity + self.recency_weight * similarity * decay
-            else:
-                effective = similarity
-            scored.append(
-                (
-                    effective,
-                    MemoryHit(
-                        content=doc,
-                        role=str(meta.get("role", "user")),
-                        chat_id=str(meta.get("chat_id", "")),
-                        created_at=created_at,
-                        similarity=similarity,
-                        score=effective,
-                    ),
+            candidates.append(
+                _MemoryCandidate(
+                    content=documents[idx] if idx < len(documents) else "",
+                    role=str(meta.get("role", "user")),
+                    chat_id=str(meta.get("chat_id", "")),
+                    created_at=_parse_iso(meta.get("created_at")),
+                    distance=float(distances[idx]) if idx < len(distances) else 1.0,
                 )
             )
-
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-        return [hit for _, hit in scored[:top_k]]
+        return _rank_hits(
+            candidates,
+            floor=floor,
+            top_k=top_k,
+            recency_weight=self.recency_weight,
+            recency_halflife_days=self.recency_halflife_days,
+        )
 
     async def delete_for_chat(
         self, *, user_id: str | UUID, chat_id: str | UUID
@@ -749,35 +715,6 @@ def _parse_iso(value: Any) -> datetime | None:
         return datetime.fromisoformat(str(value))
     except ValueError:
         return None
-
-
-def _recency_decay(
-    created_at: datetime | None,
-    halflife_days: float,
-    now: datetime,
-) -> float:
-    """Exponential decay factor in ``[0, 1]`` from a message's age.
-
-    ``0.5 ** (age_days / halflife_days)`` — a hit created now returns 1.0,
-    one exactly a half-life old returns 0.5. Missing/invalid timestamps
-    return 1.0 (treat as fresh rather than penalise on a parser bug).
-
-    Args:
-        created_at (datetime | None): When the message was created.
-        halflife_days (float): Age in days at which the factor halves.
-        now (datetime): Reference "now" (UTC).
-
-    Returns:
-        float: The decay factor.
-    """
-    if created_at is None or halflife_days <= 0:
-        return 1.0
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=UTC)
-    age_seconds = max((now - created_at).total_seconds(), 0.0)
-    age_days = age_seconds / 86400.0
-    decay: float = 0.5 ** (age_days / halflife_days)
-    return decay
 
 
 __all__: list[str] = [
