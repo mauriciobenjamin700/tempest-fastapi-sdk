@@ -90,6 +90,9 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     DEFAULT_SIGNATURE_VERSIONS as DEFAULT_SIGNATURE_VERSIONS,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
+    DEFAULT_TOLERANCE_SECONDS as DEFAULT_TOLERANCE_SECONDS,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     MERCADO_PAGO_DATA_ID_QUERY as MERCADO_PAGO_DATA_ID_QUERY,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
@@ -127,6 +130,7 @@ if TYPE_CHECKING:
 _HAND_WRITTEN: tuple[str, ...] = (
     "DEFAULT_BASE_URL",
     "DEFAULT_SIGNATURE_VERSIONS",
+    "DEFAULT_TOLERANCE_SECONDS",
     "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
@@ -223,6 +227,7 @@ def __dir__() -> list[str]:
 __all__: list[str] = [
     "DEFAULT_BASE_URL",
     "DEFAULT_SIGNATURE_VERSIONS",
+    "DEFAULT_TOLERANCE_SECONDS",
     "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",

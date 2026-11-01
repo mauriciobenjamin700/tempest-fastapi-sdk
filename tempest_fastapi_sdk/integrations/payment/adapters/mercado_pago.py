@@ -55,6 +55,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     DEFAULT_SIGNATURE_VERSIONS,
+    DEFAULT_TOLERANCE_SECONDS,
     MercadoPagoWebhookEvent,
     make_mercado_pago_webhook_dependency,
 )
@@ -1037,7 +1038,7 @@ def make_mercado_pago_webhook_delivery_dependency(
     secret: str,
     client: MercadoPagoPixProvider | MercadoPagoCardProvider,
     *,
-    tolerance_seconds: float | None = None,
+    tolerance_seconds: float | None = DEFAULT_TOLERANCE_SECONDS,
     versions: Sequence[str] = DEFAULT_SIGNATURE_VERSIONS,
 ) -> Callable[..., Coroutine[Any, Any, MercadoPagoOrderDelivery]]:
     """Build a FastAPI dependency yielding a verified, re-read delivery.
@@ -1048,7 +1049,8 @@ def make_mercado_pago_webhook_delivery_dependency(
         client (MercadoPagoPixProvider | MercadoPagoCardProvider): Either
             adapter; used to re-read the order.
         tolerance_seconds (float | None): Maximum drift between the
-            signature's ``ts`` and the clock.
+            signature's ``ts`` and the clock. Defaults to
+            :data:`DEFAULT_TOLERANCE_SECONDS`; ``None`` skips the check.
         versions (Sequence[str]): Hash versions to accept, in preference
             order.
 

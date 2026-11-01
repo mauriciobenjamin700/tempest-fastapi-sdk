@@ -301,7 +301,6 @@ from src.core.settings import settings
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 verified = make_mercado_pago_webhook_dependency(
     settings.MERCADOPAGO_WEBHOOK_SECRET,
-    tolerance_seconds=300.0,
 )
 
 
@@ -388,14 +387,23 @@ def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
     return build_manifest(data_id=data_id, request_id=request_id, timestamp=ts)
 ```
 
-!!! tip "Ligue a janela de tolerância"
-    Sem `tolerance_seconds`, uma entrega capturada do fio verifica para
-    sempre: a assinatura cobre um timestamp que ninguém confere. O upstream
-    deixa a janela opcional e nós também, mas `300.0` é o que faz o `ts` do
-    manifesto trabalhar. A unidade do `ts` é lida pela magnitude — os próprios
-    artefatos do provedor discordam entre segundos e milissegundos, e a
+!!! info "A janela de tolerância vem ligada"
+    Desde a 0.341.0, `verify_signature` e as duas fábricas de dependency
+    recusam `ts` a mais de `DEFAULT_TOLERANCE_SECONDS` (`300.0`) do relógio.
+    Sem a janela, uma entrega capturada do fio verifica para sempre: a
+    assinatura cobre um timestamp que ninguém confere. O upstream deixa a
+    janela opcional; `tolerance_seconds=None` devolve esse comportamento. A
+    unidade do `ts` é lida pela magnitude — os próprios artefatos do provedor
+    discordam entre segundos e milissegundos, e a
     [issue #458 deles](https://github.com/mercadopago/sdk-nodejs/issues/458)
     foi exatamente essa confusão.
+
+!!! warning "Reenvio com o `ts` original ainda não foi medido"
+    Se o Mercado Pago reenviar uma notificação que falhou mantendo o `ts` da
+    primeira tentativa, o reenvio que chega depois de cinco minutos é
+    recusado com 401. Nenhuma entrega real foi observada ainda para dizer se
+    o reenvio reassina. Se a sua rota responde erro de propósito para forçar
+    reenvio, passe uma janela maior (`tolerance_seconds=3600.0`).
 
 !!! info "Migração para `v2` não precisa de release"
     O header pode carregar mais de um hash (`ts=..,v1=..,v2=..`). O verificador
@@ -454,7 +462,6 @@ pix: MercadoPagoPixProvider = MercadoPagoPixProvider(http)
 delivery_dependency = make_mercado_pago_webhook_delivery_dependency(
     "<segredo do webhook>",
     pix,
-    tolerance_seconds=300.0,
 )
 
 app: FastAPI = FastAPI()
@@ -643,7 +650,8 @@ make mercadopago-diff
 - Cartão exige tokenização no cliente, com a Public Key.
 - A verificação de webhook é portada do validador do provedor, com o
   manifesto omitindo par ausente e digests conferidos contra `openssl`;
-  falta só uma entrega real para confirmar. Ligue `tolerance_seconds`.
+  falta só uma entrega real para confirmar. A janela de `ts` vem ligada
+  (300 s).
 - `make_mercado_pago_webhook_dependency` monta a rota: lê `data.id`,
   `x-signature` e `x-request-id`, recusa com 401 antes do handler e entrega o
   `data_id` assinado — o corpo não é assinado.

@@ -2,6 +2,13 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.341.0 — Mercado Pago webhook and `.xlsx` formulas
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `verify_signature`, `make_mercado_pago_webhook_dependency` and `make_mercado_pago_webhook_delivery_dependency` | `tolerance_seconds` goes from `None` to `DEFAULT_TOLERANCE_SECONDS` (`300.0`): a delivery whose `ts` is more than five minutes off the clock becomes `False` / 401 | Nothing, with a synchronized clock. A test signing a fixed `ts` passes `now=` or `tolerance_seconds=None`; whoever wants the upstream behaviour passes `tolerance_seconds=None` |
+| `SheetWriter` (`write_row`, `header_row`, `title_block`) | A `str` starting with `=` is written as text, not as a formula | Wrap the legitimate formula in `Formula("=SUM(B5:B24)")` |
+
 ## 0.340.0 — sign-up, Web Push and SSE
 
 | Where | What changes | What to do |

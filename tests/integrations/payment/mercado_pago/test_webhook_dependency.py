@@ -24,7 +24,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
 SECRET: str = "mp-webhook-secret"
 DATA_ID: str = "123456789"
 REQUEST_ID: str = "bb56a2f1-6aae-46ac-982e-9dcd3581d08e"
-TIMESTAMP: str = "1742505638"
+STALE_TIMESTAMP: str = "1742505638"
 BODY: bytes = json.dumps(
     {
         "action": "payment.updated",
@@ -38,7 +38,7 @@ def _signature(
     *,
     data_id: str = DATA_ID,
     request_id: str = REQUEST_ID,
-    timestamp: str = TIMESTAMP,
+    timestamp: str | None = None,
     secret: str = SECRET,
 ) -> str:
     """Build the ``x-signature`` value Mercado Pago would send.
@@ -46,12 +46,16 @@ def _signature(
     Args:
         data_id (str): The ``data.id`` the signature covers.
         request_id (str): The ``x-request-id`` the signature covers.
-        timestamp (str): The ``ts`` component.
+        timestamp (str | None): The ``ts`` component. ``None`` signs the
+            current second, which is what a live delivery carries and what
+            the default replay window accepts.
         secret (str): The secret to sign with.
 
     Returns:
         str: A ``ts=...,v1=...`` header value.
     """
+    if timestamp is None:
+        timestamp = str(int(time.time()))
     digest = sign_manifest(
         secret=secret, data_id=data_id, request_id=request_id, timestamp=timestamp
     )
@@ -96,6 +100,23 @@ class TestDependency:
             }
 
         return app, calls
+
+    def _stale(self, app: FastAPI) -> Any:
+        """Deliver a correctly signed notification with a months-old ``ts``.
+
+        Args:
+            app (FastAPI): The application under test.
+
+        Returns:
+            Any: The ``httpx`` response.
+        """
+        return self._post(
+            app,
+            headers={
+                MERCADO_PAGO_SIGNATURE_HEADER: _signature(timestamp=STALE_TIMESTAMP),
+                MERCADO_PAGO_REQUEST_ID_HEADER: REQUEST_ID,
+            },
+        )
 
     def _post(
         self,
@@ -270,10 +291,32 @@ class TestDependency:
         """With a window set, a replayed old ``ts`` is refused."""
         app, calls = self._app(tolerance_seconds=300.0)
 
-        response = self._post(app)
+        response = self._stale(app)
 
         assert response.status_code == 401
         assert calls == []
+
+    def test_default_window_rejects_a_stale_delivery(self) -> None:
+        """Without ``tolerance_seconds``, a replayed old ``ts`` is refused.
+
+        Before the default window, this delivery reached the handler: the
+        signature was valid, and nothing checked the timestamp it covers.
+        """
+        app, calls = self._app()
+
+        response = self._stale(app)
+
+        assert response.status_code == 401
+        assert calls == []
+
+    def test_none_window_accepts_a_stale_delivery(self) -> None:
+        """``tolerance_seconds=None`` keeps the upstream behaviour."""
+        app, calls = self._app(tolerance_seconds=None)
+
+        response = self._stale(app)
+
+        assert response.status_code == 200
+        assert len(calls) == 1
 
     def test_tolerance_accepts_a_fresh_delivery(self) -> None:
         """With a window set, a current ``ts`` verifies."""

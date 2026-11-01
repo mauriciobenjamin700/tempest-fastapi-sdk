@@ -2,6 +2,13 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.341.0 — webhook do Mercado Pago e fórmula em `.xlsx`
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `verify_signature`, `make_mercado_pago_webhook_dependency` e `make_mercado_pago_webhook_delivery_dependency` | `tolerance_seconds` passa de `None` para `DEFAULT_TOLERANCE_SECONDS` (`300.0`): entrega com `ts` a mais de cinco minutos do relógio vira `False` / 401 | Nada, com relógio sincronizado. Teste que assina com `ts` fixo passa `now=` ou `tolerance_seconds=None`; quem quer o comportamento do upstream passa `tolerance_seconds=None` |
+| `SheetWriter` (`write_row`, `header_row`, `title_block`) | Uma `str` começando com `=` sai como texto, não como fórmula | Embrulhe a fórmula legítima em `Formula("=SUM(B5:B24)")` |
+
 ## 0.340.0 — cadastro, Web Push e SSE
 
 | Onde | O que muda | O que fazer |

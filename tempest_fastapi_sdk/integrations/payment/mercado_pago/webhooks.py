@@ -85,6 +85,17 @@ Passing ``("v2", "v1")`` is how an integrator adopts a new version before
 this package ships one.
 """
 
+DEFAULT_TOLERANCE_SECONDS: Final[float] = 300.0
+"""Maximum drift, in seconds, between a delivery's ``ts`` and the clock.
+
+Five minutes, the value the Stripe verifier in this package uses. Upstream
+leaves the window opt-in, which means a delivery captured off the wire
+verifies forever: the signature covers a timestamp nobody checks. This
+package turns it on by default; pass ``tolerance_seconds=None`` to keep the
+upstream behaviour, or a larger number when a delivery legitimately arrives
+late.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class MercadoPagoWebhookEvent:
@@ -305,7 +316,7 @@ def verify_signature(
     data_id: str = "",
     request_id: str = "",
     versions: Sequence[str] = DEFAULT_SIGNATURE_VERSIONS,
-    tolerance_seconds: float | None = None,
+    tolerance_seconds: float | None = DEFAULT_TOLERANCE_SECONDS,
     now: Callable[[], float] | None = None,
 ) -> bool:
     """Check a delivery's signature.
@@ -319,7 +330,8 @@ def verify_signature(
         versions (Sequence[str]): Hash versions to accept, in preference
             order. Defaults to :data:`DEFAULT_SIGNATURE_VERSIONS`.
         tolerance_seconds (float | None): Maximum drift between ``ts`` and
-            the clock. ``None`` — the default — skips the check.
+            the clock. Defaults to :data:`DEFAULT_TOLERANCE_SECONDS`;
+            ``None`` skips the check, as upstream does.
         now (Callable[[], float] | None): Clock for the tolerance check, in
             **seconds** since the epoch. Defaults to :func:`time.time`;
             override it in tests, never in production. The ``ts`` it is
@@ -342,11 +354,10 @@ def verify_signature(
     configured" as "everything is valid" is how an unauthenticated endpoint
     ships to production believing it is protected.
 
-    !!! tip "Turn the tolerance on"
-        Without it, a delivery captured off the wire verifies forever: the
-        signature covers a timestamp nobody is checking. Upstream leaves the
-        window opt-in and so does this, but a value like ``300.0`` is what
-        makes the ``ts`` in the manifest do any work.
+    !!! warning "Turning the tolerance off"
+        With ``tolerance_seconds=None`` a delivery captured off the wire
+        verifies forever: the signature covers a timestamp nobody is
+        checking. Upstream ships it that way; this package does not.
     """
     if not secret:
         return False
@@ -373,7 +384,7 @@ def verify_signature(
 def make_mercado_pago_webhook_dependency(
     secret: str,
     *,
-    tolerance_seconds: float | None = None,
+    tolerance_seconds: float | None = DEFAULT_TOLERANCE_SECONDS,
     versions: Sequence[str] = DEFAULT_SIGNATURE_VERSIONS,
     error_message: str = "Invalid Mercado Pago webhook signature",
 ) -> Callable[..., Coroutine[Any, Any, MercadoPagoWebhookEvent]]:
@@ -384,8 +395,9 @@ def make_mercado_pago_webhook_dependency(
             An empty secret rejects every delivery, as
             :func:`verify_signature` does.
         tolerance_seconds (float | None): Maximum drift between ``ts`` and
-            the clock, forwarded to :func:`verify_signature`. ``None`` — the
-            default — skips the check, matching upstream.
+            the clock, forwarded to :func:`verify_signature`. Defaults to
+            :data:`DEFAULT_TOLERANCE_SECONDS`; ``None`` skips the check, as
+            upstream does.
         versions (Sequence[str]): Hash versions to accept, in preference
             order. Defaults to :data:`DEFAULT_SIGNATURE_VERSIONS`.
         error_message (str): Message on the raised
@@ -476,6 +488,7 @@ def make_mercado_pago_webhook_dependency(
 
 __all__: list[str] = [
     "DEFAULT_SIGNATURE_VERSIONS",
+    "DEFAULT_TOLERANCE_SECONDS",
     "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",

@@ -778,16 +778,18 @@ class TestDelivery:
         assert event.type is PixEventType.UNKNOWN
 
 
-def _signed(data_id: str) -> dict[str, str]:
+def _signed(data_id: str, ts: str | None = None) -> dict[str, str]:
     """Sign a delivery the way Mercado Pago does.
 
     Args:
         data_id (str): The ``data.id`` value.
+        ts (str | None): The ``ts`` to sign. ``None`` signs the current
+            second, as a live delivery does.
 
     Returns:
         dict[str, str]: ``x-signature`` and ``x-request-id``.
     """
-    ts = str(int(time.time()))
+    ts = ts if ts is not None else str(int(time.time()))
     digest = sign_manifest(
         secret=SECRET, data_id=data_id, request_id="req-1", timestamp=ts
     )
@@ -883,6 +885,26 @@ class TestWebhookRoute:
             answer = client.post(
                 "/webhooks/mp?data.id=ORD1&type=order",
                 headers={"x-signature": "ts=1,v1=00", "x-request-id": "req-1"},
+                json={"type": "order"},
+            )
+
+        assert answer.status_code == 401
+        assert recorder.requests == []
+
+    def test_a_replayed_delivery_is_401_before_any_read(self) -> None:
+        """A correctly signed delivery from an hour ago never reaches the read.
+
+        The factory is built without ``tolerance_seconds``; before the
+        default window, this replay verified and triggered a re-read.
+        """
+        recorder = Recorder(response("pix_get"))
+        app = _app(MercadoPagoPixProvider(_http(recorder)), "ORD1", 1990)
+        an_hour_ago = str(int(time.time()) - 3600)
+
+        with TestClient(app) as client:
+            answer = client.post(
+                "/webhooks/mp?data.id=ORD1&type=order",
+                headers=_signed("ORD1", ts=an_hour_ago),
                 json={"type": "order"},
             )
 

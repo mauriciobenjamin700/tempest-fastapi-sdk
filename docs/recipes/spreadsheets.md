@@ -272,19 +272,38 @@ de total pula as colunas do meio sem perder o preenchimento.
 
 ## Fórmulas vivas
 
-Uma string começando com `=` vira fórmula de verdade:
+Embrulhe a expressão em `Formula` e ela vira fórmula de verdade:
 
 ```python
-from tempest_fastapi_sdk.spreadsheet import Column, SheetWriter, new_workbook
+from tempest_fastapi_sdk.spreadsheet import (
+    Column,
+    Formula,
+    SheetWriter,
+    new_workbook,
+)
 
 workbook = new_workbook("Orçamento")
 writer = SheetWriter(workbook["Orçamento"], [Column("Item"), Column("Valor")])
-writer.write_row(["Soma conferida", "=SUM(B5:B24)"])
+writer.write_row(["Soma conferida", Formula("=SUM(B5:B24)")])
 ```
 
 Vale a pena para as linhas de conferência. Um auditor que edita um valor vê
 o número reagir, em vez de ler uma constante que era verdade só no instante
 em que o arquivo foi gerado.
+
+Uma `str` comum é sempre **texto**, mesmo começando com `=`. O valor de uma
+célula costuma vir de usuário, de linha do banco ou de importação, e o
+`openpyxl` transformaria `=HYPERLINK("https://...")` digitado num campo de
+nome em link vivo em toda planilha exportada. Com o `SheetWriter`, a célula
+sai como `inlineStr` no XML e mostra exatamente o que foi passado.
+`Formula("SUM(B5:B24)")`, sem o `=`, levanta `ValueError`.
+
+!!! info "Só o `=` precisa de tratamento no `.xlsx`"
+    No CSV, `+`, `-`, `@`, tab e CR também abrem fórmula, e o export CSV do
+    admin os neutraliza. No `.xlsx`, o `openpyxl` só trata como fórmula a
+    `str` que começa com `=`; as outras saem como texto e nenhuma planilha
+    reavalia uma célula de texto guardada. Por isso o `SheetWriter` não
+    altera o valor — não há apóstrofo na frente.
 
 ## Tema
 
