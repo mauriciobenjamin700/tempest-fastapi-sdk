@@ -152,10 +152,14 @@ declared set shows in the OpenAPI schema as an `enum`:
 ```python
 from typing import ClassVar
 
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 
 from src.db.models import ArticleModel
-from tempest_fastapi_sdk import BaseRepository, BaseSearchSchema
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    BaseSearchSchema,
+    register_exception_handlers,
+)
 
 
 class ArticleRepository(BaseRepository[ArticleModel]):
@@ -188,9 +192,18 @@ async def search_articles(body: ArticleSearchSchema) -> list[str]:
         list[str]: The accepted columns.
     """
     return body.fields
+
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(router)
 ```
 
-Measured: `{"q": "x", "fields": ["hashed_password"]}` answered `422` with
+The refusal is a `ValidationException`, an `HTTPException`: without
+`register_exception_handlers(app)` FastAPI still answers `422`, but with only
+`detail` (measured: `{"detail": "'hashed_password' is not a searchable column"}`),
+no `code` and no `details`. Measured with the handlers:
+`{"q": "x", "fields": ["hashed_password"]}` answered `422` with
 `code="VALIDATION_ERROR"` and
 `details={"field": "hashed_password", "allowed": ["author", "body", "title"]}` (the
 repository's envelope) before the handler ran.

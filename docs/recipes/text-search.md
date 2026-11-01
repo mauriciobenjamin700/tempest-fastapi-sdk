@@ -153,10 +153,14 @@ colunas), e o conjunto declarado aparece no OpenAPI como `enum`:
 ```python
 from typing import ClassVar
 
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 
 from src.db.models import ArticleModel
-from tempest_fastapi_sdk import BaseRepository, BaseSearchSchema
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    BaseSearchSchema,
+    register_exception_handlers,
+)
 
 
 class ArticleRepository(BaseRepository[ArticleModel]):
@@ -189,9 +193,18 @@ async def search_articles(body: ArticleSearchSchema) -> list[str]:
         list[str]: As colunas aceitas.
     """
     return body.fields
+
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(router)
 ```
 
-Medido: `{"q": "x", "fields": ["hashed_password"]}` respondeu `422` com
+A recusa é uma `ValidationException`, um `HTTPException`: sem
+`register_exception_handlers(app)` o FastAPI ainda responde `422`, mas só com
+`detail` (medido: `{"detail": "'hashed_password' is not a searchable column"}`),
+sem `code` nem `details`. Medido com os handlers:
+`{"q": "x", "fields": ["hashed_password"]}` respondeu `422` com
 `code="VALIDATION_ERROR"` e
 `details={"field": "hashed_password", "allowed": ["author", "body", "title"]}` (o
 mesmo envelope do repositório) antes de o handler rodar.

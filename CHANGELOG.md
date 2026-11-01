@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `OllamaSpeech.speech_response` (e `PCM_MEDIA_TYPE`): devolve o
+  `StreamingResponse` da fala já com o primeiro chunk lido. Medido: um
+  `StreamingResponse(stream_speech(...))` montado à mão respondia **200 com
+  corpo vazio** a uma voz desconhecida (o status sai antes do primeiro chunk,
+  e o Starlette logava `Caught handled exception, but response already
+  started`); pelo `speech_response`, a recusa vira o `422` do SDK.
 - `OllamaSpeech.stream_speech`: fala em stream, chunk a chunk (PCM por
   padrão), com os mesmos erros do `synthesize`. Medido com o `lfm3-audio`:
   primeiro chunk em 24 a 30 ms contra 1,76 s do `synthesize` de ~18 s de

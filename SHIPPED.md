@@ -1573,7 +1573,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   lugar apaga a classe `ChargeStatus` gerada, que é superfície pública, então
   os valores viraram componente próprio e a propriedade virou
   `ChargeStatus | str | None`.
-- **Navegador de storage no admin (não lançado)** — `StorageBrowserService`
+- **Navegador de storage no admin (v0.340.0)** — `StorageBrowserService`
   + `storage=` no `make_admin_router` montam `{prefix}/storage`: pasta
   paginada (subpastas primeiro), página do objeto com metadados e
   pré-visualização (imagem, vídeo, áudio, PDF pela rota `raw`; texto escapado
@@ -4032,7 +4032,8 @@ aninhados); `BaseSearchSchema` espelhando `searchable_columns`.
 `BarkSpeech` em `genai/audio/bark.py`, extra `[genai]`, pesos MIT, vozes PT.
 Serve o `/tts` via `SpeechSynthesizer`. Divide o texto por frase porque uma
 chamada para em 13,95 s; ~2,5x mais lento que tempo real em bf16. Fora de
-escopo: stream por pedaço e `suno/bark` (maior, não medido).
+escopo: stream por pedaço. `suno/bark` (o grande) foi medido e documentado,
+sem código novo.
 
 ## Música com MusicGen (0.340.0)
 
@@ -4040,8 +4041,8 @@ escopo: stream por pedaço e `suno/bark` (maior, não medido).
 `diffusers`), atrás do protocolo `SupportsAudioGeneration` que a rota
 `/audio` aceita. Recusa duração acima de 40,96 s (janela do decoder; passar
 dela envenena o CUDA do processo), `steps` e `negative_prompt`. Seed global
-via `torch.manual_seed`. Fora de escopo: `musicgen-melody` (condicionamento
-por áudio).
+via `torch.manual_seed`. `musicgen-melody` (`melody=`) entrou na mesma versão
+(ver "Áudio, rodada 3").
 
 ## Voz e transcrição pelo Ollama (0.339.0)
 
