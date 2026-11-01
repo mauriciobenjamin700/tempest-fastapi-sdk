@@ -374,7 +374,10 @@ def _init_migrations(target: Path) -> list[Path]:
     ``src`` package in ``sys.modules`` for the next scaffold to collide
     with. The interpreter's ``bin`` directory leads ``PATH`` so the
     ``ruff`` post-write hooks of the ini resolve to the ``ruff`` the
-    ``[cli]`` extra installed next to ``tempest``.
+    ``[cli]`` extra installed next to ``tempest``. ``ENV`` is pinned to
+    ``development`` for the child: the project's settings require it, the
+    new project has no ``.env`` yet, and the throwaway SQLite URL would be
+    refused under a ``production`` value inherited from the shell.
 
     A target that already holds an ``alembic.ini`` (``tempest new .``
     over an existing repository, ``--force``) is left alone: its
@@ -402,6 +405,7 @@ def _init_migrations(target: Path) -> list[Path]:
         )
     env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
     env.pop("DATABASE_URL", None)
+    env["ENV"] = "development"
     env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
     with tempfile.TemporaryDirectory() as scratch:
         url = f"sqlite+aiosqlite:///{Path(scratch) / 'baseline.db'}"

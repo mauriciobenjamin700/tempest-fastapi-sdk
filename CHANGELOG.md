@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `EnvironmentSettings.ENV` deixa de ter default (era `"development"`):
+  esquecer `ENV` derruba o boot com `ENV Field required`. Antes, um host de
+  produção sem a variável subia com todo valor de desenvolvimento — SQLite,
+  o `JWT_SECRET` placeholder, `TOKEN_SECRET` vazio (que abre o gate
+  `X-Token`), CORS `*` — e o guard de produção nunca rodava.
+- `UserAuthService` sobre `AuthSettings` sem `EnvironmentSettings` lê `ENV`
+  do ambiente e trata `ENV` ausente como produção: o link de reset/ativação
+  deixa de voltar na resposta para quem digitou o e-mail.
+- `tempest new`: o conftest gerado fixa `ENV=test` e a migração baseline
+  roda com `ENV=development`.
 - `verify_signature` do Mercado Pago e as duas fábricas de dependency
   (`make_mercado_pago_webhook_dependency`,
   `make_mercado_pago_webhook_delivery_dependency`) passam a conferir o `ts`

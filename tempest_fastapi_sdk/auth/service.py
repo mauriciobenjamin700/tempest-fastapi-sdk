@@ -20,6 +20,7 @@ the rest of the SDK so the same code runs against any
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
@@ -3770,14 +3771,19 @@ class UserAuthService:
     def _links_surface_in_production(self) -> bool:
         """Tell whether a link would reach the response body in production.
 
+        The environment is read from ``auth_settings.ENV`` when the
+        settings compose :class:`~tempest_fastapi_sdk.settings.EnvironmentSettings`,
+        and from the ``ENV`` environment variable otherwise. Neither set
+        counts as production: a host that forgot ``ENV`` must not hand a
+        reset link to whoever typed the address.
+
         Returns:
-            bool: ``True`` when ``auth_settings`` reports ``ENV=production``
-            and the link would be surfaced instead of mailed — no
+            bool: ``True`` when the environment is not ``development`` or
+            ``test`` and the link would be surfaced instead of mailed — no
             ``EmailUtils`` wired, or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` on.
-            ``auth_settings`` without an ``ENV`` field counts as not
-            production.
         """
-        if getattr(self.auth_settings, "ENV", None) != "production":
+        environment = getattr(self.auth_settings, "ENV", None) or os.environ.get("ENV")
+        if environment in {"development", "test"}:
             return False
         return self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
 

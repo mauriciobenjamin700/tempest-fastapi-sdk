@@ -253,6 +253,7 @@ def _boot(
         cwd=cwd or project,
         env={
             "PATH": "",
+            "ENV": "development",
             "DATABASE_URL": f"sqlite+aiosqlite:///{database}",
             "LOG_DIR": str(tmp_path / "logs"),
         },
@@ -357,7 +358,7 @@ def test_tasks_redis_project_imports_its_tasks_without_env_or_rabbitmq(
             _TASKS_IMPORT_SCRIPT.format(blocked=sorted(blocked), project=str(project)),
         ],
         cwd=project,
-        env={"PATH": "", "LOG_DIR": ""},
+        env={"PATH": "", "LOG_DIR": "", "ENV": "development"},
         capture_output=True,
         text=True,
         timeout=180,
