@@ -301,9 +301,9 @@ sai como `inlineStr` no XML e mostra exatamente o que foi passado.
 !!! info "Só o `=` precisa de tratamento no `.xlsx`"
     No CSV, `+`, `-`, `@`, tab e CR também abrem fórmula, e o export CSV do
     admin os neutraliza. No `.xlsx`, o `openpyxl` só trata como fórmula a
-    `str` que começa com `=`; as outras saem como texto e nenhuma planilha
-    reavalia uma célula de texto guardada. Por isso o `SheetWriter` não
-    altera o valor — não há apóstrofo na frente.
+    `str` que começa com `=`; as outras saem como texto, gravadas no XML
+    como string, sem elemento de fórmula (medido no `openpyxl` 3.1.5). Por
+    isso o `SheetWriter` não altera o valor — não há apóstrofo na frente.
 
 ## Tema
 

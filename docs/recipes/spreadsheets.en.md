@@ -298,9 +298,10 @@ stored as `inlineStr` in the XML and shows exactly what was passed.
 !!! info "Only `=` needs handling in `.xlsx`"
     In CSV, `+`, `-`, `@`, tab and CR also open a formula, and the admin's
     CSV export neutralizes them. In `.xlsx`, `openpyxl` treats only a `str`
-    starting with `=` as a formula; the others are written as text, and no
-    spreadsheet re-evaluates a stored text cell. That is why `SheetWriter`
-    leaves the value untouched — no leading apostrophe.
+    starting with `=` as a formula; the others are written as text, stored
+    in the XML as a string with no formula element (measured on `openpyxl`
+    3.1.5). That is why `SheetWriter` leaves the value untouched — no leading
+    apostrophe.
 
 ## Theme
 

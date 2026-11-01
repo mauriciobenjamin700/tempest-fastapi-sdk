@@ -4086,7 +4086,7 @@ propósito: stream de bytes de áudio (o `HTTPClient.stream` entrega linhas) e
 - Testes: `tests/slides/`. Receita: `docs/recipes/slides.md`.
 - Fora de escopo: router pronto (a receita mostra as rotas à mão) e OCR.
 
-## Segurança, rascunhos antigos (Unreleased)
+## Segurança, rascunhos antigos (v0.341.0)
 
 Dois GHSA de outubro que continuavam abertos: `verify_signature` do Mercado
 Pago e as duas fábricas de dependency conferem o `ts` por padrão
