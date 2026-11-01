@@ -649,8 +649,12 @@ What each part does:
   is **instance-wide**: it ignores the DB index (`SELECT`), so two services on
   the same Redis, even on different DBs, with the same prefix subscribe to the
   same `<prefix>:*` pattern and receive each other's `publish`/`broadcast`.
-  Give each service its own prefix, and make sure no prefix followed by `:`
-  starts another. With Redis and the default `"sse"` prefix, the broker logs a
+  Give each service its own prefix. A nested prefix (`app` next to
+  `app:chat`) is safe since 0.340.0: the `app:*` pattern still receives
+  `app:chat`'s messages, but each envelope carries the prefix that published
+  it and the broker drops the ones that are not its own. A publisher from
+  before 0.340.0 (an envelope without the field), mid rolling deploy, is still
+  delivered. With Redis and the default `"sse"` prefix, the broker logs a
   `WARNING` at boot saying so.
 - `run()` accepts only the envelope `publish` writes: a message that does not
   decode (not JSON, not an object, a field of the wrong type) becomes a

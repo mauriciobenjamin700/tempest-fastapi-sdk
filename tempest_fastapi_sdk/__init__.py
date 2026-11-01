@@ -1530,6 +1530,9 @@ if TYPE_CHECKING:
         BaseSchema as BaseSchema,
     )
     from tempest_fastapi_sdk.schemas import (
+        BaseSearchSchema as BaseSearchSchema,
+    )
+    from tempest_fastapi_sdk.schemas import (
         CompactPaginationFilterSchema as CompactPaginationFilterSchema,
     )
     from tempest_fastapi_sdk.schemas import (
@@ -2795,6 +2798,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "DEFAULT_MAX_CURSOR_LIMIT": "tempest_fastapi_sdk.schemas",
     "DEFAULT_MAX_PAGE_SIZE": "tempest_fastapi_sdk.schemas",
     "BasePaginationFilterSchema": "tempest_fastapi_sdk.schemas",
+    "BaseSearchSchema": "tempest_fastapi_sdk.schemas",
     "BasePaginationSchema": "tempest_fastapi_sdk.schemas",
     "BaseResponseSchema": "tempest_fastapi_sdk.schemas",
     "BaseSchema": "tempest_fastapi_sdk.schemas",
@@ -3282,6 +3286,7 @@ __all__: list[str] = [
     "BaseRepository",
     "BaseResponseSchema",
     "BaseSchema",
+    "BaseSearchSchema",
     "BaseService",
     "BaseStrEnum",
     "BaseUserModel",

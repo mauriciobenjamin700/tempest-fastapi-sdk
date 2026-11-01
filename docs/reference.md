@@ -1290,6 +1290,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationFilterSchema
 ::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationSchema
 ::: tempest_fastapi_sdk.schemas.pagination.SyncFilterSchema
+::: tempest_fastapi_sdk.schemas.search.DEFAULT_MAX_SEARCH_TERM
+::: tempest_fastapi_sdk.schemas.search.BaseSearchSchema
 ::: tempest_fastapi_sdk.schemas.pagination.SyncPaginationSchema
 ::: tempest_fastapi_sdk.schemas.logs.LogEntrySchema
 ::: tempest_fastapi_sdk.schemas.logs.LogFilesClearedSchema

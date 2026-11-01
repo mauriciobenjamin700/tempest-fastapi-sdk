@@ -642,8 +642,11 @@ O que cada parte faz:
   é **global na instância**: ignora o índice de DB (`SELECT`), então dois
   serviços no mesmo Redis, mesmo em DBs diferentes, com o mesmo prefixo assinam
   o mesmo padrão `<prefixo>:*` e recebem os `publish`/`broadcast` um do outro.
-  Dê a cada serviço um prefixo próprio, e que nenhum prefixo seguido de `:`
-  comece outro. Com Redis e o prefixo default `"sse"`, o broker registra um
+  Dê a cada serviço um prefixo próprio. Prefixo aninhado (`app` ao lado de
+  `app:chat`) é seguro desde a 0.340.0: o padrão `app:*` ainda recebe as
+  mensagens de `app:chat`, mas cada envelope leva o prefixo de quem publicou e
+  o broker descarta o que não é seu. Um publicador anterior à 0.340.0 (envelope
+  sem o campo), num deploy gradual, ainda é entregue. Com Redis e o prefixo default `"sse"`, o broker registra um
   `WARNING` no boot dizendo isso.
 - O `run()` aceita só o envelope que o `publish` escreve: mensagem que não
   decodifica (não é JSON, não é objeto, campo com tipo errado) vira um
