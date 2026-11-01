@@ -276,18 +276,21 @@ class EnvironmentSettings(BaseAppSettings):
 
     The error message names fields and reasons, never values.
 
+    ``ENV`` has no default. A missing value refuses to build: with a
+    ``development`` default, a production host that forgot to set it
+    booted with every development value and the guard never ran.
+
     Attributes:
         ENV (AppEnvironment): ``"development"``, ``"test"`` or
-            ``"production"``. Default: ``"development"``.
+            ``"production"``. Required.
     """
 
     ENV: AppEnvironment = Field(
-        default="development",
         title="Deployment environment",
         description=(
-            "``production`` refuses to build while a composed mixin holds "
-            "a development value (SQLite, placeholder secrets, CORS "
-            "``*``, debug/reload, in-memory broker, MinIO default keys)."
+            "Required. ``production`` refuses to build while a composed "
+            "mixin holds a development value (SQLite, placeholder secrets, "
+            "CORS ``*``, debug/reload, in-memory broker, MinIO default keys)."
         ),
         examples=["development", "test", "production"],
     )
@@ -1918,6 +1921,10 @@ class AuthSettings(BaseAppSettings):
     and :func:`tempest_fastapi_sdk.make_auth_router`. Each flag
     has a sensible production default; flip ``AUTH_AUTO_ACTIVATE``
     or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` only in dev / CI.
+
+    Without :class:`EnvironmentSettings` composed, the service reads the
+    ``ENV`` environment variable to decide whether a link may travel in
+    the response body, and treats an unset ``ENV`` as production.
 
     Each attribute below is also the name of the environment variable
     that sets it (matched case-sensitively, no prefix).

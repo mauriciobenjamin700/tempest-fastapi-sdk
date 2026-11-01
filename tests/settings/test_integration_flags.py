@@ -92,7 +92,7 @@ class TestDefaults:
     """Nothing changes for a deployment that never touches the flags."""
 
     def test_every_flag_defaults_to_on(self) -> None:
-        settings = Composed(_env_file=None)  # type: ignore[call-arg]
+        settings = Composed(_env_file=None, ENV="development")  # type: ignore[call-arg]
         assert settings.STORAGE_ENABLED is True
         assert settings.EMAIL_ENABLED is True
         assert settings.FIREBASE_ENABLED is True

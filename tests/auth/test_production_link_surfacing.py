@@ -309,3 +309,45 @@ class TestDeactivatedAccount:
         service = build_service(env="development")
         service.refuses_email_link = lambda account: True
         assert await service.request_activation(session, email="ana@acme.com") is None
+
+
+class TestAuthSettingsWithoutEnvironment:
+    """``AuthSettings`` alone has no ``ENV``: the variable decides, fail closed.
+
+    Before, settings without an ``ENV`` field counted as not production, so a
+    service that composed ``AuthSettings`` but not ``EnvironmentSettings``
+    handed every reset link to whoever typed the address — in production too.
+    """
+
+    def _service(self) -> UserAuthService:
+        """Build a service over bare ``AuthSettings`` and no mailer.
+
+        Returns:
+            UserAuthService: The service under test.
+        """
+        return UserAuthService(
+            user_model=_PlUser,
+            token_model=_PlUserToken,  # type: ignore[arg-type]
+            auth_settings=AuthSettings(_env_file=None, **LINKS),  # type: ignore[call-arg]
+            jwt_settings=JWTSettings(JWT_SECRET="x" * 32),
+        )
+
+    def test_unset_env_is_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No ``ENV`` anywhere: the link is refused, not surfaced."""
+        monkeypatch.delenv("ENV", raising=False)
+        with pytest.raises(IntegrationDisabledException):
+            self._service().require_mail_delivery()
+
+    def test_production_variable_refuses(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``ENV=production`` in the environment is read without the mixin."""
+        monkeypatch.setenv("ENV", "production")
+        with pytest.raises(IntegrationDisabledException):
+            self._service().require_mail_delivery()
+
+    @pytest.mark.parametrize("environment", ["development", "test"])
+    def test_development_variable_surfaces_the_link(
+        self, monkeypatch: pytest.MonkeyPatch, environment: str
+    ) -> None:
+        """The development mode the recipes describe keeps working."""
+        monkeypatch.setenv("ENV", environment)
+        self._service().require_mail_delivery()

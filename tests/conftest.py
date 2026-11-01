@@ -1,5 +1,6 @@
 """Shared pytest fixtures."""
 
+import os
 import shutil
 import subprocess
 from collections.abc import AsyncGenerator, Iterator
@@ -13,6 +14,14 @@ from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
 from tests._thread_guard import aiosqlite_threads, leaked_since
 
 ROOT = Path(__file__).resolve().parent.parent
+
+os.environ["ENV"] = "test"
+"""``EnvironmentSettings.ENV`` has no default; the suite pins its own value.
+
+Set at import, before any test module builds a settings class, and never
+inherited from the developer's shell. A test about the missing variable
+removes it with ``monkeypatch.delenv``.
+"""
 
 
 @pytest.fixture(autouse=True)

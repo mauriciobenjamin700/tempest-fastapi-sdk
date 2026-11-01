@@ -200,7 +200,21 @@ campos de uma vez — pelo nome, nunca pelo valor:
 - JWT_SECRET: still the public placeholder declared by JWTSettings [type=value_error]
 ```
 
-Com `ENV=development` (o default) ou `ENV=test`, nada muda.
+Com `ENV=development` ou `ENV=test`, nada muda.
+
+`ENV` **não tem default**. Esquecer a variável derruba o boot, em vez de
+subir como desenvolvimento:
+
+```text
+1 validation error for Settings
+ENV
+  Field required [type=missing]
+```
+
+Até a 0.340.0 o default era `development`, e um host de produção sem `ENV`
+subia com SQLite, o `JWT_SECRET` placeholder e `TOKEN_SECRET` vazio sem que
+o guard rodasse. Teste fixa o próprio valor (`os.environ["ENV"] = "test"` no
+`conftest.py`, antes de importar o app).
 
 ### O que cada mixin recusa
 

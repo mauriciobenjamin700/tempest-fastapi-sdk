@@ -127,10 +127,24 @@ class TestHideInputInErrors:
 
 
 class TestEnvironmentGuard:
-    def test_default_environment_is_development(self) -> None:
-        assert Composed().ENV == "development"
+    def test_env_is_required(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A missing ``ENV`` refuses to build instead of meaning development.
 
-    def test_development_builds_despite_violations(self) -> None:
+        With a ``development`` default, a production host that forgot to set
+        ``ENV`` booted with every development value — SQLite, the placeholder
+        ``JWT_SECRET``, an empty ``TOKEN_SECRET`` that opens the ``X-Token``
+        gate, CORS ``*`` — and the production guard never ran.
+        """
+        monkeypatch.delenv("ENV", raising=False)
+        with pytest.raises(ValidationError) as caught:
+            Composed(_env_file=None)  # type: ignore[call-arg]
+        errors = caught.value.errors()
+        assert [(e["loc"], e["type"]) for e in errors] == [(("ENV",), "missing")]
+
+    def test_development_builds_despite_violations(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ENV", "development")
         settings = Composed()
         assert settings.production_violations() != []
 

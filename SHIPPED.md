@@ -4094,3 +4094,10 @@ Pago e as duas fábricas de dependency conferem o `ts` por padrão
 `SheetWriter` grava toda `str` como texto (`inlineStr`), e fórmula viva vai
 em `Formula`. No `.xlsx` só o `=` era vetor — `+ - @` já saíam como texto,
 medido no XML gravado pelo `openpyxl` 3.1.5.
+
+Os três GHSA "só em produção" (JWT placeholder, CORS `*` com credenciais,
+`TOKEN_SECRET` vazio) já eram recusados pelo guard com `ENV=production`; o
+buraco era o default `ENV=development`. `ENV` virou obrigatório, e o
+`UserAuthService` sem `EnvironmentSettings` lê `ENV` do ambiente e trata
+ausência como produção. Recusado: `AuthSettings` herdar `EnvironmentSettings`
+— quebra o MRO de todo `Settings(EnvironmentSettings, AuthSettings, ...)`.

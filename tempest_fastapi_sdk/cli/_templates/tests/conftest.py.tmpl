@@ -18,14 +18,16 @@ import pytest
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Point ``DATABASE_URL`` at a fresh SQLite file for this worker.
+    """Pin ``ENV=test`` and point ``DATABASE_URL`` at a fresh SQLite file.
 
     Runs before any test module imports ``src``, so the settings read the
-    value set here.
+    values set here. ``ENV`` has no default: a settings class composing
+    ``EnvironmentSettings`` refuses to build without it.
 
     Args:
         config (pytest.Config): The pytest configuration, unused.
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
     directory = Path(tempfile.mkdtemp(prefix=f"tests-{worker}-"))
+    os.environ["ENV"] = "test"
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{directory / 'test.db'}"
