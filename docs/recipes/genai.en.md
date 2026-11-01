@@ -1628,23 +1628,36 @@ lazily.
     ```
 
     And with torchaudio in place, a fresh resolve brought transformers 5.x,
-    which removed the symbol `TTS.api` imports eagerly:
+    which removed the symbol `TTS.api` imported eagerly:
 
     ```text
     ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'
     ```
 
-    Measured: `isin_mps_friendly` exists in transformers 5.0.0 and is gone
-    from 5.1.0 on, and the measurement was repeated on 2026-09-02 against
-    the newest coqui-tts (0.27.5) with transformers 5.16.1: the same
-    `ImportError`, so the ceiling is still load-bearing.
-    `[genai-audio]` declares `torch>=2.14`,
-    `torchaudio>=2.11`, `torchcodec>=0.16` and `transformers<5` — the upper
-    bound stays confined to this extra. If you pinned those four by hand, you
-    can drop them.
+    That is why, from v0.252.0 to 0.341.0, the extra pinned
+    `transformers<5`. `coqui-tts` 0.28.0 no longer imports that symbol, and
+    since 0.342.0 `[genai-audio]` requires that version and drops the cap.
+    Measured on 2026-11-01 with coqui-tts 0.28.0, transformers 5.22.1 and
+    torch 2.14: XTTS v2 with a built-in voice and with cloning, and Bark,
+    synthesized a Portuguese sentence that Whisper transcribed back
+    word for word. `[genai-audio]` declares `torch>=2.14`,
+    `torchaudio>=2.11`, `torchcodec>=0.16` and `six` (coqui-tts 0.28.0 imports
+    it without declaring it). If you pinned those by hand, you can drop them.
+
+!!! info "With coqui-tts 0.28.0, XTTS v2 comes from the Hugging Face Hub"
+    The model is downloaded from the `tts-hub/XTTS-v2` repository into the
+    Hub cache (`~/.cache/huggingface/hub/models--tts-hub--XTTS-v2`), no longer
+    only into `~/.local/share/tts`. The first use needs network; with the
+    cache filled, `HF_HUB_OFFLINE=1` works (measured: synthesis completed
+    offline). In a container, mount that directory on a volume so a deploy
+    does not download it again.
+
+    On load, transformers 5 logs
+    `bos_token_id must be None or an integer within the vocabulary ... got 50256`
+    (and the same for `eos_token_id`). Synthesis completes normally.
 
 !!! danger "XTTS v2 asks you to accept a licence, and a server has nobody to answer"
-    `TextToSpeech`'s default model is licence-gated. Read in coqui-tts 0.27.5,
+    `TextToSpeech`'s default model is licence-gated. Read in coqui-tts 0.28.0,
     `ModelManager.tos_agreed` accepts only a `tos_agreed.txt` beside the
     weights **or** `COQUI_TOS_AGREED` equal to the **string** `"1"`; without
     it, `ask_tos` calls `input()`. Synthesis runs in `asyncio.to_thread`,

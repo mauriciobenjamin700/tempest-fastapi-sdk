@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `[genai-audio]` deixa de fixar `transformers<5` e passa a exigir
+  `coqui-tts>=0.28.0`, que não importa mais o `isin_mps_friendly` removido na
+  transformers 5.1. Quem instala o extra sai da transformers 4.57.6: no lock,
+  `transformers` 5.22.1, `huggingface-hub` 2.4.0, `tokenizers` 0.23.3 e
+  `diffusers` 0.42.1. O extra declara `six`, que o coqui-tts 0.28.0 importa
+  sem declarar (`ModuleNotFoundError: No module named 'six'` numa venv
+  limpa). Medido com modelo real: XTTS v2 (voz pronta e clonagem) e Bark
+  sintetizam, e o Whisper transcreve de volta as mesmas palavras.
+
+### Fixed
+
+- `ClassifierModerator` levantava `AttributeError: BertTokenizer has no
+  attribute build_inputs_with_special_tokens` em toda checagem sob a
+  transformers 5, que removeu esse método dos tokenizers rápidos; quem
+  instalava `[genai]` sem `[genai-audio]` já resolvia a 5.x. A moldura de
+  tokens especiais de cada janela agora vem da chamada pública do tokenizer,
+  e o mesmo código passa na transformers 4.57.6 e 5.22.1.
+
+### Security
+
+- Sem o teto, o lock sai da transformers 4.57.6 e o `make audit` deixa de
+  ignorar os seis avisos dela (`PYSEC-2025-217`, `PYSEC-2026-2288`,
+  `PYSEC-2026-2289`, `PYSEC-2026-2290`, `PYSEC-2026-3929`,
+  `PYSEC-2026-4174`); nenhum se aplica à 5.22.1.
+
 ## [0.341.0] — 2026-11-01
 
 ### Security
