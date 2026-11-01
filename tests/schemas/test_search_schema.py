@@ -66,6 +66,28 @@ class TestOpenAPI:
         assert "enum" not in base
 
 
+class TestInheritance:
+    def test_a_grandchild_with_its_own_set_does_not_leak(self) -> None:
+        class _Child(_ProductSearch):
+            searchable_columns = frozenset({"title"})
+
+        class _Grandchild(_Child):
+            pass
+
+        def enum(cls: type[BaseSearchSchema]) -> list[str]:
+            items: list[str] = cls.model_json_schema()["properties"]["fields"]["items"][
+                "enum"
+            ]
+            return items
+
+        assert enum(_Child) == ["title"]
+        assert enum(_Grandchild) == ["title"]
+        assert enum(_ProductSearch) == ["name", "sku"]
+        assert _Grandchild(q="x", fields=["title"]).fields == ["title"]
+        with pytest.raises(ValidationException):
+            _Grandchild(q="x", fields=["name"])
+
+
 class TestEndpoint:
     def test_refusal_reaches_the_client_as_a_422(self) -> None:
         app = FastAPI()

@@ -442,6 +442,12 @@ class SSEBroker:
             raise ValueError("SSE envelope is not a JSON object.")
         sender = payload.get("prefix")
         if sender is not None and sender != self.channel_prefix:
+            _LOGGER.debug(
+                "SSEBroker %r dropped a message published under prefix %r on %s.",
+                self.channel_prefix,
+                sender,
+                key,
+            )
             return
         event: Any = payload.get("event")
         event_id: Any = payload.get("id")

@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`AuditMixin`). `name` e `locale`, de mixins, continuam livres.
 - `WebPushDispatcher.send_many` poda o endpoint recusado por resposta de DNS
   depois de `prune_after_dns_refusals` (padrão `3`) recusas seguidas, contadas
-  entre chamadas; antes, uma inscrição cujo domínio resolve para dentro da
+  entre chamadas e espalhadas por pelo menos `dns_refusal_window_seconds`
+  (padrão 1 h, para três envios rápidos durante um problema passageiro de DNS
+  não podarem nada); antes, uma inscrição cujo domínio resolve para dentro da
   rede (DNS rebinding) ficava para sempre. Host de push service de navegador
   (`KNOWN_PUSH_SERVICE_HOSTS`: FCM, Mozilla, Apple, WNS) nunca é podado assim,
   porque isso apagaria todas as inscrições por erro de resolver; `None`

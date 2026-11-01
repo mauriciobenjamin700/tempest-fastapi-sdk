@@ -251,16 +251,51 @@ class TestNonPublicEndpointsAreRefused:
         self, recorder: _Recorder
     ) -> None:
         """A host that keeps resolving inside the network is pruned at last."""
+        now = [0.0]
         dispatcher = WebPushDispatcher(
             "priv",
             vapid_subject="mailto:ops@x.com",
             resolver=_fixed_resolver("10.0.0.1"),
+            clock=lambda: now[0],
         )
         rebinding = [_subscription("https://push.test/a")]
         assert await dispatcher.send_many(rebinding, "p") == []
+        now[0] = 1800.0
         assert await dispatcher.send_many(rebinding, "p") == []
+        now[0] = 3600.0
         assert await dispatcher.send_many(rebinding, "p") == ["https://push.test/a"]
         assert recorder.calls == []
+
+    @pytest.mark.asyncio
+    async def test_fast_repeated_refusals_inside_the_window_are_kept(
+        self, recorder: _Recorder
+    ) -> None:
+        """Three fan-outs during a passing resolver problem prune nothing."""
+        now = [0.0]
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+            clock=lambda: now[0],
+        )
+        sub = [_subscription("https://push.test/a")]
+        for step in range(10):
+            now[0] = step * 60.0
+            assert await dispatcher.send_many(sub, "p") == []
+
+    @pytest.mark.asyncio
+    async def test_a_duplicate_in_one_call_counts_once(
+        self, recorder: _Recorder
+    ) -> None:
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+            dns_refusal_window_seconds=0.0,
+        )
+        same = [_subscription("https://push.test/a")] * 3
+        assert await dispatcher.send_many(same, "p") == []
+        assert dispatcher._dns_refusals["https://push.test/a"][0] == 1
 
     @pytest.mark.asyncio
     async def test_a_delivery_resets_the_dns_refusal_count(
@@ -281,7 +316,10 @@ class TestNonPublicEndpointsAreRefused:
             return [answers.pop(0)]
 
         dispatcher = WebPushDispatcher(
-            "priv", vapid_subject="mailto:ops@x.com", resolver=_changing
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_changing,
+            dns_refusal_window_seconds=0.0,
         )
         sub = [_subscription("https://push.test/a")]
         results = [await dispatcher.send_many(sub, "p") for _ in range(5)]
@@ -306,6 +344,7 @@ class TestNonPublicEndpointsAreRefused:
             "priv",
             vapid_subject="mailto:ops@x.com",
             resolver=_fixed_resolver("10.0.0.1"),
+            dns_refusal_window_seconds=0.0,
         )
         sub = [_subscription(endpoint)]
         assert [await dispatcher.send_many(sub, "p") for _ in range(5)] == [[]] * 5
@@ -316,6 +355,7 @@ class TestNonPublicEndpointsAreRefused:
             "priv",
             vapid_subject="mailto:ops@x.com",
             resolver=_fixed_resolver("10.0.0.1"),
+            dns_refusal_window_seconds=0.0,
             prune_after_dns_refusals=None,
         )
         sub = [_subscription("https://push.test/a")]
@@ -332,6 +372,12 @@ class TestNonPublicEndpointsAreRefused:
             "https://push.test/b",
             "https://push.test/c",
         ]
+
+    def test_negative_window_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="negative"):
+            WebPushDispatcher(
+                "priv", vapid_subject="mailto:ops@x.com", dns_refusal_window_seconds=-1
+            )
 
     def test_threshold_below_one_is_refused(self) -> None:
         with pytest.raises(ValueError, match="at least 1"):

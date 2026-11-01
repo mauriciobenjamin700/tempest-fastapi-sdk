@@ -23,6 +23,7 @@ from tempest_fastapi_sdk import (
     AuditMixin,
     BaseModel,
     BaseUserModel,
+    MFAMixin,
     SoftDeleteMixin,
     UserAuthService,
     make_user_token_model,
@@ -38,6 +39,12 @@ BOOKKEEPING: tuple[str, ...] = (
     "created_by",
     "updated_by",
 )
+
+
+class _DriftUser(MFAMixin, SoftDeleteMixin, AuditMixin, BaseUserModel):
+    """Every SDK user mixin with bookkeeping columns, for the drift check."""
+
+    __tablename__ = "signup_bookkeeping_drift_users"
 
 
 class _BookkeepingUser(SoftDeleteMixin, AuditMixin, BaseUserModel):
@@ -104,6 +111,27 @@ class TestProtectedSet:
 
     def test_every_column_exists_on_the_model(self) -> None:
         assert set(BOOKKEEPING) <= set(_BookkeepingUser.__table__.columns.keys())
+
+    @pytest.mark.parametrize(
+        "mixin",
+        [BaseUserModel, SoftDeleteMixin, AuditMixin, MFAMixin],
+        ids=lambda m: m.__name__,
+    )
+    def test_no_sdk_bookkeeping_column_drifts_out_of_the_set(
+        self, mixin: type[Any]
+    ) -> None:
+        """A column the SDK adds to these classes must join the protected set.
+
+        ``name`` and ``locale`` come from ``NameMixin`` / ``LocaleColumnMixin``
+        and are a sign-up's to choose, so those mixins are not listed here.
+        """
+        declared = {
+            column.key
+            for column in _DriftUser.__table__.columns
+            if any(column.key in vars(klass) for klass in mixin.__mro__)
+        }
+        assert declared, mixin
+        assert declared <= SIGNUP_PROTECTED_FIELDS
 
     def test_a_project_column_from_a_mixin_stays_settable(self) -> None:
         assert "name" not in SIGNUP_PROTECTED_FIELDS

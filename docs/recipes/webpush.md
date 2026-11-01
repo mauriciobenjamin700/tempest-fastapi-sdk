@@ -532,8 +532,9 @@ a recusa (`WebPushEndpointRefusedError.permanent`):
 - **uma resposta de DNS** — um nome que resolveu para endereço interno:
   resposta muda, então a primeira recusa só vai para o log. Se o mesmo
   endpoint for recusado assim `prune_after_dns_refusals` vezes seguidas
-  (padrão `3`, contadas entre chamadas do mesmo dispatcher; uma entrega que
-  passa zera a conta), ele entra na lista e é apagado: é a inscrição de um
+  (padrão `3`, contadas entre chamadas do mesmo dispatcher e espalhadas por
+  pelo menos `dns_refusal_window_seconds`, padrão 1 hora; uma entrega que
+  passa zera a conta, e outra falha nem conta nem zera), ele entra na lista e é apagado: é a inscrição de um
   domínio que insiste em resolver para dentro da rede (DNS rebinding), que
   antes ficava para sempre custando uma consulta e uma linha de log por
   envio. O host de um push service de navegador

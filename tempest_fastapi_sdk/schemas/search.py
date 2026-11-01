@@ -31,8 +31,13 @@ class BaseSearchSchema(BaseSchema):
     whether each row's value contains the term), so a service that takes
     ``fields`` from the request should declare ``searchable_columns`` on the
     repository **and** here. The repository refusal is the boundary; this
-    one turns it into a validation error before any query and documents the
-    accepted columns.
+    one refuses earlier and documents the accepted columns. The refusal is a
+    :class:`~tempest_fastapi_sdk.exceptions.ValidationException`, not a
+    pydantic ``ValueError``, so it reaches the client as the SDK's ``422``
+    envelope only with
+    :func:`~tempest_fastapi_sdk.register_exception_handlers` installed. Only
+    the class-level ``searchable_columns`` of a repository can be mirrored:
+    one passed to the repository's constructor has to be repeated here.
 
     Declare the same set on both sides:
 
@@ -90,7 +95,13 @@ class BaseSearchSchema(BaseSchema):
             return
         names: list[JsonValue] = [*sorted(allowed)]
         info = cls.model_fields["fields"]
-        info.json_schema_extra = {"items": {"type": "string", "enum": names}}
+        extra = (
+            info.json_schema_extra if isinstance(info.json_schema_extra, dict) else {}
+        )
+        info.json_schema_extra = {
+            **extra,
+            "items": {"type": "string", "enum": names},
+        }
         cls.model_rebuild(force=True)
 
     @field_validator("fields")
