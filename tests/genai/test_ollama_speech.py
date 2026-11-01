@@ -16,11 +16,15 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI, Response
+from fastapi.testclient import TestClient
 
+from tempest_fastapi_sdk import register_exception_handlers
 from tempest_fastapi_sdk.exceptions import ValidationException
 from tempest_fastapi_sdk.genai import OllamaError, OllamaSpeech
 from tempest_fastapi_sdk.genai.audio import SpeechSynthesizer, SpeechTranscriber
 from tempest_fastapi_sdk.genai.ollama_speech import (
+    PCM_MEDIA_TYPE,
     STREAMED_WAV_SIZE,
     fix_streamed_wav_sizes,
 )
@@ -469,3 +473,61 @@ class TestStreamSpeech:
         speech = _speech(handler)
         chunks = [c async for c in speech.stream_speech("oi", response_format="wav")]
         assert b"".join(chunks) == STREAMED_WAV
+
+
+class TestSpeechResponse:
+    """``speech_response`` primes the first chunk so a refusal is a 422."""
+
+    def _app(self, handler: Any, **kwargs: Any) -> TestClient:
+        speech = _speech(handler)
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/speak")
+        async def speak(text: str) -> Response:
+            """Stream the speech.
+
+            Args:
+                text (str): The text.
+
+            Returns:
+                Response: The streamed audio.
+            """
+            return await speech.speech_response(text, **kwargs)
+
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_unknown_voice_is_a_422_not_an_empty_200(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": {"message": "voice not found"}})
+
+        response = self._app(handler, voice="nope").get("/speak", params={"text": "oi"})
+        assert response.status_code == 422
+        assert response.json()["detail"] == "voice not found"
+
+    def test_audio_streams_whole_with_the_pcm_media_type(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=SAMPLES)
+
+        response = self._app(handler).get("/speak", params={"text": "oi"})
+        assert response.status_code == 200
+        assert response.content == SAMPLES
+        assert response.headers["content-type"] == PCM_MEDIA_TYPE
+
+    def test_wav_gets_the_wav_media_type(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=STREAMED_WAV)
+
+        response = self._app(handler, response_format="wav").get(
+            "/speak", params={"text": "oi"}
+        )
+        assert response.headers["content-type"] == "audio/wav"
+        assert response.content == STREAMED_WAV
+
+    def test_empty_body_is_an_empty_200(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=b"")
+
+        response = self._app(handler).get("/speak", params={"text": "oi"})
+        assert response.status_code == 200
+        assert response.content == b""

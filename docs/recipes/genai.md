@@ -2036,15 +2036,16 @@ O que o `OllamaSpeech` faz por você:
 - **Caminho é caminho.** `transcribe("https://...")` levanta
   `FileNotFoundError` sem ir à rede, como o `SpeechToText`.
 
-#### Voz em stream: `stream_speech`
+#### Voz em stream: `stream_speech` e `speech_response`
 
 `synthesize` espera o clipe inteiro. `stream_speech` entrega cada pedaço
 assim que o daemon descarrega — PCM 16 bits mono 24 kHz por padrão, sem
-cabeçalho, o formato que um player em stream quer —, com os mesmos erros:
+cabeçalho, o formato que um player em stream quer —, com os mesmos erros.
+Para servir por HTTP, use `speech_response`, que já devolve o
+`StreamingResponse`:
 
 ```python
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Response
 
 from tempest_fastapi_sdk import register_exception_handlers
 from tempest_fastapi_sdk.genai import OllamaSpeech
@@ -2055,24 +2056,28 @@ register_exception_handlers(app)
 
 
 @app.get("/fala")
-async def fala(texto: str) -> StreamingResponse:
+async def fala(texto: str) -> Response:
     """Devolve a fala em PCM conforme é gerada.
 
     Args:
         texto (str): O texto a falar.
 
     Returns:
-        StreamingResponse: Áudio PCM 16 bits mono 24 kHz.
+        Response: Áudio PCM 16 bits mono 24 kHz, em stream.
     """
-    return StreamingResponse(
-        speech.stream_speech(texto, voice="female-portuguese"),
-        media_type="audio/L16; rate=24000; channels=1",
-    )
+    return await speech.speech_response(texto, voice="female-portuguese")
 ```
 
+!!! warning "Por que não montar o `StreamingResponse` direto"
+    Um `StreamingResponse` manda status e cabeçalhos **antes** de ler o
+    primeiro chunk. Medido: com `StreamingResponse(speech.stream_speech(...))`
+    e uma voz desconhecida, o cliente recebeu **200 com corpo vazio**, e o
+    Starlette logou `Caught handled exception, but response already started`.
+    O `speech_response` lê o primeiro chunk antes de montar a resposta: a
+    recusa sobe ali e vira o `422` do SDK, e o resto do áudio segue em stream.
+
 Medido com o `lfm3-audio` quente: num texto de ~18 s de áudio, o primeiro
-chunk chegou em 24 a 30 ms, contra 1,76 s do `synthesize` inteiro. Voz
-desconhecida vira `ValidationException` antes do primeiro chunk; `language`
+chunk chegou em 24 a 30 ms, contra 1,76 s do `synthesize` inteiro. `language`
 é recusado antes da rede.
 
 #### Servindo por HTTP: `/tts` e `/transcribe`

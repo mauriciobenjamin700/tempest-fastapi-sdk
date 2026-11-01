@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OllamaSpeech.speech_response` (e `PCM_MEDIA_TYPE`): devolve o
+  `StreamingResponse` da fala já com o primeiro chunk lido. Medido: um
+  `StreamingResponse(stream_speech(...))` montado à mão respondia **200 com
+  corpo vazio** a uma voz desconhecida (o status sai antes do primeiro chunk,
+  e o Starlette logava `Caught handled exception, but response already
+  started`); pelo `speech_response`, a recusa vira o `422` do SDK.
+
 ### Security
 
 - `SIGNUP_PROTECTED_FIELDS` passa a cobrir `last_login_at`, `created_at`,
