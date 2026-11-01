@@ -597,7 +597,7 @@ class ZapBotService:
             message (ZapInboundMessage): A mensagem já validada.
 
         Returns:
-            ZapInboundOutcome: O que o inbox fez com ela.
+            ZapInboundOutcomeEnum: O que o inbox fez com ela.
         """
         outcome: ZapInboundOutcomeEnum = await self.inbox.claim(message)
         replyable: bool = outcome in (

@@ -272,7 +272,7 @@ def validate_address(uf: UFEnum, city: str) -> str:
     """Garante que a cidade pertence à UF e devolve o nome canônico.
 
     Args:
-        uf (UF): A unidade federativa do endereço.
+        uf (UFEnum): A unidade federativa do endereço.
         city (str): O nome da cidade vindo do payload.
 
     Returns:

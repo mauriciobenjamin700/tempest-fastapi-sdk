@@ -272,7 +272,7 @@ def validate_address(uf: UFEnum, city: str) -> str:
     """Ensure the city belongs to the UF and return its canonical name.
 
     Args:
-        uf (UF): The federative unit of the address.
+        uf (UFEnum): The federative unit of the address.
         city (str): The city name coming from the payload.
 
     Returns:

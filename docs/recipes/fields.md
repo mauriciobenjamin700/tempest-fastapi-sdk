@@ -130,7 +130,7 @@ from tempest_fastapi_sdk.utils import LocaleField
 
 
 class ProfileUpdateSchema(BaseSchema):
-    locale: LocaleField | None = None   # "pt_BR" -> Locale.PT_BR; "xx-YY" -> 422
+    locale: LocaleField | None = None   # "pt_BR" -> LocaleEnum.PT_BR; "xx-YY" -> 422
 ```
 
 !!! tip "Enum vs. Field"
