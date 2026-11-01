@@ -404,11 +404,14 @@ class OllamaSpeech(_OllamaClientMixin):
             response_format (SpeechFormat): ``"pcm"`` or ``"wav"``.
 
         Closing the iterator early (a client that disconnects from a
-        ``StreamingResponse``) closes the daemon connection right away. The
-        stream runs inside the same ``"speech"`` tracing span as
-        :meth:`synthesize`. A ``"wav"`` stream is passed through as the daemon
-        sends it; only :meth:`synthesize`, which holds the whole clip, can
-        rewrite the header sizes.
+        ``StreamingResponse``) closes the daemon connection right away. There
+        is no tracing span here, unlike :meth:`synthesize`: a span held across
+        ``yield`` is closed by whoever finalizes the generator, and a consumer
+        that breaks out of the loop without closing it leaves that to the event loop, in
+        another context -- measured with OpenTelemetry installed, every such
+        stream logged ``Failed to detach context``. A ``"wav"`` stream is
+        passed through as the daemon sends it; only :meth:`synthesize`, which
+        holds the whole clip, can rewrite the header sizes.
 
         Yields:
             bytes: The audio, chunk by chunk.
@@ -428,7 +431,7 @@ class OllamaSpeech(_OllamaClientMixin):
             f"{self.base_url}/v1/audio/speech",
             json=payload,
         )
-        async with genai_span("speech", self.model), aclosing(chunks):
+        async with aclosing(chunks):
             try:
                 async for chunk in chunks:
                     yield chunk
