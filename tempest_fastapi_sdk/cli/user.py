@@ -321,6 +321,9 @@ DEFAULT_USER_CREATED_EVENT: str = "user.created"
 DEFAULT_USER_MFA_RESET_EVENT: str = "user.mfa_reset"
 """Event ``mfa-reset`` records when ``--audit-model`` is given without ``--event``."""
 
+DEFAULT_USER_PASSWORD_SET_EVENT: str = "user.password_set"
+"""Event ``set-password`` records under ``--audit-model`` without ``--event``."""
+
 
 def _load_recovery_code_model(dotted: str) -> type[BaseUserRecoveryCodeModel]:
     """Import the project's concrete recovery-code model via dotted spec.
@@ -837,6 +840,8 @@ async def _set_user_password(
     refresh_token_model: type[BaseUserRefreshTokenModel] | None,
     recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
     webauthn_credential_model: type[BaseWebAuthnCredentialModel] | None = None,
+    audit_model: type[BaseAuditLogModel] | None = None,
+    event: str = DEFAULT_USER_PASSWORD_SET_EVENT,
 ) -> tuple[str, int, int] | None:
     """Re-hash one user's password, found by email, and kill its sessions.
 
@@ -860,6 +865,11 @@ async def _set_user_password(
     service at all, so a project with neither never has its settings read
     here.
 
+    With ``audit_model`` a ``record_event`` row is written before the single
+    commit, carrying how many sessions and passkeys the rotation revoked, so
+    the rotation and its audit entry land together or not at all -- the
+    same contract as ``mfa-reset``.
+
     Args:
         database_url (str): The resolved database URL.
         user_model (type[BaseUserModel]): The concrete user model.
@@ -874,6 +884,9 @@ async def _set_user_password(
         webauthn_credential_model (type[BaseWebAuthnCredentialModel] | None):
             The project's passkey table, or ``None`` to leave passkeys
             alone.
+        audit_model (type[BaseAuditLogModel] | None): The project's audit
+            table; given, ``event`` is recorded for the user.
+        event (str): The audit event name.
 
     Returns:
         tuple[str, int, int] | None: The user's id, how many refresh tokens
@@ -961,6 +974,24 @@ async def _set_user_password(
                 removed = await service.revoke_user_passkeys(
                     session,
                     user_id=user.id,
+                )
+            if audit_model is not None:
+                from tempest_fastapi_sdk import BaseRepository
+
+                await BaseRepository(
+                    session,
+                    model=user_model,
+                    audit_model=audit_model,
+                    autocommit=False,
+                ).record_event(
+                    event,
+                    subject=user,
+                    actor="cli",
+                    changes={
+                        "password_changed": True,
+                        "sessions_revoked": revoked,
+                        "passkeys_revoked": removed,
+                    },
                 )
             await session.commit()
             await session.refresh(user)
@@ -1875,6 +1906,23 @@ def user_set_password(
             "after the password changes."
         ),
     ),
+    audit_model: str | None = typer.Option(
+        None,
+        "--audit-model",
+        help=(
+            "Dotted spec for the audit-log model (with AuditRequestMixin). "
+            "Given, the rotation is recorded in the same transaction, with "
+            "how many sessions and passkeys it revoked."
+        ),
+    ),
+    event: str | None = typer.Option(
+        None,
+        "--event",
+        help=(
+            "Audit event name. Needs --audit-model; defaults to "
+            f"{DEFAULT_USER_PASSWORD_SET_EVENT!r}."
+        ),
+    ),
 ) -> None:
     """Replace an existing user's password, found by email.
 
@@ -1936,8 +1984,12 @@ def user_set_password(
             err=True,
         )
         raise typer.Exit(2)
+    if event and not audit_model:
+        typer.echo("error: --event needs --audit-model.", err=True)
+        raise typer.Exit(2)
     database_url = _resolve_database_url()
     user_model = _load_user_model(model)
+    audit = _load_audit_model(audit_model) if audit_model else None
     token_model: type[BaseUserRefreshTokenModel] | None = None
     if not keep_sessions:
         token_model = (
@@ -1965,6 +2017,8 @@ def user_set_password(
             refresh_token_model=token_model,
             recovery_code_model=codes_model,
             webauthn_credential_model=passkey_model,
+            audit_model=audit,
+            event=event or DEFAULT_USER_PASSWORD_SET_EVENT,
         )
     )
     if outcome is None:

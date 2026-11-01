@@ -15,6 +15,9 @@ import hashlib
 import ipaddress
 import json
 import logging
+import time
+from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any, Final
 from urllib.parse import urlsplit, urlunsplit
 
@@ -38,6 +41,31 @@ _WNS_HOST_SUFFIX: Final[str] = "notify.windows.com"
 
 DEFAULT_WEBPUSH_TIMEOUT: Final[float] = 10.0
 """Seconds a dispatch waits to connect and, separately, for each read."""
+
+DEFAULT_PRUNE_AFTER_DNS_REFUSALS: Final[int] = 3
+"""Consecutive DNS-decided refusals after which ``send_many`` prunes."""
+
+DEFAULT_DNS_REFUSAL_WINDOW_SECONDS: Final[float] = 3600.0
+"""Least time between the first and the pruning DNS refusal of an endpoint."""
+
+MAX_TRACKED_DNS_REFUSALS: Final[int] = 10_000
+"""Most endpoints whose DNS refusals one dispatcher counts at once."""
+
+KNOWN_PUSH_SERVICE_HOSTS: Final[tuple[str, ...]] = (
+    "fcm.googleapis.com",
+    "android.googleapis.com",
+    "push.services.mozilla.com",
+    "web.push.apple.com",
+    _WNS_HOST_SUFFIX,
+)
+"""Hosts (and their subdomains) of the browsers' push services.
+
+Chrome subscribes on ``fcm.googleapis.com`` (``android.googleapis.com`` for
+old GCM subscriptions), Firefox on ``updates.push.services.mozilla.com``,
+Safari on ``web.push.apple.com`` and Edge on ``*.notify.windows.com``. A DNS
+refusal of one of these is a resolver problem of the deployment, never a
+subscription that went away, so it is never pruned.
+"""
 
 
 def _is_gone(status: int | None, endpoint: str) -> bool:
@@ -335,6 +363,9 @@ class WebPushDispatcher:
         timeout: float = DEFAULT_WEBPUSH_TIMEOUT,
         allow_private_networks: bool = False,
         resolver: Resolver | None = None,
+        prune_after_dns_refusals: int | None = DEFAULT_PRUNE_AFTER_DNS_REFUSALS,
+        dns_refusal_window_seconds: float = DEFAULT_DNS_REFUSAL_WINDOW_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """Initialize the dispatcher.
 
@@ -355,7 +386,39 @@ class WebPushDispatcher:
                 used by the public-address check; the first address it
                 returns is the one the dispatch connects to. ``None`` uses
                 the event loop's ``getaddrinfo``.
+            prune_after_dns_refusals (int | None): How many consecutive
+                :meth:`send_many` refusals decided by a DNS answer turn an
+                endpoint into one :meth:`prune` removes. One such refusal is
+                kept, because the answer can change; an endpoint whose host
+                keeps resolving to a non-public address (a rebinding
+                subscription) is otherwise never removed and costs a lookup
+                and a log line on every fan-out. The refusals must also span
+                ``dns_refusal_window_seconds``, so three fan-outs in a row
+                during a passing resolver problem prune nothing. A delivery
+                that goes through resets the count; any other failure (a
+                timeout, a lookup error) neither counts nor resets. An
+                endpoint listed twice in one call counts once. A host of a
+                browser push service (:data:`KNOWN_PUSH_SERVICE_HOSTS`) is
+                never pruned this way, since its refusal means the
+                deployment's resolver is wrong; a self-hosted push service on
+                the internal network is not in that list, so serve it with
+                ``allow_private_networks=True`` (nothing is refused then) or
+                pass ``None`` here. The counts live in this instance, bounded
+                to :data:`MAX_TRACKED_DNS_REFUSALS` endpoints. ``None``
+                disables pruning on DNS refusals.
+            dns_refusal_window_seconds (float): Least time, in seconds,
+                between the first counted refusal and the one that prunes.
+            clock (Callable[[], float]): Monotonic time source for the
+                window (tests).
+
+        Raises:
+            ValueError: When ``prune_after_dns_refusals`` is below 1 or
+                ``dns_refusal_window_seconds`` is negative.
         """
+        if prune_after_dns_refusals is not None and prune_after_dns_refusals < 1:
+            raise ValueError("prune_after_dns_refusals must be at least 1")
+        if dns_refusal_window_seconds < 0:
+            raise ValueError("dns_refusal_window_seconds must not be negative")
         self.vapid_private_key: str = vapid_private_key
         self.vapid_claims: dict[str, str] = {"sub": vapid_subject}
         if extra_vapid_claims:
@@ -364,6 +427,47 @@ class WebPushDispatcher:
         self.timeout: float = timeout
         self.allow_private_networks: bool = allow_private_networks
         self._resolver: Resolver = resolver or system_resolver
+        self.prune_after_dns_refusals: int | None = prune_after_dns_refusals
+        self.dns_refusal_window_seconds: float = dns_refusal_window_seconds
+        self._clock: Callable[[], float] = clock
+        self._dns_refusals: OrderedDict[str, tuple[int, float]] = OrderedDict()
+
+    def _count_dns_refusal(self, endpoint: str) -> bool:
+        """Count one DNS-decided refusal and say whether to prune now.
+
+        A host in :data:`KNOWN_PUSH_SERVICE_HOSTS` is never counted: a
+        resolver that maps a real push service to an internal address
+        refuses every subscription at once, and pruning them would delete
+        the whole store over a deployment mistake.
+
+        Args:
+            endpoint (str): The refused endpoint.
+
+        Returns:
+            bool: ``True`` when the consecutive count reached
+            ``prune_after_dns_refusals`` and the refusals span
+            ``dns_refusal_window_seconds`` (the entry is then forgotten).
+        """
+        if self.prune_after_dns_refusals is None:
+            return False
+        host = (urlsplit(endpoint).hostname or "").lower()
+        if any(
+            host == known or host.endswith(f".{known}")
+            for known in KNOWN_PUSH_SERVICE_HOSTS
+        ):
+            return False
+        now = self._clock()
+        count, first = self._dns_refusals.pop(endpoint, (0, now))
+        count += 1
+        if (
+            count >= self.prune_after_dns_refusals
+            and now - first >= self.dns_refusal_window_seconds
+        ):
+            return True
+        self._dns_refusals[endpoint] = (count, first)
+        while len(self._dns_refusals) > MAX_TRACKED_DNS_REFUSALS:
+            self._dns_refusals.popitem(last=False)
+        return False
 
     async def _pin_destination(self, endpoint: str) -> tuple[str, str | None]:
         """Refuse a non-public endpoint and return where to connect.
@@ -555,8 +659,9 @@ class WebPushDispatcher:
         IP-literal host that is not public). The list is what
         :meth:`prune` consumes, so an endpoint that failed for a transient
         reason must not be in it: a refusal decided by a DNS answer is
-        logged and kept, like every other failure, because a delivery that
-        failed once is not a device that went away.
+        logged and kept, because the answer can change -- until it repeats
+        ``prune_after_dns_refusals`` times in a row across calls, when the
+        endpoint is returned too.
 
         Args:
             subscriptions (list[WebPushSubscriptionSchema]): Recipients.
@@ -583,14 +688,31 @@ class WebPushDispatcher:
             else None
         )
 
+        counted: set[str] = set()
+
+        def _dns_prunes(endpoint: str) -> bool:
+            """Count a DNS refusal once per endpoint per call.
+
+            Args:
+                endpoint (str): The refused endpoint.
+
+            Returns:
+                bool: Whether the endpoint should be pruned now.
+            """
+            if endpoint in counted:
+                return False
+            counted.add(endpoint)
+            return self._count_dns_refusal(endpoint)
+
         async def _dispatch(sub: WebPushSubscriptionSchema) -> None:
             try:
                 await self.send(sub, payload, ttl_seconds=ttl_seconds, headers=headers)
             except WebPushGoneError:
                 gone.append(sub.endpoint)
             except WebPushEndpointRefusedError as exc:
-                if exc.permanent:
-                    gone.append(sub.endpoint)
+                if exc.permanent or _dns_prunes(sub.endpoint):
+                    if sub.endpoint not in gone:
+                        gone.append(sub.endpoint)
                     return
                 logger.warning(
                     "Web Push send failed for %s: %s",
@@ -603,6 +725,8 @@ class WebPushDispatcher:
                     _mask_endpoint(sub.endpoint),
                     exc,
                 )
+            else:
+                self._dns_refusals.pop(sub.endpoint, None)
 
         async def _one(sub: WebPushSubscriptionSchema) -> None:
             if limiter is None:
@@ -616,6 +740,10 @@ class WebPushDispatcher:
 
 
 __all__: list[str] = [
+    "DEFAULT_DNS_REFUSAL_WINDOW_SECONDS",
+    "DEFAULT_PRUNE_AFTER_DNS_REFUSALS",
+    "KNOWN_PUSH_SERVICE_HOSTS",
+    "MAX_TRACKED_DNS_REFUSALS",
     "WebPushDispatcher",
     "WebPushEndpointRefusedError",
     "WebPushError",

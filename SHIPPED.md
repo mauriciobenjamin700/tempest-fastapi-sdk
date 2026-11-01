@@ -4011,6 +4011,14 @@ Funciona com `cvssp/audioldm-s-full-v2` (efeitos) e `ucsd-reach/musicldm`
 recusados na carga. As classes AudioLDM/MusicLDM estão em
 `diffusers/pipelines/deprecated` (código congelado).
 
+## Segurança, rodada 3 (Unreleased)
+
+Perguntas abertas da rodada 2 fechadas: colunas de controle no
+`SIGNUP_PROTECTED_FIELDS`; `--audit-model` no `tempest user set-password`;
+poda de endpoint Web Push recusado por DNS após N vezes (exceto push service
+de navegador); envelope SSE com o prefixo de quem publicou (prefixos
+aninhados); `BaseSearchSchema` espelhando `searchable_columns`.
+
 ## Voz com Bark (Unreleased)
 
 `BarkSpeech` em `genai/audio/bark.py`, extra `[genai]`, pesos MIT, vozes PT.

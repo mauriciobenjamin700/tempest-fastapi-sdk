@@ -7,7 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `SIGNUP_PROTECTED_FIELDS` passa a cobrir `last_login_at`, `created_at`,
+  `updated_at`, `deleted_at` e `created_by`/`updated_by`: `signup(fields=...)`
+  aceitava essas colunas, então um cadastro podia nascer apagado
+  (`SoftDeleteMixin`, sumindo de toda consulta) ou alegar outro autor
+  (`AuditMixin`). `name` e `locale`, de mixins, continuam livres.
+- `WebPushDispatcher.send_many` poda o endpoint recusado por resposta de DNS
+  depois de `prune_after_dns_refusals` (padrão `3`) recusas seguidas, contadas
+  entre chamadas e espalhadas por pelo menos `dns_refusal_window_seconds`
+  (padrão 1 h, para três envios rápidos durante um problema passageiro de DNS
+  não podarem nada); antes, uma inscrição cujo domínio resolve para dentro da
+  rede (DNS rebinding) ficava para sempre. Host de push service de navegador
+  (`KNOWN_PUSH_SERVICE_HOSTS`: FCM, Mozilla, Apple, WNS) nunca é podado assim,
+  porque isso apagaria todas as inscrições por erro de resolver; `None`
+  desliga.
+- `SSEBroker` com prefixos aninhados (`app` ao lado de `app:chat`): o padrão
+  `app:*` recebia as mensagens de `app:chat` e as entregava ao canal
+  `chat:<x>` do broker externo. O envelope agora carrega o prefixo de quem
+  publicou e o receptor descarta o alheio; envelope sem o campo (publicador
+  antigo em deploy gradual) continua entregue.
+
 ### Added
+
+- `tempest user set-password --audit-model` (e `--event`, padrão
+  `user.password_set`): a rotação feita pelo operador grava um evento com
+  quantas sessões e passkeys revogou, na mesma transação do hash novo, como o
+  `mfa-reset`.
+- `BaseSearchSchema` (com `DEFAULT_MAX_SEARCH_TERM`): schema de requisição de
+  busca com `q` e `fields` e o `ClassVar searchable_columns`, espelho do
+  repositório como o `orderable_columns` é do `order_by` — coluna fora do
+  conjunto é `422` na validação, com o envelope do repositório, e o conjunto
+  aparece no OpenAPI como `enum`.
 
 - `BarkSpeech` (`tempest_fastapi_sdk.genai.audio`, extra `[genai]`): TTS
   local com o Bark (`suno/bark-small`, pesos MIT) e os 261 presets de voz do

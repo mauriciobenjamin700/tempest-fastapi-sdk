@@ -247,6 +247,145 @@ class TestNonPublicEndpointsAreRefused:
         assert recorder.calls == []
 
     @pytest.mark.asyncio
+    async def test_repeated_dns_refusals_are_pruned_on_the_threshold(
+        self, recorder: _Recorder
+    ) -> None:
+        """A host that keeps resolving inside the network is pruned at last."""
+        now = [0.0]
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+            clock=lambda: now[0],
+        )
+        rebinding = [_subscription("https://push.test/a")]
+        assert await dispatcher.send_many(rebinding, "p") == []
+        now[0] = 1800.0
+        assert await dispatcher.send_many(rebinding, "p") == []
+        now[0] = 3600.0
+        assert await dispatcher.send_many(rebinding, "p") == ["https://push.test/a"]
+        assert recorder.calls == []
+
+    @pytest.mark.asyncio
+    async def test_fast_repeated_refusals_inside_the_window_are_kept(
+        self, recorder: _Recorder
+    ) -> None:
+        """Three fan-outs during a passing resolver problem prune nothing."""
+        now = [0.0]
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+            clock=lambda: now[0],
+        )
+        sub = [_subscription("https://push.test/a")]
+        for step in range(10):
+            now[0] = step * 60.0
+            assert await dispatcher.send_many(sub, "p") == []
+
+    @pytest.mark.asyncio
+    async def test_a_duplicate_in_one_call_counts_once(
+        self, recorder: _Recorder
+    ) -> None:
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+            dns_refusal_window_seconds=0.0,
+        )
+        same = [_subscription("https://push.test/a")] * 3
+        assert await dispatcher.send_many(same, "p") == []
+        assert dispatcher._dns_refusals["https://push.test/a"][0] == 1
+
+    @pytest.mark.asyncio
+    async def test_a_delivery_resets_the_dns_refusal_count(
+        self, recorder: _Recorder
+    ) -> None:
+        """Only consecutive refusals count; one good answer starts over."""
+        answers = ["10.0.0.1", "10.0.0.1", "93.184.216.34", "10.0.0.1", "10.0.0.1"]
+
+        async def _changing(host: str) -> list[str]:
+            """Answer the next address in ``answers``.
+
+            Args:
+                host (str): Ignored.
+
+            Returns:
+                list[str]: One address.
+            """
+            return [answers.pop(0)]
+
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_changing,
+            dns_refusal_window_seconds=0.0,
+        )
+        sub = [_subscription("https://push.test/a")]
+        results = [await dispatcher.send_many(sub, "p") for _ in range(5)]
+        assert results == [[], [], [], [], []]
+        assert len(recorder.calls) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://fcm.googleapis.com/fcm/send/x",
+            "https://updates.push.services.mozilla.com/wpush/v2/x",
+            "https://web.push.apple.com/x",
+            "https://wns2-par02p.notify.windows.com/w/?token=x",
+        ],
+    )
+    async def test_a_browser_push_service_is_never_pruned_by_dns(
+        self, recorder: _Recorder, endpoint: str
+    ) -> None:
+        """A resolver mapping a real push service inward is the deployment's bug."""
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+            dns_refusal_window_seconds=0.0,
+        )
+        sub = [_subscription(endpoint)]
+        assert [await dispatcher.send_many(sub, "p") for _ in range(5)] == [[]] * 5
+
+    @pytest.mark.asyncio
+    async def test_none_keeps_dns_refusals_forever(self, recorder: _Recorder) -> None:
+        dispatcher = WebPushDispatcher(
+            "priv",
+            vapid_subject="mailto:ops@x.com",
+            resolver=_fixed_resolver("10.0.0.1"),
+            dns_refusal_window_seconds=0.0,
+            prune_after_dns_refusals=None,
+        )
+        sub = [_subscription("https://push.test/a")]
+        assert [await dispatcher.send_many(sub, "p") for _ in range(5)] == [[]] * 5
+
+    def test_the_tracked_endpoints_are_bounded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(dispatcher_module, "MAX_TRACKED_DNS_REFUSALS", 2)
+        dispatcher = WebPushDispatcher("priv", vapid_subject="mailto:ops@x.com")
+        for name in ("a", "b", "c"):
+            dispatcher._count_dns_refusal(f"https://push.test/{name}")
+        assert list(dispatcher._dns_refusals) == [
+            "https://push.test/b",
+            "https://push.test/c",
+        ]
+
+    def test_negative_window_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="negative"):
+            WebPushDispatcher(
+                "priv", vapid_subject="mailto:ops@x.com", dns_refusal_window_seconds=-1
+            )
+
+    def test_threshold_below_one_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="at least 1"):
+            WebPushDispatcher(
+                "priv", vapid_subject="mailto:ops@x.com", prune_after_dns_refusals=0
+            )
+
+    @pytest.mark.asyncio
     async def test_refusals_say_whether_they_are_permanent(self) -> None:
         """Literal and scheme refusals are permanent; DNS refusals are not."""
         dispatcher = WebPushDispatcher(
