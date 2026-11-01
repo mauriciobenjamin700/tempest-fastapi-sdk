@@ -142,9 +142,6 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils.jwt import JWTUtils as JWTUtils
     from tempest_fastapi_sdk.utils.locations import (
-        UF as UF,
-    )
-    from tempest_fastapi_sdk.utils.locations import (
         ChoiceBR as ChoiceBR,
     )
     from tempest_fastapi_sdk.utils.locations import (
@@ -154,10 +151,13 @@ if TYPE_CHECKING:
         CityNameField as CityNameField,
     )
     from tempest_fastapi_sdk.utils.locations import (
-        Region as Region,
+        RegionEnum as RegionEnum,
     )
     from tempest_fastapi_sdk.utils.locations import (
         StateBR as StateBR,
+    )
+    from tempest_fastapi_sdk.utils.locations import (
+        UFEnum as UFEnum,
     )
     from tempest_fastapi_sdk.utils.locations import (
         UFField as UFField,
@@ -206,7 +206,7 @@ if TYPE_CHECKING:
         XLSX_MEDIA_TYPE as XLSX_MEDIA_TYPE,
     )
     from tempest_fastapi_sdk.utils.media_types import (
-        ImageMediaType as ImageMediaType,
+        ImageMediaTypeEnum as ImageMediaTypeEnum,
     )
     from tempest_fastapi_sdk.utils.media_types import (
         guess_media_type as guess_media_type,
@@ -247,7 +247,7 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils.password import PasswordUtils as PasswordUtils
     from tempest_fastapi_sdk.utils.password import (
-        PasswordViolationCode as PasswordViolationCode,
+        PasswordViolationCodeEnum as PasswordViolationCodeEnum,
     )
     from tempest_fastapi_sdk.utils.password import (
         check_password_policy as check_password_policy,
@@ -525,11 +525,11 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "CircuitOpenError": "tempest_fastapi_sdk.utils.http_client",
     "HTTPClient": "tempest_fastapi_sdk.utils.http_client",
     "JWTUtils": "tempest_fastapi_sdk.utils.jwt",
-    "UF": "tempest_fastapi_sdk.utils.locations",
+    "UFEnum": "tempest_fastapi_sdk.utils.locations",
     "ChoiceBR": "tempest_fastapi_sdk.utils.locations",
     "CityBR": "tempest_fastapi_sdk.utils.locations",
     "CityNameField": "tempest_fastapi_sdk.utils.locations",
-    "Region": "tempest_fastapi_sdk.utils.locations",
+    "RegionEnum": "tempest_fastapi_sdk.utils.locations",
     "StateBR": "tempest_fastapi_sdk.utils.locations",
     "UFField": "tempest_fastapi_sdk.utils.locations",
     "cities_by_uf": "tempest_fastapi_sdk.utils.locations",
@@ -547,7 +547,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "DOCX_MEDIA_TYPE": "tempest_fastapi_sdk.utils.media_types",
     "PPTX_MEDIA_TYPE": "tempest_fastapi_sdk.utils.media_types",
     "XLSX_MEDIA_TYPE": "tempest_fastapi_sdk.utils.media_types",
-    "ImageMediaType": "tempest_fastapi_sdk.utils.media_types",
+    "ImageMediaTypeEnum": "tempest_fastapi_sdk.utils.media_types",
     "guess_media_type": "tempest_fastapi_sdk.utils.media_types",
     "CPUMetrics": "tempest_fastapi_sdk.utils.metrics",
     "DiskMetrics": "tempest_fastapi_sdk.utils.metrics",
@@ -562,7 +562,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PasswordPolicy": "tempest_fastapi_sdk.utils.password",
     "PasswordPolicyViolation": "tempest_fastapi_sdk.utils.password",
     "PasswordUtils": "tempest_fastapi_sdk.utils.password",
-    "PasswordViolationCode": "tempest_fastapi_sdk.utils.password",
+    "PasswordViolationCodeEnum": "tempest_fastapi_sdk.utils.password",
     "check_password_policy": "tempest_fastapi_sdk.utils.password",
     "generate_password": "tempest_fastapi_sdk.utils.password",
     "CEP": "tempest_fastapi_sdk.utils.regex",
@@ -723,7 +723,6 @@ __all__: list[str] = [
     "SIGNED_URL_SIGNATURE_PARAM",
     "SNIFFABLE_MIMETYPES",
     "STREAM_TOKEN_TYPE",
-    "UF",
     "UPLOAD_READ_CHUNK_BYTES",
     "XLSX_MEDIA_TYPE",
     "AllowedImageMediaTypes",
@@ -750,7 +749,7 @@ __all__: list[str] = [
     "GPUMetrics",
     "HTTPClient",
     "HexColorField",
-    "ImageMediaType",
+    "ImageMediaTypeEnum",
     "InMemoryThrottleBackend",
     "JWTUtils",
     "LatitudeField",
@@ -768,7 +767,7 @@ __all__: list[str] = [
     "PasswordPolicy",
     "PasswordPolicyViolation",
     "PasswordUtils",
-    "PasswordViolationCode",
+    "PasswordViolationCodeEnum",
     "PercentField",
     "PhoneBR",
     "PhoneBRField",
@@ -781,7 +780,7 @@ __all__: list[str] = [
     "PriceField",
     "RatingField",
     "RatioField",
-    "Region",
+    "RegionEnum",
     "RetryLogger",
     "RetryPolicy",
     "SignedDecimalRatioField",
@@ -791,6 +790,7 @@ __all__: list[str] = [
     "TOTPHelper",
     "ThrottleBackend",
     "ThrottleStatus",
+    "UFEnum",
     "UFField",
     "UploadResult",
     "UploadStorage",

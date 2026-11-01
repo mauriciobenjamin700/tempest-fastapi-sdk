@@ -27,7 +27,7 @@ from tempest_fastapi_sdk.integrations.messaging.zap import (
     ZapInboundMessage,
     ZapStatusCallback,
     ZapWebhookAckSchema,
-    ZapWebhookEvent,
+    ZapWebhookEventEnum,
     make_zap_webhook_dependency,
     make_zap_webhook_router,
     webhook_verifier,
@@ -600,7 +600,7 @@ class TestEventNamesInTheAnswer:
         assert response.json() == {"ok": True, "event": event}
 
     def test_the_enum_is_what_the_route_dispatches_on(self) -> None:
-        """``ZapWebhookEvent`` names the same strings the parser fills."""
+        """``ZapWebhookEventEnum`` names the same strings the parser fills."""
         recorder: Recorder = Recorder()
         client: TestClient = client_for(
             make_zap_webhook_router(secret=SECRET, on_inbound=recorder.on_inbound)
@@ -612,5 +612,5 @@ class TestEventNamesInTheAnswer:
             headers={ZAP_WEBHOOK_SIGNATURE_HEADER: sign(INBOUND_BODY)},
         )
 
-        assert response.json()["event"] == ZapWebhookEvent.MESSAGE_RECEIVED.value
+        assert response.json()["event"] == ZapWebhookEventEnum.MESSAGE_RECEIVED.value
         assert len(recorder.inbound) == 1

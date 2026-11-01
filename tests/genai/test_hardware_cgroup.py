@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 import tempest_fastapi_sdk.genai.hardware as hardware_module
-from tempest_fastapi_sdk.genai import ModelDtype, can_run, probe_hardware, recommend
+from tempest_fastapi_sdk.genai import ModelDtypeEnum, can_run, probe_hardware, recommend
 
 MIB: int = 1024 * 1024
 """Bytes per MiB."""
@@ -428,11 +428,11 @@ class TestProbeClamp:
         recommended = recommend(num_params=500_000_000)
 
         assert native.fits is False
-        assert native.dtype == ModelDtype.FLOAT32
+        assert native.dtype == ModelDtypeEnum.FLOAT32
         assert native.estimated_bytes == 2_500_000_000
         assert "limited by the container's cgroup to 512 MiB" in native.reason
         assert recommended.fits is True
-        assert recommended.dtype == ModelDtype.INT4
+        assert recommended.dtype == ModelDtypeEnum.INT4
         assert "limited by the container's cgroup to 512 MiB" in recommended.reason
 
     def test_no_limit_keeps_the_host_reading(

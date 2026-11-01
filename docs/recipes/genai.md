@@ -57,7 +57,7 @@ foi de fato lida (veja [Sem `psutil`](#sem-psutil)).
 Sem `dtype=`, o `can_run` dimensiona na precisão que o
 `TextGenerator(dtype="auto")` carrega no device escolhido: `bfloat16` em
 CUDA/MPS, `float32` em CPU. Passe `dtype=` para planejar outra coisa — um
-`dtype=` explícito no gerador, ou `ModelDtype.INT8`/`INT4` para
+`dtype=` explícito no gerador, ou `ModelDtypeEnum.INT8`/`INT4` para
 `quantization=`.
 
 !!! tip "Deixe o SDK escolher a precisão"
@@ -289,9 +289,9 @@ por parâmetro vêm da precisão (`float32`=4, `float16`/`bfloat16`=2,
 contexto de runtime.
 
 ```python
-from tempest_fastapi_sdk.genai import estimate_model_bytes, ModelDtype
+from tempest_fastapi_sdk.genai import estimate_model_bytes, ModelDtypeEnum
 
-gb = estimate_model_bytes(7_000_000_000, ModelDtype.INT4) / 1e9
+gb = estimate_model_bytes(7_000_000_000, ModelDtypeEnum.INT4) / 1e9
 print(f"~{gb:.1f} GB")   # 7B em int4
 ```
 
@@ -1316,11 +1316,11 @@ from fastapi import FastAPI
 from tempest_fastapi_sdk.genai import (
     AIChatPipeline,
     TextGenerator,
-    TextModel,
+    TextModelEnum,
     make_ai_chat_router,
 )
 
-pipeline = AIChatPipeline(generator=TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT))
+pipeline = AIChatPipeline(generator=TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT))
 
 
 app = FastAPI()
@@ -1412,9 +1412,9 @@ tool-call **antes** de começar a emitir):
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai import AIChatPipeline, TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import AIChatPipeline, TextGenerator, TextModelEnum
 
-pipeline = AIChatPipeline(generator=TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT))
+pipeline = AIChatPipeline(generator=TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT))
 
 
 async def stream_demo() -> None:
@@ -1564,9 +1564,9 @@ coalesce chamadas concorrentes num lote só — cada chamador ainda dá
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai import BatchScheduler, Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai import BatchScheduler, Embedder, EmbeddingModelEnum
 
-emb = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
+emb = Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2)
 
 
 async def embed_batch(texts: list[str]) -> list[list[float]]:
@@ -1958,29 +1958,29 @@ gravar em disco.
 ### Idioma (PT-BR / EN-US)
 
 Não precisa saber o código do Whisper nem escolher modelo TTS: use o enum
-`Language`. Ele resolve o código (`pt`/`en`) pro STT e um modelo TTS bom
+`LanguageEnum`. Ele resolve o código (`pt`/`en`) pro STT e um modelo TTS bom
 por idioma:
 
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai.audio import Language, SpeechToText, TextToSpeech
+from tempest_fastapi_sdk.genai.audio import LanguageEnum, SpeechToText, TextToSpeech
 
 
 async def main() -> None:
     """Run this example."""
     # STT: força o idioma sem decorar o código
-    await SpeechToText("base").transcribe("audio.wav", language=Language.PT_BR)
+    await SpeechToText("base").transcribe("audio.wav", language=LanguageEnum.PT_BR)
 
     # TTS: pega o modelo padrão do idioma automaticamente
-    tts = TextToSpeech.for_language(Language.PT_BR)     # modelo pt-BR
+    tts = TextToSpeech.for_language(LanguageEnum.PT_BR)     # modelo pt-BR
     wav = await tts.synthesize("Olá, mundo.")
 
 
 asyncio.run(main())
 ```
 
-`preset_for(Language.PT_BR)` expõe o preset (`whisper_language`,
+`preset_for(LanguageEnum.PT_BR)` expõe o preset (`whisper_language`,
 `tts_model`, `tts_language`) se quiser inspecionar/override. `language=`
 no `transcribe`/`synthesize` também aceita o código cru (`"pt"`) ou `None`
 (auto-detect no STT).
@@ -1999,7 +1999,7 @@ extra `[genai]`, e ele serve o `/tts` do `make_genai_router` como o
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai.audio import BarkSpeech, Language
+from tempest_fastapi_sdk.genai.audio import BarkSpeech, LanguageEnum
 
 voz = BarkSpeech("suno/bark-small")
 
@@ -2012,7 +2012,7 @@ async def main() -> None:
         "segunda-feira. Quem usa o ônibus das oito deve chegar ao ponto dez "
         "minutos antes."
     )
-    await voz.synthesize(aviso, language=Language.PT_BR, seed=0, out_path="aviso.wav")
+    await voz.synthesize(aviso, language=LanguageEnum.PT_BR, seed=0, out_path="aviso.wav")
 
 
 asyncio.run(main())
@@ -2691,10 +2691,10 @@ e recupere por similaridade. `Retriever` amarra `Embedder` → store →
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai import Embedder, TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import Embedder, TextGenerator, TextModelEnum
 from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, PdfReader, Retriever
 
-gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+gen = TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT)
 
 
 rag = Retriever(Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
@@ -2724,12 +2724,12 @@ asyncio.run(main())
   mesma chamada.
 
 ```python
-from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModelEnum
 from tempest_fastapi_sdk.genai.rag import PgVectorStore, Retriever
 
 from src.api.dependencies.resources import db
 
-embedder = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
+embedder = Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2)
 
 
 store = PgVectorStore(db, dim=384)          # db = AsyncDatabaseManager
@@ -3618,13 +3618,13 @@ os turnos mais antigos quando estoura:
 from transformers import AutoTokenizer
 
 from tempest_fastapi_sdk.genai import (
-    TextModel,
+    TextModelEnum,
     count_tokens,
     truncate_messages,
 )
 
 messages = [{"role": "user", "content": "oi"}]
-tokenizer = AutoTokenizer.from_pretrained(TextModel.QWEN2_5_7B_INSTRUCT)
+tokenizer = AutoTokenizer.from_pretrained(TextModelEnum.QWEN2_5_7B_INSTRUCT)
 
 
 n = count_tokens("Explique PIX.", tokenizer)   # tokenizer do próprio modelo

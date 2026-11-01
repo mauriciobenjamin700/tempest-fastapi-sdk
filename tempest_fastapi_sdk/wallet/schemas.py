@@ -13,7 +13,7 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.utils.regex import PixKeyType
 
 
-class WalletEntryKind(BaseStrEnum):
+class WalletEntryKindEnum(BaseStrEnum):
     """Ledger kinds the wallet service writes on its own.
 
     Credits for a sale, a tip or a commission are the application's
@@ -123,7 +123,7 @@ class PixDestinationSchema(BaseSchema):
 __all__: list[str] = [
     "PixDestinationSchema",
     "WalletBalanceSchema",
-    "WalletEntryKind",
+    "WalletEntryKindEnum",
     "WalletEntrySchema",
     "WithdrawRequestSchema",
     "WithdrawalSchema",

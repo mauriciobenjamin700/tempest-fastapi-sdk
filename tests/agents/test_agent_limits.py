@@ -21,8 +21,8 @@ from tempest_fastapi_sdk.agents import (
     AgentContext,
     AgentTool,
     AgentToolError,
-    StepKind,
-    StopReason,
+    StepKindEnum,
+    StopReasonEnum,
     ToolResult,
     agent_tool,
     text_tool,
@@ -81,9 +81,9 @@ class TestDeadlineInterruptsHungCalls:
         started = time.monotonic()
         run = await agent.run("go")
         assert time.monotonic() - started < 1.5
-        assert run.stop_reason == StopReason.TIMEOUT
+        assert run.stop_reason == StopReasonEnum.TIMEOUT
         tool_step = run.steps[-1]
-        assert tool_step.kind == StepKind.TOOL
+        assert tool_step.kind == StepKindEnum.TOOL
         assert tool_step.error is not None
         assert "time budget" in tool_step.error
 
@@ -97,8 +97,8 @@ class TestDeadlineInterruptsHungCalls:
         started = time.monotonic()
         run = await agent.run("go")
         assert time.monotonic() - started < 1.5
-        assert run.stop_reason == StopReason.TIMEOUT
-        assert run.steps[-1].kind == StepKind.MODEL
+        assert run.stop_reason == StopReasonEnum.TIMEOUT
+        assert run.steps[-1].kind == StepKindEnum.MODEL
 
     @pytest.mark.asyncio
     async def test_a_delegated_child_is_cut_by_the_parent_deadline(self) -> None:
@@ -121,7 +121,7 @@ class TestDeadlineInterruptsHungCalls:
         started = time.monotonic()
         run = await parent.run("go")
         assert time.monotonic() - started < 1.5
-        assert run.stop_reason == StopReason.TIMEOUT
+        assert run.stop_reason == StopReasonEnum.TIMEOUT
 
     @pytest.mark.asyncio
     async def test_a_tool_raising_its_own_timeout_is_an_ordinary_failure(
@@ -141,7 +141,7 @@ class TestDeadlineInterruptsHungCalls:
             tools=[text_tool("t", "T.", raises_timeout)],
             budget=AgentBudget(max_seconds=30),
         ).run("go")
-        assert run.stop_reason == StopReason.COMPLETED
+        assert run.stop_reason == StopReasonEnum.COMPLETED
         assert run.output == "recovered"
 
 
@@ -162,7 +162,7 @@ class TestBudgetInsideOneTurn:
             budget=AgentBudget(max_steps=5, max_tool_calls=2, max_seconds=None),
         ).run("go")
         assert len(executed) == 2
-        assert run.stop_reason == StopReason.MAX_TOOL_CALLS
+        assert run.stop_reason == StopReasonEnum.MAX_TOOL_CALLS
         assert len(run.tool_calls) == 2
 
     @pytest.mark.asyncio
@@ -182,7 +182,7 @@ class TestBudgetInsideOneTurn:
         ).run("go")
         assert len(run.steps) == 5
         assert len(executed) == 4
-        assert run.stop_reason == StopReason.MAX_STEPS
+        assert run.stop_reason == StopReasonEnum.MAX_STEPS
 
 
 class TestArgumentWireFormats:
@@ -476,7 +476,7 @@ class TestModeratorFailureFailsClosed:
             moderator=_RaisingModerator(),  # type: ignore[arg-type]
         )
         run = await agent.run("go")
-        assert run.stop_reason == StopReason.BLOCKED
+        assert run.stop_reason == StopReasonEnum.BLOCKED
         assert "moderation" in run.output
         assert "unreachable" not in run.output
 
@@ -494,7 +494,7 @@ class TestFinalTool:
             "go",
         )
         assert backend.calls == 1
-        assert run.stop_reason == StopReason.COMPLETED
+        assert run.stop_reason == StopReasonEnum.COMPLETED
         assert run.output == "submitted"
 
 
@@ -548,7 +548,7 @@ class TestDelegationsCountAsToolCalls:
             name="parent",
         )
         run = await parent.run("go")
-        assert run.steps[1].kind == StepKind.AGENT
+        assert run.steps[1].kind == StepKindEnum.AGENT
         assert run.tool_calls == ["ask_child"]
 
 

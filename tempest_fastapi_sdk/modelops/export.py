@@ -24,9 +24,9 @@ from typing import Any
 from tempest_fastapi_sdk.modelops._fs import size_mb, size_ratio
 from tempest_fastapi_sdk.modelops.schemas import (
     ExportResult,
-    GraphOptimizationLevel,
-    ModelFormat,
-    OrtOptimizationStyle,
+    GraphOptimizationLevelEnum,
+    ModelFormatEnum,
+    OrtOptimizationStyleEnum,
 )
 from tempest_fastapi_sdk.modelops.static import (
     _require_onnxruntime,
@@ -70,12 +70,12 @@ def _require_torch_onnx_export() -> Any:
     return torch
 
 
-_GRAPH_LEVEL_ATTRS: dict[GraphOptimizationLevel, str] = {
-    GraphOptimizationLevel.DISABLE_ALL: "ORT_DISABLE_ALL",
-    GraphOptimizationLevel.BASIC: "ORT_ENABLE_BASIC",
-    GraphOptimizationLevel.EXTENDED: "ORT_ENABLE_EXTENDED",
-    GraphOptimizationLevel.LAYOUT: "ORT_ENABLE_LAYOUT",
-    GraphOptimizationLevel.ALL: "ORT_ENABLE_ALL",
+_GRAPH_LEVEL_ATTRS: dict[GraphOptimizationLevelEnum, str] = {
+    GraphOptimizationLevelEnum.DISABLE_ALL: "ORT_DISABLE_ALL",
+    GraphOptimizationLevelEnum.BASIC: "ORT_ENABLE_BASIC",
+    GraphOptimizationLevelEnum.EXTENDED: "ORT_ENABLE_EXTENDED",
+    GraphOptimizationLevelEnum.LAYOUT: "ORT_ENABLE_LAYOUT",
+    GraphOptimizationLevelEnum.ALL: "ORT_ENABLE_ALL",
 }
 """Our level names mapped to ``onnxruntime.GraphOptimizationLevel`` members."""
 
@@ -143,7 +143,7 @@ def export_onnx_to_ort(
     model_path: str | Path,
     output_dir: str | Path | None = None,
     *,
-    optimization_style: OrtOptimizationStyle = OrtOptimizationStyle.FIXED,
+    optimization_style: OrtOptimizationStyleEnum = OrtOptimizationStyleEnum.FIXED,
     enable_type_reduction: bool = False,
     target_platform: str | None = None,
     save_optimized_onnx_model: bool = False,
@@ -157,7 +157,7 @@ def export_onnx_to_ort(
             be converted recursively.
         output_dir (str | Path | None): Where to write. Defaults to writing
             next to each input.
-        optimization_style (OrtOptimizationStyle): ``FIXED`` bakes the
+        optimization_style (OrtOptimizationStyleEnum): ``FIXED`` bakes the
             optimizations in (smallest, fastest to load, the mobile
             default); ``RUNTIME`` keeps the graph re-optimizable on the
             target device.
@@ -196,7 +196,7 @@ def export_onnx_to_ort(
         >>> results[0].output_path
     """
     converter = _require_ort_converter()
-    optimization_style = OrtOptimizationStyle(optimization_style)
+    optimization_style = OrtOptimizationStyleEnum(optimization_style)
     source = Path(model_path)
     if not source.exists():
         raise FileNotFoundError(f"model not found: {source}")
@@ -209,7 +209,7 @@ def export_onnx_to_ort(
 
     style = (
         converter.OptimizationStyle.Fixed
-        if optimization_style is OrtOptimizationStyle.FIXED
+        if optimization_style is OrtOptimizationStyleEnum.FIXED
         else converter.OptimizationStyle.Runtime
     )
     converter.convert_onnx_models_to_ort(
@@ -243,7 +243,7 @@ def export_onnx_to_ort(
             ExportResult(
                 source_path=str(origin),
                 output_path=str(path),
-                format=ModelFormat.ORT,
+                format=ModelFormatEnum.ORT,
                 source_size_mb=origin_size,
                 output_size_mb=output_size,
                 size_ratio=size_ratio(origin_size, output_size),
@@ -359,7 +359,7 @@ def export_torch_to_onnx(
     return ExportResult(
         source_path=str(origin) if origin is not None else "",
         output_path=str(destination),
-        format=ModelFormat.ONNX,
+        format=ModelFormatEnum.ONNX,
         source_size_mb=origin_size,
         output_size_mb=output_size,
         size_ratio=size_ratio(origin_size, output_size),
@@ -371,7 +371,7 @@ def optimize_onnx_graph(
     model_path: str | Path,
     output_path: str | Path,
     *,
-    level: GraphOptimizationLevel = GraphOptimizationLevel.ALL,
+    level: GraphOptimizationLevelEnum = GraphOptimizationLevelEnum.ALL,
     providers: list[str] | None = None,
 ) -> ExportResult:
     """Run ONNX Runtime's graph optimizer and write the result back out.
@@ -388,7 +388,7 @@ def optimize_onnx_graph(
     Args:
         model_path (str | Path): Model to optimize.
         output_path (str | Path): Where to write the optimized ``.onnx``.
-        level (GraphOptimizationLevel): How aggressive to be.
+        level (GraphOptimizationLevelEnum): How aggressive to be.
         providers (list[str] | None): Providers to optimize for. Defaults to
             whatever the runtime offers.
 
@@ -415,11 +415,11 @@ def optimize_onnx_graph(
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    attribute = _GRAPH_LEVEL_ATTRS[GraphOptimizationLevel(level)]
+    attribute = _GRAPH_LEVEL_ATTRS[GraphOptimizationLevelEnum(level)]
     if not hasattr(onnxruntime.GraphOptimizationLevel, attribute):
         raise ValueError(
             f"optimization level {level.value!r} needs a newer onnxruntime: "
-            f"GraphOptimizationLevel has no {attribute}"
+            f"GraphOptimizationLevelEnum has no {attribute}"
         )
 
     options = onnxruntime.SessionOptions()
@@ -443,7 +443,7 @@ def optimize_onnx_graph(
     return ExportResult(
         source_path=str(source),
         output_path=str(destination),
-        format=ModelFormat.ONNX,
+        format=ModelFormatEnum.ONNX,
         source_size_mb=source_size,
         output_size_mb=output_size,
         size_ratio=size_ratio(source_size, output_size),

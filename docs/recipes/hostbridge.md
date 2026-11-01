@@ -185,7 +185,7 @@ relatar erro.
 import asyncio
 
 from tempest_fastapi_sdk.hostbridge import HostBridge, HostBridgeConfig
-from tempest_fastapi_sdk.pdf import PdfExtractor
+from tempest_fastapi_sdk.pdf import PdfExtractorEnum
 
 
 async def main() -> None:
@@ -194,7 +194,7 @@ async def main() -> None:
     )
     document = await bridge.read_pdf(
         "C:\\Users\\me\\Documents\\contrato.pdf",
-        extractor=PdfExtractor.LAYOUT,
+        extractor=PdfExtractorEnum.LAYOUT,
     )
     for page in document.pages:
         print(page.page_number, len(page.tables), page.text[:60])
@@ -203,8 +203,8 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`PdfExtractor.TEXT` é `pypdf` — rápido, prosa corrida, extra `[pdf-read]`.
-`PdfExtractor.LAYOUT` é `pdfplumber`, extra `[pdf-layout]`: mais lento, mas
+`PdfExtractorEnum.TEXT` é `pypdf` — rápido, prosa corrida, extra `[pdf-read]`.
+`PdfExtractorEnum.LAYOUT` é `pdfplumber`, extra `[pdf-layout]`: mais lento, mas
 recupera colunas e preenche `page.tables`.
 
 !!! warning "Não há OCR aqui"

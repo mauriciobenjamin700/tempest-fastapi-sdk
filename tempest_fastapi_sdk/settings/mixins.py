@@ -4572,7 +4572,7 @@ class OpenPixSettings(BaseAppSettings):
     ``Authorization`` **raw**, with no ``Bearer`` prefix.
 
     The environment is a string here rather than
-    :class:`~tempest_fastapi_sdk.integrations.payment.openpix.OpenPixEnvironment`
+    :class:`~tempest_fastapi_sdk.integrations.payment.openpix.OpenPixEnvironmentEnum`
     on purpose: settings must not pull the integrations namespace, which is
     lazy so ``import tempest_fastapi_sdk`` never pays for 373 generated names.
     :meth:`openpix_kwargs` imports the enum when it runs, so the base URL still
@@ -4627,10 +4627,10 @@ class OpenPixSettings(BaseAppSettings):
             the ``Authorization`` header carrying the AppID.
         """
         from tempest_fastapi_sdk.integrations.payment.openpix.environment import (
-            OpenPixEnvironment,
+            OpenPixEnvironmentEnum,
         )
 
-        environment = OpenPixEnvironment(self.OPENPIX_ENVIRONMENT)
+        environment = OpenPixEnvironmentEnum(self.OPENPIX_ENVIRONMENT)
         return {
             "base_url": environment.base_url,
             "default_headers": {"Authorization": self.OPENPIX_APP_ID},

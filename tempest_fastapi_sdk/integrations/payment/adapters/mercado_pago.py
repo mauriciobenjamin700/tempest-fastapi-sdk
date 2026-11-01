@@ -18,7 +18,7 @@ What the contracts hide, and is decided here:
   what a partial refund addresses, and is kept in ``raw``.
 - **A declined card is HTTP 402.** The body carries the reason in
   ``errors`` and the whole order in ``data``. :class:`MercadoPagoCardProvider`
-  reads it as a :attr:`PaymentStatus.FAILED` charge instead of raising.
+  reads it as a :attr:`PaymentStatusEnum.FAILED` charge instead of raising.
 - **A notification carries no state.** It names the order by ``data.id``,
   the one value the signature covers.
   :func:`make_mercado_pago_webhook_delivery_dependency` verifies it and
@@ -42,10 +42,10 @@ from fastapi import Depends
 from tempest_fastapi_sdk.integrations.payment.base import (
     CardCharge,
     CardChargeRequest,
-    PaymentStatus,
+    PaymentStatusEnum,
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPayer,
     PixPaymentEvent,
 )
@@ -74,21 +74,21 @@ A notification's ``data.id`` is interpolated into a path only when it
 matches, so a value that is not an id never reaches ``/v1/orders/<…>``.
 """
 
-STATUS_MAP: Final[dict[str, PaymentStatus]] = {
-    "created": PaymentStatus.PENDING,
-    "action_required": PaymentStatus.PENDING,
-    "processing": PaymentStatus.IN_ANALYSIS,
-    "processed": PaymentStatus.PAID,
-    "canceled": PaymentStatus.CANCELLED,
-    "failed": PaymentStatus.FAILED,
-    "refunded": PaymentStatus.REFUNDED,
+STATUS_MAP: Final[dict[str, PaymentStatusEnum]] = {
+    "created": PaymentStatusEnum.PENDING,
+    "action_required": PaymentStatusEnum.PENDING,
+    "processing": PaymentStatusEnum.IN_ANALYSIS,
+    "processed": PaymentStatusEnum.PAID,
+    "canceled": PaymentStatusEnum.CANCELLED,
+    "failed": PaymentStatusEnum.FAILED,
+    "refunded": PaymentStatusEnum.REFUNDED,
 }
 """An order's ``status``, mapped to the canonical state.
 
 The first five are the values the document declares (``OrderStatus``); a
 test walks the generated enum and fails on a member missing here.
 ``failed`` (a declined card) and ``refunded`` were observed in the sandbox
-outside that list. Anything else becomes :attr:`PaymentStatus.UNKNOWN`, with
+outside that list. Anything else becomes :attr:`PaymentStatusEnum.UNKNOWN`, with
 the provider's string kept.
 
 Two states are refined by ``status_detail``: ``action_required`` (see
@@ -109,23 +109,23 @@ EXPIRED_STATUS_DETAIL: Final[str] = "expired"
 Observed on 2026-10-10 on a Pix order created with ``expiration_time:
 PT60S`` and read after the deadline: the order answered ``canceled`` /
 ``expired``, its payment ``expired`` / ``expired``. Read as
-:attr:`PaymentStatus.EXPIRED`, not :attr:`PaymentStatus.CANCELLED` — nobody
+:attr:`PaymentStatusEnum.EXPIRED`, not :attr:`PaymentStatusEnum.CANCELLED` — nobody
 cancelled it, and the two are separate events in the contract.
 """
 
-STATUS_EVENT_MAP: Final[dict[PaymentStatus, PixEventType]] = {
-    PaymentStatus.PENDING: PixEventType.CHARGE_CREATED,
-    PaymentStatus.PAID: PixEventType.CHARGE_PAID,
-    PaymentStatus.EXPIRED: PixEventType.CHARGE_EXPIRED,
-    PaymentStatus.CANCELLED: PixEventType.CHARGE_CANCELLED,
-    PaymentStatus.REFUNDED: PixEventType.CHARGE_REFUNDED,
+STATUS_EVENT_MAP: Final[dict[PaymentStatusEnum, PixEventTypeEnum]] = {
+    PaymentStatusEnum.PENDING: PixEventTypeEnum.CHARGE_CREATED,
+    PaymentStatusEnum.PAID: PixEventTypeEnum.CHARGE_PAID,
+    PaymentStatusEnum.EXPIRED: PixEventTypeEnum.CHARGE_EXPIRED,
+    PaymentStatusEnum.CANCELLED: PixEventTypeEnum.CHARGE_CANCELLED,
+    PaymentStatusEnum.REFUNDED: PixEventTypeEnum.CHARGE_REFUNDED,
 }
 """Canonical Pix event read off the re-read order's state.
 
 The event type comes from the API's answer, never from the notification
 body, which is unsigned. States without a canonical event —
-:attr:`PaymentStatus.FAILED`, :attr:`PaymentStatus.CHARGED_BACK`,
-:attr:`PaymentStatus.UNKNOWN` — become :attr:`PixEventType.UNKNOWN`; the
+:attr:`PaymentStatusEnum.FAILED`, :attr:`PaymentStatusEnum.CHARGED_BACK`,
+:attr:`PaymentStatusEnum.UNKNOWN` — become :attr:`PixEventTypeEnum.UNKNOWN`; the
 state itself is on ``event.charge.status``.
 """
 
@@ -293,27 +293,27 @@ def _payment_method(order: Mapping[str, Any]) -> Mapping[str, Any]:
     return method if isinstance(method, Mapping) else {}
 
 
-def _status(order: Mapping[str, Any]) -> PaymentStatus:
+def _status(order: Mapping[str, Any]) -> PaymentStatusEnum:
     """Read an order's state into the canonical one.
 
     Args:
         order (Mapping[str, Any]): The order.
 
     Returns:
-        PaymentStatus: The mapped state; :attr:`PaymentStatus.AUTHORIZED`
+        PaymentStatusEnum: The mapped state; :attr:`PaymentStatusEnum.AUTHORIZED`
         for an ``action_required`` order waiting on capture,
-        :attr:`PaymentStatus.EXPIRED` for a ``canceled`` one that expired.
+        :attr:`PaymentStatusEnum.EXPIRED` for a ``canceled`` one that expired.
     """
     raw = order.get("status")
     if not isinstance(raw, str):
-        return PaymentStatus.UNKNOWN
+        return PaymentStatusEnum.UNKNOWN
     if raw == "canceled" and order.get("status_detail") == EXPIRED_STATUS_DETAIL:
-        return PaymentStatus.EXPIRED
+        return PaymentStatusEnum.EXPIRED
     if raw == "action_required" and (
         order.get("status_detail") == AUTHORIZED_STATUS_DETAIL
     ):
-        return PaymentStatus.AUTHORIZED
-    return STATUS_MAP.get(raw, PaymentStatus.UNKNOWN)
+        return PaymentStatusEnum.AUTHORIZED
+    return STATUS_MAP.get(raw, PaymentStatusEnum.UNKNOWN)
 
 
 def _refunded_cents(order: Mapping[str, Any]) -> int:
@@ -876,10 +876,10 @@ class MercadoPagoPixProvider(_OrdersClient):
         action = notification.payload.get("action")
         name = action if isinstance(action, str) and action else notification.topic
         charge: PixCharge | None = None
-        event_type = PixEventType.UNKNOWN
+        event_type = PixEventTypeEnum.UNKNOWN
         if event.order is not None and _payment_method(event.order).get("id") == "pix":
             charge = _to_pix_charge(event.order)
-            event_type = STATUS_EVENT_MAP.get(charge.status, PixEventType.UNKNOWN)
+            event_type = STATUS_EVENT_MAP.get(charge.status, PixEventTypeEnum.UNKNOWN)
         return PixPaymentEvent(
             provider=PROVIDER_NAME,
             type=event_type,
@@ -901,7 +901,7 @@ class MercadoPagoCardProvider(_OrdersClient):
 
         ``capture=False`` sends ``capture_mode: manual``; the order comes back
         ``action_required`` / ``waiting_capture``
-        (:attr:`PaymentStatus.AUTHORIZED`). Otherwise the provider's default
+        (:attr:`PaymentStatusEnum.AUTHORIZED`). Otherwise the provider's default
         applies, observed as ``automatic_async``.
 
         With installments, ``amount_cents`` goes out as both ``total_amount``

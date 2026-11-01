@@ -19,7 +19,7 @@ Three properties are deliberate, and each one is a bug this shape avoids:
   every tool call runs under the time left on the clock and is cancelled
   when it runs out, and the step and tool-call ceilings are checked before
   **each** call, including the calls of one many-call turn.
-  :class:`~tempest_fastapi_sdk.agents.StopReason` says which one fired. A
+  :class:`~tempest_fastapi_sdk.agents.StopReasonEnum` says which one fired. A
   caller that ignores it will present truncated work as finished.
 * **Binary results never enter the prompt.** Tools return text for the
   model and artifacts for the caller; artifacts are held by name so a
@@ -49,8 +49,8 @@ from tempest_fastapi_sdk.agents.schemas import (
     AgentBudget,
     AgentRun,
     AgentStep,
-    StepKind,
-    StopReason,
+    StepKindEnum,
+    StopReasonEnum,
     ToolResult,
 )
 from tempest_fastapi_sdk.agents.skills import (
@@ -180,7 +180,7 @@ class _RunState:
     Attributes:
         context (AgentContext): The run's artifacts and scratch state.
         steps (list[AgentStep]): The trace, appended as it happens.
-        outcome (StopReason): Why the run ended.
+        outcome (StopReasonEnum): Why the run ended.
         output (str): The final answer.
         started (float): ``time.monotonic()`` at the start.
         tool_calls (int): Tool invocations so far.
@@ -191,7 +191,7 @@ class _RunState:
 
     context: AgentContext
     steps: list[AgentStep] = field(default_factory=list)
-    outcome: StopReason = StopReason.COMPLETED
+    outcome: StopReasonEnum = StopReasonEnum.COMPLETED
     output: str = ""
     started: float = 0.0
     tool_calls: int = 0
@@ -256,7 +256,7 @@ class Agent:
             moderator (ModerationBackend | None): When set, the goal is
                 checked before the run starts and the answer before it is
                 returned. A rejection stops the run with
-                :attr:`StopReason.BLOCKED` rather than raising. A moderator
+                :attr:`StopReasonEnum.BLOCKED` rather than raising. A moderator
                 that **raises** also stops it with ``BLOCKED`` (the output
                 says moderation was unavailable, the exception is logged):
                 failing open would return unchecked text as checked text.
@@ -386,7 +386,7 @@ class Agent:
 
             >>> run = await agent.run("Summarise the latest sales report.")
             >>> run.stop_reason
-            <StopReason.COMPLETED: 'completed'>
+            <StopReasonEnum.COMPLETED: 'completed'>
 
         Args:
             goal (str): What the agent should accomplish.
@@ -500,25 +500,25 @@ class Agent:
         candidates = [value for value in (own, inherited) if value is not None]
         return min(candidates) if candidates else None
 
-    def _stop_for_budget(self, state: _RunState) -> StopReason | None:
+    def _stop_for_budget(self, state: _RunState) -> StopReasonEnum | None:
         """Return the ceiling that has been crossed, if any.
 
         Args:
             state (_RunState): The run in progress.
 
         Returns:
-            StopReason | None: The reason to stop, or ``None`` to continue.
+            StopReasonEnum | None: The reason to stop, or ``None`` to continue.
         """
         budget = self.budget
         if len(state.steps) >= budget.max_steps:
-            return StopReason.MAX_STEPS
+            return StopReasonEnum.MAX_STEPS
         if (
             budget.max_tool_calls is not None
             and state.tool_calls >= budget.max_tool_calls
         ):
-            return StopReason.MAX_TOOL_CALLS
+            return StopReasonEnum.MAX_TOOL_CALLS
         if state.deadline is not None and time.monotonic() >= state.deadline:
-            return StopReason.TIMEOUT
+            return StopReasonEnum.TIMEOUT
         return None
 
     async def _iterate(
@@ -558,7 +558,7 @@ class Agent:
 
         reason = await self._blocked(goal)
         if reason is not None:
-            state.outcome = StopReason.BLOCKED
+            state.outcome = StopReasonEnum.BLOCKED
             state.output = reason
             return
 
@@ -585,7 +585,7 @@ class Agent:
                 timed_out = isinstance(exc, TimeoutError) and scope.expired()
                 step = AgentStep(
                     index=len(state.steps),
-                    kind=StepKind.MODEL,
+                    kind=StepKindEnum.MODEL,
                     name="chat",
                     error=(
                         "model call interrupted: the time budget ran out"
@@ -596,9 +596,9 @@ class Agent:
                 )
                 state.steps.append(step)
                 if timed_out:
-                    state.outcome = StopReason.TIMEOUT
+                    state.outcome = StopReasonEnum.TIMEOUT
                 else:
-                    state.outcome = StopReason.ERROR
+                    state.outcome = StopReasonEnum.ERROR
                     state.output = step.error or ""
                 yield step
                 return
@@ -607,7 +607,7 @@ class Agent:
             calls: list[dict[str, Any]] = message.get("tool_calls") or []
             model_step = AgentStep(
                 index=len(state.steps),
-                kind=StepKind.MODEL,
+                kind=StepKindEnum.MODEL,
                 name="chat",
                 output=content,
                 seconds=time.monotonic() - step_started,
@@ -618,9 +618,9 @@ class Agent:
             if not calls:
                 if content.strip():
                     state.output = content
-                    state.outcome = StopReason.COMPLETED
+                    state.outcome = StopReasonEnum.COMPLETED
                 else:
-                    state.outcome = StopReason.EMPTY_RESPONSE
+                    state.outcome = StopReasonEnum.EMPTY_RESPONSE
                 return
 
             messages.append(
@@ -646,11 +646,11 @@ class Agent:
                 messages.append(self._tool_message(call, outcome))
                 yield outcome.step
                 if outcome.timed_out:
-                    state.outcome = StopReason.TIMEOUT
+                    state.outcome = StopReasonEnum.TIMEOUT
                     return
                 if outcome.final:
                     state.output = outcome.observation
-                    state.outcome = StopReason.COMPLETED
+                    state.outcome = StopReasonEnum.COMPLETED
                     return
 
     def _remaining(self, state: _RunState) -> float | None:
@@ -824,7 +824,7 @@ class Agent:
             return _ToolOutcome(
                 step=AgentStep(
                     index=index,
-                    kind=StepKind.TOOL,
+                    kind=StepKindEnum.TOOL,
                     name=name or "unknown",
                     arguments=arguments,
                     error=problem,
@@ -848,7 +848,7 @@ class Agent:
                 return _ToolOutcome(
                     step=AgentStep(
                         index=index,
-                        kind=StepKind.TOOL,
+                        kind=StepKindEnum.TOOL,
                         name=name,
                         arguments=arguments,
                         error=error,
@@ -861,7 +861,7 @@ class Agent:
             return _ToolOutcome(
                 step=AgentStep(
                     index=index,
-                    kind=StepKind.TOOL,
+                    kind=StepKindEnum.TOOL,
                     name=name,
                     arguments=arguments,
                     error=error,
@@ -875,7 +875,7 @@ class Agent:
         return _ToolOutcome(
             step=AgentStep(
                 index=index,
-                kind=StepKind.AGENT if delegated is not None else StepKind.TOOL,
+                kind=StepKindEnum.AGENT if delegated is not None else StepKindEnum.TOOL,
                 name=name,
                 arguments=arguments,
                 output=text,
@@ -949,15 +949,15 @@ class Agent:
         outcome = state.outcome
         output = state.output
 
-        if outcome == StopReason.COMPLETED:
+        if outcome == StopReasonEnum.COMPLETED:
             reason = await self._blocked(output)
             if reason is not None:
-                outcome = StopReason.BLOCKED
+                outcome = StopReasonEnum.BLOCKED
                 output = reason
 
         if not output:
             for step in reversed(state.steps):
-                if step.kind == StepKind.MODEL and step.output.strip():
+                if step.kind == StepKindEnum.MODEL and step.output.strip():
                     output = step.output
                     break
 

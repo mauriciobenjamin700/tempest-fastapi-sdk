@@ -81,8 +81,8 @@ from tempest_fastapi_sdk.slides.schemas import AnswerKeySection as AnswerKeySect
 from tempest_fastapi_sdk.slides.schemas import Slide as Slide
 from tempest_fastapi_sdk.slides.schemas import SlideBullet as SlideBullet
 from tempest_fastapi_sdk.slides.schemas import SlideDeck as SlideDeck
-from tempest_fastapi_sdk.slides.schemas import SlideKind as SlideKind
-from tempest_fastapi_sdk.slides.schemas import SlideTheme as SlideTheme
+from tempest_fastapi_sdk.slides.schemas import SlideKindEnum as SlideKindEnum
+from tempest_fastapi_sdk.slides.schemas import SlideThemeEnum as SlideThemeEnum
 from tempest_fastapi_sdk.slides.styles import ABNT_MARKDOWN_CSS as ABNT_MARKDOWN_CSS
 from tempest_fastapi_sdk.slides.styles import (
     DEFAULT_MARKDOWN_CSS as DEFAULT_MARKDOWN_CSS,
@@ -121,11 +121,11 @@ __all__: list[str] = [
     "Slide",
     "SlideBullet",
     "SlideDeck",
-    "SlideKind",
+    "SlideKindEnum",
     "SlideRenderer",
     "SlideSourceEmptyError",
     "SlideSourceTooLargeError",
-    "SlideTheme",
+    "SlideThemeEnum",
     "SlideVocabulary",
     "parse_answer_key",
     "parse_slides",

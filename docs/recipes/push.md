@@ -306,7 +306,7 @@ from tempest_fastapi_sdk import (
     BaseRepository,
     DeviceService,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
 )
 
 from src.api.dependencies.push import transports
@@ -322,7 +322,7 @@ async def main() -> None:
         await service.notify_user(
             UUID("2f1b0f1e-0f4a-4e35-9a5f-2c8a2f9a1234"),
             PushPayloadSchema(title="Só no navegador"),
-            platforms=[PushPlatform.WEB],
+            platforms=[PushPlatformEnum.WEB],
             exclude_tokens=["https://push.example/o-aparelho-que-causou-o-evento"],
         )
 

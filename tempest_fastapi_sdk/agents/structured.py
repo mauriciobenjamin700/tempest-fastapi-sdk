@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
-from tempest_fastapi_sdk.agents.schemas import AgentRun, StopReason, ToolResult
+from tempest_fastapi_sdk.agents.schemas import AgentRun, StopReasonEnum, ToolResult
 from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolError
 from tempest_fastapi_sdk.agents.typed import _explain, schema_of
 
@@ -53,7 +53,7 @@ class StructuredRun(AgentRun, Generic[OutputT]):
             run ended without producing one — a budget ran out, moderation
             blocked it, the model replied with nothing, the model never
             called the answer tool, or what it passed did not validate. Only a
-            :attr:`~tempest_fastapi_sdk.agents.StopReason.COMPLETED` run
+            :attr:`~tempest_fastapi_sdk.agents.StopReasonEnum.COMPLETED` run
             carries data: an answer recorded by a run that was then blocked
             or cut short is dropped, not returned. Always check it; a run can be
             :attr:`~tempest_fastapi_sdk.agents.AgentRun.succeeded` and
@@ -221,7 +221,7 @@ async def run_structured[OutputT: BaseModel](
     ctx.answer = None
     parse_error: str | None = None
 
-    if run.stop_reason == StopReason.EMPTY_RESPONSE:
+    if run.stop_reason == StopReasonEnum.EMPTY_RESPONSE:
         data = None
         parse_error = "the run produced no answer"
     elif not run.succeeded:
@@ -378,7 +378,7 @@ def structured_verdict(
     Returns:
         bool: ``True`` when the run completed *and* produced data.
     """
-    return run.stop_reason == StopReason.COMPLETED and run.data is not None
+    return run.stop_reason == StopReasonEnum.COMPLETED and run.data is not None
 
 
 __all__: list[str] = [

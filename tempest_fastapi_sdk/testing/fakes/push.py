@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from tempest_fastapi_sdk.push.schemas import (
     PushDevice,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
 )
 from tempest_fastapi_sdk.testing.fakes._control import _Steerable
 
@@ -36,8 +36,8 @@ class FakePushDispatcher(_Steerable):
 
     Example:
 
-        >>> from tempest_fastapi_sdk.push import PushPlatform
-        >>> dispatcher = FakePushDispatcher(platforms={PushPlatform.WEB.value})
+        >>> from tempest_fastapi_sdk.push import PushPlatformEnum
+        >>> dispatcher = FakePushDispatcher(platforms={PushPlatformEnum.WEB.value})
         >>> dispatcher.platforms
         frozenset({'web'})
 
@@ -57,7 +57,7 @@ class FakePushDispatcher(_Steerable):
                 fleet is exercised without registering three fakes.
         """
         super().__init__()
-        claimed = platforms or {platform.value for platform in PushPlatform}
+        claimed = platforms or {platform.value for platform in PushPlatformEnum}
         self.platforms: frozenset[str] = frozenset(claimed)
         self.sent: list[SentPush] = []
 

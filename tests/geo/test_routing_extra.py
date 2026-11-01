@@ -8,7 +8,7 @@ import pytest
 from tempest_fastapi_sdk.geo import (
     Coordinate,
     OSRMBackend,
-    TravelMode,
+    TravelModeEnum,
     encode_polyline,
 )
 
@@ -88,5 +88,5 @@ class TestMatrix:
 
         async with _client(handler) as client:
             backend = OSRMBackend(http_client=client)
-            await backend.matrix([SAO_PAULO], [RIO], mode=TravelMode.CAR)
+            await backend.matrix([SAO_PAULO], [RIO], mode=TravelModeEnum.CAR)
         assert "/table/v1/" in seen["path"]

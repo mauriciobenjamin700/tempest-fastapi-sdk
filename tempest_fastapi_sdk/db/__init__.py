@@ -31,7 +31,7 @@ from tempest_fastapi_sdk.db.audit import (
     AUDIT_USER_AGENT_MAX_LENGTH as AUDIT_USER_AGENT_MAX_LENGTH,
 )
 from tempest_fastapi_sdk.db.audit import DEFAULT_AUDIT_REDACT as DEFAULT_AUDIT_REDACT
-from tempest_fastapi_sdk.db.audit import AuditAction as AuditAction
+from tempest_fastapi_sdk.db.audit import AuditActionEnum as AuditActionEnum
 from tempest_fastapi_sdk.db.audit import (
     AuditRequestContext as AuditRequestContext,
 )
@@ -126,7 +126,7 @@ from tempest_fastapi_sdk.db.enums import TempestEnum as TempestEnum
 from tempest_fastapi_sdk.db.enums import enum_column as enum_column
 from tempest_fastapi_sdk.db.enums import enum_type_name as enum_type_name
 from tempest_fastapi_sdk.db.enums import enum_values as enum_values
-from tempest_fastapi_sdk.db.explain import ExplainDetail as ExplainDetail
+from tempest_fastapi_sdk.db.explain import ExplainDetailEnum as ExplainDetailEnum
 from tempest_fastapi_sdk.db.explain import ExplainReport as ExplainReport
 from tempest_fastapi_sdk.db.explain import QueryPlan as QueryPlan
 from tempest_fastapi_sdk.db.explain import explain_queries as explain_queries
@@ -143,7 +143,7 @@ from tempest_fastapi_sdk.db.integrity import (
     IntegrityFailure as IntegrityFailure,
 )
 from tempest_fastapi_sdk.db.integrity import (
-    IntegrityViolation as IntegrityViolation,
+    IntegrityViolationEnum as IntegrityViolationEnum,
 )
 from tempest_fastapi_sdk.db.integrity import (
     describe_database_error as describe_database_error,
@@ -159,7 +159,7 @@ from tempest_fastapi_sdk.db.migrations import (
     DestructiveMigrationError as DestructiveMigrationError,
 )
 from tempest_fastapi_sdk.db.migrations import (
-    SchemaSyncOutcome as SchemaSyncOutcome,
+    SchemaSyncOutcomeEnum as SchemaSyncOutcomeEnum,
 )
 from tempest_fastapi_sdk.db.migrations import (
     require_sqlite_foreign_keys_off as require_sqlite_foreign_keys_off,
@@ -175,22 +175,24 @@ from tempest_fastapi_sdk.db.model import to_snake_case as to_snake_case
 from tempest_fastapi_sdk.db.naming import (
     LEGACY_NAMING_CONVENTION as LEGACY_NAMING_CONVENTION,
 )
-from tempest_fastapi_sdk.db.naming import ConstraintKind as ConstraintKind
+from tempest_fastapi_sdk.db.naming import ConstraintKindEnum as ConstraintKindEnum
 from tempest_fastapi_sdk.db.naming import ConstraintRename as ConstraintRename
 from tempest_fastapi_sdk.db.naming import (
     legacy_constraint_renames as legacy_constraint_renames,
 )
 from tempest_fastapi_sdk.db.outbox import BaseOutboxModel as BaseOutboxModel
 from tempest_fastapi_sdk.db.outbox import OutboxRelay as OutboxRelay
-from tempest_fastapi_sdk.db.outbox import OutboxStatus as OutboxStatus
+from tempest_fastapi_sdk.db.outbox import OutboxStatusEnum as OutboxStatusEnum
 from tempest_fastapi_sdk.db.repository import (
     DEFAULT_SYNC_WATERMARK_LAG as DEFAULT_SYNC_WATERMARK_LAG,
 )
 from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
 from tempest_fastapi_sdk.db.search import ColumnRef as ColumnRef
-from tempest_fastapi_sdk.db.search import TextSearchLanguage as TextSearchLanguage
-from tempest_fastapi_sdk.db.search import TextSearchWeight as TextSearchWeight
-from tempest_fastapi_sdk.db.search import TokenMatch as TokenMatch
+from tempest_fastapi_sdk.db.search import (
+    TextSearchLanguageEnum as TextSearchLanguageEnum,
+)
+from tempest_fastapi_sdk.db.search import TextSearchWeightEnum as TextSearchWeightEnum
+from tempest_fastapi_sdk.db.search import TokenMatchEnum as TokenMatchEnum
 from tempest_fastapi_sdk.db.search import (
     full_text_condition as full_text_condition,
 )
@@ -199,7 +201,7 @@ from tempest_fastapi_sdk.db.search import (
     like_search_condition as like_search_condition,
 )
 from tempest_fastapi_sdk.db.search import supports_full_text as supports_full_text
-from tempest_fastapi_sdk.db.signals import RepositorySignal as RepositorySignal
+from tempest_fastapi_sdk.db.signals import RepositorySignalEnum as RepositorySignalEnum
 from tempest_fastapi_sdk.db.signals import SignalHandler as SignalHandler
 from tempest_fastapi_sdk.db.signals import clear_signals as clear_signals
 from tempest_fastapi_sdk.db.signals import connect as connect
@@ -237,7 +239,9 @@ from tempest_fastapi_sdk.db.user_refresh_token_model import (
 from tempest_fastapi_sdk.db.user_token_model import (
     BaseUserTokenModel as BaseUserTokenModel,
 )
-from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose as UserTokenPurpose
+from tempest_fastapi_sdk.db.user_token_model import (
+    UserTokenPurposeEnum as UserTokenPurposeEnum,
+)
 from tempest_fastapi_sdk.db.user_token_model import (
     make_user_token_model as make_user_token_model,
 )
@@ -305,7 +309,7 @@ __all__: list[str] = [
     "AlembicHelper",
     "AmbiguousBaseRevisionError",
     "AsyncDatabaseManager",
-    "AuditAction",
+    "AuditActionEnum",
     "AuditMixin",
     "AuditRequestContext",
     "AuditRequestMixin",
@@ -325,7 +329,7 @@ __all__: list[str] = [
     "BaseWebPushSubscriptionModel",
     "BaseWebhookEventModel",
     "ColumnRef",
-    "ConstraintKind",
+    "ConstraintKindEnum",
     "ConstraintRename",
     "CreateEnumCheckOp",
     "CreateEnumTypeOp",
@@ -336,33 +340,33 @@ __all__: list[str] = [
     "DroppedFilterWarning",
     "EnumColumnRef",
     "EnumTypeState",
-    "ExplainDetail",
+    "ExplainDetailEnum",
     "ExplainReport",
     "F",
     "InboxDrainReport",
     "IntegrityFailure",
-    "IntegrityViolation",
+    "IntegrityViolationEnum",
     "LocaleColumnMixin",
     "MFAMixin",
     "NameMixin",
     "OutboxRelay",
-    "OutboxStatus",
+    "OutboxStatusEnum",
     "Q",
     "QueryPlan",
     "RenameEnumTypeOp",
     "ReplaceEnumOp",
-    "RepositorySignal",
-    "SchemaSyncOutcome",
+    "RepositorySignalEnum",
+    "SchemaSyncOutcomeEnum",
     "SignalHandler",
     "SlowQueryLogger",
     "SoftDeleteMixin",
     "TempestEnum",
     "TenantScopedRepository",
-    "TextSearchLanguage",
-    "TextSearchWeight",
-    "TokenMatch",
+    "TextSearchLanguageEnum",
+    "TextSearchWeightEnum",
+    "TokenMatchEnum",
     "UnsupportedBackupBackendError",
-    "UserTokenPurpose",
+    "UserTokenPurposeEnum",
     "UtcDateTime",
     "WebhookEventStatusEnum",
     "WebhookInbox",

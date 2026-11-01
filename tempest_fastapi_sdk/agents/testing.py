@@ -31,7 +31,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from tempest_fastapi_sdk.agents.schemas import AgentRun, AgentStep, StepKind
+from tempest_fastapi_sdk.agents.schemas import AgentRun, AgentStep, StepKindEnum
 
 
 def replies(content: str) -> dict[str, Any]:
@@ -225,7 +225,7 @@ class FailingBackend:
     """A backend that always raises, for testing the error path.
 
     An agent must turn a backend outage into
-    :attr:`~tempest_fastapi_sdk.agents.StopReason.ERROR` with the message
+    :attr:`~tempest_fastapi_sdk.agents.StopReasonEnum.ERROR` with the message
     preserved, not into an exception escaping into a request handler.
     """
 
@@ -277,7 +277,7 @@ def tool_steps(run: AgentRun) -> list[AgentStep]:
     Returns:
         list[AgentStep]: The tool steps, in order.
     """
-    return [step for step in run.steps if step.kind == StepKind.TOOL]
+    return [step for step in run.steps if step.kind == StepKindEnum.TOOL]
 
 
 def failed_steps(run: AgentRun) -> list[AgentStep]:

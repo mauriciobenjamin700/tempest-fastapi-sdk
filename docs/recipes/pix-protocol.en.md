@@ -27,10 +27,10 @@ It couples it to OpenPix.
 
 ```python
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPaymentEvent,
     PixPayer,
     PixProvider,
@@ -107,7 +107,7 @@ nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
 | `reference` | `str` | your own identifier, back again |
 | `amount_cents` | `int` | amount, in cents |
 | `currency` | `str` | ISO 4217, defaults to `BRL` |
-| `status` | `PaymentStatus` | the state you branch on |
+| `status` | `PaymentStatusEnum` | the state you branch on |
 | `provider_status` | `str` | the state as the provider names it, raw |
 | `br_code` | `str` or `None` | the EMV copy-and-paste string |
 | `qr_code_image_url` | `str` or `None` | QR as a URL (what OpenPix returns) |
@@ -131,7 +131,7 @@ import asyncio
 
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixChargeRequest,
     PixProvider,
 )
@@ -140,7 +140,7 @@ from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
 )
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     OpenPixClient,
-    OpenPixEnvironment,
+    OpenPixEnvironmentEnum,
 )
 
 
@@ -158,7 +158,7 @@ async def charge_it(provider: PixProvider) -> None:
         )
     )
 
-    print(charge.status is PaymentStatus.PENDING)
+    print(charge.status is PaymentStatusEnum.PENDING)
     print(charge.br_code)
     print(charge.provider)
 
@@ -166,7 +166,7 @@ async def charge_it(provider: PixProvider) -> None:
 async def main() -> None:
     """Wire the OpenPix client and charge through the contract."""
     http: HTTPClient = HTTPClient(
-        base_url=OpenPixEnvironment.SANDBOX.base_url,
+        base_url=OpenPixEnvironmentEnum.SANDBOX.base_url,
         default_headers={"Authorization": "<your AppID>"},
     )
     await charge_it(OpenPixPixProvider(OpenPixClient(http)))
@@ -196,7 +196,7 @@ your order, because it is the only way back to the provider:
 import asyncio
 
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixCharge,
     PixChargeRequest,
     PixProvider,
@@ -218,7 +218,7 @@ async def charge_and_follow(provider: PixProvider) -> PixCharge:
     charge_id: str = charge.provider_charge_id
 
     current = await provider.get_pix_charge(charge_id)
-    if current.status is PaymentStatus.PAID:
+    if current.status is PaymentStatusEnum.PAID:
         return current
 
     return await provider.cancel_pix_charge(charge_id)
@@ -627,7 +627,7 @@ from datetime import timedelta
 from tempest_fastapi_sdk.integrations.payment import (
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPaymentEvent,
     PixProvider,
     confirm_pix_payment,
@@ -685,7 +685,7 @@ class CheckoutService:
             event says something else, the charge is not confirmed, or an
             earlier delivery already released the order.
         """
-        if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
+        if event.type is not PixEventTypeEnum.CHARGE_PAID or event.charge is None:
             return None
         order = await self._orders.get_by_reference(event.charge.reference)
         if order is None or order.provider_charge_id is None:
@@ -1030,7 +1030,7 @@ pass `router.provider_for(order.provider)`.
 
 ## States
 
-You branch on `PaymentStatus`, never on the provider's string:
+You branch on `PaymentStatusEnum`, never on the provider's string:
 
 | canonical | means |
 | --- | --- |
@@ -1049,7 +1049,7 @@ The original string is not lost: it lives in `provider_status`, which is
 what you put in the log and show to support.
 
 ```python
-from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+from tempest_fastapi_sdk.integrations.payment import PaymentStatusEnum, PixCharge
 
 
 def release_order(charge: PixCharge) -> bool:
@@ -1062,13 +1062,13 @@ def release_order(charge: PixCharge) -> bool:
     Returns:
         bool: Whether the money is in.
     """
-    return charge.status is PaymentStatus.PAID
+    return charge.status is PaymentStatusEnum.PAID
 ```
 
 !!! warning "`is` works here — and it would not, for free"
     `PixCharge` turns off the `use_enum_values` that `BaseSchema` turns on.
     Without that, `charge.status` would hold the **string** `"paid"` and
-    `charge.status is PaymentStatus.PAID` would be `False` on every charge,
+    `charge.status is PaymentStatusEnum.PAID` would be `False` on every charge,
     silently, while `==` kept working. That is the kind of defect that
     survives review precisely because the obvious check still passes.
 
@@ -1083,7 +1083,7 @@ def release_order(charge: PixCharge) -> bool:
     it while the canonical mapping does not exist yet:
 
     ```python
-    if charge.status is PaymentStatus.UNKNOWN:
+    if charge.status is PaymentStatusEnum.UNKNOWN:
         logger.warning("new OpenPix state: %s", charge.provider_status)
     ```
 
@@ -1093,7 +1093,7 @@ Signature verification stays with each provider — RSA-1024 at OpenPix, HMAC
 at Stripe. What the contract unifies is what comes out of it:
 
 ```python
-from tempest_fastapi_sdk.integrations.payment import PixEventType, PixProvider
+from tempest_fastapi_sdk.integrations.payment import PixEventTypeEnum, PixProvider
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixWebhookEvent
 
 
@@ -1108,7 +1108,7 @@ def handle(provider: PixProvider, delivery: OpenPixWebhookEvent) -> str | None:
         str | None: The reference of the order to re-check, if any.
     """
     event = provider.parse_webhook(delivery)
-    if event.type is PixEventType.CHARGE_PAID and event.charge is not None:
+    if event.type is PixEventTypeEnum.CHARGE_PAID and event.charge is not None:
         return event.charge.reference
     return None
 ```
@@ -1118,13 +1118,13 @@ Releasing is the `settle` from
 [step 4](#step-4-the-service-which-speaks-only-the-contract): it reads the
 charge back with `confirm_pix_payment` and stamps it under `claim_once`.
 
-An event the SDK does not classify becomes `PixEventType.UNKNOWN` **with the
+An event the SDK does not classify becomes `PixEventTypeEnum.UNKNOWN` **with the
 original name preserved** in `provider_event_name`. It stays visible rather
 than swallowed.
 
 There are six canonical types:
 
-| `PixEventType` | fired when |
+| `PixEventTypeEnum` | fired when |
 | --- | --- |
 | `CHARGE_CREATED` | the charge was opened |
 | `CHARGE_PAID` | the money arrived |
@@ -1206,10 +1206,10 @@ import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPaymentEvent,
     PixProvider,
 )
@@ -1246,7 +1246,7 @@ class FakePixProvider:
             provider_charge_id=charge_id,
             reference=request.reference,
             amount_cents=request.amount_cents,
-            status=PaymentStatus.PENDING,
+            status=PaymentStatusEnum.PENDING,
             provider_status="created",
             br_code=f"000201{charge_id}",
         )
@@ -1279,7 +1279,7 @@ class FakePixProvider:
         charge = self._charges[charge_id]
         cancelled = charge.model_copy(
             update={
-                "status": PaymentStatus.CANCELLED,
+                "status": PaymentStatusEnum.CANCELLED,
                 "provider_status": "cancelled",
             },
         )
@@ -1297,12 +1297,12 @@ class FakePixProvider:
         """
         charge = self._charges[str(event["charge_id"])]
         paid = charge.model_copy(
-            update={"status": PaymentStatus.PAID, "provider_status": "paid"},
+            update={"status": PaymentStatusEnum.PAID, "provider_status": "paid"},
         )
         self._charges[paid.provider_charge_id] = paid
         return PixPaymentEvent(
             provider=self.provider_name,
-            type=PixEventType.CHARGE_PAID,
+            type=PixEventTypeEnum.CHARGE_PAID,
             provider_event_name="fake.paid",
             charge=paid,
             raw=dict(event),
@@ -1342,7 +1342,7 @@ there, and not on the day of the first charge.
     1. **Converts the unit.** The contract is whole cents; the provider may
        want decimal currency. The conversion belongs to the adapter, which is
        why it lives in exactly one place.
-    2. **Maps the state.** The provider's string becomes a `PaymentStatus`,
+    2. **Maps the state.** The provider's string becomes a `PaymentStatusEnum`,
        and the original is copied into `provider_status` — nothing discarded.
     3. **Fills `raw`.** Everything the provider says beyond the contract goes
        there, so no information dies in translation.
@@ -1356,7 +1356,7 @@ there, and not on the day of the first charge.
 - The contract has four methods: create, read, cancel and parse the webhook.
   Store `provider_charge_id` — it is the argument to the middle two.
 - Money crosses the contract as an `int` of cents.
-- The state you branch on is `PaymentStatus`; the provider's own sits
+- The state you branch on is `PaymentStatusEnum`; the provider's own sits
   beside it in `provider_status`.
 - Webhook signatures stay per provider; the event that comes out is
   canonical, and whatever the SDK does not map arrives as `UNKNOWN` with the

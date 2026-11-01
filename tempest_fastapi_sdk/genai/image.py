@@ -35,7 +35,7 @@ from tempest_fastapi_sdk.genai.schemas import (
     GeneratedImage,
     HardwareInfo,
     ImageGenerationConfig,
-    ModelDtype,
+    ModelDtypeEnum,
 )
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
@@ -146,7 +146,7 @@ class ImageGenerator:
     Attributes:
         model_id (str): The HuggingFace model id.
         device (str): The resolved device (``cuda`` / ``mps`` / ``cpu``).
-        dtype (ModelDtype): The resolved compute precision.
+        dtype (ModelDtypeEnum): The resolved compute precision.
         source (ModelRef): The resolved weight identity forwarded to
             ``from_pretrained``.
         image_format (str): Encoding of the returned bytes.
@@ -161,7 +161,7 @@ class ImageGenerator:
         model_id: str,
         *,
         device: str = "auto",
-        dtype: str | ModelDtype = "auto",
+        dtype: str | ModelDtypeEnum = "auto",
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
@@ -179,7 +179,7 @@ class ImageGenerator:
         Args:
             model_id (str): HuggingFace diffusion model id.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
-            dtype (str | ModelDtype): Compute precision, or ``"auto"``
+            dtype (str | ModelDtypeEnum): Compute precision, or ``"auto"``
                 (bf16 on GPU, fp32 on CPU).
             cache_dir (str | None): Where the downloaded weights are
                 written and read back from. ``None`` uses the
@@ -232,9 +232,9 @@ class ImageGenerator:
         self.model_id = model_id
         self.device = resolve_device(device, hardware)
         self.dtype = (
-            ModelDtype(auto_dtype_name(self.device))
+            ModelDtypeEnum(auto_dtype_name(self.device))
             if dtype == "auto"
-            else ModelDtype(dtype)
+            else ModelDtypeEnum(dtype)
         )
         self.source = ModelRef(
             model_id=model_id,

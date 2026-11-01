@@ -16,7 +16,7 @@ from tempest_fastapi_sdk.queue import (
     ConcurrentDeliveryError,
     ConsumerRetryPolicy,
     QueueSpec,
-    QueueType,
+    QueueTypeEnum,
     retry_queues,
 )
 from tempest_fastapi_sdk.queue.reliability import (
@@ -232,10 +232,10 @@ class TestRetryTopology:
             retry_exchange="retry",
             main_exchange="main",
             dead_exchange="dead",
-            queue_type=QueueType.QUORUM,
+            queue_type=QueueTypeEnum.QUORUM,
         )
         for spec in (topology.main, topology.retry, topology.dead):
-            assert spec.queue_type is QueueType.QUORUM
+            assert spec.queue_type is QueueTypeEnum.QUORUM
 
     def test_every_queue_is_a_spec(self) -> None:
         topology = retry_queues(

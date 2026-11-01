@@ -61,10 +61,10 @@ from fastapi import Depends, FastAPI
 
 from tempest_fastapi_sdk import HTTPClient, register_exception_handlers
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPayer,
     PixPaymentEvent,
 )
@@ -73,14 +73,14 @@ from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
 )
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     OpenPixClient,
-    OpenPixEnvironment,
-    OpenPixEvent,
+    OpenPixEnvironmentEnum,
+    OpenPixEventEnum,
     OpenPixWebhookEvent,
     make_openpix_webhook_dependency,
     webhook_verifier,
 )
 
-BASE_URL: str = OpenPixEnvironment.SANDBOX.base_url
+BASE_URL: str = OpenPixEnvironmentEnum.SANDBOX.base_url
 """The host every request in this module is addressed to."""
 
 CHARGE_PATH: str = "/api/v1/charge"
@@ -320,7 +320,7 @@ def delivery_event(charge: dict[str, Any]) -> OpenPixWebhookEvent:
     }
     return OpenPixWebhookEvent(
         event_name="OPENPIX:CHARGE_COMPLETED",
-        event=OpenPixEvent.CHARGE_COMPLETED,
+        event=OpenPixEventEnum.CHARGE_COMPLETED,
         payload=payload,
         body=json.dumps(payload).encode(),
     )
@@ -467,7 +467,7 @@ class TestTheBodyOpenPixReturns:
         assert charge.provider == "openpix"
         assert charge.amount_cents == 1190
         assert isinstance(charge.amount_cents, int)
-        assert charge.status is PaymentStatus.PENDING
+        assert charge.status is PaymentStatusEnum.PENDING
         assert charge.provider_status == "ACTIVE"
         assert charge.br_code == "00020101021226980014br.gov.bcb.pix"
         assert charge.expires_at == datetime(2026, 8, 29, 15, 17, 16, 60000, tzinfo=UTC)
@@ -562,7 +562,7 @@ class TestReadingAChargeBack:
 
         charge = await provider_over(wire).get_pix_charge("ch_1")
 
-        assert charge.status is PaymentStatus.PAID
+        assert charge.status is PaymentStatusEnum.PAID
         assert charge.provider_status == "COMPLETED"
 
     async def test_an_expired_charge_reads_as_expired(self) -> None:
@@ -572,7 +572,7 @@ class TestReadingAChargeBack:
 
         charge = await provider_over(wire).get_pix_charge("ch_1")
 
-        assert charge.status is PaymentStatus.EXPIRED
+        assert charge.status is PaymentStatusEnum.EXPIRED
 
     async def test_an_answer_without_a_charge_is_refused(self) -> None:
         """``{}`` validates into a ``GetChargeResponse`` with no charge."""
@@ -593,7 +593,7 @@ class TestCancellingACharge:
 
         assert wire.sent.method == "DELETE"
         assert wire.sent.url.path == f"{CHARGE_PATH}/ch_global_1"
-        assert charge.status is PaymentStatus.CANCELLED
+        assert charge.status is PaymentStatusEnum.CANCELLED
         assert charge.provider_charge_id == "ch_global_1"
         assert charge.provider_status == "OK"
         assert charge.raw == {"status": "OK", "id": "ch_global_1"}
@@ -762,7 +762,7 @@ class TestAStatusTheGeneratedEnumDoesNotKnow:
     vendors a fourth state is legitimate. Until v0.270.0 the two paths
     answered opposite things and neither was true: the API refused the read
     (a ``500``), the delivery reported ``PENDING``. Both now answer
-    :attr:`PaymentStatus.UNKNOWN` and keep the provider's word.
+    :attr:`PaymentStatusEnum.UNKNOWN` and keep the provider's word.
     """
 
     async def test_the_api_path_does_not_lose_the_provider_value(self) -> None:
@@ -825,7 +825,7 @@ class TestAStatusTheGeneratedEnumDoesNotKnow:
 
         assert parsed.charge is not None
         assert parsed.charge.provider_status == "CANCELLED"
-        assert parsed.charge.status is not PaymentStatus.PENDING
+        assert parsed.charge.status is not PaymentStatusEnum.PENDING
 
 
 class TestTheDeliveryValueIsNotSilentlyZero:
@@ -1091,7 +1091,7 @@ class TestAVerifiedDeliveryReachesTheAdapter:
             )
 
         parsed = response.json()
-        assert parsed["type"] == PixEventType.UNKNOWN.value
+        assert parsed["type"] == PixEventTypeEnum.UNKNOWN.value
         assert parsed["provider_event_name"] == "OPENPIX:DISPUTE_CREATED"
         assert parsed["charge"] is None
 
@@ -1124,5 +1124,5 @@ class TestAVerifiedDeliveryReachesTheAdapter:
             )
 
         assert response.status_code == 200
-        assert response.json()["type"] == PixEventType.UNKNOWN.value
+        assert response.json()["type"] == PixEventTypeEnum.UNKNOWN.value
         assert response.json()["provider_event_name"] == "OPENPIX:SOMETHING_NEW"

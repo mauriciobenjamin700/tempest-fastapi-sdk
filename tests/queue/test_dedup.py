@@ -14,7 +14,7 @@ import pytest
 
 from tempest_fastapi_sdk.queue import (
     ConcurrentDeliveryError,
-    DedupState,
+    DedupStateEnum,
     MemoryDedupStore,
 )
 from tempest_fastapi_sdk.queue.dedup import (
@@ -93,38 +93,38 @@ class TestMessageKey:
 class TestMemoryStore:
     async def test_a_fresh_key_is_new(self) -> None:
         store = MemoryDedupStore()
-        assert await store.claim("k", ttl_seconds=60) is DedupState.NEW
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.NEW
 
     async def test_a_second_claim_sees_it_in_flight(self) -> None:
         store = MemoryDedupStore()
         await store.claim("k", ttl_seconds=60)
-        assert await store.claim("k", ttl_seconds=60) is DedupState.IN_FLIGHT
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.IN_FLIGHT
 
     async def test_a_completed_key_reads_done(self) -> None:
         store = MemoryDedupStore()
         await store.claim("k", ttl_seconds=60)
         await store.complete("k", ttl_seconds=60)
-        assert await store.claim("k", ttl_seconds=60) is DedupState.DONE
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.DONE
 
     async def test_release_makes_it_claimable_again(self) -> None:
         """A failure must not leave the id looking processed."""
         store = MemoryDedupStore()
         await store.claim("k", ttl_seconds=60)
         await store.release("k")
-        assert await store.claim("k", ttl_seconds=60) is DedupState.NEW
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.NEW
 
     async def test_an_expired_claim_is_reclaimable(self) -> None:
         """A worker that died must not block the id forever."""
         store = MemoryDedupStore()
         await store.claim("k", ttl_seconds=60)
         store.entries["k"] = (IN_FLIGHT, 0.0)
-        assert await store.claim("k", ttl_seconds=60) is DedupState.NEW
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.NEW
 
     async def test_an_expired_done_is_reclaimable(self) -> None:
         store = MemoryDedupStore()
         await store.complete("k", ttl_seconds=60)
         store.entries["k"] = (DONE, 0.0)
-        assert await store.claim("k", ttl_seconds=60) is DedupState.NEW
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.NEW
 
 
 class TestRedisStore:
@@ -173,7 +173,7 @@ class TestRedisStore:
         from tempest_fastapi_sdk.queue import RedisDedupStore
 
         store = RedisDedupStore(self._FakeRedis())
-        assert await store.claim("k", ttl_seconds=60) is DedupState.NEW
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.NEW
 
     async def test_a_lost_race_reads_in_flight(self) -> None:
         """Atomicity comes from SET NX, not from a lock of our own."""
@@ -181,14 +181,14 @@ class TestRedisStore:
 
         store = RedisDedupStore(self._FakeRedis())
         await store.claim("k", ttl_seconds=60)
-        assert await store.claim("k", ttl_seconds=60) is DedupState.IN_FLIGHT
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.IN_FLIGHT
 
     async def test_a_completed_key_reads_done(self) -> None:
         from tempest_fastapi_sdk.queue import RedisDedupStore
 
         store = RedisDedupStore(self._FakeRedis())
         await store.complete("k", ttl_seconds=60)
-        assert await store.claim("k", ttl_seconds=60) is DedupState.DONE
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.DONE
 
     async def test_bytes_values_are_decoded(self) -> None:
         """redis-py returns bytes unless decode_responses is on."""
@@ -198,7 +198,7 @@ class TestRedisStore:
         store = RedisDedupStore(redis)
         await store.claim("k", ttl_seconds=60)
         redis.data[store._key("k")] = IN_FLIGHT.encode()  # type: ignore[assignment]
-        assert await store.claim("k", ttl_seconds=60) is DedupState.IN_FLIGHT
+        assert await store.claim("k", ttl_seconds=60) is DedupStateEnum.IN_FLIGHT
 
     async def test_keys_are_namespaced(self) -> None:
         from tempest_fastapi_sdk.queue import RedisDedupStore

@@ -12,10 +12,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from tempest_fastapi_sdk import BaseModel
 from tempest_fastapi_sdk.db.transaction import transaction
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixChargeRequest,
-    PixConfirmationOutcome,
-    PixEventType,
+    PixConfirmationOutcomeEnum,
+    PixEventTypeEnum,
     PixPaymentConfirmation,
     PixPaymentEvent,
     PixProvider,
@@ -58,15 +58,15 @@ class TestConfirmPixPayment:
         """Only the full match authorizes release."""
         provider = FakePixProvider()
         charge_id = await _open(provider, "order-1", 1990)
-        provider.advance(charge_id, PaymentStatus.PAID)
+        provider.advance(charge_id, PaymentStatusEnum.PAID)
 
         result = await confirm_pix_payment(
             provider, charge_id, reference="order-1", amount_cents=1990
         )
 
-        assert result.outcome is PixConfirmationOutcome.PAID
+        assert result.outcome is PixConfirmationOutcomeEnum.PAID
         assert result.paid is True
-        assert result.charge.status is PaymentStatus.PAID
+        assert result.charge.status is PaymentStatusEnum.PAID
         assert result.expected_amount_cents == 1990
         assert result.expected_reference == "order-1"
 
@@ -80,14 +80,16 @@ class TestConfirmPixPayment:
         )
 
         assert provider.calls == ["create_pix_charge", "get_pix_charge"]
-        assert result.outcome is PixConfirmationOutcome.NOT_PAID
+        assert result.outcome is PixConfirmationOutcomeEnum.NOT_PAID
         assert result.paid is False
 
     @pytest.mark.parametrize(
         "status",
-        [s for s in PaymentStatus if s is not PaymentStatus.PAID],
+        [s for s in PaymentStatusEnum if s is not PaymentStatusEnum.PAID],
     )
-    async def test_every_other_status_is_not_paid(self, status: PaymentStatus) -> None:
+    async def test_every_other_status_is_not_paid(
+        self, status: PaymentStatusEnum
+    ) -> None:
         """Refunded, charged back, unknown: none of them release."""
         provider = FakePixProvider()
         charge_id = await _open(provider, "order-1", 1990)
@@ -97,32 +99,32 @@ class TestConfirmPixPayment:
             provider, charge_id, reference="order-1", amount_cents=1990
         )
 
-        assert result.outcome is PixConfirmationOutcome.NOT_PAID
+        assert result.outcome is PixConfirmationOutcomeEnum.NOT_PAID
 
     async def test_a_different_amount_is_refused(self) -> None:
         """A paid charge for less than the order costs does not release it."""
         provider = FakePixProvider()
         charge_id = await _open(provider, "order-1", 100)
-        provider.advance(charge_id, PaymentStatus.PAID)
+        provider.advance(charge_id, PaymentStatusEnum.PAID)
 
         result = await confirm_pix_payment(
             provider, charge_id, reference="order-1", amount_cents=1990
         )
 
-        assert result.outcome is PixConfirmationOutcome.AMOUNT_MISMATCH
+        assert result.outcome is PixConfirmationOutcomeEnum.AMOUNT_MISMATCH
         assert result.paid is False
 
     async def test_a_charge_of_another_order_is_refused_first(self) -> None:
         """Reference is checked before status: someone else's paid charge."""
         provider = FakePixProvider()
         charge_id = await _open(provider, "order-2", 1990)
-        provider.advance(charge_id, PaymentStatus.PAID)
+        provider.advance(charge_id, PaymentStatusEnum.PAID)
 
         result = await confirm_pix_payment(
             provider, charge_id, reference="order-1", amount_cents=1990
         )
 
-        assert result.outcome is PixConfirmationOutcome.REFERENCE_MISMATCH
+        assert result.outcome is PixConfirmationOutcomeEnum.REFERENCE_MISMATCH
 
     async def test_a_provider_failure_propagates(self) -> None:
         """An unanswered read is not a "no": the caller sees the error."""
@@ -158,7 +160,7 @@ async def _settle(
     Returns:
         str | None: The reference released by this call, if any.
     """
-    if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
+    if event.type is not PixEventTypeEnum.CHARGE_PAID or event.charge is None:
         return None
     order = await session.scalar(
         select(_SettledOrder).where(_SettledOrder.reference == event.charge.reference)
@@ -193,7 +195,7 @@ class TestReleaseOnce:
         session.add(order)
         await session.commit()
 
-        event = provider.advance(charge_id, PaymentStatus.PAID)
+        event = provider.advance(charge_id, PaymentStatusEnum.PAID)
         released: list[str] = []
         first = await _settle(session, provider, event, released)
         second = await _settle(session, provider, event, released)
@@ -218,7 +220,7 @@ class TestReleaseOnce:
         pending = provider.charges[charge_id]
         forged = PixPaymentEvent(
             provider="fake",
-            type=PixEventType.CHARGE_PAID,
+            type=PixEventTypeEnum.CHARGE_PAID,
             provider_event_name="fake.paid",
             charge=pending,
         )

@@ -348,7 +348,7 @@ the UI shows.
 ```python
 from uuid import UUID
 
-from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKind
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKindEnum
 
 
 async def attach(
@@ -372,7 +372,7 @@ async def attach(
         conversation_id,
         alice,
         MessageCreateSchema(
-            kind=MessageKind.IMAGE,
+            kind=MessageKindEnum.IMAGE,
             body="look at this",  # the caption lives in body
             attachment_ids=[attachment.id],
         ),
@@ -542,8 +542,8 @@ from uuid import UUID
 
 from tempest_fastapi_sdk.chat import (
     ChatService,
-    ConversationKind,
-    ParticipantRole,
+    ConversationKindEnum,
+    ParticipantRoleEnum,
 )
 
 
@@ -558,11 +558,11 @@ async def run_a_group(
     group = await service.start_conversation(
         alice,
         [bob, carol],
-        kind=ConversationKind.GROUP,
+        kind=ConversationKindEnum.GROUP,
         title="Project X",
     )
     await service.add_participants(group.id, alice, [dave])  # history_from = now
-    await service.set_role(group.id, alice, bob, ParticipantRole.ADMIN)
+    await service.set_role(group.id, alice, bob, ParticipantRoleEnum.ADMIN)
     await service.remove_participant(group.id, alice, dave)
     await service.leave(group.id, bob)
 ```

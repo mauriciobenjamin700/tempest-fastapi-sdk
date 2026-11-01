@@ -16,7 +16,7 @@ from __future__ import annotations
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 
-class OpenPixEvent(BaseStrEnum):
+class OpenPixEventEnum(BaseStrEnum):
     """A webhook event name as OpenPix sends it in the ``event`` field."""
 
     CHARGE_CREATED = "OPENPIX:CHARGE_CREATED"
@@ -55,4 +55,4 @@ class OpenPixEvent(BaseStrEnum):
     PIX_AUTOMATIC_COBR_COMPLETED = "PIX_AUTOMATIC_COBR_COMPLETED"
 
 
-__all__: list[str] = ["OpenPixEvent"]
+__all__: list[str] = ["OpenPixEventEnum"]

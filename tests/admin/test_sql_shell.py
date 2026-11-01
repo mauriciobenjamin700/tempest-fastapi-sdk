@@ -14,7 +14,7 @@ import pytest
 
 from tempest_fastapi_sdk.admin.sql_shell import (
     SqlAudit,
-    SqlCapability,
+    SqlCapabilityEnum,
     SqlShellDenied,
     SqlShellError,
     SqlShellPolicy,
@@ -42,24 +42,26 @@ async def db() -> AsyncIterator[AsyncDatabaseManager]:
 class TestAnalyzer:
     def test_classifies_a_select_as_read(self) -> None:
         statement = analyze_sql("SELECT * FROM orders")[0]
-        assert statement.capability == SqlCapability.READ
+        assert statement.capability == SqlCapabilityEnum.READ
         assert statement.tables == ["orders"]
         assert statement.returns_rows is True
 
     @pytest.mark.parametrize(
         ("sql", "expected"),
         [
-            ("INSERT INTO orders VALUES (1)", SqlCapability.INSERT),
-            ("UPDATE orders SET total = 1 WHERE id = 1", SqlCapability.UPDATE),
-            ("DELETE FROM orders WHERE id = 1", SqlCapability.DELETE),
-            ("CREATE TABLE t (id INT)", SqlCapability.DDL),
-            ("ALTER TABLE orders ADD COLUMN x INT", SqlCapability.DDL),
-            ("DROP TABLE orders", SqlCapability.DROP),
-            ("TRUNCATE TABLE orders", SqlCapability.DROP),
-            ("GRANT SELECT ON orders TO bob", SqlCapability.ADMIN),
+            ("INSERT INTO orders VALUES (1)", SqlCapabilityEnum.INSERT),
+            ("UPDATE orders SET total = 1 WHERE id = 1", SqlCapabilityEnum.UPDATE),
+            ("DELETE FROM orders WHERE id = 1", SqlCapabilityEnum.DELETE),
+            ("CREATE TABLE t (id INT)", SqlCapabilityEnum.DDL),
+            ("ALTER TABLE orders ADD COLUMN x INT", SqlCapabilityEnum.DDL),
+            ("DROP TABLE orders", SqlCapabilityEnum.DROP),
+            ("TRUNCATE TABLE orders", SqlCapabilityEnum.DROP),
+            ("GRANT SELECT ON orders TO bob", SqlCapabilityEnum.ADMIN),
         ],
     )
-    def test_classifies_each_family(self, sql: str, expected: SqlCapability) -> None:
+    def test_classifies_each_family(
+        self, sql: str, expected: SqlCapabilityEnum
+    ) -> None:
         assert analyze_sql(sql)[0].capability == expected
 
     def test_finds_tables_inside_a_subquery(self) -> None:
@@ -93,7 +95,7 @@ class TestAnalyzer:
     def test_multiple_statements_are_all_returned(self) -> None:
         statements = analyze_sql("SELECT 1; DROP TABLE orders")
         assert len(statements) == 2
-        assert statements[1].capability == SqlCapability.DROP
+        assert statements[1].capability == SqlCapabilityEnum.DROP
 
     def test_unparseable_sql_is_refused(self) -> None:
         with pytest.raises(SqlShellError, match="parse"):
@@ -105,7 +107,7 @@ class TestAnalyzer:
 
     def test_an_unknown_construct_needs_the_admin_capability(self) -> None:
         statement = analyze_sql("VACUUM")[0]
-        assert statement.capability == SqlCapability.ADMIN
+        assert statement.capability == SqlCapabilityEnum.ADMIN
 
 
 class TestWritesDisguisedAsReads:
@@ -117,7 +119,7 @@ class TestWritesDisguisedAsReads:
             "SELECT * FROM gone",
             dialect="postgres",
         )[0]
-        assert statement.capability == SqlCapability.DELETE
+        assert statement.capability == SqlCapabilityEnum.DELETE
         assert statement.returns_rows is False
 
     def test_an_insert_inside_a_cte_is_an_insert(self) -> None:
@@ -126,7 +128,7 @@ class TestWritesDisguisedAsReads:
             "SELECT id FROM n",
             dialect="postgres",
         )[0]
-        assert statement.capability == SqlCapability.INSERT
+        assert statement.capability == SqlCapabilityEnum.INSERT
 
     def test_explain_analyze_runs_the_statement_so_it_takes_its_capability(
         self,
@@ -135,12 +137,12 @@ class TestWritesDisguisedAsReads:
             "EXPLAIN ANALYZE DELETE FROM orders WHERE id = 1",
             dialect="mysql",
         )[0]
-        assert statement.capability == SqlCapability.DELETE
+        assert statement.capability == SqlCapabilityEnum.DELETE
         assert statement.has_where is True
 
     def test_plain_explain_of_a_write_is_still_a_read(self) -> None:
         statement = analyze_sql("EXPLAIN DELETE FROM orders", dialect="mysql")[0]
-        assert statement.capability == SqlCapability.READ
+        assert statement.capability == SqlCapabilityEnum.READ
 
     @pytest.mark.parametrize(
         "sql",
@@ -152,7 +154,9 @@ class TestWritesDisguisedAsReads:
         ],
     )
     def test_a_pragma_that_can_write_needs_the_admin_capability(self, sql: str) -> None:
-        assert analyze_sql(sql, dialect="sqlite")[0].capability == SqlCapability.ADMIN
+        assert (
+            analyze_sql(sql, dialect="sqlite")[0].capability == SqlCapabilityEnum.ADMIN
+        )
 
     @pytest.mark.parametrize(
         "sql",
@@ -165,18 +169,20 @@ class TestWritesDisguisedAsReads:
         ],
     )
     def test_a_pragma_that_only_reads_stays_read(self, sql: str) -> None:
-        assert analyze_sql(sql, dialect="sqlite")[0].capability == SqlCapability.READ
+        assert (
+            analyze_sql(sql, dialect="sqlite")[0].capability == SqlCapabilityEnum.READ
+        )
 
 
 class TestPolicy:
     def test_read_only_by_default(self) -> None:
         policy = SqlShellPolicy()
-        assert policy.capabilities == {SqlCapability.READ}
+        assert policy.capabilities == {SqlCapabilityEnum.READ}
         assert policy.read_only is True
 
     def test_a_mutating_capability_makes_it_not_read_only(self) -> None:
         policy = SqlShellPolicy(
-            capabilities={SqlCapability.READ, SqlCapability.UPDATE},
+            capabilities={SqlCapabilityEnum.READ, SqlCapabilityEnum.UPDATE},
         )
         assert policy.read_only is False
 
@@ -243,19 +249,19 @@ class TestPolicy:
         assert check_policy(analyze_sql("SELECT 1; SELECT 2"), policy) is None
 
     def test_a_mutation_without_where_is_refused(self) -> None:
-        policy = SqlShellPolicy(capabilities={SqlCapability.UPDATE})
+        policy = SqlShellPolicy(capabilities={SqlCapabilityEnum.UPDATE})
         refusal = check_policy(analyze_sql("UPDATE orders SET total = 0"), policy)
         assert refusal is not None
         assert "WHERE" in refusal
 
     def test_a_mutation_with_where_passes(self) -> None:
-        policy = SqlShellPolicy(capabilities={SqlCapability.UPDATE})
+        policy = SqlShellPolicy(capabilities={SqlCapabilityEnum.UPDATE})
         allowed = analyze_sql("UPDATE orders SET total = 0 WHERE id = 1")
         assert check_policy(allowed, policy) is None
 
     def test_the_where_rule_can_be_switched_off(self) -> None:
         policy = SqlShellPolicy(
-            capabilities={SqlCapability.DELETE},
+            capabilities={SqlCapabilityEnum.DELETE},
             require_where=False,
         )
         assert check_policy(analyze_sql("DELETE FROM orders"), policy) is None
@@ -327,7 +333,7 @@ class TestExecution:
         service = SqlShellService(
             db,
             policy=SqlShellPolicy(
-                capabilities={SqlCapability.READ, SqlCapability.UPDATE},
+                capabilities={SqlCapabilityEnum.READ, SqlCapabilityEnum.UPDATE},
             ),
             dialect="sqlite",
         )
@@ -361,7 +367,7 @@ class TestAudit:
         await service.execute("SELECT id FROM orders", principal="ops@x.com")
         assert seen[0].principal == "ops@x.com"
         assert seen[0].allowed is True
-        assert seen[0].capability == SqlCapability.READ
+        assert seen[0].capability == SqlCapabilityEnum.READ
         assert seen[0].tables == ["orders"]
         assert seen[0].row_count == 2
 

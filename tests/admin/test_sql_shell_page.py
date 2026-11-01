@@ -17,7 +17,7 @@ from tempest_fastapi_sdk.admin import AdminSite, make_admin_router
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend
 from tempest_fastapi_sdk.admin.sql_shell import (
     SqlAudit,
-    SqlCapability,
+    SqlCapabilityEnum,
     SqlShellPolicy,
     SqlShellService,
 )
@@ -270,7 +270,7 @@ class TestMutatingPolicyWarning:
                 sql_shell=SqlShellService(
                     db,
                     policy=SqlShellPolicy(
-                        capabilities={SqlCapability.READ, SqlCapability.UPDATE},
+                        capabilities={SqlCapabilityEnum.READ, SqlCapabilityEnum.UPDATE},
                     ),
                     dialect="sqlite",
                 ),

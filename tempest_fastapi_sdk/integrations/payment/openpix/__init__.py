@@ -11,12 +11,12 @@ the webhook signature.
     from tempest_fastapi_sdk.integrations.payment.openpix import (
         Charge,
         OpenPixClient,
-        OpenPixEnvironment,
+        OpenPixEnvironmentEnum,
         to_cents,
     )
 
     http: HTTPClient = HTTPClient(
-        base_url=OpenPixEnvironment.SANDBOX.base_url,
+        base_url=OpenPixEnvironmentEnum.SANDBOX.base_url,
         default_headers={"Authorization": "<your AppID>"},
     )
     client: OpenPixClient = OpenPixClient(http)
@@ -31,8 +31,8 @@ Two halves, and it is worth knowing which is which:
 
 - **Generated** — ``OpenPixClient``, ``DEFAULT_BASE_URL`` and the 373
   schema classes. Whatever the specification says, verbatim.
-- **Hand-written** — ``OpenPixEnvironment`` (the spec's two hosts are
-  different domains), ``OpenPixEvent`` (28 webhook events), the webhook
+- **Hand-written** — ``OpenPixEnvironmentEnum`` (the spec's two hosts are
+  different domains), ``OpenPixEventEnum`` (28 webhook events), the webhook
   verification, and the money helpers, because the spec says *"Value in
   cents"* and then types the field ``number``.
 
@@ -52,10 +52,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.integrations.payment.openpix.environment import (
-    OpenPixEnvironment as OpenPixEnvironment,
+    OpenPixEnvironmentEnum as OpenPixEnvironmentEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.openpix.events import (
-    OpenPixEvent as OpenPixEvent,
+    OpenPixEventEnum as OpenPixEventEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.openpix.money import (
     cents_to_reais as cents_to_reais,
@@ -95,8 +95,8 @@ if TYPE_CHECKING:  # pragma: no cover - import-time cost is the point
 _HAND_WRITTEN: tuple[str, ...] = (
     "OPENPIX_WEBHOOK_PUBLIC_KEY",
     "OPENPIX_WEBHOOK_SIGNATURE_HEADER",
-    "OpenPixEnvironment",
-    "OpenPixEvent",
+    "OpenPixEnvironmentEnum",
+    "OpenPixEventEnum",
     "OpenPixWebhookEvent",
     "cents_to_reais",
     "decode_public_key",
@@ -483,8 +483,8 @@ __all__: list[str] = [
     "ListWebhooksResponsePageInfoErrorsItemData",
     "NumericWindow",
     "OpenPixClient",
-    "OpenPixEnvironment",
-    "OpenPixEvent",
+    "OpenPixEnvironmentEnum",
+    "OpenPixEventEnum",
     "OpenPixWebhookEvent",
     "Pagination",
     "PaginationErrorsItem",

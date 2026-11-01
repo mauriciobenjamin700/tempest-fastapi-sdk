@@ -30,13 +30,13 @@ from tempest_fastapi_sdk.integrations.messaging.zap import (
     ZAP_WEBHOOK_SIGNATURE_HEADER,
     ZAP_WEBHOOK_SIGNATURE_PREFIX,
     AcceptedResponseStatus,
-    ZapInboundMediaType,
+    ZapInboundMediaTypeEnum,
     ZapInboundMessage,
-    ZapJidServer,
-    ZapOutboundKind,
+    ZapJidServerEnum,
+    ZapOutboundKindEnum,
     ZapStatusCallback,
     ZapWebhookDelivery,
-    ZapWebhookEvent,
+    ZapWebhookEventEnum,
     is_forward_transition,
     make_zap_webhook_dependency,
     webhook_verifier,
@@ -108,7 +108,7 @@ def _app(**dependency_kwargs: Any) -> FastAPI:
         return {
             "event_name": delivery.event_name,
             "event": delivery.event.value if delivery.event else None,
-            "is_enum": isinstance(delivery.event, ZapWebhookEvent),
+            "is_enum": isinstance(delivery.event, ZapWebhookEventEnum),
             "inbound": delivery.inbound.message_id if delivery.inbound else None,
             "status": delivery.status.id if delivery.status else None,
             "keys": sorted(delivery.payload),
@@ -152,11 +152,11 @@ class TestPortedConstants:
     def test_inbound_event(self) -> None:
         """``INBOUND_EVENT`` in ``src/services/webhook.service.ts``."""
         assert ZAP_INBOUND_EVENT == "message.received"
-        assert ZapWebhookEvent.MESSAGE_RECEIVED.value == ZAP_INBOUND_EVENT
+        assert ZapWebhookEventEnum.MESSAGE_RECEIVED.value == ZAP_INBOUND_EVENT
 
     def test_event_values(self) -> None:
         """``message.${CallbackStatus}`` plus the inbound event."""
-        assert [member.value for member in ZapWebhookEvent] == [
+        assert [member.value for member in ZapWebhookEventEnum] == [
             "message.received",
             "message.sent",
             "message.delivered",
@@ -166,7 +166,7 @@ class TestPortedConstants:
 
     def test_media_type_values(self) -> None:
         """``NormalizedMediaType`` in ``src/services/message-normalizer.ts``."""
-        assert [member.value for member in ZapInboundMediaType] == [
+        assert [member.value for member in ZapInboundMediaTypeEnum] == [
             "image",
             "video",
             "audio",
@@ -176,7 +176,7 @@ class TestPortedConstants:
 
     def test_outbound_kind_values(self) -> None:
         """``OutboundKind`` in ``src/db/models/outbound-message.model.ts``."""
-        assert [member.value for member in ZapOutboundKind] == [
+        assert [member.value for member in ZapOutboundKindEnum] == [
             "text",
             "image",
             "video",
@@ -187,7 +187,7 @@ class TestPortedConstants:
 
     def test_jid_server_values(self) -> None:
         """Baileys' ``JidServer``, 7.0.0-rc14, as a set — order is ours."""
-        assert {member.value for member in ZapJidServer} == {
+        assert {member.value for member in ZapJidServerEnum} == {
             "c.us",
             "g.us",
             "broadcast",
@@ -369,7 +369,7 @@ class TestParsing:
     async def test_inbound_readme_payload(self) -> None:
         """Every field of the README inbound example."""
         message = ZapInboundMessage.model_validate_json(INBOUND_BODY)
-        assert message.event == ZapWebhookEvent.MESSAGE_RECEIVED
+        assert message.event == ZapWebhookEventEnum.MESSAGE_RECEIVED
         assert message.message_id == "ABCD1234"
         assert message.from_ == "5511999999999@s.whatsapp.net"
         assert message.chat_key == "5511999999999"
@@ -382,7 +382,7 @@ class TestParsing:
     async def test_status_readme_payload(self) -> None:
         """Every field of the README status example."""
         callback = ZapStatusCallback.model_validate_json(STATUS_BODY)
-        assert callback.event == ZapWebhookEvent.MESSAGE_DELIVERED
+        assert callback.event == ZapWebhookEventEnum.MESSAGE_DELIVERED
         assert callback.id == "outbound-uuid"
         assert callback.consumer == "billing-api"
         assert callback.to == "5511999999999"
@@ -432,7 +432,7 @@ class TestParsing:
         assert response.json()["inbound"] == "G1"
         message = ZapInboundMessage.model_validate_json(body)
         assert message.chat_key is None
-        assert message.media_type == ZapInboundMediaType.AUDIO
+        assert message.media_type == ZapInboundMediaTypeEnum.AUDIO
         assert message.media_url is None
 
 
@@ -462,16 +462,16 @@ class TestFromServer:
     @pytest.mark.parametrize(
         ("from_", "expected"),
         [
-            ("5511999999999@s.whatsapp.net", ZapJidServer.USER),
-            ("5511999999999:12@s.whatsapp.net", ZapJidServer.USER),
-            ("123456789012345@lid", ZapJidServer.LID),
-            ("120363000000000000@g.us", ZapJidServer.GROUP),
-            ("status@broadcast", ZapJidServer.BROADCAST),
-            ("120363000000000000@newsletter", ZapJidServer.NEWSLETTER),
-            ("123@hosted.lid", ZapJidServer.HOSTED_LID),
+            ("5511999999999@s.whatsapp.net", ZapJidServerEnum.USER),
+            ("5511999999999:12@s.whatsapp.net", ZapJidServerEnum.USER),
+            ("123456789012345@lid", ZapJidServerEnum.LID),
+            ("120363000000000000@g.us", ZapJidServerEnum.GROUP),
+            ("status@broadcast", ZapJidServerEnum.BROADCAST),
+            ("120363000000000000@newsletter", ZapJidServerEnum.NEWSLETTER),
+            ("123@hosted.lid", ZapJidServerEnum.HOSTED_LID),
         ],
     )
-    def test_known_servers(self, from_: str, expected: ZapJidServer) -> None:
+    def test_known_servers(self, from_: str, expected: ZapJidServerEnum) -> None:
         """Every server the gateway can forward maps to its member."""
         assert self._message(from_).from_server is expected
 
@@ -493,7 +493,7 @@ class TestOutboundKind:
     def test_compares_with_the_enum(self) -> None:
         """The README status example is a ``text`` send."""
         callback = ZapStatusCallback.model_validate_json(STATUS_BODY)
-        assert callback.kind == ZapOutboundKind.TEXT
+        assert callback.kind == ZapOutboundKindEnum.TEXT
 
     async def test_unknown_kind_still_dispatches(self) -> None:
         """A kind the gateway adds later does not drop the status."""

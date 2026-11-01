@@ -31,7 +31,7 @@ from tempest_fastapi_sdk.tasks import (
     BaseJobModel,
     JobAlreadyFinishedError,
     JobNotFoundError,
-    JobStatus,
+    JobStatusEnum,
     JobStore,
     make_job_model,
 )
@@ -69,7 +69,7 @@ class TestEnqueue:
     async def test_a_new_job_is_queued(self, store: JobStore[_JobModel]) -> None:
         job = await store.enqueue("extract")
 
-        assert job.status == JobStatus.QUEUED.value
+        assert job.status == JobStatusEnum.QUEUED.value
         assert job.kind == "extract"
         assert job.attempts == 0
         assert job.started_at is None
@@ -112,7 +112,7 @@ class TestClaim:
         claimed = await store.claim(job.id)
 
         assert claimed is not None
-        assert claimed.status == JobStatus.RUNNING.value
+        assert claimed.status == JobStatusEnum.RUNNING.value
         assert claimed.started_at is not None
         assert claimed.attempts == 1
 
@@ -216,12 +216,12 @@ class TestClaim:
                     )
                 ).scalar_one()
                 await start.wait()
-                if current.status != JobStatus.QUEUED.value:
+                if current.status != JobStatusEnum.QUEUED.value:
                     return False
                 await session.execute(
                     update(_JobModel)
                     .where(_JobModel.id == job_id)
-                    .values(status=JobStatus.RUNNING.value),
+                    .values(status=JobStatusEnum.RUNNING.value),
                 )
                 return True
 
@@ -252,7 +252,7 @@ class TestFinishing:
 
         done = await store.succeed(job.id, result_id=result_id)
 
-        assert done.status == JobStatus.DONE.value
+        assert done.status == JobStatusEnum.DONE.value
         assert done.result_id == result_id
         assert done.finished_at is not None
         assert done.error is None
@@ -274,7 +274,7 @@ class TestFinishing:
 
         failed = await store.fail(job.id, "O arquivo nao e um PDF valido.")
 
-        assert failed.status == JobStatus.FAILED.value
+        assert failed.status == JobStatusEnum.FAILED.value
         assert failed.error == "O arquivo nao e um PDF valido."
         assert failed.payload is None
 
@@ -286,7 +286,7 @@ class TestFinishing:
 
         failed = await store.fail(job.id, "Formato nao suportado.")
 
-        assert failed.status == JobStatus.FAILED.value
+        assert failed.status == JobStatusEnum.FAILED.value
 
     async def test_finishing_twice_raises(self, store: JobStore[_JobModel]) -> None:
         """Two workers believing they own the job must not be silent."""
@@ -327,7 +327,7 @@ class TestListRecent:
         await store.claim(other.id)
 
         assert len(await store.list_recent(kind="render")) == 1
-        assert len(await store.list_recent(status=JobStatus.RUNNING)) == 1
+        assert len(await store.list_recent(status=JobStatusEnum.RUNNING)) == 1
         assert len(await store.list_recent(status="queued")) == 1
 
     async def test_no_matches_is_an_empty_list(
@@ -383,7 +383,7 @@ class TestReclaimStale:
         assert reclaimed.total == 1
 
         row = await store.get(job.id)
-        assert row.status == JobStatus.QUEUED.value
+        assert row.status == JobStatusEnum.QUEUED.value
         assert row.started_at is None
 
     async def test_a_fresh_running_job_is_left_alone(
@@ -395,7 +395,7 @@ class TestReclaimStale:
         reclaimed = await store.reclaim_stale()
         assert reclaimed.total == 0
         assert not reclaimed
-        assert (await store.get(job.id)).status == JobStatus.RUNNING.value
+        assert (await store.get(job.id)).status == JobStatusEnum.RUNNING.value
 
     async def test_the_attempt_budget_ends_the_loop(
         self, store: JobStore[_JobModel], jobs_db: AsyncDatabaseManager
@@ -408,7 +408,7 @@ class TestReclaimStale:
             await store.reclaim_stale()
 
         final = await store.get(job.id)
-        assert final.status == JobStatus.FAILED.value
+        assert final.status == JobStatusEnum.FAILED.value
         assert final.attempts == 2
         assert final.payload is None
         assert final.error is not None
@@ -450,7 +450,7 @@ class TestWatch:
 
         seen = [j.status async for j in store.watch(job.id, interval=0.01)]
 
-        assert seen == [JobStatus.DONE.value]
+        assert seen == [JobStatusEnum.DONE.value]
 
     async def test_it_follows_the_job_to_a_terminal_status(
         self, store: JobStore[_JobModel]
@@ -468,8 +468,8 @@ class TestWatch:
         seen = [j.status async for j in store.watch(job.id, interval=0.01)]
         await worker
 
-        assert seen[0] == JobStatus.QUEUED.value
-        assert seen[-1] == JobStatus.DONE.value
+        assert seen[0] == JobStatusEnum.QUEUED.value
+        assert seen[-1] == JobStatusEnum.DONE.value
         assert all(a != b for a, b in pairwise(seen))
 
     async def test_it_gives_up_on_timeout(self, store: JobStore[_JobModel]) -> None:
@@ -520,7 +520,7 @@ class TestWatch:
         finally:
             await writer_db.disconnect()
 
-        assert seen[-1] == JobStatus.DONE.value
+        assert seen[-1] == JobStatusEnum.DONE.value
 
 
 class TestMakeJobModel:

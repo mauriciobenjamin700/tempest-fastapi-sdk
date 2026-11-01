@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from tempest_fastapi_sdk import (
     IntegrityFailure,
-    IntegrityViolation,
+    IntegrityViolationEnum,
     parse_integrity_error,
 )
 from tempest_fastapi_sdk.db.integrity import _PG_SQLSTATE_VIOLATIONS
@@ -69,7 +69,7 @@ class TestPostgres:
     def test_unique_single_column(self) -> None:
         failure = parse_integrity_error(_error(PG_UNIQUE))
 
-        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.kind is IntegrityViolationEnum.UNIQUE
         assert failure.constraint == "users_email_key"
         assert failure.columns == ("email",)
         assert failure.column == "email"
@@ -96,21 +96,21 @@ class TestPostgres:
     def test_not_null(self) -> None:
         failure = parse_integrity_error(_error(PG_NOT_NULL))
 
-        assert failure.kind is IntegrityViolation.NOT_NULL
+        assert failure.kind is IntegrityViolationEnum.NOT_NULL
         assert failure.table == "users"
         assert failure.column == "email"
 
     def test_check(self) -> None:
         failure = parse_integrity_error(_error(PG_CHECK))
 
-        assert failure.kind is IntegrityViolation.CHECK
+        assert failure.kind is IntegrityViolationEnum.CHECK
         assert failure.constraint == "users_age_check"
         assert failure.table == "users"
 
     def test_foreign_key(self) -> None:
         failure = parse_integrity_error(_error(PG_FOREIGN_KEY))
 
-        assert failure.kind is IntegrityViolation.FOREIGN_KEY
+        assert failure.kind is IntegrityViolationEnum.FOREIGN_KEY
         assert failure.constraint == "orders_user_id_fkey"
         assert failure.table == "orders"
         assert failure.column == "user_id"
@@ -122,7 +122,7 @@ class TestSQLite:
     def test_unique_single_column(self) -> None:
         failure = parse_integrity_error(_error(SQLITE_UNIQUE))
 
-        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.kind is IntegrityViolationEnum.UNIQUE
         assert failure.table == "users"
         assert failure.column == "email"
 
@@ -135,21 +135,21 @@ class TestSQLite:
     def test_not_null(self) -> None:
         failure = parse_integrity_error(_error(SQLITE_NOT_NULL))
 
-        assert failure.kind is IntegrityViolation.NOT_NULL
+        assert failure.kind is IntegrityViolationEnum.NOT_NULL
         assert failure.column == "email"
 
     def test_unnamed_check_reports_its_expression(self) -> None:
         """A measured limit: SQLite has no name to give for an unnamed CHECK."""
         failure = parse_integrity_error(_error(SQLITE_CHECK))
 
-        assert failure.kind is IntegrityViolation.CHECK
+        assert failure.kind is IntegrityViolationEnum.CHECK
         assert failure.constraint == "age >= 18"
 
     def test_foreign_key_carries_nothing_but_the_kind(self) -> None:
         """The whole message is five words; there is nothing to parse."""
         failure = parse_integrity_error(_error(SQLITE_FOREIGN_KEY))
 
-        assert failure.kind is IntegrityViolation.FOREIGN_KEY
+        assert failure.kind is IntegrityViolationEnum.FOREIGN_KEY
         assert failure.constraint is None
         assert failure.table is None
         assert failure.columns == ()
@@ -162,7 +162,7 @@ class TestRobustness:
         """Raising here turns a handled 409 into an unhandled 500."""
         failure = parse_integrity_error(_error("something entirely new"))
 
-        assert failure.kind is IntegrityViolation.UNKNOWN
+        assert failure.kind is IntegrityViolationEnum.UNKNOWN
         assert failure.message == "something entirely new"
 
     def test_the_echoed_statement_cannot_be_mistaken_for_a_message(self) -> None:
@@ -179,18 +179,18 @@ class TestRobustness:
 
         failure = parse_integrity_error(error)
 
-        assert failure.kind is IntegrityViolation.NOT_NULL
+        assert failure.kind is IntegrityViolationEnum.NOT_NULL
         assert failure.column == "email"
 
     def test_a_bare_exception_still_parses(self) -> None:
         """Callers holding the driver error directly should not have to wrap it."""
         failure = parse_integrity_error(Exception(SQLITE_UNIQUE))
 
-        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.kind is IntegrityViolationEnum.UNIQUE
         assert failure.column == "email"
 
     def test_the_default_failure_is_unknown(self) -> None:
-        assert IntegrityFailure().kind is IntegrityViolation.UNKNOWN
+        assert IntegrityFailure().kind is IntegrityViolationEnum.UNKNOWN
 
 
 class _DriverError(Exception):
@@ -308,7 +308,7 @@ class TestStructuredDiagnostics:
         assert "DETAIL" not in str(error.orig)
         failure = parse_integrity_error(error)
 
-        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.kind is IntegrityViolationEnum.UNIQUE
         assert failure.constraint == "users_email_key"
         assert failure.columns == ("email",)
         assert failure.table == "users"
@@ -346,7 +346,7 @@ class TestStructuredDiagnostics:
 
         failure = parse_integrity_error(_sqlalchemy_21(driver))
 
-        assert failure.kind is IntegrityViolation.NOT_NULL
+        assert failure.kind is IntegrityViolationEnum.NOT_NULL
         assert failure.columns == ("email",)
         assert failure.table == "users"
 
@@ -367,7 +367,7 @@ class TestStructuredDiagnostics:
 
         failure = parse_integrity_error(_sqlalchemy_21(driver))
 
-        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.kind is IntegrityViolationEnum.UNIQUE
         assert failure.constraint == "users_email_key"
         assert failure.table == "users"
         assert failure.columns == ()
@@ -382,8 +382,8 @@ class TestStructuredDiagnostics:
     def test_sqlstate_table_is_pinned(self) -> None:
         """Ported from PostgreSQL's Appendix A, class 23; drift fails here."""
         assert _PG_SQLSTATE_VIOLATIONS == {
-            "23505": IntegrityViolation.UNIQUE,
-            "23503": IntegrityViolation.FOREIGN_KEY,
-            "23502": IntegrityViolation.NOT_NULL,
-            "23514": IntegrityViolation.CHECK,
+            "23505": IntegrityViolationEnum.UNIQUE,
+            "23503": IntegrityViolationEnum.FOREIGN_KEY,
+            "23502": IntegrityViolationEnum.NOT_NULL,
+            "23514": IntegrityViolationEnum.CHECK,
         }

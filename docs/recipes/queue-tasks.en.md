@@ -264,7 +264,7 @@ A channel as a string covers most cases. What it does **not** express is exactly
 ```python
 from pydantic import BaseModel
 
-from tempest_fastapi_sdk.queue import DeadLetterSpec, MessageBroker, QueueSpec, QueueType
+from tempest_fastapi_sdk.queue import DeadLetterSpec, MessageBroker, QueueSpec, QueueTypeEnum
 
 mq = MessageBroker.rabbitmq("amqp://guest:guest@localhost:5672/")
 
@@ -277,7 +277,7 @@ ORDERS_PAID = QueueSpec(
     name="orders.paid",
     dead_letter=DeadLetterSpec(exchange="dlx"),
     message_ttl_ms=60_000,
-    queue_type=QueueType.QUORUM,
+    queue_type=QueueTypeEnum.QUORUM,
 )
 
 
@@ -933,51 +933,51 @@ Scheduling is part of the same `TaskQueue` — no separate scheduler in your cod
 
 !!! tip "Don't know cron? Use the enums and helpers (v0.94.0)"
     Nobody should hand-write `"0 9 * * MON-FRI"`. The
-    `tempest_fastapi_sdk.tasks` module ships **`Cron`** (ready-made
-    expressions), **`CronOffset`** (timezones by place, not digits),
-    **`Weekday`** and **builder functions** (`daily`, `weekdays`,
+    `tempest_fastapi_sdk.tasks` module ships **`CronEnum`** (ready-made
+    expressions), **`CronOffsetEnum`** (timezones by place, not digits),
+    **`WeekdayEnum`** and **builder functions** (`daily`, `weekdays`,
     `hourly`, `every_n_minutes`, `weekly`, `weekends`, `monthly`). Each
     returns a plain cron string that drops straight into `@tq.cron(...)`.
 
 ```python
 # src/tasks/__init__.py
 
-from tempest_fastapi_sdk.tasks import Cron, CronOffset, Weekday, daily, weekdays
+from tempest_fastapi_sdk.tasks import CronEnum, CronOffsetEnum, WeekdayEnum, daily, weekdays
 
 from src.tasks import tq
 
 
 # Readable, no cron syntax:
-@tq.cron(Cron.EVERY_WEEKDAY_9AM, cron_offset=CronOffset.BRASILIA)
+@tq.cron(CronEnum.EVERY_WEEKDAY_9AM, cron_offset=CronOffsetEnum.BRASILIA)
 async def daily_digest() -> None:
     ...
 
 
-@tq.cron(daily(hour=9), cron_offset=CronOffset.BRASILIA)   # 09:00 BRT
+@tq.cron(daily(hour=9), cron_offset=CronOffsetEnum.BRASILIA)   # 09:00 BRT
 async def other_digest() -> None:
     ...
 
 
-@tq.cron(weekdays(hour=8, minute=30), cron_offset=CronOffset.BRASILIA)
+@tq.cron(weekdays(hour=8, minute=30), cron_offset=CronOffsetEnum.BRASILIA)
 async def morning_sync() -> None:
     ...
 
 
-@tq.cron(Cron.EVERY_5_MINUTES)
+@tq.cron(CronEnum.EVERY_5_MINUTES)
 async def heartbeat() -> None:
     ...
 ```
 
 | To run… | Write |
 | --- | --- |
-| Every 5 min | `Cron.EVERY_5_MINUTES` or `every_n_minutes(5)` |
+| Every 5 min | `CronEnum.EVERY_5_MINUTES` or `every_n_minutes(5)` |
 | Daily at 9am | `daily(hour=9)` |
 | Weekdays at 8:30 | `weekdays(hour=8, minute=30)` |
-| Every Monday | `weekly(Weekday.MON)` |
+| Every Monday | `weekly(WeekdayEnum.MON)` |
 | First of the month | `monthly(day=1)` |
-| In Brasília time | `cron_offset=CronOffset.BRASILIA` |
+| In Brasília time | `cron_offset=CronOffsetEnum.BRASILIA` |
 
-`CronOffset` covers Brazil's timezones by name — `BRASILIA` (-03:00),
+`CronOffsetEnum` covers Brazil's timezones by name — `BRASILIA` (-03:00),
 `FERNANDO_DE_NORONHA` (-02:00), `MANAUS` (-04:00), `ACRE` (-05:00) — plus
 `UTC`.
 
@@ -989,7 +989,7 @@ async def heartbeat() -> None:
 
     | You write | Reaches the scheduler as | Follows DST? | Needs a tz database? |
     | --- | --- | --- | --- |
-    | `CronOffset.BRASILIA` | `timedelta(hours=-3)` | no | no |
+    | `CronOffsetEnum.BRASILIA` | `timedelta(hours=-3)` | no | no |
     | `"-03:00"` | `timedelta(hours=-3)` | no | no |
     | `"America/Sao_Paulo"` | the key, already validated | yes | **yes** |
 
@@ -1575,7 +1575,7 @@ tq: TaskQueue = TaskQueue.from_settings(settings)
     MEMORY USAGE:  [144] bytes           # task returning None
     ```
 
-    A `@tq.cron(Cron.EVERY_MINUTE)` task leaves **1440 keys a day**,
+    A `@tq.cron(CronEnum.EVERY_MINUTE)` task leaves **1440 keys a day**,
     growing without a ceiling. On a shared Redis running `allkeys-lru`
     that growth starts **evicting the keys of whoever is using Redis to
     work** — a rate limit, an idempotency marker, the scheduler lease —
@@ -1708,7 +1708,7 @@ The full guide — model, producer service with `save_with_outbox`, retention an
 - **`TaskQueue`** — tasks over TaskIQ: `@tq.task` → `await task.enqueue(...)` (to the worker) or `await task.run(...)` (inline). `.memory()` for tests.
 - **`@tq.cron` / `@tq.interval`** — periodic on the same object; `start_scheduler()` in dev, standalone CLI in production.
 - **Heartbeat** — `TASKIQ_WORKER_HEARTBEAT_FILE` / `TASKIQ_SCHEDULER_HEARTBEAT_FILE` + `python -m tempest_fastapi_sdk.tasks.heartbeat` in the `HEALTHCHECK`; Docker marks the container `unhealthy`, it does not restart it. The worker beat is local to each replica.
-- **Cron without syntax** — `Cron` / `CronOffset` / `Weekday` + helpers (`daily`, `weekdays`, `every_n_minutes`, …) to schedule by name; `CronOffset.BRASILIA` instead of `"-03:00"`.
+- **Cron without syntax** — `CronEnum` / `CronOffsetEnum` / `WeekdayEnum` + helpers (`daily`, `weekdays`, `every_n_minutes`, …) to schedule by name; `CronOffsetEnum.BRASILIA` instead of `"-03:00"`.
 - **Styles** — decorators (`@mq.on`, `@tq.task`, `@tq.cron`) **or** classes (`Consumer` + `mq.register`, `TaskDef` + `tq.register`); both coexist.
 - **Outbox** — `BaseOutboxModel` + `OutboxRelay` + `save_with_outbox`, with the relay's `publish` pointing at `MessageBroker`. See [Outbox](outbox.md).
 - **Rename (v0.94.0)** — `AsyncBrokerManager` → **`AsyncQueueManager`** (thin wrapper; old alias kept). The `MessageBroker` / `TaskQueue` facades stay recommended; `AsyncTaskBrokerManager` / `AsyncTaskScheduler` remain functional legacy.

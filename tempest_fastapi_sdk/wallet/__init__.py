@@ -51,7 +51,9 @@ from tempest_fastapi_sdk.wallet.schemas import (
 from tempest_fastapi_sdk.wallet.schemas import (
     WalletBalanceSchema as WalletBalanceSchema,
 )
-from tempest_fastapi_sdk.wallet.schemas import WalletEntryKind as WalletEntryKind
+from tempest_fastapi_sdk.wallet.schemas import (
+    WalletEntryKindEnum as WalletEntryKindEnum,
+)
 from tempest_fastapi_sdk.wallet.schemas import (
     WalletEntrySchema as WalletEntrySchema,
 )
@@ -77,7 +79,7 @@ __all__: list[str] = [
     "PixDestinationSchema",
     "WalletBalanceMixin",
     "WalletBalanceSchema",
-    "WalletEntryKind",
+    "WalletEntryKindEnum",
     "WalletEntrySchema",
     "WalletLedger",
     "WalletService",

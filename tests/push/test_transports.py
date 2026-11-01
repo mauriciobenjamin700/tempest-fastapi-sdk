@@ -20,7 +20,7 @@ from tempest_fastapi_sdk import (
     PushDeviceGoneError,
     PushError,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
     WebPushDispatcher,
     WebPushGoneError,
     WebPushPayloadSchema,
@@ -38,12 +38,12 @@ firebase_admin = pytest.importorskip(
 messaging = pytest.importorskip("firebase_admin.messaging")
 
 WEB_DEVICE = PushDevice(
-    platform=PushPlatform.WEB,
+    platform=PushPlatformEnum.WEB,
     token="https://push.example/device-1",
     p256dh="p256dh-key",
     auth="auth-secret",
 )
-MOBILE_DEVICE = PushDevice(platform=PushPlatform.ANDROID, token="fcm-token-1")
+MOBILE_DEVICE = PushDevice(platform=PushPlatformEnum.ANDROID, token="fcm-token-1")
 
 
 class _StubWebPushDispatcher(WebPushDispatcher):
@@ -152,7 +152,9 @@ class TestWebPushTransport:
     async def test_web_row_without_keys_fails_loudly(self) -> None:
         """A web device stored without encryption material cannot be encrypted for."""
         transport = WebPushTransport(_StubWebPushDispatcher())
-        broken = PushDevice(platform=PushPlatform.WEB, token="https://push.example/x")
+        broken = PushDevice(
+            platform=PushPlatformEnum.WEB, token="https://push.example/x"
+        )
 
         with pytest.raises(PushError, match="encryption keys"):
             await transport.send(broken, PushPayloadSchema(title="Hi"))

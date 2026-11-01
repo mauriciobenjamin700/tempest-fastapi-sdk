@@ -1388,8 +1388,8 @@ energy measurement
 !!! danger "Nenhuma dessas medidas é wall-plug"
     Uma leitura de GPU exclui CPU, RAM, perdas da fonte e refrigeração;
     uma leitura RAPL cobre só o pacote de CPU. Sempre publique o
-    `energy_source` junto do número — `EnergySource.NVML_COUNTER` e
-    `EnergySource.RAPL` não são a mesma grandeza. Para consumo real de
+    `energy_source` junto do número — `EnergySourceEnum.NVML_COUNTER` e
+    `EnergySourceEnum.RAPL` não são a mesma grandeza. Para consumo real de
     tomada, wattímetro externo.
 
 ??? note "Por que o RAPL costuma vir indisponível"
@@ -1568,7 +1568,7 @@ print(result.notes)
 
 !!! tip "Poucas centenas de amostras reais > dezenas de milhares sintéticas"
     A faixa aprendida a partir de ruído vai cortar ativações reais. Se
-    `MINMAX` derrubar a acurácia, tente `CalibrationMethod.ENTROPY` ou
+    `MINMAX` derrubar a acurácia, tente `CalibrationMethodEnum.ENTROPY` ou
     `PERCENTILE`: um único outlier estica a faixa min/max até todo o resto
     quantizar em meia dúzia de níveis.
 
@@ -1612,7 +1612,7 @@ Nenhuma delas toca no `optimum`: ambas rodam sobre o `onnxruntime` que o
 
 ```python
 from tempest_fastapi_sdk.modelops import (
-    HFQuantizationTarget,
+    HFQuantizationTargetEnum,
     optimize_hf_onnx,
     quantize_hf_onnx,
 )
@@ -1621,7 +1621,7 @@ optimized = optimize_hf_onnx("exports/distilbert", "exports/distilbert-o2")
 quantized = quantize_hf_onnx(
     "exports/distilbert-o2",
     "exports/distilbert-int8",
-    target=HFQuantizationTarget.AVX512_VNNI,
+    target=HFQuantizationTargetEnum.AVX512_VNNI,
 )
 print(optimized.size_ratio, quantized.compression_ratio)
 ```

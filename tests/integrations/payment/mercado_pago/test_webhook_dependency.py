@@ -15,7 +15,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     MERCADO_PAGO_DATA_ID_QUERY,
     MERCADO_PAGO_REQUEST_ID_HEADER,
     MERCADO_PAGO_SIGNATURE_HEADER,
-    MercadoPagoEvent,
+    MercadoPagoEventEnum,
     MercadoPagoWebhookEvent,
     make_mercado_pago_webhook_dependency,
     sign_manifest,
@@ -172,7 +172,7 @@ class TestDependency:
         }
         assert len(calls) == 1
         event = calls[0]
-        assert event.event is MercadoPagoEvent.PAYMENT
+        assert event.event is MercadoPagoEventEnum.PAYMENT
         assert event.payload["action"] == "payment.updated"
         assert event.body == BODY
 
@@ -337,12 +337,12 @@ class TestDependency:
     @pytest.mark.parametrize(
         ("body", "params", "topic", "event"),
         [
-            (b"not json", {"type": "payment"}, "payment", MercadoPagoEvent.PAYMENT),
+            (b"not json", {"type": "payment"}, "payment", MercadoPagoEventEnum.PAYMENT),
             (
                 json.dumps({"type": "brand_new_topic"}).encode(),
                 {},
                 "brand_new_topic",
-                MercadoPagoEvent.UNKNOWN,
+                MercadoPagoEventEnum.UNKNOWN,
             ),
             (b"{}", {}, "", None),
         ],
@@ -352,7 +352,7 @@ class TestDependency:
         body: bytes,
         params: dict[str, str],
         topic: str,
-        event: MercadoPagoEvent | None,
+        event: MercadoPagoEventEnum | None,
     ) -> None:
         """A verified delivery is never dropped over its body or topic.
 
@@ -360,7 +360,7 @@ class TestDependency:
             body (bytes): Raw body delivered.
             params (dict[str, str]): Query besides ``data.id``.
             topic (str): Expected ``topic``.
-            event (MercadoPagoEvent | None): Expected ``event``.
+            event (MercadoPagoEventEnum | None): Expected ``event``.
         """
         app, calls = self._app()
 

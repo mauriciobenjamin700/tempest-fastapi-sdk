@@ -150,7 +150,7 @@ enum/helpers, both hiding the underlying lib.
 
 ```python
 from tempest_fastapi_sdk.queue import MessageBroker
-from tempest_fastapi_sdk.tasks import Cron, CronOffset, TaskQueue
+from tempest_fastapi_sdk.tasks import CronEnum, CronOffsetEnum, TaskQueue
 
 from src.core.settings import settings
 from src.queue import OrderPaid
@@ -164,7 +164,7 @@ tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
 async def on_paid(event: OrderPaid) -> None: ...
 
 
-@tq.cron(Cron.EVERY_WEEKDAY_9AM, cron_offset=CronOffset.BRASILIA)
+@tq.cron(CronEnum.EVERY_WEEKDAY_9AM, cron_offset=CronOffsetEnum.BRASILIA)
 async def digest() -> None: ...
 ```
 
@@ -489,7 +489,7 @@ come back here to plug in each capability as you need it.
 | **[Brazilian helpers »](br-helpers.md)** | CPF / CNPJ / CEP / phone validation + normalization, including mobile-only (`is_valid_mobile_phone_br`, `MobilePhoneBRField`) and `parse_phone_br` (area code, number, E.164) |
 | **[Cache »](cache.md)** | `AsyncRedisManager` (+ `client_proxy`, for stores built at import time), `@cached` decorator, `CacheInvalidator` (tag/namespace) |
 | **[Chat (conversations + messages) »](chat.md)** | `ChatService`, `make_chat_router`, base tables + real-time fan-out via `SSEBroker` |
-| **[Choosing a model »](models.md)** | `TextModel` / `EmbeddingModel` / `RerankerModel` / `VisionModel` / `ImageModel` / `SpeechToTextModel` / `TextToSpeechModel` — named Hub ids and the use-case table behind each pick |
+| **[Choosing a model »](models.md)** | `TextModelEnum` / `EmbeddingModelEnum` / `RerankerModelEnum` / `VisionModelEnum` / `ImageModelEnum` / `SpeechToTextModelEnum` / `TextToSpeechModelEnum` — named Hub ids and the use-case table behind each pick |
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Comments + ratings »](reviews.md)** | `ReviewService`, `make_reviews_router`, 0–5 star scores with aggregation, threaded comments |
 | **[Computer vision (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + prediction schemas |
@@ -530,17 +530,17 @@ come back here to plug in each capability as you need it.
 | **[Object-level permissions »](authz.md)** | `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
 | **[Observability (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
 | **[Offline-first sync (delta) »](offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, cursor deltas + soft-delete |
-| **[OpenPix (Pix via Woovi) »](openpix.md)** | Layered architecture, opening a charge, verified webhook + API read-back, reconciliation, refunds, `OpenPixEnvironment`, `to_cents` |
+| **[OpenPix (Pix via Woovi) »](openpix.md)** | Layered architecture, opening a charge, verified webhook + API read-back, reconciliation, refunds, `OpenPixEnvironmentEnum`, `to_cents` |
 | **[OpenPix (subscriptions and plans) »](openpix-subscriptions.md)** | `SubscriptionPayload`, `RECURRENT` vs `PIX_RECURRING` (Pix Automático), lifecycle and instalments, the plan that lives in your database |
 | **[PDFs »](pdf.md)** | Generate: `PdfRenderer`, five bundled documents (receipt/quote/report/contract/voucher) with Pydantic schemas, `make_pdf_router`, `tempest pdf render`, asset policy. Read: `extract_pdf_text`, `read_pdf_pages` (upload through the API, page by page, tables) |
 | **[Permission guards (@requires) »](permission-guards.md)** | `@requires` plus `(user) -> user` guards (with an optional `meta: dict[str, Any]` via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
-| **[Pix protocol (one contract, many providers) »](pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` field by field, canonical `PaymentStatus` beside the raw `provider_status`, the six `PixEventType`s, `OpenPixPixProvider` and `MercadoPagoPixProvider`, `PixProviderRouter` to migrate provider by slices of orders, `confirm_pix_payment` + `claim_once` to release an order only after reading the charge back, and only once — plus how to write your own adapter, with an in-memory fake for testing without a network |
+| **[Pix protocol (one contract, many providers) »](pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` field by field, canonical `PaymentStatusEnum` beside the raw `provider_status`, the six `PixEventTypeEnum`s, `OpenPixPixProvider` and `MercadoPagoPixProvider`, `PixProviderRouter` to migrate provider by slices of orders, `confirm_pix_payment` + `claim_once` to release an order only after reading the charge back, and only once — plus how to write your own adapter, with an in-memory fake for testing without a network |
 | **[Push (web + mobile) »](push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — one call for browsers and phones, with unified pruning of dead devices |
 | **[Query plans (EXPLAIN) »](query-plans.md)** | `explain_queries()` captures the block and explains on exit, `EXPLAIN ANALYZE` on PostgreSQL / `EXPLAIN QUERY PLAN` on SQLite, writes never re-executed, `report.slowest` |
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
 | **[React SPA on FastAPI »](react-spa.md)** | `make_spa_router` — serve the Vite build from the same process, with history fallback |
 | **[Real-time »](realtime.md)** | Overview — when to choose SSE, WebSocket or Web Push |
-| **[Receiving WhatsApp messages (zap-api) »](zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC over the raw body, `ZapWebhookDelivery` with `inbound` / `status` already parsed by `event`, enums (`ZapWebhookEvent`, `ZapInboundMediaType`, `ZapJidServer`, `ZapOutboundKind`) to dispatch without loose strings, a full model → repository → service → controller → router layer over `ZapInbox` + mixins (claim, status and send ready-made), `is_forward_transition` against out-of-order callbacks, media via `get_message_media` |
+| **[Receiving WhatsApp messages (zap-api) »](zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC over the raw body, `ZapWebhookDelivery` with `inbound` / `status` already parsed by `event`, enums (`ZapWebhookEventEnum`, `ZapInboundMediaTypeEnum`, `ZapJidServerEnum`, `ZapOutboundKindEnum`) to dispatch without loose strings, a full model → repository → service → controller → router layer over `ZapInbox` + mixins (claim, status and send ready-made), `is_forward_transition` against out-of-order callbacks, media via `get_message_media` |
 | **[Refresh tokens (rotation/revocation) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotation + family reuse detection |
 | **[RevenueCat (in-app subscriptions) »](revenuecat.md)** | `make_revenuecat_webhook_router` (Authorization header + optional HMAC, empty secret refuses all, records once), `WebhookInbox` + `BaseWebhookEventModel` (idempotent inbox for any provider: claim, effect and mark in one transaction, `max_attempts` → `FAILED`), `normalize` → `SubscriptionSnapshot` over all 21 documented event types, `RevenueCatClient.get_subscriber`, `RevenueCatSettings`, `FakeRevenueCatClient` |
 | **[Safe deploys »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (blocks DROPs), `GracefulShutdownMiddleware` |
@@ -561,7 +561,7 @@ come back here to plug in each capability as you need it.
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validate settings before serving |
 | **[tempestweb frontend + SDK »](tempestweb-frontend.md)** | tempestweb frontend calling the SDK backend: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, same origin vs CORS |
 | **[Testing »](testing.md)** | `make_test_session`, `make_test_database`, in-memory SQLite, pytest fixtures |
-| **[Text search (LIKE + full-text) »](text-search.md)** | portable `search()` (escaped ILIKE, `AND` across words), `full_text_search()` with `websearch_to_tsquery` + `ts_rank` on PostgreSQL, `TextSearchLanguage` / `TextSearchWeight` / `TokenMatch`, conditions that feed `where=` |
+| **[Text search (LIKE + full-text) »](text-search.md)** | portable `search()` (escaped ILIKE, `AND` across words), `full_text_search()` with `websearch_to_tsquery` + `ts_rank` on PostgreSQL, `TextSearchLanguageEnum` / `TextSearchWeightEnum` / `TokenMatchEnum`, conditions that feed `where=` |
 | **[Transactional email »](email.md)** | `EmailUtils` — SMTP, text/HTML body, attachments, Jinja2 templates |
 | **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |
 | **[Transactions (commit and savepoint) »](transactions.md)** | session-shared `transaction()`, `commit()` / `flush()` / `rollback()` on the repository, `autocommit=False`, `savepoint()` for the recoverable step |

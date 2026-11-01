@@ -52,7 +52,7 @@ from tempest_fastapi_sdk.genai.schemas import (
     AudioGenerationConfig,
     GeneratedAudio,
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
     precision_kwarg,
 )
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
@@ -179,7 +179,7 @@ class MusicGenerator:
     Attributes:
         model_id (str): The HuggingFace model id.
         device (str): The resolved device (``cuda`` / ``mps`` / ``cpu``).
-        dtype (ModelDtype): The resolved compute precision.
+        dtype (ModelDtypeEnum): The resolved compute precision.
         source (ModelRef): The resolved weight identity.
         idle_unload_seconds (float | None): Idle threshold used by
             :meth:`unload_if_idle`.
@@ -190,7 +190,7 @@ class MusicGenerator:
         model_id: str,
         *,
         device: str = "auto",
-        dtype: str | ModelDtype = "auto",
+        dtype: str | ModelDtypeEnum = "auto",
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
@@ -205,7 +205,7 @@ class MusicGenerator:
         Args:
             model_id (str): HuggingFace id of a MusicGen checkpoint.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
-            dtype (str | ModelDtype): Compute precision, or ``"auto"``
+            dtype (str | ModelDtypeEnum): Compute precision, or ``"auto"``
                 (bf16 on GPU, fp32 on CPU). Measured on the RTX 4070 Ti
                 SUPER, 10 s took about 9.2 s in bf16, 9.3 s in fp16 and
                 10 s in fp32.
@@ -235,9 +235,9 @@ class MusicGenerator:
         self.model_id = model_id
         self.device = resolve_device(device, hardware)
         self.dtype = (
-            ModelDtype(auto_dtype_name(self.device))
+            ModelDtypeEnum(auto_dtype_name(self.device))
             if dtype == "auto"
-            else ModelDtype(dtype)
+            else ModelDtypeEnum(dtype)
         )
         self.source = ModelRef(
             model_id=model_id,

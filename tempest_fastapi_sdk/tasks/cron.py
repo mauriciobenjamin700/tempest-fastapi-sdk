@@ -3,22 +3,22 @@
 Cron expressions like ``"0 9 * * MON-FRI"`` are terse and error-prone.
 This module lets you schedule the common cases by name instead:
 
-* :class:`Cron` - ready-made expressions (``Cron.EVERY_WEEKDAY_9AM``).
-* :class:`CronOffset` - timezone offsets by place (``CronOffset.BRASILIA``)
+* :class:`CronEnum` - ready-made expressions (``CronEnum.EVERY_WEEKDAY_9AM``).
+* :class:`CronOffsetEnum` - timezone offsets by place (``CronOffsetEnum.BRASILIA``)
   so you never hand-write ``"-03:00"``.
-* :class:`Weekday` - day-of-week tokens (``Weekday.MON``).
+* :class:`WeekdayEnum` - day-of-week tokens (``WeekdayEnum.MON``).
 * Builder functions - :func:`daily`, :func:`weekdays`, :func:`hourly`,
   :func:`every_n_minutes`, … - for parameterized schedules.
 
 Every builder returns a plain cron string, so it drops straight into
 ``@tq.cron(...)`` / ``AsyncTaskScheduler.cron(...)``::
 
-    from tempest_fastapi_sdk.tasks import Cron, CronOffset, daily
+    from tempest_fastapi_sdk.tasks import CronEnum, CronOffsetEnum, daily
 
-    @tq.cron(Cron.EVERY_WEEKDAY_9AM, cron_offset=CronOffset.BRASILIA)
+    @tq.cron(CronEnum.EVERY_WEEKDAY_9AM, cron_offset=CronOffsetEnum.BRASILIA)
     async def daily_digest() -> None: ...
 
-    @tq.cron(daily(hour=9), cron_offset=CronOffset.BRASILIA)   # same thing
+    @tq.cron(daily(hour=9), cron_offset=CronOffsetEnum.BRASILIA)   # same thing
     async def other_digest() -> None: ...
 
 The module has **no** third-party dependency, so it imports without the
@@ -36,10 +36,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from tempest_fastapi_sdk.core import BaseStrEnum
 
 _NUMERIC_OFFSET_RE: Final[re.Pattern[str]] = re.compile(r"^([+-])(\d{2}):(\d{2})$")
-"""Matches the ``"±HH:MM"`` offsets :class:`CronOffset` hands out."""
+"""Matches the ``"±HH:MM"`` offsets :class:`CronOffsetEnum` hands out."""
 
 
-class Weekday(BaseStrEnum):
+class WeekdayEnum(BaseStrEnum):
     """Day-of-week tokens for the cron day-of-week field.
 
     Members carry the three-letter cron token (``"MON"`` … ``"SUN"``) so
@@ -56,7 +56,7 @@ class Weekday(BaseStrEnum):
     SUN = "SUN"
 
 
-class CronOffset(BaseStrEnum):
+class CronOffsetEnum(BaseStrEnum):
     """Timezone offsets for ``cron_offset``, by place instead of digits.
 
     A cron expression is anchored to UTC unless you pass an offset. Pick
@@ -76,7 +76,7 @@ class CronOffset(BaseStrEnum):
     ACRE = "-05:00"
 
 
-class Cron(BaseStrEnum):
+class CronEnum(BaseStrEnum):
     """Ready-made cron expressions for the most common schedules.
 
     Pass a member straight to ``@tq.cron(...)`` - it *is* a cron string,
@@ -118,17 +118,17 @@ def _check(value: int, low: int, high: int, name: str) -> int:
     return value
 
 
-def _dow(day: Weekday | str) -> str:
+def _dow(day: WeekdayEnum | str) -> str:
     """Return the cron day-of-week token for ``day``.
 
     Args:
-        day (Weekday | str): A :class:`Weekday` member or a raw token
+        day (WeekdayEnum | str): A :class:`WeekdayEnum` member or a raw token
             (``"MON"``, ``"MON-FRI"``, ``"1"`` …).
 
     Returns:
         str: The day-of-week token as a plain string.
     """
-    return day.value if isinstance(day, Weekday) else str(day)
+    return day.value if isinstance(day, WeekdayEnum) else str(day)
 
 
 def every_minute() -> str:
@@ -186,11 +186,11 @@ def daily(hour: int = 0, minute: int = 0) -> str:
     return f"{_check(minute, 0, 59, 'minute')} {_check(hour, 0, 23, 'hour')} * * *"
 
 
-def weekly(day: Weekday | str, hour: int = 0, minute: int = 0) -> str:
+def weekly(day: WeekdayEnum | str, hour: int = 0, minute: int = 0) -> str:
     """Return a cron expression firing once a week on ``day`` at ``hour:minute``.
 
     Args:
-        day (Weekday | str): The weekday (``Weekday.MON`` or a raw token).
+        day (WeekdayEnum | str): The weekday (``WeekdayEnum.MON`` or a raw token).
         hour (int): Hour of day, ``0``-``23``.
         minute (int): Minute past the hour, ``0``-``59``.
 
@@ -274,7 +274,7 @@ def normalize_cron_offset(value: str | timedelta) -> str | timedelta:
     only), so it stops scheduling for **every** task in the process, not
     just the one that declared the offset.
 
-    So the numeric forms this SDK hands out (:class:`CronOffset`) are
+    So the numeric forms this SDK hands out (:class:`CronOffsetEnum`) are
     converted to the ``timedelta`` TaskIQ applies, and any other string
     is resolved as an IANA key here, at declaration time, where the
     traceback still names the caller.
@@ -283,7 +283,7 @@ def normalize_cron_offset(value: str | timedelta) -> str | timedelta:
     does: on an image without one, ``ZoneInfo("UTC")`` already raises.
 
     Args:
-        value (str | timedelta): A :class:`CronOffset` member, a
+        value (str | timedelta): A :class:`CronOffsetEnum` member, a
             ``"±HH:MM"`` offset, an IANA key
             (``"America/Sao_Paulo"``), or a
             :class:`~datetime.timedelta`.
@@ -311,7 +311,7 @@ def normalize_cron_offset(value: str | timedelta) -> str | timedelta:
     except (ZoneInfoNotFoundError, ValueError) as exc:
         raise ValueError(
             f"cron_offset {text!r} is neither a '±HH:MM' offset nor a time "
-            f"zone key this interpreter can resolve. Pass a CronOffset "
+            f"zone key this interpreter can resolve. Pass a CronOffsetEnum "
             f"member or a '±HH:MM' string for a fixed offset, or an IANA "
             f"key such as 'America/Sao_Paulo' to follow daylight saving — "
             f"the latter needs a time zone database on the image, so a "
@@ -351,9 +351,9 @@ def normalize_schedule(spec: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 __all__: list[str] = [
-    "Cron",
-    "CronOffset",
-    "Weekday",
+    "CronEnum",
+    "CronOffsetEnum",
+    "WeekdayEnum",
     "daily",
     "every_minute",
     "every_n_minutes",

@@ -228,7 +228,7 @@ One `SlideDeck`, five outputs:
 import asyncio
 from pathlib import Path
 
-from tempest_fastapi_sdk.slides import SlideDeck, SlideRenderer, SlideTheme, parse_slides
+from tempest_fastapi_sdk.slides import SlideDeck, SlideRenderer, SlideThemeEnum, parse_slides
 
 
 async def main() -> None:
@@ -237,8 +237,8 @@ async def main() -> None:
     renderer = SlideRenderer(max_concurrent=2)
     Path("lesson.html").write_text(renderer.html(deck), encoding="utf-8")
     Path("lesson.md").write_text(renderer.markdown(deck), encoding="utf-8")
-    Path("lesson.pdf").write_bytes(await renderer.pdf(deck, theme=SlideTheme.DARK))
-    Path("lesson.pptx").write_bytes(await renderer.pptx(deck, theme=SlideTheme.DARK))
+    Path("lesson.pdf").write_bytes(await renderer.pdf(deck, theme=SlideThemeEnum.DARK))
+    Path("lesson.pptx").write_bytes(await renderer.pptx(deck, theme=SlideThemeEnum.DARK))
     Path("handout.docx").write_bytes(await renderer.docx(deck))
 
 
@@ -282,8 +282,8 @@ Note:
 ask the class for a real-world example first.
 ```
 
-`SlideTheme.DEFAULT` is dark text on white with blue accents;
-`SlideTheme.DARK`, light text on a slate background. `max_concurrent` caps
+`SlideThemeEnum.DEFAULT` is dark text on white with blue accents;
+`SlideThemeEnum.DARK`, light text on a slate background. `max_concurrent` caps
 how many PDF, PPTX and DOCX renders run at once on that renderer — each is CPU
 in a worker thread, and without a ceiling a burst of requests takes every
 core.
@@ -643,7 +643,7 @@ from tempest_fastapi_sdk.slides import (
     MarkdownPdfRenderer,
     SlideDeck,
     SlideRenderer,
-    SlideTheme,
+    SlideThemeEnum,
     SlideVocabulary,
     parse_slides,
 )
@@ -666,7 +666,7 @@ class SlideSourceSchema(BaseSchema):
     """The structured text of a lesson."""
 
     text: str = Field(title="Text", description="Source in the lesson/section/bullet format.")
-    theme: SlideTheme = Field(default=SlideTheme.DEFAULT, title="Theme")
+    theme: SlideThemeEnum = Field(default=SlideThemeEnum.DEFAULT, title="Theme")
 
 
 class MarkdownSourceSchema(BaseSchema):

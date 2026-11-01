@@ -62,7 +62,7 @@ from tempest_fastapi_sdk.pdf.formatting import format_quantity as format_quantit
 from tempest_fastapi_sdk.pdf.formatting import valor_por_extenso as valor_por_extenso
 from tempest_fastapi_sdk.pdf.pages import PdfDecryptError as PdfDecryptError
 from tempest_fastapi_sdk.pdf.pages import PdfExtractError as PdfExtractError
-from tempest_fastapi_sdk.pdf.pages import PdfExtractor as PdfExtractor
+from tempest_fastapi_sdk.pdf.pages import PdfExtractorEnum as PdfExtractorEnum
 from tempest_fastapi_sdk.pdf.pages import PdfPage as PdfPage
 from tempest_fastapi_sdk.pdf.pages import PdfPagesResult as PdfPagesResult
 from tempest_fastapi_sdk.pdf.pages import read_pdf_pages as read_pdf_pages
@@ -137,7 +137,7 @@ __all__: list[str] = [
     "PdfDecryptError",
     "PdfDocument",
     "PdfExtractError",
-    "PdfExtractor",
+    "PdfExtractorEnum",
     "PdfPage",
     "PdfPagesResult",
     "PdfRenderer",

@@ -20,7 +20,7 @@ from tempest_fastapi_sdk.app_errors.constants import (
     APP_ERROR_CODE_MAX_LENGTH,
     APP_ERROR_TEXT_FIELD_MAX_LENGTH,
 )
-from tempest_fastapi_sdk.app_errors.schemas import AppPlatform
+from tempest_fastapi_sdk.app_errors.schemas import AppPlatformEnum
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
@@ -35,7 +35,7 @@ class BaseAppErrorModel(BaseModel):
         code (str): The error code the app emits — a stable identifier,
             indexed because grouping by it is the first thing anyone does.
         message (str): The message or stack trace.
-        platform (str): An :class:`AppPlatform` value, indexed so the
+        platform (str): An :class:`AppPlatformEnum` value, indexed so the
             listing can isolate one platform.
         os_version (str | None): The device's operating system version.
         app_version (str | None): The application version or build,
@@ -65,9 +65,9 @@ class BaseAppErrorModel(BaseModel):
     platform: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
-        default=AppPlatform.UNKNOWN.value,
+        default=AppPlatformEnum.UNKNOWN.value,
         index=True,
-        doc="An AppPlatform value.",
+        doc="An AppPlatformEnum value.",
     )
     os_version: Mapped[str | None] = mapped_column(
         String(APP_ERROR_TEXT_FIELD_MAX_LENGTH),

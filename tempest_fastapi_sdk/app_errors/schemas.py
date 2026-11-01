@@ -18,7 +18,7 @@ from pydantic import Field
 from tempest_fastapi_sdk import BaseSchema, BaseStrEnum
 
 
-class AppPlatform(BaseStrEnum):
+class AppPlatformEnum(BaseStrEnum):
     """The client platform an error was reported from.
 
     A closed set on purpose: filtering the listing by platform is the
@@ -46,7 +46,7 @@ class AppErrorDeviceSchema(BaseSchema):
     incomplete collection into a lost report.
 
     Attributes:
-        platform (AppPlatform): The reporting client's platform.
+        platform (AppPlatformEnum): The reporting client's platform.
         os_version (str | None): The operating system version.
         app_version (str | None): The application version or build.
         device_model (str | None): The device model.
@@ -54,8 +54,8 @@ class AppErrorDeviceSchema(BaseSchema):
             group reports coming from the same device.
     """
 
-    platform: AppPlatform = Field(
-        default=AppPlatform.UNKNOWN,
+    platform: AppPlatformEnum = Field(
+        default=AppPlatformEnum.UNKNOWN,
         description="Plataforma do cliente que reportou o erro.",
         examples=["ios"],
     )
@@ -160,7 +160,7 @@ class AppErrorFilterSchema(BaseSchema):
 
     Attributes:
         code (str | None): Filters by exact code.
-        platform (AppPlatform | None): Filters by platform.
+        platform (AppPlatformEnum | None): Filters by platform.
         app_version (str | None): Filters by application version.
         user_id (UUID | None): Filters by one user's reports.
         start_date (date | None): Start of the creation range, inclusive.
@@ -175,7 +175,7 @@ class AppErrorFilterSchema(BaseSchema):
     """
 
     code: str | None = Field(default=None, description="Filtra pelo código exato.")
-    platform: AppPlatform | None = Field(
+    platform: AppPlatformEnum | None = Field(
         default=None, description="Filtra pela plataforma do cliente."
     )
     app_version: str | None = Field(
@@ -217,5 +217,5 @@ __all__: list[str] = [
     "AppErrorFilterSchema",
     "AppErrorReportSchema",
     "AppErrorResponseSchema",
-    "AppPlatform",
+    "AppPlatformEnum",
 ]

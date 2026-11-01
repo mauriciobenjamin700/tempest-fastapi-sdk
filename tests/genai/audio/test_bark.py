@@ -27,7 +27,7 @@ from tempest_fastapi_sdk.exceptions import ValidationException
 from tempest_fastapi_sdk.genai import make_genai_router
 from tempest_fastapi_sdk.genai.audio import (
     BarkSpeech,
-    Language,
+    LanguageEnum,
     SpeechSynthesizer,
     split_for_bark,
 )
@@ -216,10 +216,10 @@ class TestSplitForBark:
 class TestLanguageCode:
     @pytest.mark.parametrize(
         ("language", "code"),
-        [(Language.PT_BR, "pt"), ("pt-BR", "pt"), ("en_US", "en"), (" PT ", "pt")],
+        [(LanguageEnum.PT_BR, "pt"), ("pt-BR", "pt"), ("en_US", "en"), (" PT ", "pt")],
     )
     def test_maps_to_the_preset_prefix(
-        self, language: Language | str, code: str
+        self, language: LanguageEnum | str, code: str
     ) -> None:
         assert bark_language_code(language) == code
 
@@ -242,7 +242,7 @@ class TestSynthesize:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         fakes = _install(monkeypatch)
-        await BarkSpeech(device="cpu").synthesize("oi", language=Language.PT_BR)
+        await BarkSpeech(device="cpu").synthesize("oi", language=LanguageEnum.PT_BR)
         assert fakes.processor.calls[0][1] == "v2/pt_speaker_0"
 
     async def test_explicit_speaker_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:

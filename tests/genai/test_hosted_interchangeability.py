@@ -27,7 +27,7 @@ from tempest_fastapi_sdk.agents import (
     Agent,
     AgentContext,
     AgentTool,
-    StopReason,
+    StopReasonEnum,
     ToolCallingBackend,
 )
 from tempest_fastapi_sdk.genai import (
@@ -350,14 +350,14 @@ ADD_TOOL: AgentTool = AgentTool(
 )
 
 
-async def run_agent(backend: ToolCallingBackend) -> tuple[str, StopReason, int]:
+async def run_agent(backend: ToolCallingBackend) -> tuple[str, StopReasonEnum, int]:
     """Consumer code: an agent with one tool.
 
     Args:
         backend (ToolCallingBackend): Any tool-calling backend.
 
     Returns:
-        tuple[str, StopReason, int]: Output, stop reason, tool calls.
+        tuple[str, StopReasonEnum, int]: Output, stop reason, tool calls.
     """
     agent = Agent(backend, tools=[ADD_TOOL])
     run = await agent.run("What is 2 + 3?")
@@ -397,6 +397,6 @@ class TestSameConsumerEveryBackend:
 
     async def test_agent_round_trips_the_tool_result(self, backend: Backend) -> None:
         output, reason, calls = await run_agent(backend)
-        assert reason == StopReason.COMPLETED
+        assert reason == StopReasonEnum.COMPLETED
         assert output == FINAL
         assert calls == 1

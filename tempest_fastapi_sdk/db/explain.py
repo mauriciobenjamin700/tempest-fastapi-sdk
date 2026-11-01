@@ -20,7 +20,7 @@ Two backends, two levels of detail, both reported honestly through
   one that tells you a sequential scan is reading 400k rows to return 20.
 * **SQLite** — ``EXPLAIN QUERY PLAN``: which index (or none) each step
   uses. No costs, no timings; the SDK reports
-  :attr:`ExplainDetail.PLAN_ONLY` rather than inventing numbers.
+  :attr:`ExplainDetailEnum.PLAN_ONLY` rather than inventing numbers.
 
 **Writes are never re-executed.** ``EXPLAIN ANALYZE`` runs the statement
 it explains, so applying it to the ``INSERT`` your block just performed
@@ -65,7 +65,7 @@ SQLITE_PLAN_PREFIX: Final[str] = "EXPLAIN QUERY PLAN"
 logger = logging.getLogger(__name__)
 
 
-class ExplainDetail(BaseStrEnum):
+class ExplainDetailEnum(BaseStrEnum):
     """How much a backend was able to report.
 
     Attributes:
@@ -88,7 +88,7 @@ class QueryPlan:
 
     Attributes:
         sql (str): The statement as compiled for the backend.
-        detail (ExplainDetail): How much the backend reported.
+        detail (ExplainDetailEnum): How much the backend reported.
         plan_text (str): The plan, rendered for reading.
         total_cost (float | None): The planner's cost estimate for the
             whole statement. ``None`` when the backend has no cost model.
@@ -101,7 +101,7 @@ class QueryPlan:
     """
 
     sql: str
-    detail: ExplainDetail
+    detail: ExplainDetailEnum
     plan_text: str
     total_cost: float | None = None
     duration_ms: float | None = None
@@ -401,7 +401,7 @@ def _prefix_for(
     *,
     dialect: str,
     analyze: bool,
-) -> tuple[str | None, ExplainDetail]:
+) -> tuple[str | None, ExplainDetailEnum]:
     """Pick the ``EXPLAIN`` prefix for a statement on a backend.
 
     Args:
@@ -410,16 +410,16 @@ def _prefix_for(
         analyze (bool): Whether a ``SELECT`` may be analyzed.
 
     Returns:
-        tuple[str | None, ExplainDetail]: The prefix — ``None`` when the
+        tuple[str | None, ExplainDetailEnum]: The prefix — ``None`` when the
         backend is unsupported — and the detail level it will yield.
     """
     if dialect == SQLITE_DIALECT:
-        return SQLITE_PLAN_PREFIX, ExplainDetail.PLAN_ONLY
+        return SQLITE_PLAN_PREFIX, ExplainDetailEnum.PLAN_ONLY
     if dialect != POSTGRESQL_DIALECT:
-        return None, ExplainDetail.PLAN_ONLY
+        return None, ExplainDetailEnum.PLAN_ONLY
     if analyze and _is_select(statement):
-        return POSTGRESQL_ANALYZE_PREFIX, ExplainDetail.MEASURED
-    return POSTGRESQL_PLAN_PREFIX, ExplainDetail.ESTIMATED
+        return POSTGRESQL_ANALYZE_PREFIX, ExplainDetailEnum.MEASURED
+    return POSTGRESQL_PLAN_PREFIX, ExplainDetailEnum.ESTIMATED
 
 
 def _is_select(statement: ClauseElement) -> bool:
@@ -444,7 +444,7 @@ def _is_select(statement: ClauseElement) -> bool:
 def _postgresql_plan(
     sql: str,
     rows: Sequence[Any],
-    detail: ExplainDetail,
+    detail: ExplainDetailEnum,
 ) -> QueryPlan:
     """Build a plan from PostgreSQL's ``FORMAT JSON`` output.
 
@@ -452,7 +452,7 @@ def _postgresql_plan(
         sql (str): The statement that was explained.
         rows (Sequence[Any]): The result rows; the JSON sits in the first
             cell of the first row.
-        detail (ExplainDetail): Whether the statement was analyzed.
+        detail (ExplainDetailEnum): Whether the statement was analyzed.
 
     Returns:
         QueryPlan: The parsed plan. Metrics the output does not carry
@@ -492,7 +492,7 @@ def _sqlite_plan(sql: str, rows: Sequence[Any]) -> QueryPlan:
     steps = [str(row[-1]) for row in rows]
     return QueryPlan(
         sql=sql,
-        detail=ExplainDetail.PLAN_ONLY,
+        detail=ExplainDetailEnum.PLAN_ONLY,
         plan_text="\n".join(steps),
         raw=steps,
     )
@@ -502,7 +502,7 @@ __all__: list[str] = [
     "POSTGRESQL_ANALYZE_PREFIX",
     "POSTGRESQL_PLAN_PREFIX",
     "SQLITE_PLAN_PREFIX",
-    "ExplainDetail",
+    "ExplainDetailEnum",
     "ExplainReport",
     "QueryPlan",
     "explain_queries",

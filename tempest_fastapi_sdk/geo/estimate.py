@@ -8,7 +8,7 @@ use :class:`tempest_fastapi_sdk.geo.OSRMBackend` instead.
 from __future__ import annotations
 
 from tempest_fastapi_sdk.geo.distance import haversine_km
-from tempest_fastapi_sdk.geo.enums import TravelMode
+from tempest_fastapi_sdk.geo.enums import TravelModeEnum
 from tempest_fastapi_sdk.geo.schemas import Coordinate, TravelEstimate
 
 # How much longer a real road is than the straight line between two points.
@@ -22,20 +22,20 @@ DEFAULT_CAR_SPEED_KMH: float = 50.0
 # for "how much slower/faster" each mode is — it scales both the offline
 # heuristic (via speed) and a car-only OSRM result (via duration). A bus is
 # slower because of stops; a motorcycle is slightly faster (lane filtering).
-DEFAULT_MODE_DURATION_FACTORS: dict[TravelMode, float] = {
-    TravelMode.CAR: 1.0,
-    TravelMode.MOTORCYCLE: 0.95,
-    TravelMode.BUS: 1.6,
+DEFAULT_MODE_DURATION_FACTORS: dict[TravelModeEnum, float] = {
+    TravelModeEnum.CAR: 1.0,
+    TravelModeEnum.MOTORCYCLE: 0.95,
+    TravelModeEnum.BUS: 1.6,
     # Relative to the ~50 km/h blended car speed: a bicycle averages
     # ~15 km/h (~3.3x slower) and a pedestrian ~5 km/h (~10x slower).
-    TravelMode.BICYCLE: 3.3,
-    TravelMode.PEDESTRIAN: 10.0,
+    TravelModeEnum.BICYCLE: 3.3,
+    TravelModeEnum.PEDESTRIAN: 10.0,
 }
 
 
 def duration_factor(
-    mode: TravelMode,
-    factors: dict[TravelMode, float] | None = None,
+    mode: TravelModeEnum,
+    factors: dict[TravelModeEnum, float] | None = None,
 ) -> float:
     """Return the duration multiplier (relative to a car) for a mode.
 
@@ -54,11 +54,11 @@ def duration_factor(
 def estimate_travel(
     origin: Coordinate,
     destination: Coordinate,
-    mode: TravelMode = TravelMode.CAR,
+    mode: TravelModeEnum = TravelModeEnum.CAR,
     *,
     circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
     car_speed_kmh: float = DEFAULT_CAR_SPEED_KMH,
-    mode_duration_factors: dict[TravelMode, float] | None = None,
+    mode_duration_factors: dict[TravelModeEnum, float] | None = None,
 ) -> TravelEstimate:
     """Estimate road distance and travel time offline for a single mode.
 
@@ -70,7 +70,7 @@ def estimate_travel(
         origin: The starting coordinate.
         destination: The ending coordinate.
         mode: The travel mode to estimate for. Defaults to
-            :attr:`TravelMode.CAR`.
+            :attr:`TravelModeEnum.CAR`.
         circuity_factor: Ratio of road distance to straight-line distance.
         car_speed_kmh: Blended average car speed in km/h; must be positive.
         mode_duration_factors: Optional per-mode duration multiplier map.

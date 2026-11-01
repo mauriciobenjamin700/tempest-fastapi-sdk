@@ -13,8 +13,8 @@ from tempest_fastapi_sdk.agents import (
     AgentContext,
     AgentTool,
     LoopResult,
-    StepKind,
-    StopReason,
+    StepKindEnum,
+    StopReasonEnum,
     ToolResult,
     agent_tool,
     refine,
@@ -120,7 +120,7 @@ class TestDelegation:
         )
         run = await parent.run("write a brief")
         assert run.output == "Brief written."
-        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        delegation = next(s for s in run.steps if s.kind == StepKindEnum.AGENT)
         assert "PIX is instant payments" in delegation.output
 
     @pytest.mark.asyncio
@@ -137,7 +137,7 @@ class TestDelegation:
             name="writer",
         )
         run = await parent.run("go")
-        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        delegation = next(s for s in run.steps if s.kind == StepKindEnum.AGENT)
         assert delegation.agent == "researcher"
         assert [c.name for c in delegation.children] == ["chat", "echo", "chat"]
         assert delegation.total_steps == 4
@@ -157,8 +157,8 @@ class TestDelegation:
         )
         run = await parent.run("go")
         kinds = [s.kind for s in run.steps]
-        assert StepKind.AGENT in kinds
-        assert run.steps[1].kind == StepKind.AGENT
+        assert StepKindEnum.AGENT in kinds
+        assert run.steps[1].kind == StepKindEnum.AGENT
 
     @pytest.mark.asyncio
     async def test_child_artifacts_bubble_up_namespaced(self) -> None:
@@ -274,7 +274,7 @@ class TestDelegation:
             name="boss",
         )
         run = await parent.run("go")
-        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        delegation = next(s for s in run.steps if s.kind == StepKindEnum.AGENT)
         assert "stopped: max_steps" in delegation.output
 
     @pytest.mark.asyncio
@@ -295,7 +295,7 @@ class TestDelegation:
             name="boss",
         )
         run = await parent.run("go")
-        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        delegation = next(s for s in run.steps if s.kind == StepKindEnum.AGENT)
         assert "stopped: empty_response" in delegation.output
 
     @pytest.mark.asyncio
@@ -354,7 +354,7 @@ class TestDepthGuard:
             name="outer",
         )
         run = await outer.run("go")
-        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        delegation = next(s for s in run.steps if s.kind == StepKindEnum.AGENT)
         nested_error = [c for c in delegation.children if c.error]
         assert nested_error
         assert "delegation refused" in nested_error[0].error
@@ -422,7 +422,7 @@ class TestInheritedDeadline:
         run = await parent.run("go")
         elapsed = asyncio.get_running_loop().time() - started
         assert elapsed < 5.0
-        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        delegation = next(s for s in run.steps if s.kind == StepKindEnum.AGENT)
         assert "stopped: timeout" in delegation.output
 
     @pytest.mark.asyncio
@@ -453,7 +453,7 @@ class TestInheritedDeadline:
         )
         run = await parent.run("go")
         assert run.succeeded is True
-        delegation = next(s for s in run.steps if s.kind == StepKind.AGENT)
+        delegation = next(s for s in run.steps if s.kind == StepKindEnum.AGENT)
         assert "stopped: timeout" in delegation.output
 
 
@@ -542,7 +542,7 @@ class TestRunUntil:
         )
         result = await run_until(agent, "g", until=succeeded, max_rounds=2)
         assert result.accepted is False
-        assert result.final_run.stop_reason == StopReason.MAX_STEPS
+        assert result.final_run.stop_reason == StopReasonEnum.MAX_STEPS
 
     @pytest.mark.asyncio
     async def test_succeeded_helper_retries_an_empty_reply(self) -> None:
@@ -558,7 +558,7 @@ class TestRunUntil:
         result = await run_until(agent, "g", until=succeeded, max_rounds=3)
         assert result.accepted is True
         assert result.rounds == 2
-        assert result.iterations[0].run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert result.iterations[0].run.stop_reason == StopReasonEnum.EMPTY_RESPONSE
         assert result.output == "the answer"
 
     @pytest.mark.asyncio

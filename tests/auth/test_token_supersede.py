@@ -33,7 +33,7 @@ from tempest_fastapi_sdk import (
     UserAuthService,
     make_user_token_model,
 )
-from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose
+from tempest_fastapi_sdk.db.user_token_model import UserTokenPurposeEnum
 from tempest_fastapi_sdk.exceptions import InvalidTokenException
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
 
@@ -246,7 +246,7 @@ class TestEveryPurposeIsCovered:
         resent, _url, _expires = await service._issue_token(
             session,
             user_id=user.id,
-            purpose=UserTokenPurpose.ACTIVATION,
+            purpose=UserTokenPurposeEnum.ACTIVATION,
             ttl_seconds=600,
             url_template="http://localhost/activate?token={token}",
         )

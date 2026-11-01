@@ -25,14 +25,14 @@ from pydantic import Field
 
 from tempest_fastapi_sdk import BaseStrEnum
 from tempest_fastapi_sdk.integrations.payment.base import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixCharge,
     PixProvider,
     _EnumSafeSchema,
 )
 
 
-class PixConfirmationOutcome(BaseStrEnum):
+class PixConfirmationOutcomeEnum(BaseStrEnum):
     """Why a re-read charge does or does not authorize releasing an order.
 
     The checks run in this order, and the first one that fails names the
@@ -45,7 +45,7 @@ class PixConfirmationOutcome(BaseStrEnum):
         REFERENCE_MISMATCH (str): The charge's ``reference`` is not the
             order's — the stored charge id points at someone else's charge.
         NOT_PAID (str): The provider does not report the charge as
-            :attr:`~tempest_fastapi_sdk.integrations.payment.base.PaymentStatus.PAID`.
+            :attr:`~tempest_fastapi_sdk.integrations.payment.base.PaymentStatusEnum.PAID`.
             The current status is in :attr:`PixPaymentConfirmation.charge`.
         AMOUNT_MISMATCH (str): Paid, but not the amount the order costs.
     """
@@ -60,7 +60,7 @@ class PixPaymentConfirmation(_EnumSafeSchema):
     """The result of re-reading a charge against what the order expects.
 
     Attributes:
-        outcome (PixConfirmationOutcome): Which check decided the result.
+        outcome (PixConfirmationOutcomeEnum): Which check decided the result.
         charge (PixCharge): The charge as the provider reported it on this
             read — not the copy that arrived in the webhook.
         expected_reference (str): The order reference the charge had to
@@ -69,7 +69,7 @@ class PixPaymentConfirmation(_EnumSafeSchema):
             to carry.
     """
 
-    outcome: PixConfirmationOutcome = Field(
+    outcome: PixConfirmationOutcomeEnum = Field(
         description="Qual conferência decidiu o resultado."
     )
     charge: PixCharge = Field(description="A cobrança como o provedor a relê.")
@@ -83,9 +83,9 @@ class PixPaymentConfirmation(_EnumSafeSchema):
         """Whether the confirmation authorizes releasing the order.
 
         Returns:
-            bool: ``True`` only for :attr:`PixConfirmationOutcome.PAID`.
+            bool: ``True`` only for :attr:`PixConfirmationOutcomeEnum.PAID`.
         """
-        return self.outcome is PixConfirmationOutcome.PAID
+        return self.outcome is PixConfirmationOutcomeEnum.PAID
 
 
 async def confirm_pix_payment(
@@ -131,13 +131,13 @@ async def confirm_pix_payment(
     """
     charge = await provider.get_pix_charge(charge_id)
     if charge.reference != reference:
-        outcome = PixConfirmationOutcome.REFERENCE_MISMATCH
-    elif charge.status is not PaymentStatus.PAID:
-        outcome = PixConfirmationOutcome.NOT_PAID
+        outcome = PixConfirmationOutcomeEnum.REFERENCE_MISMATCH
+    elif charge.status is not PaymentStatusEnum.PAID:
+        outcome = PixConfirmationOutcomeEnum.NOT_PAID
     elif charge.amount_cents != amount_cents:
-        outcome = PixConfirmationOutcome.AMOUNT_MISMATCH
+        outcome = PixConfirmationOutcomeEnum.AMOUNT_MISMATCH
     else:
-        outcome = PixConfirmationOutcome.PAID
+        outcome = PixConfirmationOutcomeEnum.PAID
     return PixPaymentConfirmation(
         outcome=outcome,
         charge=charge,
@@ -147,7 +147,7 @@ async def confirm_pix_payment(
 
 
 __all__: list[str] = [
-    "PixConfirmationOutcome",
+    "PixConfirmationOutcomeEnum",
     "PixPaymentConfirmation",
     "confirm_pix_payment",
 ]

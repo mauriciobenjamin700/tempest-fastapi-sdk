@@ -28,7 +28,7 @@ from tempest_fastapi_sdk.slides.markdown_renderer import (
     write_slides_markdown,
 )
 from tempest_fastapi_sdk.slides.pptx_renderer import write_slides_pptx
-from tempest_fastapi_sdk.slides.schemas import AnswerKey, SlideDeck, SlideTheme
+from tempest_fastapi_sdk.slides.schemas import AnswerKey, SlideDeck, SlideThemeEnum
 from tempest_fastapi_sdk.slides.vocabulary import (
     DEFAULT_ANSWER_KEY_VOCABULARY,
     DEFAULT_SLIDE_VOCABULARY,
@@ -67,12 +67,14 @@ class SlideRenderer:
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
         self._pdf: PdfRenderer = PdfRenderer(max_concurrent=max_concurrent)
 
-    def html(self, deck: SlideDeck, *, theme: SlideTheme = SlideTheme.DEFAULT) -> str:
+    def html(
+        self, deck: SlideDeck, *, theme: SlideThemeEnum = SlideThemeEnum.DEFAULT
+    ) -> str:
         """Render the deck as a standalone HTML document.
 
         Args:
             deck (SlideDeck): The deck.
-            theme (SlideTheme): Colour scheme.
+            theme (SlideThemeEnum): Colour scheme.
 
         Returns:
             str: HTML with the CSS inlined and every value escaped.
@@ -91,13 +93,13 @@ class SlideRenderer:
         return write_slides_markdown(deck, vocabulary=self.vocabulary)
 
     async def pdf(
-        self, deck: SlideDeck, *, theme: SlideTheme = SlideTheme.DEFAULT
+        self, deck: SlideDeck, *, theme: SlideThemeEnum = SlideThemeEnum.DEFAULT
     ) -> bytes:
         """Render the deck as a PDF, one 1280x720 page per slide.
 
         Args:
             deck (SlideDeck): The deck.
-            theme (SlideTheme): Colour scheme.
+            theme (SlideThemeEnum): Colour scheme.
 
         Returns:
             bytes: The PDF.
@@ -112,13 +114,13 @@ class SlideRenderer:
                 raise ImportError(missing_extra_message("weasyprint")) from exc
 
     async def pptx(
-        self, deck: SlideDeck, *, theme: SlideTheme = SlideTheme.DEFAULT
+        self, deck: SlideDeck, *, theme: SlideThemeEnum = SlideThemeEnum.DEFAULT
     ) -> bytes:
         """Render the deck as a PowerPoint file, speaker notes included.
 
         Args:
             deck (SlideDeck): The deck.
-            theme (SlideTheme): Colour scheme.
+            theme (SlideThemeEnum): Colour scheme.
 
         Returns:
             bytes: The ``.pptx`` file.
@@ -179,13 +181,13 @@ class AnswerKeyRenderer:
         self._pdf: PdfRenderer = PdfRenderer(max_concurrent=max_concurrent)
 
     def html(
-        self, answer_key: AnswerKey, *, theme: SlideTheme = SlideTheme.DEFAULT
+        self, answer_key: AnswerKey, *, theme: SlideThemeEnum = SlideThemeEnum.DEFAULT
     ) -> str:
         """Render the answer key as a standalone HTML document.
 
         Args:
             answer_key (AnswerKey): The answer key.
-            theme (SlideTheme): Colour scheme.
+            theme (SlideThemeEnum): Colour scheme.
 
         Returns:
             str: HTML with the CSS inlined, tags stripped and every value
@@ -207,13 +209,13 @@ class AnswerKeyRenderer:
         return write_answer_key_markdown(answer_key, vocabulary=self.vocabulary)
 
     async def pdf(
-        self, answer_key: AnswerKey, *, theme: SlideTheme = SlideTheme.DEFAULT
+        self, answer_key: AnswerKey, *, theme: SlideThemeEnum = SlideThemeEnum.DEFAULT
     ) -> bytes:
         """Render the answer key as an A4 PDF.
 
         Args:
             answer_key (AnswerKey): The answer key.
-            theme (SlideTheme): Colour scheme.
+            theme (SlideThemeEnum): Colour scheme.
 
         Returns:
             bytes: The PDF.

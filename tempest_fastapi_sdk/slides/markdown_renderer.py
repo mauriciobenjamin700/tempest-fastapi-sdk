@@ -11,7 +11,12 @@ Pure string work: no extra needed.
 from __future__ import annotations
 
 from tempest_fastapi_sdk.slides.html_renderer import strip_tags
-from tempest_fastapi_sdk.slides.schemas import AnswerKey, Slide, SlideDeck, SlideKind
+from tempest_fastapi_sdk.slides.schemas import (
+    AnswerKey,
+    Slide,
+    SlideDeck,
+    SlideKindEnum,
+)
 from tempest_fastapi_sdk.slides.vocabulary import AnswerKeyVocabulary, SlideVocabulary
 
 SLIDE_SEPARATOR: str = "\n\n---\n\n"
@@ -28,18 +33,18 @@ def _slide_block(slide: Slide, vocabulary: SlideVocabulary) -> str:
     Returns:
         str: The block, without the separator.
     """
-    if slide.kind == SlideKind.LESSON_TITLE:
+    if slide.kind == SlideKindEnum.LESSON_TITLE:
         eyebrow = f"<small>{slide.subtitle}</small>\n\n" if slide.subtitle else ""
         block = f"{eyebrow}# {slide.title}"
     else:
-        if slide.kind == SlideKind.CONCLUSION:
+        if slide.kind == SlideKindEnum.CONCLUSION:
             label: str | None = vocabulary.conclusion_label
         elif slide.lesson_index is not None:
             label = vocabulary.lesson(slide.lesson_index)
         else:
             label = None
         eyebrow = f"<small>{label}</small>\n\n" if label else ""
-        if slide.kind == SlideKind.BULLETS:
+        if slide.kind == SlideKindEnum.BULLETS:
             body = "\n".join(
                 f"- **{bullet.term}**: {bullet.description}"
                 if bullet.term

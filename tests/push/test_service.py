@@ -16,7 +16,7 @@ from tempest_fastapi_sdk import (
     PushDeviceGoneError,
     PushError,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
     make_device_token_model,
 )
 from tests._seed import seed_users
@@ -105,18 +105,18 @@ def _web(token: str) -> DeviceRegistrationSchema:
     """
     return DeviceRegistrationSchema(
         token=token,
-        platform=PushPlatform.WEB,
+        platform=PushPlatformEnum.WEB,
         p256dh="p256dh-key",
         auth="auth-secret",
     )
 
 
-def _mobile(token: str, platform: PushPlatform) -> DeviceRegistrationSchema:
+def _mobile(token: str, platform: PushPlatformEnum) -> DeviceRegistrationSchema:
     """Build a mobile registration body.
 
     Args:
         token (str): The FCM registration token.
-        platform (PushPlatform): ``IOS`` or ``ANDROID``.
+        platform (PushPlatformEnum): ``IOS`` or ``ANDROID``.
 
     Returns:
         DeviceRegistrationSchema: The registration payload.
@@ -132,8 +132,10 @@ async def _register_fleet(service: DeviceService[Any], user_id: UUID) -> None:
         user_id (UUID): The owner.
     """
     await service.register(user_id, _web("https://push.example/web-1"))
-    await service.register(user_id, _mobile("ios-token-1", PushPlatform.IOS))
-    await service.register(user_id, _mobile("android-token-1", PushPlatform.ANDROID))
+    await service.register(user_id, _mobile("ios-token-1", PushPlatformEnum.IOS))
+    await service.register(
+        user_id, _mobile("android-token-1", PushPlatformEnum.ANDROID)
+    )
 
 
 class TestRegister:
@@ -157,7 +159,7 @@ class TestRegister:
         service = _service(session)
         (user_id,) = await seed_users(session, _DeviceUser, 1)
 
-        row = await service.register(user_id, _mobile("tok", PushPlatform.ANDROID))
+        row = await service.register(user_id, _mobile("tok", PushPlatformEnum.ANDROID))
 
         assert row.platform == "android"
         assert row.p256dh is None
@@ -168,8 +170,8 @@ class TestRegister:
         service = _service(session)
         (user_id,) = await seed_users(session, _DeviceUser, 1)
 
-        first = await service.register(user_id, _mobile("same", PushPlatform.IOS))
-        second = await service.register(user_id, _mobile("same", PushPlatform.IOS))
+        first = await service.register(user_id, _mobile("same", PushPlatformEnum.IOS))
+        second = await service.register(user_id, _mobile("same", PushPlatformEnum.IOS))
 
         assert first.id == second.id
         assert len(await service.list_for_user(user_id)) == 1
@@ -179,8 +181,10 @@ class TestRegister:
         service = _service(session)
         user_a, user_b = await seed_users(session, _DeviceUser, 2)
 
-        await service.register(user_a, _mobile("handset", PushPlatform.IOS))
-        returned = await service.register(user_b, _mobile("handset", PushPlatform.IOS))
+        await service.register(user_a, _mobile("handset", PushPlatformEnum.IOS))
+        returned = await service.register(
+            user_b, _mobile("handset", PushPlatformEnum.IOS)
+        )
 
         assert returned.user_id == user_a
         assert len(await service.list_for_user(user_a)) == 1
@@ -192,9 +196,9 @@ class TestRegister:
         service = _service(session)
         user_a, user_b = await seed_users(session, _DeviceUser, 2)
 
-        await service.register(user_a, _mobile("handset", PushPlatform.IOS))
+        await service.register(user_a, _mobile("handset", PushPlatformEnum.IOS))
         await service.register(
-            user_b, _mobile("handset", PushPlatform.IOS), transfer_ownership=True
+            user_b, _mobile("handset", PushPlatformEnum.IOS), transfer_ownership=True
         )
 
         assert await service.list_for_user(user_a) == []
@@ -206,7 +210,7 @@ class TestUnregister:
         """Unregistering deletes the row."""
         service = _service(session)
         (user_id,) = await seed_users(session, _DeviceUser, 1)
-        await service.register(user_id, _mobile("bye", PushPlatform.ANDROID))
+        await service.register(user_id, _mobile("bye", PushPlatformEnum.ANDROID))
 
         assert await service.unregister("bye") is True
         assert await service.list_for_user(user_id) == []
@@ -315,7 +319,7 @@ class TestFanout:
         result = await service.notify_user(
             user_id,
             PushPayloadSchema(title="hi"),
-            platforms=[PushPlatform.WEB],
+            platforms=[PushPlatformEnum.WEB],
         )
 
         assert result.delivered == 1

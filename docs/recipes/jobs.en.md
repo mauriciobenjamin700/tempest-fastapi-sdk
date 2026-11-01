@@ -378,7 +378,7 @@ each row goes out at most once per window).
 ```python
 # src/services/extraction.py
 from tempest_fastapi_sdk.db import AsyncDatabaseManager
-from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatus, JobStore
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatusEnum, JobStore
 
 
 class JobModel(BaseJobModel):
@@ -399,7 +399,7 @@ async def dashboard() -> tuple[list[JobModel], list[JobModel]]:
         ones running right now.
     """
     recent = await store.list_recent(kind="extract", limit=20)
-    running = await store.list_recent(status=JobStatus.RUNNING)
+    running = await store.list_recent(status=JobStatusEnum.RUNNING)
     return recent, running
 ```
 
@@ -650,7 +650,7 @@ bar will not move:
 from uuid import UUID
 
 from tempest_fastapi_sdk.db import AsyncDatabaseManager
-from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatus, JobStore
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatusEnum, JobStore
 
 
 class JobModel(BaseJobModel):
@@ -690,7 +690,7 @@ async def in_flight() -> list[JobModel]:
     """
     return await store.list_recent(
         kind="extract",
-        statuses=(JobStatus.QUEUED, JobStatus.RUNNING),
+        statuses=(JobStatusEnum.QUEUED, JobStatusEnum.RUNNING),
     )
 ```
 
@@ -718,7 +718,7 @@ state**.
 
 ```python
 # src/core/stages.py
-from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+from tempest_fastapi_sdk.tasks import StageMap, StageStatusEnum
 
 STAGES: StageMap = StageMap(
     ["transcription", "summary", "suggestions"],
@@ -734,7 +734,7 @@ is a house convention rather than something a library imposes.
 # src/tasks/summarize.py
 from typing import Any
 
-from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+from tempest_fastapi_sdk.tasks import StageMap, StageStatusEnum
 
 STAGES: StageMap = StageMap(["summary"], prefix="doc_")
 
@@ -757,11 +757,11 @@ async def run(document: Any) -> None:
     Args:
         document (Any): The record, freshly read from the database.
     """
-    STAGES.mark(document, "summary", StageStatus.RUNNING)
+    STAGES.mark(document, "summary", StageStatusEnum.RUNNING)
     summary: str = await summarize("a long text")
 
-    if STAGES.owns(document, "summary", StageStatus.RUNNING):
-        STAGES.mark(document, "summary", StageStatus.DONE, result=summary)
+    if STAGES.owns(document, "summary", StageStatusEnum.RUNNING):
+        STAGES.mark(document, "summary", StageStatusEnum.DONE, result=summary)
 ```
 
 !!! danger "`owns` is an ownership check, not a cancellation check"

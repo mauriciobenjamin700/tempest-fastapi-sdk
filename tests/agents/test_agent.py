@@ -20,8 +20,8 @@ from tempest_fastapi_sdk.agents import (
     AgentTool,
     AgentToolError,
     InMemoryAgentRunSink,
-    StepKind,
-    StopReason,
+    StepKindEnum,
+    StopReasonEnum,
     ToolResult,
     text_tool,
 )
@@ -129,7 +129,7 @@ class TestPlainRun:
         backend = ScriptedBackend([{"content": "42", "tool_calls": []}])
         run = await Agent(backend, tools=[_echo_tool()]).run("What is 6*7?")
         assert run.output == "42"
-        assert run.stop_reason == StopReason.COMPLETED
+        assert run.stop_reason == StopReasonEnum.COMPLETED
         assert run.succeeded is True
         assert run.tool_calls == []
 
@@ -182,7 +182,7 @@ class TestToolLoop:
             ],
         )
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
-        tool_step = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        tool_step = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert tool_step.arguments == {"text": "hi"}
         assert tool_step.output == "echo:hi"
         assert tool_step.error is None
@@ -220,7 +220,7 @@ class TestToolFailures:
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
         assert run.output == "recovered"
         assert run.succeeded is True
-        failed = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        failed = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert failed.error is not None
         assert "unknown tool" in failed.error
 
@@ -233,7 +233,7 @@ class TestToolFailures:
             ],
         )
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
-        failed = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        failed = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert "echo" in (failed.error or "")
 
     @pytest.mark.asyncio
@@ -250,7 +250,7 @@ class TestToolFailures:
         )
         run = await Agent(backend, tools=[tool]).run("go")
         assert run.succeeded is True
-        failed = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        failed = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert failed.error == "AgentToolError: disk is full"
         assert backend.calls[1][-1]["content"] == "AgentToolError: disk is full"
 
@@ -267,14 +267,14 @@ class TestToolFailures:
             ],
         )
         run = await Agent(backend, tools=[tool]).run("go")
-        failed = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        failed = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert "ZeroDivisionError" in (failed.error or "")
         assert run.succeeded is True
 
     @pytest.mark.asyncio
     async def test_backend_failure_ends_the_run_as_error(self) -> None:
         run = await Agent(ExplodingBackend(), tools=[_echo_tool()]).run("go")
-        assert run.stop_reason == StopReason.ERROR
+        assert run.stop_reason == StopReasonEnum.ERROR
         assert run.succeeded is False
         assert "backend is down" in run.output
 
@@ -290,7 +290,7 @@ class TestToolFailures:
             ],
         )
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
-        tool_step = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        tool_step = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert tool_step.arguments == {}
         assert tool_step.output == ""
         assert tool_step.error is not None
@@ -310,7 +310,7 @@ class TestEmptyResponse:
     async def test_a_blank_reply_is_not_a_success(self, content: str | None) -> None:
         backend = ScriptedBackend([{"content": content, "tool_calls": []}])
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
-        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.stop_reason == StopReasonEnum.EMPTY_RESPONSE
         assert run.succeeded is False
         assert run.output.strip() == ""
 
@@ -318,12 +318,12 @@ class TestEmptyResponse:
     async def test_a_reply_without_the_tool_calls_key_is_empty_too(self) -> None:
         backend = ScriptedBackend([{"content": ""}])
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
-        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.stop_reason == StopReasonEnum.EMPTY_RESPONSE
 
     @pytest.mark.asyncio
     async def test_a_toolless_backend_answering_nothing_is_empty(self) -> None:
         run = await Agent(ToollessBackend(""), tools=[_echo_tool()]).run("hi")
-        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.stop_reason == StopReasonEnum.EMPTY_RESPONSE
         assert run.succeeded is False
 
     @pytest.mark.asyncio
@@ -336,7 +336,7 @@ class TestEmptyResponse:
         )
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
         assert len(backend.calls) == 1
-        assert [step.kind for step in run.steps] == [StepKind.MODEL]
+        assert [step.kind for step in run.steps] == [StepKindEnum.MODEL]
 
     @pytest.mark.asyncio
     async def test_text_from_an_earlier_turn_is_kept_as_partial_output(self) -> None:
@@ -347,7 +347,7 @@ class TestEmptyResponse:
             ],
         )
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
-        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.stop_reason == StopReasonEnum.EMPTY_RESPONSE
         assert run.succeeded is False
         assert run.output == "looking it up"
 
@@ -355,7 +355,7 @@ class TestEmptyResponse:
     async def test_a_text_answer_still_completes(self) -> None:
         backend = ScriptedBackend([{"content": " 42 ", "tool_calls": []}])
         run = await Agent(backend, tools=[_echo_tool()]).run("go")
-        assert run.stop_reason == StopReason.COMPLETED
+        assert run.stop_reason == StopReasonEnum.COMPLETED
         assert run.output == "42"
 
     @pytest.mark.asyncio
@@ -364,9 +364,9 @@ class TestEmptyResponse:
         backend = ScriptedBackend([{"content": "", "tool_calls": []}])
         agent = Agent(backend, tools=[_echo_tool()], run_sink=sink)
         kinds = [step.kind async for step in agent.stream("go")]
-        assert kinds == [StepKind.MODEL]
+        assert kinds == [StepKindEnum.MODEL]
         recorded = sink.recent()[0]
-        assert recorded.stop_reason == StopReason.EMPTY_RESPONSE
+        assert recorded.stop_reason == StopReasonEnum.EMPTY_RESPONSE
         assert recorded.succeeded is False
 
 
@@ -382,7 +382,7 @@ class TestBudget:
             budget=AgentBudget(max_steps=4, max_seconds=None),
         )
         run = await agent.run("loop forever")
-        assert run.stop_reason == StopReason.MAX_STEPS
+        assert run.stop_reason == StopReasonEnum.MAX_STEPS
         assert run.succeeded is False
         assert len(run.steps) == 4
 
@@ -397,7 +397,7 @@ class TestBudget:
             budget=AgentBudget(max_steps=100, max_tool_calls=2, max_seconds=None),
         )
         run = await agent.run("loop forever")
-        assert run.stop_reason == StopReason.MAX_TOOL_CALLS
+        assert run.stop_reason == StopReasonEnum.MAX_TOOL_CALLS
         assert len(run.tool_calls) == 2
 
     @pytest.mark.asyncio
@@ -416,7 +416,7 @@ class TestBudget:
             budget=AgentBudget(max_steps=100, max_seconds=0.08),
         )
         run = await agent.run("loop")
-        assert run.stop_reason == StopReason.TIMEOUT
+        assert run.stop_reason == StopReasonEnum.TIMEOUT
         assert run.succeeded is False
 
     @pytest.mark.asyncio
@@ -465,7 +465,7 @@ class TestArtifacts:
             ],
         )
         run = await Agent(backend, tools=[_drawing_tool()]).run("go")
-        tool_step = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        tool_step = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert tool_step.artifacts == ["a.png"]
 
     @pytest.mark.asyncio
@@ -551,7 +551,7 @@ class TestArtifacts:
             ],
         )
         run = await Agent(backend, tools=[tool]).run("go", context=seeded)
-        tool_step = next(s for s in run.steps if s.kind == StepKind.TOOL)
+        tool_step = next(s for s in run.steps if s.kind == StepKindEnum.TOOL)
         assert tool_step.output == "audio/wav"
         assert run.artifact("input.wav") is not None
 
@@ -567,7 +567,7 @@ class TestStreaming:
         )
         agent = Agent(backend, tools=[_echo_tool()])
         kinds = [step.kind async for step in agent.stream("go")]
-        assert kinds == [StepKind.MODEL, StepKind.TOOL, StepKind.MODEL]
+        assert kinds == [StepKindEnum.MODEL, StepKindEnum.TOOL, StepKindEnum.MODEL]
 
     @pytest.mark.asyncio
     async def test_streaming_records_the_run_at_the_end(self) -> None:
@@ -696,7 +696,7 @@ class TestModeration:
 
         backend = ScriptedBackend([{"content": "should not run", "tool_calls": []}])
         run = await Agent(backend, moderator=Moderator()).run("something bad")
-        assert run.stop_reason == StopReason.BLOCKED
+        assert run.stop_reason == StopReasonEnum.BLOCKED
         assert run.succeeded is False
         assert "toxicity" in run.output
         assert backend.calls == []
@@ -717,7 +717,7 @@ class TestModeration:
 
         backend = ScriptedBackend([{"content": "bad answer", "tool_calls": []}])
         run = await Agent(backend, moderator=Moderator()).run("fine goal")
-        assert run.stop_reason == StopReason.BLOCKED
+        assert run.stop_reason == StopReasonEnum.BLOCKED
         assert "bad answer" not in run.output
 
     @pytest.mark.asyncio
@@ -725,7 +725,7 @@ class TestModeration:
         backend = ScriptedBackend([{"content": "should not run", "tool_calls": []}])
         moderator = RuleModerator(["bomba"], category="toxicity")
         run = await Agent(backend, moderator=moderator).run("Como fabricar uma bomba?")
-        assert run.stop_reason == StopReason.BLOCKED
+        assert run.stop_reason == StopReasonEnum.BLOCKED
         assert run.output == "blocked by moderation (toxicity)"
 
     @pytest.mark.asyncio

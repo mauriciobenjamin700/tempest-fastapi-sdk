@@ -36,7 +36,7 @@ from tempest_fastapi_sdk import (
 from tempest_fastapi_sdk.admin import SqlShellService, TaskPanelService
 from tempest_fastapi_sdk.admin.router import make_admin_router
 from tempest_fastapi_sdk.admin.sql_shell import SqlAudit
-from tempest_fastapi_sdk.tasks import JobStatus, JobStore, make_job_model
+from tempest_fastapi_sdk.tasks import JobStatusEnum, JobStore, make_job_model
 from tempest_fastapi_sdk.testing import admin_login_sync
 
 SECRET = "x" * 48
@@ -307,7 +307,7 @@ class TestRevokedAccessEndsAtTheNextRequest:
         )
         await _revoke(panel.db, is_admin=False)
         panel.call(surface)
-        assert (await panel.store.get(job.id)).status == JobStatus.QUEUED.value
+        assert (await panel.store.get(job.id)).status == JobStatusEnum.QUEUED.value
 
     async def test_a_live_admin_is_not_refused_by_any_of_them(
         self, panel: Panel
@@ -367,7 +367,7 @@ class TestConsoleAndCancelCarryTheCsrfToken:
         job = await panel.store.enqueue("extract")
         response = panel.client.post(f"/admin/tasks/{job.id}/cancel")
         assert response.status_code == 422
-        assert (await panel.store.get(job.id)).status == JobStatus.QUEUED.value
+        assert (await panel.store.get(job.id)).status == JobStatusEnum.QUEUED.value
 
     async def test_a_cancel_with_a_wrong_token_is_refused(self, panel: Panel) -> None:
         job = await panel.store.enqueue("extract")
@@ -377,7 +377,7 @@ class TestConsoleAndCancelCarryTheCsrfToken:
         )
         assert response.status_code == 403
         assert "csrf token mismatch" in response.text
-        assert (await panel.store.get(job.id)).status == JobStatus.QUEUED.value
+        assert (await panel.store.get(job.id)).status == JobStatusEnum.QUEUED.value
 
     async def test_a_cancel_with_the_token_flips_the_row(self, panel: Panel) -> None:
         job = await panel.store.enqueue("extract")
@@ -387,7 +387,7 @@ class TestConsoleAndCancelCarryTheCsrfToken:
         )
         assert response.status_code == 303
         assert response.headers["location"] == f"/admin/tasks/{job.id}"
-        assert (await panel.store.get(job.id)).status == JobStatus.CANCELLED.value
+        assert (await panel.store.get(job.id)).status == JobStatusEnum.CANCELLED.value
 
 
 class TestConsoleRendersThePrincipalItLoaded:

@@ -23,11 +23,11 @@ import pytest
 
 from tempest_fastapi_sdk.integrations.payment import (
     CardProvider,
-    PaymentStatus,
+    PaymentStatusEnum,
     PayoutProvider,
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixProvider,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
@@ -206,16 +206,16 @@ def test_every_mercado_pago_order_status_is_mapped() -> None:
 
 
 def test_status_mapping_targets_are_canonical() -> None:
-    """Every mapping target is a real :class:`PaymentStatus` member."""
+    """Every mapping target is a real :class:`PaymentStatusEnum` member."""
     for provider_status, canonical in STATUS_MAP.items():
-        assert isinstance(canonical, PaymentStatus), provider_status
+        assert isinstance(canonical, PaymentStatusEnum), provider_status
 
 
 def test_charge_keeps_the_enum_member_not_its_value() -> None:
     """``PixCharge.status`` is an enum member at runtime, not a bare string.
 
     ``BaseSchema`` sets ``use_enum_values=True``, which would make
-    ``charge.status is PaymentStatus.PAID`` false on every charge while
+    ``charge.status is PaymentStatusEnum.PAID`` false on every charge while
     ``==`` kept working — a defect that survives review precisely because
     the obvious check still passes. ``_EnumSafeSchema`` turns the flag off,
     and this test is what keeps it off.
@@ -225,20 +225,20 @@ def test_charge_keeps_the_enum_member_not_its_value() -> None:
         provider_charge_id="ch_1",
         reference="order-1",
         amount_cents=1990,
-        status=PaymentStatus.PAID,
+        status=PaymentStatusEnum.PAID,
         provider_status="COMPLETED",
     )
 
-    assert charge.status is PaymentStatus.PAID
+    assert charge.status is PaymentStatusEnum.PAID
     assert charge.model_dump(mode="json")["status"] == "paid"
 
 
 def test_event_type_survives_serialization() -> None:
-    """The same property holds for :class:`PixEventType`."""
+    """The same property holds for :class:`PixEventTypeEnum`."""
     hints = get_type_hints(PixCharge)
 
-    assert hints["status"] is PaymentStatus
-    assert PixEventType.CHARGE_PAID.value == "charge_paid"
+    assert hints["status"] is PaymentStatusEnum
+    assert PixEventTypeEnum.CHARGE_PAID.value == "charge_paid"
 
 
 def test_charge_request_refuses_a_non_positive_amount() -> None:

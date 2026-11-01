@@ -126,7 +126,7 @@ from tempest_fastapi_sdk.geo import (
     Coordinate,
     GeoRepositoryMixin,
     NominatimBackend,
-    TravelMode,
+    TravelModeEnum,
     estimate_travel,
 )
 
@@ -182,7 +182,7 @@ class DiscoveryService:
                 "eta": estimate_travel(
                     origin,
                     seller.coordinate(),
-                    TravelMode.MOTORCYCLE,
+                    TravelModeEnum.MOTORCYCLE,
                 ),
             }
             for seller in found

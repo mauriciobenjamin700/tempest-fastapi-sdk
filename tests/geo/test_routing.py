@@ -9,7 +9,7 @@ from tempest_fastapi_sdk.geo import (
     Coordinate,
     OSRMBackend,
     RoutingBackend,
-    TravelMode,
+    TravelModeEnum,
 )
 
 SAO_PAULO = Coordinate(latitude=-23.5505, longitude=-46.6333)
@@ -44,7 +44,7 @@ class TestOSRMBackend:
 
         async with _client(handler) as client:
             backend = OSRMBackend(http_client=client)
-            estimate = await backend.route(SAO_PAULO, RIO, mode=TravelMode.CAR)
+            estimate = await backend.route(SAO_PAULO, RIO, mode=TravelModeEnum.CAR)
 
         assert estimate.distance_km == pytest.approx(400.0)
         assert estimate.duration_minutes == pytest.approx(300.0)
@@ -71,8 +71,8 @@ class TestOSRMBackend:
 
         async with _client(handler) as client:
             backend = OSRMBackend(http_client=client)
-            car = await backend.route(SAO_PAULO, RIO, mode=TravelMode.CAR)
-            bus = await backend.route(SAO_PAULO, RIO, mode=TravelMode.BUS)
+            car = await backend.route(SAO_PAULO, RIO, mode=TravelModeEnum.CAR)
+            bus = await backend.route(SAO_PAULO, RIO, mode=TravelModeEnum.BUS)
 
         assert bus.distance_km == pytest.approx(car.distance_km)
         assert bus.duration_minutes > car.duration_minutes

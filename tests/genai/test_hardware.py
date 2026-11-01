@@ -11,7 +11,7 @@ import tempest_fastapi_sdk.genai.hardware as hardware_module
 from tempest_fastapi_sdk.genai import (
     GPUInfo,
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
     auto_dtype_name,
     bytes_per_param,
     can_run,
@@ -23,20 +23,20 @@ from tempest_fastapi_sdk.genai import (
 
 class TestEstimates:
     def test_bytes_per_param(self) -> None:
-        assert bytes_per_param(ModelDtype.FLOAT32) == 4.0
-        assert bytes_per_param(ModelDtype.BFLOAT16) == 2.0
-        assert bytes_per_param(ModelDtype.INT8) == 1.0
+        assert bytes_per_param(ModelDtypeEnum.FLOAT32) == 4.0
+        assert bytes_per_param(ModelDtypeEnum.BFLOAT16) == 2.0
+        assert bytes_per_param(ModelDtypeEnum.INT8) == 1.0
 
     def test_estimate_scales_with_overhead(self) -> None:
         # 1B params at fp16 = 2 GB * 1.25 overhead = 2.5 GB
-        assert estimate_model_bytes(1_000_000_000, ModelDtype.FLOAT16) == int(
+        assert estimate_model_bytes(1_000_000_000, ModelDtypeEnum.FLOAT16) == int(
             1_000_000_000 * 2.0 * 1.25
         )
 
     def test_int4_smaller_than_bf16(self) -> None:
         n = 7_000_000_000
-        assert estimate_model_bytes(n, ModelDtype.INT4) < estimate_model_bytes(
-            n, ModelDtype.BFLOAT16
+        assert estimate_model_bytes(n, ModelDtypeEnum.INT4) < estimate_model_bytes(
+            n, ModelDtypeEnum.BFLOAT16
         )
 
     def test_zero_params_raises(self) -> None:
@@ -73,7 +73,7 @@ class TestCanRun:
     def test_fits_on_gpu(self) -> None:
         report = can_run(
             num_params=7_000_000_000,
-            dtype=ModelDtype.BFLOAT16,
+            dtype=ModelDtypeEnum.BFLOAT16,
             hardware=_gpu(free_gb=24.0),
         )
         assert report.fits is True
@@ -85,7 +85,7 @@ class TestCanRun:
         # 13B bf16 ~32.5GB won't fit 12GB free; int8/int4 might.
         report = can_run(
             num_params=13_000_000_000,
-            dtype=ModelDtype.BFLOAT16,
+            dtype=ModelDtypeEnum.BFLOAT16,
             hardware=_gpu(free_gb=12.0),
         )
         assert report.fits is False
@@ -95,7 +95,7 @@ class TestCanRun:
     def test_auto_device_falls_back_to_cpu(self) -> None:
         report = can_run(
             num_params=1_000_000_000,
-            dtype=ModelDtype.INT4,
+            dtype=ModelDtypeEnum.INT4,
             hardware=_cpu_only(),
         )
         assert report.device == "cpu"
@@ -110,7 +110,7 @@ class TestRecommend:
         # 7B: bf16 ~17.5GB won't fit 10GB; int8 ~8.75GB fits.
         report = recommend(num_params=7_000_000_000, hardware=_gpu(free_gb=10.0))
         assert report.fits is True
-        assert report.dtype in (ModelDtype.INT8, ModelDtype.INT4)
+        assert report.dtype in (ModelDtypeEnum.INT8, ModelDtypeEnum.INT4)
 
 
 class TestProbe:
@@ -155,25 +155,25 @@ class TestCpuPlansTheLoadedPrecision:
         report = can_run(num_params=QWEN_0_5B_PARAMS, hardware=_cpu_with(8.0))
 
         assert report.device == "cpu"
-        assert report.dtype == ModelDtype.FLOAT32
+        assert report.dtype == ModelDtypeEnum.FLOAT32
         assert report.estimated_bytes == estimate_model_bytes(
-            QWEN_0_5B_PARAMS, ModelDtype.FLOAT32
+            QWEN_0_5B_PARAMS, ModelDtypeEnum.FLOAT32
         )
 
     def test_can_run_defaults_to_bfloat16_on_cuda(self) -> None:
         report = can_run(num_params=QWEN_0_5B_PARAMS, hardware=_gpu(free_gb=24.0))
 
         assert report.device == "cuda"
-        assert report.dtype == ModelDtype.BFLOAT16
+        assert report.dtype == ModelDtypeEnum.BFLOAT16
 
     def test_explicit_dtype_is_still_honoured_on_cpu(self) -> None:
         report = can_run(
             num_params=QWEN_0_5B_PARAMS,
-            dtype=ModelDtype.BFLOAT16,
+            dtype=ModelDtypeEnum.BFLOAT16,
             hardware=_cpu_with(8.0),
         )
 
-        assert report.dtype == ModelDtype.BFLOAT16
+        assert report.dtype == ModelDtypeEnum.BFLOAT16
 
     def test_recommend_does_not_promise_an_unquantized_cpu_load_that_cannot_fit(
         self,
@@ -181,18 +181,18 @@ class TestCpuPlansTheLoadedPrecision:
         report = recommend(num_params=QWEN_0_5B_PARAMS, hardware=_cpu_with(1.5))
 
         assert report.fits is True
-        assert report.dtype == ModelDtype.INT8
+        assert report.dtype == ModelDtypeEnum.INT8
 
     def test_recommend_picks_float32_on_cpu_when_it_fits(self) -> None:
         report = recommend(num_params=QWEN_0_5B_PARAMS, hardware=_cpu_with(3.0))
 
-        assert report.dtype == ModelDtype.FLOAT32
+        assert report.dtype == ModelDtypeEnum.FLOAT32
         assert report.fits is True
 
     def test_recommend_keeps_bfloat16_first_on_cuda(self) -> None:
         report = recommend(num_params=7_000_000_000, hardware=_gpu(free_gb=24.0))
 
-        assert report.dtype == ModelDtype.BFLOAT16
+        assert report.dtype == ModelDtypeEnum.BFLOAT16
         assert report.device == "cuda"
 
     def test_cpu_suggestion_never_proposes_bfloat16_as_a_quantization(self) -> None:
@@ -332,7 +332,7 @@ class TestUnknownMemoryIsNotZero:
 
         assert report.memory_measured is False
         assert report.fits is False
-        assert report.dtype == ModelDtype.FLOAT32
+        assert report.dtype == ModelDtypeEnum.FLOAT32
         assert report.available_bytes == 0
         assert report.headroom_pct == 0.0
         assert "could not be measured" in report.reason
@@ -349,9 +349,9 @@ class TestUnknownMemoryIsNotZero:
 
         assert report.memory_measured is False
         assert report.device == "cpu"
-        assert report.dtype == ModelDtype.FLOAT32
+        assert report.dtype == ModelDtypeEnum.FLOAT32
         assert report.estimated_bytes == estimate_model_bytes(
-            500_000_000, ModelDtype.FLOAT32
+            500_000_000, ModelDtypeEnum.FLOAT32
         )
 
     def test_mps_is_sized_from_ram_so_it_is_unknown_too(self) -> None:
@@ -361,7 +361,7 @@ class TestUnknownMemoryIsNotZero:
 
         assert report.memory_measured is False
         assert report.device == "mps"
-        assert report.dtype == ModelDtype.BFLOAT16
+        assert report.dtype == ModelDtypeEnum.BFLOAT16
 
     def test_recommend_without_any_ram_source_end_to_end(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -373,7 +373,7 @@ class TestUnknownMemoryIsNotZero:
 
         assert report.memory_measured is False
         assert report.device == "cpu"
-        assert report.dtype == ModelDtype.FLOAT32
+        assert report.dtype == ModelDtypeEnum.FLOAT32
         assert "add memory" not in (report.suggestion or "")
 
     def test_measured_report_keeps_memory_measured_true(self) -> None:
@@ -396,7 +396,7 @@ class TestUnknownMemoryIsNotZero:
     ) -> None:
         report = can_run(
             num_params=70_000_000_000,
-            dtype=ModelDtype.INT4,
+            dtype=ModelDtypeEnum.INT4,
             hardware=_gpu_without_ram_reading(2.0),
         )
 
@@ -495,7 +495,7 @@ class TestProcMeminfoFallback:
         assert report.memory_measured is True
         assert report.fits is True
         assert report.device == "cpu"
-        assert report.dtype == ModelDtype.FLOAT32
+        assert report.dtype == ModelDtypeEnum.FLOAT32
 
     @pytest.mark.parametrize("platform", ["darwin", "win32"])
     def test_other_platforms_need_psutil(

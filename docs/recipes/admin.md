@@ -672,7 +672,7 @@ from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
+    AdminPermissionEnum,
     UserModelAuthBackend,
     make_admin_router,
 )
@@ -685,11 +685,11 @@ from src.db.models import AuditLog, UserModel
 app = FastAPI()
 
 
-def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
+def policy(user: UserModel, admin: AdminModel, action: AdminPermissionEnum) -> bool:
     if user.role == "superadmin":
         return True
     if user.role == "support":
-        return action is AdminPermission.VIEW      # só leitura
+        return action is AdminPermissionEnum.VIEW      # só leitura
     return admin.model is not AuditLog             # editor: tudo menos AuditLog
 
 
@@ -733,15 +733,15 @@ Vale também para o que a página de um model mostra de **outro** model:
 
 O console SQL, o painel de tasks, a página de logs e o navegador de storage
 não são de um model, então a `access_policy` não tem o que perguntar. Quem decide é a
-`surface_policy`, consultada `(principal, AdminSurface)`:
+`surface_policy`, consultada `(principal, AdminSurfaceEnum)`:
 
 ```python
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
-    AdminSurface,
+    AdminPermissionEnum,
+    AdminSurfaceEnum,
     UserModelAuthBackend,
     make_admin_router,
 )
@@ -755,11 +755,11 @@ from src.db.models import UserModel
 app = FastAPI()
 
 
-def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
-    return user.role == "superadmin" or action is AdminPermission.VIEW
+def policy(user: UserModel, admin: AdminModel, action: AdminPermissionEnum) -> bool:
+    return user.role == "superadmin" or action is AdminPermissionEnum.VIEW
 
 
-def surfaces(user: UserModel, surface: AdminSurface) -> bool:
+def surfaces(user: UserModel, surface: AdminSurfaceEnum) -> bool:
     return user.role == "superadmin"
 
 
@@ -1431,7 +1431,7 @@ Isso monta três rotas e um item "Tasks" na barra lateral:
 
     | Declarado | Aparece como |
     | --- | --- |
-    | `@tq.cron(daily(hour=2), cron_offset=CronOffset.BRASILIA)` | `0 2 * * *` `-03:00` |
+    | `@tq.cron(daily(hour=2), cron_offset=CronOffsetEnum.BRASILIA)` | `0 2 * * *` `-03:00` |
     | `@tq.cron(daily(hour=2))` | `0 2 * * *` |
     | `@tq.interval(timedelta(seconds=30))` | `every 30s` |
     | `schedule=[{"time": quando}]` | `once at 2026-01-01 12:00:00+00:00` |
@@ -1439,7 +1439,7 @@ Isso monta três rotas e um item "Tasks" na barra lateral:
 
     Mostrar o fuso não é enfeite. Uma expressão cron **parece completa** sem
     ele, então nada convida o leitor a conferir — e `0 2 * * *` com
-    `cron_offset=CronOffset.BRASILIA` dispara às 05:00 UTC. Quem abre o
+    `cron_offset=CronOffsetEnum.BRASILIA` dispara às 05:00 UTC. Quem abre o
     painel para saber quando o backup roda erraria por três horas, num lugar
     onde a única outra fonte é o código.
 
@@ -1569,7 +1569,7 @@ Chave nova já ocupada é recusada.
     `StorageBrowserService(store, read_only=True)` mantém listagem,
     pré-visualização e download, esconde os forms e responde `403` a toda
     escrita. A permissão de abrir a tela é da `surface_policy`, com
-    `AdminSurface.STORAGE` — veja [Console SQL, tasks e
+    `AdminSurfaceEnum.STORAGE` — veja [Console SQL, tasks e
     logs](#console-sql-tasks-e-logs-surface_policy).
 
 !!! info "Limites"

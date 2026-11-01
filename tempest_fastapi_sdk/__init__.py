@@ -43,13 +43,13 @@ if TYPE_CHECKING:
         AdminModel as AdminModel,
     )
     from tempest_fastapi_sdk.admin import (
-        AdminPermission as AdminPermission,
+        AdminPermissionEnum as AdminPermissionEnum,
     )
     from tempest_fastapi_sdk.admin import (
         AdminSite as AdminSite,
     )
     from tempest_fastapi_sdk.admin import (
-        AdminSurface as AdminSurface,
+        AdminSurfaceEnum as AdminSurfaceEnum,
     )
     from tempest_fastapi_sdk.admin import (
         AdminSurfacePolicy as AdminSurfacePolicy,
@@ -820,7 +820,7 @@ if TYPE_CHECKING:
         requires as requires,
     )
     from tempest_fastapi_sdk.checks import (
-        CheckLevel as CheckLevel,
+        CheckLevelEnum as CheckLevelEnum,
     )
     from tempest_fastapi_sdk.checks import (
         CheckMessage as CheckMessage,
@@ -891,7 +891,7 @@ if TYPE_CHECKING:
         JSONFormatter as JSONFormatter,
     )
     from tempest_fastapi_sdk.core import (
-        Locale as Locale,
+        LocaleEnum as LocaleEnum,
     )
     from tempest_fastapi_sdk.core import (
         RedactionFilter as RedactionFilter,
@@ -987,7 +987,7 @@ if TYPE_CHECKING:
         AsyncDatabaseManager as AsyncDatabaseManager,
     )
     from tempest_fastapi_sdk.db import (
-        AuditAction as AuditAction,
+        AuditActionEnum as AuditActionEnum,
     )
     from tempest_fastapi_sdk.db import (
         AuditMixin as AuditMixin,
@@ -1047,7 +1047,7 @@ if TYPE_CHECKING:
         ColumnRef as ColumnRef,
     )
     from tempest_fastapi_sdk.db import (
-        ConstraintKind as ConstraintKind,
+        ConstraintKindEnum as ConstraintKindEnum,
     )
     from tempest_fastapi_sdk.db import (
         ConstraintRename as ConstraintRename,
@@ -1080,7 +1080,7 @@ if TYPE_CHECKING:
         EnumTypeState as EnumTypeState,
     )
     from tempest_fastapi_sdk.db import (
-        ExplainDetail as ExplainDetail,
+        ExplainDetailEnum as ExplainDetailEnum,
     )
     from tempest_fastapi_sdk.db import (
         ExplainReport as ExplainReport,
@@ -1095,7 +1095,7 @@ if TYPE_CHECKING:
         IntegrityFailure as IntegrityFailure,
     )
     from tempest_fastapi_sdk.db import (
-        IntegrityViolation as IntegrityViolation,
+        IntegrityViolationEnum as IntegrityViolationEnum,
     )
     from tempest_fastapi_sdk.db import (
         LocaleColumnMixin as LocaleColumnMixin,
@@ -1110,7 +1110,7 @@ if TYPE_CHECKING:
         OutboxRelay as OutboxRelay,
     )
     from tempest_fastapi_sdk.db import (
-        OutboxStatus as OutboxStatus,
+        OutboxStatusEnum as OutboxStatusEnum,
     )
     from tempest_fastapi_sdk.db import (
         Q as Q,
@@ -1125,10 +1125,10 @@ if TYPE_CHECKING:
         ReplaceEnumOp as ReplaceEnumOp,
     )
     from tempest_fastapi_sdk.db import (
-        RepositorySignal as RepositorySignal,
+        RepositorySignalEnum as RepositorySignalEnum,
     )
     from tempest_fastapi_sdk.db import (
-        SchemaSyncOutcome as SchemaSyncOutcome,
+        SchemaSyncOutcomeEnum as SchemaSyncOutcomeEnum,
     )
     from tempest_fastapi_sdk.db import (
         SlowQueryLogger as SlowQueryLogger,
@@ -1143,19 +1143,19 @@ if TYPE_CHECKING:
         TenantScopedRepository as TenantScopedRepository,
     )
     from tempest_fastapi_sdk.db import (
-        TextSearchLanguage as TextSearchLanguage,
+        TextSearchLanguageEnum as TextSearchLanguageEnum,
     )
     from tempest_fastapi_sdk.db import (
-        TextSearchWeight as TextSearchWeight,
+        TextSearchWeightEnum as TextSearchWeightEnum,
     )
     from tempest_fastapi_sdk.db import (
-        TokenMatch as TokenMatch,
+        TokenMatchEnum as TokenMatchEnum,
     )
     from tempest_fastapi_sdk.db import (
         UnsupportedBackupBackendError as UnsupportedBackupBackendError,
     )
     from tempest_fastapi_sdk.db import (
-        UserTokenPurpose as UserTokenPurpose,
+        UserTokenPurposeEnum as UserTokenPurposeEnum,
     )
     from tempest_fastapi_sdk.db import (
         UtcDateTime as UtcDateTime,
@@ -1500,7 +1500,7 @@ if TYPE_CHECKING:
         PushPayloadSchema as PushPayloadSchema,
     )
     from tempest_fastapi_sdk.push import (
-        PushPlatform as PushPlatform,
+        PushPlatformEnum as PushPlatformEnum,
     )
     from tempest_fastapi_sdk.push import (
         PushResult as PushResult,
@@ -1884,9 +1884,6 @@ if TYPE_CHECKING:
         STREAM_TOKEN_TYPE as STREAM_TOKEN_TYPE,
     )
     from tempest_fastapi_sdk.utils import (
-        UF as UF,
-    )
-    from tempest_fastapi_sdk.utils import (
         UPLOAD_READ_CHUNK_BYTES as UPLOAD_READ_CHUNK_BYTES,
     )
     from tempest_fastapi_sdk.utils import (
@@ -1965,7 +1962,7 @@ if TYPE_CHECKING:
         HTTPClient as HTTPClient,
     )
     from tempest_fastapi_sdk.utils import (
-        ImageMediaType as ImageMediaType,
+        ImageMediaTypeEnum as ImageMediaTypeEnum,
     )
     from tempest_fastapi_sdk.utils import (
         InMemoryThrottleBackend as InMemoryThrottleBackend,
@@ -2019,7 +2016,7 @@ if TYPE_CHECKING:
         PasswordUtils as PasswordUtils,
     )
     from tempest_fastapi_sdk.utils import (
-        PasswordViolationCode as PasswordViolationCode,
+        PasswordViolationCodeEnum as PasswordViolationCodeEnum,
     )
     from tempest_fastapi_sdk.utils import (
         PercentField as PercentField,
@@ -2058,7 +2055,7 @@ if TYPE_CHECKING:
         RatioField as RatioField,
     )
     from tempest_fastapi_sdk.utils import (
-        Region as Region,
+        RegionEnum as RegionEnum,
     )
     from tempest_fastapi_sdk.utils import (
         RetryLogger as RetryLogger,
@@ -2086,6 +2083,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils import (
         TOTPHelper as TOTPHelper,
+    )
+    from tempest_fastapi_sdk.utils import (
+        UFEnum as UFEnum,
     )
     from tempest_fastapi_sdk.utils import (
         UFField as UFField,
@@ -2331,9 +2331,9 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "AdminAuthBackend": "tempest_fastapi_sdk.admin",
     "AdminAuthError": "tempest_fastapi_sdk.admin",
     "AdminModel": "tempest_fastapi_sdk.admin",
-    "AdminPermission": "tempest_fastapi_sdk.admin",
+    "AdminPermissionEnum": "tempest_fastapi_sdk.admin",
     "AdminSite": "tempest_fastapi_sdk.admin",
-    "AdminSurface": "tempest_fastapi_sdk.admin",
+    "AdminSurfaceEnum": "tempest_fastapi_sdk.admin",
     "AdminSurfacePolicy": "tempest_fastapi_sdk.admin",
     "AdminTheme": "tempest_fastapi_sdk.admin",
     "FieldRef": "tempest_fastapi_sdk.admin",
@@ -2579,7 +2579,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "make_permission_checker": "tempest_fastapi_sdk.authz",
     "permission": "tempest_fastapi_sdk.authz",
     "requires": "tempest_fastapi_sdk.authz",
-    "CheckLevel": "tempest_fastapi_sdk.checks",
+    "CheckLevelEnum": "tempest_fastapi_sdk.checks",
     "CheckMessage": "tempest_fastapi_sdk.checks",
     "CheckRegistry": "tempest_fastapi_sdk.checks",
     "SystemCheckError": "tempest_fastapi_sdk.checks",
@@ -2605,7 +2605,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "BaseIntEnum": "tempest_fastapi_sdk.core",
     "BaseStrEnum": "tempest_fastapi_sdk.core",
     "JSONFormatter": "tempest_fastapi_sdk.core",
-    "Locale": "tempest_fastapi_sdk.core",
+    "LocaleEnum": "tempest_fastapi_sdk.core",
     "RedactionFilter": "tempest_fastapi_sdk.core",
     "RedactionPolicy": "tempest_fastapi_sdk.core",
     "clear_request_id": "tempest_fastapi_sdk.core",
@@ -2636,7 +2636,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "AlembicHelper": "tempest_fastapi_sdk.db",
     "AmbiguousBaseRevisionError": "tempest_fastapi_sdk.db",
     "AsyncDatabaseManager": "tempest_fastapi_sdk.db",
-    "AuditAction": "tempest_fastapi_sdk.db",
+    "AuditActionEnum": "tempest_fastapi_sdk.db",
     "AuditMixin": "tempest_fastapi_sdk.db",
     "AuditRequestContext": "tempest_fastapi_sdk.db",
     "AuditRequestMixin": "tempest_fastapi_sdk.db",
@@ -2655,7 +2655,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "BaseWebhookEventModel": "tempest_fastapi_sdk.db",
     "BaseWebPushSubscriptionModel": "tempest_fastapi_sdk.db",
     "ColumnRef": "tempest_fastapi_sdk.db",
-    "ConstraintKind": "tempest_fastapi_sdk.db",
+    "ConstraintKindEnum": "tempest_fastapi_sdk.db",
     "ConstraintRename": "tempest_fastapi_sdk.db",
     "CreateEnumCheckOp": "tempest_fastapi_sdk.db",
     "CreateEnumTypeOp": "tempest_fastapi_sdk.db",
@@ -2666,31 +2666,31 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "DroppedFilterWarning": "tempest_fastapi_sdk.db",
     "EnumColumnRef": "tempest_fastapi_sdk.db",
     "EnumTypeState": "tempest_fastapi_sdk.db",
-    "ExplainDetail": "tempest_fastapi_sdk.db",
+    "ExplainDetailEnum": "tempest_fastapi_sdk.db",
     "ExplainReport": "tempest_fastapi_sdk.db",
     "F": "tempest_fastapi_sdk.db",
     "InboxDrainReport": "tempest_fastapi_sdk.db",
     "IntegrityFailure": "tempest_fastapi_sdk.db",
-    "IntegrityViolation": "tempest_fastapi_sdk.db",
+    "IntegrityViolationEnum": "tempest_fastapi_sdk.db",
     "LocaleColumnMixin": "tempest_fastapi_sdk.db",
     "MFAMixin": "tempest_fastapi_sdk.db",
     "OutboxRelay": "tempest_fastapi_sdk.db",
-    "OutboxStatus": "tempest_fastapi_sdk.db",
+    "OutboxStatusEnum": "tempest_fastapi_sdk.db",
     "Q": "tempest_fastapi_sdk.db",
     "QueryPlan": "tempest_fastapi_sdk.db",
     "RenameEnumTypeOp": "tempest_fastapi_sdk.db",
     "ReplaceEnumOp": "tempest_fastapi_sdk.db",
-    "RepositorySignal": "tempest_fastapi_sdk.db",
-    "SchemaSyncOutcome": "tempest_fastapi_sdk.db",
+    "RepositorySignalEnum": "tempest_fastapi_sdk.db",
+    "SchemaSyncOutcomeEnum": "tempest_fastapi_sdk.db",
     "SlowQueryLogger": "tempest_fastapi_sdk.db",
     "SoftDeleteMixin": "tempest_fastapi_sdk.db",
     "TempestEnum": "tempest_fastapi_sdk.db",
     "TenantScopedRepository": "tempest_fastapi_sdk.db",
-    "TextSearchLanguage": "tempest_fastapi_sdk.db",
-    "TextSearchWeight": "tempest_fastapi_sdk.db",
-    "TokenMatch": "tempest_fastapi_sdk.db",
+    "TextSearchLanguageEnum": "tempest_fastapi_sdk.db",
+    "TextSearchWeightEnum": "tempest_fastapi_sdk.db",
+    "TokenMatchEnum": "tempest_fastapi_sdk.db",
     "UnsupportedBackupBackendError": "tempest_fastapi_sdk.db",
-    "UserTokenPurpose": "tempest_fastapi_sdk.db",
+    "UserTokenPurposeEnum": "tempest_fastapi_sdk.db",
     "UtcDateTime": "tempest_fastapi_sdk.db",
     "WebhookEventStatusEnum": "tempest_fastapi_sdk.db",
     "WebhookInbox": "tempest_fastapi_sdk.db",
@@ -2791,7 +2791,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PushError": "tempest_fastapi_sdk.push",
     "PushFanoutResult": "tempest_fastapi_sdk.push",
     "PushPayloadSchema": "tempest_fastapi_sdk.push",
-    "PushPlatform": "tempest_fastapi_sdk.push",
+    "PushPlatformEnum": "tempest_fastapi_sdk.push",
     "PushResult": "tempest_fastapi_sdk.push",
     "WebPushTransport": "tempest_fastapi_sdk.push",
     "make_push_router": "tempest_fastapi_sdk.push",
@@ -2917,7 +2917,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "STREAM_TOKEN_TYPE": "tempest_fastapi_sdk.utils",
     "REQUEST_ID_HEADER": "tempest_fastapi_sdk.utils",
     "SNIFFABLE_MIMETYPES": "tempest_fastapi_sdk.utils",
-    "UF": "tempest_fastapi_sdk.utils",
+    "UFEnum": "tempest_fastapi_sdk.utils",
     "UPLOAD_READ_CHUNK_BYTES": "tempest_fastapi_sdk.utils",
     "XLSX_MEDIA_TYPE": "tempest_fastapi_sdk.utils",
     "AttemptThrottle": "tempest_fastapi_sdk.utils",
@@ -2943,7 +2943,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "GPUMetrics": "tempest_fastapi_sdk.utils",
     "HexColorField": "tempest_fastapi_sdk.utils",
     "HTTPClient": "tempest_fastapi_sdk.utils",
-    "ImageMediaType": "tempest_fastapi_sdk.utils",
+    "ImageMediaTypeEnum": "tempest_fastapi_sdk.utils",
     "InMemoryThrottleBackend": "tempest_fastapi_sdk.utils",
     "JWTUtils": "tempest_fastapi_sdk.utils",
     "LatitudeField": "tempest_fastapi_sdk.utils",
@@ -2961,7 +2961,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PasswordPolicy": "tempest_fastapi_sdk.utils",
     "PasswordPolicyViolation": "tempest_fastapi_sdk.utils",
     "PasswordUtils": "tempest_fastapi_sdk.utils",
-    "PasswordViolationCode": "tempest_fastapi_sdk.utils",
+    "PasswordViolationCodeEnum": "tempest_fastapi_sdk.utils",
     "PercentField": "tempest_fastapi_sdk.utils",
     "PhoneBR": "tempest_fastapi_sdk.utils",
     "PhoneBRField": "tempest_fastapi_sdk.utils",
@@ -2974,7 +2974,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PriceField": "tempest_fastapi_sdk.utils",
     "RatingField": "tempest_fastapi_sdk.utils",
     "RatioField": "tempest_fastapi_sdk.utils",
-    "Region": "tempest_fastapi_sdk.utils",
+    "RegionEnum": "tempest_fastapi_sdk.utils",
     "RetryLogger": "tempest_fastapi_sdk.utils",
     "RetryPolicy": "tempest_fastapi_sdk.utils",
     "SignedDecimalRatioField": "tempest_fastapi_sdk.utils",
@@ -3229,7 +3229,6 @@ __all__: list[str] = [
     "STATIC_CREDENTIAL_NAMESPACE",
     "STREAM_TOKEN_TYPE",
     "SUPPORTED_LOCALES",
-    "UF",
     "UPLOAD_READ_CHUNK_BYTES",
     "VALIDATION_ERROR_CODE",
     "WITHHELD_NOTICE",
@@ -3248,9 +3247,9 @@ __all__: list[str] = [
     "AdminAuthBackend",
     "AdminAuthError",
     "AdminModel",
-    "AdminPermission",
+    "AdminPermissionEnum",
     "AdminSite",
-    "AdminSurface",
+    "AdminSurfaceEnum",
     "AdminSurfacePolicy",
     "AdminTheme",
     "AlembicHelper",
@@ -3264,7 +3263,7 @@ __all__: list[str] = [
     "AsyncDatabaseManager",
     "AsyncMinIOClient",
     "AttemptThrottle",
-    "AuditAction",
+    "AuditActionEnum",
     "AuditMixin",
     "AuditRequestContext",
     "AuditRequestMixin",
@@ -3311,7 +3310,7 @@ __all__: list[str] = [
     "CSRFMiddleware",
     "CachedResponse",
     "CentsField",
-    "CheckLevel",
+    "CheckLevelEnum",
     "CheckMessage",
     "CheckRegistry",
     "ChoiceBR",
@@ -3323,7 +3322,7 @@ __all__: list[str] = [
     "CompactPaginationSchema",
     "CompositeFeatureFlagBackend",
     "ConflictException",
-    "ConstraintKind",
+    "ConstraintKindEnum",
     "ConstraintRename",
     "Controller",
     "CreateEnumCheckOp",
@@ -3362,7 +3361,7 @@ __all__: list[str] = [
     "ExceptionRedactor",
     "ExpiredSignedURLException",
     "ExpiredTokenException",
-    "ExplainDetail",
+    "ExplainDetailEnum",
     "ExplainReport",
     "F",
     "FCMTransport",
@@ -3404,7 +3403,7 @@ __all__: list[str] = [
     "HostedGenAISettings",
     "IdempotencyMiddleware",
     "IdempotencyStore",
-    "ImageMediaType",
+    "ImageMediaTypeEnum",
     "InMemoryThrottleBackend",
     "InboxDrainReport",
     "InheritedErrorCodeWarning",
@@ -3412,7 +3411,7 @@ __all__: list[str] = [
     "InsufficientBalanceException",
     "IntegrationDisabledException",
     "IntegrityFailure",
-    "IntegrityViolation",
+    "IntegrityViolationEnum",
     "IntrospectionAuth",
     "InvalidFileTypeException",
     "InvalidFilterValueException",
@@ -3427,8 +3426,8 @@ __all__: list[str] = [
     "LocalObjectNotFoundError",
     "LocalObjectStorageClient",
     "LocalUploadStorage",
-    "Locale",
     "LocaleColumnMixin",
+    "LocaleEnum",
     "LocaleField",
     "LogEntrySchema",
     "LogReadResult",
@@ -3504,7 +3503,7 @@ __all__: list[str] = [
     "OrderByNotAllowedException",
     "OrderRef",
     "OutboxRelay",
-    "OutboxStatus",
+    "OutboxStatusEnum",
     "OverflowPolicy",
     "PageSizeTooLargeException",
     "PasswordChangeSchema",
@@ -3515,7 +3514,7 @@ __all__: list[str] = [
     "PasswordResetResponseSchema",
     "PasswordResetToken",
     "PasswordUtils",
-    "PasswordViolationCode",
+    "PasswordViolationCodeEnum",
     "PayoutRejectedException",
     "PayoutUncertainException",
     "PercentField",
@@ -3541,7 +3540,7 @@ __all__: list[str] = [
     "PushError",
     "PushFanoutResult",
     "PushPayloadSchema",
-    "PushPlatform",
+    "PushPlatformEnum",
     "PushResult",
     "PushSettings",
     "PutObjectItem",
@@ -3574,10 +3573,10 @@ __all__: list[str] = [
     "RedisSettings",
     "RedisWebAuthnChallengeStore",
     "RefreshSchema",
-    "Region",
+    "RegionEnum",
     "RenameEnumTypeOp",
     "ReplaceEnumOp",
-    "RepositorySignal",
+    "RepositorySignalEnum",
     "RequestIDMiddleware",
     "ResponseCacheMiddleware",
     "ResponseCacheStore",
@@ -3588,7 +3587,7 @@ __all__: list[str] = [
     "SSEData",
     "SSETicketResponseSchema",
     "SameSite",
-    "SchemaSyncOutcome",
+    "SchemaSyncOutcomeEnum",
     "ServerErrorCallback",
     "ServerSentEvent",
     "ServerSettings",
@@ -3630,14 +3629,15 @@ __all__: list[str] = [
     "TempestEnum",
     "TempestPermissionError",
     "TenantScopedRepository",
-    "TextSearchLanguage",
-    "TextSearchWeight",
+    "TextSearchLanguageEnum",
+    "TextSearchWeightEnum",
     "ThrottleBackend",
     "ThrottleStatus",
     "TokenDelivery",
-    "TokenMatch",
+    "TokenMatchEnum",
     "TokenSettings",
     "TooManyRequestsException",
+    "UFEnum",
     "UFField",
     "UnauthorizedException",
     "UnknownFilterKeyException",
@@ -3648,7 +3648,7 @@ __all__: list[str] = [
     "UploadUtils",
     "UserAuthService",
     "UserModelAuthBackend",
-    "UserTokenPurpose",
+    "UserTokenPurposeEnum",
     "UtcDateTime",
     "ValidationException",
     "ValidationExceptionHandler",

@@ -21,10 +21,10 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from tempest_fastapi_sdk.chat.constants import (
-    ConversationKind,
-    MessageKind,
-    ParticipantRole,
-    SystemEvent,
+    ConversationKindEnum,
+    MessageKindEnum,
+    ParticipantRoleEnum,
+    SystemEventEnum,
 )
 from tempest_fastapi_sdk.chat.schemas import (
     REPLY_EXCERPT_LENGTH,
@@ -110,7 +110,7 @@ class ChatService:
         creator_id: UUID,
         participant_ids: list[UUID],
         *,
-        kind: ConversationKind | str | None = None,
+        kind: ConversationKindEnum | str | None = None,
         title: str | None = None,
         description: str | None = None,
     ) -> ConversationResponseSchema:
@@ -128,7 +128,7 @@ class ChatService:
         Args:
             creator_id (UUID): The user starting the conversation.
             participant_ids (list[UUID]): The other users to add.
-            kind (ConversationKind | str | None): Direct thread or
+            kind (ConversationKindEnum | str | None): Direct thread or
                 group. ``None`` infers it from the headcount — up to two
                 people is a direct thread, more is a group — which is
                 what a caller that never heard of the distinction
@@ -149,13 +149,13 @@ class ChatService:
         member_ids = {creator_id, *participant_ids}
         inferred = kind is None
         resolved = (
-            ConversationKind.DIRECT
+            ConversationKindEnum.DIRECT
             if inferred and len(member_ids) <= 2
-            else ConversationKind.GROUP
+            else ConversationKindEnum.GROUP
             if inferred
-            else ConversationKind(kind)
+            else ConversationKindEnum(kind)
         )
-        if resolved is ConversationKind.DIRECT:
+        if resolved is ConversationKindEnum.DIRECT:
             if not inferred and len(member_ids) != 2:
                 raise ValidationException(
                     message="a direct conversation needs exactly two people",
@@ -181,18 +181,19 @@ class ChatService:
                     conversation_id=conversation.id,
                     user_id=user_id,
                     role=(
-                        ParticipantRole.OWNER
-                        if user_id == creator_id and resolved is ConversationKind.GROUP
-                        else ParticipantRole.MEMBER
+                        ParticipantRoleEnum.OWNER
+                        if user_id == creator_id
+                        and resolved is ConversationKindEnum.GROUP
+                        else ParticipantRoleEnum.MEMBER
                     ),
                     joined_at=now,
                 ),
             )
-        if resolved is ConversationKind.GROUP:
+        if resolved is ConversationKindEnum.GROUP:
             await self._system_message(
                 conversation.id,
                 actor_id=creator_id,
-                event=SystemEvent.CONVERSATION_CREATED,
+                event=SystemEventEnum.CONVERSATION_CREATED,
                 user_ids=sorted(member_ids - {creator_id}, key=str),
             )
         return await self._conversation_response(conversation)
@@ -216,7 +217,7 @@ class ChatService:
         if not candidates:
             return None
         conversations = await self.conversations.list(
-            filters={"id": candidates, "kind": ConversationKind.DIRECT},
+            filters={"id": candidates, "kind": ConversationKindEnum.DIRECT},
         )
         return conversations[0] if conversations else None
 
@@ -569,8 +570,12 @@ class ChatService:
                     )
                 return await self._message_response(existing)
 
-        kind = MessageKind(payload.kind)
-        if not payload.body and not payload.attachment_ids and kind is MessageKind.TEXT:
+        kind = MessageKindEnum(payload.kind)
+        if (
+            not payload.body
+            and not payload.attachment_ids
+            and kind is MessageKindEnum.TEXT
+        ):
             raise ValidationException(
                 message="a text message needs a body",
                 field="body",
@@ -915,7 +920,7 @@ class ChatService:
                 self.messages.model(
                     conversation_id=conversation_id,
                     sender_id=sender_id,
-                    kind=MessageKind(original.kind),
+                    kind=MessageKindEnum(original.kind),
                     body=original.body,
                     payload=original.payload,
                     forwarded_from_id=original.id,
@@ -1320,7 +1325,7 @@ class ChatService:
         return ReplyPreviewSchema(
             id=parent.id,
             sender_id=parent.sender_id,
-            kind=MessageKind(parent.kind),
+            kind=MessageKindEnum(parent.kind),
             excerpt="" if revoked or hidden else parent.body[:REPLY_EXCERPT_LENGTH],
             revoked=revoked,
             created_at=parent.created_at,
@@ -1351,7 +1356,7 @@ class ChatService:
         conversation_id: UUID,
         *,
         actor_id: UUID,
-        event: SystemEvent,
+        event: SystemEventEnum,
         user_ids: list[UUID] | None = None,
         extra: dict[str, Any] | None = None,
     ) -> MessageResponseSchema:
@@ -1364,7 +1369,7 @@ class ChatService:
         Args:
             conversation_id (UUID): Where to post it.
             actor_id (UUID): Who caused the event.
-            event (SystemEvent): What happened.
+            event (SystemEventEnum): What happened.
             user_ids (list[UUID] | None): Who it happened to.
             extra (dict[str, Any] | None): Event-specific extras.
 
@@ -1382,7 +1387,7 @@ class ChatService:
             self.messages.model(
                 conversation_id=conversation_id,
                 sender_id=actor_id,
-                kind=MessageKind.SYSTEM,
+                kind=MessageKindEnum.SYSTEM,
                 body=str(event),
                 payload=payload,
             ),
@@ -1422,7 +1427,7 @@ class ChatService:
                 thread.
         """
         conversation = await self.conversations.get_by_id(conversation_id)
-        if ConversationKind(conversation.kind) is ConversationKind.DIRECT:
+        if ConversationKindEnum(conversation.kind) is ConversationKindEnum.DIRECT:
             raise ValidationException(
                 message="a direct conversation cannot take more participants",
             )
@@ -1443,7 +1448,7 @@ class ChatService:
                     self.participants.model(
                         conversation_id=conversation_id,
                         user_id=user_id,
-                        role=ParticipantRole.MEMBER,
+                        role=ParticipantRoleEnum.MEMBER,
                         joined_at=now,
                         history_from=None if share_history else now,
                     ),
@@ -1453,7 +1458,7 @@ class ChatService:
             await self._system_message(
                 conversation_id,
                 actor_id=actor_id,
-                event=SystemEvent.PARTICIPANTS_ADDED,
+                event=SystemEventEnum.PARTICIPANTS_ADDED,
                 user_ids=added,
             )
         return await self.get_conversation(conversation_id)
@@ -1485,14 +1490,14 @@ class ChatService:
         """
         await self._require_admin(conversation_id, actor_id)
         membership = await self._require_membership(conversation_id, user_id)
-        if ParticipantRole(membership.role) is ParticipantRole.OWNER:
+        if ParticipantRoleEnum(membership.role) is ParticipantRoleEnum.OWNER:
             raise ForbiddenException(message="the owner cannot be removed")
         membership.left_at = utcnow()
         await self.participants.update(membership)
         await self._system_message(
             conversation_id,
             actor_id=actor_id,
-            event=SystemEvent.PARTICIPANT_REMOVED,
+            event=SystemEventEnum.PARTICIPANT_REMOVED,
             user_ids=[user_id],
         )
         await self._publish(
@@ -1529,7 +1534,7 @@ class ChatService:
         await self._system_message(
             conversation_id,
             actor_id=user_id,
-            event=SystemEvent.PARTICIPANT_LEFT,
+            event=SystemEventEnum.PARTICIPANT_LEFT,
             user_ids=[user_id],
         )
         await self._publish(
@@ -1544,7 +1549,7 @@ class ChatService:
         conversation_id: UUID,
         actor_id: UUID,
         user_id: UUID,
-        role: ParticipantRole | str,
+        role: ParticipantRoleEnum | str,
     ) -> ParticipantResponseSchema:
         """Promote or demote a participant.
 
@@ -1558,7 +1563,7 @@ class ChatService:
             conversation_id (UUID): The group.
             actor_id (UUID): Who is changing it; must be admin or owner.
             user_id (UUID): Whose role changes.
-            role (ParticipantRole | str): The new role.
+            role (ParticipantRoleEnum | str): The new role.
 
         Returns:
             ParticipantResponseSchema: The updated membership.
@@ -1570,11 +1575,13 @@ class ChatService:
         """
         actor = await self._require_admin(conversation_id, actor_id)
         membership = await self._require_membership(conversation_id, user_id)
-        new_role = ParticipantRole(role)
-        actor_is_owner = ParticipantRole(actor.role) is ParticipantRole.OWNER
-        target_is_member = ParticipantRole(membership.role) is ParticipantRole.MEMBER
+        new_role = ParticipantRoleEnum(role)
+        actor_is_owner = ParticipantRoleEnum(actor.role) is ParticipantRoleEnum.OWNER
+        target_is_member = (
+            ParticipantRoleEnum(membership.role) is ParticipantRoleEnum.MEMBER
+        )
         if not actor_is_owner and (
-            not target_is_member or new_role is ParticipantRole.OWNER
+            not target_is_member or new_role is ParticipantRoleEnum.OWNER
         ):
             raise ForbiddenException(
                 message="only the owner can grant ownership or change the "
@@ -1586,9 +1593,9 @@ class ChatService:
         await self._system_message(
             conversation_id,
             actor_id=actor_id,
-            event=SystemEvent.ROLE_CHANGED,
+            event=SystemEventEnum.ROLE_CHANGED,
             user_ids=[user_id],
-            extra={"role": str(ParticipantRole(role))},
+            extra={"role": str(ParticipantRoleEnum(role))},
         )
         return ParticipantResponseSchema.model_validate(membership)
 
@@ -1606,7 +1613,7 @@ class ChatService:
             ForbiddenException: When the user is only a member.
         """
         membership = await self._require_membership(conversation_id, user_id)
-        if ParticipantRole(membership.role) is ParticipantRole.MEMBER:
+        if ParticipantRoleEnum(membership.role) is ParticipantRoleEnum.MEMBER:
             raise ForbiddenException(
                 message="only an admin or the owner can do that",
                 details={"conversation_id": str(conversation_id)},
@@ -1643,7 +1650,7 @@ class ChatService:
             await self._system_message(
                 conversation_id,
                 actor_id=actor_id,
-                event=SystemEvent.TITLE_CHANGED,
+                event=SystemEventEnum.TITLE_CHANGED,
                 extra={"title": title},
             )
         if description is not None:
@@ -1652,7 +1659,7 @@ class ChatService:
             await self._system_message(
                 conversation_id,
                 actor_id=actor_id,
-                event=SystemEvent.DESCRIPTION_CHANGED,
+                event=SystemEventEnum.DESCRIPTION_CHANGED,
             )
         return await self.get_conversation(conversation_id)
 

@@ -7,7 +7,7 @@ import pytest
 from tempest_fastapi_sdk.modelops import (
     DEFAULT_COST_WEIGHTS,
     BenchmarkProfile,
-    ModelFormat,
+    ModelFormatEnum,
     RuntimeAggregate,
     StaticModelMetrics,
     composite_scores,
@@ -61,7 +61,7 @@ def _profile(
         None
         if disk is None
         else StaticModelMetrics(
-            name=name, format=ModelFormat.ONNX, disk_size_mb=disk, gflops=gflops
+            name=name, format=ModelFormatEnum.ONNX, disk_size_mb=disk, gflops=gflops
         )
     )
     return BenchmarkProfile(name=name, runtime=runtime, static=static, quality=quality)

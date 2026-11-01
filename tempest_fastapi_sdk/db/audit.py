@@ -15,7 +15,7 @@ rolled back.
 
 Pieces:
 
-* :class:`AuditAction` — the ``create`` / ``update`` / ``delete`` /
+* :class:`AuditActionEnum` — the ``create`` / ``update`` / ``delete`` /
   ``event`` enum.
 * :class:`BaseAuditLogModel` — the abstract audit table; the consuming
   project subclasses it and picks ``__tablename__`` (``audit_log`` by
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
 
-class AuditAction(StrEnum):
+class AuditActionEnum(StrEnum):
     """The kind of change an audit entry records.
 
     ``EVENT`` marks a domain event recorded without a row mutation
@@ -401,7 +401,7 @@ class BaseAuditLogModel(BaseModel):
             Indexed for per-entity history queries.
         entity_id (str): The changed row's id, stored as text so any key
             type fits. Indexed.
-        action (str): One of :class:`AuditAction`.
+        action (str): One of :class:`AuditActionEnum`.
         actor (str | None): Who performed the change (user id, e-mail,
             ``"system"``, ...). Indexed; ``None`` for anonymous/system.
         changes (dict[str, Any]): The diff. For ``create`` it is
@@ -430,7 +430,7 @@ class BaseAuditLogModel(BaseModel):
         String(16),
         nullable=False,
         index=True,
-        doc="Mutation kind (AuditAction value).",
+        doc="Mutation kind (AuditActionEnum value).",
     )
     actor: Mapped[str | None] = mapped_column(
         String(255),
@@ -457,7 +457,7 @@ class BaseAuditLogModel(BaseModel):
         *,
         entity: str,
         entity_id: str,
-        action: AuditAction,
+        action: AuditActionEnum,
         changes: dict[str, Any],
         actor: str | None = None,
         context: dict[str, Any] | None = None,
@@ -493,7 +493,7 @@ class BaseAuditLogModel(BaseModel):
         Args:
             entity (str): The changed model name.
             entity_id (str): The changed row id (as text).
-            action (AuditAction): The mutation kind.
+            action (AuditActionEnum): The mutation kind.
             changes (dict[str, Any]): The before/after diff.
             actor (str | None): Who performed the change.
             context (dict[str, Any] | None): Extra metadata.
@@ -599,7 +599,7 @@ class BaseAuditLogModel(BaseModel):
         return cls.new_entry(
             entity=type(instance).__name__,
             entity_id=str(getattr(instance, "id", "")),
-            action=AuditAction.CREATE,
+            action=AuditActionEnum.CREATE,
             changes={
                 "after": redact_snapshot(type(instance), snapshot_model(instance))
             },
@@ -673,7 +673,7 @@ class BaseAuditLogModel(BaseModel):
         return cls.new_entry(
             entity=type(instance).__name__,
             entity_id=str(getattr(instance, "id", "")),
-            action=AuditAction.UPDATE,
+            action=AuditActionEnum.UPDATE,
             changes=changes,
             actor=actor,
             context=context,
@@ -724,7 +724,7 @@ class BaseAuditLogModel(BaseModel):
         return cls.new_entry(
             entity=type(instance).__name__,
             entity_id=str(getattr(instance, "id", "")),
-            action=AuditAction.DELETE,
+            action=AuditActionEnum.DELETE,
             changes={
                 "before": redact_snapshot(type(instance), snapshot_model(instance))
             },
@@ -788,7 +788,7 @@ class BaseAuditLogModel(BaseModel):
         return cls.new_entry(
             entity=entity,
             entity_id=entity_id,
-            action=AuditAction.EVENT,
+            action=AuditActionEnum.EVENT,
             changes=changes if changes is not None else {},
             actor=actor,
             context=context,
@@ -808,7 +808,7 @@ __all__: list[str] = [
     "AUDIT_RESERVED_COLUMNS",
     "AUDIT_USER_AGENT_MAX_LENGTH",
     "DEFAULT_AUDIT_REDACT",
-    "AuditAction",
+    "AuditActionEnum",
     "AuditRequestContext",
     "AuditRequestMixin",
     "BaseAuditLogModel",

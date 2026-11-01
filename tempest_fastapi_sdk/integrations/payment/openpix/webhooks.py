@@ -20,7 +20,7 @@ from fastapi import Request
 
 from tempest_fastapi_sdk.api.webhooks import RSAWebhookSignatureVerifier
 from tempest_fastapi_sdk.exceptions import UnauthorizedException
-from tempest_fastapi_sdk.integrations.payment.openpix.events import OpenPixEvent
+from tempest_fastapi_sdk.integrations.payment.openpix.events import OpenPixEventEnum
 
 OPENPIX_WEBHOOK_SIGNATURE_HEADER: str = "x-webhook-signature"
 """Header carrying the base64 RSA signature over the raw request body."""
@@ -58,14 +58,14 @@ class OpenPixWebhookEvent:
     A dataclass rather than a :class:`BaseSchema`: this is the value handed
     to a route, not a wire DTO. ``BaseSchema`` sets ``use_enum_values=True``,
     which would store :attr:`event` as a bare ``str`` — and then the obvious
-    ``event.event is OpenPixEvent.CHARGE_COMPLETED`` is **always false**,
+    ``event.event is OpenPixEventEnum.CHARGE_COMPLETED`` is **always false**,
     silently, on every delivery. It also skips re-validating a payload that
     was just parsed from JSON.
 
     Attributes:
         event_name (str): The ``event`` field exactly as delivered, kept
             even when it is not a known value.
-        event (OpenPixEvent | None): The parsed event, or ``None`` when
+        event (OpenPixEventEnum | None): The parsed event, or ``None`` when
             OpenPix sent something this SDK version does not know.
         payload (dict[str, Any]): The whole decoded body. Deliberately not
             modelled here — the 358 generated schemas live in the consuming
@@ -76,7 +76,7 @@ class OpenPixWebhookEvent:
     """
 
     event_name: str
-    event: OpenPixEvent | None = None
+    event: OpenPixEventEnum | None = None
     payload: dict[str, Any] = field(default_factory=dict)
     body: bytes = b""
 
@@ -169,10 +169,10 @@ def make_openpix_webhook_dependency(
             payload = decoded
 
         event_name = str(payload.get("event", ""))
-        known = OpenPixEvent.has_value(event_name)
+        known = OpenPixEventEnum.has_value(event_name)
         return OpenPixWebhookEvent(
             event_name=event_name,
-            event=OpenPixEvent.from_value(event_name) if known else None,
+            event=OpenPixEventEnum.from_value(event_name) if known else None,
             payload=payload,
             body=body,
         )

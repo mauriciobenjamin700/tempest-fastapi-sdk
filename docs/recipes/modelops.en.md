@@ -1399,7 +1399,7 @@ energy measurement
 !!! danger "None of these readings is wall-plug"
     A GPU reading excludes the CPU, RAM, PSU losses and cooling; a RAPL
     reading covers the CPU package only. Always publish the `energy_source`
-    next to the number — `EnergySource.NVML_COUNTER` and `EnergySource.RAPL`
+    next to the number — `EnergySourceEnum.NVML_COUNTER` and `EnergySourceEnum.RAPL`
     are not the same quantity. For real at-the-socket consumption, use an
     external power meter.
 
@@ -1579,7 +1579,7 @@ print(result.notes)
 
 !!! tip "A few hundred real samples beat tens of thousands of synthetic ones"
     A range learned from noise will clip real activations. If `MINMAX` costs
-    you accuracy, try `CalibrationMethod.ENTROPY` or `PERCENTILE`: a single
+    you accuracy, try `CalibrationMethodEnum.ENTROPY` or `PERCENTILE`: a single
     outlier stretches a min/max range until everything else quantizes into
     a handful of levels.
 
@@ -1623,7 +1623,7 @@ Neither touches `optimum`: they run on the `onnxruntime` that
 
 ```python
 from tempest_fastapi_sdk.modelops import (
-    HFQuantizationTarget,
+    HFQuantizationTargetEnum,
     optimize_hf_onnx,
     quantize_hf_onnx,
 )
@@ -1632,7 +1632,7 @@ optimized = optimize_hf_onnx("exports/distilbert", "exports/distilbert-o2")
 quantized = quantize_hf_onnx(
     "exports/distilbert-o2",
     "exports/distilbert-int8",
-    target=HFQuantizationTarget.AVX512_VNNI,
+    target=HFQuantizationTargetEnum.AVX512_VNNI,
 )
 print(optimized.size_ratio, quantized.compression_ratio)
 ```

@@ -349,7 +349,7 @@ exatamente a granularidade que a interface mostra.
 ```python
 from uuid import UUID
 
-from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKind
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKindEnum
 
 
 async def anexar(
@@ -373,7 +373,7 @@ async def anexar(
         conversation_id,
         alice,
         MessageCreateSchema(
-            kind=MessageKind.IMAGE,
+            kind=MessageKindEnum.IMAGE,
             body="olha isso",  # legenda vive no body
             attachment_ids=[attachment.id],
         ),
@@ -541,8 +541,8 @@ from uuid import UUID
 
 from tempest_fastapi_sdk.chat import (
     ChatService,
-    ConversationKind,
-    ParticipantRole,
+    ConversationKindEnum,
+    ParticipantRoleEnum,
 )
 
 
@@ -557,11 +557,11 @@ async def administrar_grupo(
     group = await service.start_conversation(
         alice,
         [bob, carol],
-        kind=ConversationKind.GROUP,
+        kind=ConversationKindEnum.GROUP,
         title="Projeto X",
     )
     await service.add_participants(group.id, alice, [dave])  # history_from = agora
-    await service.set_role(group.id, alice, bob, ParticipantRole.ADMIN)
+    await service.set_role(group.id, alice, bob, ParticipantRoleEnum.ADMIN)
     await service.remove_participant(group.id, alice, dave)
     await service.leave(group.id, bob)
 ```

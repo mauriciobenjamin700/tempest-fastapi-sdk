@@ -145,7 +145,7 @@ que é exatamente o cenário para o qual o teto existe:
 ```python
 import pytest
 
-from tempest_fastapi_sdk.agents import Agent, AgentBudget, AgentContext, StopReason, text_tool
+from tempest_fastapi_sdk.agents import Agent, AgentBudget, AgentContext, StopReasonEnum, text_tool
 from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies_with_tool
 
 
@@ -168,7 +168,7 @@ async def test_the_step_budget_stops_a_runaway_agent() -> None:
         budget=AgentBudget(max_steps=4, max_seconds=None),
     ).run("faça para sempre")
 
-    assert run.stop_reason == StopReason.MAX_STEPS
+    assert run.stop_reason == StopReasonEnum.MAX_STEPS
     assert run.succeeded is False
 ```
 
@@ -303,7 +303,7 @@ usa `messages_seen` para mostrar que a chave da API ficou fora da conversa.
 ```python title="test_outage.py" hl_lines="12"
 import pytest
 
-from tempest_fastapi_sdk.agents import Agent, StopReason
+from tempest_fastapi_sdk.agents import Agent, StopReasonEnum
 from tempest_fastapi_sdk.agents.testing import FailingBackend
 
 
@@ -312,12 +312,12 @@ async def test_a_backend_outage_does_not_escape() -> None:
     """A dead model must become an ERROR stop, not an exception."""
     run = await Agent(FailingBackend("ollama fora do ar")).run("oi")
 
-    assert run.stop_reason == StopReason.ERROR
+    assert run.stop_reason == StopReasonEnum.ERROR
     assert "ollama fora do ar" in run.output
 ```
 
 Isso importa porque um agente costuma estar atrás de um endpoint: uma exceção
-escapando vira 500, enquanto um `StopReason.ERROR` vira uma resposta que você
+escapando vira 500, enquanto um `StopReasonEnum.ERROR` vira uma resposta que você
 controla.
 
 ## O script sobrou?
@@ -352,7 +352,7 @@ da suíte rápida:
 import pytest
 
 from tempest_fastapi_sdk.agents import Agent, AgentBudget
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 from test_agent import get_weather
 
 
@@ -361,7 +361,7 @@ from test_agent import get_weather
 async def test_a_real_model_picks_the_weather_tool() -> None:
     """The model must reach for the tool when the goal calls for it."""
     generator = TextGenerator(
-        TextModel.QWEN2_5_0_5B_INSTRUCT,
+        TextModelEnum.QWEN2_5_0_5B_INSTRUCT,
         device="cpu",
         local_files_only=True,
     )

@@ -12,12 +12,12 @@ que seu banco está.
 
 ```python
 # src/db/schema.py
-from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcome
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
 
 from src.core.settings import settings
 
 
-async def sync_schema() -> SchemaSyncOutcome:
+async def sync_schema() -> SchemaSyncOutcomeEnum:
     """Bring the database schema in line with the migration tree."""
     helper: AlembicHelper = AlembicHelper(
         "alembic.ini",
@@ -144,10 +144,10 @@ funcionando** — não precisa regenerar.
 
 | Estado inicial | O que roda | Retorno |
 | --- | --- | --- |
-| Banco vazio | `upgrade()` — a revision base cria as tabelas, sem o guard destrutivo | `SchemaSyncOutcome.SYNCED` |
-| Banco que **precede** o Alembic | carimba a **base**, depois `safe_upgrade()` | `SchemaSyncOutcome.ADOPTED` |
-| Banco já sob o Alembic | `safe_upgrade()` | `SchemaSyncOutcome.SYNCED` |
-| Projeto ainda sem nenhuma revision | nada | `SchemaSyncOutcome.NO_MIGRATIONS` |
+| Banco vazio | `upgrade()` — a revision base cria as tabelas, sem o guard destrutivo | `SchemaSyncOutcomeEnum.SYNCED` |
+| Banco que **precede** o Alembic | carimba a **base**, depois `safe_upgrade()` | `SchemaSyncOutcomeEnum.ADOPTED` |
+| Banco já sob o Alembic | `safe_upgrade()` | `SchemaSyncOutcomeEnum.SYNCED` |
+| Projeto ainda sem nenhuma revision | nada | `SchemaSyncOutcomeEnum.NO_MIGRATIONS` |
 
 O banco vazio é o caso fácil, e é o que faz o resto funcionar: o schema que a
 revision base constrói é, por construção, **o mesmo** que as revisions
@@ -262,12 +262,12 @@ ponteiro; o segundo re-adota corretamente:
 
 ```python
 # scripts/repair_schema.py
-from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcome
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
 
 from src.core.settings import settings
 
 
-def repair() -> SchemaSyncOutcome:
+def repair() -> SchemaSyncOutcomeEnum:
     """Clear a wrong stamp and re-adopt the schema from the base."""
     helper: AlembicHelper = AlembicHelper(
         "alembic.ini",

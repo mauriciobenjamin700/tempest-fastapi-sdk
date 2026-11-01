@@ -40,7 +40,7 @@ from tempest_fastapi_sdk.queue.topology import (
     QUEUE_TYPE_ARG,
     ExchangeSpec,
     QueueSpec,
-    Transport,
+    TransportEnum,
     UnsupportedTopologyError,
     channel_name,
     detect_transport,
@@ -223,7 +223,7 @@ failed message there: ``ACK`` and ``ACK_FIRST`` acknowledge it, and
 def _subscriber_ack_policy(
     channel: str | QueueSpec,
     ack_policy: AckPolicy | None,
-    transport: Transport,
+    transport: TransportEnum,
 ) -> AckPolicy | None:
     """Pick the ack policy of a consumer, pinning it when it has a DLQ.
 
@@ -241,7 +241,7 @@ def _subscriber_ack_policy(
     Args:
         channel (str | QueueSpec): The channel being subscribed.
         ack_policy (AckPolicy | None): What the caller asked for.
-        transport (Transport): The broker's transport.
+        transport (TransportEnum): The broker's transport.
 
     Returns:
         AckPolicy | None: The policy to hand FastStream, or ``None`` to
@@ -255,7 +255,7 @@ def _subscriber_ack_policy(
     has_dead_letter = (
         isinstance(channel, QueueSpec)
         and channel.dead_letter is not None
-        and transport is Transport.RABBITMQ
+        and transport is TransportEnum.RABBITMQ
     )
     if not has_dead_letter:
         return ack_policy
@@ -419,14 +419,14 @@ class MessageBroker:
         self._declared_exchanges: set[str] = set()
 
     @property
-    def transport(self) -> Transport:
+    def transport(self) -> TransportEnum:
         """Return which transport this facade is wrapping.
 
         Read from the broker class at call time, so it is correct for an
         injected broker as well as for one built by a constructor.
 
         Returns:
-            Transport: The detected transport.
+            TransportEnum: The detected transport.
         """
         return detect_transport(self.broker)
 
@@ -481,7 +481,7 @@ class MessageBroker:
                 f"{channel.binding.exchange.name!r}; drop the exchange= "
                 "option, or the binding.",
             )
-        if self.transport is Transport.RABBITMQ:
+        if self.transport is TransportEnum.RABBITMQ:
             options["exchange"] = to_rabbit_exchange(channel.binding.exchange)
         return options
 
@@ -741,7 +741,7 @@ class MessageBroker:
             options["headers"] = inject_context(dict(options.get("headers") or {}))
         if exchange is None:
             return await self.broker.publish(message, channel_name(channel), **options)
-        if self.transport is not Transport.RABBITMQ:
+        if self.transport is not TransportEnum.RABBITMQ:
             raise UnsupportedTopologyError(
                 f"publish(exchange=...) needs AMQP exchanges; the "
                 f"{self.transport.value} transport has none.",
@@ -800,7 +800,7 @@ class MessageBroker:
                 chain is AMQP-specific, and pretending otherwise would
                 declare nothing and report success.
         """
-        if self.transport is not Transport.RABBITMQ:
+        if self.transport is not TransportEnum.RABBITMQ:
             raise NotImplementedError(
                 "A retry topology needs AMQP exchanges; the "
                 f"{self.transport.value} transport has none.",
@@ -819,7 +819,7 @@ class MessageBroker:
             )
             await self.broker.declare_exchange(exchange)
             declared = await self.broker.declare_queue(
-                resolve_channel(spec, Transport.RABBITMQ),
+                resolve_channel(spec, TransportEnum.RABBITMQ),
             )
             await declared.bind(exchange_name, routing_key=topology.channel)
             logger.info(
@@ -1057,7 +1057,7 @@ class MessageBroker:
         """
         if self._started:
             return
-        if self._declare_topology and self.transport is Transport.RABBITMQ:
+        if self._declare_topology and self.transport is TransportEnum.RABBITMQ:
             await self.broker.connect()
             try:
                 await self.declare_topology()
@@ -1092,7 +1092,7 @@ class MessageBroker:
             Empty on a transport with no such concept, or when no spec
             asked for dead-lettering.
         """
-        if self.transport is not Transport.RABBITMQ:
+        if self.transport is not TransportEnum.RABBITMQ:
             return []
         exchanges = sorted(
             {
@@ -1209,7 +1209,7 @@ class MessageBroker:
         if limit < 1:
             raise ValueError(f"limit must be at least 1, got {limit!r}.")
         dead, origin = _replay_route(source, into)
-        if self.transport is not Transport.RABBITMQ:
+        if self.transport is not TransportEnum.RABBITMQ:
             raise NotImplementedError(
                 "Replaying dead letters needs AMQP queues; the "
                 f"{self.transport.value} transport has none.",

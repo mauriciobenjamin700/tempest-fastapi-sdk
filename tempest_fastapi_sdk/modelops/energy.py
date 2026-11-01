@@ -16,7 +16,7 @@ never branches on the host it runs on:
 
 **No sampler here reports wall-plug power.** A GPU reading excludes the CPU,
 RAM, PSU losses and cooling; a RAPL reading covers the CPU package only.
-Report the :class:`~tempest_fastapi_sdk.modelops.EnergySource` alongside any
+Report the :class:`~tempest_fastapi_sdk.modelops.EnergySourceEnum` alongside any
 number you publish.
 """
 
@@ -32,7 +32,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from tempest_fastapi_sdk.modelops.schemas import EnergyReading, EnergySource
+from tempest_fastapi_sdk.modelops.schemas import EnergyReading, EnergySourceEnum
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class NullPowerSampler:
     """Sampler for hosts with nothing to measure.
 
     Every method is a no-op and :meth:`reading` reports
-    :attr:`~tempest_fastapi_sdk.modelops.EnergySource.UNAVAILABLE` with all
+    :attr:`~tempest_fastapi_sdk.modelops.EnergySourceEnum.UNAVAILABLE` with all
     energy fields set to ``None``.
     """
 
@@ -127,7 +127,7 @@ class NullPowerSampler:
         Returns:
             EnergyReading: Source ``UNAVAILABLE``, every field ``None``.
         """
-        return EnergyReading(source=EnergySource.UNAVAILABLE)
+        return EnergyReading(source=EnergySourceEnum.UNAVAILABLE)
 
     def latest_power_w(self) -> float | None:
         """Return ``None``.
@@ -154,7 +154,7 @@ class _ThreadedPowerSampler:
     :meth:`stop` sets the stop event.
     """
 
-    source: EnergySource = EnergySource.UNAVAILABLE
+    source: EnergySourceEnum = EnergySourceEnum.UNAVAILABLE
 
     def __init__(
         self,
@@ -245,7 +245,7 @@ class _ThreadedPowerSampler:
         energy = _integrate(power_series)
         if energy is None:
             return EnergyReading(
-                source=EnergySource.UNAVAILABLE,
+                source=EnergySourceEnum.UNAVAILABLE,
                 duration_s=duration,
                 samples=len(self._samples),
                 device_index=self.device_index,
@@ -305,7 +305,7 @@ class NvmlPowerSampler(_ThreadedPowerSampler):
         >>> sampler.reading().energy_j
     """
 
-    source: EnergySource = EnergySource.NVML_SAMPLING
+    source: EnergySourceEnum = EnergySourceEnum.NVML_SAMPLING
 
     def __init__(
         self,
@@ -367,7 +367,7 @@ class NvmlPowerSampler(_ThreadedPowerSampler):
         mean_power = energy_j / duration if duration > 0 else None
         return sampled.model_copy(
             update={
-                "source": EnergySource.NVML_COUNTER,
+                "source": EnergySourceEnum.NVML_COUNTER,
                 "energy_j": energy_j,
                 "mean_power_w": mean_power or sampled.mean_power_w,
             }
@@ -438,7 +438,7 @@ class NvidiaSmiPowerSampler(_ThreadedPowerSampler):
     below that the sampler starts competing with the model for CPU.
     """
 
-    source: EnergySource = EnergySource.NVIDIA_SMI
+    source: EnergySourceEnum = EnergySourceEnum.NVIDIA_SMI
 
     def __init__(
         self,
@@ -590,13 +590,13 @@ class RaplEnergySampler:
         duration = max(self._t_stop - self._t_start, 0.0)
         if not self.available or not self._start_uj:
             return EnergyReading(
-                source=EnergySource.UNAVAILABLE,
+                source=EnergySourceEnum.UNAVAILABLE,
                 duration_s=duration,
             )
         energy_j = self._total_uj / 1_000_000.0
         mean_power = energy_j / duration if duration > 0 else None
         return EnergyReading(
-            source=EnergySource.RAPL,
+            source=EnergySourceEnum.RAPL,
             duration_s=duration,
             energy_j=energy_j,
             mean_power_w=mean_power,

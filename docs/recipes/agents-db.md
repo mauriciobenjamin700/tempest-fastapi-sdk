@@ -48,7 +48,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import AsyncDatabaseManager, BaseModel, BaseRepository
 from tempest_fastapi_sdk.agents import Agent, AgentContext, tool
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 from tempest_fastapi_sdk.schemas import BaseSchema
 
 db = AsyncDatabaseManager("sqlite+aiosqlite:///catalog.db")
@@ -118,7 +118,7 @@ async def search_services(args: SearchArgs, _context: AgentContext) -> str:
 def build_agent() -> Agent:
     """Build the agent the rest of this page imports."""
     return Agent(
-        TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
+        TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT),
         tools=[search_services],
         system_prompt=(
             "Você ajuda a encontrar serviços. Use sempre a ferramenta "

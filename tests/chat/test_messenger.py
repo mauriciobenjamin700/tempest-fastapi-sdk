@@ -22,11 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import BaseRepository, BaseUserModel
 from tempest_fastapi_sdk.chat import (
     ChatService,
-    ConversationKind,
+    ConversationKindEnum,
     MessageCreateSchema,
-    MessageKind,
-    ParticipantRole,
-    SystemEvent,
+    MessageKindEnum,
+    ParticipantRoleEnum,
+    SystemEventEnum,
     make_conversation_model,
     make_conversation_participant_model,
     make_message_attachment_model,
@@ -198,8 +198,8 @@ class TestDirectIsIdempotent:
         pair = await service.start_conversation(ana, [bruno])
         group = await service.start_conversation(ana, [bruno, carla])
 
-        assert pair.kind == ConversationKind.DIRECT
-        assert group.kind == ConversationKind.GROUP
+        assert pair.kind == ConversationKindEnum.DIRECT
+        assert group.kind == ConversationKindEnum.GROUP
 
     async def test_explicit_direct_with_three_is_refused(
         self,
@@ -210,7 +210,7 @@ class TestDirectIsIdempotent:
             await service.start_conversation(
                 person(),
                 [person(), person()],
-                kind=ConversationKind.DIRECT,
+                kind=ConversationKindEnum.DIRECT,
             )
 
     async def test_a_group_is_never_deduplicated(
@@ -405,7 +405,9 @@ class TestWatermarks:
         await service.mark_read(conversation.id, bruno)
 
         page = await service.list_messages(conversation.id, with_receipts=True)
-        posted = next(item for item in page["items"] if item.kind == MessageKind.TEXT)
+        posted = next(
+            item for item in page["items"] if item.kind == MessageKindEnum.TEXT
+        )
 
         assert posted.receipts is not None
         assert posted.receipts.total == 2
@@ -541,7 +543,7 @@ class TestRevoke:
             ana,
             MessageCreateSchema(
                 body="",
-                kind=MessageKind.IMAGE,
+                kind=MessageKindEnum.IMAGE,
                 attachment_ids=[attachment.id],
             ),
         )
@@ -602,7 +604,7 @@ class TestAttachments:
             ana,
             MessageCreateSchema(
                 body="álbum",
-                kind=MessageKind.IMAGE,
+                kind=MessageKindEnum.IMAGE,
                 attachment_ids=[second.id, first.id],
             ),
         )
@@ -621,7 +623,9 @@ class TestAttachments:
         await service.post_message(
             conversation.id,
             ana,
-            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+            MessageCreateSchema(
+                kind=MessageKindEnum.IMAGE, attachment_ids=[attachment.id]
+            ),
         )
 
         with pytest.raises(NotFoundException):
@@ -629,7 +633,7 @@ class TestAttachments:
                 conversation.id,
                 ana,
                 MessageCreateSchema(
-                    kind=MessageKind.IMAGE,
+                    kind=MessageKindEnum.IMAGE,
                     attachment_ids=[attachment.id],
                 ),
             )
@@ -646,7 +650,9 @@ class TestAttachments:
         message = await service.post_message(
             conversation.id,
             ana,
-            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+            MessageCreateSchema(
+                kind=MessageKindEnum.IMAGE, attachment_ids=[attachment.id]
+            ),
         )
 
         assert message.body == ""
@@ -708,7 +714,9 @@ class TestAttachmentOwnership:
         message = await service.post_message(
             conversation.id,
             ana,
-            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+            MessageCreateSchema(
+                kind=MessageKindEnum.IMAGE, attachment_ids=[attachment.id]
+            ),
         )
 
         assert [a.id for a in message.attachments] == [attachment.id]
@@ -728,7 +736,7 @@ class TestAttachmentOwnership:
                 conversation.id,
                 bruno,
                 MessageCreateSchema(
-                    kind=MessageKind.IMAGE,
+                    kind=MessageKindEnum.IMAGE,
                     attachment_ids=[attachment.id],
                 ),
             )
@@ -736,7 +744,9 @@ class TestAttachmentOwnership:
             await service.post_message(
                 conversation.id,
                 bruno,
-                MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[unknown]),
+                MessageCreateSchema(
+                    kind=MessageKindEnum.IMAGE, attachment_ids=[unknown]
+                ),
             )
 
         assert foreign.value.status_code == 404
@@ -758,7 +768,7 @@ class TestAttachmentOwnership:
                 conversation.id,
                 bruno,
                 MessageCreateSchema(
-                    kind=MessageKind.IMAGE,
+                    kind=MessageKindEnum.IMAGE,
                     attachment_ids=[attachment.id],
                 ),
             )
@@ -766,7 +776,9 @@ class TestAttachmentOwnership:
         message = await service.post_message(
             conversation.id,
             ana,
-            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+            MessageCreateSchema(
+                kind=MessageKindEnum.IMAGE, attachment_ids=[attachment.id]
+            ),
         )
 
         assert [a.storage_key for a in message.attachments] == ["ana.jpg"]
@@ -784,7 +796,7 @@ class TestAttachmentOwnership:
         message = await service.post_message(
             conversation.id,
             bruno,
-            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[legacy.id]),
+            MessageCreateSchema(kind=MessageKindEnum.IMAGE, attachment_ids=[legacy.id]),
         )
 
         assert [a.storage_key for a in message.attachments] == ["legacy.jpg"]
@@ -801,7 +813,9 @@ class TestAttachmentOwnership:
         original = await service.post_message(
             first.id,
             ana,
-            MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[attachment.id]),
+            MessageCreateSchema(
+                kind=MessageKindEnum.IMAGE, attachment_ids=[attachment.id]
+            ),
         )
 
         forwarded = await service.forward(original.id, bruno, [second.id])
@@ -839,8 +853,8 @@ class TestGroups:
 
         owner = next(p for p in conversation.participants if p.user_id == ana)
         member = next(p for p in conversation.participants if p.user_id == bruno)
-        assert owner.role == ParticipantRole.OWNER
-        assert member.role == ParticipantRole.MEMBER
+        assert owner.role == ParticipantRoleEnum.OWNER
+        assert member.role == ParticipantRoleEnum.MEMBER
 
     async def test_a_member_cannot_add_people(
         self, service: ChatService, person: _People
@@ -922,7 +936,7 @@ class TestGroups:
     ) -> None:
         ana, bruno, carla = person(), person(), person()
         conversation = await service.start_conversation(ana, [bruno, carla])
-        await service.set_role(conversation.id, ana, bruno, ParticipantRole.ADMIN)
+        await service.set_role(conversation.id, ana, bruno, ParticipantRoleEnum.ADMIN)
 
         with pytest.raises(ForbiddenException):
             await service.remove_participant(conversation.id, bruno, ana)
@@ -942,9 +956,9 @@ class TestSystemMessages:
 
         page = await service.list_messages(conversation.id)
         notice = page["items"][0]
-        assert notice.kind == MessageKind.SYSTEM
+        assert notice.kind == MessageKindEnum.SYSTEM
         assert notice.payload is not None
-        assert notice.payload["event"] == SystemEvent.CONVERSATION_CREATED
+        assert notice.payload["event"] == SystemEventEnum.CONVERSATION_CREATED
         assert notice.payload["actor_id"] == str(ana)
 
     async def test_leaving_names_who_left(
@@ -958,7 +972,7 @@ class TestSystemMessages:
         page = await service.list_messages(conversation.id)
         notice = page["items"][-1]
         assert notice.payload is not None
-        assert notice.payload["event"] == SystemEvent.PARTICIPANT_LEFT
+        assert notice.payload["event"] == SystemEventEnum.PARTICIPANT_LEFT
         assert notice.payload["user_ids"] == [str(bruno)]
 
     async def test_a_direct_thread_gets_no_notice(
@@ -1221,7 +1235,7 @@ class TestAdversarial:
             source.id,
             ana,
             MessageCreateSchema(
-                kind=MessageKind.IMAGE,
+                kind=MessageKindEnum.IMAGE,
                 attachment_ids=[attachment.id],
             ),
         )
@@ -1245,7 +1259,7 @@ class TestAdversarial:
             source.id,
             ana,
             MessageCreateSchema(
-                kind=MessageKind.IMAGE,
+                kind=MessageKindEnum.IMAGE,
                 attachment_ids=[attachment.id],
             ),
         )
@@ -1544,7 +1558,7 @@ class TestRevokeKeepsSharedFiles:
             source.id,
             ana,
             MessageCreateSchema(
-                kind=MessageKind.IMAGE,
+                kind=MessageKindEnum.IMAGE,
                 attachment_ids=[attachment.id],
             ),
         )

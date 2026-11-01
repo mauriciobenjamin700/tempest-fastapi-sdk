@@ -19,22 +19,22 @@ from typing import Any
 from tempest_fastapi_sdk.integrations.payment.base import (
     CardCharge,
     CardChargeRequest,
-    PaymentStatus,
+    PaymentStatusEnum,
     PayoutRequest,
     PayoutResult,
-    PayoutStatus,
+    PayoutStatusEnum,
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPaymentEvent,
 )
 from tempest_fastapi_sdk.testing.fakes._control import _Steerable
 
-_STATUS_EVENTS: dict[PaymentStatus, PixEventType] = {
-    PaymentStatus.PAID: PixEventType.CHARGE_PAID,
-    PaymentStatus.EXPIRED: PixEventType.CHARGE_EXPIRED,
-    PaymentStatus.CANCELLED: PixEventType.CHARGE_CANCELLED,
-    PaymentStatus.REFUNDED: PixEventType.CHARGE_REFUNDED,
+_STATUS_EVENTS: dict[PaymentStatusEnum, PixEventTypeEnum] = {
+    PaymentStatusEnum.PAID: PixEventTypeEnum.CHARGE_PAID,
+    PaymentStatusEnum.EXPIRED: PixEventTypeEnum.CHARGE_EXPIRED,
+    PaymentStatusEnum.CANCELLED: PixEventTypeEnum.CHARGE_CANCELLED,
+    PaymentStatusEnum.REFUNDED: PixEventTypeEnum.CHARGE_REFUNDED,
 }
 
 
@@ -47,8 +47,8 @@ class FakePixProvider(_Steerable):
         >>> charge = await provider.create_pix_charge(
         ...     PixChargeRequest(amount_cents=1990, reference="order-1"),
         ... )
-        >>> event = provider.advance(charge.provider_charge_id, PaymentStatus.PAID)
-        >>> event.type is PixEventType.CHARGE_PAID
+        >>> event = provider.advance(charge.provider_charge_id, PaymentStatusEnum.PAID)
+        >>> event.type is PixEventTypeEnum.CHARGE_PAID
         True
 
     Attributes:
@@ -100,7 +100,7 @@ class FakePixProvider(_Steerable):
             provider_charge_id=charge_id,
             reference=request.reference,
             amount_cents=request.amount_cents,
-            status=PaymentStatus.PENDING,
+            status=PaymentStatusEnum.PENDING,
             provider_status="created",
             br_code=f"000201{charge_id}",
             expires_at=None,
@@ -138,14 +138,14 @@ class FakePixProvider(_Steerable):
             BaseException: Whatever :meth:`fail_next` queued.
         """
         self._record("cancel_pix_charge")
-        return self._transition(charge_id, PaymentStatus.CANCELLED)
+        return self._transition(charge_id, PaymentStatusEnum.CANCELLED)
 
     def parse_webhook(self, event: Any) -> PixPaymentEvent:
         """Turn this fake's delivery shape into a canonical event.
 
         Args:
             event (Any): A mapping with ``charge_id`` and, optionally,
-                ``status`` (a :class:`PaymentStatus` or its value). Defaults
+                ``status`` (a :class:`PaymentStatusEnum` or its value). Defaults
                 to a paid event, because that is the delivery a checkout
                 test is usually after.
 
@@ -158,22 +158,22 @@ class FakePixProvider(_Steerable):
         """
         self._record("parse_webhook")
         charge_id = str(event["charge_id"])
-        status = PaymentStatus(event.get("status", PaymentStatus.PAID))
+        status = PaymentStatusEnum(event.get("status", PaymentStatusEnum.PAID))
         charge = self._transition(charge_id, status)
         return PixPaymentEvent(
             provider=self.provider_name,
-            type=_STATUS_EVENTS.get(status, PixEventType.UNKNOWN),
+            type=_STATUS_EVENTS.get(status, PixEventTypeEnum.UNKNOWN),
             provider_event_name=f"fake.{status.value}",
             charge=charge,
             raw=dict(event),
         )
 
-    def advance(self, charge_id: str, status: PaymentStatus) -> PixPaymentEvent:
+    def advance(self, charge_id: str, status: PaymentStatusEnum) -> PixPaymentEvent:
         """Move a charge to ``status`` and return the event that reports it.
 
         Args:
             charge_id (str): The provider-side id.
-            status (PaymentStatus): The state to move to.
+            status (PaymentStatusEnum): The state to move to.
 
         Returns:
             PixPaymentEvent: The event a real provider's webhook would have
@@ -191,18 +191,18 @@ class FakePixProvider(_Steerable):
         charge = self._transition(charge_id, status)
         return PixPaymentEvent(
             provider=self.provider_name,
-            type=_STATUS_EVENTS.get(status, PixEventType.UNKNOWN),
+            type=_STATUS_EVENTS.get(status, PixEventTypeEnum.UNKNOWN),
             provider_event_name=f"fake.{status.value}",
             charge=charge,
             raw={"charge_id": charge_id, "status": status.value},
         )
 
-    def _transition(self, charge_id: str, status: PaymentStatus) -> PixCharge:
+    def _transition(self, charge_id: str, status: PaymentStatusEnum) -> PixCharge:
         """Store a charge in a new state and return it.
 
         Args:
             charge_id (str): The provider-side id.
-            status (PaymentStatus): The state to move to.
+            status (PaymentStatusEnum): The state to move to.
 
         Returns:
             PixCharge: The updated charge.
@@ -236,26 +236,28 @@ class FakePayoutProvider(_Steerable):
         ...         correlation_id="w-1",
         ...     ),
         ... )
-        >>> result.status is PayoutStatus.CONFIRMED
+        >>> result.status is PayoutStatusEnum.CONFIRMED
         True
 
     Attributes:
         provider_name (str): Copied into :attr:`PayoutResult.provider`.
-        status (PayoutStatus): What every accepted transfer reports.
+        status (PayoutStatusEnum): What every accepted transfer reports.
         transfers (list[PayoutRequest]): Accepted transfers, in order.
         calls (list[str]): Contract methods that ran, in order.
     """
 
     provider_name: str = "fake"
 
-    def __init__(self, *, status: PayoutStatus = PayoutStatus.CONFIRMED) -> None:
+    def __init__(
+        self, *, status: PayoutStatusEnum = PayoutStatusEnum.CONFIRMED
+    ) -> None:
         """Start with no transfers.
 
         Args:
-            status (PayoutStatus): The status every accepted transfer gets.
+            status (PayoutStatusEnum): The status every accepted transfer gets.
         """
         super().__init__()
-        self.status: PayoutStatus = status
+        self.status: PayoutStatusEnum = status
         self.transfers: list[PayoutRequest] = []
 
     async def transfer_to_pix_key(self, request: PayoutRequest, /) -> PayoutResult:
@@ -285,9 +287,9 @@ class FakeCardProvider(_Steerable):
     """A ``CardProvider`` that keeps charges in a dict.
 
     A charge is approved unless :meth:`decline_next` queued a decline, which
-    comes back as a :attr:`PaymentStatus.FAILED` charge — returned, not
+    comes back as a :attr:`PaymentStatusEnum.FAILED` charge — returned, not
     raised, as the real adapter returns the provider's HTTP 402. A
-    ``capture=False`` request comes back :attr:`PaymentStatus.AUTHORIZED`.
+    ``capture=False`` request comes back :attr:`PaymentStatusEnum.AUTHORIZED`.
 
     The fake refuses the transitions a real provider refuses, with
     ``ValueError``: capturing or cancelling anything but an authorization,
@@ -310,7 +312,7 @@ class FakeCardProvider(_Steerable):
         ...     charge.provider_charge_id, amount_cents=3000
         ... )
         >>> (refunded.status, refunded.refunded_cents)
-        (<PaymentStatus.PAID: 'paid'>, 3000)
+        (<PaymentStatusEnum.PAID: 'paid'>, 3000)
 
     Attributes:
         provider_name (str): Copied into :attr:`CardCharge.provider`.
@@ -371,12 +373,12 @@ class FakeCardProvider(_Steerable):
         self._next_id += 1
         status_detail: str | None
         if self._declines:
-            status = PaymentStatus.FAILED
+            status = PaymentStatusEnum.FAILED
             status_detail = self._declines.popleft()
         elif request.capture:
-            status, status_detail = PaymentStatus.PAID, "accredited"
+            status, status_detail = PaymentStatusEnum.PAID, "accredited"
         else:
-            status, status_detail = PaymentStatus.AUTHORIZED, "waiting_capture"
+            status, status_detail = PaymentStatusEnum.AUTHORIZED, "waiting_capture"
         charge = CardCharge(
             provider=self.provider_name,
             provider_charge_id=charge_id,
@@ -422,8 +424,10 @@ class FakeCardProvider(_Steerable):
             BaseException: Whatever :meth:`fail_next` queued.
         """
         self._record("capture_card_charge")
-        self._require(charge_id, PaymentStatus.AUTHORIZED, "capture")
-        return self.advance(charge_id, PaymentStatus.PAID, status_detail="accredited")
+        self._require(charge_id, PaymentStatusEnum.AUTHORIZED, "capture")
+        return self.advance(
+            charge_id, PaymentStatusEnum.PAID, status_detail="accredited"
+        )
 
     async def cancel_card_charge(self, charge_id: str) -> CardCharge:
         """Release an authorization.
@@ -440,8 +444,8 @@ class FakeCardProvider(_Steerable):
             BaseException: Whatever :meth:`fail_next` queued.
         """
         self._record("cancel_card_charge")
-        self._require(charge_id, PaymentStatus.AUTHORIZED, "cancel")
-        return self.advance(charge_id, PaymentStatus.CANCELLED, status_detail=None)
+        self._require(charge_id, PaymentStatusEnum.AUTHORIZED, "cancel")
+        return self.advance(charge_id, PaymentStatusEnum.CANCELLED, status_detail=None)
 
     async def refund_card_charge(
         self, charge_id: str, amount_cents: int | None = None
@@ -465,7 +469,7 @@ class FakeCardProvider(_Steerable):
             BaseException: Whatever :meth:`fail_next` queued.
         """
         self._record("refund_card_charge")
-        charge = self._require(charge_id, PaymentStatus.PAID, "refund")
+        charge = self._require(charge_id, PaymentStatusEnum.PAID, "refund")
         left = charge.amount_cents - charge.refunded_cents
         amount = left if amount_cents is None else amount_cents
         if amount <= 0 or amount > left:
@@ -477,9 +481,13 @@ class FakeCardProvider(_Steerable):
         updated = charge.model_copy(
             update={
                 "refunded_cents": refunded,
-                "status": PaymentStatus.REFUNDED if done else PaymentStatus.PAID,
+                "status": PaymentStatusEnum.REFUNDED
+                if done
+                else PaymentStatusEnum.PAID,
                 "provider_status": (
-                    PaymentStatus.REFUNDED.value if done else PaymentStatus.PAID.value
+                    PaymentStatusEnum.REFUNDED.value
+                    if done
+                    else PaymentStatusEnum.PAID.value
                 ),
                 "status_detail": "refunded" if done else "partially_refunded",
             }
@@ -490,7 +498,7 @@ class FakeCardProvider(_Steerable):
     def advance(
         self,
         charge_id: str,
-        status: PaymentStatus,
+        status: PaymentStatusEnum,
         *,
         status_detail: str | None = None,
     ) -> CardCharge:
@@ -498,8 +506,8 @@ class FakeCardProvider(_Steerable):
 
         Args:
             charge_id (str): The provider-side id.
-            status (PaymentStatus): The state to move to — say
-                :attr:`PaymentStatus.CHARGED_BACK`, which no contract method
+            status (PaymentStatusEnum): The state to move to — say
+                :attr:`PaymentStatusEnum.CHARGED_BACK`, which no contract method
                 reaches.
             status_detail (str | None): The reason to store.
 
@@ -523,13 +531,13 @@ class FakeCardProvider(_Steerable):
         return updated
 
     def _require(
-        self, charge_id: str, status: PaymentStatus, action: str
+        self, charge_id: str, status: PaymentStatusEnum, action: str
     ) -> CardCharge:
         """Read a charge and refuse the action unless it is in ``status``.
 
         Args:
             charge_id (str): The provider-side id.
-            status (PaymentStatus): The state the action needs.
+            status (PaymentStatusEnum): The state the action needs.
             action (str): The action's name, for the message.
 
         Returns:

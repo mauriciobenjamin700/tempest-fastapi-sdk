@@ -132,7 +132,7 @@ each `AdminModel`.
 # src/admin/site.py
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
+    AdminPermissionEnum,
     AdminSite,
     Inline,
     Lens,
@@ -143,7 +143,7 @@ from src.admin.cards import orders_by_status, paid_vs_pending, total_products
 from src.db.models import AuditLog, Category, Order, OrderItem, Product, User
 
 
-def access_policy(user: User, admin: AdminModel, action: AdminPermission) -> bool:
+def access_policy(user: User, admin: AdminModel, action: AdminPermissionEnum) -> bool:
     """superadmin does everything; staff read-only; any other role does nothing.
 
     The policy only runs for whoever already passed the login, and the
@@ -154,7 +154,7 @@ def access_policy(user: User, admin: AdminModel, action: AdminPermission) -> boo
     if user.role == "superadmin":
         return True
     if user.role == "staff":
-        return action is AdminPermission.VIEW
+        return action is AdminPermissionEnum.VIEW
     return False
 
 

@@ -53,7 +53,7 @@ from tempest_fastapi_sdk.genai.audio.diarization import (
     default_cache_dir as default_cache_dir,
 )
 from tempest_fastapi_sdk.genai.audio.diarization import ensure_models as ensure_models
-from tempest_fastapi_sdk.genai.audio.language import Language as Language
+from tempest_fastapi_sdk.genai.audio.language import LanguageEnum as LanguageEnum
 from tempest_fastapi_sdk.genai.audio.language import LanguagePreset as LanguagePreset
 from tempest_fastapi_sdk.genai.audio.language import preset_for as preset_for
 from tempest_fastapi_sdk.genai.audio.profiles import (
@@ -150,7 +150,7 @@ __all__: list[str] = [
     "DiarizedTranscription",
     "EnrollmentResponseSchema",
     "ErasureResponseSchema",
-    "Language",
+    "LanguageEnum",
     "LanguagePreset",
     "SpeakerDiarizer",
     "SpeakerTurn",

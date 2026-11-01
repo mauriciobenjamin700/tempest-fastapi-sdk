@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field
 
-from tempest_fastapi_sdk.pdf.pages import PdfExtractor, PdfPage
+from tempest_fastapi_sdk.pdf.pages import PdfExtractorEnum, PdfPage
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
@@ -280,14 +280,14 @@ class HostPdfSchema(BaseSchema):
 
     Attributes:
         path (str): The resolved path that was read.
-        extractor (PdfExtractor): Which backend produced the pages.
+        extractor (PdfExtractorEnum): Which backend produced the pages.
         page_count (int): Number of pages read.
         size_bytes (int): The file's size on disk.
         pages (list[PdfPage]): One entry per page, in document order.
     """
 
     path: str
-    extractor: PdfExtractor
+    extractor: PdfExtractorEnum
     page_count: int = Field(..., ge=0)
     size_bytes: int = Field(..., ge=0)
     pages: list[PdfPage] = Field(default_factory=list)

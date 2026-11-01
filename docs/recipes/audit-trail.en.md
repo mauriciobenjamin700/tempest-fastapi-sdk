@@ -28,7 +28,7 @@ class AuditLogModel(BaseAuditLogModel):
 
 It inherits the four canonical columns (`id`, `is_active`, `created_at`,
 `updated_at`) plus: `entity` (model name), `entity_id` (row id, as
-text), `action` (`AuditAction`), `actor` (who did it, or `None`),
+text), `action` (`AuditActionEnum`), `actor` (who did it, or `None`),
 `changes` (the JSON diff) and `context` (optional metadata — request id,
 reason). Domain event, IP, user agent and an FK author get their own
 columns in [Event, request origin and author](#event-request-origin-and-author).
@@ -473,7 +473,7 @@ yourself.
 
 ## Recap
 
-- `BaseAuditLogModel` (subclass with `__tablename__`) + `AuditAction`.
+- `BaseAuditLogModel` (subclass with `__tablename__`) + `AuditActionEnum`.
 - `repo = Repository(session, model=..., audit_model=AuditLogModel)`.
 - `add_audited` / `update_audited(model, before)` / `delete_audited` —
   business + audit in the same tx.

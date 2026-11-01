@@ -73,7 +73,7 @@ async def profile_list(orders: BaseRepository[OrderModel]) -> ExplainReport:
 | SQLite | `EXPLAIN QUERY PLAN` | `PLAN_ONLY` | não | não |
 
 O SQLite mostra qual índice cada passo usa — ou que não usa nenhum — e
-nada mais. O SDK reporta `ExplainDetail.PLAN_ONLY` em vez de inventar
+nada mais. O SDK reporta `ExplainDetailEnum.PLAN_ONLY` em vez de inventar
 números; `total_cost` e `duration_ms` ficam `None`, não zero, porque zero
 se leria como "de graça".
 

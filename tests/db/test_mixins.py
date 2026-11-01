@@ -9,8 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from tempest_fastapi_sdk import (
     AuditMixin,
     BaseModel,
-    Locale,
     LocaleColumnMixin,
+    LocaleEnum,
     SoftDeleteMixin,
 )
 
@@ -85,7 +85,7 @@ class TestLocaleColumnMixin:
         assert profile.locale is None
 
     async def test_persists_locale_enum_value(self, session: AsyncSession) -> None:
-        profile = Profile(handle="brazilian", locale=Locale.PT_BR)
+        profile = Profile(handle="brazilian", locale=LocaleEnum.PT_BR)
         session.add(profile)
         await session.commit()
         await session.refresh(profile)

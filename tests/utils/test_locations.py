@@ -4,12 +4,12 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from tempest_fastapi_sdk.utils import (
-    UF,
     ChoiceBR,
     CityBR,
     CityNameField,
-    Region,
+    RegionEnum,
     StateBR,
+    UFEnum,
     UFField,
     cities_by_uf,
     city_choices,
@@ -29,7 +29,7 @@ def test_list_states_returns_all_27() -> None:
     """``list_states`` exposes every federative unit exactly once."""
     states = list_states()
     assert len(states) == 27
-    assert {state.uf for state in states} == set(UF)
+    assert {state.uf for state in states} == set(UFEnum)
     assert all(isinstance(state, StateBR) for state in states)
 
 
@@ -43,21 +43,21 @@ def test_states_are_sorted_by_uf() -> None:
 def test_get_state_known_uf() -> None:
     """``get_state`` returns the matching state with cities and region."""
     sp = get_state("SP")
-    assert sp.uf is UF.SP
+    assert sp.uf is UFEnum.SP
     assert sp.name == "São Paulo"
-    assert sp.region is Region.SOUTHEAST
+    assert sp.region is RegionEnum.SOUTHEAST
     assert "São Paulo" in sp.cities
     assert sp.cities == sorted(sp.cities)
 
 
 def test_get_state_is_case_insensitive() -> None:
     """A lower-case acronym resolves to the same state."""
-    assert get_state("rj").uf is get_state("RJ").uf is UF.RJ
+    assert get_state("rj").uf is get_state("RJ").uf is UFEnum.RJ
 
 
 def test_get_state_accepts_enum() -> None:
-    """Passing a :class:`UF` member works as well as a string."""
-    assert get_state(UF.MG).name == "Minas Gerais"
+    """Passing a :class:`UFEnum` member works as well as a string."""
+    assert get_state(UFEnum.MG).name == "Minas Gerais"
 
 
 def test_get_state_unknown_raises() -> None:
@@ -76,7 +76,7 @@ def test_cities_by_uf() -> None:
 def test_every_region_has_states() -> None:
     """Each macro-region maps to at least one state and covers all 27."""
     total = 0
-    for region in Region:
+    for region in RegionEnum:
         members = states_by_region(region)
         assert members, f"region {region} has no states"
         assert all(state.region is region for state in members)
@@ -86,11 +86,11 @@ def test_every_region_has_states() -> None:
 
 def test_region_mapping_examples() -> None:
     """A few well-known states land in the expected region."""
-    assert get_state("AM").region is Region.NORTH
-    assert get_state("BA").region is Region.NORTHEAST
-    assert get_state("MT").region is Region.CENTRAL_WEST
-    assert get_state("RJ").region is Region.SOUTHEAST
-    assert get_state("RS").region is Region.SOUTH
+    assert get_state("AM").region is RegionEnum.NORTH
+    assert get_state("BA").region is RegionEnum.NORTHEAST
+    assert get_state("MT").region is RegionEnum.CENTRAL_WEST
+    assert get_state("RJ").region is RegionEnum.SOUTHEAST
+    assert get_state("RS").region is RegionEnum.SOUTH
 
 
 @pytest.mark.parametrize(
@@ -103,8 +103,8 @@ def test_is_valid_uf(value: str, expected: bool) -> None:
 
 
 def test_normalize_uf() -> None:
-    """``normalize_uf`` upper-cases, trims and returns a :class:`UF`."""
-    assert normalize_uf(" mg ") is UF.MG
+    """``normalize_uf`` upper-cases, trims and returns a :class:`UFEnum`."""
+    assert normalize_uf(" mg ") is UFEnum.MG
 
 
 def test_normalize_uf_invalid_raises() -> None:
@@ -142,12 +142,12 @@ def test_normalize_city_unknown_raises() -> None:
 
 
 def test_uf_field_coerces_and_validates() -> None:
-    """``UFField`` accepts any-case acronyms and yields a :class:`UF`."""
+    """``UFField`` accepts any-case acronyms and yields a :class:`UFEnum`."""
 
     class Address(BaseModel):
         uf: UFField
 
-    assert Address(uf=" sp ").uf is UF.SP
+    assert Address(uf=" sp ").uf is UFEnum.SP
     with pytest.raises(ValidationError):
         Address(uf="XX")
 
@@ -163,9 +163,9 @@ def test_city_name_field_trims() -> None:
 
 def test_city_br_schema() -> None:
     """``CityBR`` ties a municipality name to its federative unit."""
-    city = CityBR(name="Salvador", uf=UF.BA)
+    city = CityBR(name="Salvador", uf=UFEnum.BA)
     assert city.name == "Salvador"
-    assert city.uf is UF.BA
+    assert city.uf is UFEnum.BA
 
 
 def test_no_duplicate_cities_within_state() -> None:
@@ -186,7 +186,7 @@ def test_uf_choices_value_is_acronym_label_is_name() -> None:
 def test_region_choices_cover_every_region() -> None:
     """``region_choices`` yields one choice per macro-region."""
     choices = region_choices()
-    assert {c.value for c in choices} == {r.value for r in Region}
+    assert {c.value for c in choices} == {r.value for r in RegionEnum}
     assert all(c.value == c.label for c in choices)
 
 

@@ -136,7 +136,7 @@ Saída:
 - `hold=timedelta(hours=48)` grava `available_at` 48 horas à frente. O
   crédito conta no total, mas não no disponível, até lá.
 - `kind` é vocabulário seu (`"TICKET_SALE"`, `"ALO_SALE"`). Os que o
-  service escreve sozinho estão em `WalletEntryKind`.
+  service escreve sozinho estão em `WalletEntryKindEnum`.
 
 !!! info "Medido com concorrência de verdade"
     `tests/wallet/test_wallet_live.py` roda 50 tarefas simultâneas, cada
@@ -280,10 +280,10 @@ Em produção, troque o fake por `OpenPixPayoutProvider`:
 ```python
 from tempest_fastapi_sdk import HTTPClient, RetryPolicy
 from tempest_fastapi_sdk.integrations.payment.adapters import OpenPixPayoutProvider
-from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironmentEnum
 
 http: HTTPClient = HTTPClient(
-    base_url=OpenPixEnvironment.SANDBOX.base_url,
+    base_url=OpenPixEnvironmentEnum.SANDBOX.base_url,
     default_headers={"Authorization": "<seu AppID>"},
     retry_policy=RetryPolicy(max_attempts=1),
 )
@@ -293,9 +293,9 @@ payout: OpenPixPayoutProvider = OpenPixPayoutProvider(http)
 - O adapter manda `autoApprove: true`: cria e aprova o pagamento numa
   chamada só, sem a janela "criado, ainda não aprovado".
 - HTTP 4xx, ou pagamento `DENIED`/`FAILED`, viram
-  `PayoutRejectedException`. `CONFIRMED` vira `PayoutStatus.CONFIRMED`.
+  `PayoutRejectedException`. `CONFIRMED` vira `PayoutStatusEnum.CONFIRMED`.
   `CREATED`, `APPROVED` ou um estado que o adapter não conhece viram
-  `PayoutStatus.PENDING`, com o valor original em `provider_status` — a
+  `PayoutStatusEnum.PENDING`, com o valor original em `provider_status` — a
   liquidação chega depois pelos webhooks `OPENPIX:MOVEMENT_*`.
 
 !!! warning "`RetryPolicy(max_attempts=1)` é obrigatório, e o adapter confere"
@@ -480,7 +480,7 @@ from tempest_fastapi_sdk import (
 )
 from tempest_fastapi_sdk import PixKeyType
 from tempest_fastapi_sdk.integrations.payment.adapters import OpenPixPayoutProvider
-from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironmentEnum
 from tempest_fastapi_sdk.wallet import (
     BaseWalletEntryModel,
     PixDestinationSchema,
@@ -507,7 +507,7 @@ class WalletEntryModel(BaseWalletEntryModel):
 db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
 payout = OpenPixPayoutProvider(
     HTTPClient(
-        base_url=OpenPixEnvironment.SANDBOX.base_url,
+        base_url=OpenPixEnvironmentEnum.SANDBOX.base_url,
         default_headers={"Authorization": "<seu AppID>"},
         retry_policy=RetryPolicy(max_attempts=1),
     )
@@ -598,7 +598,7 @@ def wallet_service(session: AsyncSession) -> WalletService:
 ```
 
 Quem já tem saldo antes do extrato existir ganha uma primeira linha
-`WalletEntryKind.OPENING_BALANCE` na migração, para o extrato fechar com o
+`WalletEntryKindEnum.OPENING_BALANCE` na migração, para o extrato fechar com o
 saldo.
 
 ## Recap

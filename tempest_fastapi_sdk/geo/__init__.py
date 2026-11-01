@@ -69,7 +69,7 @@ from tempest_fastapi_sdk.geo.db import (
 from tempest_fastapi_sdk.geo.db import make_geo_point_model as make_geo_point_model
 from tempest_fastapi_sdk.geo.distance import EARTH_RADIUS_KM as EARTH_RADIUS_KM
 from tempest_fastapi_sdk.geo.distance import haversine_km as haversine_km
-from tempest_fastapi_sdk.geo.enums import TravelMode as TravelMode
+from tempest_fastapi_sdk.geo.enums import TravelModeEnum as TravelModeEnum
 from tempest_fastapi_sdk.geo.estimate import (
     DEFAULT_CAR_SPEED_KMH as DEFAULT_CAR_SPEED_KMH,
 )
@@ -142,7 +142,7 @@ __all__: list[str] = [
     "RedisGeocodeCacheStore",
     "RoutingBackend",
     "TravelEstimate",
-    "TravelMode",
+    "TravelModeEnum",
     "bounding_box",
     "cep_to_coordinate",
     "decode_polyline",

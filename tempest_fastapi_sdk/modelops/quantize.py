@@ -52,39 +52,39 @@ from typing import Any
 
 from tempest_fastapi_sdk.modelops._fs import size_mb, size_ratio
 from tempest_fastapi_sdk.modelops.schemas import (
-    CalibrationMethod,
+    CalibrationMethodEnum,
     ExportResult,
-    HFOptimizationLevel,
-    HFQuantizationTarget,
-    ModelFormat,
-    QuantizationBackend,
-    QuantizationFormat,
+    HFOptimizationLevelEnum,
+    HFQuantizationTargetEnum,
+    ModelFormatEnum,
+    QuantizationBackendEnum,
+    QuantizationFormatEnum,
     QuantizationResult,
-    QuantWeightType,
+    QuantWeightTypeEnum,
 )
 
-_QUANT_TYPE_ATTRS: dict[QuantWeightType, str] = {
-    QuantWeightType.INT8: "QInt8",
-    QuantWeightType.UINT8: "QUInt8",
-    QuantWeightType.INT16: "QInt16",
-    QuantWeightType.UINT16: "QUInt16",
-    QuantWeightType.INT4: "QInt4",
-    QuantWeightType.UINT4: "QUInt4",
-    QuantWeightType.FLOAT8E4M3FN: "QFLOAT8E4M3FN",
+_QUANT_TYPE_ATTRS: dict[QuantWeightTypeEnum, str] = {
+    QuantWeightTypeEnum.INT8: "QInt8",
+    QuantWeightTypeEnum.UINT8: "QUInt8",
+    QuantWeightTypeEnum.INT16: "QInt16",
+    QuantWeightTypeEnum.UINT16: "QUInt16",
+    QuantWeightTypeEnum.INT4: "QInt4",
+    QuantWeightTypeEnum.UINT4: "QUInt4",
+    QuantWeightTypeEnum.FLOAT8E4M3FN: "QFLOAT8E4M3FN",
 }
 """Our weight-type names mapped to ``onnxruntime.quantization.QuantType``."""
 
-_QUANT_FORMAT_ATTRS: dict[QuantizationFormat, str] = {
-    QuantizationFormat.QDQ: "QDQ",
-    QuantizationFormat.QOPERATOR: "QOperator",
+_QUANT_FORMAT_ATTRS: dict[QuantizationFormatEnum, str] = {
+    QuantizationFormatEnum.QDQ: "QDQ",
+    QuantizationFormatEnum.QOPERATOR: "QOperator",
 }
 """Our format names mapped to ``onnxruntime.quantization.QuantFormat``."""
 
-_CALIBRATION_ATTRS: dict[CalibrationMethod, str] = {
-    CalibrationMethod.MINMAX: "MinMax",
-    CalibrationMethod.ENTROPY: "Entropy",
-    CalibrationMethod.PERCENTILE: "Percentile",
-    CalibrationMethod.DISTRIBUTION: "Distribution",
+_CALIBRATION_ATTRS: dict[CalibrationMethodEnum, str] = {
+    CalibrationMethodEnum.MINMAX: "MinMax",
+    CalibrationMethodEnum.ENTROPY: "Entropy",
+    CalibrationMethodEnum.PERCENTILE: "Percentile",
+    CalibrationMethodEnum.DISTRIBUTION: "Distribution",
 }
 """Our method names mapped to ``onnxruntime.quantization.CalibrationMethod``."""
 
@@ -191,26 +191,26 @@ class _OptimizationSpec:
     fp16: bool
 
 
-_OPTIMIZATION_SPECS: dict[HFOptimizationLevel, _OptimizationSpec] = {
-    HFOptimizationLevel.O1: _OptimizationSpec(
+_OPTIMIZATION_SPECS: dict[HFOptimizationLevelEnum, _OptimizationSpec] = {
+    HFOptimizationLevelEnum.O1: _OptimizationSpec(
         opt_level=1,
         transformers_specific=False,
         gelu_approximation=False,
         fp16=False,
     ),
-    HFOptimizationLevel.O2: _OptimizationSpec(
+    HFOptimizationLevelEnum.O2: _OptimizationSpec(
         opt_level=2,
         transformers_specific=True,
         gelu_approximation=False,
         fp16=False,
     ),
-    HFOptimizationLevel.O3: _OptimizationSpec(
+    HFOptimizationLevelEnum.O3: _OptimizationSpec(
         opt_level=2,
         transformers_specific=True,
         gelu_approximation=True,
         fp16=False,
     ),
-    HFOptimizationLevel.O4: _OptimizationSpec(
+    HFOptimizationLevelEnum.O4: _OptimizationSpec(
         opt_level=2,
         transformers_specific=True,
         gelu_approximation=True,
@@ -233,31 +233,31 @@ class _IsaQuantizationSpec:
     """Dynamic-quantization settings for one target instruction set.
 
     Attributes:
-        weight_type (QuantWeightType): Integer type the weights become.
+        weight_type (QuantWeightTypeEnum): Integer type the weights become.
         tunable_reduce_range (bool): Whether ``reduce_range`` is meaningful
             on this ISA. Only the pre-VNNI x86 targets saturate, so it is
             rejected elsewhere rather than silently costing accuracy.
     """
 
-    weight_type: QuantWeightType
+    weight_type: QuantWeightTypeEnum
     tunable_reduce_range: bool
 
 
-_ISA_QUANTIZATION_SPECS: dict[HFQuantizationTarget, _IsaQuantizationSpec] = {
-    HFQuantizationTarget.ARM64: _IsaQuantizationSpec(
-        weight_type=QuantWeightType.INT8,
+_ISA_QUANTIZATION_SPECS: dict[HFQuantizationTargetEnum, _IsaQuantizationSpec] = {
+    HFQuantizationTargetEnum.ARM64: _IsaQuantizationSpec(
+        weight_type=QuantWeightTypeEnum.INT8,
         tunable_reduce_range=False,
     ),
-    HFQuantizationTarget.AVX2: _IsaQuantizationSpec(
-        weight_type=QuantWeightType.UINT8,
+    HFQuantizationTargetEnum.AVX2: _IsaQuantizationSpec(
+        weight_type=QuantWeightTypeEnum.UINT8,
         tunable_reduce_range=True,
     ),
-    HFQuantizationTarget.AVX512: _IsaQuantizationSpec(
-        weight_type=QuantWeightType.INT8,
+    HFQuantizationTargetEnum.AVX512: _IsaQuantizationSpec(
+        weight_type=QuantWeightTypeEnum.INT8,
         tunable_reduce_range=True,
     ),
-    HFQuantizationTarget.AVX512_VNNI: _IsaQuantizationSpec(
-        weight_type=QuantWeightType.INT8,
+    HFQuantizationTargetEnum.AVX512_VNNI: _IsaQuantizationSpec(
+        weight_type=QuantWeightTypeEnum.INT8,
         tunable_reduce_range=False,
     ),
 }
@@ -330,7 +330,7 @@ def quantize_onnx_dynamic(
     model_path: str | Path,
     output_path: str | Path,
     *,
-    weight_type: QuantWeightType = QuantWeightType.INT8,
+    weight_type: QuantWeightTypeEnum = QuantWeightTypeEnum.INT8,
     per_channel: bool = False,
     reduce_range: bool = False,
     op_types: Sequence[str] | None = None,
@@ -351,7 +351,7 @@ def quantize_onnx_dynamic(
     Args:
         model_path (str | Path): Model to quantize.
         output_path (str | Path): Where to write the quantized model.
-        weight_type (QuantWeightType): Target weight type. ``INT8`` is the
+        weight_type (QuantWeightTypeEnum): Target weight type. ``INT8`` is the
             default; ``UINT8`` sometimes suits older ARM kernels better.
         per_channel (bool): Quantize convolution weights per output channel
             instead of per tensor. Better accuracy, slightly larger, and
@@ -383,7 +383,7 @@ def quantize_onnx_dynamic(
         >>> result.compression_ratio
     """
     quantization = _require_onnx_quantization()
-    weight_type = QuantWeightType(weight_type)
+    weight_type = QuantWeightTypeEnum(weight_type)
     source = Path(model_path)
     if not source.is_file():
         raise FileNotFoundError(f"model not found: {source}")
@@ -408,7 +408,7 @@ def quantize_onnx_dynamic(
     return _quantization_result(
         source,
         destination,
-        backend=QuantizationBackend.ONNXRUNTIME_DYNAMIC,
+        backend=QuantizationBackendEnum.ONNXRUNTIME_DYNAMIC,
         weight_type=weight_type,
         per_channel=per_channel,
     )
@@ -419,10 +419,10 @@ def quantize_onnx_static(
     output_path: str | Path,
     *,
     calibration_inputs: Iterable[Mapping[str, Any]],
-    weight_type: QuantWeightType = QuantWeightType.INT8,
-    activation_type: QuantWeightType = QuantWeightType.INT8,
-    quant_format: QuantizationFormat = QuantizationFormat.QDQ,
-    calibrate_method: CalibrationMethod = CalibrationMethod.MINMAX,
+    weight_type: QuantWeightTypeEnum = QuantWeightTypeEnum.INT8,
+    activation_type: QuantWeightTypeEnum = QuantWeightTypeEnum.INT8,
+    quant_format: QuantizationFormatEnum = QuantizationFormatEnum.QDQ,
+    calibrate_method: CalibrationMethodEnum = CalibrationMethodEnum.MINMAX,
     per_channel: bool = False,
     op_types: Sequence[str] | None = None,
     nodes_to_exclude: Sequence[str] | None = None,
@@ -446,13 +446,13 @@ def quantize_onnx_static(
         calibration_inputs (Iterable[Mapping[str, Any]]): Feed dicts, one
             per calibration batch, shaped exactly like the dicts you would
             pass to ``session.run``. Consumed once.
-        weight_type (QuantWeightType): Target weight type.
-        activation_type (QuantWeightType): Target activation type.
+        weight_type (QuantWeightTypeEnum): Target weight type.
+        activation_type (QuantWeightTypeEnum): Target activation type.
             ``UINT8`` activations are common for vision models whose
             activations are post-ReLU and therefore non-negative.
-        quant_format (QuantizationFormat): ``QDQ`` (portable) or
+        quant_format (QuantizationFormatEnum): ``QDQ`` (portable) or
             ``QOPERATOR`` (smaller, narrower provider support).
-        calibrate_method (CalibrationMethod): Range-selection algorithm.
+        calibrate_method (CalibrationMethodEnum): Range-selection algorithm.
             Try ``ENTROPY`` or ``PERCENTILE`` when ``MINMAX`` loses accuracy
             — a single outlier activation stretches a min/max range until
             everything else quantizes into a handful of levels.
@@ -486,10 +486,10 @@ def quantize_onnx_static(
         >>> result.notes
     """
     quantization = _require_onnx_quantization()
-    weight_type = QuantWeightType(weight_type)
-    activation_type = QuantWeightType(activation_type)
-    quant_format = QuantizationFormat(quant_format)
-    calibrate_method = CalibrationMethod(calibrate_method)
+    weight_type = QuantWeightTypeEnum(weight_type)
+    activation_type = QuantWeightTypeEnum(activation_type)
+    quant_format = QuantizationFormatEnum(quant_format)
+    calibrate_method = CalibrationMethodEnum(calibrate_method)
     source = Path(model_path)
     if not source.is_file():
         raise FileNotFoundError(f"model not found: {source}")
@@ -540,7 +540,7 @@ def quantize_onnx_static(
     return _quantization_result(
         source,
         destination,
-        backend=QuantizationBackend.ONNXRUNTIME_STATIC,
+        backend=QuantizationBackendEnum.ONNXRUNTIME_STATIC,
         weight_type=weight_type,
         per_channel=per_channel,
         notes=[f"calibrated on {len(batches)} batch(es)"],
@@ -580,8 +580,8 @@ def _quantization_result(
     source: Path,
     destination: Path,
     *,
-    backend: QuantizationBackend,
-    weight_type: QuantWeightType | None,
+    backend: QuantizationBackendEnum,
+    weight_type: QuantWeightTypeEnum | None,
     per_channel: bool = False,
     notes: list[str] | None = None,
 ) -> QuantizationResult:
@@ -590,8 +590,8 @@ def _quantization_result(
     Args:
         source (Path): Input model or directory.
         destination (Path): Output model or directory.
-        backend (QuantizationBackend): Engine that produced it.
-        weight_type (QuantWeightType | None): Target weight type.
+        backend (QuantizationBackendEnum): Engine that produced it.
+        weight_type (QuantWeightTypeEnum | None): Target weight type.
         per_channel (bool): Whether per-channel quantization was used.
         notes (list[str] | None): Extra caveats to surface.
 
@@ -808,7 +808,7 @@ def optimize_hf_onnx(
     model_dir: str | Path,
     output_dir: str | Path,
     *,
-    level: HFOptimizationLevel = HFOptimizationLevel.O2,
+    level: HFOptimizationLevelEnum = HFOptimizationLevelEnum.O2,
     for_gpu: bool = False,
     file_name: str | None = None,
     model_type: str | None = None,
@@ -831,7 +831,7 @@ def optimize_hf_onnx(
             ``config.json``.
         output_dir (str | Path): Where to write the optimized model. The
             export's non-graph files are copied along.
-        level (HFOptimizationLevel): Optimization preset. ``O4`` requires
+        level (HFOptimizationLevelEnum): Optimization preset. ``O4`` requires
             ``for_gpu=True``.
         for_gpu (bool): Target GPU kernels. A model optimized for GPU is not
             portable back to CPU.
@@ -867,8 +867,8 @@ def optimize_hf_onnx(
     optimizer = _require_ort_transformers()
     from onnxruntime.transformers.fusion_options import FusionOptions
 
-    level = HFOptimizationLevel(level)
-    if level is HFOptimizationLevel.O4 and not for_gpu:
+    level = HFOptimizationLevelEnum(level)
+    if level is HFOptimizationLevelEnum.O4 and not for_gpu:
         raise ValueError(
             "optimization level O4 converts the graph to float16 and is "
             "GPU-only; pass for_gpu=True or drop to O3"
@@ -910,7 +910,7 @@ def optimize_hf_onnx(
     return ExportResult(
         source_path=str(source),
         output_path=str(destination),
-        format=ModelFormat.ONNX,
+        format=ModelFormatEnum.ONNX,
         source_size_mb=source_size,
         output_size_mb=output_size,
         size_ratio=size_ratio(source_size, output_size),
@@ -921,7 +921,7 @@ def quantize_hf_onnx(
     model_dir: str | Path,
     output_dir: str | Path,
     *,
-    target: HFQuantizationTarget = HFQuantizationTarget.AVX512_VNNI,
+    target: HFQuantizationTargetEnum = HFQuantizationTargetEnum.AVX512_VNNI,
     per_channel: bool = False,
     reduce_range: bool = False,
     symmetric_weights: bool = True,
@@ -942,7 +942,7 @@ def quantize_hf_onnx(
     Args:
         model_dir (str | Path): Directory an ONNX export wrote.
         output_dir (str | Path): Where to write the quantized model.
-        target (HFQuantizationTarget): Instruction set to target. Choosing one
+        target (HFQuantizationTargetEnum): Instruction set to target. Choosing one
             your CPU lacks still yields a valid model, just a slow one.
         per_channel (bool): Quantize weights per output channel instead of per
             tensor. Better accuracy, slightly larger.
@@ -976,7 +976,7 @@ def quantize_hf_onnx(
         >>> result.compression_ratio
     """
     quantization = _require_onnx_quantization()
-    target = HFQuantizationTarget(target)
+    target = HFQuantizationTargetEnum(target)
     spec = _ISA_QUANTIZATION_SPECS[target]
     if reduce_range and not spec.tunable_reduce_range:
         raise ValueError(
@@ -1008,7 +1008,7 @@ def quantize_hf_onnx(
     return _quantization_result(
         source,
         destination,
-        backend=QuantizationBackend.ONNXRUNTIME_TRANSFORMERS,
+        backend=QuantizationBackendEnum.ONNXRUNTIME_TRANSFORMERS,
         weight_type=spec.weight_type,
         per_channel=per_channel,
         notes=[f"targeted {target.value}"],
@@ -1098,8 +1098,10 @@ def quantize_hf_bnb(
     return QuantizationResult(
         source_path=model_id,
         output_path=str(destination),
-        backend=QuantizationBackend.BITSANDBYTES,
-        weight_type=(QuantWeightType.INT4 if bits == 4 else QuantWeightType.INT8),
+        backend=QuantizationBackendEnum.BITSANDBYTES,
+        weight_type=(
+            QuantWeightTypeEnum.INT4 if bits == 4 else QuantWeightTypeEnum.INT8
+        ),
         output_size_mb=output_size,
         compression_ratio=1.0,
         notes=[

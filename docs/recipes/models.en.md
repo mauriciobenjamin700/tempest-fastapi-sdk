@@ -18,20 +18,20 @@ This page answers both: one enum per task, and a use-case table.
 ## The enum
 
 ```python
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
-gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+gen = TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT)
 ```
 
-`TextModel` is a `StrEnum`: each member **is** the id string, so it drops
+`TextModelEnum` is a `StrEnum`: each member **is** the id string, so it drops
 straight into anything that takes a `str` — a constructor, settings,
 JSON, a query parameter.
 
 ```python
-from tempest_fastapi_sdk.genai import TextModel
+from tempest_fastapi_sdk.genai import TextModelEnum
 
-assert TextModel.QWEN2_5_7B_INSTRUCT == "Qwen/Qwen2.5-7B-Instruct"
-print(f"loading {TextModel.QWEN2_5_7B_INSTRUCT}")
+assert TextModelEnum.QWEN2_5_7B_INSTRUCT == "Qwen/Qwen2.5-7B-Instruct"
+print(f"loading {TextModelEnum.QWEN2_5_7B_INSTRUCT}")
 ```
 
 !!! info "A starting point, not a whitelist"
@@ -42,15 +42,15 @@ One enum per task:
 
 | Enum | Feeds |
 | --- | --- |
-| `TextModel` | `TextGenerator`, `Agent`, `AIChatPipeline` |
-| `EmbeddingModel` | `Embedder`, `Retriever`, `HybridRetriever` |
-| `RerankerModel` | `Reranker` |
-| `VisionModel` | `VisionTextGenerator`, `describe_image_tool` |
-| `ImageModel` | `ImageGenerator`, `generate_image_tool` |
-| `SpeechToTextModel` | `SpeechToText`, `transcribe_audio_tool` |
-| `TextToSpeechModel` | `TextToSpeech`, `speak_tool` |
+| `TextModelEnum` | `TextGenerator`, `Agent`, `AIChatPipeline` |
+| `EmbeddingModelEnum` | `Embedder`, `Retriever`, `HybridRetriever` |
+| `RerankerModelEnum` | `Reranker` |
+| `VisionModelEnum` | `VisionTextGenerator`, `describe_image_tool` |
+| `ImageModelEnum` | `ImageGenerator`, `generate_image_tool` |
+| `SpeechToTextModelEnum` | `SpeechToText`, `transcribe_audio_tool` |
+| `TextToSpeechModelEnum` | `TextToSpeech`, `speak_tool` |
 
-## Text and agents — `TextModel`
+## Text and agents — `TextModelEnum`
 
 | Member | Params | VRAM (bf16) | Use it when |
 | --- | --- | --- | --- |
@@ -78,9 +78,9 @@ One enum per task:
     int4:
 
     ```python
-    from tempest_fastapi_sdk.genai import TextModel, recommend
+    from tempest_fastapi_sdk.genai import TextModelEnum, recommend
 
-    report = recommend(model_id=TextModel.QWEN2_5_7B_INSTRUCT)
+    report = recommend(model_id=TextModelEnum.QWEN2_5_7B_INSTRUCT)
     print(report.dtype, report.fits, report.device)
     ```
 
@@ -89,7 +89,7 @@ One enum per task:
     `chat_with_tools`. Models below ~1.5B tend to ignore the schema and
     answer in prose — the agent degrades to a single-shot answerer.
 
-## Embeddings and RAG — `EmbeddingModel`
+## Embeddings and RAG — `EmbeddingModelEnum`
 
 | Member | Dim | Languages | Use it when |
 | --- | --- | --- | --- |
@@ -111,14 +111,14 @@ and the `Retriever` applies each one on the right side.
 ```python title="e5_rag.py" hl_lines="12 13"
 import asyncio
 
-from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModelEnum
 from tempest_fastapi_sdk.genai.rag import Chunk, InMemoryVectorStore, Retriever
 
 
 async def main() -> None:
     """Index two passages and search them with E5's role prefixes."""
     embedder = Embedder(
-        EmbeddingModel.MULTILINGUAL_E5_LARGE,
+        EmbeddingModelEnum.MULTILINGUAL_E5_LARGE,
         normalize=True,
         query_prefix="query: ",
         passage_prefix="passage: ",
@@ -153,7 +153,7 @@ declares neither keeps its previous behaviour.
     `embed_query` / `embed_passages` keep working in the `Retriever` through
     plain `embed()` — and, in that case, without a prefix.
 
-## Rerank — `RerankerModel`
+## Rerank — `RerankerModelEnum`
 
 | Member | Use it when |
 | --- | --- |
@@ -165,7 +165,7 @@ and the cross-encoder reorders them down to `top_k`. It reads query and
 chunk together, so it is expensive per pair — not a replacement for the
 embedder, the fine filter after it.
 
-## Vision — `VisionModel`
+## Vision — `VisionModelEnum`
 
 | Member | Params | Use it when |
 | --- | --- | --- |
@@ -173,7 +173,7 @@ embedder, the fine filter after it.
 | `QWEN2_VL_7B_INSTRUCT` | 7B | Real visual question answering; 16 GB. |
 | `LLAVA_1_5_7B` | 7B | The classic baseline, with plenty of material published. |
 
-## Images — `ImageModel`
+## Images — `ImageModelEnum`
 
 | Member | Steps | Use it when |
 | --- | --- | --- |
@@ -188,15 +188,15 @@ embedder, the fine filter after it.
 
     ```python
     from tempest_fastapi_sdk.agents import generate_image_tool
-    from tempest_fastapi_sdk.genai import ImageGenerator, ImageModel
+    from tempest_fastapi_sdk.genai import ImageGenerator, ImageModelEnum
 
     tool = generate_image_tool(
-        ImageGenerator(ImageModel.SDXL_TURBO),
+        ImageGenerator(ImageModelEnum.SDXL_TURBO),
         default_steps=4,
     )
     ```
 
-## Audio — `SpeechToTextModel` and `TextToSpeechModel`
+## Audio — `SpeechToTextModelEnum` and `TextToSpeechModelEnum`
 
 | Member (STT) | Use it when |
 | --- | --- |
@@ -220,21 +220,21 @@ import asyncio
 from tempest_fastapi_sdk.agents import Agent, describe_image_tool, generate_image_tool
 from tempest_fastapi_sdk.genai import (
     ImageGenerator,
-    ImageModel,
+    ImageModelEnum,
     TextGenerator,
-    TextModel,
-    VisionModel,
+    TextModelEnum,
+    VisionModelEnum,
     VisionTextGenerator,
 )
 
 agent = Agent(
-    TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT),
+    TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT),
     tools=[
         generate_image_tool(
-            ImageGenerator(ImageModel.SDXL_TURBO),
+            ImageGenerator(ImageModelEnum.SDXL_TURBO),
             default_steps=4,
         ),
-        describe_image_tool(VisionTextGenerator(VisionModel.QWEN2_VL_2B_INSTRUCT)),
+        describe_image_tool(VisionTextGenerator(VisionModelEnum.QWEN2_VL_2B_INSTRUCT)),
     ],
 )
 
@@ -253,8 +253,8 @@ asyncio.run(main())
 ## Recap
 
 * The id is still a `str` — the enum only names what the SDK exercises.
-* `TextModel.QWEN2_5_7B_INSTRUCT` is the starting point for real work;
+* `TextModelEnum.QWEN2_5_7B_INSTRUCT` is the starting point for real work;
   `QWEN2_5_0_5B_INSTRUCT` is for tests, not for quality.
-* Changing `EmbeddingModel` forces a full reindex.
+* Changing `EmbeddingModelEnum` forces a full reindex.
 * A turbo image checkpoint wants ~4 steps; a full one ~30.
 * Before downloading 15 GB, ask `recommend()` whether it fits.

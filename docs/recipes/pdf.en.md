@@ -683,7 +683,7 @@ That is what `read_pdf_pages` does. It takes the bytes and returns a
 
 | Field | Type | What it is |
 | --- | --- | --- |
-| `extractor` | `PdfExtractor` | which reader produced the result (`text` or `layout`) |
+| `extractor` | `PdfExtractorEnum` | which reader produced the result (`text` or `layout`) |
 | `page_count` | `int` | number of pages read |
 | `pages` | `list[PdfPage]` | one entry per page, in document order |
 
@@ -705,7 +705,7 @@ from typing import Annotated
 from fastapi import FastAPI, File, Form, UploadFile
 
 from tempest_fastapi_sdk import BodySizeLimitMiddleware, register_exception_handlers
-from tempest_fastapi_sdk.pdf import PdfExtractor, PdfPagesResult, read_pdf_pages
+from tempest_fastapi_sdk.pdf import PdfExtractorEnum, PdfPagesResult, read_pdf_pages
 
 app: FastAPI = FastAPI()
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=10 * 1024 * 1024)
@@ -715,7 +715,7 @@ register_exception_handlers(app)
 @app.post("/api/documents/read", response_model=PdfPagesResult)
 async def read_document(
     file: Annotated[UploadFile, File()],
-    extractor: Annotated[PdfExtractor, Form()] = PdfExtractor.TEXT,
+    extractor: Annotated[PdfExtractorEnum, Form()] = PdfExtractorEnum.TEXT,
     password: Annotated[str | None, Form()] = None,
 ) -> PdfPagesResult:
     data: bytes = await file.read()
@@ -755,7 +755,7 @@ Piece by piece:
   blocking the event loop.
 - **`response_model=PdfPagesResult`.** Since the return type is an SDK
   schema, the route's OpenAPI already describes `PdfPagesResult`, `PdfPage`
-  and `PdfExtractor` without you declaring anything.
+  and `PdfExtractorEnum` without you declaring anything.
 - **`BodySizeLimitMiddleware`** refuses an oversized body before any parsing
   (details below).
 
@@ -780,12 +780,12 @@ Pydantic schema: iterate `pages`.
 import asyncio
 from pathlib import Path
 
-from tempest_fastapi_sdk.pdf import PdfExtractor, PdfPagesResult, read_pdf_pages
+from tempest_fastapi_sdk.pdf import PdfExtractorEnum, PdfPagesResult, read_pdf_pages
 
 
 async def main() -> None:
     data: bytes = Path("contrato.pdf").read_bytes()
-    result: PdfPagesResult = await read_pdf_pages(data, extractor=PdfExtractor.LAYOUT)
+    result: PdfPagesResult = await read_pdf_pages(data, extractor=PdfExtractorEnum.LAYOUT)
     print(f"{result.page_count} pages, reader {result.extractor}")
     for page in result.pages:
         print(f"--- page {page.page_number} ---")

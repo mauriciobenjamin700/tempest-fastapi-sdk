@@ -52,9 +52,9 @@ from tempest_fastapi_sdk.db.integrity import describe_database_error
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.search import (
     ColumnRef,
-    TextSearchLanguage,
-    TextSearchWeight,
-    TokenMatch,
+    TextSearchLanguageEnum,
+    TextSearchWeightEnum,
+    TokenMatchEnum,
     _secret_search_columns,
     full_text_rank,
     like_search_condition,
@@ -63,7 +63,7 @@ from tempest_fastapi_sdk.db.search import (
 from tempest_fastapi_sdk.db.search import (
     full_text_condition as build_full_text_condition,
 )
-from tempest_fastapi_sdk.db.signals import RepositorySignal, emit, has_handlers
+from tempest_fastapi_sdk.db.signals import RepositorySignalEnum, emit, has_handlers
 from tempest_fastapi_sdk.db.transaction import in_transaction, savepoint, transaction
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
@@ -821,7 +821,7 @@ class BaseRepository(Generic[ModelType]):
         term: str,
         *,
         fields: Sequence[ColumnRef],
-        token_match: TokenMatch = TokenMatch.ALL,
+        token_match: TokenMatchEnum = TokenMatchEnum.ALL,
     ) -> ColumnElement[bool] | None:
         """Build a portable substring-search condition over ``fields``.
 
@@ -844,7 +844,7 @@ class BaseRepository(Generic[ModelType]):
             term (str): The raw search term.
             fields (Sequence[ColumnRef]): Columns to search, by name or
                 as mapped attributes (``UserModel.name``).
-            token_match (TokenMatch): Whether every token must match
+            token_match (TokenMatchEnum): Whether every token must match
                 (default) or any single one is enough.
 
         Returns:
@@ -870,9 +870,9 @@ class BaseRepository(Generic[ModelType]):
         term: str,
         *,
         fields: Sequence[ColumnRef],
-        language: TextSearchLanguage = TextSearchLanguage.PORTUGUESE,
-        weights: Mapping[str, TextSearchWeight] | None = None,
-        token_match: TokenMatch = TokenMatch.ALL,
+        language: TextSearchLanguageEnum = TextSearchLanguageEnum.PORTUGUESE,
+        weights: Mapping[str, TextSearchWeightEnum] | None = None,
+        token_match: TokenMatchEnum = TokenMatchEnum.ALL,
     ) -> ColumnElement[bool] | None:
         """Build a full-text condition, or the portable fallback.
 
@@ -885,11 +885,11 @@ class BaseRepository(Generic[ModelType]):
         Args:
             term (str): The raw search term.
             fields (Sequence[ColumnRef]): Columns to search.
-            language (TextSearchLanguage): Stemming configuration.
-            weights (Mapping[str, TextSearchWeight] | None): Per-column
+            language (TextSearchLanguageEnum): Stemming configuration.
+            weights (Mapping[str, TextSearchWeightEnum] | None): Per-column
                 weight for the relevance score, keyed by column name.
                 Pass the same mapping to :meth:`full_text_search`.
-            token_match (TokenMatch): Used only by the fallback path.
+            token_match (TokenMatchEnum): Used only by the fallback path.
 
         Returns:
             ColumnElement[bool] | None: The condition, or ``None`` for a
@@ -1003,13 +1003,13 @@ class BaseRepository(Generic[ModelType]):
 
     async def _emit_signal(
         self,
-        signal: RepositorySignal,
+        signal: RepositorySignalEnum,
         instance: ModelType,
     ) -> None:
         """Emit ``signal`` for ``instance`` to any registered handlers.
 
         Args:
-            signal (RepositorySignal): The lifecycle moment.
+            signal (RepositorySignalEnum): The lifecycle moment.
             instance (ModelType): The ORM row passed to each handler.
         """
         await emit(type(instance), signal, instance)
@@ -1393,7 +1393,7 @@ class BaseRepository(Generic[ModelType]):
         term: str,
         *,
         fields: Sequence[ColumnRef],
-        token_match: TokenMatch = TokenMatch.ALL,
+        token_match: TokenMatchEnum = TokenMatchEnum.ALL,
         filters: dict[str, Any] | None = None,
         where: WhereClause | None = None,
         order_by: Any | None = None,
@@ -1417,7 +1417,7 @@ class BaseRepository(Generic[ModelType]):
             term (str): The raw search term.
             fields (Sequence[ColumnRef]): Columns to search, by name or
                 as mapped attributes (``UserModel.name``).
-            token_match (TokenMatch): Whether every token must match
+            token_match (TokenMatchEnum): Whether every token must match
                 (default) or any single one is enough.
             filters (dict[str, Any] | None): Extra conditions ANDed with the search,
                 column name to value, e.g. ``{"user_id": 1234, "is_active": True}``.
@@ -1466,9 +1466,9 @@ class BaseRepository(Generic[ModelType]):
         term: str,
         *,
         fields: Sequence[ColumnRef],
-        language: TextSearchLanguage = TextSearchLanguage.PORTUGUESE,
-        weights: Mapping[str, TextSearchWeight] | None = None,
-        token_match: TokenMatch = TokenMatch.ALL,
+        language: TextSearchLanguageEnum = TextSearchLanguageEnum.PORTUGUESE,
+        weights: Mapping[str, TextSearchWeightEnum] | None = None,
+        token_match: TokenMatchEnum = TokenMatchEnum.ALL,
         filters: dict[str, Any] | None = None,
         where: WhereClause | None = None,
         order_by: Any | None = None,
@@ -1492,12 +1492,12 @@ class BaseRepository(Generic[ModelType]):
         Args:
             term (str): The raw search term.
             fields (Sequence[ColumnRef]): Columns to search.
-            language (TextSearchLanguage): Stemming configuration.
-            weights (Mapping[str, TextSearchWeight] | None): Per-column
+            language (TextSearchLanguageEnum): Stemming configuration.
+            weights (Mapping[str, TextSearchWeightEnum] | None): Per-column
                 weight for the score, keyed by column name; columns left
                 out rank lowest. A term in a title outranking the same
                 term in a body is this parameter.
-            token_match (TokenMatch): Used only on the fallback path;
+            token_match (TokenMatchEnum): Used only on the fallback path;
                 PostgreSQL already treats separate words as ``AND``.
             filters (dict[str, Any] | None): Extra conditions ANDed in, column name
                 to value, e.g. ``{"user_id": 1234, "is_active": True}``. A list is
@@ -1945,11 +1945,11 @@ class BaseRepository(Generic[ModelType]):
         """
         self._prepare_insert(model)
         try:
-            await self._emit_signal(RepositorySignal.PRE_SAVE, model)
+            await self._emit_signal(RepositorySignalEnum.PRE_SAVE, model)
             self.session.add(model)
             await self._commit()
             await self.session.refresh(model)
-            await self._emit_signal(RepositorySignal.POST_SAVE, model)
+            await self._emit_signal(RepositorySignalEnum.POST_SAVE, model)
             return model
         except IntegrityError as exc:
             await self._rollback_after_failure()
@@ -1982,12 +1982,12 @@ class BaseRepository(Generic[ModelType]):
             self._prepare_insert(model)
         try:
             for model in models:
-                await self._emit_signal(RepositorySignal.PRE_SAVE, model)
+                await self._emit_signal(RepositorySignalEnum.PRE_SAVE, model)
             self.session.add_all(models)
             await self._commit()
             for model in models:
                 await self.session.refresh(model)
-                await self._emit_signal(RepositorySignal.POST_SAVE, model)
+                await self._emit_signal(RepositorySignalEnum.POST_SAVE, model)
             return models
         except IntegrityError as exc:
             await self._rollback_after_failure()
@@ -2385,10 +2385,10 @@ class BaseRepository(Generic[ModelType]):
         """
         try:
             await self._check_instance_write(model)
-            await self._emit_signal(RepositorySignal.PRE_SAVE, model)
+            await self._emit_signal(RepositorySignalEnum.PRE_SAVE, model)
             await self._commit()
             await self.session.refresh(model)
-            await self._emit_signal(RepositorySignal.POST_SAVE, model)
+            await self._emit_signal(RepositorySignalEnum.POST_SAVE, model)
             return model
         except IntegrityError as exc:
             await self._rollback_after_failure()
@@ -2420,10 +2420,10 @@ class BaseRepository(Generic[ModelType]):
             for model in models:
                 await self._check_instance_write(model)
             for model in models:
-                await self._emit_signal(RepositorySignal.PRE_SAVE, model)
+                await self._emit_signal(RepositorySignalEnum.PRE_SAVE, model)
             await self._commit()
             for model in models:
-                await self._emit_signal(RepositorySignal.POST_SAVE, model)
+                await self._emit_signal(RepositorySignalEnum.POST_SAVE, model)
             return models
         except IntegrityError as exc:
             await self._rollback_after_failure()
@@ -2919,13 +2919,13 @@ class BaseRepository(Generic[ModelType]):
         try:
             instance: ModelType | None = None
             wants_signals = has_handlers(
-                self.model, RepositorySignal.PRE_DELETE
-            ) or has_handlers(self.model, RepositorySignal.POST_DELETE)
+                self.model, RepositorySignalEnum.PRE_DELETE
+            ) or has_handlers(self.model, RepositorySignalEnum.POST_DELETE)
             if wants_signals:
                 instance = await self.get_or_none({"id": id})
                 if instance is None:
                     self._raise_not_found()
-                await self._emit_signal(RepositorySignal.PRE_DELETE, instance)
+                await self._emit_signal(RepositorySignalEnum.PRE_DELETE, instance)
 
             query = delete(self.model).where(self.model.id == id)
             result = cast(CursorResult[Any], await self.session.execute(query))
@@ -2937,7 +2937,7 @@ class BaseRepository(Generic[ModelType]):
             await self._commit()
 
             if instance is not None:
-                await self._emit_signal(RepositorySignal.POST_DELETE, instance)
+                await self._emit_signal(RepositorySignalEnum.POST_DELETE, instance)
         except AppException:
             raise
         except Exception:

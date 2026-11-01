@@ -37,7 +37,7 @@ from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
     _layer_config,
     precision_kwarg,
 )
@@ -49,7 +49,9 @@ from tempest_fastapi_sdk.genai.structured import (
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
-_QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
+_QUANTIZATIONS: frozenset[ModelDtypeEnum] = frozenset(
+    {ModelDtypeEnum.INT8, ModelDtypeEnum.INT4}
+)
 
 _TOOL_CALL_RE: re.Pattern[str] = re.compile(
     r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
@@ -766,8 +768,8 @@ class TextGenerator:
     Attributes:
         model_id (str): The HuggingFace model id.
         device (str): The resolved device (``cuda`` / ``mps`` / ``cpu``).
-        dtype (ModelDtype): The resolved compute precision.
-        quantization (ModelDtype | None): int8/int4 when quantized.
+        dtype (ModelDtypeEnum): The resolved compute precision.
+        quantization (ModelDtypeEnum | None): int8/int4 when quantized.
         source (ModelRef): The resolved weight identity (id, revision,
             cache, token, offline/remote-code flags) forwarded to every
             ``from_pretrained`` call.
@@ -784,8 +786,8 @@ class TextGenerator:
         model_id: str,
         *,
         device: str = "auto",
-        dtype: str | ModelDtype = "auto",
-        quantization: str | ModelDtype | None = None,
+        dtype: str | ModelDtypeEnum = "auto",
+        quantization: str | ModelDtypeEnum | None = None,
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
@@ -804,9 +806,9 @@ class TextGenerator:
             model_id (str): HuggingFace model id.
             device (str): ``"auto"`` (default) / ``"cuda"`` / ``"mps"`` /
                 ``"cpu"``.
-            dtype (str | ModelDtype): Compute precision, or ``"auto"``
+            dtype (str | ModelDtypeEnum): Compute precision, or ``"auto"``
                 (bf16 on GPU, fp32 on CPU).
-            quantization (str | ModelDtype | None): ``"int8"`` / ``"int4"``
+            quantization (str | ModelDtypeEnum | None): ``"int8"`` / ``"int4"``
                 to quantize (needs ``[genai-quant]``), or ``None``.
             cache_dir (str | None): Where the downloaded weights are
                 written and read back from. ``None`` uses the
@@ -876,13 +878,13 @@ class TextGenerator:
         self.config = config
         self.device = resolve_device(device, hardware)
         resolved_dtype = (
-            ModelDtype(auto_dtype_name(self.device))
+            ModelDtypeEnum(auto_dtype_name(self.device))
             if dtype == "auto"
-            else ModelDtype(dtype)
+            else ModelDtypeEnum(dtype)
         )
         self.dtype = resolved_dtype
-        self.quantization: ModelDtype | None = (
-            None if quantization is None else ModelDtype(quantization)
+        self.quantization: ModelDtypeEnum | None = (
+            None if quantization is None else ModelDtypeEnum(quantization)
         )
         if self.quantization is not None and self.quantization not in _QUANTIZATIONS:
             raise ValueError("quantization must be 'int8', 'int4' or None")
@@ -999,7 +1001,7 @@ class TextGenerator:
         torch, transformers = _require_transformers()
         kwargs: dict[str, Any] = self.source.loader_kwargs()
         if self.quantization is not None:
-            bits = 8 if self.quantization is ModelDtype.INT8 else 4
+            bits = 8 if self.quantization is ModelDtypeEnum.INT8 else 4
             kwargs["quantization_config"] = transformers.BitsAndBytesConfig(
                 **{f"load_in_{bits}bit": True},
             )

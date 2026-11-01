@@ -44,7 +44,7 @@ from fastapi import FastAPI
 from tempest_fastapi_sdk import AsyncDatabaseManager, UserModelAuthBackend
 from tempest_fastapi_sdk.admin import (
     AdminSite,
-    SqlCapability,
+    SqlCapabilityEnum,
     SqlShellPolicy,
     SqlShellService,
     make_admin_router,
@@ -66,7 +66,7 @@ app = FastAPI()
 console = SqlShellService(
     console_db,                       # the restricted connection, not the app's
     policy=SqlShellPolicy(
-        capabilities={SqlCapability.READ},
+        capabilities={SqlCapabilityEnum.READ},
         denied_tables={"users", "user_tokens"},
         max_rows=500,
     ),

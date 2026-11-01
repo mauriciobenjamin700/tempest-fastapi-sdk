@@ -18,7 +18,7 @@ from tempest_fastapi_sdk import BaseRepository, BaseUserModel
 from tempest_fastapi_sdk.chat import (
     ChatService,
     MessageCreateSchema,
-    ParticipantRole,
+    ParticipantRoleEnum,
     make_conversation_model,
     make_conversation_participant_model,
     make_message_model,
@@ -142,37 +142,43 @@ class TestRoleHierarchy:
         """The three-step takeover is refused at its first step."""
         creator, admin, member, _, _ = users
         conversation = await service.start_conversation(creator, [admin, member])
-        await service.set_role(conversation.id, creator, admin, ParticipantRole.ADMIN)
+        await service.set_role(
+            conversation.id, creator, admin, ParticipantRoleEnum.ADMIN
+        )
 
         with pytest.raises(ForbiddenException):
             await service.set_role(
-                conversation.id, admin, creator, ParticipantRole.MEMBER
+                conversation.id, admin, creator, ParticipantRoleEnum.MEMBER
             )
         with pytest.raises(ForbiddenException):
-            await service.set_role(conversation.id, admin, admin, ParticipantRole.OWNER)
+            await service.set_role(
+                conversation.id, admin, admin, ParticipantRoleEnum.OWNER
+            )
         with pytest.raises(ForbiddenException):
             await service.remove_participant(conversation.id, admin, creator)
 
         roles = {
-            p.user_id: ParticipantRole(p.role)
+            p.user_id: ParticipantRoleEnum(p.role)
             for p in (await service.get_conversation(conversation.id)).participants
         }
-        assert roles[creator] is ParticipantRole.OWNER
-        assert roles[admin] is ParticipantRole.ADMIN
+        assert roles[creator] is ParticipantRoleEnum.OWNER
+        assert roles[admin] is ParticipantRoleEnum.ADMIN
 
     async def test_admin_cannot_demote_another_admin(
         self, service: ChatService, users: list[UUID]
     ) -> None:
         creator, admin, other_admin, _, _ = users
         conversation = await service.start_conversation(creator, [admin, other_admin])
-        await service.set_role(conversation.id, creator, admin, ParticipantRole.ADMIN)
         await service.set_role(
-            conversation.id, creator, other_admin, ParticipantRole.ADMIN
+            conversation.id, creator, admin, ParticipantRoleEnum.ADMIN
+        )
+        await service.set_role(
+            conversation.id, creator, other_admin, ParticipantRoleEnum.ADMIN
         )
 
         with pytest.raises(ForbiddenException):
             await service.set_role(
-                conversation.id, admin, other_admin, ParticipantRole.MEMBER
+                conversation.id, admin, other_admin, ParticipantRoleEnum.MEMBER
             )
 
     async def test_admin_can_still_promote_a_member(
@@ -180,27 +186,31 @@ class TestRoleHierarchy:
     ) -> None:
         creator, admin, member, _, _ = users
         conversation = await service.start_conversation(creator, [admin, member])
-        await service.set_role(conversation.id, creator, admin, ParticipantRole.ADMIN)
-
-        promoted = await service.set_role(
-            conversation.id, admin, member, ParticipantRole.ADMIN
+        await service.set_role(
+            conversation.id, creator, admin, ParticipantRoleEnum.ADMIN
         )
 
-        assert ParticipantRole(promoted.role) is ParticipantRole.ADMIN
+        promoted = await service.set_role(
+            conversation.id, admin, member, ParticipantRoleEnum.ADMIN
+        )
+
+        assert ParticipantRoleEnum(promoted.role) is ParticipantRoleEnum.ADMIN
 
     async def test_owner_can_change_any_role(
         self, service: ChatService, users: list[UUID]
     ) -> None:
         creator, admin, member, _, _ = users
         conversation = await service.start_conversation(creator, [admin, member])
-        await service.set_role(conversation.id, creator, admin, ParticipantRole.ADMIN)
+        await service.set_role(
+            conversation.id, creator, admin, ParticipantRoleEnum.ADMIN
+        )
 
         demoted = await service.set_role(
-            conversation.id, creator, admin, ParticipantRole.MEMBER
+            conversation.id, creator, admin, ParticipantRoleEnum.MEMBER
         )
         granted = await service.set_role(
-            conversation.id, creator, member, ParticipantRole.OWNER
+            conversation.id, creator, member, ParticipantRoleEnum.OWNER
         )
 
-        assert ParticipantRole(demoted.role) is ParticipantRole.MEMBER
-        assert ParticipantRole(granted.role) is ParticipantRole.OWNER
+        assert ParticipantRoleEnum(demoted.role) is ParticipantRoleEnum.MEMBER
+        assert ParticipantRoleEnum(granted.role) is ParticipantRoleEnum.OWNER

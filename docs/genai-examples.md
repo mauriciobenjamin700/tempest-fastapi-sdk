@@ -106,16 +106,16 @@ máquina.
 
 ```python
 from tempest_fastapi_sdk.genai import TextGenerator
-from tempest_fastapi_sdk.genai.audio import Language, SpeechToText, TextToSpeech
+from tempest_fastapi_sdk.genai.audio import LanguageEnum, SpeechToText, TextToSpeech
 
 stt = SpeechToText("base")
 gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
-tts = TextToSpeech.for_language(Language.PT_BR)
+tts = TextToSpeech.for_language(LanguageEnum.PT_BR)
 
 
 async def voice_turn(audio_wav_path: str) -> bytes:
     """Recebe fala, devolve fala."""
-    heard = await stt.transcribe(audio_wav_path, language=Language.PT_BR)
+    heard = await stt.transcribe(audio_wav_path, language=LanguageEnum.PT_BR)
     reply = await gen.chat([
         {"role": "system", "content": "Você é um assistente conciso em PT-BR."},
         {"role": "user", "content": heard.text},
@@ -132,7 +132,7 @@ que responde sobre seus PDFs.
 ```python
 from fastapi import APIRouter, UploadFile
 
-from tempest_fastapi_sdk.genai.audio import Language, SpeechToText
+from tempest_fastapi_sdk.genai.audio import LanguageEnum, SpeechToText
 
 router = APIRouter()
 stt = SpeechToText("base")                      # carregue no lifespan em prod
@@ -140,7 +140,7 @@ stt = SpeechToText("base")                      # carregue no lifespan em prod
 
 @router.post("/transcribe")
 async def transcribe(file: UploadFile) -> dict[str, object]:
-    result = await stt.transcribe(await file.read(), language=Language.PT_BR)
+    result = await stt.transcribe(await file.read(), language=LanguageEnum.PT_BR)
     return {"text": result.text, "duration": result.duration}
 ```
 

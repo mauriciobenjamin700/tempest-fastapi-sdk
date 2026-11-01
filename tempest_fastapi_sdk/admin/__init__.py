@@ -32,8 +32,10 @@ from tempest_fastapi_sdk.admin.discovery import discover_models as discover_mode
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy as AdminAccessPolicy,
 )
-from tempest_fastapi_sdk.admin.permissions import AdminPermission as AdminPermission
-from tempest_fastapi_sdk.admin.permissions import AdminSurface as AdminSurface
+from tempest_fastapi_sdk.admin.permissions import (
+    AdminPermissionEnum as AdminPermissionEnum,
+)
+from tempest_fastapi_sdk.admin.permissions import AdminSurfaceEnum as AdminSurfaceEnum
 from tempest_fastapi_sdk.admin.permissions import (
     AdminSurfacePolicy as AdminSurfacePolicy,
 )
@@ -53,7 +55,7 @@ from tempest_fastapi_sdk.admin.session import (
 from tempest_fastapi_sdk.admin.site import AdminSite as AdminSite
 from tempest_fastapi_sdk.admin.sql_shell import SqlAudit as SqlAudit
 from tempest_fastapi_sdk.admin.sql_shell import SqlAuditor as SqlAuditor
-from tempest_fastapi_sdk.admin.sql_shell import SqlCapability as SqlCapability
+from tempest_fastapi_sdk.admin.sql_shell import SqlCapabilityEnum as SqlCapabilityEnum
 from tempest_fastapi_sdk.admin.sql_shell import SqlResult as SqlResult
 from tempest_fastapi_sdk.admin.sql_shell import SqlShellDenied as SqlShellDenied
 from tempest_fastapi_sdk.admin.sql_shell import SqlShellError as SqlShellError
@@ -90,7 +92,7 @@ from tempest_fastapi_sdk.admin.storage import (
     StorageObjectMissingError as StorageObjectMissingError,
 )
 from tempest_fastapi_sdk.admin.storage import StorageObjectView as StorageObjectView
-from tempest_fastapi_sdk.admin.storage import StoragePreview as StoragePreview
+from tempest_fastapi_sdk.admin.storage import StoragePreviewEnum as StoragePreviewEnum
 from tempest_fastapi_sdk.admin.storage import check_storage_key as check_storage_key
 from tempest_fastapi_sdk.admin.storage import (
     guess_storage_content_type as guess_storage_content_type,
@@ -120,12 +122,12 @@ __all__: list[str] = [
     "AdminAuthError",
     "AdminLoginCSRF",
     "AdminModel",
-    "AdminPermission",
+    "AdminPermissionEnum",
     "AdminSession",
     "AdminSessionRevocations",
     "AdminSite",
     "AdminStorageClient",
-    "AdminSurface",
+    "AdminSurfaceEnum",
     "AdminSurfacePolicy",
     "AdminTheme",
     "FieldRef",
@@ -141,7 +143,7 @@ __all__: list[str] = [
     "SignedCookieSessionStore",
     "SqlAudit",
     "SqlAuditor",
-    "SqlCapability",
+    "SqlCapabilityEnum",
     "SqlResult",
     "SqlShellDenied",
     "SqlShellError",
@@ -155,7 +157,7 @@ __all__: list[str] = [
     "StorageListing",
     "StorageObjectMissingError",
     "StorageObjectView",
-    "StoragePreview",
+    "StoragePreviewEnum",
     "TaskPanelService",
     "TaskTrigger",
     "UserModelAuthBackend",

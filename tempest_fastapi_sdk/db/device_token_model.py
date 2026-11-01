@@ -37,7 +37,7 @@ class BaseDeviceTokenModel(BaseModel):
         token (str): Push endpoint URL (web) or FCM registration token
             (mobile). Unique + indexed.
         platform (str): ``"web"``, ``"ios"`` or ``"android"`` — the value
-            of a :class:`~tempest_fastapi_sdk.push.PushPlatform`.
+            of a :class:`~tempest_fastapi_sdk.push.PushPlatformEnum`.
         p256dh (str | None): Browser ECDH public key. Web rows only.
         auth (str | None): Browser auth secret. Web rows only.
         expiration_time (int | None): Browser ``expirationTime`` in

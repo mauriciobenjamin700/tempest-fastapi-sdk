@@ -44,7 +44,7 @@ from tempest_fastapi_sdk import (
     make_user_token_model,
     register_exception_handlers,
 )
-from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose
+from tempest_fastapi_sdk.db.user_token_model import UserTokenPurposeEnum
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
 from tests.utils.smtp_server import TinySMTP
 
@@ -146,12 +146,12 @@ async def count_rows(engine: AsyncEngine, model: type[BaseModel]) -> int:
         return int(result.scalar_one())
 
 
-async def unspent_tokens(engine: AsyncEngine, purpose: UserTokenPurpose) -> int:
+async def unspent_tokens(engine: AsyncEngine, purpose: UserTokenPurposeEnum) -> int:
     """Count the committed, unspent tokens of ``purpose``.
 
     Args:
         engine (AsyncEngine): The test engine.
-        purpose (UserTokenPurpose): The flow.
+        purpose (UserTokenPurposeEnum): The flow.
 
     Returns:
         int: Rows with ``used_at`` still empty.
@@ -291,7 +291,7 @@ class TestAnswered503:
             )
         assert response.status_code == 503
         assert response.json()["code"] == "EMAIL_UNAVAILABLE"
-        assert await unspent_tokens(engine, UserTokenPurpose.EMAIL_CHANGE) == 0
+        assert await unspent_tokens(engine, UserTokenPurposeEnum.EMAIL_CHANGE) == 0
 
     async def test_email_change_confirm_keeps_the_old_address_and_the_link(
         self, engine: AsyncEngine, session: AsyncSession, broken_mailer: EmailUtils
@@ -311,7 +311,7 @@ class TestAnswered503:
         assert response.status_code == 503
         assert response.json()["code"] == "EMAIL_UNAVAILABLE"
         assert await stored_email(engine, user.id) == "ana@acme.com"
-        assert await unspent_tokens(engine, UserTokenPurpose.EMAIL_CHANGE) == 1
+        assert await unspent_tokens(engine, UserTokenPurposeEnum.EMAIL_CHANGE) == 1
 
         async with build_client(engine, build_service(None)) as client:
             retried = await client.post(
@@ -331,7 +331,9 @@ class TestAnswered503:
             )
         assert response.status_code == 503
         assert response.json()["code"] == "EMAIL_UNAVAILABLE"
-        assert await unspent_tokens(engine, UserTokenPurpose.EMAIL_VERIFICATION) == 0
+        assert (
+            await unspent_tokens(engine, UserTokenPurposeEnum.EMAIL_VERIFICATION) == 0
+        )
 
     async def test_email_recovery_answers_503_only_after_the_password(
         self, engine: AsyncEngine, session: AsyncSession, broken_mailer: EmailUtils
@@ -357,7 +359,7 @@ class TestAnswered503:
         assert wrong.json() == stranger.json()
         assert proven.status_code == 503
         assert proven.json()["code"] == "EMAIL_UNAVAILABLE"
-        assert await unspent_tokens(engine, UserTokenPurpose.EMAIL_CHANGE) == 0
+        assert await unspent_tokens(engine, UserTokenPurposeEnum.EMAIL_CHANGE) == 0
 
 
 class TestUniform202:
@@ -400,7 +402,7 @@ class TestUniform202:
                 "/auth/password-reset/request", json={"email": "ana@acme.com"}
             )
         assert response.status_code == 202
-        assert await unspent_tokens(engine, UserTokenPurpose.PASSWORD_RESET) == 1
+        assert await unspent_tokens(engine, UserTokenPurposeEnum.PASSWORD_RESET) == 1
 
     async def test_password_reset_failure_is_logged_without_the_address(
         self,
@@ -444,4 +446,4 @@ class TestUniform202:
             "activation_url": None,
         }
         assert await count_rows(engine, _SfUserToken) == 1
-        assert await unspent_tokens(engine, UserTokenPurpose.ACTIVATION) == 1
+        assert await unspent_tokens(engine, UserTokenPurposeEnum.ACTIVATION) == 1

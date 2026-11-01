@@ -15,13 +15,13 @@ import httpx
 
 from tempest_fastapi_sdk.exceptions.wallet import PayoutRejectedException
 from tempest_fastapi_sdk.integrations.payment.base import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PayoutRequest,
     PayoutResult,
-    PayoutStatus,
+    PayoutStatusEnum,
     PixCharge,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPaymentEvent,
 )
 from tempest_fastapi_sdk.integrations.payment.openpix import (
@@ -30,7 +30,7 @@ from tempest_fastapi_sdk.integrations.payment.openpix import (
     CreatePaymentBodyPixKey,
     CustomerPayload,
     OpenPixClient,
-    OpenPixEvent,
+    OpenPixEventEnum,
     OpenPixWebhookEvent,
     PaymentCreatePayloadPixKeyDestinationAliasType,
     PaymentCreatePayloadPixKeyType,
@@ -41,10 +41,10 @@ from tempest_fastapi_sdk.utils.http_client import HTTPClient
 PROVIDER_NAME: Final[str] = "openpix"
 """Value written into :attr:`PixCharge.provider` by this adapter."""
 
-STATUS_MAP: Final[dict[ChargeStatus, PaymentStatus]] = {
-    ChargeStatus.ACTIVE: PaymentStatus.PENDING,
-    ChargeStatus.COMPLETED: PaymentStatus.PAID,
-    ChargeStatus.EXPIRED: PaymentStatus.EXPIRED,
+STATUS_MAP: Final[dict[ChargeStatus, PaymentStatusEnum]] = {
+    ChargeStatus.ACTIVE: PaymentStatusEnum.PENDING,
+    ChargeStatus.COMPLETED: PaymentStatusEnum.PAID,
+    ChargeStatus.EXPIRED: PaymentStatusEnum.EXPIRED,
 }
 """Every value of OpenPix's ``ChargeStatus``, mapped to the canonical one.
 
@@ -57,29 +57,33 @@ What that guard cannot cover is the opposite direction: a state the
 the document declares three values on ``Charge.status`` and leaves
 ``WebhookCharge.status`` an unconstrained string, so OpenPix has not
 committed to the list on the path it validates. Both readers below treat a
-value missing from this map as :attr:`PaymentStatus.UNKNOWN`, keeping the
+value missing from this map as :attr:`PaymentStatusEnum.UNKNOWN`, keeping the
 provider's own string in ``provider_status``. Falling through to
 ``PENDING`` would report a charge as awaiting payment on the strength of
 not recognizing it.
 """
 
-EVENT_MAP: Final[dict[OpenPixEvent, PixEventType]] = {
-    OpenPixEvent.CHARGE_CREATED: PixEventType.CHARGE_CREATED,
-    OpenPixEvent.CHARGE_COMPLETED: PixEventType.CHARGE_PAID,
-    OpenPixEvent.CHARGE_COMPLETED_NOT_SAME_CUSTOMER_PAYER: (PixEventType.CHARGE_PAID),
-    OpenPixEvent.CHARGE_EXPIRED: PixEventType.CHARGE_EXPIRED,
-    OpenPixEvent.TRANSACTION_REFUND_RECEIVED: PixEventType.CHARGE_REFUNDED,
-    OpenPixEvent.PIX_TRANSACTION_REFUND_RECEIVED_CONFIRMED: (
-        PixEventType.CHARGE_REFUNDED
+EVENT_MAP: Final[dict[OpenPixEventEnum, PixEventTypeEnum]] = {
+    OpenPixEventEnum.CHARGE_CREATED: PixEventTypeEnum.CHARGE_CREATED,
+    OpenPixEventEnum.CHARGE_COMPLETED: PixEventTypeEnum.CHARGE_PAID,
+    OpenPixEventEnum.CHARGE_COMPLETED_NOT_SAME_CUSTOMER_PAYER: (
+        PixEventTypeEnum.CHARGE_PAID
     ),
-    OpenPixEvent.PIX_TRANSACTION_REFUND_SENT_CONFIRMED: (PixEventType.CHARGE_REFUNDED),
+    OpenPixEventEnum.CHARGE_EXPIRED: PixEventTypeEnum.CHARGE_EXPIRED,
+    OpenPixEventEnum.TRANSACTION_REFUND_RECEIVED: PixEventTypeEnum.CHARGE_REFUNDED,
+    OpenPixEventEnum.PIX_TRANSACTION_REFUND_RECEIVED_CONFIRMED: (
+        PixEventTypeEnum.CHARGE_REFUNDED
+    ),
+    OpenPixEventEnum.PIX_TRANSACTION_REFUND_SENT_CONFIRMED: (
+        PixEventTypeEnum.CHARGE_REFUNDED
+    ),
 }
 """OpenPix event names that carry a canonical meaning.
 
 Deliberately partial. OpenPix ships 27 event names covering disputes,
 account registration, movements and Pix Automático; only the ones that
 describe a charge's lifecycle map here, and everything else becomes
-:attr:`PixEventType.UNKNOWN` with the original name preserved. Mapping an
+:attr:`PixEventTypeEnum.UNKNOWN` with the original name preserved. Mapping an
 account-registration event onto a charge event would be worse than not
 mapping it.
 
@@ -109,7 +113,7 @@ def _parse_datetime(value: object) -> datetime | None:
         return None
 
 
-def _to_status(raw: object) -> PaymentStatus:
+def _to_status(raw: object) -> PaymentStatusEnum:
     """Read OpenPix's status string into the canonical state.
 
     Args:
@@ -121,17 +125,17 @@ def _to_status(raw: object) -> PaymentStatus:
             into a refused read.
 
     Returns:
-        PaymentStatus: The mapped state, or :attr:`PaymentStatus.UNKNOWN`
+        PaymentStatusEnum: The mapped state, or :attr:`PaymentStatusEnum.UNKNOWN`
         for anything :data:`STATUS_MAP` does not name. The provider's own
         string is kept by the caller in ``provider_status``, so nothing is
         lost by not recognizing it.
     """
     if not isinstance(raw, str) or not raw:
-        return PaymentStatus.UNKNOWN
+        return PaymentStatusEnum.UNKNOWN
     try:
         return STATUS_MAP[ChargeStatus(raw)]
     except (KeyError, ValueError):
-        return PaymentStatus.UNKNOWN
+        return PaymentStatusEnum.UNKNOWN
 
 
 def _webhook_cents(payload: dict[str, Any], value: Any) -> int:
@@ -312,7 +316,7 @@ class OpenPixPixProvider:
             provider_charge_id=response.id or charge_id,
             reference="",
             amount_cents=0,
-            status=PaymentStatus.CANCELLED,
+            status=PaymentStatusEnum.CANCELLED,
             provider_status=response.status or "",
             raw=response.model_dump(mode="json"),
         )
@@ -350,9 +354,9 @@ class OpenPixPixProvider:
         return PixPaymentEvent(
             provider=PROVIDER_NAME,
             type=(
-                EVENT_MAP.get(event.event, PixEventType.UNKNOWN)
+                EVENT_MAP.get(event.event, PixEventTypeEnum.UNKNOWN)
                 if event.event is not None
-                else PixEventType.UNKNOWN
+                else PixEventTypeEnum.UNKNOWN
             ),
             provider_event_name=event.event_name,
             charge=charge,
@@ -495,7 +499,7 @@ class OpenPixPixProvider:
 PAYOUT_REJECTED_STATUSES: Final[frozenset[str]] = frozenset({"DENIED", "FAILED"})
 """Payment states that mean the money did not leave.
 
-From OpenPix's ``PaymentStatus`` (``CREATED``, ``FAILED``, ``CONFIRMED``,
+From OpenPix's ``PaymentStatusEnum`` (``CREATED``, ``FAILED``, ``CONFIRMED``,
 ``DENIED``). Only these two let the wallet give the debit back; every other
 state is treated as money possibly in flight.
 """
@@ -598,9 +602,9 @@ class OpenPixPayoutProvider:
         return PayoutResult(
             correlation_id=request.correlation_id,
             status=(
-                PayoutStatus.CONFIRMED
+                PayoutStatusEnum.CONFIRMED
                 if raw_status == "CONFIRMED"
-                else PayoutStatus.PENDING
+                else PayoutStatusEnum.PENDING
             ),
             provider=self.provider_name,
             provider_status=raw_status,

@@ -16,11 +16,11 @@ from faststream.rabbit import ExchangeType, RabbitExchange
 from tempest_fastapi_sdk.queue import (
     DeadLetterSpec,
     ExchangeBinding,
-    ExchangeKind,
+    ExchangeKindEnum,
     ExchangeSpec,
     MessageBroker,
     QueueSpec,
-    QueueType,
+    QueueTypeEnum,
     UnsupportedTopologyError,
     retry_queues,
 )
@@ -175,11 +175,11 @@ class TestConsumerSpec:
     def test_a_bare_exchange_name_is_a_durable_topic(self) -> None:
         spec = QueueSpec.consumer("g", "task.completed", exchange="events")
         assert spec.binding is not None
-        assert spec.binding.exchange.kind is ExchangeKind.TOPIC
+        assert spec.binding.exchange.kind is ExchangeKindEnum.TOPIC
         assert spec.binding.exchange.durable is True
 
     def test_an_exchange_spec_is_kept_as_given(self) -> None:
-        exchange = ExchangeSpec("events", kind=ExchangeKind.DIRECT)
+        exchange = ExchangeSpec("events", kind=ExchangeKindEnum.DIRECT)
         spec = QueueSpec.consumer("g", "task.completed", exchange=exchange)
         assert spec.binding is not None
         assert spec.binding.exchange is exchange
@@ -218,9 +218,9 @@ class TestConsumerSpec:
             "g",
             "c",
             exchange="e",
-            queue_type=QueueType.QUORUM,
+            queue_type=QueueTypeEnum.QUORUM,
         )
-        assert spec.queue_type is QueueType.QUORUM
+        assert spec.queue_type is QueueTypeEnum.QUORUM
 
 
 class TestDeadLetterQueueValidation:
@@ -243,10 +243,10 @@ class TestTranslation:
         queue = to_rabbit_queue(QueueSpec(name="orders.paid"))
         assert queue.routing() == "orders.paid"
 
-    @pytest.mark.parametrize("kind", list(ExchangeKind))
+    @pytest.mark.parametrize("kind", list(ExchangeKindEnum))
     def test_the_exchange_type_is_the_enum_not_a_string(
         self,
-        kind: ExchangeKind,
+        kind: ExchangeKindEnum,
     ) -> None:
         """FastStream reads ``exchange.type.value``; a raw string breaks connect()."""
         exchange = to_rabbit_exchange(ExchangeSpec("e", kind=kind))
@@ -255,7 +255,7 @@ class TestTranslation:
 
     def test_exchange_kinds_mirror_faststream(self) -> None:
         """Ported value for value, so the module imports nothing from FastStream."""
-        assert {kind.value for kind in ExchangeKind} == {
+        assert {kind.value for kind in ExchangeKindEnum} == {
             member.value
             for member in ExchangeType
             if member.value in {"topic", "direct", "fanout", "headers"}
@@ -374,7 +374,7 @@ class TestDeclareTopology:
                 "c",
                 exchange="e",
                 dead_letter_exchange="dlx",
-                queue_type=QueueType.QUORUM,
+                queue_type=QueueTypeEnum.QUORUM,
             ),
         )
         await mq.declare_topology()

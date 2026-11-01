@@ -151,7 +151,7 @@ se perde um pool.
 # src/tasks/transcribe.py
 from uuid import UUID
 
-from tempest_fastapi_sdk.tasks import StageStatus
+from tempest_fastapi_sdk.tasks import StageStatusEnum
 
 from src.core.ai import db, stt, usage
 from src.core.pipeline import STAGES, DocumentModel
@@ -167,7 +167,7 @@ async def transcrever(documento_id: UUID) -> None:
         documento = await session.get(DocumentModel, documento_id)
         if documento is None:
             return
-        STAGES.mark(documento, "transcription", StageStatus.RUNNING)
+        STAGES.mark(documento, "transcription", StageStatusEnum.RUNNING)
         caminho: str = documento.filename
         dono: UUID = documento.owner_id
         await session.commit()
@@ -184,12 +184,12 @@ async def transcrever(documento_id: UUID) -> None:
         if documento is not None and STAGES.owns(
             documento,
             "transcription",
-            StageStatus.RUNNING,
+            StageStatusEnum.RUNNING,
         ):
             STAGES.mark(
                 documento,
                 "transcription",
-                StageStatus.DONE,
+                StageStatusEnum.DONE,
                 result=resultado.text,
             )
         await session.commit()
@@ -329,7 +329,7 @@ diz quanto gastou. `generate_with_usage` devolve os dois:
 # src/tasks/summarize.py
 from uuid import UUID
 
-from tempest_fastapi_sdk.tasks import StageStatus
+from tempest_fastapi_sdk.tasks import StageStatusEnum
 
 from src.core.ai import db, llm, usage
 from src.core.pipeline import STAGES, DocumentModel
@@ -345,7 +345,7 @@ async def resumir(documento_id: UUID) -> None:
         documento = await session.get(DocumentModel, documento_id)
         if documento is None or documento.doc_result_transcription is None:
             return
-        STAGES.mark(documento, "summary", StageStatus.RUNNING)
+        STAGES.mark(documento, "summary", StageStatusEnum.RUNNING)
         transcricao: str = documento.doc_result_transcription
         dono: UUID = documento.owner_id
         await session.commit()
@@ -360,9 +360,9 @@ async def resumir(documento_id: UUID) -> None:
         if documento is not None and STAGES.owns(
             documento,
             "summary",
-            StageStatus.RUNNING,
+            StageStatusEnum.RUNNING,
         ):
-            STAGES.mark(documento, "summary", StageStatus.DONE, result=resumo)
+            STAGES.mark(documento, "summary", StageStatusEnum.DONE, result=resumo)
         await session.commit()
 ```
 
@@ -394,7 +394,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk.genai import generate_structured_list
-from tempest_fastapi_sdk.tasks import StageStatus
+from tempest_fastapi_sdk.tasks import StageStatusEnum
 
 from src.core.ai import db, llm
 from src.core.pipeline import STAGES, DocumentModel
@@ -418,7 +418,7 @@ async def sugerir(documento_id: UUID) -> None:
         documento = await session.get(DocumentModel, documento_id)
         if documento is None or documento.doc_result_transcription is None:
             return
-        STAGES.mark(documento, "suggestions", StageStatus.RUNNING)
+        STAGES.mark(documento, "suggestions", StageStatusEnum.RUNNING)
         transcricao: str = documento.doc_result_transcription
         await session.commit()
 
@@ -434,12 +434,12 @@ async def sugerir(documento_id: UUID) -> None:
         if documento is not None and STAGES.owns(
             documento,
             "suggestions",
-            StageStatus.RUNNING,
+            StageStatusEnum.RUNNING,
         ):
             STAGES.mark(
                 documento,
                 "suggestions",
-                StageStatus.DONE,
+                StageStatusEnum.DONE,
                 result=json.dumps([t.model_dump() for t in tarefas]),
             )
         await session.commit()

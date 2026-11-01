@@ -61,8 +61,8 @@ from tempest_fastapi_sdk.admin.forms import (
 )
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy,
-    AdminPermission,
-    AdminSurface,
+    AdminPermissionEnum,
+    AdminSurfaceEnum,
     AdminSurfacePolicy,
 )
 from tempest_fastapi_sdk.admin.session import (
@@ -103,7 +103,7 @@ from tempest_fastapi_sdk.ssr.assets import make_htmx_router
 from tempest_fastapi_sdk.storage import object_download_response
 from tempest_fastapi_sdk.tasks.jobs import (
     CANCELLABLE_JOB_STATUSES,
-    JobStatus,
+    JobStatusEnum,
 )
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 from tempest_fastapi_sdk.utils.throttle import (
@@ -340,7 +340,7 @@ def make_admin_router(
             ``True``. Defaults to ``"logs"``. When the directory has no
             log files yet the page renders an empty state.
         access_policy (AdminAccessPolicy | None): Optional granular RBAC
-            hook asked ``(principal, admin, AdminPermission)`` for every
+            hook asked ``(principal, admin, AdminPermissionEnum)`` for every
             model action. ``None`` (default) allows everything (subject
             to the ``AdminModel.can_*`` flags). A policy that denies an
             action yields ``403`` and hides the model from the dashboard
@@ -351,7 +351,7 @@ def make_admin_router(
             foreign-key selects, list filters and autocomplete need
             ``VIEW`` on the referenced admin.
         surface_policy (AdminSurfacePolicy | None): Hook asked
-            ``(principal, AdminSurface)`` before the SQL console, the task
+            ``(principal, AdminSurfaceEnum)`` before the SQL console, the task
             panel (cancel included) or the logs page (export included) is
             served; a denial yields ``403`` and drops the sidebar entry.
             ``None`` (default) allows every surface when ``access_policy``
@@ -445,13 +445,13 @@ def make_admin_router(
             "Install with `pip install tempest-fastapi-sdk[admin]`."
         ) from exc
 
-    _mounted_surfaces: tuple[AdminSurface, ...] = tuple(
+    _mounted_surfaces: tuple[AdminSurfaceEnum, ...] = tuple(
         surface
         for surface, mounted in (
-            (AdminSurface.LOGS, show_logs),
-            (AdminSurface.SQL, sql_shell is not None),
-            (AdminSurface.TASKS, tasks is not None),
-            (AdminSurface.STORAGE, storage is not None),
+            (AdminSurfaceEnum.LOGS, show_logs),
+            (AdminSurfaceEnum.SQL, sql_shell is not None),
+            (AdminSurfaceEnum.TASKS, tasks is not None),
+            (AdminSurfaceEnum.STORAGE, storage is not None),
         )
         if mounted
     )
@@ -604,12 +604,12 @@ def make_admin_router(
             )
         return session
 
-    async def _allows_surface(principal: Any, surface: AdminSurface) -> bool:
+    async def _allows_surface(principal: Any, surface: AdminSurfaceEnum) -> bool:
         """Return whether ``principal`` may open ``surface``.
 
         Args:
             principal (Any): The current admin principal.
-            surface (AdminSurface): The panel being opened.
+            surface (AdminSurfaceEnum): The panel being opened.
 
         Returns:
             bool: ``True`` when permitted — always with neither policy
@@ -628,7 +628,7 @@ def make_admin_router(
         db_session: AsyncSession,
         admin_session: AdminSession,
         *,
-        surface: AdminSurface | None = None,
+        surface: AdminSurfaceEnum | None = None,
     ) -> Any:
         """Reload the admin principal or redirect to login.
 
@@ -640,7 +640,7 @@ def make_admin_router(
             request (Request): The inbound request.
             db_session (AsyncSession): The DB session.
             admin_session (AdminSession): The validated cookie.
-            surface (AdminSurface | None): The non-model panel this
+            surface (AdminSurfaceEnum | None): The non-model panel this
                 request serves, if any; the principal must be allowed it.
 
         Returns:
@@ -660,7 +660,7 @@ def make_admin_router(
                 detail="login required",
                 headers={"location": f"{prefix}/login"},
             )
-        allowed: set[AdminSurface] = set()
+        allowed: set[AdminSurfaceEnum] = set()
         for mounted in _mounted_surfaces:
             if await _allows_surface(principal, mounted):
                 allowed.add(mounted)
@@ -738,24 +738,24 @@ def make_admin_router(
             getattr(request.state, "tempest_admin_nav", []),
         )
         context.setdefault("nav_index_url", f"{prefix}/")
-        allowed: frozenset[AdminSurface] = getattr(
+        allowed: frozenset[AdminSurfaceEnum] = getattr(
             request.state, "tempest_admin_surfaces", frozenset()
         )
         context.setdefault(
             "nav_logs_url",
-            f"{prefix}/logs" if AdminSurface.LOGS in allowed else None,
+            f"{prefix}/logs" if AdminSurfaceEnum.LOGS in allowed else None,
         )
         context.setdefault(
             "nav_sql_url",
-            f"{prefix}/sql" if AdminSurface.SQL in allowed else None,
+            f"{prefix}/sql" if AdminSurfaceEnum.SQL in allowed else None,
         )
         context.setdefault(
             "nav_tasks_url",
-            f"{prefix}/tasks" if AdminSurface.TASKS in allowed else None,
+            f"{prefix}/tasks" if AdminSurfaceEnum.TASKS in allowed else None,
         )
         context.setdefault(
             "nav_storage_url",
-            f"{prefix}/storage" if AdminSurface.STORAGE in allowed else None,
+            f"{prefix}/storage" if AdminSurfaceEnum.STORAGE in allowed else None,
         )
         return templates.TemplateResponse(
             request,
@@ -791,7 +791,7 @@ def make_admin_router(
     async def _allows(
         principal: Any,
         admin: AdminModel[Any],
-        action: AdminPermission,
+        action: AdminPermissionEnum,
     ) -> bool:
         """Return whether ``principal`` may perform ``action`` on ``admin``.
 
@@ -801,7 +801,7 @@ def make_admin_router(
         Args:
             principal (Any): The current admin principal.
             admin (AdminModel[Any]): The target admin.
-            action (AdminPermission): The action being attempted.
+            action (AdminPermissionEnum): The action being attempted.
 
         Returns:
             bool: ``True`` when permitted.
@@ -816,14 +816,14 @@ def make_admin_router(
     async def _require_access(
         principal: Any,
         admin: AdminModel[Any],
-        action: AdminPermission,
+        action: AdminPermissionEnum,
     ) -> None:
         """Raise ``403`` unless ``principal`` may perform ``action``.
 
         Args:
             principal (Any): The current admin principal.
             admin (AdminModel[Any]): The target admin.
-            action (AdminPermission): The action being attempted.
+            action (AdminPermissionEnum): The action being attempted.
 
         Raises:
             HTTPException: ``403`` when the policy denies the action.
@@ -842,7 +842,7 @@ def make_admin_router(
         """
         entries: list[dict[str, str]] = []
         for admin in site.iter_models():
-            if await _allows(principal, admin, AdminPermission.VIEW):
+            if await _allows(principal, admin, AdminPermissionEnum.VIEW):
                 entries.append(
                     {
                         "label": admin.get_verbose_name_plural(),
@@ -898,7 +898,7 @@ def make_admin_router(
                 continue
             referenced = site.get(table)
             if referenced is None or not await _allows(
-                principal, referenced, AdminPermission.VIEW
+                principal, referenced, AdminPermissionEnum.VIEW
             ):
                 continue
             rows = await referenced.build_repository(db_session).list()
@@ -932,7 +932,7 @@ def make_admin_router(
         table = next(iter(column.foreign_keys)).column.table.name
         referenced = site.get(table)
         if referenced is None or not await _allows(
-            principal, referenced, AdminPermission.VIEW
+            principal, referenced, AdminPermissionEnum.VIEW
         ):
             return []
         rows = await referenced.build_repository(db_session).list()
@@ -1082,7 +1082,7 @@ def make_admin_router(
             referenced = site.get(table) if table else None
             if referenced is None or not form_field.value:
                 continue
-            if not await _allows(principal, referenced, AdminPermission.VIEW):
+            if not await _allows(principal, referenced, AdminPermissionEnum.VIEW):
                 continue
             current = await referenced.build_repository(db_session).get_or_none(
                 {referenced.identity_field: _identity_value(str(form_field.value))}
@@ -1416,7 +1416,7 @@ def make_admin_router(
         principal = await _resolve_principal(request, db_session, session)
         models_view: list[dict[str, Any]] = []
         for admin in site.iter_models():
-            if not await _allows(principal, admin, AdminPermission.VIEW):
+            if not await _allows(principal, admin, AdminPermissionEnum.VIEW):
                 continue
             try:
                 count = await admin.build_repository(db_session).count()
@@ -1429,7 +1429,7 @@ def make_admin_router(
                     "url": f"{prefix}/m/{admin.get_slug()}/",
                     "new_url": f"{prefix}/m/{admin.get_slug()}/new"
                     if admin.can_create
-                    and await _allows(principal, admin, AdminPermission.CREATE)
+                    and await _allows(principal, admin, AdminPermissionEnum.CREATE)
                     else None,
                 }
             )
@@ -1589,7 +1589,7 @@ def make_admin_router(
                     principal no longer qualifies.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.LOGS
+                request, db_session, session, surface=AdminSurfaceEnum.LOGS
             )
             entries = await _collect_log_entries(source, q)
             total = len(entries)
@@ -1644,7 +1644,7 @@ def make_admin_router(
                 files exist on disk).
             """
             principal = await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.LOGS
+                request, db_session, session, surface=AdminSurfaceEnum.LOGS
             )
 
             entries = await _collect_log_entries(source, q)
@@ -1751,7 +1751,7 @@ def make_admin_router(
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.VIEW)
+        await _require_access(principal, admin, AdminPermissionEnum.VIEW)
 
         repository = admin.build_repository(db_session)
 
@@ -1849,7 +1849,7 @@ def make_admin_router(
                 ),
                 "export_query": export_query,
                 "can_create": admin.can_create
-                and await _allows(principal, admin, AdminPermission.CREATE),
+                and await _allows(principal, admin, AdminPermissionEnum.CREATE),
                 "new_url": f"{prefix}/m/{slug}/new",
                 "bulk_actions": _bulk_actions(admin),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
@@ -1893,7 +1893,7 @@ def make_admin_router(
         if fmt not in {"csv", "json"}:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unsupported format")
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.VIEW)
+        await _require_access(principal, admin, AdminPermissionEnum.VIEW)
 
         repository = admin.build_repository(db_session)
         filters, _active, order_key, ascending, _sort, _asc = (
@@ -1953,7 +1953,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_create)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.CREATE)
+        await _require_access(principal, admin, AdminPermissionEnum.CREATE)
         editable = set(admin.editable_field_names())
         prefill = {
             key: value for key, value in request.query_params.items() if key in editable
@@ -2004,7 +2004,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.CREATE)
+        await _require_access(principal, admin, AdminPermissionEnum.CREATE)
         return _render(
             request,
             "import.html",
@@ -2059,7 +2059,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.CREATE)
+        await _require_access(principal, admin, AdminPermissionEnum.CREATE)
         _check_csrf(session, csrf_token)
 
         form_error: str | None = None
@@ -2133,7 +2133,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_create)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.CREATE)
+        await _require_access(principal, admin, AdminPermissionEnum.CREATE)
         _check_csrf(session, csrf_token)
         form = await request.form()
         data, errors = parse_submission(admin, form, creating=True)
@@ -2222,7 +2222,11 @@ def make_admin_router(
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
-        needed = AdminPermission.DELETE if action == "delete" else AdminPermission.EDIT
+        needed = (
+            AdminPermissionEnum.DELETE
+            if action == "delete"
+            else AdminPermissionEnum.EDIT
+        )
         await _require_access(principal, admin, needed)
         _check_csrf(session, csrf_token)
         form = await request.form()
@@ -2289,7 +2293,7 @@ def make_admin_router(
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.VIEW)
+        await _require_access(principal, admin, AdminPermissionEnum.VIEW)
         repository = admin.build_repository(db_session)
 
         instance = await repository.get_or_none(
@@ -2446,9 +2450,9 @@ def make_admin_router(
                 "inlines": inlines,
                 "inline_error": inline_error,
                 "can_edit": admin.can_edit
-                and await _allows(principal, admin, AdminPermission.EDIT),
+                and await _allows(principal, admin, AdminPermissionEnum.EDIT),
                 "can_delete": admin.can_delete
-                and await _allows(principal, admin, AdminPermission.DELETE),
+                and await _allows(principal, admin, AdminPermissionEnum.DELETE),
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
             },
@@ -2513,7 +2517,7 @@ def make_admin_router(
                 if child_admin is not None
                 else AdminModel(inline.model, can_create=False)
             )
-            if not await _allows(principal, view_admin, AdminPermission.VIEW):
+            if not await _allows(principal, view_admin, AdminPermissionEnum.VIEW):
                 continue
             repository = view_admin.build_repository(db_session)
             children = await repository.list({inline.fk_field: parent_id})
@@ -2528,7 +2532,7 @@ def make_admin_router(
                 inline.editable
                 and child_admin is not None
                 and child_admin.can_edit
-                and await _allows(principal, child_admin, AdminPermission.EDIT)
+                and await _allows(principal, child_admin, AdminPermissionEnum.EDIT)
             )
             if editable and child_admin is not None:
                 blocks.append(
@@ -2541,12 +2545,12 @@ def make_admin_router(
                         overrides.get(child_slug),
                         can_create=child_admin.can_create
                         and await _allows(
-                            principal, child_admin, AdminPermission.CREATE
+                            principal, child_admin, AdminPermissionEnum.CREATE
                         ),
                         can_delete=inline.can_delete
                         and child_admin.can_delete
                         and await _allows(
-                            principal, child_admin, AdminPermission.DELETE
+                            principal, child_admin, AdminPermissionEnum.DELETE
                         ),
                     )
                 )
@@ -2567,7 +2571,7 @@ def make_admin_router(
             can_add = (
                 child_admin is not None
                 and child_admin.can_create
-                and await _allows(principal, child_admin, AdminPermission.CREATE)
+                and await _allows(principal, child_admin, AdminPermissionEnum.CREATE)
             )
             add_url = (
                 f"{prefix}/m/{child_slug}/new?{inline.fk_field}={parent_id}"
@@ -2622,7 +2626,7 @@ def make_admin_router(
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.VIEW)
+        await _require_access(principal, admin, AdminPermissionEnum.VIEW)
         if field not in admin.autocomplete_fields:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, "field is not an autocomplete field"
@@ -2630,7 +2634,7 @@ def make_admin_router(
         table = fk_fields(admin).get(field)
         referenced = site.get(table) if table else None
         if referenced is not None:
-            await _require_access(principal, referenced, AdminPermission.VIEW)
+            await _require_access(principal, referenced, AdminPermissionEnum.VIEW)
         results: list[tuple[str, str]] = []
         if referenced is not None:
             ref_model = referenced.model
@@ -2681,7 +2685,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.EDIT)
+        await _require_access(principal, admin, AdminPermissionEnum.EDIT)
         repository = admin.build_repository(db_session)
         instance = await repository.get_or_none(
             {admin.identity_field: _identity_value(identity)}
@@ -2732,7 +2736,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.EDIT)
+        await _require_access(principal, admin, AdminPermissionEnum.EDIT)
         _check_csrf(session, csrf_token)
         repository = admin.build_repository(db_session)
         instance = await repository.get_or_none(
@@ -2841,7 +2845,7 @@ def make_admin_router(
         """
         parent_admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, parent_admin, AdminPermission.VIEW)
+        await _require_access(principal, parent_admin, AdminPermissionEnum.VIEW)
         _check_csrf(session, csrf_token)
 
         inline = next(
@@ -2855,7 +2859,7 @@ def make_admin_router(
         child_admin = site.get(child_slug)
         if inline is None or child_admin is None or not child_admin.can_edit:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "editable inline not found")
-        await _require_access(principal, child_admin, AdminPermission.EDIT)
+        await _require_access(principal, child_admin, AdminPermissionEnum.EDIT)
 
         parent_repo = parent_admin.build_repository(db_session)
         parent = await parent_repo.get_or_none(
@@ -2892,12 +2896,12 @@ def make_admin_router(
         )
         if adds and not (
             child_admin.can_create
-            and await _allows(principal, child_admin, AdminPermission.CREATE)
+            and await _allows(principal, child_admin, AdminPermissionEnum.CREATE)
         ):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
         can_delete = inline.can_delete and child_admin.can_delete
         if to_delete and can_delete:
-            await _require_access(principal, child_admin, AdminPermission.DELETE)
+            await _require_access(principal, child_admin, AdminPermissionEnum.DELETE)
         error_rows: list[tuple[str, dict[str, str], dict[str, str]]] = []
         form_error: str | None = None
 
@@ -2989,7 +2993,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_delete)
         principal = await _resolve_principal(request, db_session, session)
-        await _require_access(principal, admin, AdminPermission.DELETE)
+        await _require_access(principal, admin, AdminPermissionEnum.DELETE)
         _check_csrf(session, csrf_token)
         repository = admin.build_repository(db_session)
         instance = await repository.get_or_none(
@@ -3061,7 +3065,7 @@ def make_admin_router(
                     principal no longer qualifies.
             """
             principal = await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.SQL
+                request, db_session, session, surface=AdminSurfaceEnum.SQL
             )
             return _render(
                 request,
@@ -3102,7 +3106,7 @@ def make_admin_router(
                     reaches the shell; ``403`` on CSRF mismatch.
             """
             principal = await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.SQL
+                request, db_session, session, surface=AdminSurfaceEnum.SQL
             )
             _check_csrf(session, csrf_token)
             context = await _sql_context(session, principal)
@@ -3147,7 +3151,7 @@ def make_admin_router(
                 Response: The task panel page.
             """
             principal = await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.TASKS
+                request, db_session, session, surface=AdminSurfaceEnum.TASKS
             )
             runs = await _panel.recent_runs(status=status or None)
             return _render(
@@ -3162,7 +3166,7 @@ def make_admin_router(
                     "runs": runs,
                     "schedule": _panel.schedule(),
                     "status_filter": status,
-                    "statuses": sorted(JobStatus),
+                    "statuses": sorted(JobStatusEnum),
                     "tasks_url": f"{prefix}/tasks",
                 },
             )
@@ -3194,7 +3198,7 @@ def make_admin_router(
                 raise.
             """
             principal = await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.TASKS
+                request, db_session, session, surface=AdminSurfaceEnum.TASKS
             )
             chrome: dict[str, Any] = {
                 "user": principal,
@@ -3253,7 +3257,7 @@ def make_admin_router(
                     touched; ``403`` on CSRF mismatch.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.TASKS
+                request, db_session, session, surface=AdminSurfaceEnum.TASKS
             )
             _check_csrf(session, csrf_token)
             await _panel.cancel(job_id)
@@ -3338,7 +3342,7 @@ def make_admin_router(
                 ``prefix`` is not a valid folder.
             """
             principal = await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             chrome: dict[str, Any] = {
                 "user": principal,
@@ -3389,7 +3393,7 @@ def make_admin_router(
                 ``400`` when the key is invalid.
             """
             principal = await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             chrome: dict[str, Any] = {
                 "user": principal,
@@ -3451,7 +3455,7 @@ def make_admin_router(
                     object is not stored.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             try:
                 check_storage_key(key)
@@ -3499,7 +3503,7 @@ def make_admin_router(
                 the folder with the reason it was refused.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             _check_csrf(session, csrf_token)
             _refuse_read_only()
@@ -3547,7 +3551,7 @@ def make_admin_router(
                 outcome.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             _check_csrf(session, csrf_token)
             _refuse_read_only()
@@ -3596,7 +3600,7 @@ def make_admin_router(
                 outcome.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             _check_csrf(session, csrf_token)
             _refuse_read_only()
@@ -3633,7 +3637,7 @@ def make_admin_router(
                 the current one with the reason it was refused.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             _check_csrf(session, csrf_token)
             _refuse_read_only()
@@ -3669,7 +3673,7 @@ def make_admin_router(
                 Response: A redirect to the holding folder with the outcome.
             """
             await _resolve_principal(
-                request, db_session, session, surface=AdminSurface.STORAGE
+                request, db_session, session, surface=AdminSurfaceEnum.STORAGE
             )
             _check_csrf(session, csrf_token)
             _refuse_read_only()

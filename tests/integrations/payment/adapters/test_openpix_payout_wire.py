@@ -27,12 +27,12 @@ from tempest_fastapi_sdk import (
     PixKeyType,
     RetryPolicy,
 )
-from tempest_fastapi_sdk.integrations.payment import PayoutRequest, PayoutStatus
+from tempest_fastapi_sdk.integrations.payment import PayoutRequest, PayoutStatusEnum
 from tempest_fastapi_sdk.integrations.payment.adapters import OpenPixPayoutProvider
-from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironmentEnum
 
 SPEC: Path = Path(__file__).resolve().parents[4] / "vendor" / "openpix-openapi.json"
-BASE_URL: str = OpenPixEnvironment.SANDBOX.base_url
+BASE_URL: str = OpenPixEnvironmentEnum.SANDBOX.base_url
 APP_ID: str = "Q2xpZW50X0lkX3Rlc3Q6Q2xpZW50X1NlY3JldF90ZXN0"
 REQUEST: PayoutRequest = PayoutRequest(
     amount_cents=100,
@@ -147,7 +147,7 @@ async def test_the_documented_auto_approved_answer_is_pending() -> None:
         REQUEST
     )
 
-    assert result.status is PayoutStatus.PENDING
+    assert result.status is PayoutStatusEnum.PENDING
     assert result.provider_status == "APPROVED"
     assert result.provider == "openpix"
 
@@ -157,7 +157,7 @@ async def test_confirmed_is_confirmed() -> None:
         REQUEST
     )
 
-    assert result.status is PayoutStatus.CONFIRMED
+    assert result.status is PayoutStatusEnum.CONFIRMED
 
 
 @pytest.mark.parametrize("status", ["DENIED", "FAILED"])

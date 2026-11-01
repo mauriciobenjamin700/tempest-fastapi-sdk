@@ -64,7 +64,7 @@ from fastapi import Request
 
 from tempest_fastapi_sdk.exceptions import UnauthorizedException
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.events import (
-    MercadoPagoEvent,
+    MercadoPagoEventEnum,
 )
 
 MERCADO_PAGO_SIGNATURE_HEADER: Final[str] = "x-signature"
@@ -104,13 +104,13 @@ class MercadoPagoWebhookEvent:
     A dataclass rather than a ``BaseSchema``: this is the value handed to a
     route, not a wire DTO. ``BaseSchema`` sets ``use_enum_values=True``,
     which would store :attr:`event` as a bare ``str`` — and then
-    ``event.event is MercadoPagoEvent.PAYMENT`` would be silently ``False``
+    ``event.event is MercadoPagoEventEnum.PAYMENT`` would be silently ``False``
     on every delivery.
 
     Attributes:
         topic (str): The notification type exactly as delivered.
-        event (MercadoPagoEvent | None): The parsed topic.
-            :attr:`MercadoPagoEvent.UNKNOWN` when Mercado Pago sent one this
+        event (MercadoPagoEventEnum | None): The parsed topic.
+            :attr:`MercadoPagoEventEnum.UNKNOWN` when Mercado Pago sent one this
             SDK version does not name, ``None`` when the delivery carried no
             topic at all.
         data_id (str): The resource id the notification points at, read
@@ -124,7 +124,7 @@ class MercadoPagoWebhookEvent:
     """
 
     topic: str
-    event: MercadoPagoEvent | None = None
+    event: MercadoPagoEventEnum | None = None
     data_id: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
     body: bytes = b""
@@ -427,7 +427,7 @@ def make_mercado_pago_webhook_dependency(
     considers sent. ``payload`` stays empty and ``body`` carries the bytes.
     The topic is read from the body's ``type``, falling back to the
     ``type`` query parameter Mercado Pago also appends; a topic this SDK
-    version does not name becomes :attr:`MercadoPagoEvent.UNKNOWN` rather
+    version does not name becomes :attr:`MercadoPagoEventEnum.UNKNOWN` rather
     than an error, so a provider release does not become an outage here.
     """
 
@@ -468,12 +468,12 @@ def make_mercado_pago_webhook_dependency(
         topic = _normalize(
             str(payload.get("type") or request.query_params.get("type") or "")
         )
-        event: MercadoPagoEvent | None = None
+        event: MercadoPagoEventEnum | None = None
         if topic:
             event = (
-                MercadoPagoEvent.from_value(topic)
-                if MercadoPagoEvent.has_value(topic)
-                else MercadoPagoEvent.UNKNOWN
+                MercadoPagoEventEnum.from_value(topic)
+                if MercadoPagoEventEnum.has_value(topic)
+                else MercadoPagoEventEnum.UNKNOWN
             )
         return MercadoPagoWebhookEvent(
             topic=topic,

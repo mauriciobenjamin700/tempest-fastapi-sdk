@@ -6,7 +6,7 @@ remains importable when the ``[tasks]`` extra is not installed.
 ``TaskQueue`` is the recommended typed facade (tasks + scheduler folded
 into one object); ``AsyncTaskBrokerManager`` / ``AsyncTaskScheduler`` are
 the older lifecycle-only wrappers, kept for backward compatibility. The
-``cron`` helpers (``Cron`` / ``CronOffset`` / ``Weekday`` + builder
+``cron`` helpers (``CronEnum`` / ``CronOffsetEnum`` / ``WeekdayEnum`` + builder
 functions) have no third-party dependency and import without the extra.
 """
 
@@ -20,13 +20,13 @@ from tempest_fastapi_sdk.tasks.cancellation import (
     run_cancellable as run_cancellable,
 )
 from tempest_fastapi_sdk.tasks.cron import (
-    Cron as Cron,
+    CronEnum as CronEnum,
 )
 from tempest_fastapi_sdk.tasks.cron import (
-    CronOffset as CronOffset,
+    CronOffsetEnum as CronOffsetEnum,
 )
 from tempest_fastapi_sdk.tasks.cron import (
-    Weekday as Weekday,
+    WeekdayEnum as WeekdayEnum,
 )
 from tempest_fastapi_sdk.tasks.cron import (
     daily as daily,
@@ -133,7 +133,7 @@ from tempest_fastapi_sdk.tasks.jobs import (
 )
 from tempest_fastapi_sdk.tasks.jobs import JobCancelledError as JobCancelledError
 from tempest_fastapi_sdk.tasks.jobs import JobNotFoundError as JobNotFoundError
-from tempest_fastapi_sdk.tasks.jobs import JobStatus as JobStatus
+from tempest_fastapi_sdk.tasks.jobs import JobStatusEnum as JobStatusEnum
 from tempest_fastapi_sdk.tasks.jobs import JobStore as JobStore
 from tempest_fastapi_sdk.tasks.jobs import ReclaimedJobs as ReclaimedJobs
 from tempest_fastapi_sdk.tasks.jobs import (
@@ -213,7 +213,7 @@ from tempest_fastapi_sdk.tasks.stages import (
 )
 from tempest_fastapi_sdk.tasks.stages import StageColumns as StageColumns
 from tempest_fastapi_sdk.tasks.stages import StageMap as StageMap
-from tempest_fastapi_sdk.tasks.stages import StageStatus as StageStatus
+from tempest_fastapi_sdk.tasks.stages import StageStatusEnum as StageStatusEnum
 
 __all__: list[str] = [
     "CANCELLABLE_JOB_STATUSES",
@@ -237,8 +237,8 @@ __all__: list[str] = [
     "AsyncTaskScheduler",
     "BaseDeadLetterModel",
     "BaseJobModel",
-    "Cron",
-    "CronOffset",
+    "CronEnum",
+    "CronOffsetEnum",
     "DbDeadLetterSink",
     "DeadLetter",
     "DeadLetterSink",
@@ -248,7 +248,7 @@ __all__: list[str] = [
     "JobAlreadyFinishedError",
     "JobCancelledError",
     "JobNotFoundError",
-    "JobStatus",
+    "JobStatusEnum",
     "JobStore",
     "LifecycleResource",
     "LifecycleScope",
@@ -266,7 +266,7 @@ __all__: list[str] = [
     "StageColumns",
     "StageInterruptedError",
     "StageMap",
-    "StageStatus",
+    "StageStatusEnum",
     "Task",
     "TaskBinding",
     "TaskDef",
@@ -274,7 +274,7 @@ __all__: list[str] = [
     "TaskInfo",
     "TaskMetrics",
     "TaskQueue",
-    "Weekday",
+    "WeekdayEnum",
     "daily",
     "every_minute",
     "every_n_minutes",

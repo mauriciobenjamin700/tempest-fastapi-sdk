@@ -18,7 +18,7 @@ class AuditLogModel(BaseAuditLogModel):
     __tablename__ = "audit_log"
 ```
 
-Herda os quatro campos canônicos (`id`, `is_active`, `created_at`, `updated_at`) mais: `entity` (nome do model), `entity_id` (id da linha, como texto), `action` (`AuditAction`), `actor` (quem fez, ou `None`), `changes` (o diff em JSON) e `context` (metadados opcionais — request id, motivo). Evento de domínio, IP, user agent e autor com FK ganham colunas próprias em [Evento, origem da requisição e autor](#evento-origem-da-requisicao-e-autor).
+Herda os quatro campos canônicos (`id`, `is_active`, `created_at`, `updated_at`) mais: `entity` (nome do model), `entity_id` (id da linha, como texto), `action` (`AuditActionEnum`), `actor` (quem fez, ou `None`), `changes` (o diff em JSON) e `context` (metadados opcionais — request id, motivo). Evento de domínio, IP, user agent e autor com FK ganham colunas próprias em [Evento, origem da requisição e autor](#evento-origem-da-requisicao-e-autor).
 
 ## Ligando no repository
 
@@ -420,7 +420,7 @@ Fora do repository, `snapshot_model(instance)` e `diff_snapshots(before, after)`
 
 ## Recapitulando
 
-- `BaseAuditLogModel` (subclasse com `__tablename__`) + `AuditAction`.
+- `BaseAuditLogModel` (subclasse com `__tablename__`) + `AuditActionEnum`.
 - `repo = Repository(session, model=..., audit_model=AuditLogModel)`.
 - `add_audited` / `update_audited(model, before)` / `delete_audited` — negócio + auditoria na mesma tx.
 - `repo.snapshot(model)` antes de mutar; `snapshot_model` / `diff_snapshots` para uso manual.

@@ -69,7 +69,7 @@ names on purpose.
 """
 
 
-class ConstraintKind(BaseStrEnum):
+class ConstraintKindEnum(BaseStrEnum):
     """Which kind of schema object a :class:`ConstraintRename` renames.
 
     Attributes:
@@ -92,7 +92,7 @@ class ConstraintRename:
     dialect's identifier limit, the way the DDL did.
 
     Attributes:
-        kind (ConstraintKind): What is being renamed.
+        kind (ConstraintKindEnum): What is being renamed.
         table (str): The table the constraint belongs to.
         schema (str | None): The table's schema, or ``None`` for the
             default one.
@@ -103,7 +103,7 @@ class ConstraintRename:
             metadata declares now.
     """
 
-    kind: ConstraintKind
+    kind: ConstraintKindEnum
     table: str
     schema: str | None
     columns: tuple[str, ...]
@@ -160,7 +160,7 @@ class ConstraintRename:
             )
         preparer = dialect.identifier_preparer
         prefix = f"{preparer.quote_schema(self.schema)}." if self.schema else ""
-        if self.kind is ConstraintKind.INDEX:
+        if self.kind is ConstraintKindEnum.INDEX:
             old = preparer.truncate_and_render_index_name(conv(self.old_name))
             new = preparer.truncate_and_render_index_name(conv(self.new_name))
             return f"ALTER INDEX {prefix}{old} RENAME TO {new}"
@@ -170,22 +170,22 @@ class ConstraintRename:
         return f"ALTER TABLE {table} RENAME CONSTRAINT {old} TO {new}"
 
 
-def _kind_of(item: Any) -> ConstraintKind | None:
+def _kind_of(item: Any) -> ConstraintKindEnum | None:
     """Classify a table-level schema item.
 
     Args:
         item (Any): A constraint or index attached to a table.
 
     Returns:
-        ConstraintKind | None: The kind, or ``None`` for a primary key or
+        ConstraintKindEnum | None: The kind, or ``None`` for a primary key or
         a check constraint, whose templates do not name columns.
     """
     if isinstance(item, UniqueConstraint):
-        return ConstraintKind.UNIQUE
+        return ConstraintKindEnum.UNIQUE
     if isinstance(item, ForeignKeyConstraint):
-        return ConstraintKind.FOREIGN_KEY
+        return ConstraintKindEnum.FOREIGN_KEY
     if isinstance(item, Index):
-        return ConstraintKind.INDEX
+        return ConstraintKindEnum.INDEX
     return None
 
 
@@ -331,7 +331,7 @@ def legacy_constraint_renames(
 
 __all__: list[str] = [
     "LEGACY_NAMING_CONVENTION",
-    "ConstraintKind",
+    "ConstraintKindEnum",
     "ConstraintRename",
     "legacy_constraint_renames",
 ]

@@ -376,7 +376,7 @@ renova a cada envio — então cada linha sai no máximo uma vez por janela).
 ```python
 # src/services/extraction.py
 from tempest_fastapi_sdk.db import AsyncDatabaseManager
-from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatus, JobStore
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatusEnum, JobStore
 
 
 class JobModel(BaseJobModel):
@@ -397,7 +397,7 @@ async def dashboard() -> tuple[list[JobModel], list[JobModel]]:
         estão rodando agora.
     """
     recentes = await store.list_recent(kind="extract", limit=20)
-    rodando = await store.list_recent(status=JobStatus.RUNNING)
+    rodando = await store.list_recent(status=JobStatusEnum.RUNNING)
     return recentes, rodando
 ```
 
@@ -647,7 +647,7 @@ progresso, senão a barra não anda:
 from uuid import UUID
 
 from tempest_fastapi_sdk.db import AsyncDatabaseManager
-from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatus, JobStore
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatusEnum, JobStore
 
 
 class JobModel(BaseJobModel):
@@ -687,7 +687,7 @@ async def em_andamento() -> list[JobModel]:
     """
     return await store.list_recent(
         kind="extract",
-        statuses=(JobStatus.QUEUED, JobStatus.RUNNING),
+        statuses=(JobStatusEnum.QUEUED, JobStatusEnum.RUNNING),
     )
 ```
 
@@ -716,7 +716,7 @@ estado do vizinho**.
 
 ```python
 # src/core/stages.py
-from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+from tempest_fastapi_sdk.tasks import StageMap, StageStatusEnum
 
 STAGES: StageMap = StageMap(
     ["transcription", "summary", "suggestions"],
@@ -732,7 +732,7 @@ de coluna é convenção da casa e não algo que uma biblioteca impõe.
 # src/tasks/summarize.py
 from typing import Any
 
-from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+from tempest_fastapi_sdk.tasks import StageMap, StageStatusEnum
 
 STAGES: StageMap = StageMap(["summary"], prefix="doc_")
 
@@ -755,11 +755,11 @@ async def executar(documento: Any) -> None:
     Args:
         documento (Any): O registro, recém-lido do banco.
     """
-    STAGES.mark(documento, "summary", StageStatus.RUNNING)
+    STAGES.mark(documento, "summary", StageStatusEnum.RUNNING)
     resumo: str = await resumir("um texto longo")
 
-    if STAGES.owns(documento, "summary", StageStatus.RUNNING):
-        STAGES.mark(documento, "summary", StageStatus.DONE, result=resumo)
+    if STAGES.owns(documento, "summary", StageStatusEnum.RUNNING):
+        STAGES.mark(documento, "summary", StageStatusEnum.DONE, result=resumo)
 ```
 
 !!! danger "`owns` é checagem de posse, não de cancelamento"

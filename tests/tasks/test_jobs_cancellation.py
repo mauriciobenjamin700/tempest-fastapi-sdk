@@ -24,7 +24,7 @@ from tempest_fastapi_sdk.db import AsyncDatabaseManager
 from tempest_fastapi_sdk.tasks import (
     BaseJobModel,
     JobCancelledError,
-    JobStatus,
+    JobStatusEnum,
     JobStore,
     StageInterruptedError,
     run_cancellable,
@@ -82,7 +82,7 @@ class TestCancel:
         cancelled = await store.cancel(job.id)
 
         assert cancelled is not None
-        assert cancelled.status == JobStatus.CANCELLED.value
+        assert cancelled.status == JobStatusEnum.CANCELLED.value
         assert cancelled.finished_at is not None
 
     async def test_a_running_job_can_be_cancelled(
@@ -95,7 +95,7 @@ class TestCancel:
         cancelled = await store.cancel(job.id)
 
         assert cancelled is not None
-        assert cancelled.status == JobStatus.CANCELLED.value
+        assert cancelled.status == JobStatusEnum.CANCELLED.value
 
     async def test_the_reason_is_stored(self, store: JobStore[_JobModel]) -> None:
         """The screen can say who stopped it, not just that it stopped."""

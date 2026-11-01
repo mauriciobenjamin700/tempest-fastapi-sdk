@@ -13,7 +13,7 @@ from tempest_fastapi_sdk.geo import (
     resolve_br_coordinate,
     uf_centroid,
 )
-from tempest_fastapi_sdk.utils import UF
+from tempest_fastapi_sdk.utils import UFEnum
 
 
 class _FakeGeocoder:
@@ -37,10 +37,10 @@ class TestUFCentroid:
         assert coord.latitude == pytest.approx(-22.2)
 
     def test_by_enum(self) -> None:
-        assert uf_centroid(UF.RJ).longitude == pytest.approx(-42.7)
+        assert uf_centroid(UFEnum.RJ).longitude == pytest.approx(-42.7)
 
     def test_all_states_present(self) -> None:
-        for uf in UF:
+        for uf in UFEnum:
             assert uf_centroid(uf) is not None
 
     def test_invalid_raises(self) -> None:
@@ -140,7 +140,7 @@ class TestResolveBrCoordinate:
     async def test_no_cep_goes_straight_to_the_address(self) -> None:
         geocoder = _ScriptedGeocoder(_hit(-5.1, -42.8))
         await resolve_br_coordinate(
-            geocoder=geocoder, uf=UF.PI, address="Rua Sem Número", city=None
+            geocoder=geocoder, uf=UFEnum.PI, address="Rua Sem Número", city=None
         )
         assert geocoder.queries == ["Rua Sem Número, PI, Brasil"]
 
@@ -149,7 +149,7 @@ class TestResolveBrCoordinate:
         point = await resolve_br_coordinate(
             geocoder=geocoder, uf="SP", address="Rua X 01310-100", city="São Paulo"
         )
-        assert point == UF_CENTROIDS[UF.SP]
+        assert point == UF_CENTROIDS[UFEnum.SP]
 
     async def test_geocoder_failures_never_raise(
         self, caplog: pytest.LogCaptureFixture
@@ -161,7 +161,7 @@ class TestResolveBrCoordinate:
         point = await resolve_br_coordinate(
             geocoder=geocoder, uf="RJ", address="Rua Y 20040-002", city="Rio"
         )
-        assert point == UF_CENTROIDS[UF.RJ]
+        assert point == UF_CENTROIDS[UFEnum.RJ]
         assert len(geocoder.queries) == 2
         warnings = [r for r in caplog.records if r.levelname == "WARNING"]
         assert len(warnings) == 2
@@ -178,12 +178,12 @@ class TestResolveBrCoordinate:
         point = await resolve_br_coordinate(
             geocoder=None, uf="ce", address="Rua Z 60000-000", city="Fortaleza"
         )
-        assert point == UF_CENTROIDS[UF.CE]
+        assert point == UF_CENTROIDS[UFEnum.CE]
 
     async def test_nothing_to_geocode_skips_the_address_step(self) -> None:
         geocoder = _ScriptedGeocoder()
         point = await resolve_br_coordinate(geocoder=geocoder, uf="BA")
-        assert point == UF_CENTROIDS[UF.BA]
+        assert point == UF_CENTROIDS[UFEnum.BA]
         assert geocoder.queries == []
 
     async def test_unknown_uf_returns_none(self) -> None:

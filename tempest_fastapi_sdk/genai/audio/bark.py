@@ -40,11 +40,15 @@ from pathlib import Path
 from typing import Any
 
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
-from tempest_fastapi_sdk.genai.audio.language import Language
+from tempest_fastapi_sdk.genai.audio.language import LanguageEnum
 from tempest_fastapi_sdk.genai.audio_generation import encode_wav
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
-from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype, precision_kwarg
+from tempest_fastapi_sdk.genai.schemas import (
+    HardwareInfo,
+    ModelDtypeEnum,
+    precision_kwarg,
+)
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
@@ -196,17 +200,17 @@ def split_for_bark(text: str, max_chars: int = DEFAULT_MAX_CHUNK_CHARS) -> list[
     return [piece for piece in _pack(parts, max_chars) if _SPEAKABLE.search(piece)]
 
 
-def bark_language_code(language: Language | str) -> str:
+def bark_language_code(language: LanguageEnum | str) -> str:
     """Map a language to the code Bark's preset names use.
 
     Args:
-        language (Language | str): A :class:`Language` member, or a code
+        language (LanguageEnum | str): A :class:`LanguageEnum` member, or a code
             such as ``"pt"``, ``"pt-BR"`` or ``"en_US"``.
 
     Returns:
         str: The lowercase two-letter code (``"pt"``).
     """
-    raw = language.value if isinstance(language, Language) else language
+    raw = language.value if isinstance(language, LanguageEnum) else language
     return re.split(r"[-_]", raw.strip())[0].lower()
 
 
@@ -218,13 +222,13 @@ class BarkSpeech:
         >>> speech = BarkSpeech()
         >>> wav = await speech.synthesize(
         ...     "Bom dia! O ônibus das oito está atrasado.",
-        ...     language=Language.PT_BR,
+        ...     language=LanguageEnum.PT_BR,
         ... )
 
     Attributes:
         model_id (str): The HuggingFace model id.
         device (str): The resolved device.
-        dtype (ModelDtype): The resolved compute precision.
+        dtype (ModelDtypeEnum): The resolved compute precision.
         source (ModelRef): The resolved weight identity.
         max_chunk_chars (int): Largest piece sent to one ``generate`` call.
         pause_seconds (float): Silence inserted between pieces.
@@ -237,7 +241,7 @@ class BarkSpeech:
         model_id: str = DEFAULT_BARK_MODEL,
         *,
         device: str = "auto",
-        dtype: str | ModelDtype = "auto",
+        dtype: str | ModelDtypeEnum = "auto",
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
@@ -255,7 +259,7 @@ class BarkSpeech:
             model_id (str): ``"suno/bark-small"`` (measured) or
                 ``"suno/bark"``.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
-            dtype (str | ModelDtype): Compute precision, or ``"auto"``.
+            dtype (str | ModelDtypeEnum): Compute precision, or ``"auto"``.
             cache_dir (str | None): Where weights are downloaded and read.
             hf_token (str | None): Hub token; ``None`` falls back to
                 ``HF_TOKEN``.
@@ -289,9 +293,9 @@ class BarkSpeech:
         self.model_id = model_id
         self.device = resolve_device(device, hardware)
         self.dtype = (
-            ModelDtype(auto_dtype_name(self.device))
+            ModelDtypeEnum(auto_dtype_name(self.device))
             if dtype == "auto"
-            else ModelDtype(dtype)
+            else ModelDtypeEnum(dtype)
         )
         self.source = ModelRef(
             model_id=model_id,
@@ -401,7 +405,7 @@ class BarkSpeech:
     def _check_request(
         self,
         text: str,
-        language: Language | str | None,
+        language: LanguageEnum | str | None,
         speaker: str | None,
         seed: int | None,
     ) -> tuple[list[str], str | None]:
@@ -409,7 +413,7 @@ class BarkSpeech:
 
         Args:
             text (str): The text to speak.
-            language (Language | str | None): The requested language.
+            language (LanguageEnum | str | None): The requested language.
             speaker (str | None): An explicit preset name.
             seed (int | None): The requested seed.
 
@@ -545,7 +549,7 @@ class BarkSpeech:
         text: str,
         /,
         *,
-        language: Language | str | None = None,
+        language: LanguageEnum | str | None = None,
         speaker: str | None = None,
         seed: int | None = None,
         out_path: str | Path | None = None,
@@ -558,7 +562,7 @@ class BarkSpeech:
 
         Args:
             text (str): The text to speak.
-            language (Language | str | None): ``Language.PT_BR``, ``"pt"``,
+            language (LanguageEnum | str | None): ``LanguageEnum.PT_BR``, ``"pt"``,
                 ``"pt-BR"``...; picks ``v2/<code>_speaker_0`` when no
                 ``speaker`` is given.
             speaker (str | None): A preset from :meth:`voices`, such as

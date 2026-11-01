@@ -24,7 +24,7 @@ from tempest_fastapi_sdk import (
 from tempest_fastapi_sdk.testing.fakes import FakePayoutProvider
 from tempest_fastapi_sdk.wallet import (
     WalletBalanceMixin,
-    WalletEntryKind,
+    WalletEntryKindEnum,
     WalletService,
     claim_once,
     make_wallet_entry_model,
@@ -198,7 +198,7 @@ class TestReverse:
         entry = await service.reverse(user_id, 500, reference_id="o-9")
 
         assert entry is not None
-        assert entry.kind == WalletEntryKind.REVERSAL
+        assert entry.kind == WalletEntryKindEnum.REVERSAL
         assert await _stored_balance(session, user_id) == 0
 
     async def test_reverse_beyond_the_balance_changes_nothing(
@@ -230,7 +230,7 @@ class TestWithdraw:
         )
 
         assert result.entry.amount_cents == -900
-        assert result.entry.kind == WalletEntryKind.WITHDRAW
+        assert result.entry.kind == WalletEntryKindEnum.WITHDRAW
         assert [t.amount_cents for t in payout.transfers] == [900]
         assert payout.transfers[0].correlation_id == result.entry.reference_id
         assert await _stored_balance(session, user_id) == 100

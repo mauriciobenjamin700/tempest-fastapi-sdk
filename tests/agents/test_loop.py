@@ -15,7 +15,7 @@ from tempest_fastapi_sdk.agents import (
     Agent,
     AgentBudget,
     AgentContext,
-    StopReason,
+    StopReasonEnum,
     refine,
     run_until,
     text_tool,
@@ -65,7 +65,7 @@ class TestRefineApproval:
         )
         critic = Agent(ScriptedBackend([replies("APPROVED")]), name="critic")
         result = await refine(worker, critic, "write", max_rounds=1)
-        assert result.iterations[0].run.stop_reason == StopReason.MAX_STEPS
+        assert result.iterations[0].run.stop_reason == StopReasonEnum.MAX_STEPS
         assert result.accepted is False
 
 

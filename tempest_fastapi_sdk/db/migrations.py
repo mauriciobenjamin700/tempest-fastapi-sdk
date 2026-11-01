@@ -84,7 +84,7 @@ class AmbiguousBaseRevisionError(RuntimeError):
         super().__init__(f"expected exactly one base revision, found {bases or 'none'}")
 
 
-class SchemaSyncOutcome(BaseStrEnum):
+class SchemaSyncOutcomeEnum(BaseStrEnum):
     """What :meth:`AlembicHelper.sync_schema` did.
 
     Attributes:
@@ -1053,7 +1053,7 @@ class AlembicHelper:
         """
         return await asyncio.to_thread(self.adopt)
 
-    def sync_schema(self, *, force: bool = False) -> SchemaSyncOutcome:
+    def sync_schema(self, *, force: bool = False) -> SchemaSyncOutcomeEnum:
         """Bring the schema in line with the migration tree, from any state.
 
         This is the whole first-boot bootstrap, and it exists because the
@@ -1089,7 +1089,7 @@ class AlembicHelper:
                 database.
 
         Returns:
-            SchemaSyncOutcome: Which of the three paths ran.
+            SchemaSyncOutcomeEnum: Which of the three paths ran.
 
         Raises:
             DestructiveMigrationError: When a pending migration drops a
@@ -1103,15 +1103,17 @@ class AlembicHelper:
         """
         _refuse_running_loop("sync_schema")
         if not self.heads():
-            return SchemaSyncOutcome.NO_MIGRATIONS
+            return SchemaSyncOutcomeEnum.NO_MIGRATIONS
         if self.current() is None and not self.has_existing_schema():
             self.upgrade()
-            return SchemaSyncOutcome.SYNCED
+            return SchemaSyncOutcomeEnum.SYNCED
         adopted = self.adopt()
         self.safe_upgrade(force=force)
-        return SchemaSyncOutcome.ADOPTED if adopted else SchemaSyncOutcome.SYNCED
+        return (
+            SchemaSyncOutcomeEnum.ADOPTED if adopted else SchemaSyncOutcomeEnum.SYNCED
+        )
 
-    async def sync_schema_async(self, *, force: bool = False) -> SchemaSyncOutcome:
+    async def sync_schema_async(self, *, force: bool = False) -> SchemaSyncOutcomeEnum:
         """Run :meth:`sync_schema` in a worker thread, for async callers.
 
         The call to make from a FastAPI lifespan: the worker thread has no
@@ -1121,7 +1123,7 @@ class AlembicHelper:
             force (bool): Passed to :meth:`safe_upgrade`.
 
         Returns:
-            SchemaSyncOutcome: Which of the three paths ran.
+            SchemaSyncOutcomeEnum: Which of the three paths ran.
 
         Raises:
             DestructiveMigrationError: When a pending migration drops a
@@ -1344,6 +1346,6 @@ __all__: list[str] = [
     "AlembicHelper",
     "AmbiguousBaseRevisionError",
     "DestructiveMigrationError",
-    "SchemaSyncOutcome",
+    "SchemaSyncOutcomeEnum",
     "require_sqlite_foreign_keys_off",
 ]

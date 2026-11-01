@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from tempest_fastapi_sdk.modelops import (
-    EnergySource,
+    EnergySourceEnum,
     NullPowerSampler,
     NvidiaSmiPowerSampler,
     NvmlPowerSampler,
@@ -107,7 +107,7 @@ def _wait_for_samples(
 class _CountingSampler(_ThreadedPowerSampler):
     """Threaded sampler whose poll returns a fixed power and memory."""
 
-    source: EnergySource = EnergySource.NVML_SAMPLING
+    source: EnergySourceEnum = EnergySourceEnum.NVML_SAMPLING
 
     @property
     def available(self) -> bool:
@@ -144,7 +144,7 @@ class TestNullSampler:
         sampler.stop()
         reading = sampler.reading()
         assert sampler.available is False
-        assert reading.source == EnergySource.UNAVAILABLE
+        assert reading.source == EnergySourceEnum.UNAVAILABLE
         assert reading.energy_j is None
         assert sampler.latest_power_w() is None
         assert sampler.peak_memory_mb() is None
@@ -161,7 +161,7 @@ class TestThreadedSampler:
         sampler.stop()
         reading = sampler.reading()
         assert reading.samples >= 2
-        assert reading.source == EnergySource.NVML_SAMPLING
+        assert reading.source == EnergySourceEnum.NVML_SAMPLING
         assert reading.energy_j is not None
         assert reading.mean_power_w == pytest.approx(10.0)
         assert reading.peak_power_w == pytest.approx(10.0)
@@ -170,7 +170,7 @@ class TestThreadedSampler:
     def test_stop_without_start_is_safe(self) -> None:
         sampler = _CountingSampler()
         sampler.stop()
-        assert sampler.reading().source == EnergySource.UNAVAILABLE
+        assert sampler.reading().source == EnergySourceEnum.UNAVAILABLE
 
 
 class TestNvmlSampler:
@@ -180,7 +180,7 @@ class TestNvmlSampler:
         assert sampler.available is False
         sampler.start()
         sampler.stop()
-        assert sampler.reading().source == EnergySource.UNAVAILABLE
+        assert sampler.reading().source == EnergySourceEnum.UNAVAILABLE
 
     def test_unavailable_when_the_driver_is_missing(
         self, monkeypatch: pytest.MonkeyPatch
@@ -195,7 +195,7 @@ class TestNvmlSampler:
         sampler.start()
         sampler.stop()
         reading = sampler.reading()
-        assert reading.source == EnergySource.NVML_COUNTER
+        assert reading.source == EnergySourceEnum.NVML_COUNTER
         assert reading.energy_j == pytest.approx(2.5)
 
     def test_falls_back_to_sampling_without_the_counter(
@@ -207,7 +207,7 @@ class TestNvmlSampler:
         _wait_for_samples(sampler, 3)
         sampler.stop()
         reading = sampler.reading()
-        assert reading.source == EnergySource.NVML_SAMPLING
+        assert reading.source == EnergySourceEnum.NVML_SAMPLING
         assert reading.mean_power_w == pytest.approx(42.0)
 
 
@@ -222,7 +222,7 @@ class TestNvidiaSmiSampler:
         assert sampler.available is False
         sampler.start()
         sampler.stop()
-        assert sampler.reading().source == EnergySource.UNAVAILABLE
+        assert sampler.reading().source == EnergySourceEnum.UNAVAILABLE
 
     def test_parses_the_csv_line(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -275,7 +275,7 @@ class TestRaplSampler:
         assert sampler.available is False
         sampler.start()
         sampler.stop()
-        assert sampler.reading().source == EnergySource.UNAVAILABLE
+        assert sampler.reading().source == EnergySourceEnum.UNAVAILABLE
 
     def test_sums_package_domains_only(self, tmp_path: Path) -> None:
         package = _write_rapl_domain(tmp_path, "intel-rapl:0", energy_uj=1_000)
@@ -286,7 +286,7 @@ class TestRaplSampler:
         (package / "energy_uj").write_text("2_500_001".replace("_", ""))
         sampler.stop()
         reading = sampler.reading()
-        assert reading.source == EnergySource.RAPL
+        assert reading.source == EnergySourceEnum.RAPL
         assert reading.energy_j == pytest.approx(2.499001)
         assert reading.samples == 1
 

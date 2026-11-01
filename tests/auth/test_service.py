@@ -1380,7 +1380,7 @@ class TestServiceEdgeCases:
         self,
         session: AsyncSession,
     ) -> None:
-        from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose
+        from tempest_fastapi_sdk.db.user_token_model import UserTokenPurposeEnum
 
         service = _backend_service(auto_activate=True)
         user, _ = await service.signup(
@@ -1397,7 +1397,7 @@ class TestServiceEdgeCases:
             await service.peek_token(
                 session,
                 token=token.token,
-                purpose=UserTokenPurpose.PASSWORD_RESET,
+                purpose=UserTokenPurposeEnum.PASSWORD_RESET,
             )
 
     async def test_expired_token_rejected(

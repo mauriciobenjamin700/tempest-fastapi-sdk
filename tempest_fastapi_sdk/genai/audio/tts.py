@@ -15,7 +15,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.genai.audio.language import (
-    Language,
+    LanguageEnum,
     preset_for,
     tts_language,
 )
@@ -116,7 +116,7 @@ class TextToSpeech:
     @classmethod
     def for_language(
         cls,
-        language: Language,
+        language: LanguageEnum,
         *,
         device: str = "auto",
         max_concurrent: int = 2,
@@ -128,7 +128,7 @@ class TextToSpeech:
         hand-pick a model id.
 
         Args:
-            language (Language): ``Language.PT_BR`` or ``Language.EN_US``.
+            language (LanguageEnum): ``LanguageEnum.PT_BR`` or ``LanguageEnum.EN_US``.
             device (str): ``"auto"`` / ``"cuda"`` / ``"cpu"``.
             max_concurrent (int): Max simultaneous syntheses.
 
@@ -206,7 +206,7 @@ class TextToSpeech:
         *,
         out_path: str | Path | None = None,
         speaker: str | None = None,
-        language: Language | str | None = None,
+        language: LanguageEnum | str | None = None,
         speaker_wav: str | Path | None = None,
     ) -> bytes:
         """Generate speech audio (WAV) from ``text``.
@@ -219,8 +219,8 @@ class TextToSpeech:
             out_path (str | Path | None): When given, also write the WAV
                 there; the bytes are returned either way.
             speaker (str | None): Speaker name for multi-speaker models.
-            language (Language | str | None): Language for multilingual
-                models — a :class:`~tempest_fastapi_sdk.genai.audio.Language`
+            language (LanguageEnum | str | None): LanguageEnum for multilingual
+                models — a :class:`~tempest_fastapi_sdk.genai.audio.LanguageEnum`
                 member, a raw code (``"pt"``), or ``None``.
             speaker_wav (str | Path | None): Reference clip for voice
                 cloning (XTTS-style models).

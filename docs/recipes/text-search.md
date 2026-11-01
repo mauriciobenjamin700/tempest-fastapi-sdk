@@ -287,7 +287,7 @@ mão precisa pular o `.where(...)` sozinho.
 
 ```python
 from src.db.models import ArticleModel
-from tempest_fastapi_sdk import BaseRepository, TextSearchLanguage
+from tempest_fastapi_sdk import BaseRepository, TextSearchLanguageEnum
 
 
 async def ranked(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
@@ -302,7 +302,7 @@ async def ranked(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
     return await articles.full_text_search(
         "nota fiscal",
         fields=["title", "body"],
-        language=TextSearchLanguage.PORTUGUESE,
+        language=TextSearchLanguageEnum.PORTUGUESE,
     )
 ```
 
@@ -326,7 +326,7 @@ Um termo no título deve valer mais que o mesmo termo no corpo:
 
 ```python
 from src.db.models import ArticleModel
-from tempest_fastapi_sdk import BaseRepository, TextSearchWeight
+from tempest_fastapi_sdk import BaseRepository, TextSearchWeightEnum
 
 
 async def title_first(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
@@ -341,7 +341,7 @@ async def title_first(articles: BaseRepository[ArticleModel]) -> list[ArticleMod
     return await articles.full_text_search(
         "nota fiscal",
         fields=["title", "body"],
-        weights={"title": TextSearchWeight.A},
+        weights={"title": TextSearchWeightEnum.A},
     )
 ```
 
@@ -389,5 +389,5 @@ def can_rank(articles: BaseRepository[ArticleModel]) -> bool:
 - `supports_full_text` diz qual das duas você recebeu.
 - `hashed_password` e `__secret_columns__` nunca são buscáveis;
   `searchable_columns` restringe `fields` quando ele vem da requisição.
-- `TextSearchLanguage`, `TextSearchWeight` e `TokenMatch` são enums: nada
+- `TextSearchLanguageEnum`, `TextSearchWeightEnum` e `TokenMatchEnum` são enums: nada
   de string mágica no call site.

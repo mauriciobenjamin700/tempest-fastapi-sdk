@@ -58,12 +58,12 @@ from tempest_fastapi_sdk.auth.schemas import (
     PasswordResetToken,
 )
 from tempest_fastapi_sdk.db.integrity import (
-    IntegrityViolation,
+    IntegrityViolationEnum,
     parse_integrity_error,
 )
 from tempest_fastapi_sdk.db.user_token_model import (
     BaseUserTokenModel,
-    UserTokenPurpose,
+    UserTokenPurposeEnum,
 )
 from tempest_fastapi_sdk.exceptions import (
     ConflictException,
@@ -92,7 +92,7 @@ from tempest_fastapi_sdk.utils.opaque_token import (
 from tempest_fastapi_sdk.utils.password import (
     PasswordPolicy,
     PasswordUtils,
-    PasswordViolationCode,
+    PasswordViolationCodeEnum,
     check_password_policy,
     generate_password,
 )
@@ -491,7 +491,7 @@ class UserAuthService:
         activation = await self._issue_token(
             session,
             user_id=user.id,
-            purpose=UserTokenPurpose.ACTIVATION,
+            purpose=UserTokenPurposeEnum.ACTIVATION,
             ttl_seconds=self.auth_settings.AUTH_ACTIVATION_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_ACTIVATION_URL_TEMPLATE,
             payload=self._mailed_address(user),
@@ -576,7 +576,7 @@ class UserAuthService:
             ``error`` itself for anything else.
         """
         failure = parse_integrity_error(error)
-        if failure.kind is IntegrityViolation.UNIQUE:
+        if failure.kind is IntegrityViolationEnum.UNIQUE:
             column = failure.column
             conflict = (
                 self.exceptions.email_taken if column == "email" else ConflictException
@@ -591,7 +591,7 @@ class UserAuthService:
                 },
                 field=column,
             )
-        if failure.kind is IntegrityViolation.NOT_NULL:
+        if failure.kind is IntegrityViolationEnum.NOT_NULL:
             return ValueError(
                 f"signup could not insert {self.user_model.__name__}: column "
                 f"{failure.column!r} is NOT NULL and got no value; pass it in "
@@ -634,7 +634,7 @@ class UserAuthService:
         record = await self._consume_token(
             session,
             token=token,
-            purpose=UserTokenPurpose.ACTIVATION,
+            purpose=UserTokenPurposeEnum.ACTIVATION,
         )
         user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
         if user is None:
@@ -719,7 +719,7 @@ class UserAuthService:
         activation = await self._issue_token_after_mail(
             session,
             user=user,
-            purpose=UserTokenPurpose.ACTIVATION,
+            purpose=UserTokenPurposeEnum.ACTIVATION,
             ttl_seconds=self.auth_settings.AUTH_ACTIVATION_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_ACTIVATION_URL_TEMPLATE,
             mail=self._maybe_send_activation_email,
@@ -1479,7 +1479,7 @@ class UserAuthService:
         reset = await self._issue_token_after_mail(
             session,
             user=user,
-            purpose=UserTokenPurpose.PASSWORD_RESET,
+            purpose=UserTokenPurposeEnum.PASSWORD_RESET,
             ttl_seconds=self.auth_settings.AUTH_PASSWORD_RESET_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_PASSWORD_RESET_URL_TEMPLATE,
             mail=self._maybe_send_password_reset_email,
@@ -1558,7 +1558,7 @@ class UserAuthService:
         record = await self._consume_token(
             session,
             token=token,
-            purpose=UserTokenPurpose.PASSWORD_RESET,
+            purpose=UserTokenPurposeEnum.PASSWORD_RESET,
         )
         user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
         if user is None:
@@ -1741,7 +1741,7 @@ class UserAuthService:
         bundle = await self._issue_token(
             session,
             user_id=user.id,
-            purpose=UserTokenPurpose.EMAIL_CHANGE,
+            purpose=UserTokenPurposeEnum.EMAIL_CHANGE,
             ttl_seconds=self.auth_settings.AUTH_EMAIL_CHANGE_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_EMAIL_CHANGE_URL_TEMPLATE,
             payload=normalized,
@@ -1815,7 +1815,7 @@ class UserAuthService:
         record = await self._consume_token(
             session,
             token=token,
-            purpose=UserTokenPurpose.EMAIL_CHANGE,
+            purpose=UserTokenPurposeEnum.EMAIL_CHANGE,
         )
         new_email = (record.payload or "").strip().lower()
         if not new_email:
@@ -1875,7 +1875,7 @@ class UserAuthService:
         bundle = await self._issue_token(
             session,
             user_id=user.id,
-            purpose=UserTokenPurpose.EMAIL_VERIFICATION,
+            purpose=UserTokenPurposeEnum.EMAIL_VERIFICATION,
             ttl_seconds=self.auth_settings.AUTH_EMAIL_VERIFICATION_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_EMAIL_VERIFICATION_URL_TEMPLATE,
             payload=self._mailed_address(user),
@@ -1915,7 +1915,7 @@ class UserAuthService:
         record = await self._consume_token(
             session,
             token=token,
-            purpose=UserTokenPurpose.EMAIL_VERIFICATION,
+            purpose=UserTokenPurposeEnum.EMAIL_VERIFICATION,
         )
         user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
         if user is None:
@@ -2075,7 +2075,7 @@ class UserAuthService:
         bundle = await self._issue_token(
             session,
             user_id=user.id,
-            purpose=UserTokenPurpose.EMAIL_CHANGE,
+            purpose=UserTokenPurposeEnum.EMAIL_CHANGE,
             ttl_seconds=self.auth_settings.AUTH_EMAIL_CHANGE_TTL_SECONDS,
             url_template=self.auth_settings.AUTH_EMAIL_CHANGE_URL_TEMPLATE,
             payload=normalized_new,
@@ -3247,7 +3247,7 @@ class UserAuthService:
 
         The exception class comes from :attr:`exceptions` — one field
         per violation — and its ``message_key`` is the violation's
-        :class:`~tempest_fastapi_sdk.PasswordViolationCode`, so a message
+        :class:`~tempest_fastapi_sdk.PasswordViolationCodeEnum`, so a message
         catalog renders "too short" and "too long" differently while the
         ``details`` stay structured.
 
@@ -3263,11 +3263,15 @@ class UserAuthService:
         if violation is None:
             return
         exception = {
-            PasswordViolationCode.PASSWORD_TOO_SHORT: (
+            PasswordViolationCodeEnum.PASSWORD_TOO_SHORT: (
                 self.exceptions.password_too_short
             ),
-            PasswordViolationCode.PASSWORD_TOO_LONG: self.exceptions.password_too_long,
-            PasswordViolationCode.PASSWORD_TOO_WEAK: self.exceptions.password_too_weak,
+            PasswordViolationCodeEnum.PASSWORD_TOO_LONG: (
+                self.exceptions.password_too_long
+            ),
+            PasswordViolationCodeEnum.PASSWORD_TOO_WEAK: (
+                self.exceptions.password_too_weak
+            ),
         }[violation.code]
         raise exception(
             message=violation.message,
@@ -3281,7 +3285,7 @@ class UserAuthService:
         session: AsyncSession,
         *,
         user_id: UUID,
-        purpose: UserTokenPurpose,
+        purpose: UserTokenPurposeEnum,
         ttl_seconds: int,
         url_template: str,
         payload: str | None = None,
@@ -3291,7 +3295,7 @@ class UserAuthService:
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             user_id (UUID): The user the token authorizes.
-            purpose (UserTokenPurpose): What the token authorizes.
+            purpose (UserTokenPurposeEnum): What the token authorizes.
             ttl_seconds (int): Token lifetime in seconds.
             url_template (str): URL template with a ``{token}`` slot.
             payload (str | None): Optional flow context stored on the
@@ -3341,7 +3345,7 @@ class UserAuthService:
         session: AsyncSession,
         *,
         user_id: UUID,
-        purpose: UserTokenPurpose,
+        purpose: UserTokenPurposeEnum,
         digest: str,
         expires_at: datetime,
         payload: str | None = None,
@@ -3352,7 +3356,7 @@ class UserAuthService:
             session (AsyncSession): Active SQLAlchemy session. Flushed,
                 not committed.
             user_id (UUID): The user the token authorizes.
-            purpose (UserTokenPurpose): What the token authorizes.
+            purpose (UserTokenPurposeEnum): What the token authorizes.
             digest (str): The digest :meth:`_mint_token` returned.
             expires_at (datetime): The expiry :meth:`_mint_token` returned.
             payload (str | None): Optional flow context stored on the row.
@@ -3374,7 +3378,7 @@ class UserAuthService:
         session: AsyncSession,
         *,
         user: BaseUserModel,
-        purpose: UserTokenPurpose,
+        purpose: UserTokenPurposeEnum,
         ttl_seconds: int,
         url_template: str,
         mail: Callable[
@@ -3406,7 +3410,7 @@ class UserAuthService:
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             user (BaseUserModel): The account the link is for.
-            purpose (UserTokenPurpose): What the token authorizes.
+            purpose (UserTokenPurposeEnum): What the token authorizes.
             ttl_seconds (int): Token lifetime in seconds.
             url_template (str): URL template with a ``{token}`` slot.
             mail (Callable[[BaseUserModel, tuple[str, str, datetime]],
@@ -3449,7 +3453,7 @@ class UserAuthService:
         session: AsyncSession,
         *,
         user_id: UUID,
-        purpose: UserTokenPurpose,
+        purpose: UserTokenPurposeEnum,
     ) -> None:
         """Spend every unused token of ``purpose`` belonging to ``user_id``.
 
@@ -3484,7 +3488,7 @@ class UserAuthService:
                 owns the transaction, so the burn and the new token land
                 together or not at all.
             user_id (UUID): Owner of the tokens to spend.
-            purpose (UserTokenPurpose): Which flow's tokens to spend.
+            purpose (UserTokenPurposeEnum): Which flow's tokens to spend.
                 Only the same purpose is touched: requesting a password
                 reset does not invalidate a pending email change.
         """
@@ -3583,7 +3587,7 @@ class UserAuthService:
         session: AsyncSession,
         *,
         token: str,
-        purpose: UserTokenPurpose,
+        purpose: UserTokenPurposeEnum,
     ) -> BaseUserTokenModel:
         """Spend a single-use token in one conditional statement.
 
@@ -3607,7 +3611,7 @@ class UserAuthService:
             session (AsyncSession): Active SQLAlchemy session. The
                 statement is executed but not committed.
             token (str): Plaintext token.
-            purpose (UserTokenPurpose): Expected token purpose.
+            purpose (UserTokenPurposeEnum): Expected token purpose.
 
         Returns:
             BaseUserTokenModel: The token record, with ``used_at`` set.
@@ -3640,7 +3644,7 @@ class UserAuthService:
         session: AsyncSession,
         *,
         token: str,
-        purpose: UserTokenPurpose,
+        purpose: UserTokenPurposeEnum,
     ) -> tuple[BaseUserTokenModel, BaseUserModel]:
         """Validate a token + load its user **without** consuming it.
 
@@ -3653,7 +3657,7 @@ class UserAuthService:
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             token (str): Plaintext token.
-            purpose (UserTokenPurpose): Expected token purpose.
+            purpose (UserTokenPurposeEnum): Expected token purpose.
 
         Returns:
             tuple[BaseUserTokenModel, BaseUserModel]: The token
@@ -3676,14 +3680,14 @@ class UserAuthService:
         session: AsyncSession,
         *,
         token: str,
-        purpose: UserTokenPurpose,
+        purpose: UserTokenPurposeEnum,
     ) -> BaseUserTokenModel:
         """Find a token record and run the validity checks, read-only.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
             token (str): Plaintext token.
-            purpose (UserTokenPurpose): Expected token purpose.
+            purpose (UserTokenPurposeEnum): Expected token purpose.
 
         Returns:
             BaseUserTokenModel: The valid, unused token record.

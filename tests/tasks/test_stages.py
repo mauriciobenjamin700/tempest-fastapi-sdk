@@ -22,7 +22,7 @@ from tempest_fastapi_sdk.tasks.stages import (
     RUNNING_STAGE_STATUSES,
     TERMINAL_STAGE_STATUSES,
     StageMap,
-    StageStatus,
+    StageStatusEnum,
 )
 
 
@@ -130,20 +130,20 @@ class TestTransitions:
 
     def test_mark_writes_the_status(self, stages: StageMap, record: _Record) -> None:
         """The value written is the enum's string, for the column."""
-        stages.mark(record, "summary", StageStatus.RUNNING)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
 
         assert record.doc_status_summary == "running"
-        assert stages.status(record, "summary") is StageStatus.RUNNING
+        assert stages.status(record, "summary") is StageStatusEnum.RUNNING
 
     def test_pending_counts_as_running(self, stages: StageMap, record: _Record) -> None:
         """The message is on the queue, so there is something to stop."""
-        stages.mark(record, "summary", StageStatus.PENDING)
+        stages.mark(record, "summary", StageStatusEnum.PENDING)
 
         assert stages.is_running(record, "summary") is True
 
     def test_failing_stores_the_reason(self, stages: StageMap, record: _Record) -> None:
         """The screen needs to say why."""
-        stages.mark(record, "summary", StageStatus.FAILED, error="model refused")
+        stages.mark(record, "summary", StageStatusEnum.FAILED, error="model refused")
 
         assert record.doc_error_summary == "model refused"
 
@@ -151,9 +151,9 @@ class TestTransitions:
         self, stages: StageMap, record: _Record
     ) -> None:
         """A retried stage must stop showing the last run's message."""
-        stages.mark(record, "summary", StageStatus.FAILED, error="model refused")
+        stages.mark(record, "summary", StageStatusEnum.FAILED, error="model refused")
 
-        stages.mark(record, "summary", StageStatus.PENDING)
+        stages.mark(record, "summary", StageStatusEnum.PENDING)
 
         assert record.doc_error_summary is None
 
@@ -165,13 +165,13 @@ class TestTransitions:
         Dropping the message silently would hide the mistake.
         """
         with pytest.raises(ValueError, match="FAILED"):
-            stages.mark(record, "summary", StageStatus.DONE, error="oops")
+            stages.mark(record, "summary", StageStatusEnum.DONE, error="oops")
 
     def test_result_is_written_when_given(
         self, stages: StageMap, record: _Record
     ) -> None:
         """The produced value lands in the stage's own column."""
-        stages.mark(record, "summary", StageStatus.DONE, result="the summary")
+        stages.mark(record, "summary", StageStatusEnum.DONE, result="the summary")
 
         assert record.doc_result_summary == "the summary"
 
@@ -183,9 +183,9 @@ class TestTransitions:
         The previous summary is still the best answer available; wiping it
         would make cancelling strictly worse than never asking.
         """
-        stages.mark(record, "summary", StageStatus.DONE, result="the summary")
+        stages.mark(record, "summary", StageStatusEnum.DONE, result="the summary")
 
-        stages.mark(record, "summary", StageStatus.PENDING)
+        stages.mark(record, "summary", StageStatusEnum.PENDING)
 
         assert record.doc_result_summary == "the summary"
 
@@ -193,7 +193,7 @@ class TestTransitions:
         self, stages: StageMap, record: _Record
     ) -> None:
         """Independence is the property the whole map exists to keep."""
-        stages.mark(record, "summary", StageStatus.FAILED, error="boom")
+        stages.mark(record, "summary", StageStatusEnum.FAILED, error="boom")
 
         assert stages.status(record, "transcription") is None
         assert record.doc_error_transcription is None
@@ -206,18 +206,18 @@ class TestOwnership:
         self, stages: StageMap, record: _Record
     ) -> None:
         """The ordinary path: nothing happened meanwhile."""
-        stages.mark(record, "summary", StageStatus.RUNNING)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
 
-        assert stages.owns(record, "summary", StageStatus.RUNNING) is True
+        assert stages.owns(record, "summary", StageStatusEnum.RUNNING) is True
 
     def test_a_cancelled_stage_is_no_longer_owned(
         self, stages: StageMap, record: _Record
     ) -> None:
         """The user stopped it; the old run must not resurrect the work."""
-        stages.mark(record, "summary", StageStatus.RUNNING)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
         stages.cancel(record, ["summary"])
 
-        assert stages.owns(record, "summary", StageStatus.RUNNING) is False
+        assert stages.owns(record, "summary", StageStatusEnum.RUNNING) is False
 
     def test_a_restarted_stage_is_no_longer_owned(
         self, stages: StageMap, record: _Record
@@ -227,10 +227,10 @@ class TestOwnership:
         This is why the check is about ownership rather than cancellation:
         both cases must stop the write, and only one of them is a cancel.
         """
-        stages.mark(record, "summary", StageStatus.RUNNING)
-        stages.mark(record, "summary", StageStatus.PENDING)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
+        stages.mark(record, "summary", StageStatusEnum.PENDING)
 
-        assert stages.owns(record, "summary", StageStatus.RUNNING) is False
+        assert stages.owns(record, "summary", StageStatusEnum.RUNNING) is False
 
 
 class TestCancel:
@@ -240,9 +240,9 @@ class TestCancel:
         self, stages: StageMap, record: _Record
     ) -> None:
         """Finished stages are reported as ignored, not raised over."""
-        stages.mark(record, "transcription", StageStatus.DONE)
-        stages.mark(record, "summary", StageStatus.RUNNING)
-        stages.mark(record, "tasks", StageStatus.PENDING)
+        stages.mark(record, "transcription", StageStatusEnum.DONE)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
+        stages.mark(record, "tasks", StageStatusEnum.PENDING)
 
         cancelled, ignored = stages.cancel(record)
 
@@ -251,7 +251,7 @@ class TestCancel:
 
     def test_cancel_is_idempotent(self, stages: StageMap, record: _Record) -> None:
         """A double-click is not an error."""
-        stages.mark(record, "summary", StageStatus.RUNNING)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
         stages.cancel(record, ["summary"])
 
         cancelled, ignored = stages.cancel(record, ["summary"])
@@ -263,8 +263,8 @@ class TestCancel:
         self, stages: StageMap, record: _Record
     ) -> None:
         """A cancelled stage is not showing why it failed last time."""
-        stages.mark(record, "summary", StageStatus.FAILED, error="boom")
-        stages.mark(record, "summary", StageStatus.PENDING)
+        stages.mark(record, "summary", StageStatusEnum.FAILED, error="boom")
+        stages.mark(record, "summary", StageStatusEnum.PENDING)
 
         stages.cancel(record, ["summary"])
 
@@ -274,8 +274,8 @@ class TestCancel:
         self, stages: StageMap, record: _Record
     ) -> None:
         """The response should be predictable for the caller."""
-        stages.mark(record, "summary", StageStatus.RUNNING)
-        stages.mark(record, "tasks", StageStatus.RUNNING)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
+        stages.mark(record, "tasks", StageStatusEnum.RUNNING)
 
         cancelled, _ignored = stages.cancel(record, ["tasks", "summary"])
 
@@ -283,7 +283,7 @@ class TestCancel:
 
     def test_duplicates_are_collapsed(self, stages: StageMap, record: _Record) -> None:
         """A caller must not get the same stage reported twice."""
-        stages.mark(record, "summary", StageStatus.RUNNING)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
 
         cancelled, ignored = stages.cancel(record, ["summary", "summary"])
 
@@ -303,12 +303,12 @@ class TestSnapshot:
         self, stages: StageMap, record: _Record
     ) -> None:
         """What a status endpoint serializes."""
-        stages.mark(record, "transcription", StageStatus.DONE)
-        stages.mark(record, "summary", StageStatus.RUNNING)
+        stages.mark(record, "transcription", StageStatusEnum.DONE)
+        stages.mark(record, "summary", StageStatusEnum.RUNNING)
 
         assert stages.snapshot(record) == {
-            "transcription": StageStatus.DONE,
-            "summary": StageStatus.RUNNING,
+            "transcription": StageStatusEnum.DONE,
+            "summary": StageStatusEnum.RUNNING,
             "tasks": None,
         }
 
@@ -322,9 +322,9 @@ class TestStatusSets:
 
     def test_every_status_is_in_one_of_them(self) -> None:
         """A new status must be classified, not silently unhandled."""
-        assert set(StageStatus) == RUNNING_STAGE_STATUSES | TERMINAL_STAGE_STATUSES
+        assert set(StageStatusEnum) == RUNNING_STAGE_STATUSES | TERMINAL_STAGE_STATUSES
 
     def test_cancelled_is_terminal_but_is_not_a_failure(self) -> None:
         """An alert that pages on failures must not fire on a cancel."""
-        assert StageStatus.CANCELLED in TERMINAL_STAGE_STATUSES
-        assert StageStatus.CANCELLED is not StageStatus.FAILED
+        assert StageStatusEnum.CANCELLED in TERMINAL_STAGE_STATUSES
+        assert StageStatusEnum.CANCELLED is not StageStatusEnum.FAILED

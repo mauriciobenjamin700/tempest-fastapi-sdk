@@ -9,8 +9,8 @@ a typo is a `NameError` at import.
 They are a **starting point, not a whitelist**: the constructors keep
 taking plain strings, so any Hub id still works.
 
-    >>> from tempest_fastapi_sdk.genai import TextGenerator, TextModel
-    >>> gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+    >>> from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
+    >>> gen = TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT)
 
 Every id here resolved on huggingface.co when it was added (the Coqui TTS
 names come from the Coqui model list, not the Hub). Sizes quoted in the
@@ -26,7 +26,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-class TextModel(StrEnum):
+class TextModelEnum(StrEnum):
     """Chat and instruction models for `TextGenerator` and agents.
 
     | Member | Params | Use it when |
@@ -53,7 +53,7 @@ class TextModel(StrEnum):
     LLAMA_3_1_8B_INSTRUCT = "meta-llama/Llama-3.1-8B-Instruct"
 
 
-class EmbeddingModel(StrEnum):
+class EmbeddingModelEnum(StrEnum):
     """Sentence embedders for `Embedder`, RAG and semantic search.
 
     | Member | Dim | Use it when |
@@ -76,7 +76,7 @@ class EmbeddingModel(StrEnum):
     BGE_M3 = "BAAI/bge-m3"
 
 
-class RerankerModel(StrEnum):
+class RerankerModelEnum(StrEnum):
     """Cross-encoders for `Reranker`, the second stage of retrieval.
 
     | Member | Use it when |
@@ -89,7 +89,7 @@ class RerankerModel(StrEnum):
     BGE_RERANKER_V2_M3 = "BAAI/bge-reranker-v2-m3"
 
 
-class VisionModel(StrEnum):
+class VisionModelEnum(StrEnum):
     """Vision-language models for `VisionTextGenerator`.
 
     | Member | Params | Use it when |
@@ -104,7 +104,7 @@ class VisionModel(StrEnum):
     LLAVA_1_5_7B = "llava-hf/llava-1.5-7b-hf"
 
 
-class ImageModel(StrEnum):
+class ImageModelEnum(StrEnum):
     """Diffusion checkpoints for `ImageGenerator`.
 
     Step counts differ by an order of magnitude between these — a turbo
@@ -123,7 +123,7 @@ class ImageModel(StrEnum):
     FLUX_1_SCHNELL = "black-forest-labs/FLUX.1-schnell"
 
 
-class SpeechToTextModel(StrEnum):
+class SpeechToTextModelEnum(StrEnum):
     """Whisper sizes for `SpeechToText` (faster-whisper names, not Hub ids).
 
     | Member | Use it when |
@@ -142,7 +142,7 @@ class SpeechToTextModel(StrEnum):
     LARGE_V3 = "large-v3"
 
 
-class TextToSpeechModel(StrEnum):
+class TextToSpeechModelEnum(StrEnum):
     """Coqui TTS voices for `TextToSpeech`.
 
     | Member | Use it when |

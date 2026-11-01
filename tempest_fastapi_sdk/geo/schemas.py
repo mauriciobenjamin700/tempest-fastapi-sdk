@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from tempest_fastapi_sdk.geo.enums import TravelMode
+from tempest_fastapi_sdk.geo.enums import TravelModeEnum
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.utils import (
     LatitudeField,
@@ -45,10 +45,10 @@ class TravelEstimate(BaseSchema):
             (real road routing via an OSRM server).
     """
 
-    mode: TravelMode = Field(
+    mode: TravelModeEnum = Field(
         title="Travel mode",
         description="The travel mode the estimate was computed for.",
-        examples=[TravelMode.CAR],
+        examples=[TravelModeEnum.CAR],
     )
     distance_km: NonNegativeFloatField = Field(
         title="Distance (km)",
@@ -267,8 +267,8 @@ class DistanceMatrix(BaseSchema):
         title="Durations (min)",
         description="Travel time for each (source, destination) pair.",
     )
-    mode: TravelMode = Field(
-        default=TravelMode.CAR,
+    mode: TravelModeEnum = Field(
+        default=TravelModeEnum.CAR,
         title="Travel mode",
         description="The travel mode the matrix was computed for.",
     )

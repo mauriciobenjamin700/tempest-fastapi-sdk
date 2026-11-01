@@ -8,7 +8,12 @@ from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from tempest_fastapi_sdk import BaseModel, BaseRepository, RepositorySignal, on_signal
+from tempest_fastapi_sdk import (
+    BaseModel,
+    BaseRepository,
+    RepositorySignalEnum,
+    on_signal,
+)
 from tempest_fastapi_sdk.db import connect, disconnect
 from tempest_fastapi_sdk.db.signals import clear_signals
 
@@ -39,12 +44,12 @@ class TestSaveSignals:
         events: list[tuple[str, str]] = []
         connect(
             Widget,
-            RepositorySignal.PRE_SAVE,
+            RepositorySignalEnum.PRE_SAVE,
             lambda w: events.append(("pre", w.name)),
         )
         connect(
             Widget,
-            RepositorySignal.POST_SAVE,
+            RepositorySignalEnum.POST_SAVE,
             lambda w: events.append(("post", w.name)),
         )
 
@@ -57,7 +62,7 @@ class TestSaveSignals:
     ) -> None:
         widget = await repo.add(Widget(name="gear"))
         fired: list[str] = []
-        connect(Widget, RepositorySignal.POST_SAVE, lambda w: fired.append(w.name))
+        connect(Widget, RepositorySignalEnum.POST_SAVE, lambda w: fired.append(w.name))
 
         widget.name = "cog"
         await repo.update(widget)
@@ -70,8 +75,12 @@ class TestSaveSignals:
         widget = await repo.add(Widget(name="gear"))
         saved: list[bool] = []
         deleted: list[str] = []
-        connect(Widget, RepositorySignal.POST_SAVE, lambda w: saved.append(w.is_active))
-        connect(Widget, RepositorySignal.PRE_DELETE, lambda w: deleted.append(w.name))
+        connect(
+            Widget, RepositorySignalEnum.POST_SAVE, lambda w: saved.append(w.is_active)
+        )
+        connect(
+            Widget, RepositorySignalEnum.PRE_DELETE, lambda w: deleted.append(w.name)
+        )
 
         await repo.soft_delete(widget.id)
 
@@ -84,7 +93,7 @@ class TestSaveSignals:
         def veto(_w: Any) -> None:
             raise ValueError("nope")
 
-        connect(Widget, RepositorySignal.PRE_SAVE, veto)
+        connect(Widget, RepositorySignalEnum.PRE_SAVE, veto)
 
         with pytest.raises(ValueError, match="nope"):
             await repo.add(Widget(name="gear"))
@@ -95,7 +104,7 @@ class TestSaveSignals:
     async def test_async_handler_is_awaited(self, repo: BaseRepository[Widget]) -> None:
         fired: list[str] = []
 
-        @on_signal(Widget, RepositorySignal.POST_SAVE)
+        @on_signal(Widget, RepositorySignalEnum.POST_SAVE)
         async def _record(w: Widget) -> None:
             fired.append(w.name)
 
@@ -108,7 +117,9 @@ class TestSaveSignals:
     ) -> None:
         fired: list[str] = []
         # Registered on BaseModel, not Widget — MRO resolution applies it.
-        connect(BaseModel, RepositorySignal.POST_SAVE, lambda w: fired.append(w.name))
+        connect(
+            BaseModel, RepositorySignalEnum.POST_SAVE, lambda w: fired.append(w.name)
+        )
 
         await repo.add(Widget(name="gear"))
 
@@ -123,14 +134,14 @@ class TestDeleteSignals:
         seen: list[tuple[str, str]] = []
         connect(
             Widget,
-            RepositorySignal.PRE_DELETE,
+            RepositorySignalEnum.PRE_DELETE,
             lambda w: seen.append(("pre", w.name)),
         )
         # POST_DELETE reads an attribute after commit — proves the row was
         # detached so its columns survive the session's expire-on-commit.
         connect(
             Widget,
-            RepositorySignal.POST_DELETE,
+            RepositorySignalEnum.POST_DELETE,
             lambda w: seen.append(("post", w.name)),
         )
 
@@ -144,7 +155,7 @@ class TestDeleteSignals:
     ) -> None:
         widget = await repo.add(Widget(name="gear"))
         fired: list[str] = []
-        connect(Widget, RepositorySignal.PRE_DELETE, lambda w: fired.append(w.name))
+        connect(Widget, RepositorySignalEnum.PRE_DELETE, lambda w: fired.append(w.name))
         await repo.delete(widget.id)
         fired.clear()
 
@@ -161,7 +172,7 @@ class TestBulkBypassesSignals:
     ) -> None:
         await repo.add(Widget(name="gear"))
         fired: list[str] = []
-        connect(Widget, RepositorySignal.POST_SAVE, lambda w: fired.append(w.name))
+        connect(Widget, RepositorySignalEnum.POST_SAVE, lambda w: fired.append(w.name))
 
         await repo.bulk_update({"name": "gear"}, {"name": "cog"})
 
@@ -172,7 +183,9 @@ class TestBulkBypassesSignals:
     ) -> None:
         await repo.add(Widget(name="gear"))
         fired: list[str] = []
-        connect(Widget, RepositorySignal.POST_DELETE, lambda w: fired.append(w.name))
+        connect(
+            Widget, RepositorySignalEnum.POST_DELETE, lambda w: fired.append(w.name)
+        )
 
         await repo.delete_many({"name": "gear"})
 
@@ -188,8 +201,8 @@ class TestRegistryManagement:
         def handler(w: Widget) -> None:
             fired.append(w.name)
 
-        connect(Widget, RepositorySignal.POST_SAVE, handler)
-        disconnect(Widget, RepositorySignal.POST_SAVE, handler)
+        connect(Widget, RepositorySignalEnum.POST_SAVE, handler)
+        disconnect(Widget, RepositorySignalEnum.POST_SAVE, handler)
 
         await repo.add(Widget(name="gear"))
 

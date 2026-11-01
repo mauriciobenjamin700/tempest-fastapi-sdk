@@ -33,7 +33,7 @@ from tempest_fastapi_sdk import (
     BaseModel,
     BaseUserModel,
     PasswordUtils,
-    PasswordViolationCode,
+    PasswordViolationCodeEnum,
     UserAuthService,
     default_message_catalog,
     make_auth_router,
@@ -209,19 +209,19 @@ class TestPasswordViolationCodes:
             (
                 "short",
                 False,
-                PasswordViolationCode.PASSWORD_TOO_SHORT,
+                PasswordViolationCodeEnum.PASSWORD_TOO_SHORT,
                 "A senha precisa ter pelo menos 12 caracteres",
             ),
             (
                 "x" * 73,
                 False,
-                PasswordViolationCode.PASSWORD_TOO_LONG,
+                PasswordViolationCodeEnum.PASSWORD_TOO_LONG,
                 "A senha pode ter no máximo 72 bytes",
             ),
             (
                 "alllowercase-but-long",
                 True,
-                PasswordViolationCode.PASSWORD_TOO_WEAK,
+                PasswordViolationCodeEnum.PASSWORD_TOO_WEAK,
                 "A senha precisa ter letra minúscula, letra maiúscula, número e "
                 "caractere especial",
             ),
@@ -232,7 +232,7 @@ class TestPasswordViolationCodes:
         session: AsyncSession,
         password: str,
         complexity: bool,
-        code: PasswordViolationCode,
+        code: PasswordViolationCodeEnum,
         pt_br: str,
     ) -> None:
         """The raised key is the violation code, and the catalog renders it."""

@@ -10,6 +10,112 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 | `UserAuthService` com `AuthSettings` sem `EnvironmentSettings` | Lê `ENV` do ambiente; **sem `ENV`, conta como produção**: sem mailer (ou com `AUTH_RETURN_TOKEN_IN_RESPONSE`), os fluxos com link respondem `503 INTEGRATION_DISABLED` em vez de devolver o link | Em dev, `ENV=development`; em produção, configure o mailer |
 | `make_token_dependency`, `require_x_token` | Segredo vazio (ou só espaço) levanta `ValueError` em vez de desligar a checagem | Configure o segredo (`tempest secrets init`); para rodar local sem gate, passe `allow_unauthenticated=True`. Projeto gerado pelo `tempest new`: troque a linha de `src/api/dependencies/auth.py` por `make_token_dependency(settings.TOKEN_SECRET, allow_unauthenticated=settings.ENV != "production")` |
 
+### Todo enum do SDK termina em `Enum`
+
+Oitenta enums públicos escritos à mão ganharam o sufixo que os outros já
+tinham (`PdfExtractor` → `PdfExtractorEnum`, `JobStatus` → `JobStatusEnum`,
+`UF` → `UFEnum`). Não há alias: o nome antigo deixa de existir, e o import
+falha na hora.
+
+```text
+ImportError: cannot import name 'JobStatus' from 'tempest_fastapi_sdk.tasks'
+```
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `import` e anotação de tipo | O nome antigo não existe mais | Troque pelo nome novo da tabela abaixo; o rename do editor (símbolo, não texto) evita trocar "UF" ou "Locale" em prosa |
+| OpenAPI do seu serviço | O componente leva o nome da classe: `JobStatus` vira `JobStatusEnum` | Regere o cliente do frontend; quem referencia `#/components/schemas/JobStatus` à mão atualiza a referência |
+| Valor serializado (JSON, banco) | **Nada**: `JobStatusEnum.QUEUED` continua `"queued"` | Nada |
+| Tipo nativo no Postgres | **Nada**: `TempestEnum` e `enum_column` tiram um `Enum` final antes de nomear o tipo, então `JobStatus` e `JobStatusEnum` dão `job_status_enum` (medido nos 80) | Nada; nenhuma migration é gerada |
+
+Os enums gerados a partir da especificação de um provedor (OpenPix, Mercado
+Pago, zap-api, `StripeEvent`) ficam com o nome da especificação.
+
+??? info "A tabela completa (80 enums)"
+
+    | Antes | Agora | Módulo |
+    | --- | --- | --- |
+    | `AdminPermission` | `AdminPermissionEnum` | `tempest_fastapi_sdk.admin.permissions` |
+    | `AdminSurface` | `AdminSurfaceEnum` | `tempest_fastapi_sdk.admin.permissions` |
+    | `AppPlatform` | `AppPlatformEnum` | `tempest_fastapi_sdk.app_errors.schemas` |
+    | `AuditAction` | `AuditActionEnum` | `tempest_fastapi_sdk.db.audit` |
+    | `CalibrationMethod` | `CalibrationMethodEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `CheckLevel` | `CheckLevelEnum` | `tempest_fastapi_sdk.checks.messages` |
+    | `CompactKind` | `CompactKindEnum` | `tempest_fastapi_sdk.modelops.compact` |
+    | `CompactLink` | `CompactLinkEnum` | `tempest_fastapi_sdk.modelops.compact` |
+    | `CompactTask` | `CompactTaskEnum` | `tempest_fastapi_sdk.modelops.compact` |
+    | `ConstraintKind` | `ConstraintKindEnum` | `tempest_fastapi_sdk.db.naming` |
+    | `ConversationKind` | `ConversationKindEnum` | `tempest_fastapi_sdk.chat.constants` |
+    | `Cron` | `CronEnum` | `tempest_fastapi_sdk.tasks.cron` |
+    | `CronOffset` | `CronOffsetEnum` | `tempest_fastapi_sdk.tasks.cron` |
+    | `DedupState` | `DedupStateEnum` | `tempest_fastapi_sdk.queue.dedup` |
+    | `DriftVerdict` | `DriftVerdictEnum` | `tempest_fastapi_sdk.modelops.monitoring` |
+    | `EmbeddingModel` | `EmbeddingModelEnum` | `tempest_fastapi_sdk.genai.catalog` |
+    | `EnergySource` | `EnergySourceEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `ExchangeKind` | `ExchangeKindEnum` | `tempest_fastapi_sdk.queue.topology` |
+    | `ExplainDetail` | `ExplainDetailEnum` | `tempest_fastapi_sdk.db.explain` |
+    | `GraphOptimizationLevel` | `GraphOptimizationLevelEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `HFOptimizationLevel` | `HFOptimizationLevelEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `HFQuantizationTarget` | `HFQuantizationTargetEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `ImageMediaType` | `ImageMediaTypeEnum` | `tempest_fastapi_sdk.utils.media_types` |
+    | `ImageModel` | `ImageModelEnum` | `tempest_fastapi_sdk.genai.catalog` |
+    | `IntegrityViolation` | `IntegrityViolationEnum` | `tempest_fastapi_sdk.db.integrity` |
+    | `JobStatus` | `JobStatusEnum` | `tempest_fastapi_sdk.tasks.jobs` |
+    | `Language` | `LanguageEnum` | `tempest_fastapi_sdk.genai.audio.language` |
+    | `Locale` | `LocaleEnum` | `tempest_fastapi_sdk.core.enums` |
+    | `MercadoPagoEvent` | `MercadoPagoEventEnum` | `tempest_fastapi_sdk.integrations.payment.mercado_pago.events` |
+    | `MessageKind` | `MessageKindEnum` | `tempest_fastapi_sdk.chat.constants` |
+    | `ModelDtype` | `ModelDtypeEnum` | `tempest_fastapi_sdk.genai.schemas` |
+    | `ModelFormat` | `ModelFormatEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `OpenPixEnvironment` | `OpenPixEnvironmentEnum` | `tempest_fastapi_sdk.integrations.payment.openpix.environment` |
+    | `OpenPixEvent` | `OpenPixEventEnum` | `tempest_fastapi_sdk.integrations.payment.openpix.events` |
+    | `OrtOptimizationStyle` | `OrtOptimizationStyleEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `OutboxStatus` | `OutboxStatusEnum` | `tempest_fastapi_sdk.db.outbox` |
+    | `ParticipantRole` | `ParticipantRoleEnum` | `tempest_fastapi_sdk.chat.constants` |
+    | `PasswordViolationCode` | `PasswordViolationCodeEnum` | `tempest_fastapi_sdk.utils.password` |
+    | `PaymentStatus` | `PaymentStatusEnum` | `tempest_fastapi_sdk.integrations.payment.base` |
+    | `PayoutStatus` | `PayoutStatusEnum` | `tempest_fastapi_sdk.integrations.payment.base` |
+    | `PdfExtractor` | `PdfExtractorEnum` | `tempest_fastapi_sdk.pdf.pages` |
+    | `PixConfirmationOutcome` | `PixConfirmationOutcomeEnum` | `tempest_fastapi_sdk.integrations.payment.settlement` |
+    | `PixEventType` | `PixEventTypeEnum` | `tempest_fastapi_sdk.integrations.payment.base` |
+    | `PushPlatform` | `PushPlatformEnum` | `tempest_fastapi_sdk.push.schemas` |
+    | `QuantizationBackend` | `QuantizationBackendEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `QuantizationFormat` | `QuantizationFormatEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `QuantWeightType` | `QuantWeightTypeEnum` | `tempest_fastapi_sdk.modelops.schemas` |
+    | `QueueType` | `QueueTypeEnum` | `tempest_fastapi_sdk.queue.topology` |
+    | `Region` | `RegionEnum` | `tempest_fastapi_sdk.utils.locations` |
+    | `RepositorySignal` | `RepositorySignalEnum` | `tempest_fastapi_sdk.db.signals` |
+    | `RerankerModel` | `RerankerModelEnum` | `tempest_fastapi_sdk.genai.catalog` |
+    | `SchemaSyncOutcome` | `SchemaSyncOutcomeEnum` | `tempest_fastapi_sdk.db.migrations` |
+    | `SlideKind` | `SlideKindEnum` | `tempest_fastapi_sdk.slides.schemas` |
+    | `SlideTheme` | `SlideThemeEnum` | `tempest_fastapi_sdk.slides.schemas` |
+    | `SpeechToTextModel` | `SpeechToTextModelEnum` | `tempest_fastapi_sdk.genai.catalog` |
+    | `SqlCapability` | `SqlCapabilityEnum` | `tempest_fastapi_sdk.admin.sql_shell` |
+    | `StageStatus` | `StageStatusEnum` | `tempest_fastapi_sdk.tasks.stages` |
+    | `StepKind` | `StepKindEnum` | `tempest_fastapi_sdk.agents.schemas` |
+    | `StopReason` | `StopReasonEnum` | `tempest_fastapi_sdk.agents.schemas` |
+    | `StoragePreview` | `StoragePreviewEnum` | `tempest_fastapi_sdk.admin.storage` |
+    | `SystemEvent` | `SystemEventEnum` | `tempest_fastapi_sdk.chat.constants` |
+    | `TensorDtype` | `TensorDtypeEnum` | `tempest_fastapi_sdk.modelops.sklearn` |
+    | `TextModel` | `TextModelEnum` | `tempest_fastapi_sdk.genai.catalog` |
+    | `TextSearchLanguage` | `TextSearchLanguageEnum` | `tempest_fastapi_sdk.db.search` |
+    | `TextSearchWeight` | `TextSearchWeightEnum` | `tempest_fastapi_sdk.db.search` |
+    | `TextToSpeechModel` | `TextToSpeechModelEnum` | `tempest_fastapi_sdk.genai.catalog` |
+    | `TokenMatch` | `TokenMatchEnum` | `tempest_fastapi_sdk.db.search` |
+    | `Transport` | `TransportEnum` | `tempest_fastapi_sdk.queue.topology` |
+    | `TravelMode` | `TravelModeEnum` | `tempest_fastapi_sdk.geo.enums` |
+    | `UF` | `UFEnum` | `tempest_fastapi_sdk.utils.locations` |
+    | `UserTokenPurpose` | `UserTokenPurposeEnum` | `tempest_fastapi_sdk.db.user_token_model` |
+    | `VisionModel` | `VisionModelEnum` | `tempest_fastapi_sdk.genai.catalog` |
+    | `WalletEntryKind` | `WalletEntryKindEnum` | `tempest_fastapi_sdk.wallet.schemas` |
+    | `Weekday` | `WeekdayEnum` | `tempest_fastapi_sdk.tasks.cron` |
+    | `ZapInboundMediaType` | `ZapInboundMediaTypeEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.webhooks` |
+    | `ZapInboundOutcome` | `ZapInboundOutcomeEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.inbox` |
+    | `ZapJidServer` | `ZapJidServerEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.webhooks` |
+    | `ZapOutboundKind` | `ZapOutboundKindEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.webhooks` |
+    | `ZapStatusOutcome` | `ZapStatusOutcomeEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.inbox` |
+    | `ZapWebhookEvent` | `ZapWebhookEventEnum` | `tempest_fastapi_sdk.integrations.messaging.zap.webhooks` |
+
 ## 0.341.0 — webhook do Mercado Pago e fórmula em `.xlsx`
 
 | Onde | O que muda | O que fazer |
@@ -654,12 +760,12 @@ entrega como `PixEventType.CHARGE_EXPIRED`. Até a 0.311.0 ela saía
 ramo de cancelamento, trate os dois:
 
 ```python
-from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+from tempest_fastapi_sdk.integrations.payment import PaymentStatusEnum, PixCharge
 
 
 def is_closed_unpaid(charge: PixCharge) -> bool:
     """Tell whether a Pix charge ended without being paid."""
-    return charge.status in {PaymentStatus.CANCELLED, PaymentStatus.EXPIRED}
+    return charge.status in {PaymentStatusEnum.CANCELLED, PaymentStatusEnum.EXPIRED}
 ```
 
 **`search_chargebacks` exige `payment_id`.** A busca respondia `400` sem esse
@@ -1638,7 +1744,7 @@ Se você ramifica exaustivamente em `PaymentStatus` — um `match` sem
 `case _`, um dicionário indexado por membro — acrescente o caso:
 
 ```python
-from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+from tempest_fastapi_sdk.integrations.payment import PaymentStatusEnum, PixCharge
 
 
 def describe(charge: PixCharge) -> str:
@@ -1650,7 +1756,7 @@ def describe(charge: PixCharge) -> str:
     Returns:
         str: A line a human can act on.
     """
-    if charge.status is PaymentStatus.UNKNOWN:
+    if charge.status is PaymentStatusEnum.UNKNOWN:
         return f"estado não classificado: {charge.provider_status}"
     return charge.status.value
 ```

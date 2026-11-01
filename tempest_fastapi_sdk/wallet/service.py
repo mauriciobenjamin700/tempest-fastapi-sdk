@@ -34,7 +34,7 @@ from tempest_fastapi_sdk.utils.regex import PixKeyType
 from tempest_fastapi_sdk.wallet.ledger import WalletLedger
 from tempest_fastapi_sdk.wallet.schemas import (
     WalletBalanceSchema,
-    WalletEntryKind,
+    WalletEntryKindEnum,
     WalletEntrySchema,
     WithdrawalSchema,
 )
@@ -321,7 +321,7 @@ class WalletService:
         entry = await self.debit_available(
             user_id,
             amount_cents,
-            kind=WalletEntryKind.WITHDRAW.value,
+            kind=WalletEntryKindEnum.WITHDRAW.value,
             description=description,
             reference_type=PAYOUT_REFERENCE_TYPE,
             reference_id=correlation,
@@ -340,7 +340,7 @@ class WalletService:
             await self.credit(
                 user_id,
                 amount_cents,
-                kind=WalletEntryKind.WITHDRAW_REFUND.value,
+                kind=WalletEntryKindEnum.WITHDRAW_REFUND.value,
                 description=f"Estorno: {description}",
                 reference_type=PAYOUT_REFERENCE_TYPE,
                 reference_id=correlation,

@@ -100,7 +100,7 @@ _MISSING_CODES: Final[frozenset[str]] = frozenset(
 """``S3Error.code`` values meaning the object is not there."""
 
 
-class StoragePreview(BaseStrEnum):
+class StoragePreviewEnum(BaseStrEnum):
     """How the object page previews a stored object.
 
     ``IMAGE``, ``VIDEO``, ``AUDIO`` and ``PDF`` are rendered by the browser
@@ -311,7 +311,7 @@ class StorageObjectView:
             concurrent write.
         last_modified (datetime | None): Last write, UTC.
         metadata (dict[str, str]): User metadata.
-        preview (StoragePreview): How the page previews it.
+        preview (StoragePreviewEnum): How the page previews it.
         text (str | None): The decoded content for a ``TEXT`` preview that
             fits :attr:`StorageBrowserService.max_text_bytes`.
         editable (bool): Whether the in-place text editor is offered.
@@ -326,7 +326,7 @@ class StorageObjectView:
     etag: str | None
     last_modified: datetime | None
     metadata: dict[str, str]
-    preview: StoragePreview
+    preview: StoragePreviewEnum
     text: str | None
     editable: bool
     crumbs: list[StorageCrumb] = field(default_factory=list)
@@ -456,7 +456,7 @@ def guess_storage_content_type(name: str, declared: str | None = None) -> str:
     return guessed or "application/octet-stream"
 
 
-def storage_preview_for(content_type: str | None, key: str) -> StoragePreview:
+def storage_preview_for(content_type: str | None, key: str) -> StoragePreviewEnum:
     """Decide how an object is previewed.
 
     Args:
@@ -465,7 +465,7 @@ def storage_preview_for(content_type: str | None, key: str) -> StoragePreview:
             type is missing or ``application/octet-stream``.
 
     Returns:
-        StoragePreview: A rendered preview only for a type the raw route
+        StoragePreviewEnum: A rendered preview only for a type the raw route
         will serve ``inline``; ``TEXT`` for textual types; otherwise
         ``NONE``.
     """
@@ -475,16 +475,16 @@ def storage_preview_for(content_type: str | None, key: str) -> StoragePreview:
     if base in INLINE_SAFE_MEDIA_TYPES:
         major = base.split("/", 1)[0]
         if major == "image":
-            return StoragePreview.IMAGE
+            return StoragePreviewEnum.IMAGE
         if major == "video":
-            return StoragePreview.VIDEO
+            return StoragePreviewEnum.VIDEO
         if major == "audio":
-            return StoragePreview.AUDIO
+            return StoragePreviewEnum.AUDIO
         if base == "application/pdf":
-            return StoragePreview.PDF
+            return StoragePreviewEnum.PDF
     if base.startswith("text/") or base in TEXT_MEDIA_TYPES:
-        return StoragePreview.TEXT
-    return StoragePreview.NONE
+        return StoragePreviewEnum.TEXT
+    return StoragePreviewEnum.NONE
 
 
 async def _gather_bounded[T](
@@ -763,12 +763,12 @@ class StorageBrowserService:
         content_type = stat.content_type or "application/octet-stream"
         preview = storage_preview_for(stat.content_type, key)
         text: str | None = None
-        if preview is StoragePreview.TEXT and stat.size <= self.max_text_bytes:
+        if preview is StoragePreviewEnum.TEXT and stat.size <= self.max_text_bytes:
             raw = await self._read_head(key, self.max_text_bytes) if stat.size else b""
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
-                preview = StoragePreview.NONE
+                preview = StoragePreviewEnum.NONE
         return StorageObjectView(
             key=key,
             name=name,
@@ -1055,7 +1055,7 @@ __all__: list[str] = [
     "StorageListing",
     "StorageObjectMissingError",
     "StorageObjectView",
-    "StoragePreview",
+    "StoragePreviewEnum",
     "check_storage_key",
     "guess_storage_content_type",
     "normalize_storage_prefix",

@@ -30,7 +30,7 @@ from tempest_fastapi_sdk.exceptions.wallet import InsufficientBalanceException
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tempest_fastapi_sdk.wallet.schemas import (
     WalletBalanceSchema,
-    WalletEntryKind,
+    WalletEntryKindEnum,
     WalletEntrySchema,
 )
 
@@ -259,7 +259,7 @@ class WalletLedger:
                 return None
             return await self._write_entry(
                 user_id=user_id,
-                kind=WalletEntryKind.REVERSAL.value,
+                kind=WalletEntryKindEnum.REVERSAL.value,
                 amount_cents=-amount_cents,
                 balance_after_cents=balance_after,
                 available_at=utcnow(),

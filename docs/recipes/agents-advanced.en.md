@@ -32,7 +32,7 @@ one:
 ```python title="advanced_setup.py"
 """Shared setup every example on this page imports."""
 
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
 BASE_PROMPT = (
     "You are a careful assistant. Use the tools when they help, "
@@ -42,7 +42,7 @@ BASE_PROMPT = (
 
 def build_generator() -> TextGenerator:
     """The text backend the examples inject into their agents."""
-    return TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+    return TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT)
 ```
 
 ## Structured output: an object, not a paragraph
@@ -358,13 +358,13 @@ import asyncio
 from advanced_setup import BASE_PROMPT, build_generator
 
 from tempest_fastapi_sdk.agents import Agent, recall_prompt
-from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModelEnum
 from tempest_fastapi_sdk.genai.rag import ChatMemory
 
 
 async def main() -> None:
     """Blend possibly-relevant past conversations into the prompt."""
-    chat_memory = ChatMemory(Embedder(EmbeddingModel.ALL_MINILM_L6_V2))
+    chat_memory = ChatMemory(Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2))
     goal = "Schedule a call with the client."
 
     agent = Agent(
@@ -415,14 +415,14 @@ from tempest_fastapi_sdk.agents import (
     recall_prompt,
     scratchpad_tools,
 )
-from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModelEnum
 from tempest_fastapi_sdk.genai.rag import ChatMemory
 
 
 async def main() -> None:
     """Use all three layers at once — they answer different questions."""
     store = InMemoryFactStore()
-    chat_memory = ChatMemory(Embedder(EmbeddingModel.ALL_MINILM_L6_V2))
+    chat_memory = ChatMemory(Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2))
     user_id = "user-42"
     goal = "Schedule a call with the client."
 
@@ -711,14 +711,14 @@ Several specialists at once:
 from advanced_setup import build_generator
 
 from tempest_fastapi_sdk.agents import Agent, generate_image_tool, team_tools
-from tempest_fastapi_sdk.genai import ImageGenerator, ImageModel
+from tempest_fastapi_sdk.genai import ImageGenerator, ImageModelEnum
 
 researcher = Agent(build_generator(), name="researcher")
 illustrator = Agent(
     build_generator(),
     tools=[
         generate_image_tool(
-            ImageGenerator(ImageModel.SDXL_TURBO),
+            ImageGenerator(ImageModelEnum.SDXL_TURBO),
             default_steps=4,
         ),
     ],
@@ -943,7 +943,7 @@ blocked blocked by moderation (toxicity)
 ```
 
 The goal is checked **before** the model sees anything, and the answer
-before it is returned. A rejection becomes `StopReason.BLOCKED`, not an
+before it is returned. A rejection becomes `StopReasonEnum.BLOCKED`, not an
 exception.
 
 !!! warning "A moderator that is down blocks"

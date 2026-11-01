@@ -12,12 +12,12 @@ state your database is in.
 
 ```python
 # src/db/schema.py
-from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcome
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
 
 from src.core.settings import settings
 
 
-async def sync_schema() -> SchemaSyncOutcome:
+async def sync_schema() -> SchemaSyncOutcomeEnum:
     """Bring the database schema in line with the migration tree."""
     helper: AlembicHelper = AlembicHelper(
         "alembic.ini",
@@ -146,10 +146,10 @@ to regenerate it.
 
 | Starting state | What runs | Return |
 | --- | --- | --- |
-| Empty database | `upgrade()` — the base revision creates the tables, without the destructive guard | `SchemaSyncOutcome.SYNCED` |
-| Database that **predates** Alembic | stamps the **base**, then `safe_upgrade()` | `SchemaSyncOutcome.ADOPTED` |
-| Database already under Alembic | `safe_upgrade()` | `SchemaSyncOutcome.SYNCED` |
-| Project with no revisions yet | nothing | `SchemaSyncOutcome.NO_MIGRATIONS` |
+| Empty database | `upgrade()` — the base revision creates the tables, without the destructive guard | `SchemaSyncOutcomeEnum.SYNCED` |
+| Database that **predates** Alembic | stamps the **base**, then `safe_upgrade()` | `SchemaSyncOutcomeEnum.ADOPTED` |
+| Database already under Alembic | `safe_upgrade()` | `SchemaSyncOutcomeEnum.SYNCED` |
+| Project with no revisions yet | nothing | `SchemaSyncOutcomeEnum.NO_MIGRATIONS` |
 
 The empty database is the easy case, and it is what makes the rest work: the
 schema the base revision builds is, by construction, **the same one** later
@@ -264,12 +264,12 @@ pointer; the second re-adopts properly:
 
 ```python
 # scripts/repair_schema.py
-from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcome
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
 
 from src.core.settings import settings
 
 
-def repair() -> SchemaSyncOutcome:
+def repair() -> SchemaSyncOutcomeEnum:
     """Clear a wrong stamp and re-adopt the schema from the base."""
     helper: AlembicHelper = AlembicHelper(
         "alembic.ini",

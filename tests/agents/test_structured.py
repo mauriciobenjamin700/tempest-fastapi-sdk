@@ -17,7 +17,7 @@ from tempest_fastapi_sdk.agents import (
     AgentBudget,
     AgentContext,
     Skill,
-    StopReason,
+    StopReasonEnum,
     run_structured,
     text_tool,
 )
@@ -88,7 +88,7 @@ class TestFinalAnswerEndsTheRun:
         )
         run = await run_structured(Agent(backend), "go", Answer)
         assert backend.calls == 1
-        assert run.stop_reason == StopReason.COMPLETED
+        assert run.stop_reason == StopReasonEnum.COMPLETED
         assert run.data == Answer(headline="done")
 
     @pytest.mark.asyncio
@@ -114,7 +114,7 @@ class TestStructuredDataIsModerated:
         )
         agent = Agent(backend, moderator=_WordModerator("forbidden"))
         run = await run_structured(agent, "go", Answer)
-        assert run.stop_reason == StopReason.BLOCKED
+        assert run.stop_reason == StopReasonEnum.BLOCKED
         assert run.data is None
         assert run.parse_error is not None
 
@@ -137,7 +137,7 @@ class TestStructuredDataIsModerated:
             budget=AgentBudget(max_steps=2, max_seconds=None),
         )
         run = await run_structured(looping, "go", Answer)
-        assert run.stop_reason == StopReason.MAX_STEPS
+        assert run.stop_reason == StopReasonEnum.MAX_STEPS
         assert run.output == '{"headline": "partial"}'
         assert run.data is None
         assert run.parse_error is not None

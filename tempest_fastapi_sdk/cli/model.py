@@ -255,13 +255,16 @@ def export_ort_cmd(
     ONNX Runtime build reads it to compile only the kernels these models
     need.
     """
-    from tempest_fastapi_sdk.modelops import OrtOptimizationStyle, export_onnx_to_ort
+    from tempest_fastapi_sdk.modelops import (
+        OrtOptimizationStyleEnum,
+        export_onnx_to_ort,
+    )
 
     try:
         results = export_onnx_to_ort(
             model,
             output_dir,
-            optimization_style=OrtOptimizationStyle(style),
+            optimization_style=OrtOptimizationStyleEnum(style),
             target_platform=target_platform,
             enable_type_reduction=type_reduction,
         )
@@ -300,10 +303,15 @@ def optimize_cmd(
     result is specialized for the providers available on this machine, so
     optimize on a host that matches the deployment target.
     """
-    from tempest_fastapi_sdk.modelops import GraphOptimizationLevel, optimize_onnx_graph
+    from tempest_fastapi_sdk.modelops import (
+        GraphOptimizationLevelEnum,
+        optimize_onnx_graph,
+    )
 
     try:
-        result = optimize_onnx_graph(model, output, level=GraphOptimizationLevel(level))
+        result = optimize_onnx_graph(
+            model, output, level=GraphOptimizationLevelEnum(level)
+        )
     except (ImportError, ValueError, FileNotFoundError) as exc:
         _fail(str(exc))
         return
@@ -339,13 +347,13 @@ def quantize_cmd(
     it — how much accuracy int8 costs is a property of your model, and
     nothing here can predict it.
     """
-    from tempest_fastapi_sdk.modelops import QuantWeightType, quantize_onnx_dynamic
+    from tempest_fastapi_sdk.modelops import QuantWeightTypeEnum, quantize_onnx_dynamic
 
     try:
         result = quantize_onnx_dynamic(
             model,
             output,
-            weight_type=QuantWeightType(weight_type),
+            weight_type=QuantWeightTypeEnum(weight_type),
             per_channel=per_channel,
             reduce_range=reduce_range,
         )

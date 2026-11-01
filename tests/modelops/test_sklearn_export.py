@@ -10,7 +10,7 @@ import pytest
 from tempest_fastapi_sdk.modelops import sklearn as sklearn_export
 from tempest_fastapi_sdk.modelops.sklearn import (
     DEFAULT_OPSET,
-    TensorDtype,
+    TensorDtypeEnum,
     edge_bundle,
     export_sklearn_to_onnx,
     uses_ml_domain,
@@ -145,9 +145,9 @@ class TestExport:
             model,
             features[:10],
             tmp_path / "d.onnx",
-            dtype=TensorDtype.FLOAT64,
+            dtype=TensorDtypeEnum.FLOAT64,
         )
-        assert export.dtype == TensorDtype.FLOAT64
+        assert export.dtype == TensorDtypeEnum.FLOAT64
 
     def test_the_output_directory_is_created(
         self,

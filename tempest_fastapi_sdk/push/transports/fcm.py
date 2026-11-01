@@ -23,7 +23,7 @@ from tempest_fastapi_sdk.push.dispatcher import PushDeviceGoneError, PushError
 from tempest_fastapi_sdk.push.schemas import (
     PushDevice,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class FCMTransport:
     """
 
     platforms: frozenset[str] = frozenset(
-        {PushPlatform.IOS.value, PushPlatform.ANDROID.value}
+        {PushPlatformEnum.IOS.value, PushPlatformEnum.ANDROID.value}
     )
 
     def __init__(

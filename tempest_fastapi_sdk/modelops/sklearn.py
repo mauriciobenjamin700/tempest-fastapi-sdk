@@ -93,7 +93,7 @@ def _require_numpy() -> Any:
     return numpy
 
 
-class TensorDtype(BaseStrEnum):
+class TensorDtypeEnum(BaseStrEnum):
     """Element type of the exported graph's input.
 
     * ``FLOAT32`` — the edge default. Half the memory of double, and the
@@ -114,7 +114,7 @@ class SklearnExport(BaseSchema):
         path (str): Where the ``.onnx`` file was written.
         size_bytes (int): Its size on disk.
         opset (int): The opset it targets.
-        dtype (TensorDtype): Input element type.
+        dtype (TensorDtypeEnum): Input element type.
         input_name (str): Name of the graph input.
         n_features (int): Features the graph expects per row.
         zipmap (bool): Whether the ZipMap wrapper was kept.
@@ -136,8 +136,8 @@ class SklearnExport(BaseSchema):
         description="ONNX opset the graph targets.",
         examples=[15],
     )
-    dtype: TensorDtype = Field(
-        default=TensorDtype.FLOAT32,
+    dtype: TensorDtypeEnum = Field(
+        default=TensorDtypeEnum.FLOAT32,
         title="Dtype",
         description="Input element type.",
         examples=["float32"],
@@ -319,13 +319,13 @@ class EdgeBundle(BaseSchema):
     )
 
 
-def _as_array(samples: Any, dtype: TensorDtype) -> Any:
+def _as_array(samples: Any, dtype: TensorDtypeEnum) -> Any:
     """Coerce input samples to a 2-D numpy array of the export dtype.
 
     Args:
         samples (Any): A numpy array, a pandas DataFrame, or a nested
             sequence.
-        dtype (TensorDtype): The target element type.
+        dtype (TensorDtypeEnum): The target element type.
 
     Returns:
         Any: A 2-D ``numpy.ndarray``.
@@ -350,7 +350,7 @@ def export_sklearn_to_onnx(
     samples: Any,
     output_path: str | Path,
     *,
-    dtype: TensorDtype = TensorDtype.FLOAT32,
+    dtype: TensorDtypeEnum = TensorDtypeEnum.FLOAT32,
     opset: int = DEFAULT_OPSET,
     zipmap: bool = False,
     input_name: str = "input",
@@ -375,7 +375,7 @@ def export_sklearn_to_onnx(
         samples (Any): Representative input rows (array, DataFrame or
             nested sequence).
         output_path (str | Path): Where to write the ``.onnx`` file.
-        dtype (TensorDtype): Input element type. ``FLOAT32`` by default —
+        dtype (TensorDtypeEnum): Input element type. ``FLOAT32`` by default —
             see the module docstring for why, and verify afterwards.
         opset (int): Target ONNX opset. See :data:`DEFAULT_OPSET`.
         zipmap (bool): Keep scikit-learn's ZipMap output wrapper. ``False``
@@ -400,7 +400,9 @@ def export_sklearn_to_onnx(
     array = _as_array(samples, dtype)
     n_features = int(array.shape[1])
 
-    tensor_type = FloatTensorType if dtype == TensorDtype.FLOAT32 else DoubleTensorType
+    tensor_type = (
+        FloatTensorType if dtype == TensorDtypeEnum.FLOAT32 else DoubleTensorType
+    )
     initial_types = [(input_name, tensor_type([None, n_features]))]
 
     merged: dict[Any, Any] = {}
@@ -568,7 +570,7 @@ def verify_sklearn_onnx(
     onnx_path: str | Path,
     samples: Any,
     *,
-    dtype: TensorDtype = TensorDtype.FLOAT32,
+    dtype: TensorDtypeEnum = TensorDtypeEnum.FLOAT32,
     tolerance: float = 1e-4,
     providers: Sequence[str] | None = None,
 ) -> ExportVerification:
@@ -593,7 +595,7 @@ def verify_sklearn_onnx(
         estimator (Any): The original fitted estimator.
         onnx_path (str | Path): The exported graph.
         samples (Any): Rows to compare on.
-        dtype (TensorDtype): The dtype the graph was exported with.
+        dtype (TensorDtypeEnum): The dtype the graph was exported with.
         tolerance (float): Maximum absolute difference tolerated for a
             regressor, and for classifier probabilities.
         providers (Sequence[str] | None): ONNX Runtime execution
@@ -723,7 +725,7 @@ def edge_bundle(
     output_dir: str | Path,
     *,
     name: str = "model",
-    dtype: TensorDtype = TensorDtype.FLOAT32,
+    dtype: TensorDtypeEnum = TensorDtypeEnum.FLOAT32,
     opset: int = DEFAULT_OPSET,
     verify_samples: Any = None,
     tolerance: float = 1e-4,
@@ -772,7 +774,7 @@ def edge_bundle(
         samples (Any): Rows used to shape the graph.
         output_dir (str | Path): Where the artifacts go.
         name (str): Base filename.
-        dtype (TensorDtype): Input element type.
+        dtype (TensorDtypeEnum): Input element type.
         opset (int): Target opset.
         verify_samples (Any): Held-out rows to verify against. ``None``
             skips verification, which is only sensible in a throwaway
@@ -946,7 +948,7 @@ __all__: list[str] = [
     "EdgeStage",
     "ExportVerification",
     "SklearnExport",
-    "TensorDtype",
+    "TensorDtypeEnum",
     "edge_bundle",
     "export_sklearn_to_onnx",
     "verify_sklearn_onnx",

@@ -71,7 +71,7 @@ def _require_sqlglot() -> Any:
     return sqlglot
 
 
-class SqlCapability(BaseStrEnum):
+class SqlCapabilityEnum(BaseStrEnum):
     """What a console may do, one statement family per member.
 
     Split the way an operator thinks about risk rather than the way SQL
@@ -110,58 +110,58 @@ class SqlCapability(BaseStrEnum):
 
 
 #: Statement families that change data or structure.
-MUTATING: frozenset[SqlCapability] = frozenset(
+MUTATING: frozenset[SqlCapabilityEnum] = frozenset(
     {
-        SqlCapability.INSERT,
-        SqlCapability.UPDATE,
-        SqlCapability.DELETE,
-        SqlCapability.DDL,
-        SqlCapability.DROP,
-        SqlCapability.ADMIN,
+        SqlCapabilityEnum.INSERT,
+        SqlCapabilityEnum.UPDATE,
+        SqlCapabilityEnum.DELETE,
+        SqlCapabilityEnum.DDL,
+        SqlCapabilityEnum.DROP,
+        SqlCapabilityEnum.ADMIN,
     },
 )
 
-_EXPRESSION_CAPABILITY: dict[str, SqlCapability] = {
-    "Select": SqlCapability.READ,
-    "Union": SqlCapability.READ,
-    "Intersect": SqlCapability.READ,
-    "Except": SqlCapability.READ,
-    "Subquery": SqlCapability.READ,
-    "With": SqlCapability.READ,
-    "Describe": SqlCapability.READ,
-    "Show": SqlCapability.READ,
-    "Pragma": SqlCapability.READ,
-    "Insert": SqlCapability.INSERT,
-    "Update": SqlCapability.UPDATE,
-    "Delete": SqlCapability.DELETE,
-    "Merge": SqlCapability.UPDATE,
-    "Create": SqlCapability.DDL,
-    "Alter": SqlCapability.DDL,
-    "AlterTable": SqlCapability.DDL,
-    "Comment": SqlCapability.DDL,
-    "Drop": SqlCapability.DROP,
-    "TruncateTable": SqlCapability.DROP,
-    "Grant": SqlCapability.ADMIN,
-    "Revoke": SqlCapability.ADMIN,
-    "Set": SqlCapability.ADMIN,
-    "Transaction": SqlCapability.ADMIN,
-    "Commit": SqlCapability.ADMIN,
-    "Rollback": SqlCapability.ADMIN,
+_EXPRESSION_CAPABILITY: dict[str, SqlCapabilityEnum] = {
+    "Select": SqlCapabilityEnum.READ,
+    "Union": SqlCapabilityEnum.READ,
+    "Intersect": SqlCapabilityEnum.READ,
+    "Except": SqlCapabilityEnum.READ,
+    "Subquery": SqlCapabilityEnum.READ,
+    "With": SqlCapabilityEnum.READ,
+    "Describe": SqlCapabilityEnum.READ,
+    "Show": SqlCapabilityEnum.READ,
+    "Pragma": SqlCapabilityEnum.READ,
+    "Insert": SqlCapabilityEnum.INSERT,
+    "Update": SqlCapabilityEnum.UPDATE,
+    "Delete": SqlCapabilityEnum.DELETE,
+    "Merge": SqlCapabilityEnum.UPDATE,
+    "Create": SqlCapabilityEnum.DDL,
+    "Alter": SqlCapabilityEnum.DDL,
+    "AlterTable": SqlCapabilityEnum.DDL,
+    "Comment": SqlCapabilityEnum.DDL,
+    "Drop": SqlCapabilityEnum.DROP,
+    "TruncateTable": SqlCapabilityEnum.DROP,
+    "Grant": SqlCapabilityEnum.ADMIN,
+    "Revoke": SqlCapabilityEnum.ADMIN,
+    "Set": SqlCapabilityEnum.ADMIN,
+    "Transaction": SqlCapabilityEnum.ADMIN,
+    "Commit": SqlCapabilityEnum.ADMIN,
+    "Rollback": SqlCapabilityEnum.ADMIN,
 }
 """sqlglot expression class name to capability.
 
-Anything absent maps to :attr:`SqlCapability.ADMIN` — see that member's
+Anything absent maps to :attr:`SqlCapabilityEnum.ADMIN` — see that member's
 docstring for why the unknown case is the privileged one.
 """
 
-_CAPABILITY_RANK: tuple[SqlCapability, ...] = (
-    SqlCapability.READ,
-    SqlCapability.INSERT,
-    SqlCapability.UPDATE,
-    SqlCapability.DELETE,
-    SqlCapability.DDL,
-    SqlCapability.DROP,
-    SqlCapability.ADMIN,
+_CAPABILITY_RANK: tuple[SqlCapabilityEnum, ...] = (
+    SqlCapabilityEnum.READ,
+    SqlCapabilityEnum.INSERT,
+    SqlCapabilityEnum.UPDATE,
+    SqlCapabilityEnum.DELETE,
+    SqlCapabilityEnum.DDL,
+    SqlCapabilityEnum.DROP,
+    SqlCapabilityEnum.ADMIN,
 )
 """Capabilities from least to most privileged.
 
@@ -231,7 +231,7 @@ class SqlStatement(BaseSchema):
 
     Attributes:
         sql (str): The statement as it will be executed.
-        capability (SqlCapability): What running it would do.
+        capability (SqlCapabilityEnum): What running it would do.
         tables (list[str]): Tables it touches, lowercased and without a
             schema qualifier.
         has_where (bool): Whether a mutating statement carries a ``WHERE``.
@@ -243,7 +243,7 @@ class SqlStatement(BaseSchema):
         description="The statement as it will be executed.",
         examples=["SELECT * FROM orders LIMIT 10"],
     )
-    capability: SqlCapability = Field(
+    capability: SqlCapabilityEnum = Field(
         title="Capability",
         description="What running this statement would do.",
         examples=["read"],
@@ -275,7 +275,7 @@ class SqlShellPolicy(BaseSchema):
     thousand rows. Widening it is a deliberate act.
 
     Attributes:
-        capabilities (set[SqlCapability]): Statement families allowed.
+        capabilities (set[SqlCapabilityEnum]): Statement families allowed.
             Defaults to read-only.
         allowed_tables (set[str]): When non-empty, **only** these tables
             may be touched. Compared lowercased and without schema.
@@ -295,8 +295,8 @@ class SqlShellPolicy(BaseSchema):
             default.
     """
 
-    capabilities: set[SqlCapability] = Field(
-        default_factory=lambda: {SqlCapability.READ},
+    capabilities: set[SqlCapabilityEnum] = Field(
+        default_factory=lambda: {SqlCapabilityEnum.READ},
         title="Capabilities",
         description="Statement families the console may run.",
     )
@@ -379,7 +379,7 @@ class SqlResult(BaseSchema):
         row_count (int): Rows returned, or rows affected for a mutation.
         truncated (bool): Whether more rows existed than were fetched.
         seconds (float): Wall-clock duration.
-        capability (SqlCapability): What the statement did.
+        capability (SqlCapabilityEnum): What the statement did.
         statement (str): The statement that ran.
     """
 
@@ -411,8 +411,8 @@ class SqlResult(BaseSchema):
         description="Wall-clock duration.",
         examples=[0.031],
     )
-    capability: SqlCapability = Field(
-        default=SqlCapability.READ,
+    capability: SqlCapabilityEnum = Field(
+        default=SqlCapabilityEnum.READ,
         title="Capability",
         description="What the statement did.",
         examples=["read"],
@@ -435,7 +435,7 @@ class SqlAudit(BaseSchema):
         principal (str): Who ran it.
         sql (str): What they submitted, verbatim.
         allowed (bool): Whether the policy let it through.
-        capability (SqlCapability | None): What it would do, when the
+        capability (SqlCapabilityEnum | None): What it would do, when the
             analyser could tell.
         tables (list[str]): Tables involved.
         reason (str | None): Why it was refused.
@@ -457,7 +457,7 @@ class SqlAudit(BaseSchema):
         description="Whether the policy let it through.",
         examples=[True],
     )
-    capability: SqlCapability | None = Field(
+    capability: SqlCapabilityEnum | None = Field(
         default=None,
         title="Capability",
         description="What the statement would do.",
@@ -494,7 +494,7 @@ def analyze_sql(sql: str, *, dialect: str | None = None) -> list[SqlStatement]:
     Example:
 
         >>> analyze_sql("SELECT id FROM orders WHERE id = 1")[0].capability
-        <SqlCapability.READ: 'read'>
+        <SqlCapabilityEnum.READ: 'read'>
 
     Args:
         sql (str): One or more statements.
@@ -533,7 +533,7 @@ def analyze_sql(sql: str, *, dialect: str | None = None) -> list[SqlStatement]:
                 capability=capability,
                 tables=tables,
                 has_where=decisive.args.get("where") is not None,
-                returns_rows=capability == SqlCapability.READ,
+                returns_rows=capability == SqlCapabilityEnum.READ,
             ),
         )
     if not statements:
@@ -541,7 +541,7 @@ def analyze_sql(sql: str, *, dialect: str | None = None) -> list[SqlStatement]:
     return statements
 
 
-def _classify(expression: Any) -> tuple[SqlCapability, Any]:
+def _classify(expression: Any) -> tuple[SqlCapabilityEnum, Any]:
     """Return what running ``expression`` does, and the node that decides it.
 
     The top-level node is not enough. Three shapes read at the top and
@@ -560,7 +560,7 @@ def _classify(expression: Any) -> tuple[SqlCapability, Any]:
         expression (Any): A parsed sqlglot expression.
 
     Returns:
-        tuple[SqlCapability, Any]: The most privileged capability the
+        tuple[SqlCapabilityEnum, Any]: The most privileged capability the
         statement contains, and the node it came from — the caller reads
         ``WHERE`` off that node, so the missing-``WHERE`` rule judges the
         write rather than the ``SELECT`` wrapped around it.
@@ -572,16 +572,16 @@ def _classify(expression: Any) -> tuple[SqlCapability, Any]:
         style = str(expression.args.get("style") or "").upper()
         inner = expression.args.get("this")
         if style != "ANALYZE" or inner is None:
-            return SqlCapability.READ, expression
+            return SqlCapabilityEnum.READ, expression
         return _classify(inner)
 
-    capability = _EXPRESSION_CAPABILITY.get(kind, SqlCapability.ADMIN)
+    capability = _EXPRESSION_CAPABILITY.get(kind, SqlCapabilityEnum.ADMIN)
     decisive = expression
     for node in expression.walk():
         if node is expression:
             continue
         found = _EXPRESSION_CAPABILITY.get(type(node).__name__)
-        if found is None or found is SqlCapability.READ:
+        if found is None or found is SqlCapabilityEnum.READ:
             continue
         if _CAPABILITY_RANK.index(found) > _CAPABILITY_RANK.index(capability):
             capability = found
@@ -589,7 +589,7 @@ def _classify(expression: Any) -> tuple[SqlCapability, Any]:
     return capability, decisive
 
 
-def _pragma_capability(expression: Any) -> SqlCapability:
+def _pragma_capability(expression: Any) -> SqlCapabilityEnum:
     """Classify a SQLite ``PRAGMA``.
 
     ``READ`` only for the two shapes that cannot change state: an
@@ -603,17 +603,17 @@ def _pragma_capability(expression: Any) -> SqlCapability:
         expression (Any): A parsed sqlglot ``Pragma``.
 
     Returns:
-        SqlCapability: ``READ`` or ``ADMIN``.
+        SqlCapabilityEnum: ``READ`` or ``ADMIN``.
     """
     target = expression.args.get("this")
     bare = type(target).__name__ == "Var"
     named = target if bare else getattr(target, "this", None)
     name = str(getattr(named, "name", "") or "").lower()
     if name in _INTROSPECTION_PRAGMAS:
-        return SqlCapability.READ
+        return SqlCapabilityEnum.READ
     if bare and name and name not in _ACTION_PRAGMAS:
-        return SqlCapability.READ
-    return SqlCapability.ADMIN
+        return SqlCapabilityEnum.READ
+    return SqlCapabilityEnum.ADMIN
 
 
 def _tables_of(expression: Any, sqlglot: Any) -> list[str]:
@@ -684,7 +684,8 @@ def check_policy(
                 return f"table {table!r} is not accessible from this console"
         if (
             policy.require_where
-            and statement.capability in {SqlCapability.UPDATE, SqlCapability.DELETE}
+            and statement.capability
+            in {SqlCapabilityEnum.UPDATE, SqlCapabilityEnum.DELETE}
             and not statement.has_where
         ):
             return (
@@ -702,7 +703,7 @@ class SqlShellService:
         >>> service = SqlShellService(
         ...     db,
         ...     policy=SqlShellPolicy(
-        ...         capabilities={SqlCapability.READ},
+        ...         capabilities={SqlCapabilityEnum.READ},
         ...         denied_tables={"users"},
         ...     ),
         ...     dialect="postgres",
@@ -889,7 +890,7 @@ __all__: list[str] = [
     "MUTATING",
     "SqlAudit",
     "SqlAuditor",
-    "SqlCapability",
+    "SqlCapabilityEnum",
     "SqlResult",
     "SqlShellDenied",
     "SqlShellError",

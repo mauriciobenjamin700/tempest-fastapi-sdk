@@ -227,10 +227,10 @@ tipo e um lugar para ler o que existe.
 
 | Enum | Onde aparece | Valores |
 | --- | --- | --- |
-| `ZapWebhookEvent` | `delivery.event` | `MESSAGE_RECEIVED`, `MESSAGE_SENT`, `MESSAGE_DELIVERED`, `MESSAGE_READ`, `MESSAGE_FAILED` |
-| `ZapInboundMediaType` | `message.media_type` | `IMAGE`, `VIDEO`, `AUDIO`, `DOCUMENT`, `STICKER` (`None` é texto puro) |
-| `ZapJidServer` | `message.from_server` | `USER`, `LID`, `GROUP`, `BROADCAST`, `NEWSLETTER` e mais cinco do Baileys |
-| `ZapOutboundKind` | `callback.kind` | `TEXT`, `IMAGE`, `VIDEO`, `AUDIO`, `DOCUMENT`, `REACTION` |
+| `ZapWebhookEventEnum` | `delivery.event` | `MESSAGE_RECEIVED`, `MESSAGE_SENT`, `MESSAGE_DELIVERED`, `MESSAGE_READ`, `MESSAGE_FAILED` |
+| `ZapInboundMediaTypeEnum` | `message.media_type` | `IMAGE`, `VIDEO`, `AUDIO`, `DOCUMENT`, `STICKER` (`None` é texto puro) |
+| `ZapJidServerEnum` | `message.from_server` | `USER`, `LID`, `GROUP`, `BROADCAST`, `NEWSLETTER` e mais cinco do Baileys |
+| `ZapOutboundKindEnum` | `callback.kind` | `TEXT`, `IMAGE`, `VIDEO`, `AUDIO`, `DOCUMENT`, `REACTION` |
 | `AcceptedResponseStatus` | `callback.status` | `SENT`, `DELIVERED`, `READ`, `FAILED` (mais `QUEUED` e `SENDING`, que nunca chegam no webhook) |
 
 O passo 1 despachou por você; aqui a rota é sua de novo, porque o `event` é o
@@ -245,10 +245,10 @@ from fastapi import Depends, FastAPI
 
 from tempest_fastapi_sdk.integrations.messaging.zap import (
     AcceptedResponseStatus,
-    ZapInboundMediaType,
+    ZapInboundMediaTypeEnum,
     ZapInboundMessage,
-    ZapJidServer,
-    ZapOutboundKind,
+    ZapJidServerEnum,
+    ZapOutboundKindEnum,
     ZapStatusCallback,
     ZapWebhookDelivery,
     make_zap_webhook_dependency,
@@ -267,16 +267,16 @@ def describe_inbound(message: ZapInboundMessage) -> str:
     Returns:
         str: Um rótulo do caminho escolhido.
     """
-    if message.from_server is ZapJidServer.BROADCAST:
+    if message.from_server is ZapJidServerEnum.BROADCAST:
         return "ignorar: story de status"
-    if message.from_server is ZapJidServer.GROUP:
+    if message.from_server is ZapJidServerEnum.GROUP:
         return f"grupo: {message.text}"
     match message.media_type:
         case None:
             return f"texto: {message.text}"
-        case ZapInboundMediaType.AUDIO:
+        case ZapInboundMediaTypeEnum.AUDIO:
             return "áudio: transcrever"
-        case ZapInboundMediaType.IMAGE | ZapInboundMediaType.VIDEO:
+        case ZapInboundMediaTypeEnum.IMAGE | ZapInboundMediaTypeEnum.VIDEO:
             return f"visual, legenda: {message.text}"
         case _:
             return f"arquivo: {message.media_type}"
@@ -293,7 +293,7 @@ def describe_status(callback: ZapStatusCallback) -> str:
     """
     if callback.status == AcceptedResponseStatus.FAILED:
         return f"falhou: {callback.error}"
-    if callback.kind == ZapOutboundKind.REACTION:
+    if callback.kind == ZapOutboundKindEnum.REACTION:
         return "reação entregue: nada a mostrar"
     return f"{callback.kind} agora está {callback.status}"
 
@@ -429,7 +429,7 @@ certo:
 
 | `delivery.event` | Corpo em |
 | --- | --- |
-| `ZapWebhookEvent.MESSAGE_RECEIVED` | `delivery.inbound` (`ZapInboundMessage`) |
+| `ZapWebhookEventEnum.MESSAGE_RECEIVED` | `delivery.inbound` (`ZapInboundMessage`) |
 | `MESSAGE_SENT`, `MESSAGE_DELIVERED`, `MESSAGE_READ`, `MESSAGE_FAILED` | `delivery.status` (`ZapStatusCallback`) |
 | `None` | nenhum — logue `event_name` e `payload` e responda `200` |
 
@@ -445,7 +445,7 @@ com o modelo.
 `from_` é o JID cru, `<usuário>@<servidor>`, e o servidor diz se é uma
 pessoa (`s.whatsapp.net` ou `lid`), um grupo (`g.us`), uma story de status
 (`status@broadcast`) ou um canal (`newsletter`). `message.from_server` lê
-esse pedaço e devolve o membro de `ZapJidServer` — `None` quando não há `@`
+esse pedaço e devolve o membro de `ZapJidServerEnum` — `None` quando não há `@`
 ou o servidor é desconhecido.
 
 !!! warning "O gateway não filtra pelo servidor do JID"
@@ -459,15 +459,15 @@ ou o servidor é desconhecido.
 ### `is` para o envelope, `==` para o corpo
 
 `ZapWebhookDelivery` é um dataclass, então `delivery.event` guarda o próprio
-membro e `delivery.event is ZapWebhookEvent.MESSAGE_RECEIVED` funciona.
+membro e `delivery.event is ZapWebhookEventEnum.MESSAGE_RECEIVED` funciona.
 `from_server` também devolve o membro. Já dentro de `ZapInboundMessage` e
 `ZapStatusCallback`, como em todo `BaseSchema`, os campos de enum guardam o
 **valor** — compare com `==` (ou use `match`, que compara com `==`).
 
-`callback.kind` é `str` de propósito, não `ZapOutboundKind`: o gateway o
+`callback.kind` é `str` de propósito, não `ZapOutboundKindEnum`: o gateway o
 declara como `string`, e um tipo de envio que ele ganhar depois não pode
 transformar o status de uma mensagem numa entrega `event=None`. Compare com
-o enum mesmo assim — `callback.kind == ZapOutboundKind.REACTION`.
+o enum mesmo assim — `callback.kind == ZapOutboundKindEnum.REACTION`.
 
 ## Passo 3 — A camada de serviço
 
@@ -510,9 +510,9 @@ from tempest_fastapi_sdk.integrations.messaging.zap import (
     ZapDeliveryMixin,
     ZapInboundMessage,
     ZapInboundMessageMixin,
-    ZapInboundOutcome,
+    ZapInboundOutcomeEnum,
     ZapInbox,
-    ZapStatusOutcome,
+    ZapStatusOutcomeEnum,
     ZapWebhookDelivery,
     make_zap_webhook_dependency,
 )
@@ -557,7 +557,7 @@ class ZapDeliveryModel(ZapDeliveryMixin, BaseModel):
     __tablename__ = "zap_deliveries"
 
 
-Outcome = ZapInboundOutcome | ZapStatusOutcome | Literal["ignored"]
+Outcome = ZapInboundOutcomeEnum | ZapStatusOutcomeEnum | Literal["ignored"]
 
 
 class ZapWebhookResponseSchema(BaseSchema):
@@ -582,7 +582,7 @@ class ZapBotService:
         """
         self.inbox: ZapInbox[ZapMessageModel, ZapDeliveryModel] = inbox
 
-    async def receive(self, message: ZapInboundMessage) -> ZapInboundOutcome:
+    async def receive(self, message: ZapInboundMessage) -> ZapInboundOutcomeEnum:
         """Guarda a mensagem e responde a quem escreveu.
 
         A resposta sai em ``stored`` **e** em ``duplicate``: se o envio
@@ -599,10 +599,10 @@ class ZapBotService:
         Returns:
             ZapInboundOutcome: O que o inbox fez com ela.
         """
-        outcome: ZapInboundOutcome = await self.inbox.claim(message)
+        outcome: ZapInboundOutcomeEnum = await self.inbox.claim(message)
         replyable: bool = outcome in (
-            ZapInboundOutcome.STORED,
-            ZapInboundOutcome.DUPLICATE,
+            ZapInboundOutcomeEnum.STORED,
+            ZapInboundOutcomeEnum.DUPLICATE,
         )
         if replyable and message.chat_key is not None:
             await self.inbox.send_text(
@@ -808,7 +808,7 @@ exceção. Veja [Idempotência](idempotency.md) para o mesmo raciocínio em
 rotas suas.
 
 **`claim`: só conversa de pessoa.** O padrão de `accepted_servers` é
-`ZapJidServer.USER` e `ZapJidServer.LID`; grupo, broadcast e canal voltam
+`ZapJidServerEnum.USER` e `ZapJidServerEnum.LID`; grupo, broadcast e canal voltam
 `skipped` sem gravar. Passe outro `frozenset` para aceitar mais.
 
 **`claim`: mídia só pelo gateway.** O gateway baixa a mídia quando a mensagem
@@ -1079,8 +1079,8 @@ test_zap_servico.py::test_unknown_event_is_200 PASSED
   e devolve um `ZapWebhookDelivery`.
 - Despache por `delivery.inbound` / `delivery.status`; o que não tem nenhum
   dos dois responde `200` e vai para o log.
-- Compare com os enums — `ZapWebhookEvent`, `ZapInboundMediaType`,
-  `ZapJidServer`, `ZapOutboundKind`, `AcceptedResponseStatus` —, não com
+- Compare com os enums — `ZapWebhookEventEnum`, `ZapInboundMediaTypeEnum`,
+  `ZapJidServerEnum`, `ZapOutboundKindEnum`, `AcceptedResponseStatus` —, não com
   string solta; `is` no envelope e no `from_server`, `==` nos campos do corpo.
 - Filtre por `from_server`: grupo, story de status e canal também chegam.
 - `ZapInbox` + `ZapInboundMessageMixin` / `ZapDeliveryMixin` trazem a

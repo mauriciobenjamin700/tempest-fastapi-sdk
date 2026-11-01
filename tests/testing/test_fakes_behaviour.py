@@ -14,20 +14,20 @@ from io import BytesIO
 import pytest
 
 from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
-from tempest_fastapi_sdk.geo.enums import TravelMode
+from tempest_fastapi_sdk.geo.enums import TravelModeEnum
 from tempest_fastapi_sdk.geo.schemas import Coordinate
 from tempest_fastapi_sdk.integrations.payment import (
     CardChargeRequest,
     CardProvider,
-    PaymentStatus,
+    PaymentStatusEnum,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixProvider,
 )
 from tempest_fastapi_sdk.push.schemas import (
     PushDevice,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
 )
 from tempest_fastapi_sdk.testing.fakes import (
     FakeCardProvider,
@@ -72,7 +72,7 @@ class TestFakeCardProvider:
         charge = await provider.create_card_charge(_card_request())
         read = await provider.get_card_charge(charge.provider_charge_id)
 
-        assert charge.status is PaymentStatus.PAID
+        assert charge.status is PaymentStatusEnum.PAID
         assert read == charge
         assert charge.payment_method_id == "visa"
         assert charge.installments == 1
@@ -85,9 +85,9 @@ class TestFakeCardProvider:
         declined = await provider.create_card_charge(_card_request())
         approved = await provider.create_card_charge(_card_request())
 
-        assert declined.status is PaymentStatus.FAILED
+        assert declined.status is PaymentStatusEnum.FAILED
         assert declined.status_detail == "cc_rejected_insufficient_amount"
-        assert approved.status is PaymentStatus.PAID
+        assert approved.status is PaymentStatusEnum.PAID
 
     async def test_authorize_then_capture_or_release(self) -> None:
         """`capture=False` holds; capture pays, cancel releases."""
@@ -98,9 +98,9 @@ class TestFakeCardProvider:
         captured = await provider.capture_card_charge(held.provider_charge_id)
         released = await provider.cancel_card_charge(other.provider_charge_id)
 
-        assert held.status is PaymentStatus.AUTHORIZED
-        assert captured.status is PaymentStatus.PAID
-        assert released.status is PaymentStatus.CANCELLED
+        assert held.status is PaymentStatusEnum.AUTHORIZED
+        assert captured.status is PaymentStatusEnum.PAID
+        assert released.status is PaymentStatusEnum.CANCELLED
 
     async def test_refund_in_two_steps(self) -> None:
         """Partial keeps it PAID; the rest makes it REFUNDED."""
@@ -112,10 +112,10 @@ class TestFakeCardProvider:
         )
         full = await provider.refund_card_charge(charge.provider_charge_id)
 
-        assert partial.status is PaymentStatus.PAID
+        assert partial.status is PaymentStatusEnum.PAID
         assert partial.status_detail == "partially_refunded"
         assert partial.refunded_cents == 3000
-        assert full.status is PaymentStatus.REFUNDED
+        assert full.status is PaymentStatusEnum.REFUNDED
         assert full.refunded_cents == 10000
 
     @pytest.mark.parametrize(
@@ -149,12 +149,12 @@ class TestFakeCardProvider:
         provider.fail_next(TimeoutError())
 
         disputed = provider.advance(
-            charge.provider_charge_id, PaymentStatus.CHARGED_BACK
+            charge.provider_charge_id, PaymentStatusEnum.CHARGED_BACK
         )
         with pytest.raises(TimeoutError):
             await provider.get_card_charge(charge.provider_charge_id)
 
-        assert disputed.status is PaymentStatus.CHARGED_BACK
+        assert disputed.status is PaymentStatusEnum.CHARGED_BACK
         assert charge.provider == "mercado_pago"
         assert provider.calls == ["create_card_charge", "get_card_charge"]
         assert provider.charges[charge.provider_charge_id] == disputed
@@ -172,14 +172,14 @@ class TestFakePixProvider:
         charge = await provider.create_pix_charge(
             PixChargeRequest(amount_cents=1990, reference="order-1"),
         )
-        assert charge.status is PaymentStatus.PENDING
+        assert charge.status is PaymentStatusEnum.PENDING
         assert charge.br_code
 
         same = await provider.get_pix_charge(charge.provider_charge_id)
         assert same.reference == "order-1"
 
         cancelled = await provider.cancel_pix_charge(charge.provider_charge_id)
-        assert cancelled.status is PaymentStatus.CANCELLED
+        assert cancelled.status is PaymentStatusEnum.CANCELLED
 
     async def test_advance_reaches_states_a_sandbox_cannot(self) -> None:
         """Paying and charging back are the point of the steering.
@@ -192,16 +192,16 @@ class TestFakePixProvider:
             PixChargeRequest(amount_cents=500, reference="order-2"),
         )
 
-        paid = provider.advance(charge.provider_charge_id, PaymentStatus.PAID)
-        assert paid.type is PixEventType.CHARGE_PAID
+        paid = provider.advance(charge.provider_charge_id, PaymentStatusEnum.PAID)
+        assert paid.type is PixEventTypeEnum.CHARGE_PAID
         assert paid.charge is not None
-        assert paid.charge.status is PaymentStatus.PAID
+        assert paid.charge.status is PaymentStatusEnum.PAID
 
         reversed_ = provider.advance(
             charge.provider_charge_id,
-            PaymentStatus.CHARGED_BACK,
+            PaymentStatusEnum.CHARGED_BACK,
         )
-        assert reversed_.type is PixEventType.UNKNOWN
+        assert reversed_.type is PixEventTypeEnum.UNKNOWN
         assert reversed_.provider_event_name == "fake.charged_back"
 
     async def test_the_charges_view_is_read_only(self) -> None:
@@ -228,7 +228,7 @@ class TestFakePixProvider:
         charge = await provider.create_pix_charge(
             PixChargeRequest(amount_cents=100, reference="order-5"),
         )
-        assert charge.status is PaymentStatus.PENDING
+        assert charge.status is PaymentStatusEnum.PENDING
 
     async def test_steering_does_not_consume_a_queued_failure(self) -> None:
         """``advance`` is the test acting, not the service calling."""
@@ -238,7 +238,7 @@ class TestFakePixProvider:
         )
         provider.fail_next(RuntimeError("later"))
 
-        provider.advance(charge.provider_charge_id, PaymentStatus.PAID)
+        provider.advance(charge.provider_charge_id, PaymentStatusEnum.PAID)
 
         with pytest.raises(RuntimeError, match="later"):
             await provider.get_pix_charge(charge.provider_charge_id)
@@ -307,7 +307,7 @@ class TestFakeModerationBackend:
 class TestFakePushDispatcher:
     async def test_deliveries_are_recorded_not_sent(self) -> None:
         dispatcher = FakePushDispatcher()
-        device = PushDevice(platform=PushPlatform.ANDROID, token="token-1")
+        device = PushDevice(platform=PushPlatformEnum.ANDROID, token="token-1")
 
         await dispatcher.send(device, PushPayloadSchema(title="Oi", body="Corpo"))
 
@@ -321,7 +321,7 @@ class TestFakePushDispatcher:
 
         dispatcher = FakePushDispatcher()
         dispatcher.fail_next(PushDeviceGoneError("token retired"))
-        device = PushDevice(platform=PushPlatform.IOS, token="token-2")
+        device = PushDevice(platform=PushPlatformEnum.IOS, token="token-2")
 
         with pytest.raises(PushDeviceGoneError):
             await dispatcher.send(device, PushPayloadSchema(title="Oi"))
@@ -330,7 +330,7 @@ class TestFakePushDispatcher:
 
     def test_claimed_platforms_default_to_all_of_them(self) -> None:
         assert FakePushDispatcher().platforms == frozenset(
-            platform.value for platform in PushPlatform
+            platform.value for platform in PushPlatformEnum
         )
 
 
@@ -403,8 +403,8 @@ class TestFakeGeoBackends:
 
         backend = FakeRoutingBackend()
 
-        estimate = await backend.route(RECIFE, OLINDA, mode=TravelMode.CAR)
-        expected = estimate_travel(RECIFE, OLINDA, TravelMode.CAR)
+        estimate = await backend.route(RECIFE, OLINDA, mode=TravelModeEnum.CAR)
+        expected = estimate_travel(RECIFE, OLINDA, TravelModeEnum.CAR)
 
         assert estimate.distance_km == pytest.approx(expected.distance_km)
         assert estimate.duration_minutes == pytest.approx(expected.duration_minutes)
@@ -415,7 +415,7 @@ class TestFakeGeoBackends:
 
         backend = FakeRoutingBackend()
         pinned = TravelEstimate(
-            mode=TravelMode.CAR,
+            mode=TravelModeEnum.CAR,
             distance_km=42.0,
             duration_minutes=7.0,
             source="pinned",

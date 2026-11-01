@@ -13,7 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
+    AdminPermissionEnum,
     AdminSite,
     AsyncDatabaseManager,
     BaseModel,
@@ -42,13 +42,13 @@ class Secret(BaseModel):
 SECRET = "x" * 48
 
 
-def _policy(user: Any, admin: AdminModel[Any], action: AdminPermission) -> bool:
+def _policy(user: Any, admin: AdminModel[Any], action: AdminPermissionEnum) -> bool:
     if getattr(user, "role", "") == "super":
         return True
     # "support": may only VIEW Item; nothing on Secret.
     if admin.model is Secret:
         return False
-    return action is AdminPermission.VIEW
+    return action is AdminPermissionEnum.VIEW
 
 
 @pytest.fixture

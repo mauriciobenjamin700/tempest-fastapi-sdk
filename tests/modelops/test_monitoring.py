@@ -15,7 +15,7 @@ from tempest_fastapi_sdk.modelops.monitoring import (
     OTHER_LABEL,
     PSI_MODERATE,
     PSI_SIGNIFICANT,
-    DriftVerdict,
+    DriftVerdictEnum,
     FeatureBaseline,
     FeatureBins,
     PredictionMonitor,
@@ -117,7 +117,7 @@ class TestBaseline:
 
         monitor = PredictionMonitor(baseline=base, window_rows=10_000)
         monitor.observe(numpy.full((200, 1), 5.0), _prediction([0] * 200))
-        assert monitor.report().drift.verdict == DriftVerdict.SIGNIFICANT
+        assert monitor.report().drift.verdict == DriftVerdictEnum.SIGNIFICANT
 
     def test_empty_samples_are_refused(self) -> None:
         with pytest.raises(ValueError, match="empty"):
@@ -142,7 +142,7 @@ class TestInputDrift:
         monitor = PredictionMonitor(baseline=baseline, window_rows=10_000)
         monitor.observe(_normal(500, 5), _prediction([0] * 500))
         report = monitor.report().drift
-        assert report.verdict == DriftVerdict.STABLE
+        assert report.verdict == DriftVerdictEnum.STABLE
         assert report.worst_psi < PSI_MODERATE
 
     def test_a_shifted_distribution_reads_significant(
@@ -152,7 +152,7 @@ class TestInputDrift:
         monitor = PredictionMonitor(baseline=baseline, window_rows=10_000)
         monitor.observe(_normal(500, 6, loc=2.0), _prediction([0] * 500))
         report = monitor.report().drift
-        assert report.verdict == DriftVerdict.SIGNIFICANT
+        assert report.verdict == DriftVerdictEnum.SIGNIFICANT
         assert report.worst_psi > PSI_SIGNIFICANT
 
     def test_features_are_ranked_worst_first(
@@ -175,7 +175,7 @@ class TestInputDrift:
         monitor.observe(_normal(MIN_ROWS_FOR_DRIFT - 1, 8), _prediction([0] * 99))
         report = monitor.report().drift
         assert report.sufficient_sample is False
-        assert report.verdict == DriftVerdict.INSUFFICIENT_DATA
+        assert report.verdict == DriftVerdictEnum.INSUFFICIENT_DATA
 
     def test_a_closed_window_survives_the_reset(
         self,
@@ -186,7 +186,7 @@ class TestInputDrift:
         monitor.observe(_normal(200, 9, loc=2.0), _prediction([0] * 200))
         report = monitor.report().drift
         assert report.n_rows == 200
-        assert report.verdict == DriftVerdict.SIGNIFICANT
+        assert report.verdict == DriftVerdictEnum.SIGNIFICANT
 
     def test_memory_does_not_grow_with_traffic(
         self,
@@ -213,7 +213,7 @@ class TestInputDrift:
         monitor.observe(_normal(10, 10), _prediction([0] * 10))
         report = monitor.report()
         assert report.latency.n_calls == 1
-        assert report.drift.verdict == DriftVerdict.INSUFFICIENT_DATA
+        assert report.drift.verdict == DriftVerdictEnum.INSUFFICIENT_DATA
 
 
 class TestOutputDistribution:
@@ -232,8 +232,8 @@ class TestOutputDistribution:
         monitor = PredictionMonitor(baseline=baseline, window_rows=10_000)
         monitor.observe(_normal(500, 12), _prediction([1] * 500))
         report = monitor.report()
-        assert report.drift.verdict == DriftVerdict.STABLE
-        assert report.predictions.verdict == DriftVerdict.SIGNIFICANT
+        assert report.drift.verdict == DriftVerdictEnum.STABLE
+        assert report.predictions.verdict == DriftVerdictEnum.SIGNIFICANT
 
     def test_a_regressor_gets_summary_statistics(self) -> None:
         monitor = PredictionMonitor()
@@ -248,7 +248,7 @@ class TestOutputDistribution:
         monitor.observe(_normal(200, 15), _prediction([1] * 200))
         distribution = monitor.report().predictions
         assert distribution.psi == 0.0
-        assert distribution.verdict == DriftVerdict.INSUFFICIENT_DATA
+        assert distribution.verdict == DriftVerdictEnum.INSUFFICIENT_DATA
 
 
 class TestLatency:
@@ -277,7 +277,7 @@ class TestLatency:
         report = monitor.report()
         assert report.latency.n_calls == 0
         assert report.predictions.shares == {}
-        assert report.drift.verdict == DriftVerdict.INSUFFICIENT_DATA
+        assert report.drift.verdict == DriftVerdictEnum.INSUFFICIENT_DATA
 
 
 class TestMonitoredRouter:
@@ -430,7 +430,7 @@ class TestLabelKeysAreCanonical:
         distribution = monitor.report().predictions
         assert distribution.baseline_shares == {"0": 0.5, "1": 0.5}
         assert distribution.psi < 1e-9
-        assert distribution.verdict == DriftVerdict.STABLE
+        assert distribution.verdict == DriftVerdictEnum.STABLE
 
     def test_a_baseline_saved_with_float_keys_still_compares(self) -> None:
         """Baselines written before the fix carry '0.0' keys on disk."""
@@ -442,7 +442,7 @@ class TestLabelKeysAreCanonical:
         monitor.observe([[0.0]] * 200, _prediction([0, 1] * 100))
         distribution = monitor.report().predictions
         assert distribution.psi < 1e-9
-        assert distribution.verdict == DriftVerdict.STABLE
+        assert distribution.verdict == DriftVerdictEnum.STABLE
 
     def test_numpy_scalars_and_python_numbers_share_a_key(self) -> None:
         monitor = PredictionMonitor()

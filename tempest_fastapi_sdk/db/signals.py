@@ -41,7 +41,7 @@ from tempest_fastapi_sdk.core.enums import BaseStrEnum
 SignalHandler = Callable[[Any], Awaitable[None] | None]
 
 
-class RepositorySignal(BaseStrEnum):
+class RepositorySignalEnum(BaseStrEnum):
     """The lifecycle moments a :class:`BaseRepository` emits."""
 
     PRE_SAVE = "pre_save"
@@ -51,12 +51,12 @@ class RepositorySignal(BaseStrEnum):
 
 
 #: Registry keyed by ``(model class, signal)`` → ordered handler list.
-_HANDLERS: dict[tuple[type[Any], RepositorySignal], list[SignalHandler]] = {}
+_HANDLERS: dict[tuple[type[Any], RepositorySignalEnum], list[SignalHandler]] = {}
 
 
 def connect(
     model: type[Any],
-    signal: RepositorySignal,
+    signal: RepositorySignalEnum,
     handler: SignalHandler,
 ) -> None:
     """Register ``handler`` to fire on ``signal`` for ``model``.
@@ -68,7 +68,7 @@ def connect(
     Args:
         model (type[Any]): The SQLAlchemy model class to watch. A base
             class also matches its subclasses.
-        signal (RepositorySignal): The lifecycle moment to hook.
+        signal (RepositorySignalEnum): The lifecycle moment to hook.
         handler (SignalHandler): The sync or async callable invoked
             with the ORM instance.
     """
@@ -79,7 +79,7 @@ def connect(
 
 def disconnect(
     model: type[Any],
-    signal: RepositorySignal,
+    signal: RepositorySignalEnum,
     handler: SignalHandler,
 ) -> None:
     """Unregister ``handler`` from ``signal`` for ``model``.
@@ -89,7 +89,7 @@ def disconnect(
     Args:
         model (type[Any]): The model class the handler was registered
             against.
-        signal (RepositorySignal): The lifecycle moment.
+        signal (RepositorySignalEnum): The lifecycle moment.
         handler (SignalHandler): The callable to remove.
     """
     handlers = _HANDLERS.get((model, signal))
@@ -99,13 +99,13 @@ def disconnect(
 
 def on_signal(
     model: type[Any],
-    signal: RepositorySignal,
+    signal: RepositorySignalEnum,
 ) -> Callable[[SignalHandler], SignalHandler]:
     """Decorator form of :func:`connect`.
 
     Args:
         model (type[Any]): The model class to watch.
-        signal (RepositorySignal): The lifecycle moment to hook.
+        signal (RepositorySignalEnum): The lifecycle moment to hook.
 
     Returns:
         Callable[[SignalHandler], SignalHandler]: A decorator that
@@ -121,7 +121,7 @@ def on_signal(
 
 def handlers_for(
     model_class: type[Any],
-    signal: RepositorySignal,
+    signal: RepositorySignalEnum,
 ) -> list[SignalHandler]:
     """Return the handlers for ``model_class`` and its ancestors.
 
@@ -131,7 +131,7 @@ def handlers_for(
 
     Args:
         model_class (type[Any]): The concrete class of the instance.
-        signal (RepositorySignal): The lifecycle moment.
+        signal (RepositorySignalEnum): The lifecycle moment.
 
     Returns:
         list[SignalHandler]: The applicable handlers, possibly empty.
@@ -144,7 +144,7 @@ def handlers_for(
     return collected
 
 
-def has_handlers(model_class: type[Any], signal: RepositorySignal) -> bool:
+def has_handlers(model_class: type[Any], signal: RepositorySignalEnum) -> bool:
     """Return whether any handler is registered for ``model_class``.
 
     Lets the repository skip loading a row for delete signals when no
@@ -152,7 +152,7 @@ def has_handlers(model_class: type[Any], signal: RepositorySignal) -> bool:
 
     Args:
         model_class (type[Any]): The concrete class of the instance.
-        signal (RepositorySignal): The lifecycle moment.
+        signal (RepositorySignalEnum): The lifecycle moment.
 
     Returns:
         bool: ``True`` when at least one handler applies.
@@ -162,7 +162,7 @@ def has_handlers(model_class: type[Any], signal: RepositorySignal) -> bool:
 
 async def emit(
     model_class: type[Any],
-    signal: RepositorySignal,
+    signal: RepositorySignalEnum,
     instance: Any,
 ) -> None:
     """Invoke every handler registered for ``signal`` on ``model_class``.
@@ -173,7 +173,7 @@ async def emit(
 
     Args:
         model_class (type[Any]): The concrete class of ``instance``.
-        signal (RepositorySignal): The lifecycle moment.
+        signal (RepositorySignalEnum): The lifecycle moment.
         instance (Any): The ORM row passed to each handler.
     """
     for handler in handlers_for(model_class, signal):
@@ -192,7 +192,7 @@ def clear_signals() -> None:
 
 
 __all__: list[str] = [
-    "RepositorySignal",
+    "RepositorySignalEnum",
     "SignalHandler",
     "clear_signals",
     "connect",
