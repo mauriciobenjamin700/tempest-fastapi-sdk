@@ -3968,7 +3968,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   `tests/test_route_docs_coverage_guard.py`, apps em
   `tests/api/route_docs_apps.py`.
 
-## Inbox do zap-api: claim, status e envio (Unreleased)
+## Inbox do zap-api: claim, status e envio (v0.334.0)
 
 `integrations.messaging.zap.inbox`, escrito à mão. Fecha o "Fora de escopo"
 da v0.302.0 (persistência/idempotência do consumidor): o Passo 3 da receita
