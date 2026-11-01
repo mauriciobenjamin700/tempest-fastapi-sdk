@@ -530,9 +530,19 @@ a recusa (`WebPushEndpointRefusedError.permanent`):
   endpoint entra na lista devolvida e o `notify_user` / `notify_all` o
   apagam;
 - **uma resposta de DNS** — um nome que resolveu para endereço interno:
-  resposta muda, e um resolver que aponte um push service real para um proxy
-  interno recusaria todas as inscrições de uma vez, então o endpoint só vai
-  para o log e fica, como qualquer falha transitória.
+  resposta muda, então a primeira recusa só vai para o log. Se o mesmo
+  endpoint for recusado assim `prune_after_dns_refusals` vezes seguidas
+  (padrão `3`, contadas entre chamadas do mesmo dispatcher e espalhadas por
+  pelo menos `dns_refusal_window_seconds`, padrão 1 hora; uma entrega que
+  passa zera a conta, e outra falha nem conta nem zera), ele entra na lista e é apagado: é a inscrição de um
+  domínio que insiste em resolver para dentro da rede (DNS rebinding), que
+  antes ficava para sempre custando uma consulta e uma linha de log por
+  envio. O host de um push service de navegador
+  (`KNOWN_PUSH_SERVICE_HOSTS`: FCM, Mozilla, Apple, WNS) **nunca** é podado
+  assim: um resolver que aponte um push service real para um proxy interno
+  recusaria todas as inscrições de uma vez, e isso é erro de configuração,
+  não dispositivo que sumiu. `prune_after_dns_refusals=None` desliga a
+  poda.
 
 ```python
 from tempest_fastapi_sdk import WebPushDispatcher

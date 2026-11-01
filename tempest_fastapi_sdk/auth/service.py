@@ -156,6 +156,12 @@ SIGNUP_PROTECTED_FIELDS: frozenset[str] = frozenset(
         "totp_secret",
         "totp_enabled_at",
         "totp_last_step",
+        "last_login_at",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by",
+        "updated_by",
     }
 )
 """User columns ``signup(fields=...)`` refuses to set.
@@ -167,7 +173,13 @@ confirmed mailed link, and the :class:`~tempest_fastapi_sdk.MFAMixin`
 columns (``totp_secret``, ``totp_enabled_at``, ``totp_last_step``) from the
 enrollment flow, which proves the authenticator holds the secret before the
 factor turns on. ``is_admin`` and ``id`` are never something a sign-up form
-decides. On top of this set, every column the user model declares in
+decides, and neither are the bookkeeping columns the SDK models keep:
+``last_login_at`` (written by login), ``created_at`` / ``updated_at`` (the
+database clock), ``deleted_at`` (:class:`~tempest_fastapi_sdk.SoftDeleteMixin`
+-- a row born deleted hides itself from every query) and ``created_by`` /
+``updated_by`` (:class:`~tempest_fastapi_sdk.AuditMixin`, which would let a
+sign-up claim another principal authored it). On top of this set, every
+column the user model declares in
 ``__secret_columns__`` (:meth:`~tempest_fastapi_sdk.BaseModel.get_secret_columns`)
 is refused too, so a credential column a project adds is covered without
 editing this list. ``make_auth_router`` drops them from a ``signup_schema``

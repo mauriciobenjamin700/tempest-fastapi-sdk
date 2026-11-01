@@ -430,8 +430,12 @@ recurso` under pt-BR), and `code`, `details` and `field` do not change.
 !!! warning "A protected column never comes from the body"
     `id`, `email`, `hashed_password`, `is_active`, `is_admin`,
     `email_verified_at` and the `MFAMixin` columns (`totp_secret`,
-    `totp_enabled_at`, `totp_last_step`) — the `SIGNUP_PROTECTED_FIELDS` —
-    belong to the SDK, and every column your model declares in
+    `totp_enabled_at`, `totp_last_step`), and the bookkeeping columns the SDK
+    keeps — `last_login_at` (written by login), `created_at` / `updated_at`
+    (the database clock), `deleted_at` (`SoftDeleteMixin`: a row born
+    deleted hides from every query) and `created_by` / `updated_by`
+    (`AuditMixin`: the sign-up would claim another author) — the
+    `SIGNUP_PROTECTED_FIELDS` — belong to the SDK, and every column your model declares in
     `__secret_columns__` joins them (`service.signup_protected_fields()`
     returns the set for your model). A `signup_schema` with an `is_admin`
     field promotes nobody, and one with `totp_enabled_at` turns on no

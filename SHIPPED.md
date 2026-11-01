@@ -4019,6 +4019,14 @@ sem código novo: `suno/bark` grande (mais lento que o small no mesmo PT).
 Fora, de propósito: Kokoro (o `kokoro-onnx` 0.6.1 exige Python `<3.14` e
 espeak nativo) e Stable Audio (gated; depende de aceite da licença no HF).
 
+## Segurança, rodada 3 (Unreleased)
+
+Perguntas abertas da rodada 2 fechadas: colunas de controle no
+`SIGNUP_PROTECTED_FIELDS`; `--audit-model` no `tempest user set-password`;
+poda de endpoint Web Push recusado por DNS após N vezes (exceto push service
+de navegador); envelope SSE com o prefixo de quem publicou (prefixos
+aninhados); `BaseSearchSchema` espelhando `searchable_columns`.
+
 ## Voz com Bark (Unreleased)
 
 `BarkSpeech` em `genai/audio/bark.py`, extra `[genai]`, pesos MIT, vozes PT.

@@ -531,9 +531,19 @@ decided the refusal (`WebPushEndpointRefusedError.permanent`):
   (`https://10.0.0.1/...`): no later attempt can succeed, so the endpoint is
   in the returned list and `notify_user` / `notify_all` delete it;
 - **a DNS answer** — a name that resolved to an internal address: answers
-  change, and a resolver that maps a real push service to an internal proxy
-  would refuse every subscription at once, so the endpoint is only logged and
-  kept, like any other transient failure.
+  change, so the first refusal is only logged. If the same endpoint is
+  refused that way `prune_after_dns_refusals` times in a row (default `3`,
+  counted across calls on the same dispatcher and spread over at least
+  `dns_refusal_window_seconds`, one hour by default; a delivery that goes
+  through resets the count, and any other failure neither counts nor resets), it is in the list and gets deleted: that is the
+  subscription of a domain that keeps resolving inside the network (DNS
+  rebinding), which used to stay forever, costing a lookup and a log line on
+  every send. The host of a browser push service
+  (`KNOWN_PUSH_SERVICE_HOSTS`: FCM, Mozilla, Apple, WNS) is **never** pruned
+  this way: a resolver that maps a real push service to an internal proxy
+  would refuse every subscription at once, and that is a configuration
+  mistake, not a device that went away. `prune_after_dns_refusals=None`
+  turns the pruning off.
 
 ```python
 from tempest_fastapi_sdk import WebPushDispatcher

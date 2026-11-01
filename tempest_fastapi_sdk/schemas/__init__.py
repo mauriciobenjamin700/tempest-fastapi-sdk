@@ -50,14 +50,20 @@ from tempest_fastapi_sdk.schemas.pagination import (
 from tempest_fastapi_sdk.schemas.response import (
     BaseResponseSchema as BaseResponseSchema,
 )
+from tempest_fastapi_sdk.schemas.search import (
+    DEFAULT_MAX_SEARCH_TERM as DEFAULT_MAX_SEARCH_TERM,
+)
+from tempest_fastapi_sdk.schemas.search import BaseSearchSchema as BaseSearchSchema
 
 __all__: list[str] = [
     "DEFAULT_MAX_CURSOR_LIMIT",
     "DEFAULT_MAX_PAGE_SIZE",
+    "DEFAULT_MAX_SEARCH_TERM",
     "BasePaginationFilterSchema",
     "BasePaginationSchema",
     "BaseResponseSchema",
     "BaseSchema",
+    "BaseSearchSchema",
     "CompactPaginationFilterSchema",
     "CompactPaginationSchema",
     "CursorPaginationFilterSchema",

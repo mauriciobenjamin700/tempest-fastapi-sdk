@@ -1107,6 +1107,20 @@ tempest user set-password --email ana@example.com
     explícita, e as duas juntas recusadas com código 2. O dono cadastra a
     passkey de novo depois.
 
+!!! info "Auditoria da troca: `--audit-model`"
+    Como o `mfa-reset`, o `set-password` grava um evento quando recebe
+    `--audit-model` (um `BaseAuditLogModel` com `AuditRequestMixin`):
+    `user.password_set` por padrão, ou o nome de `--event`, com `actor="cli"` e
+    `changes={"password_changed": true, "sessions_revoked": N,
+    "passkeys_revoked": M}`, **na mesma transação** do hash novo — se a
+    auditoria falha, a troca é desfeita. `--event` sem `--audit-model` sai
+    com código 2.
+
+    ```bash
+    tempest user set-password --email ana@example.com \
+        --audit-model src.db.models:AuditLogModel
+    ```
+
 !!! tip "O mesmo, de dentro do código"
     `await service.revoke_user_sessions(session, user_id=user.id)` é o
     par administrativo do `revoke_refresh_token`: logout-everywhere

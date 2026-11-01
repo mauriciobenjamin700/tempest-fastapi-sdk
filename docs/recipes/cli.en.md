@@ -1113,6 +1113,20 @@ tempest user set-password --email ana@example.com
     explicit opt-out, and both together refused with code 2. The owner
     registers the passkey again afterwards.
 
+!!! info "Auditing the rotation: `--audit-model`"
+    Like `mfa-reset`, `set-password` records an event when given
+    `--audit-model` (a `BaseAuditLogModel` with `AuditRequestMixin`):
+    `user.password_set` by default, or the `--event` name, with
+    `actor="cli"` and `changes={"password_changed": true,
+    "sessions_revoked": N, "passkeys_revoked": M}`, **in the same
+    transaction** as the new hash — if the audit write fails, the rotation
+    is undone. `--event` without `--audit-model` exits with code 2.
+
+    ```bash
+    tempest user set-password --email ana@example.com \
+        --audit-model src.db.models:AuditLogModel
+    ```
+
 !!! tip "The same thing, from code"
     `await service.revoke_user_sessions(session, user_id=user.id)` is the
     administrative counterpart of `revoke_refresh_token`:

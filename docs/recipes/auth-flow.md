@@ -423,8 +423,12 @@ e `code`, `details` e `field` não mudam.
 !!! warning "Coluna protegida nunca vem do corpo"
     `id`, `email`, `hashed_password`, `is_active`, `is_admin`,
     `email_verified_at` e as colunas do `MFAMixin` (`totp_secret`,
-    `totp_enabled_at`, `totp_last_step`) — o `SIGNUP_PROTECTED_FIELDS` — são
-    do SDK, e toda coluna que o seu model declara em `__secret_columns__`
+    `totp_enabled_at`, `totp_last_step`), e as colunas de controle que o SDK
+    mantém — `last_login_at` (gravada pelo login), `created_at` /
+    `updated_at` (relógio do banco), `deleted_at` (`SoftDeleteMixin`: uma
+    linha nascida apagada some de toda consulta) e `created_by` /
+    `updated_by` (`AuditMixin`: o cadastro alegaria outro autor) — o
+    `SIGNUP_PROTECTED_FIELDS` — são do SDK, e toda coluna que o seu model declara em `__secret_columns__`
     entra junto (`service.signup_protected_fields()` devolve o conjunto do
     seu model). Um `signup_schema` com um campo `is_admin` não promove
     ninguém, e um com `totp_enabled_at` não liga fator nenhum: a rota

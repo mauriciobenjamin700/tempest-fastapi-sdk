@@ -140,6 +140,61 @@ the refusal never publishes the model's column list. The constructor also
 takes `searchable_columns=`, and declaring a column the model does not map,
 or a secret column, fails at construction with `ValueError`.
 
+
+#### The same set on the request schema
+
+The repository refusal is the boundary; `BaseSearchSchema` moves it up to
+request validation, the way `BasePaginationFilterSchema.orderable_columns`
+does for `order_by`. Its fields carry the names of `search()`'s arguments
+(`q` is the term, 1 to 256 characters; `fields`, the columns), and the
+declared set shows in the OpenAPI schema as an `enum`:
+
+```python
+from typing import ClassVar
+
+from fastapi import APIRouter
+
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository, BaseSearchSchema
+
+
+class ArticleRepository(BaseRepository[ArticleModel]):
+    """Article repository with search narrowed to three columns."""
+
+    searchable_columns: ClassVar[frozenset[str] | None] = frozenset(
+        {"title", "body", "author"}
+    )
+
+
+class ArticleSearchSchema(BaseSearchSchema):
+    """Article search: the repository's three columns."""
+
+    searchable_columns: ClassVar[frozenset[str] | None] = (
+        ArticleRepository.searchable_columns
+    )
+
+
+router = APIRouter()
+
+
+@router.post("/articles/search")
+async def search_articles(body: ArticleSearchSchema) -> list[str]:
+    """Validate the columns before any query.
+
+    Args:
+        body (ArticleSearchSchema): Term and columns.
+
+    Returns:
+        list[str]: The accepted columns.
+    """
+    return body.fields
+```
+
+Measured: `{"q": "x", "fields": ["hashed_password"]}` answered `422` with
+`code="VALIDATION_ERROR"` and
+`details={"field": "hashed_password", "allowed": ["author", "body", "title"]}` (the
+repository's envelope) before the handler ran.
+
 ## Paginating a search
 
 `search()` returns a list. To paginate and count, ask for the
