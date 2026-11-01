@@ -59,11 +59,17 @@ na URL, então não cai no log de acesso. Leia o `metrics_token` do seu
     Monte sem `dependencies=` só quando a porta já está numa rede privada que
     só o Prometheus alcança.
 
-!!! warning "Segredo vazio desliga a checagem"
-    `make_token_dependency("")` não protege nada: com `secret` vazio, o
-    `GET /metrics` responde `200` sem header nenhum. É de propósito, para dev
-    local, mas um `METRICS_TOKEN` esquecido no ambiente de produção deixa o
-    endpoint aberto em silêncio. Garanta que o valor não é vazio no boot.
+!!! info "Segredo vazio derruba o boot"
+    Desde a 0.342.0, `make_token_dependency("")` levanta `ValueError` ao
+    montar a dependência, em vez de deixar o `GET /metrics` responder `200`
+    sem header:
+
+    ```text
+    ValueError: make_token_dependency() got an empty secret, which would let every request through. Set TOKEN_SECRET (e.g. with `tempest secrets init`), or pass allow_unauthenticated=True for a local run nothing else reaches.
+    ```
+
+    Um `METRICS_TOKEN` esquecido no ambiente aparece no boot, não depois. Para
+    rodar local sem gate, passe `allow_unauthenticated=True`.
 
 !!! info "Cada item de `dependencies=` é a função, ou um `Depends(...)` pronto"
     Passe a dependency **crua** (`[make_token_dependency(token)]`) — o router

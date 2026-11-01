@@ -1484,16 +1484,19 @@ class TokenSettings(BaseAppSettings):
     that sets it (matched case-sensitively, no prefix).
 
     Attributes:
-        TOKEN_SECRET (str): Expected ``X-Token`` header value; empty
-            disables the check. Default: ``""``.
+        TOKEN_SECRET (str): Expected ``X-Token`` header value. Empty
+            makes :func:`~tempest_fastapi_sdk.make_token_dependency` raise
+            unless the caller passes ``allow_unauthenticated=True``.
+            Default: ``""``.
     """
 
     TOKEN_SECRET: str = Field(
         default="",
         title="Shared X-Token secret",
         description=(
-            "The expected ``X-Token`` header value. Empty string "
-            "disables the check (dev only)."
+            "The expected ``X-Token`` header value. Empty is refused by "
+            "make_token_dependency unless allow_unauthenticated=True "
+            "(local runs only)."
         ),
         examples=["", "internal-svc-secret-please-rotate"],
     )
@@ -1501,9 +1504,10 @@ class TokenSettings(BaseAppSettings):
     def production_violations(self) -> list[str]:
         """Refuse an empty shared secret in production.
 
-        An empty ``TOKEN_SECRET`` turns
+        An empty ``TOKEN_SECRET`` passed with
+        ``allow_unauthenticated=True`` turns
         :func:`~tempest_fastapi_sdk.make_token_dependency` into a gate
-        that lets every request through.
+        that lets every request through; production refuses that pair.
 
         Returns:
             list[str]: The parent's entries plus one when

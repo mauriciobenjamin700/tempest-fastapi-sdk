@@ -209,7 +209,7 @@ ENV
   Field required [type=missing]
 ```
 
-Up to 0.340.0 the default was `development`, and a production host without
+Up to 0.341.0 the default was `development`, and a production host without
 `ENV` booted with SQLite, the placeholder `JWT_SECRET` and an empty
 `TOKEN_SECRET` without the guard ever running. A test suite pins its own
 value (`os.environ["ENV"] = "test"` in `conftest.py`, before importing the

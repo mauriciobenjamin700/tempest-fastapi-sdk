@@ -6,6 +6,16 @@ from tempest_fastapi_sdk import make_token_dependency
 
 from src.core import settings
 
-require_token = make_token_dependency(settings.TOKEN_SECRET)
+require_token = make_token_dependency(
+    settings.TOKEN_SECRET,
+    allow_unauthenticated=settings.ENV != "production",
+)
+"""Gate for routes that take the shared ``X-Token``.
+
+An empty ``TOKEN_SECRET`` opens the gate outside production, so a fresh
+project boots before ``tempest secrets init``. In production the settings
+already refuse to build with it empty, and ``make_token_dependency`` would
+refuse it here too.
+"""
 
 __all__: list[str] = ["require_token"]

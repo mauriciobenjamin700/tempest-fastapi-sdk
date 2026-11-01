@@ -211,7 +211,7 @@ ENV
   Field required [type=missing]
 ```
 
-Até a 0.340.0 o default era `development`, e um host de produção sem `ENV`
+Até a 0.341.0 o default era `development`, e um host de produção sem `ENV`
 subia com SQLite, o `JWT_SECRET` placeholder e `TOKEN_SECRET` vazio sem que
 o guard rodasse. Teste fixa o próprio valor (`os.environ["ENV"] = "test"` no
 `conftest.py`, antes de importar o app).
