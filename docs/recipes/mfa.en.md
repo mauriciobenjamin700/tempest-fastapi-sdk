@@ -322,6 +322,71 @@ login.
     proves possession **and** a local factor, and you can accept it with
     `make_mfa_required_dependency(jwt, methods={"otp", "hwk"})`.
 
+### Reading `amr` outside the gate: `token_amr`
+
+`make_mfa_required_dependency` **blocks**. Sometimes you only want to
+**know**: show an "enable MFA" banner in the dashboard, record in the audit
+log whether the action came from a strong session, ask for extra
+confirmation instead of refusing. `token_amr` reads the claim from an
+already decoded payload and returns the tuple of methods, or `None` when the
+claim is missing or is not a list of strings.
+
+The values have names, so you do not scatter `"otp"` across your code:
+
+| Constant | Value |
+| --- | --- |
+| `AMR_CLAIM` | `"amr"` |
+| `AMR_PASSWORD` | `"pwd"` |
+| `AMR_OTP` | `"otp"` |
+| `AMR_HARDWARE_KEY` | `"hwk"` |
+| `AMR_EXTERNAL` | `"ext"` |
+| `AMR_EMAIL_LINK` | `"email"` |
+| `PASSWORD_AMR` | `("pwd",)` |
+| `MFA_AMR` | `("pwd", "otp")` |
+| `MFA_AMR_METHODS` | `frozenset({"otp"})`, the default for `methods=` |
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk import (
+    AMR_CLAIM,
+    MFA_AMR,
+    MFA_AMR_METHODS,
+    PASSWORD_AMR,
+    JWTUtils,
+    token_amr,
+)
+
+jwt: JWTUtils = JWTUtils("replace-with-a-secret-of-32-bytes-or-more")
+
+
+def second_factor_proven(claims: dict[str, Any]) -> bool:
+    methods: tuple[str, ...] | None = token_amr(claims)
+    return methods is not None and bool(MFA_AMR_METHODS.intersection(methods))
+
+
+for label, extra in [
+    ("password", {AMR_CLAIM: list(PASSWORD_AMR)}),
+    ("password + otp", {AMR_CLAIM: list(MFA_AMR)}),
+    ("no amr", {}),
+    ("malformed amr", {AMR_CLAIM: "pwd"}),
+]:
+    claims: dict[str, Any] = jwt.decode(jwt.encode({"sub": "42", **extra}))
+    print(f"{label:15} {token_amr(claims)!r:20} {second_factor_proven(claims)}")
+```
+
+```text
+password        ('pwd',)             False
+password + otp  ('pwd', 'otp')       True
+no amr          None                 False
+malformed amr   None                 False
+```
+
+`None` counts as "second factor not proven", the same rule as the gate: a
+token minted before the claim existed, or by another issuer, never passes
+as an MFA session. The passkey case above becomes
+`methods={AMR_OTP, AMR_HARDWARE_KEY}`.
+
 ### Confirming MFA ends the other sessions
 
 Whoever turns MFA on usually does it because they suspect someone has the

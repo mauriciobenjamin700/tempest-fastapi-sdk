@@ -138,6 +138,21 @@ async def upload_model(file: UploadFile) -> dict[str, str]:
     To actually validate the content, use a `content_validator=...` on
     `save()`.
 
+The types `sniff_mime` recognizes from the bytes live in
+`SNIFFABLE_MIMETYPES`. Declaring one of them is what makes the
+contradiction detectable; outside that list, only `content_validator` looks
+at the content.
+
+```python
+from tempest_fastapi_sdk.utils import SNIFFABLE_MIMETYPES
+
+print(sorted(SNIFFABLE_MIMETYPES))
+```
+
+```text
+['application/pdf', 'image/bmp', 'image/gif', 'image/heic', 'image/jpeg', 'image/png', 'image/webp']
+```
+
 ### A file that will be served back
 
 If the uploaded file is later served by your API (avatar, attachment,

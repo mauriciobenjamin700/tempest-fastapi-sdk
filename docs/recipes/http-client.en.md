@@ -96,6 +96,51 @@ async def call() -> None:
   `X-Request-ID` (from `RequestIDMiddleware`) is forwarded to the upstream,
   stitching logs end-to-end.
 
+!!! warning "The outbound header is always `X-Request-ID`"
+    The name comes from the `REQUEST_ID_HEADER` constant, not from
+    `RequestIDMiddleware`'s `header_name`. With the middleware reading
+    `X-Correlation-ID`, the **id** is propagated, but under `X-Request-ID`:
+
+    ```python
+    import httpx
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from tempest_fastapi_sdk import REQUEST_ID_HEADER, HTTPClient, RequestIDMiddleware
+
+    seen: dict[str, str | None] = {}
+
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        seen["X-Request-ID"] = request.headers.get("X-Request-ID")
+        seen["X-Correlation-ID"] = request.headers.get("X-Correlation-ID")
+        return httpx.Response(200, json={})
+
+
+    client: HTTPClient = HTTPClient(base_url="http://upstream", transport=httpx.MockTransport(upstream))
+    app: FastAPI = FastAPI()
+    app.add_middleware(RequestIDMiddleware, header_name="X-Correlation-ID")
+
+
+    @app.get("/call")
+    async def call() -> dict[str, str | None]:
+        await client.get("/")
+        return dict(seen)
+
+
+    print(REQUEST_ID_HEADER)
+    print(TestClient(app).get("/call", headers={"X-Correlation-ID": "abc-123"}).json())
+    ```
+
+    ```text
+    X-Request-ID
+    {'X-Request-ID': 'abc-123', 'X-Correlation-ID': None}
+    ```
+
+    If the upstream expects another name, pass the header explicitly on the
+    call (`headers={"X-Correlation-ID": get_request_id()}`) or turn
+    propagation off with `propagate_request_id=False`.
+
 !!! warning "`stream()` only retries before the first line"
     In `client.stream(...)`, retry and the circuit-breaker cover only
     **opening** the stream. Once the first line was yielded, a mid-stream

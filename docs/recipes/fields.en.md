@@ -178,6 +178,28 @@ detect_pix_key_type("bad-key")           # -> None
 is_valid_pix_key("529.982.247-25")       # -> True
 ```
 
+Outside a schema (in a service, a queue handler), `normalize_pix_key`
+applies the same normalization as the table above and raises `ValueError`
+for an invalid key. Use it before storing or comparing keys, so
+`Ana@Example.com` and `ana@example.com` are the same row:
+
+```python
+from tempest_fastapi_sdk.utils import normalize_pix_key
+
+for key in ["529.982.247-25", "  Ana@Example.com ", "123E4567-E89B-12D3-A456-426614174000", "bad-key"]:
+    try:
+        print(repr(normalize_pix_key(key)))
+    except ValueError as exc:
+        print("ValueError:", exc)
+```
+
+```text
+'52998224725'
+'ana@example.com'
+'123e4567-e89b-12d3-a456-426614174000'
+ValueError: invalid PIX key
+```
+
 !!! info "Validation by shape + check digits"
     Detection is by shape: `@` → email, leading `+` → E.164 phone, UUID →
     random; otherwise digits + **check digits** decide between CPF and

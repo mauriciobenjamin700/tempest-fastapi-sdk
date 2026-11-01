@@ -176,6 +176,28 @@ detect_pix_key_type("chave-invalida")    # -> None
 is_valid_pix_key("529.982.247-25")       # -> True
 ```
 
+Fora de um schema (num service, num handler de fila), `normalize_pix_key`
+faz a mesma normalização da tabela acima e levanta `ValueError` para chave
+inválida. Use-a antes de gravar ou comparar chaves, para `Ana@Example.com` e
+`ana@example.com` serem a mesma linha:
+
+```python
+from tempest_fastapi_sdk.utils import normalize_pix_key
+
+for key in ["529.982.247-25", "  Ana@Example.com ", "123E4567-E89B-12D3-A456-426614174000", "chave-invalida"]:
+    try:
+        print(repr(normalize_pix_key(key)))
+    except ValueError as exc:
+        print("ValueError:", exc)
+```
+
+```text
+'52998224725'
+'ana@example.com'
+'123e4567-e89b-12d3-a456-426614174000'
+ValueError: invalid PIX key
+```
+
 !!! info "Validação por forma + dígitos"
     A detecção é por formato: `@` → e-mail, `+` inicial → telefone E.164,
     UUID → aleatória; senão, dígitos + **dígitos verificadores** decidem

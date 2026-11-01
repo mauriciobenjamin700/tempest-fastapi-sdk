@@ -428,6 +428,30 @@ locales being generated in the container, and is not thread-safe.
     practice rounds half **away from zero**, and matching it is what lets a
     generated document reproduce a hand-built one cent for cent.
 
+Need a different rounding, such as banker's rounding over a long series of
+splits? The two constants the helpers use are public: `CENT`
+(`Decimal("0.01")`, the quantization target) and `HUNDRED`
+(`Decimal("100")`, ratio to percentage).
+
+```python
+from decimal import ROUND_HALF_EVEN, Decimal
+
+from tempest_fastapi_sdk.utils import CENT, HUNDRED, quantize_money
+
+amount: Decimal = Decimal("2.345")
+print(quantize_money(amount))
+print(amount.quantize(CENT, rounding=ROUND_HALF_EVEN))
+
+ratio: Decimal = Decimal("0.1275")
+print((ratio * HUNDRED).quantize(CENT))
+```
+
+```text
+2.35
+2.34
+12.75
+```
+
 !!! tip "A spreadsheet cell takes a number, not text"
     These functions are for prose. In `.xlsx`, write the `Decimal` and let
     the mask present it — see

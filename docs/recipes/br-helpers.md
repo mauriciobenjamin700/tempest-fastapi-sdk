@@ -420,6 +420,30 @@ gerados no container e não é thread-safe.
     brasileira arredonda meio **para longe do zero**, e é isso que faz um
     documento gerado reproduzir centavo por centavo um montado à mão.
 
+Precisa de outro arredondamento, por exemplo o bancário numa série longa de
+rateios? As duas constantes que os helpers usam são públicas: `CENT`
+(`Decimal("0.01")`, o alvo da quantização) e `HUNDRED` (`Decimal("100")`,
+razão para percentual).
+
+```python
+from decimal import ROUND_HALF_EVEN, Decimal
+
+from tempest_fastapi_sdk.utils import CENT, HUNDRED, quantize_money
+
+amount: Decimal = Decimal("2.345")
+print(quantize_money(amount))
+print(amount.quantize(CENT, rounding=ROUND_HALF_EVEN))
+
+ratio: Decimal = Decimal("0.1275")
+print((ratio * HUNDRED).quantize(CENT))
+```
+
+```text
+2.35
+2.34
+12.75
+```
+
 !!! tip "Célula de planilha recebe número, não texto"
     Estas funções são para prosa. Em `.xlsx`, escreva o `Decimal` e deixe a
     máscara apresentar — veja [Planilhas](spreadsheets.md#numeros-nao-strings).

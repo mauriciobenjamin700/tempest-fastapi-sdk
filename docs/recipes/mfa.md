@@ -319,6 +319,70 @@ desconhecida como MFA, e o usuário sai dela refazendo o login de dois passos.
     **e** um fator local, e você pode aceitá-lo com
     `make_mfa_required_dependency(jwt, methods={"otp", "hwk"})`.
 
+### Lendo o `amr` fora do gate: `token_amr`
+
+`make_mfa_required_dependency` **bloqueia**. Às vezes você quer só
+**saber**: mostrar o aviso "ative o MFA" no painel, gravar na auditoria se a
+ação saiu de uma sessão forte, pedir confirmação extra em vez de recusar.
+`token_amr` lê o claim de um payload já decodificado e devolve a tupla de
+métodos, ou `None` quando o claim falta ou não é uma lista de strings.
+
+Os valores têm nome, para você não espalhar `"otp"` pelo código:
+
+| Constante | Valor |
+| --- | --- |
+| `AMR_CLAIM` | `"amr"` |
+| `AMR_PASSWORD` | `"pwd"` |
+| `AMR_OTP` | `"otp"` |
+| `AMR_HARDWARE_KEY` | `"hwk"` |
+| `AMR_EXTERNAL` | `"ext"` |
+| `AMR_EMAIL_LINK` | `"email"` |
+| `PASSWORD_AMR` | `("pwd",)` |
+| `MFA_AMR` | `("pwd", "otp")` |
+| `MFA_AMR_METHODS` | `frozenset({"otp"})`, o default de `methods=` |
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk import (
+    AMR_CLAIM,
+    MFA_AMR,
+    MFA_AMR_METHODS,
+    PASSWORD_AMR,
+    JWTUtils,
+    token_amr,
+)
+
+jwt: JWTUtils = JWTUtils("troque-por-um-segredo-de-32-bytes-ou-mais")
+
+
+def second_factor_proven(claims: dict[str, Any]) -> bool:
+    methods: tuple[str, ...] | None = token_amr(claims)
+    return methods is not None and bool(MFA_AMR_METHODS.intersection(methods))
+
+
+for label, extra in [
+    ("senha", {AMR_CLAIM: list(PASSWORD_AMR)}),
+    ("senha + otp", {AMR_CLAIM: list(MFA_AMR)}),
+    ("sem amr", {}),
+    ("amr malformado", {AMR_CLAIM: "pwd"}),
+]:
+    claims: dict[str, Any] = jwt.decode(jwt.encode({"sub": "42", **extra}))
+    print(f"{label:15} {token_amr(claims)!r:20} {second_factor_proven(claims)}")
+```
+
+```text
+senha           ('pwd',)             False
+senha + otp     ('pwd', 'otp')       True
+sem amr         None                 False
+amr malformado  None                 False
+```
+
+`None` conta como "segundo fator não provado", a mesma regra do gate: token
+emitido antes do claim existir, ou por outro emissor, nunca passa por sessão
+MFA. O passkey do aviso acima fica
+`methods={AMR_OTP, AMR_HARDWARE_KEY}`.
+
 ### Confirmar o MFA encerra as outras sessões
 
 Quem liga o MFA costuma ligar porque desconfia que alguém tem a senha. Por
