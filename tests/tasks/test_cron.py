@@ -9,10 +9,10 @@ from taskiq import InMemoryBroker
 from taskiq.cli.scheduler.run import is_cron_task_now
 
 from tempest_fastapi_sdk.tasks import (
-    Cron,
-    CronOffset,
+    CronEnum,
+    CronOffsetEnum,
     TaskQueue,
-    Weekday,
+    WeekdayEnum,
     daily,
     every_minute,
     every_n_minutes,
@@ -40,7 +40,7 @@ class TestBuilders:
         assert daily(9, 15) == "15 9 * * *"
 
     def test_weekly_with_enum(self) -> None:
-        assert weekly(Weekday.MON, 9) == "0 9 * * MON"
+        assert weekly(WeekdayEnum.MON, 9) == "0 9 * * MON"
 
     def test_weekly_with_raw_token(self) -> None:
         assert weekly("MON-FRI", 9) == "0 9 * * MON-FRI"
@@ -71,19 +71,19 @@ class TestBuilders:
 
 class TestEnums:
     def test_cron_presets_are_strings(self) -> None:
-        assert Cron.EVERY_WEEKDAY_9AM == "0 9 * * MON-FRI"
-        assert Cron.DAILY_9AM == "0 9 * * *"
+        assert CronEnum.EVERY_WEEKDAY_9AM == "0 9 * * MON-FRI"
+        assert CronEnum.DAILY_9AM == "0 9 * * *"
 
     def test_offsets(self) -> None:
-        assert CronOffset.BRASILIA == "-03:00"
-        assert CronOffset.UTC == "+00:00"
+        assert CronOffsetEnum.BRASILIA == "-03:00"
+        assert CronOffsetEnum.UTC == "+00:00"
 
 
 class TestWiring:
     async def test_cron_enum_and_offset_reach_the_schedule(self) -> None:
         tq = TaskQueue(InMemoryBroker())
 
-        @tq.cron(Cron.EVERY_WEEKDAY_9AM, cron_offset=CronOffset.BRASILIA)
+        @tq.cron(CronEnum.EVERY_WEEKDAY_9AM, cron_offset=CronOffsetEnum.BRASILIA)
         async def digest() -> None:
             return None
 
@@ -97,7 +97,7 @@ class TestWiring:
     async def test_cron_accepts_builder_output(self) -> None:
         tq = TaskQueue(InMemoryBroker())
 
-        @tq.cron(daily(9), cron_offset=CronOffset.BRASILIA)
+        @tq.cron(daily(9), cron_offset=CronOffsetEnum.BRASILIA)
         async def digest() -> None:
             return None
 
@@ -133,9 +133,9 @@ class TestNormalizeCronOffset:
     """The two forms TaskIQ applies, and the refusal in between."""
 
     def test_cron_offset_member_becomes_a_timedelta(self) -> None:
-        assert normalize_cron_offset(CronOffset.BRASILIA) == timedelta(hours=-3)
-        assert normalize_cron_offset(CronOffset.UTC) == timedelta(0)
-        assert normalize_cron_offset(CronOffset.ACRE) == timedelta(hours=-5)
+        assert normalize_cron_offset(CronOffsetEnum.BRASILIA) == timedelta(hours=-3)
+        assert normalize_cron_offset(CronOffsetEnum.UTC) == timedelta(0)
+        assert normalize_cron_offset(CronOffsetEnum.ACRE) == timedelta(hours=-5)
 
     def test_numeric_string_becomes_a_timedelta(self) -> None:
         assert normalize_cron_offset("-03:30") == timedelta(hours=-3, minutes=-30)
@@ -170,12 +170,12 @@ class TestOffsetTakesEffect:
     """
 
     def test_brasilia_shifts_the_firing_hour_by_three(self) -> None:
-        offset = normalize_cron_offset(CronOffset.BRASILIA)
+        offset = normalize_cron_offset(CronOffsetEnum.BRASILIA)
         assert is_cron_task_now("0 2 * * *", _utc(5), offset=offset) is True
         assert is_cron_task_now("0 2 * * *", _utc(2), offset=offset) is False
 
     def test_utc_member_leaves_the_hour_alone(self) -> None:
-        offset = normalize_cron_offset(CronOffset.UTC)
+        offset = normalize_cron_offset(CronOffsetEnum.UTC)
         assert is_cron_task_now("0 2 * * *", _utc(2), offset=offset) is True
         assert is_cron_task_now("0 2 * * *", _utc(5), offset=offset) is False
 
@@ -186,13 +186,13 @@ class TestOffsetTakesEffect:
     def test_raw_member_value_would_have_raised(self) -> None:
         """The pre-normalization spelling is what killed the loop.
 
-        ``CronOffset.BRASILIA`` is the string ``"-03:00"``, which TaskIQ
+        ``CronOffsetEnum.BRASILIA`` is the string ``"-03:00"``, which TaskIQ
         passes to :class:`zoneinfo.ZoneInfo` as a key. This pins the
         reason normalization exists, so a future change back to the raw
         value fails here instead of in a consumer's scheduler.
         """
         with pytest.raises(Exception, match="No time zone found with key"):
-            is_cron_task_now("0 2 * * *", _utc(5), offset=str(CronOffset.BRASILIA))
+            is_cron_task_now("0 2 * * *", _utc(5), offset=str(CronOffsetEnum.BRASILIA))
 
 
 class TestNormalizeSchedule:
@@ -201,7 +201,7 @@ class TestNormalizeSchedule:
     def test_offset_normalized_and_siblings_preserved(self) -> None:
         when = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
         spec = [
-            {"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA},
+            {"cron": "0 2 * * *", "cron_offset": CronOffsetEnum.BRASILIA},
             {"interval": timedelta(seconds=30)},
             {"time": when},
         ]

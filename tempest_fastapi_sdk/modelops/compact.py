@@ -116,7 +116,7 @@ lost information rather than rounded it.
 """
 
 
-class CompactKind(BaseStrEnum):
+class CompactKindEnum(BaseStrEnum):
     """Which reader a compact file needs.
 
     Attributes:
@@ -128,7 +128,7 @@ class CompactKind(BaseStrEnum):
     TREE_ENSEMBLE = "tree_ensemble"
 
 
-class CompactTask(BaseStrEnum):
+class CompactTaskEnum(BaseStrEnum):
     """What the model answers.
 
     Attributes:
@@ -140,7 +140,7 @@ class CompactTask(BaseStrEnum):
     REGRESSION = "regression"
 
 
-class CompactLink(BaseStrEnum):
+class CompactLinkEnum(BaseStrEnum):
     """How raw scores become probabilities.
 
     Attributes:
@@ -163,8 +163,8 @@ class CompactExport(BaseSchema):
     Attributes:
         path (str): The written file.
         size_bytes (int): Its size.
-        kind (CompactKind): Which reader it needs.
-        task (CompactTask): Classification or regression.
+        kind (CompactKindEnum): Which reader it needs.
+        task (CompactTaskEnum): Classification or regression.
         n_features (int): Values expected per row.
         n_trees (int): Trees in the ensemble; ``0`` for a linear model.
         classes (list[str]): Class labels in score-column order.
@@ -187,13 +187,13 @@ class CompactExport(BaseSchema):
         description="Size of the written file.",
         examples=[148_400],
     )
-    kind: CompactKind = Field(
-        default=CompactKind.LINEAR,
+    kind: CompactKindEnum = Field(
+        default=CompactKindEnum.LINEAR,
         title="Kind",
         description="Which reader the file needs.",
     )
-    task: CompactTask = Field(
-        default=CompactTask.CLASSIFICATION,
+    task: CompactTaskEnum = Field(
+        default=CompactTaskEnum.CLASSIFICATION,
         title="Task",
         description="Classification or regression.",
     )
@@ -346,14 +346,14 @@ def _linear_sections(model: Any, numpy: Any) -> tuple[dict[str, Any], list[Any]]
     classes = [str(value) for value in getattr(model, "classes_", [])]
     if classes:
         binary = len(classes) == 2 and coefficients.shape[0] == 1
-        link = CompactLink.SIGMOID if binary else CompactLink.SOFTMAX
-        task = CompactTask.CLASSIFICATION
+        link = CompactLinkEnum.SIGMOID if binary else CompactLinkEnum.SOFTMAX
+        task = CompactTaskEnum.CLASSIFICATION
     else:
-        link = CompactLink.IDENTITY
-        task = CompactTask.REGRESSION
+        link = CompactLinkEnum.IDENTITY
+        task = CompactTaskEnum.REGRESSION
 
     header = {
-        "kind": CompactKind.LINEAR.value,
+        "kind": CompactKindEnum.LINEAR.value,
         "task": task.value,
         "link": link.value,
         "classes": classes,
@@ -426,7 +426,7 @@ def _tree_sections(model: Any, numpy: Any) -> tuple[dict[str, Any], list[Any]]:
         ) else flat_trees.append(entry)
 
     classes = [str(value) for value in getattr(model, "classes_", [])]
-    task = CompactTask.CLASSIFICATION if classes else CompactTask.REGRESSION
+    task = CompactTaskEnum.CLASSIFICATION if classes else CompactTaskEnum.REGRESSION
     n_outputs = len(classes) if classes else 1
 
     features: list[int] = []
@@ -449,7 +449,7 @@ def _tree_sections(model: Any, numpy: Any) -> tuple[dict[str, Any], list[Any]]:
                 lefts.append(-1)
                 rights.append(-1)
                 raw = numpy.asarray(tree.value[node], dtype="float64").reshape(-1)
-                if task is CompactTask.CLASSIFICATION:
+                if task is CompactTaskEnum.CLASSIFICATION:
                     total = float(raw.sum())
                     raw = raw / total if total else raw
                 values.extend(float(value) for value in raw[:n_outputs])
@@ -461,12 +461,12 @@ def _tree_sections(model: Any, numpy: Any) -> tuple[dict[str, Any], list[Any]]:
         offsets.append(len(features))
 
     header = {
-        "kind": CompactKind.TREE_ENSEMBLE.value,
+        "kind": CompactKindEnum.TREE_ENSEMBLE.value,
         "task": task.value,
         "link": (
-            CompactLink.NORMALIZE.value
-            if task is CompactTask.CLASSIFICATION
-            else CompactLink.IDENTITY.value
+            CompactLinkEnum.NORMALIZE.value
+            if task is CompactTaskEnum.CLASSIFICATION
+            else CompactLinkEnum.IDENTITY.value
         ),
         "classes": classes,
         "class_type": _class_type(model),
@@ -532,7 +532,7 @@ def export_sklearn_to_compact(
 
         >>> export = export_sklearn_to_compact(model, X_test, "dist/risk.tmc")
         >>> export.kind, export.verified
-        (<CompactKind.TREE_ENSEMBLE: 'tree_ensemble'>, True)
+        (<CompactKindEnum.TREE_ENSEMBLE: 'tree_ensemble'>, True)
 
     The result is read by `tempest-react-sdk/tabular`'s `CompactPredictor`,
     which needs no WebAssembly and no ONNX Runtime — the whole reader is
@@ -629,8 +629,8 @@ def export_sklearn_to_compact(
     return CompactExport(
         path=str(path),
         size_bytes=path.stat().st_size,
-        kind=CompactKind(header["kind"]),
-        task=CompactTask(header["task"]),
+        kind=CompactKindEnum(header["kind"]),
+        task=CompactTaskEnum(header["task"]),
         n_features=n_features,
         n_trees=int(header.get("n_trees", 0)),
         classes=list(header["classes"]),
@@ -715,7 +715,7 @@ def predict_compact(path: str | Path, rows: Any) -> tuple[list[Any], list[list[f
         scale = numpy.asarray(preprocess["scale"], dtype="float64")
         values = (values - offset) / scale
 
-    if header["kind"] == CompactKind.LINEAR.value:
+    if header["kind"] == CompactKindEnum.LINEAR.value:
         coefficients = arrays["coef"].reshape(header["n_outputs"], header["n_features"])
         scores = values @ coefficients.T + arrays["intercept"]
     else:
@@ -788,13 +788,13 @@ def _finish(header: dict[str, Any], scores: Any, numpy: Any) -> tuple[Any, Any]:
     link = header["link"]
     classes = header["classes"]
 
-    if link == CompactLink.IDENTITY.value:
+    if link == CompactLinkEnum.IDENTITY.value:
         return [float(value) for value in scores.reshape(-1)], []
 
-    if link == CompactLink.SIGMOID.value:
+    if link == CompactLinkEnum.SIGMOID.value:
         positive = 1.0 / (1.0 + numpy.exp(-scores.reshape(-1)))
         probabilities = numpy.stack([1.0 - positive, positive], axis=1)
-    elif link == CompactLink.SOFTMAX.value:
+    elif link == CompactLinkEnum.SOFTMAX.value:
         shifted = scores - scores.max(axis=1, keepdims=True)
         exponentiated = numpy.exp(shifted)
         probabilities = exponentiated / exponentiated.sum(axis=1, keepdims=True)
@@ -859,9 +859,9 @@ __all__: list[str] = [
     "COMPACT_SUFFIX",
     "DEFAULT_TOLERANCE",
     "CompactExport",
-    "CompactKind",
-    "CompactLink",
-    "CompactTask",
+    "CompactKindEnum",
+    "CompactLinkEnum",
+    "CompactTaskEnum",
     "UnsupportedEstimatorError",
     "export_sklearn_to_compact",
     "predict_compact",

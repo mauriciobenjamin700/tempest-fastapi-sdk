@@ -30,7 +30,7 @@ from tempest_fastapi_sdk.app_errors import (
     AppErrorFilterSchema,
     AppErrorReportSchema,
     AppErrorService,
-    AppPlatform,
+    AppPlatformEnum,
     make_app_error_model,
     make_app_error_router,
 )
@@ -72,7 +72,7 @@ def _report(**overrides: object) -> AppErrorReportSchema:
     fields: dict[str, object] = {
         "code": "AUTH_TOKEN_EXPIRED",
         "message": "TypeError: null is not an object",
-        "platform": AppPlatform.IOS,
+        "platform": AppPlatformEnum.IOS,
         "app_version": "1.4.2",
     }
     fields.update(overrides)
@@ -174,7 +174,7 @@ class TestReporting:
             AppErrorReportSchema(code="X", message="boom")
         )
 
-        assert stored.platform == AppPlatform.UNKNOWN
+        assert stored.platform == AppPlatformEnum.UNKNOWN
 
 
 class TestListing:
@@ -203,11 +203,11 @@ class TestListing:
     async def test_filters_by_platform(self, session: AsyncSession) -> None:
         """An iOS-only bug is not the same bug as an Android-only one."""
         service = _service(session)
-        await service.report_error(_report(platform=AppPlatform.IOS))
-        await service.report_error(_report(platform=AppPlatform.ANDROID))
+        await service.report_error(_report(platform=AppPlatformEnum.IOS))
+        await service.report_error(_report(platform=AppPlatformEnum.ANDROID))
 
         page = await service.list_errors(
-            AppErrorFilterSchema(platform=AppPlatform.ANDROID)
+            AppErrorFilterSchema(platform=AppPlatformEnum.ANDROID)
         )
 
         assert page.total == 1

@@ -22,7 +22,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     DEFAULT_BASE_URL,
     DEFAULT_SIGNATURE_VERSIONS,
     DEFAULT_TOLERANCE_SECONDS,
-    MercadoPagoEvent,
+    MercadoPagoEventEnum,
     SignatureHeader,
     build_manifest,
     format_amount,
@@ -584,7 +584,7 @@ class TestEnvironmentAndEvents:
 
     def test_events_are_the_ones_the_spec_names(self) -> None:
         """Extracted from the vendored spec, not from the portal."""
-        assert MercadoPagoEvent.PAYMENT == "payment"
-        assert MercadoPagoEvent.MERCHANT_ORDER == "merchant_order"
-        assert MercadoPagoEvent.POINT_INTEGRATION == "point_integration_wh"
-        assert MercadoPagoEvent.UNKNOWN == "unknown"
+        assert MercadoPagoEventEnum.PAYMENT == "payment"
+        assert MercadoPagoEventEnum.MERCHANT_ORDER == "merchant_order"
+        assert MercadoPagoEventEnum.POINT_INTEGRATION == "point_integration_wh"
+        assert MercadoPagoEventEnum.UNKNOWN == "unknown"

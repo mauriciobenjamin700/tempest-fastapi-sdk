@@ -32,11 +32,11 @@ Available:
     from tempest_fastapi_sdk import HTTPClient
     from tempest_fastapi_sdk.integrations.payment.openpix import (
         OpenPixClient,
-        OpenPixEnvironment,
+        OpenPixEnvironmentEnum,
     )
 
     http: HTTPClient = HTTPClient(
-        base_url=OpenPixEnvironment.SANDBOX.base_url,
+        base_url=OpenPixEnvironmentEnum.SANDBOX.base_url,
         default_headers={"Authorization": "<your AppID>"},
     )
     client: OpenPixClient = OpenPixClient(http)
@@ -61,7 +61,7 @@ from tempest_fastapi_sdk.integrations.payment.base import (
     CardProvider as CardProvider,
 )
 from tempest_fastapi_sdk.integrations.payment.base import (
-    PaymentStatus as PaymentStatus,
+    PaymentStatusEnum as PaymentStatusEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.base import (
     PayoutProvider as PayoutProvider,
@@ -73,14 +73,14 @@ from tempest_fastapi_sdk.integrations.payment.base import (
     PayoutResult as PayoutResult,
 )
 from tempest_fastapi_sdk.integrations.payment.base import (
-    PayoutStatus as PayoutStatus,
+    PayoutStatusEnum as PayoutStatusEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.base import PixCharge as PixCharge
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixChargeRequest as PixChargeRequest,
 )
 from tempest_fastapi_sdk.integrations.payment.base import (
-    PixEventType as PixEventType,
+    PixEventTypeEnum as PixEventTypeEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.base import PixPayer as PixPayer
 from tempest_fastapi_sdk.integrations.payment.base import (
@@ -93,7 +93,7 @@ from tempest_fastapi_sdk.integrations.payment.routing import (
     PixProviderRouter as PixProviderRouter,
 )
 from tempest_fastapi_sdk.integrations.payment.settlement import (
-    PixConfirmationOutcome as PixConfirmationOutcome,
+    PixConfirmationOutcomeEnum as PixConfirmationOutcomeEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.settlement import (
     PixPaymentConfirmation as PixPaymentConfirmation,
@@ -133,15 +133,15 @@ __all__: list[str] = [
     "CardCharge",
     "CardChargeRequest",
     "CardProvider",
-    "PaymentStatus",
+    "PaymentStatusEnum",
     "PayoutProvider",
     "PayoutRequest",
     "PayoutResult",
-    "PayoutStatus",
+    "PayoutStatusEnum",
     "PixCharge",
     "PixChargeRequest",
-    "PixConfirmationOutcome",
-    "PixEventType",
+    "PixConfirmationOutcomeEnum",
+    "PixEventTypeEnum",
     "PixPayer",
     "PixPaymentConfirmation",
     "PixPaymentEvent",

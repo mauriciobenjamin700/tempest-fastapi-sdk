@@ -35,13 +35,17 @@ from tempest_fastapi_sdk.genai.audio_generation import (
     SupportsAudioGeneration as SupportsAudioGeneration,
 )
 from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
-from tempest_fastapi_sdk.genai.catalog import EmbeddingModel as EmbeddingModel
-from tempest_fastapi_sdk.genai.catalog import ImageModel as ImageModel
-from tempest_fastapi_sdk.genai.catalog import RerankerModel as RerankerModel
-from tempest_fastapi_sdk.genai.catalog import SpeechToTextModel as SpeechToTextModel
-from tempest_fastapi_sdk.genai.catalog import TextModel as TextModel
-from tempest_fastapi_sdk.genai.catalog import TextToSpeechModel as TextToSpeechModel
-from tempest_fastapi_sdk.genai.catalog import VisionModel as VisionModel
+from tempest_fastapi_sdk.genai.catalog import EmbeddingModelEnum as EmbeddingModelEnum
+from tempest_fastapi_sdk.genai.catalog import ImageModelEnum as ImageModelEnum
+from tempest_fastapi_sdk.genai.catalog import RerankerModelEnum as RerankerModelEnum
+from tempest_fastapi_sdk.genai.catalog import (
+    SpeechToTextModelEnum as SpeechToTextModelEnum,
+)
+from tempest_fastapi_sdk.genai.catalog import TextModelEnum as TextModelEnum
+from tempest_fastapi_sdk.genai.catalog import (
+    TextToSpeechModelEnum as TextToSpeechModelEnum,
+)
+from tempest_fastapi_sdk.genai.catalog import VisionModelEnum as VisionModelEnum
 from tempest_fastapi_sdk.genai.completion import Effort as Effort
 from tempest_fastapi_sdk.genai.completion import StopReason as StopReason
 from tempest_fastapi_sdk.genai.completion import (
@@ -223,7 +227,7 @@ from tempest_fastapi_sdk.genai.schemas import (
     ImageGenerationConfig as ImageGenerationConfig,
 )
 from tempest_fastapi_sdk.genai.schemas import (
-    ModelDtype as ModelDtype,
+    ModelDtypeEnum as ModelDtypeEnum,
 )
 from tempest_fastapi_sdk.genai.structured import (
     StructuredFormatError as StructuredFormatError,
@@ -324,7 +328,7 @@ __all__: list[str] = [
     "Effort",
     "Embedder",
     "EmbeddingCache",
-    "EmbeddingModel",
+    "EmbeddingModelEnum",
     "GPUInfo",
     "GenAIMetrics",
     "GenAIRequestLimits",
@@ -341,11 +345,11 @@ __all__: list[str] = [
     "HostedServerError",
     "ImageGenerationConfig",
     "ImageGenerator",
-    "ImageModel",
+    "ImageModelEnum",
     "InMemoryEmbeddingCache",
     "InMemoryGenerationCache",
     "LoadedModel",
-    "ModelDtype",
+    "ModelDtypeEnum",
     "ModelRef",
     "ModelRegistry",
     "ModelRuntimeReport",
@@ -362,11 +366,11 @@ __all__: list[str] = [
     "OpenAICompatGenerator",
     "RedisEmbeddingCache",
     "RedisGenerationCache",
-    "RerankerModel",
+    "RerankerModelEnum",
     "RuleModerator",
     "ServiceUsage",
     "SpeechFormat",
-    "SpeechToTextModel",
+    "SpeechToTextModelEnum",
     "StopReason",
     "StreamModeration",
     "StructuredCompletion",
@@ -378,12 +382,12 @@ __all__: list[str] = [
     "SupportsAudioGeneration",
     "TextBackend",
     "TextGenerator",
-    "TextModel",
-    "TextToSpeechModel",
+    "TextModelEnum",
+    "TextToSpeechModelEnum",
     "TokenUsage",
     "Tool",
     "UsageTotals",
-    "VisionModel",
+    "VisionModelEnum",
     "VisionTextGenerator",
     "auto_dtype_name",
     "build_prefix_allowed_tokens_fn",

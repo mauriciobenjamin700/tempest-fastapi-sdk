@@ -28,7 +28,7 @@ own.
 
 Examples:
 
-    >>> ZapInboundOutcome.MEDIA_LOST.value
+    >>> ZapInboundOutcomeEnum.MEDIA_LOST.value
     'media-lost'
 """
 
@@ -50,7 +50,7 @@ from tempest_fastapi_sdk.integrations.messaging.zap.schemas import (
 )
 from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
     ZapInboundMessage,
-    ZapJidServer,
+    ZapJidServerEnum,
     ZapStatusCallback,
     is_forward_transition,
 )
@@ -87,7 +87,7 @@ class ZapInboundMessageMixin(_MixinBase):
         push_name (str | None): The sender's display name, when sent.
         text (str | None): The text or caption, when there is one.
         media_type (str | None): The
-            :class:`~tempest_fastapi_sdk.integrations.messaging.zap.ZapInboundMediaType`
+            :class:`~tempest_fastapi_sdk.integrations.messaging.zap.ZapInboundMediaTypeEnum`
             value, when the message carries media.
     """
 
@@ -132,7 +132,7 @@ class ZapDeliveryMixin(_MixinBase):
     error: Mapped[str | None] = mapped_column(Text, default=None)
 
 
-class ZapInboundOutcome(BaseStrEnum):
+class ZapInboundOutcomeEnum(BaseStrEnum):
     """What :meth:`ZapInbox.claim` did with an inbound message.
 
     Attributes:
@@ -151,7 +151,7 @@ class ZapInboundOutcome(BaseStrEnum):
     SKIPPED = "skipped"
 
 
-class ZapStatusOutcome(BaseStrEnum):
+class ZapStatusOutcomeEnum(BaseStrEnum):
     """What :meth:`ZapInbox.track` did with a status callback.
 
     Attributes:
@@ -170,8 +170,8 @@ InboundT = TypeVar("InboundT", bound=ZapInboundMessageMixin)
 DeliveryT = TypeVar("DeliveryT", bound=ZapDeliveryMixin)
 """The consumer's delivery model."""
 
-DEFAULT_ACCEPTED_SERVERS: frozenset[ZapJidServer] = frozenset(
-    {ZapJidServer.USER, ZapJidServer.LID}
+DEFAULT_ACCEPTED_SERVERS: frozenset[ZapJidServerEnum] = frozenset(
+    {ZapJidServerEnum.USER, ZapJidServerEnum.LID}
 )
 """The servers a one-to-one conversation is written from."""
 
@@ -191,7 +191,7 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
         deliveries: BaseRepository[DeliveryT],
         client: ZapClient,
         *,
-        accepted_servers: frozenset[ZapJidServer] = DEFAULT_ACCEPTED_SERVERS,
+        accepted_servers: frozenset[ZapJidServerEnum] = DEFAULT_ACCEPTED_SERVERS,
     ) -> None:
         """Bind the inbox to its tables and to the gateway.
 
@@ -201,16 +201,16 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
             deliveries (BaseRepository[DeliveryT]): Repository over the
                 table mixing in :class:`ZapDeliveryMixin`.
             client (ZapClient): The gateway client.
-            accepted_servers (frozenset[ZapJidServer]): The address kinds
+            accepted_servers (frozenset[ZapJidServerEnum]): The address kinds
                 :meth:`claim` stores. Defaults to a person writing by number
                 or by LID.
         """
         self.messages: BaseRepository[InboundT] = messages
         self.deliveries: BaseRepository[DeliveryT] = deliveries
         self.client: ZapClient = client
-        self.accepted_servers: frozenset[ZapJidServer] = accepted_servers
+        self.accepted_servers: frozenset[ZapJidServerEnum] = accepted_servers
 
-    async def claim(self, message: ZapInboundMessage) -> ZapInboundOutcome:
+    async def claim(self, message: ZapInboundMessage) -> ZapInboundOutcomeEnum:
         """Store an inbound message once, and say what happened to it.
 
         No ``exists`` check precedes the insert: two replicas checking at
@@ -228,7 +228,7 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
             message (ZapInboundMessage): The verified inbound body.
 
         Returns:
-            ZapInboundOutcome: ``stored``, ``duplicate``, ``media-lost`` or
+            ZapInboundOutcomeEnum: ``stored``, ``duplicate``, ``media-lost`` or
             ``skipped``.
 
         Raises:
@@ -236,7 +236,7 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
                 insert broke a constraint other than the claim.
         """
         if message.from_server not in self.accepted_servers:
-            return ZapInboundOutcome.SKIPPED
+            return ZapInboundOutcomeEnum.SKIPPED
         row: InboundT = self.messages.map_to_model(
             {
                 "message_id": message.message_id,
@@ -250,13 +250,13 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
             await self.messages.add(row)
         except self.messages.create_conflict_exception:
             if await self.messages.exists({"message_id": message.message_id}):
-                return ZapInboundOutcome.DUPLICATE
+                return ZapInboundOutcomeEnum.DUPLICATE
             raise
         if message.media_type is not None and message.media_url is None:
-            return ZapInboundOutcome.MEDIA_LOST
-        return ZapInboundOutcome.STORED
+            return ZapInboundOutcomeEnum.MEDIA_LOST
+        return ZapInboundOutcomeEnum.STORED
 
-    async def track(self, callback: ZapStatusCallback) -> ZapStatusOutcome:
+    async def track(self, callback: ZapStatusCallback) -> ZapStatusOutcomeEnum:
         """Apply a status callback when it advances the stored status.
 
         Upserts by ``callback.id``. A callback for an id with no row creates
@@ -269,7 +269,7 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
             callback (ZapStatusCallback): The verified status body.
 
         Returns:
-            ZapStatusOutcome: ``applied`` or ``stale``.
+            ZapStatusOutcomeEnum: ``applied`` or ``stale``.
 
         Raises:
             AppException: The repository's conflict exception, when the
@@ -290,7 +290,7 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
                         }
                     )
                 )
-                return ZapStatusOutcome.APPLIED
+                return ZapStatusOutcomeEnum.APPLIED
             except self.deliveries.create_conflict_exception:
                 row = await self.deliveries.get_or_none({"outbound_id": callback.id})
                 if row is None:
@@ -372,7 +372,7 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
 
     async def _advance(
         self, row: DeliveryT, status: str, error: str | None
-    ) -> ZapStatusOutcome:
+    ) -> ZapStatusOutcomeEnum:
         """Move ``row`` to ``status`` when the ladder allows, and commit.
 
         Args:
@@ -381,15 +381,15 @@ class ZapInbox(Generic[InboundT, DeliveryT]):
             error (str | None): Why it failed, kept only on ``failed``.
 
         Returns:
-            ZapStatusOutcome: ``applied`` or ``stale``.
+            ZapStatusOutcomeEnum: ``applied`` or ``stale``.
         """
         if not is_forward_transition(row.status, status):
-            return ZapStatusOutcome.STALE
+            return ZapStatusOutcomeEnum.STALE
         row.status = status
         if status == AcceptedResponseStatus.FAILED:
             row.error = error
         await self.deliveries.update(row)
-        return ZapStatusOutcome.APPLIED
+        return ZapStatusOutcomeEnum.APPLIED
 
 
 __all__: list[str] = [
@@ -398,7 +398,7 @@ __all__: list[str] = [
     "InboundT",
     "ZapDeliveryMixin",
     "ZapInboundMessageMixin",
-    "ZapInboundOutcome",
+    "ZapInboundOutcomeEnum",
     "ZapInbox",
-    "ZapStatusOutcome",
+    "ZapStatusOutcomeEnum",
 ]

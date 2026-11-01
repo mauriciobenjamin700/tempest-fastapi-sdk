@@ -20,9 +20,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from tempest_fastapi_sdk import BaseModel, BaseRepository, ValidationException
 from tempest_fastapi_sdk.db.search import (
     POSTGRESQL_DIALECT,
-    TextSearchLanguage,
-    TextSearchWeight,
-    TokenMatch,
+    TextSearchLanguageEnum,
+    TextSearchWeightEnum,
+    TokenMatchEnum,
     full_text_condition,
     full_text_rank,
     like_search_condition,
@@ -169,7 +169,7 @@ class TestLikeSearchCondition:
         rows = await seeded.search(
             "fiscal cancelada",
             fields=["title"],
-            token_match=TokenMatch.ANY,
+            token_match=TokenMatchEnum.ANY,
         )
         assert sorted(row.title for row in rows) == [
             "Nota cancelada",
@@ -296,7 +296,7 @@ class TestPostgresFullTextSql:
                 Article,
                 "nota",
                 ["title"],
-                language=TextSearchLanguage.ENGLISH,
+                language=TextSearchLanguageEnum.ENGLISH,
             ),
         )
         assert "english" in sql
@@ -317,7 +317,7 @@ class TestPostgresFullTextSql:
                 Article,
                 "nota",
                 ["title", "body"],
-                weights={"title": TextSearchWeight.A},
+                weights={"title": TextSearchWeightEnum.A},
             ),
         )
         assert sql.count("setweight") == 2

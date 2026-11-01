@@ -4,9 +4,9 @@ This module ships an offline, dependency-free dataset of every
 Brazilian federative unit and its municipalities, plus ready-to-use
 Pydantic building blocks:
 
-* :class:`UF` -- a :class:`~enum.StrEnum` with the 27 federative unit
+* :class:`UFEnum` -- a :class:`~enum.StrEnum` with the 27 federative unit
   acronyms (``"SP"``, ``"RJ"``, ...).
-* :class:`Region` -- the five official IBGE macro-regions.
+* :class:`RegionEnum` -- the five official IBGE macro-regions.
 * :class:`StateBR` and :class:`CityBR` -- Pydantic schemas describing a
   state (acronym + name + region + cities) and a single city.
 * :func:`list_states`, :func:`get_state`, :func:`cities_by_uf`,
@@ -33,7 +33,7 @@ from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 from tempest_fastapi_sdk.exceptions.value_errors import ValidationValueError
 
 
-class UF(StrEnum):
+class UFEnum(StrEnum):
     """The 27 Brazilian federative units, keyed by their acronym."""
 
     AC = "AC"
@@ -65,7 +65,7 @@ class UF(StrEnum):
     TO = "TO"
 
 
-class Region(StrEnum):
+class RegionEnum(StrEnum):
     """The five official IBGE macro-regions of Brazil."""
 
     NORTH = "Norte"
@@ -75,34 +75,34 @@ class Region(StrEnum):
     SOUTH = "Sul"
 
 
-_UF_TO_REGION: Final[dict[UF, Region]] = {
-    UF.AC: Region.NORTH,
-    UF.AP: Region.NORTH,
-    UF.AM: Region.NORTH,
-    UF.PA: Region.NORTH,
-    UF.RO: Region.NORTH,
-    UF.RR: Region.NORTH,
-    UF.TO: Region.NORTH,
-    UF.AL: Region.NORTHEAST,
-    UF.BA: Region.NORTHEAST,
-    UF.CE: Region.NORTHEAST,
-    UF.MA: Region.NORTHEAST,
-    UF.PB: Region.NORTHEAST,
-    UF.PE: Region.NORTHEAST,
-    UF.PI: Region.NORTHEAST,
-    UF.RN: Region.NORTHEAST,
-    UF.SE: Region.NORTHEAST,
-    UF.DF: Region.CENTRAL_WEST,
-    UF.GO: Region.CENTRAL_WEST,
-    UF.MS: Region.CENTRAL_WEST,
-    UF.MT: Region.CENTRAL_WEST,
-    UF.ES: Region.SOUTHEAST,
-    UF.MG: Region.SOUTHEAST,
-    UF.RJ: Region.SOUTHEAST,
-    UF.SP: Region.SOUTHEAST,
-    UF.PR: Region.SOUTH,
-    UF.RS: Region.SOUTH,
-    UF.SC: Region.SOUTH,
+_UF_TO_REGION: Final[dict[UFEnum, RegionEnum]] = {
+    UFEnum.AC: RegionEnum.NORTH,
+    UFEnum.AP: RegionEnum.NORTH,
+    UFEnum.AM: RegionEnum.NORTH,
+    UFEnum.PA: RegionEnum.NORTH,
+    UFEnum.RO: RegionEnum.NORTH,
+    UFEnum.RR: RegionEnum.NORTH,
+    UFEnum.TO: RegionEnum.NORTH,
+    UFEnum.AL: RegionEnum.NORTHEAST,
+    UFEnum.BA: RegionEnum.NORTHEAST,
+    UFEnum.CE: RegionEnum.NORTHEAST,
+    UFEnum.MA: RegionEnum.NORTHEAST,
+    UFEnum.PB: RegionEnum.NORTHEAST,
+    UFEnum.PE: RegionEnum.NORTHEAST,
+    UFEnum.PI: RegionEnum.NORTHEAST,
+    UFEnum.RN: RegionEnum.NORTHEAST,
+    UFEnum.SE: RegionEnum.NORTHEAST,
+    UFEnum.DF: RegionEnum.CENTRAL_WEST,
+    UFEnum.GO: RegionEnum.CENTRAL_WEST,
+    UFEnum.MS: RegionEnum.CENTRAL_WEST,
+    UFEnum.MT: RegionEnum.CENTRAL_WEST,
+    UFEnum.ES: RegionEnum.SOUTHEAST,
+    UFEnum.MG: RegionEnum.SOUTHEAST,
+    UFEnum.RJ: RegionEnum.SOUTHEAST,
+    UFEnum.SP: RegionEnum.SOUTHEAST,
+    UFEnum.PR: RegionEnum.SOUTH,
+    UFEnum.RS: RegionEnum.SOUTH,
+    UFEnum.SC: RegionEnum.SOUTH,
 }
 """Static mapping of every UF to its IBGE macro-region."""
 
@@ -113,27 +113,27 @@ class CityBR(BaseModel):
     Attributes:
         name (str): The municipality name in canonical proper case
             (e.g. ``"Rio Branco"``).
-        uf (UF): The federative unit the municipality belongs to.
+        uf (UFEnum): The federative unit the municipality belongs to.
     """
 
     name: str = Field(description="Municipality name in canonical proper case.")
-    uf: UF = Field(description="Federative unit acronym the city belongs to.")
+    uf: UFEnum = Field(description="Federative unit acronym the city belongs to.")
 
 
 class StateBR(BaseModel):
     """A Brazilian federative unit and its municipalities.
 
     Attributes:
-        uf (UF): The federative unit acronym (e.g. ``UF.SP``).
+        uf (UFEnum): The federative unit acronym (e.g. ``UFEnum.SP``).
         name (str): The full state name (e.g. ``"São Paulo"``).
-        region (Region): The IBGE macro-region the state belongs to.
+        region (RegionEnum): The IBGE macro-region the state belongs to.
         cities (list[str]): The municipality names, alphabetically
             sorted, in canonical proper case.
     """
 
-    uf: UF = Field(description="Federative unit acronym.")
+    uf: UFEnum = Field(description="Federative unit acronym.")
     name: str = Field(description="Full state name.")
-    region: Region = Field(description="IBGE macro-region.")
+    region: RegionEnum = Field(description="IBGE macro-region.")
     cities: list[str] = Field(
         default_factory=list,
         description="Alphabetically sorted municipality names.",
@@ -201,7 +201,7 @@ def _load_states() -> tuple[StateBR, ...]:
     raw: _RawLocations = json.loads(data_file.read_text(encoding="utf-8"))
     states: list[StateBR] = []
     for entry in raw["dataLocals"]:
-        uf = UF(entry["sigla"])
+        uf = UFEnum(entry["sigla"])
         states.append(
             StateBR(
                 uf=uf,
@@ -215,11 +215,11 @@ def _load_states() -> tuple[StateBR, ...]:
 
 
 @lru_cache(maxsize=1)
-def _states_by_uf() -> dict[UF, StateBR]:
-    """Return a cached ``UF -> StateBR`` index over the dataset.
+def _states_by_uf() -> dict[UFEnum, StateBR]:
+    """Return a cached ``UFEnum -> StateBR`` index over the dataset.
 
     Returns:
-        dict[UF, StateBR]: One entry per federative unit.
+        dict[UFEnum, StateBR]: One entry per federative unit.
     """
     return {state.uf: state for state in _load_states()}
 
@@ -234,31 +234,31 @@ def is_valid_uf(value: str) -> bool:
         value (str): The acronym to inspect.
 
     Returns:
-        bool: ``True`` when ``value`` maps to a known :class:`UF`.
+        bool: ``True`` when ``value`` maps to a known :class:`UFEnum`.
     """
-    return value.strip().upper() in UF.__members__
+    return value.strip().upper() in UFEnum.__members__
 
 
-def normalize_uf(value: str) -> UF:
-    """Validate ``value`` and return the matching :class:`UF`.
+def normalize_uf(value: str) -> UFEnum:
+    """Validate ``value`` and return the matching :class:`UFEnum`.
 
     Args:
         value (str): The acronym (any case, optional whitespace).
 
     Returns:
-        UF: The federative unit enum member.
+        UFEnum: The federative unit enum member.
 
     Raises:
         ValueError: If ``value`` is not a known federative unit.
     """
     candidate = value.strip().upper()
-    if candidate not in UF.__members__:
+    if candidate not in UFEnum.__members__:
         raise ValidationValueError(
             "INVALID_UF",
-            f"invalid UF: {value!r}",
+            f"invalid UFEnum: {value!r}",
             params={"value": value},
         )
-    return UF(candidate)
+    return UFEnum(candidate)
 
 
 def list_states() -> list[StateBR]:
@@ -270,11 +270,11 @@ def list_states() -> list[StateBR]:
     return list(_load_states())
 
 
-def get_state(uf: str | UF) -> StateBR:
+def get_state(uf: str | UFEnum) -> StateBR:
     """Return the :class:`StateBR` for a given federative unit.
 
     Args:
-        uf (str | UF): The acronym (case-insensitive) or :class:`UF`.
+        uf (str | UFEnum): The acronym (case-insensitive) or :class:`UFEnum`.
 
     Returns:
         StateBR: The matching state, including its municipalities.
@@ -282,15 +282,15 @@ def get_state(uf: str | UF) -> StateBR:
     Raises:
         ValueError: If ``uf`` is not a known federative unit.
     """
-    key = uf if isinstance(uf, UF) else normalize_uf(uf)
+    key = uf if isinstance(uf, UFEnum) else normalize_uf(uf)
     return _states_by_uf()[key]
 
 
-def cities_by_uf(uf: str | UF) -> list[str]:
+def cities_by_uf(uf: str | UFEnum) -> list[str]:
     """Return the alphabetically sorted municipalities of a state.
 
     Args:
-        uf (str | UF): The acronym (case-insensitive) or :class:`UF`.
+        uf (str | UFEnum): The acronym (case-insensitive) or :class:`UFEnum`.
 
     Returns:
         list[str]: The municipality names in canonical proper case.
@@ -301,11 +301,11 @@ def cities_by_uf(uf: str | UF) -> list[str]:
     return list(get_state(uf).cities)
 
 
-def states_by_region(region: Region) -> list[StateBR]:
+def states_by_region(region: RegionEnum) -> list[StateBR]:
     """Return every state belonging to a given macro-region.
 
     Args:
-        region (Region): The IBGE macro-region to filter by.
+        region (RegionEnum): The IBGE macro-region to filter by.
 
     Returns:
         list[StateBR]: The states in that region, ordered by acronym.
@@ -333,22 +333,22 @@ def region_choices() -> list[ChoiceBR]:
     """Return every IBGE macro-region as a frontend ``<select>`` choice.
 
     Both ``value`` and ``label`` carry the region name (e.g. ``"Sudeste"``)
-    since that is the stored :class:`Region` value.
+    since that is the stored :class:`RegionEnum` value.
 
     Returns:
         list[ChoiceBR]: One choice per macro-region, ordered as declared.
     """
-    return [ChoiceBR(value=region.value, label=region.value) for region in Region]
+    return [ChoiceBR(value=region.value, label=region.value) for region in RegionEnum]
 
 
-def city_choices(uf: str | UF) -> list[ChoiceBR]:
+def city_choices(uf: str | UFEnum) -> list[ChoiceBR]:
     """Return the cities of a federative unit as ``<select>`` choices.
 
     Each choice uses the canonical city name for both ``value`` and
     ``label``. Ordered alphabetically.
 
     Args:
-        uf (str | UF): The acronym (case-insensitive) or :class:`UF`.
+        uf (str | UFEnum): The acronym (case-insensitive) or :class:`UFEnum`.
 
     Returns:
         list[ChoiceBR]: One choice per municipality.
@@ -361,11 +361,11 @@ def city_choices(uf: str | UF) -> list[ChoiceBR]:
 
 
 @lru_cache(maxsize=27)
-def _city_index(uf: UF) -> dict[str, str]:
+def _city_index(uf: UFEnum) -> dict[str, str]:
     """Return a cached ``accentless-name -> canonical-name`` index.
 
     Args:
-        uf (UF): The federative unit whose cities are indexed.
+        uf (UFEnum): The federative unit whose cities are indexed.
 
     Returns:
         dict[str, str]: Lookup from normalized to canonical city name.
@@ -373,14 +373,14 @@ def _city_index(uf: UF) -> dict[str, str]:
     return {_strip_accents(city): city for city in _states_by_uf()[uf].cities}
 
 
-def is_valid_city(uf: str | UF, city: str) -> bool:
+def is_valid_city(uf: str | UFEnum, city: str) -> bool:
     """Check whether ``city`` exists in the given federative unit.
 
     Matching ignores accents, letter case and surrounding whitespace,
     so ``"sao paulo"`` matches ``"São Paulo"``.
 
     Args:
-        uf (str | UF): The acronym (case-insensitive) or :class:`UF`.
+        uf (str | UFEnum): The acronym (case-insensitive) or :class:`UFEnum`.
         city (str): The municipality name to look up.
 
     Returns:
@@ -388,17 +388,17 @@ def is_valid_city(uf: str | UF, city: str) -> bool:
         ``False`` for an unknown ``uf`` instead of raising.
     """
     try:
-        key = uf if isinstance(uf, UF) else normalize_uf(uf)
+        key = uf if isinstance(uf, UFEnum) else normalize_uf(uf)
     except ValueError:
         return False
     return _strip_accents(city) in _city_index(key)
 
 
-def normalize_city(uf: str | UF, city: str) -> str:
+def normalize_city(uf: str | UFEnum, city: str) -> str:
     """Validate ``city`` against ``uf`` and return its canonical name.
 
     Args:
-        uf (str | UF): The acronym (case-insensitive) or :class:`UF`.
+        uf (str | UFEnum): The acronym (case-insensitive) or :class:`UFEnum`.
         city (str): The municipality name (any case/accents).
 
     Returns:
@@ -407,7 +407,7 @@ def normalize_city(uf: str | UF, city: str) -> str:
     Raises:
         ValueError: If ``uf`` is unknown or ``city`` is not part of it.
     """
-    key = uf if isinstance(uf, UF) else normalize_uf(uf)
+    key = uf if isinstance(uf, UFEnum) else normalize_uf(uf)
     canonical = _city_index(key).get(_strip_accents(city))
     if canonical is None:
         raise ValidationValueError(
@@ -418,12 +418,12 @@ def normalize_city(uf: str | UF, city: str) -> str:
     return canonical
 
 
-UFField = Annotated[UF, BeforeValidator(normalize_uf)]
-"""Pydantic type that accepts any-case acronym and yields a :class:`UF`.
+UFField = Annotated[UFEnum, BeforeValidator(normalize_uf)]
+"""Pydantic type that accepts any-case acronym and yields a :class:`UFEnum`.
 
 The :class:`~pydantic.BeforeValidator` runs ahead of the enum coercion,
 so lower-case and whitespace-padded acronyms (``"sp"``, ``" RJ "``) are
-accepted and an invalid value raises a clear ``invalid UF`` error.
+accepted and an invalid value raises a clear ``invalid UFEnum`` error.
 """
 
 CityNameField = Annotated[str, AfterValidator(lambda v: v.strip())]
@@ -431,12 +431,12 @@ CityNameField = Annotated[str, AfterValidator(lambda v: v.strip())]
 
 
 __all__: list[str] = [
-    "UF",
     "ChoiceBR",
     "CityBR",
     "CityNameField",
-    "Region",
+    "RegionEnum",
     "StateBR",
+    "UFEnum",
     "UFField",
     "cities_by_uf",
     "city_choices",

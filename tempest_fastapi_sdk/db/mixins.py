@@ -248,7 +248,7 @@ class LocaleColumnMixin:
     Injects a BCP-47 locale tag column (e.g. ``"pt-BR"``, ``"en-US"``) so a
     model — typically a user — can carry the language its notifications and
     localized text should render in, without every project re-declaring the
-    same column. Store a :class:`tempest_fastapi_sdk.Locale` member (it binds
+    same column. Store a :class:`tempest_fastapi_sdk.LocaleEnum` member (it binds
     as its string value) or any raw tag.
 
     ``NULL`` means "no preference": resolve it to your app's default locale

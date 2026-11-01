@@ -27,7 +27,7 @@ from tempest_fastapi_sdk.push.schemas import (
     PushDevice,
     PushFanoutResult,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
     PushResult,
     mask_push_token,
 )
@@ -82,7 +82,7 @@ class DeviceService(Generic[DeviceModelT]):
         """Return the transport that delivers to ``platform``.
 
         Args:
-            platform (str): A :class:`PushPlatform` value.
+            platform (str): A :class:`PushPlatformEnum` value.
 
         Returns:
             PushDispatcher | None: The transport, or ``None`` when the
@@ -138,11 +138,11 @@ class DeviceService(Generic[DeviceModelT]):
         """
         platform = (
             registration.platform.value
-            if isinstance(registration.platform, PushPlatform)
+            if isinstance(registration.platform, PushPlatformEnum)
             else str(registration.platform)
         )
-        web_transport = self.transport_for(PushPlatform.WEB.value)
-        if platform == PushPlatform.WEB.value and isinstance(
+        web_transport = self.transport_for(PushPlatformEnum.WEB.value)
+        if platform == PushPlatformEnum.WEB.value and isinstance(
             web_transport, WebPushTransport
         ):
             await _refuse_undeliverable_endpoint(
@@ -223,7 +223,7 @@ class DeviceService(Generic[DeviceModelT]):
         payload: PushPayloadSchema,
         *,
         exclude_tokens: Iterable[str] = (),
-        platforms: Iterable[PushPlatform | str] = (),
+        platforms: Iterable[PushPlatformEnum | str] = (),
     ) -> PushFanoutResult:
         """Deliver ``payload`` to every device the user registered.
 
@@ -240,7 +240,7 @@ class DeviceService(Generic[DeviceModelT]):
                 typically the device that caused the event, which must not
                 notify itself. Excluded devices are never contacted and
                 never pruned.
-            platforms (Iterable[PushPlatform | str]): When non-empty,
+            platforms (Iterable[PushPlatformEnum | str]): When non-empty,
                 restrict the fan-out to these platforms (a web-only
                 announcement, for instance). Empty means every platform.
 
@@ -251,7 +251,7 @@ class DeviceService(Generic[DeviceModelT]):
         rows = await self.list_for_user(user_id)
         excluded = set(exclude_tokens)
         wanted = {
-            platform.value if isinstance(platform, PushPlatform) else str(platform)
+            platform.value if isinstance(platform, PushPlatformEnum) else str(platform)
             for platform in platforms
         }
         targets = [
@@ -334,7 +334,7 @@ class DeviceService(Generic[DeviceModelT]):
             PushDevice: The same device as the transports see it.
         """
         return PushDevice(
-            platform=PushPlatform(row.platform),
+            platform=PushPlatformEnum(row.platform),
             token=row.token,
             p256dh=row.p256dh,
             auth=row.auth,

@@ -72,7 +72,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 
-class IntegrityViolation(BaseStrEnum):
+class IntegrityViolationEnum(BaseStrEnum):
     """Which kind of constraint refused the write.
 
     Attributes:
@@ -100,7 +100,7 @@ class IntegrityFailure:
     empty value as "this server did not say", never as "there is none".
 
     Attributes:
-        kind (IntegrityViolation): The constraint category.
+        kind (IntegrityViolationEnum): The constraint category.
         constraint (str | None): The constraint name, when the server
             named one. Postgres always does; SQLite only for ``CHECK``,
             and then only when the DDL named it.
@@ -113,7 +113,7 @@ class IntegrityFailure:
             parsed when :attr:`kind` came back ``UNKNOWN``.
     """
 
-    kind: IntegrityViolation = IntegrityViolation.UNKNOWN
+    kind: IntegrityViolationEnum = IntegrityViolationEnum.UNKNOWN
     constraint: str | None = None
     table: str | None = None
     columns: tuple[str, ...] = field(default_factory=tuple)
@@ -156,11 +156,11 @@ _PG_TABLE: re.Pattern[str] = re.compile(
 )
 _PG_DETAIL_KEY: re.Pattern[str] = re.compile(r"Key \(([^)]+)\)=")
 
-_PG_SQLSTATE_VIOLATIONS: Final[dict[str, IntegrityViolation]] = {
-    "23505": IntegrityViolation.UNIQUE,
-    "23503": IntegrityViolation.FOREIGN_KEY,
-    "23502": IntegrityViolation.NOT_NULL,
-    "23514": IntegrityViolation.CHECK,
+_PG_SQLSTATE_VIOLATIONS: Final[dict[str, IntegrityViolationEnum]] = {
+    "23505": IntegrityViolationEnum.UNIQUE,
+    "23503": IntegrityViolationEnum.FOREIGN_KEY,
+    "23502": IntegrityViolationEnum.NOT_NULL,
+    "23514": IntegrityViolationEnum.CHECK,
 }
 """Postgres ``SQLSTATE`` codes of the four integrity violations.
 
@@ -337,7 +337,7 @@ def _merge_server_fields(
     """
     kind = _PG_SQLSTATE_VIOLATIONS.get(server.sqlstate or "", parsed.kind)
     columns = _pg_key_columns(server.detail) if server.detail else ()
-    if not columns and kind is IntegrityViolation.NOT_NULL and server.column:
+    if not columns and kind is IntegrityViolationEnum.NOT_NULL and server.column:
         columns = (server.column,)
     return IntegrityFailure(
         kind=kind,
@@ -386,7 +386,7 @@ def parse_integrity_error(error: BaseException) -> IntegrityFailure:
         ...     return {"code": failure.kind.value, "field": failure.column}
 
     Never raises: an unrecognized message comes back as
-    :attr:`IntegrityViolation.UNKNOWN` with the text in
+    :attr:`IntegrityViolationEnum.UNKNOWN` with the text in
     :attr:`IntegrityFailure.message`. A parser for error prose that
     raises on prose it does not know turns a handled ``409`` into an
     unhandled ``500``, which is worse than the generic conflict it was
@@ -424,16 +424,16 @@ def _parse_message(message: str) -> IntegrityFailure:
     match = _PG_NOT_NULL.search(message)
     if match:
         return IntegrityFailure(
-            kind=IntegrityViolation.NOT_NULL,
+            kind=IntegrityViolationEnum.NOT_NULL,
             table=match.group(2),
             columns=(match.group(1),),
             message=message,
         )
 
     for pattern, kind in (
-        (_PG_UNIQUE, IntegrityViolation.UNIQUE),
-        (_PG_FOREIGN_KEY, IntegrityViolation.FOREIGN_KEY),
-        (_PG_CHECK, IntegrityViolation.CHECK),
+        (_PG_UNIQUE, IntegrityViolationEnum.UNIQUE),
+        (_PG_FOREIGN_KEY, IntegrityViolationEnum.FOREIGN_KEY),
+        (_PG_CHECK, IntegrityViolationEnum.CHECK),
     ):
         match = pattern.search(message)
         if match:
@@ -447,8 +447,8 @@ def _parse_message(message: str) -> IntegrityFailure:
             )
 
     for pattern, kind in (
-        (_SQLITE_UNIQUE, IntegrityViolation.UNIQUE),
-        (_SQLITE_NOT_NULL, IntegrityViolation.NOT_NULL),
+        (_SQLITE_UNIQUE, IntegrityViolationEnum.UNIQUE),
+        (_SQLITE_NOT_NULL, IntegrityViolationEnum.NOT_NULL),
     ):
         match = pattern.search(message)
         if match:
@@ -463,14 +463,14 @@ def _parse_message(message: str) -> IntegrityFailure:
     match = _SQLITE_CHECK.search(message)
     if match:
         return IntegrityFailure(
-            kind=IntegrityViolation.CHECK,
+            kind=IntegrityViolationEnum.CHECK,
             constraint=match.group(1).strip(),
             message=message,
         )
 
     if _SQLITE_FOREIGN_KEY.search(message):
         return IntegrityFailure(
-            kind=IntegrityViolation.FOREIGN_KEY,
+            kind=IntegrityViolationEnum.FOREIGN_KEY,
             message=message,
         )
 
@@ -532,7 +532,7 @@ def describe_database_error(error: DBAPIError) -> str:
     parts: list[str] = []
     if isinstance(error, IntegrityError):
         failure = parse_integrity_error(error)
-        if failure.kind is not IntegrityViolation.UNKNOWN:
+        if failure.kind is not IntegrityViolationEnum.UNKNOWN:
             parts.append(f"{failure.kind.value} violation")
         if failure.constraint:
             parts.append(f"constraint={failure.constraint}")
@@ -549,7 +549,7 @@ def describe_database_error(error: DBAPIError) -> str:
 __all__: list[str] = [
     "WITHHELD_NOTICE",
     "IntegrityFailure",
-    "IntegrityViolation",
+    "IntegrityViolationEnum",
     "describe_database_error",
     "dotted_type_name",
     "parse_integrity_error",

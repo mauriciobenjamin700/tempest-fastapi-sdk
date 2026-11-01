@@ -24,7 +24,7 @@ from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.model import BaseModel
 
 
-class UserTokenPurpose(StrEnum):
+class UserTokenPurposeEnum(StrEnum):
     """What a token authorizes when redeemed.
 
     Each value maps to a distinct flow exposed by
@@ -65,7 +65,7 @@ class BaseUserTokenModel(BaseModel):
         token_hash (str): SHA-256 hash of the plaintext token.
             Indexed + unique so lookups by hash are fast and
             duplicates impossible.
-        purpose (str): One of :class:`UserTokenPurpose`.
+        purpose (str): One of :class:`UserTokenPurposeEnum`.
         expires_at (datetime): UTC timestamp the token becomes
             invalid. ``redeem()`` checks this against ``now()``
             on every consumption.
@@ -98,7 +98,7 @@ class BaseUserTokenModel(BaseModel):
         String(32),
         nullable=False,
         index=True,
-        doc="What the token authorizes (UserTokenPurpose value).",
+        doc="What the token authorizes (UserTokenPurposeEnum value).",
     )
     expires_at: Mapped[datetime] = mapped_column(
         UtcDateTime,
@@ -158,6 +158,6 @@ def make_user_token_model(
 
 __all__: list[str] = [
     "BaseUserTokenModel",
-    "UserTokenPurpose",
+    "UserTokenPurposeEnum",
     "make_user_token_model",
 ]

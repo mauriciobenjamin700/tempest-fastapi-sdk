@@ -18,7 +18,7 @@ from tempest_fastapi_sdk.queue import (
     DeadLetterSpec,
     MessageBroker,
     QueueSpec,
-    QueueType,
+    QueueTypeEnum,
     UnsupportedTopologyError,
 )
 from tempest_fastapi_sdk.queue.topology import (
@@ -28,7 +28,7 @@ from tempest_fastapi_sdk.queue.topology import (
     MAX_PRIORITY_ARG,
     MESSAGE_TTL_ARG,
     QUEUE_TYPE_ARG,
-    Transport,
+    TransportEnum,
     channel_name,
     detect_transport,
     rabbit_arguments,
@@ -56,7 +56,7 @@ class TestSpecValidation:
             QueueSpec(
                 name="orders.paid",
                 max_priority=5,
-                queue_type=QueueType.QUORUM,
+                queue_type=QueueTypeEnum.QUORUM,
             )
 
     @pytest.mark.parametrize(
@@ -122,13 +122,13 @@ class TestRabbitArguments:
         assert args[MAX_LENGTH_ARG] == 100
 
     def test_quorum_reaches_the_arguments(self) -> None:
-        args = rabbit_arguments(QueueSpec(name="q", queue_type=QueueType.QUORUM))
+        args = rabbit_arguments(QueueSpec(name="q", queue_type=QueueTypeEnum.QUORUM))
         assert args[QUEUE_TYPE_ARG] == "quorum"
 
 
 class TestTransportDetection:
     def test_rabbit_broker_is_detected(self) -> None:
-        assert MessageBroker.rabbitmq(AMQP_URL).transport is Transport.RABBITMQ
+        assert MessageBroker.rabbitmq(AMQP_URL).transport is TransportEnum.RABBITMQ
 
     def test_an_unknown_broker_is_not_guessed(self) -> None:
         """Unknown means 'supports nothing but a name' — the safe way."""
@@ -136,13 +136,13 @@ class TestTransportDetection:
         class SomeCustomBroker:
             pass
 
-        assert detect_transport(SomeCustomBroker()) is Transport.UNKNOWN
+        assert detect_transport(SomeCustomBroker()) is TransportEnum.UNKNOWN
 
 
 class TestPortability:
     def test_a_bare_spec_translates_everywhere(self) -> None:
         spec = QueueSpec(name="orders.paid")
-        for transport in Transport:
+        for transport in TransportEnum:
             assert unsupported_fields(spec, transport) == []
 
     def test_rabbitmq_supports_every_field(self) -> None:
@@ -154,7 +154,7 @@ class TestPortability:
             max_priority=5,
             max_length=10,
         )
-        assert unsupported_fields(spec, Transport.RABBITMQ) == []
+        assert unsupported_fields(spec, TransportEnum.RABBITMQ) == []
 
     def test_another_transport_reports_each_set_field(self) -> None:
         spec = QueueSpec(
@@ -162,35 +162,35 @@ class TestPortability:
             dead_letter=DeadLetterSpec(exchange="dlx"),
             message_ttl_ms=1,
         )
-        missing = unsupported_fields(spec, Transport.NATS)
+        missing = unsupported_fields(spec, TransportEnum.NATS)
         assert set(missing) == {"dead_letter", "message_ttl_ms"}
 
     def test_an_unsupported_field_raises_naming_it(self) -> None:
         """Dropping it silently is the defect; the message has to say what."""
         spec = QueueSpec(name="q", dead_letter=DeadLetterSpec(exchange="dlx"))
         with pytest.raises(UnsupportedTopologyError) as exc:
-            require_supported(spec, Transport.KAFKA)
+            require_supported(spec, TransportEnum.KAFKA)
         assert "dead_letter" in str(exc.value)
         assert "kafka" in str(exc.value)
 
     def test_a_bare_spec_never_raises(self) -> None:
-        require_supported(QueueSpec(name="q"), Transport.REDIS)
+        require_supported(QueueSpec(name="q"), TransportEnum.REDIS)
 
 
 class TestResolveChannel:
     def test_a_string_passes_through_untouched(self) -> None:
-        assert resolve_channel("orders.paid", Transport.RABBITMQ) == "orders.paid"
+        assert resolve_channel("orders.paid", TransportEnum.RABBITMQ) == "orders.paid"
 
     def test_a_spec_becomes_a_rabbit_queue(self) -> None:
         queue = resolve_channel(
             QueueSpec(name="q", dead_letter=DeadLetterSpec(exchange="dlx")),
-            Transport.RABBITMQ,
+            TransportEnum.RABBITMQ,
         )
         assert queue.name == "q"
         assert queue.arguments[DEAD_LETTER_EXCHANGE_ARG] == "dlx"
 
     def test_a_portable_spec_degrades_to_its_name(self) -> None:
-        assert resolve_channel(QueueSpec(name="q"), Transport.NATS) == "q"
+        assert resolve_channel(QueueSpec(name="q"), TransportEnum.NATS) == "q"
 
     def test_durable_reaches_the_queue(self) -> None:
         queue = to_rabbit_queue(QueueSpec(name="q", durable=False))
@@ -235,7 +235,7 @@ class TestBrokerIntegration:
                     dead_letter=DeadLetterSpec(exchange="dlx"),
                     message_ttl_ms=60_000,
                 ),
-                Transport.RABBITMQ,
+                TransportEnum.RABBITMQ,
             ),
         )
         assert subscriber.queue.arguments[DEAD_LETTER_EXCHANGE_ARG] == "dlx"

@@ -9,7 +9,7 @@ SDK already ships, so the numbers a test asserts on are the SDK's own.
 
 from __future__ import annotations
 
-from tempest_fastapi_sdk.geo.enums import TravelMode
+from tempest_fastapi_sdk.geo.enums import TravelModeEnum
 from tempest_fastapi_sdk.geo.estimate import estimate_travel
 from tempest_fastapi_sdk.geo.schemas import Coordinate, GeocodeResult, TravelEstimate
 from tempest_fastapi_sdk.testing.fakes._control import _Steerable
@@ -158,14 +158,14 @@ class FakeRoutingBackend(_Steerable):
         origin: Coordinate,
         destination: Coordinate,
         *,
-        mode: TravelMode = TravelMode.CAR,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
     ) -> TravelEstimate:
         """Estimate a trip.
 
         Args:
             origin (Coordinate): Where the trip starts.
             destination (Coordinate): Where it ends.
-            mode (TravelMode): How it travels.
+            mode (TravelModeEnum): How it travels.
 
         Returns:
             TravelEstimate: The pinned estimate for this pair when there is

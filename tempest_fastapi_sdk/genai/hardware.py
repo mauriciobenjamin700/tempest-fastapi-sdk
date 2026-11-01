@@ -38,17 +38,17 @@ from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport,
     GPUInfo,
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
 )
 
 # Bytes per parameter for each precision. int4 is ~0.5 but carries some
 # per-block scale overhead, so 0.6 is a safer planning number.
-_BYTES_PER_PARAM: dict[ModelDtype, float] = {
-    ModelDtype.FLOAT32: 4.0,
-    ModelDtype.FLOAT16: 2.0,
-    ModelDtype.BFLOAT16: 2.0,
-    ModelDtype.INT8: 1.0,
-    ModelDtype.INT4: 0.6,
+_BYTES_PER_PARAM: dict[ModelDtypeEnum, float] = {
+    ModelDtypeEnum.FLOAT32: 4.0,
+    ModelDtypeEnum.FLOAT16: 2.0,
+    ModelDtypeEnum.BFLOAT16: 2.0,
+    ModelDtypeEnum.INT8: 1.0,
+    ModelDtypeEnum.INT4: 0.6,
 }
 
 _CPU_QUANTIZATION_NOTE: str = (
@@ -524,11 +524,11 @@ def _ram_unmeasured_reason() -> str:
     return f"on {sys.platform} measuring RAM requires psutil ({_PSUTIL_INSTALL_HINT})"
 
 
-def bytes_per_param(dtype: ModelDtype) -> float:
+def bytes_per_param(dtype: ModelDtypeEnum) -> float:
     """Return the planning bytes-per-parameter for ``dtype``.
 
     Args:
-        dtype (ModelDtype): The weight precision.
+        dtype (ModelDtypeEnum): The weight precision.
 
     Returns:
         float: Bytes each parameter occupies at that precision.
@@ -538,7 +538,7 @@ def bytes_per_param(dtype: ModelDtype) -> float:
 
 def estimate_model_bytes(
     num_params: int,
-    dtype: ModelDtype = ModelDtype.BFLOAT16,
+    dtype: ModelDtypeEnum = ModelDtypeEnum.BFLOAT16,
     *,
     overhead: float = _INFERENCE_OVERHEAD,
 ) -> int:
@@ -547,7 +547,7 @@ def estimate_model_bytes(
     Args:
         num_params (int): The model's parameter count (e.g. ``7_000_000_000``
             for a 7B model).
-        dtype (ModelDtype): The precision it will be loaded in.
+        dtype (ModelDtypeEnum): The precision it will be loaded in.
         overhead (float): Multiplier over raw weight size to account for
             activations / KV cache / runtime context. Defaults to ``1.25``.
 
@@ -764,7 +764,7 @@ def _pick_device(hardware: HardwareInfo) -> str:
     return "cpu"
 
 
-def _native_dtype(device: str) -> ModelDtype:
+def _native_dtype(device: str) -> ModelDtypeEnum:
     """Return the precision an unquantized model is loaded in on ``device``.
 
     This is the single source of truth shared with
@@ -779,16 +779,16 @@ def _native_dtype(device: str) -> ModelDtype:
             ``"cpu"``).
 
     Returns:
-        ModelDtype: ``FLOAT32`` on CPU, ``BFLOAT16`` elsewhere.
+        ModelDtypeEnum: ``FLOAT32`` on CPU, ``BFLOAT16`` elsewhere.
     """
-    return ModelDtype.FLOAT32 if device == "cpu" else ModelDtype.BFLOAT16
+    return ModelDtypeEnum.FLOAT32 if device == "cpu" else ModelDtypeEnum.BFLOAT16
 
 
 def can_run(
     *,
     num_params: int | None = None,
     model_id: str | None = None,
-    dtype: ModelDtype | None = None,
+    dtype: ModelDtypeEnum | None = None,
     device: str = "auto",
     hardware: HardwareInfo | None = None,
     token: str | None = None,
@@ -804,7 +804,7 @@ def can_run(
             precedence over ``model_id``.
         model_id (str | None): Hub id to look the parameter count up from
             when ``num_params`` is not given.
-        dtype (ModelDtype | None): The precision to plan for. ``None`` (the
+        dtype (ModelDtypeEnum | None): The precision to plan for. ``None`` (the
             default) plans for the precision ``TextGenerator(dtype="auto")``
             loads on the chosen device: ``bfloat16`` on CUDA/MPS,
             ``float32`` on CPU. Pass a value to plan for an explicit
@@ -898,7 +898,7 @@ def can_run(
 def _suggest(
     hardware: HardwareInfo,
     num_params: int,
-    dtype: ModelDtype,
+    dtype: ModelDtypeEnum,
     device: str,
 ) -> str:
     """Return the best next step when a model doesn't fit as asked.
@@ -912,13 +912,13 @@ def _suggest(
     Args:
         hardware (HardwareInfo): The probed hardware.
         num_params (int): The model's parameter count.
-        dtype (ModelDtype): The precision that did not fit.
+        dtype (ModelDtypeEnum): The precision that did not fit.
         device (str): The device it did not fit on.
 
     Returns:
         str: The suggested next step.
     """
-    order = [_native_dtype(device), ModelDtype.INT8, ModelDtype.INT4]
+    order = [_native_dtype(device), ModelDtypeEnum.INT8, ModelDtypeEnum.INT4]
     available = _device_capacity(hardware, device) or 0
     for candidate in order:
         if bytes_per_param(candidate) >= bytes_per_param(dtype):
@@ -929,7 +929,10 @@ def _suggest(
                 f"~{estimate_model_bytes(num_params, candidate) / 1e9:.1f} GB) "
                 f"to fit {device}."
             )
-            if device == "cpu" and candidate in (ModelDtype.INT8, ModelDtype.INT4):
+            if device == "cpu" and candidate in (
+                ModelDtypeEnum.INT8,
+                ModelDtypeEnum.INT4,
+            ):
                 suggestion += _CPU_QUANTIZATION_NOTE
             return suggestion
     if device == "cuda" and not hardware.ram_measured:
@@ -940,7 +943,7 @@ def _suggest(
         )
     if (
         device == "cuda"
-        and estimate_model_bytes(num_params, ModelDtype.INT4)
+        and estimate_model_bytes(num_params, ModelDtypeEnum.INT4)
         <= hardware.ram_available_bytes
     ):
         return "Offload to CPU (device='cpu') with int4 — slower but fits RAM."
@@ -996,7 +999,7 @@ def recommend(
         params = fetch_num_params(model_id, token=token)
     native = _native_dtype(_pick_device(hw))
     report = None
-    for dtype in (native, ModelDtype.INT8, ModelDtype.INT4):
+    for dtype in (native, ModelDtypeEnum.INT8, ModelDtypeEnum.INT4):
         report = can_run(num_params=params, dtype=dtype, hardware=hw)
         if report.fits or not report.memory_measured:
             return report

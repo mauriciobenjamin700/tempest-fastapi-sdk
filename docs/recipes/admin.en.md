@@ -690,7 +690,7 @@ from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
+    AdminPermissionEnum,
     UserModelAuthBackend,
     make_admin_router,
 )
@@ -703,11 +703,11 @@ from src.db.models import AuditLog, UserModel
 app = FastAPI()
 
 
-def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
+def policy(user: UserModel, admin: AdminModel, action: AdminPermissionEnum) -> bool:
     if user.role == "superadmin":
         return True
     if user.role == "support":
-        return action is AdminPermission.VIEW       # read-only
+        return action is AdminPermissionEnum.VIEW       # read-only
     return admin.model is not AuditLog              # editor: everything but AuditLog
 
 
@@ -752,15 +752,15 @@ It also covers what one model's page shows of **another** model:
 
 The SQL console, the task panel, the logs page and the storage browser
 are not about one model, so `access_policy` has nothing to ask about. `surface_policy`
-decides instead, asked `(principal, AdminSurface)`:
+decides instead, asked `(principal, AdminSurfaceEnum)`:
 
 ```python
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
-    AdminSurface,
+    AdminPermissionEnum,
+    AdminSurfaceEnum,
     UserModelAuthBackend,
     make_admin_router,
 )
@@ -774,11 +774,11 @@ from src.db.models import UserModel
 app = FastAPI()
 
 
-def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
-    return user.role == "superadmin" or action is AdminPermission.VIEW
+def policy(user: UserModel, admin: AdminModel, action: AdminPermissionEnum) -> bool:
+    return user.role == "superadmin" or action is AdminPermissionEnum.VIEW
 
 
-def surfaces(user: UserModel, surface: AdminSurface) -> bool:
+def surfaces(user: UserModel, surface: AdminSurfaceEnum) -> bool:
     return user.role == "superadmin"
 
 
@@ -1451,7 +1451,7 @@ That mounts three routes and a "Tasks" entry in the sidebar:
 
     | Declared | Shows as |
     | --- | --- |
-    | `@tq.cron(daily(hour=2), cron_offset=CronOffset.BRASILIA)` | `0 2 * * *` `-03:00` |
+    | `@tq.cron(daily(hour=2), cron_offset=CronOffsetEnum.BRASILIA)` | `0 2 * * *` `-03:00` |
     | `@tq.cron(daily(hour=2))` | `0 2 * * *` |
     | `@tq.interval(timedelta(seconds=30))` | `every 30s` |
     | `schedule=[{"time": when}]` | `once at 2026-01-01 12:00:00+00:00` |
@@ -1459,7 +1459,7 @@ That mounts three routes and a "Tasks" entry in the sidebar:
 
     Showing the offset is not decoration. A cron expression **reads as
     complete** without it, so nothing invites the reader to check — and
-    `0 2 * * *` with `cron_offset=CronOffset.BRASILIA` fires at 05:00 UTC.
+    `0 2 * * *` with `cron_offset=CronOffsetEnum.BRASILIA` fires at 05:00 UTC.
     Whoever opens the panel to learn when the backup runs would be three
     hours off, on the one screen whose only alternative source is the code.
 
@@ -1589,7 +1589,7 @@ old one. A new key that is already taken is refused.
 !!! tip "Read-only"
     `StorageBrowserService(store, read_only=True)` keeps listing, preview and
     download, hides the forms and answers `403` to every write. Who may open
-    the screen is the `surface_policy`'s call, with `AdminSurface.STORAGE` —
+    the screen is the `surface_policy`'s call, with `AdminSurfaceEnum.STORAGE` —
     see [SQL console, tasks and logs](#sql-console-tasks-and-logs-surface_policy).
 
 !!! info "Limits"

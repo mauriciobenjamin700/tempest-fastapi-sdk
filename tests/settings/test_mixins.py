@@ -432,9 +432,11 @@ class TestOpenPixSettings:
         namespace, which makes it tempting to paste the two URLs here. This
         fails if anyone does: the values have to keep matching the enum.
         """
-        from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            OpenPixEnvironmentEnum,
+        )
 
-        for environment in OpenPixEnvironment:
+        for environment in OpenPixEnvironmentEnum:
             settings = OpenPixSettings(
                 OPENPIX_APP_ID="x",
                 OPENPIX_ENVIRONMENT=environment.value,  # type: ignore[arg-type]
@@ -447,7 +449,7 @@ class TestOpenPixSettings:
 
         ``tempest_fastapi_sdk.integrations`` is lazy so ``import
         tempest_fastapi_sdk`` never pays for 373 generated names. A module-level
-        import of ``OpenPixEnvironment`` in ``settings`` would undo that for
+        import of ``OpenPixEnvironmentEnum`` in ``settings`` would undo that for
         every consumer, including the ones that never touch payments.
         """
         subprocess.run(

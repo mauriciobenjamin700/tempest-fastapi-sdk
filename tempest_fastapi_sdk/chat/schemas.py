@@ -9,9 +9,9 @@ from uuid import UUID
 from pydantic import Field, field_validator
 
 from tempest_fastapi_sdk.chat.constants import (
-    ConversationKind,
-    MessageKind,
-    ParticipantRole,
+    ConversationKindEnum,
+    MessageKindEnum,
+    ParticipantRoleEnum,
 )
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
@@ -66,7 +66,7 @@ class ReplyPreviewSchema(BaseSchema):
     Attributes:
         id (UUID): The quoted message's id.
         sender_id (UUID): Who wrote it.
-        kind (MessageKind): What it carried, so the stub can show
+        kind (MessageKindEnum): What it carried, so the stub can show
             "Photo" instead of an empty line.
         excerpt (str): The first :data:`REPLY_EXCERPT_LENGTH` characters
             of its body — empty when revoked.
@@ -80,7 +80,7 @@ class ReplyPreviewSchema(BaseSchema):
 
     id: UUID
     sender_id: UUID
-    kind: MessageKind = MessageKind.TEXT
+    kind: MessageKindEnum = MessageKindEnum.TEXT
     excerpt: str = ""
     revoked: bool = False
     created_at: datetime | None = None
@@ -176,7 +176,7 @@ class MessageCreateSchema(BaseSchema):
         body (str): The text, or the caption of a media message. Empty
             is valid for media; a ``TEXT`` message with no body and no
             attachments is rejected by the service.
-        kind (MessageKind): What the message carries.
+        kind (MessageKindEnum): What the message carries.
         client_id (str | None): An id the client generates **before**
             sending. Retrying with the same one returns the message that
             was already stored instead of posting a second copy.
@@ -193,8 +193,8 @@ class MessageCreateSchema(BaseSchema):
         title="Body",
         description="The message text, or the caption of a media message.",
     )
-    kind: MessageKind = Field(
-        default=MessageKind.TEXT,
+    kind: MessageKindEnum = Field(
+        default=MessageKindEnum.TEXT,
         title="Kind",
         description="What the message carries.",
     )
@@ -288,7 +288,7 @@ class MessageResponseSchema(BaseSchema):
         id (UUID): The message id.
         conversation_id (UUID): The owning conversation.
         sender_id (UUID): Who sent it, or the actor of a system notice.
-        kind (MessageKind): What it carries.
+        kind (MessageKindEnum): What it carries.
         body (str): Text or caption; empty once revoked.
         client_id (str | None): The sender's idempotency id, echoed so a
             client can match it against its optimistic row.
@@ -309,7 +309,7 @@ class MessageResponseSchema(BaseSchema):
     id: UUID
     conversation_id: UUID
     sender_id: UUID
-    kind: MessageKind = MessageKind.TEXT
+    kind: MessageKindEnum = MessageKindEnum.TEXT
     body: str = ""
     client_id: str | None = None
     reply_to: ReplyPreviewSchema | None = None
@@ -329,7 +329,7 @@ class ParticipantResponseSchema(BaseSchema):
 
     Attributes:
         user_id (UUID): The participant.
-        role (ParticipantRole): What they may do.
+        role (ParticipantRoleEnum): What they may do.
         joined_at (datetime | None): When they joined.
         left_at (datetime | None): When they left, or ``None``.
         is_pinned (bool): Whether *this* user pinned the thread.
@@ -339,7 +339,7 @@ class ParticipantResponseSchema(BaseSchema):
     """
 
     user_id: UUID
-    role: ParticipantRole = ParticipantRole.MEMBER
+    role: ParticipantRoleEnum = ParticipantRoleEnum.MEMBER
     joined_at: datetime | None = None
     left_at: datetime | None = None
     is_pinned: bool = False
@@ -355,7 +355,7 @@ class ConversationCreateSchema(BaseSchema):
         participant_ids (list[UUID]): The users to add. The
             authenticated creator is added automatically, so this lists
             only the other members.
-        kind (ConversationKind | None): Direct thread or group. ``None``
+        kind (ConversationKindEnum | None): Direct thread or group. ``None``
             infers it from the headcount. A ``DIRECT`` request for a
             pair that already has one returns the existing conversation
             instead of a second.
@@ -369,7 +369,7 @@ class ConversationCreateSchema(BaseSchema):
         title="Participant ids",
         description="Users to add to the conversation.",
     )
-    kind: ConversationKind | None = Field(
+    kind: ConversationKindEnum | None = Field(
         default=None,
         title="Kind",
         description=(
@@ -430,7 +430,7 @@ class ConversationResponseSchema(BaseSchema):
 
     Attributes:
         id (UUID): The conversation id.
-        kind (ConversationKind): Direct thread or group.
+        kind (ConversationKindEnum): Direct thread or group.
         title (str | None): The title, if any.
         description (str | None): The subject text, if any.
         avatar_path (str | None): Storage key of the picture.
@@ -445,7 +445,7 @@ class ConversationResponseSchema(BaseSchema):
     """
 
     id: UUID
-    kind: ConversationKind = ConversationKind.DIRECT
+    kind: ConversationKindEnum = ConversationKindEnum.DIRECT
     title: str | None = None
     description: str | None = None
     avatar_path: str | None = None

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from tempest_fastapi_sdk.checks.messages import CheckLevel, CheckMessage
+from tempest_fastapi_sdk.checks.messages import CheckLevelEnum, CheckMessage
 
 #: A check: called with the context (usually the settings object, or
 #: ``None``) and returning any number of messages. Sync only.
@@ -158,7 +158,7 @@ def run_system_checks(
     context: Any = None,
     *,
     tags: Iterable[str] | None = None,
-    fail_level: CheckLevel = CheckLevel.ERROR,
+    fail_level: CheckLevelEnum = CheckLevelEnum.ERROR,
     registry: CheckRegistry | None = None,
 ) -> list[CheckMessage]:
     """Run checks and raise if any reaches ``fail_level``.
@@ -170,7 +170,7 @@ def run_system_checks(
     Args:
         context (Any): Passed to every check (usually the settings).
         tags (Iterable[str] | None): Optional tag filter.
-        fail_level (CheckLevel): The threshold that makes the run fail.
+        fail_level (CheckLevelEnum): The threshold that makes the run fail.
             Defaults to ``ERROR``.
         registry (CheckRegistry | None): Registry to run; ``None`` uses
             :data:`default_registry`.

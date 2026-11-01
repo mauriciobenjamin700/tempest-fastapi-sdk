@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from tempest_fastapi_sdk import (
     LEGACY_NAMING_CONVENTION,
     NAMING_CONVENTION,
-    IntegrityViolation,
+    IntegrityViolationEnum,
     legacy_constraint_renames,
     parse_integrity_error,
 )
@@ -395,7 +395,7 @@ class TestPostgresLive:
         year = parse_integrity_error(await _violate(engine, SAME_TITLE_YEAR))
         author = parse_integrity_error(await _violate(engine, SAME_TITLE_AUTHOR))
 
-        assert {isbn.kind, year.kind, author.kind} == {IntegrityViolation.UNIQUE}
+        assert {isbn.kind, year.kind, author.kind} == {IntegrityViolationEnum.UNIQUE}
         assert (isbn.constraint, isbn.columns) == ("uq_catalog_isbn", ("isbn",))
         assert (year.constraint, year.columns) == (
             "uq_catalog_title_release_year",

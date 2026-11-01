@@ -16,16 +16,16 @@ conversation that cannot be created twice for the same pair.
 """
 
 from tempest_fastapi_sdk.chat.constants import (
-    ConversationKind as ConversationKind,
+    ConversationKindEnum as ConversationKindEnum,
 )
 from tempest_fastapi_sdk.chat.constants import (
-    MessageKind as MessageKind,
+    MessageKindEnum as MessageKindEnum,
 )
 from tempest_fastapi_sdk.chat.constants import (
-    ParticipantRole as ParticipantRole,
+    ParticipantRoleEnum as ParticipantRoleEnum,
 )
 from tempest_fastapi_sdk.chat.constants import (
-    SystemEvent as SystemEvent,
+    SystemEventEnum as SystemEventEnum,
 )
 from tempest_fastapi_sdk.chat.models import (
     BaseConversationModel as BaseConversationModel,
@@ -146,23 +146,23 @@ __all__: list[str] = [
     "BaseMessageReactionModel",
     "ChatService",
     "ConversationCreateSchema",
-    "ConversationKind",
+    "ConversationKindEnum",
     "ConversationResponseSchema",
     "ConversationUpdateSchema",
     "ForwardSchema",
     "MarkReadSchema",
     "MessageCreateSchema",
     "MessageEditSchema",
-    "MessageKind",
+    "MessageKindEnum",
     "MessageResponseSchema",
     "ParticipantPreferencesSchema",
     "ParticipantResponseSchema",
-    "ParticipantRole",
+    "ParticipantRoleEnum",
     "ReactionCreateSchema",
     "ReactionSummarySchema",
     "ReceiptCountsSchema",
     "ReplyPreviewSchema",
-    "SystemEvent",
+    "SystemEventEnum",
     "make_chat_router",
     "make_conversation_model",
     "make_conversation_participant_model",

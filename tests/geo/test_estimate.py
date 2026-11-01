@@ -7,7 +7,7 @@ import pytest
 from tempest_fastapi_sdk.geo import (
     DEFAULT_MODE_DURATION_FACTORS,
     Coordinate,
-    TravelMode,
+    TravelModeEnum,
     duration_factor,
     estimate_travel,
     haversine_km,
@@ -22,19 +22,19 @@ class TestDurationFactor:
 
     def test_car_is_one(self) -> None:
         """A car is the baseline (factor 1.0)."""
-        assert duration_factor(TravelMode.CAR) == 1.0
+        assert duration_factor(TravelModeEnum.CAR) == 1.0
 
     def test_bus_is_slower(self) -> None:
         """A bus takes longer than a car."""
-        assert duration_factor(TravelMode.BUS) > 1.0
+        assert duration_factor(TravelModeEnum.BUS) > 1.0
 
     def test_custom_table_overrides(self) -> None:
         """A caller-supplied table wins over the default."""
-        assert duration_factor(TravelMode.CAR, {TravelMode.CAR: 2.0}) == 2.0
+        assert duration_factor(TravelModeEnum.CAR, {TravelModeEnum.CAR: 2.0}) == 2.0
 
     def test_unknown_mode_falls_back_to_one(self) -> None:
         """A mode missing from the table defaults to 1.0."""
-        assert duration_factor(TravelMode.BUS, {}) == 1.0
+        assert duration_factor(TravelModeEnum.BUS, {}) == 1.0
 
 
 class TestEstimateTravel:
@@ -53,19 +53,21 @@ class TestEstimateTravel:
 
     def test_bus_slower_than_car_same_distance(self) -> None:
         """Bus and car share distance but the bus takes longer."""
-        car = estimate_travel(SAO_PAULO, RIO, TravelMode.CAR)
-        bus = estimate_travel(SAO_PAULO, RIO, TravelMode.BUS)
+        car = estimate_travel(SAO_PAULO, RIO, TravelModeEnum.CAR)
+        bus = estimate_travel(SAO_PAULO, RIO, TravelModeEnum.BUS)
         assert bus.distance_km == pytest.approx(car.distance_km)
         assert bus.duration_minutes > car.duration_minutes
 
     def test_duration_matches_speed_and_factor(self) -> None:
         """Duration equals distance/speed scaled by the mode factor."""
-        estimate = estimate_travel(SAO_PAULO, RIO, TravelMode.BUS, car_speed_kmh=60.0)
+        estimate = estimate_travel(
+            SAO_PAULO, RIO, TravelModeEnum.BUS, car_speed_kmh=60.0
+        )
         expected = (
             estimate.distance_km
             / 60.0
             * 60.0
-            * DEFAULT_MODE_DURATION_FACTORS[TravelMode.BUS]
+            * DEFAULT_MODE_DURATION_FACTORS[TravelModeEnum.BUS]
         )
         assert estimate.duration_minutes == pytest.approx(expected)
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from tempest_fastapi_sdk.geo.enums import TravelMode
+from tempest_fastapi_sdk.geo.enums import TravelModeEnum
 from tempest_fastapi_sdk.geo.estimate import duration_factor
 from tempest_fastapi_sdk.geo.polyline import decode_polyline
 from tempest_fastapi_sdk.geo.schemas import (
@@ -35,12 +35,12 @@ DEFAULT_OSRM_BASE_URL: str = "https://router.project-osrm.org"
 # the ``driving`` profile, so every mode maps to it by default and non-car
 # modes are derived by scaling the car duration. Self-host OSRM with
 # ``foot``/``bike`` profiles and override this map for true per-mode routes.
-DEFAULT_MODE_PROFILES: dict[TravelMode, str] = {
-    TravelMode.CAR: "driving",
-    TravelMode.MOTORCYCLE: "driving",
-    TravelMode.BUS: "driving",
-    TravelMode.BICYCLE: "driving",
-    TravelMode.PEDESTRIAN: "driving",
+DEFAULT_MODE_PROFILES: dict[TravelModeEnum, str] = {
+    TravelModeEnum.CAR: "driving",
+    TravelModeEnum.MOTORCYCLE: "driving",
+    TravelModeEnum.BUS: "driving",
+    TravelModeEnum.BICYCLE: "driving",
+    TravelModeEnum.PEDESTRIAN: "driving",
 }
 
 
@@ -53,14 +53,14 @@ class RoutingBackend(Protocol):
         origin: Coordinate,
         destination: Coordinate,
         *,
-        mode: TravelMode = TravelMode.CAR,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
     ) -> TravelEstimate:
         """Return a road :class:`TravelEstimate` for the given trip.
 
         Args:
             origin (Coordinate): Where the trip starts.
             destination (Coordinate): Where it ends.
-            mode (TravelMode): The travel mode to estimate for.
+            mode (TravelModeEnum): The travel mode to estimate for.
 
         Returns:
             TravelEstimate: Distance and duration for that leg.
@@ -80,8 +80,8 @@ class OSRMBackend:
         *,
         http_client: httpx.AsyncClient,
         base_url: str = DEFAULT_OSRM_BASE_URL,
-        mode_duration_factors: dict[TravelMode, float] | None = None,
-        mode_profiles: dict[TravelMode, str] | None = None,
+        mode_duration_factors: dict[TravelModeEnum, float] | None = None,
+        mode_profiles: dict[TravelModeEnum, str] | None = None,
     ) -> None:
         """Initialize the backend.
 
@@ -96,10 +96,12 @@ class OSRMBackend:
         """
         self._http: httpx.AsyncClient = http_client
         self.base_url: str = base_url.rstrip("/")
-        self._factors: dict[TravelMode, float] | None = mode_duration_factors
-        self._profiles: dict[TravelMode, str] = mode_profiles or DEFAULT_MODE_PROFILES
+        self._factors: dict[TravelModeEnum, float] | None = mode_duration_factors
+        self._profiles: dict[TravelModeEnum, str] = (
+            mode_profiles or DEFAULT_MODE_PROFILES
+        )
 
-    def _profile(self, mode: TravelMode) -> str:
+    def _profile(self, mode: TravelModeEnum) -> str:
         """Return the OSRM profile for ``mode`` (defaults to ``driving``)."""
         return self._profiles.get(mode, "driving")
 
@@ -108,7 +110,7 @@ class OSRMBackend:
         origin: Coordinate,
         destination: Coordinate,
         *,
-        mode: TravelMode = TravelMode.CAR,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
         with_geometry: bool = False,
     ) -> TravelEstimate:
         """Fetch a real road route and scale it for the requested mode.
@@ -179,7 +181,7 @@ class OSRMBackend:
         sources: list[Coordinate],
         destinations: list[Coordinate] | None = None,
         *,
-        mode: TravelMode = TravelMode.CAR,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
     ) -> DistanceMatrix:
         """Fetch a many-to-many distance/duration matrix in one request.
 

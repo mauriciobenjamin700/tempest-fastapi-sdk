@@ -31,7 +31,7 @@ from tempest_fastapi_sdk import BaseModel, BaseRepository, BaseUserModel
 from tempest_fastapi_sdk.chat import (
     ChatService,
     MessageCreateSchema,
-    MessageKind,
+    MessageKindEnum,
     make_conversation_model,
     make_conversation_participant_model,
     make_message_attachment_model,
@@ -183,14 +183,16 @@ class TestDocumentedMigration:
             legacy: Any = await service.post_message(
                 conversation.id,
                 bruno,
-                MessageCreateSchema(kind=MessageKind.IMAGE, attachment_ids=[legacy_id]),
+                MessageCreateSchema(
+                    kind=MessageKindEnum.IMAGE, attachment_ids=[legacy_id]
+                ),
             )
             with pytest.raises(NotFoundException):
                 await service.post_message(
                     conversation.id,
                     bruno,
                     MessageCreateSchema(
-                        kind=MessageKind.IMAGE,
+                        kind=MessageKindEnum.IMAGE,
                         attachment_ids=[owned.id],
                     ),
                 )

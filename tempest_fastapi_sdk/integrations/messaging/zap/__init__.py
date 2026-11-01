@@ -117,13 +117,13 @@ if TYPE_CHECKING:
         ZapInboundMessageMixin as ZapInboundMessageMixin,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
-        ZapInboundOutcome as ZapInboundOutcome,
+        ZapInboundOutcomeEnum as ZapInboundOutcomeEnum,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
         ZapInbox as ZapInbox,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.inbox import (
-        ZapStatusOutcome as ZapStatusOutcome,
+        ZapStatusOutcomeEnum as ZapStatusOutcomeEnum,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.router import (
         ZapInboundHandler as ZapInboundHandler,
@@ -148,16 +148,16 @@ if TYPE_CHECKING:
         ZAP_WEBHOOK_SIGNATURE_PREFIX as ZAP_WEBHOOK_SIGNATURE_PREFIX,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
-        ZapInboundMediaType as ZapInboundMediaType,
+        ZapInboundMediaTypeEnum as ZapInboundMediaTypeEnum,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
         ZapInboundMessage as ZapInboundMessage,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
-        ZapJidServer as ZapJidServer,
+        ZapJidServerEnum as ZapJidServerEnum,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
-        ZapOutboundKind as ZapOutboundKind,
+        ZapOutboundKindEnum as ZapOutboundKindEnum,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
         ZapStatusCallback as ZapStatusCallback,
@@ -166,7 +166,7 @@ if TYPE_CHECKING:
         ZapWebhookDelivery as ZapWebhookDelivery,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
-        ZapWebhookEvent as ZapWebhookEvent,
+        ZapWebhookEventEnum as ZapWebhookEventEnum,
     )
     from tempest_fastapi_sdk.integrations.messaging.zap.webhooks import (
         is_forward_transition as is_forward_transition,
@@ -185,21 +185,21 @@ _HAND_WRITTEN: dict[str, str] = {
     "ZapDeliveryMixin": "inbox",
     "ZapInbox": "inbox",
     "ZapInboundMessageMixin": "inbox",
-    "ZapInboundOutcome": "inbox",
-    "ZapStatusOutcome": "inbox",
+    "ZapInboundOutcomeEnum": "inbox",
+    "ZapStatusOutcomeEnum": "inbox",
     "ZAP_INBOUND_EVENT": "webhooks",
     "ZAP_WEBHOOK_SIGNATURE_HEADER": "webhooks",
     "ZAP_WEBHOOK_SIGNATURE_PREFIX": "webhooks",
     "ZapInboundHandler": "router",
-    "ZapInboundMediaType": "webhooks",
+    "ZapInboundMediaTypeEnum": "webhooks",
     "ZapInboundMessage": "webhooks",
-    "ZapJidServer": "webhooks",
-    "ZapOutboundKind": "webhooks",
+    "ZapJidServerEnum": "webhooks",
+    "ZapOutboundKindEnum": "webhooks",
     "ZapStatusCallback": "webhooks",
     "ZapStatusHandler": "router",
     "ZapWebhookAckSchema": "router",
     "ZapWebhookDelivery": "webhooks",
-    "ZapWebhookEvent": "webhooks",
+    "ZapWebhookEventEnum": "webhooks",
     "is_forward_transition": "webhooks",
     "make_zap_webhook_dependency": "webhooks",
     "make_zap_webhook_router": "router",
@@ -333,19 +333,19 @@ __all__: list[str] = [
     "ZapClient",
     "ZapDeliveryMixin",
     "ZapInboundHandler",
-    "ZapInboundMediaType",
+    "ZapInboundMediaTypeEnum",
     "ZapInboundMessage",
     "ZapInboundMessageMixin",
-    "ZapInboundOutcome",
+    "ZapInboundOutcomeEnum",
     "ZapInbox",
-    "ZapJidServer",
-    "ZapOutboundKind",
+    "ZapJidServerEnum",
+    "ZapOutboundKindEnum",
     "ZapStatusCallback",
     "ZapStatusHandler",
-    "ZapStatusOutcome",
+    "ZapStatusOutcomeEnum",
     "ZapWebhookAckSchema",
     "ZapWebhookDelivery",
-    "ZapWebhookEvent",
+    "ZapWebhookEventEnum",
     "is_forward_transition",
     "make_zap_webhook_dependency",
     "make_zap_webhook_router",

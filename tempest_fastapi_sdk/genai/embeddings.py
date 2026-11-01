@@ -23,7 +23,7 @@ from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
     precision_kwarg,
 )
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
@@ -288,7 +288,7 @@ class Embedder:
     Attributes:
         model_id (str): The HuggingFace model id.
         device (str): Resolved device.
-        dtype (ModelDtype): Resolved compute precision.
+        dtype (ModelDtypeEnum): Resolved compute precision.
         idle_unload_seconds (float | None): Idle threshold for
             :meth:`unload_if_idle`.
         query_prefix (str): Prepended by :meth:`embed_query`.
@@ -300,7 +300,7 @@ class Embedder:
         model_id: str,
         *,
         device: str = "auto",
-        dtype: str | ModelDtype = "auto",
+        dtype: str | ModelDtypeEnum = "auto",
         cache: EmbeddingCache | AsyncEmbeddingCache | None = None,
         normalize: bool = False,
         cache_dir: str | None = None,
@@ -319,7 +319,7 @@ class Embedder:
         Args:
             model_id (str): HuggingFace model id.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
-            dtype (str | ModelDtype): Compute precision or ``"auto"``.
+            dtype (str | ModelDtypeEnum): Compute precision or ``"auto"``.
             cache (EmbeddingCache | AsyncEmbeddingCache | None): Optional
                 per-text vector cache (sync like
                 :class:`InMemoryEmbeddingCache`, or async like
@@ -367,9 +367,9 @@ class Embedder:
         self.passage_prefix = passage_prefix
         self.device = resolve_device(device, hardware)
         self.dtype = (
-            ModelDtype(auto_dtype_name(self.device))
+            ModelDtypeEnum(auto_dtype_name(self.device))
             if dtype == "auto"
-            else ModelDtype(dtype)
+            else ModelDtypeEnum(dtype)
         )
         self.cache: EmbeddingCache | AsyncEmbeddingCache | None = cache
         self.normalize = normalize

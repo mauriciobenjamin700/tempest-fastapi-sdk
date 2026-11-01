@@ -15,7 +15,7 @@ from tempest_fastapi_sdk.db import (
     AUDIT_REDACTED,
     AUDIT_USER_AGENT_MAX_LENGTH,
     AsyncDatabaseManager,
-    AuditAction,
+    AuditActionEnum,
     AuditRequestContext,
     AuditRequestMixin,
     BaseAuditLogModel,
@@ -96,7 +96,7 @@ def test_for_create_snapshots_after() -> None:
     """A create entry stores the new row under ``after``."""
     gadget = _GadgetModel(name="new")
     entry = _AuditLogModel.for_create(gadget, actor="alice")
-    assert entry.action == AuditAction.CREATE.value
+    assert entry.action == AuditActionEnum.CREATE.value
     assert entry.actor == "alice"
     assert entry.changes["after"]["name"] == "new"
     assert entry.entity == "_GadgetModel"
@@ -106,7 +106,7 @@ def test_for_delete_snapshots_before() -> None:
     """A delete entry stores the removed row under ``before``."""
     gadget = _GadgetModel(name="gone")
     entry = _AuditLogModel.for_delete(gadget)
-    assert entry.action == AuditAction.DELETE.value
+    assert entry.action == AuditActionEnum.DELETE.value
     assert entry.changes["before"]["name"] == "gone"
 
 
@@ -128,7 +128,7 @@ async def test_add_audited_writes_both_rows(
         rows = (await session.execute(select(_AuditLogModel))).scalars().all()
         assert len(rows) == 1
         entry = rows[0]
-        assert entry.action == AuditAction.CREATE.value
+        assert entry.action == AuditActionEnum.CREATE.value
         assert entry.actor == "bob"
         assert entry.entity_id == str(gadget.id)
         assert entry.changes["after"]["name"] == "widget-1"
@@ -155,7 +155,7 @@ async def test_update_audited_records_diff(
             (
                 await session.execute(
                     select(_AuditLogModel).where(
-                        _AuditLogModel.action == AuditAction.UPDATE.value,
+                        _AuditLogModel.action == AuditActionEnum.UPDATE.value,
                     )
                 )
             )
@@ -187,7 +187,7 @@ async def test_delete_audited_removes_row_and_logs(
             (
                 await session.execute(
                     select(_AuditLogModel).where(
-                        _AuditLogModel.action == AuditAction.DELETE.value,
+                        _AuditLogModel.action == AuditActionEnum.DELETE.value,
                     )
                 )
             )
@@ -356,7 +356,7 @@ class TestAuditRequestColumns:
             )
 
         [entry] = await _origin_rows(audit_db)
-        assert entry.action == AuditAction.CREATE.value
+        assert entry.action == AuditActionEnum.CREATE.value
         assert entry.event == "consent.granted"
         assert entry.ip == "203.0.113.7"
         assert entry.user_agent == "pytest/1.0"
@@ -454,7 +454,7 @@ class TestRecordEvent:
                 actor="alice",
                 ip="203.0.113.7",
             )
-            assert entry.action == AuditAction.EVENT.value
+            assert entry.action == AuditActionEnum.EVENT.value
 
         [row] = await _origin_rows(audit_db)
         assert row.action == "event"

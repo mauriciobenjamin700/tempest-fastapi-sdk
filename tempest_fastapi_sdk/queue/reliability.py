@@ -33,7 +33,7 @@ from tempest_fastapi_sdk.queue.dedup import ConcurrentDeliveryError
 from tempest_fastapi_sdk.queue.topology import (
     DeadLetterSpec,
     QueueSpec,
-    QueueType,
+    QueueTypeEnum,
 )
 from tempest_fastapi_sdk.tasks.observability import DeadLetter, DeadLetterSink
 
@@ -171,7 +171,7 @@ def retry_queues(
     retry_exchange: str,
     main_exchange: str,
     dead_exchange: str,
-    queue_type: QueueType = QueueType.CLASSIC,
+    queue_type: QueueTypeEnum = QueueTypeEnum.CLASSIC,
 ) -> RetryTopology:
     """Build the delayed-retry topology for ``channel``.
 
@@ -196,7 +196,7 @@ def retry_queues(
         main_exchange (str): Exchange the retry queue returns messages
             to. Must route back to ``channel``.
         dead_exchange (str): Exchange the terminal queue is fed from.
-        queue_type (QueueType): Queue implementation for all three.
+        queue_type (QueueTypeEnum): Queue implementation for all three.
 
     Returns:
         RetryTopology: The three specs, ready to declare and subscribe.

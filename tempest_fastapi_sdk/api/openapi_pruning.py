@@ -5,7 +5,7 @@ to ``components.schemas`` for each ``Enum`` it finds in an annotation
 (``fastapi._compat.v2.get_flat_models_from_field``), whether or not any
 ``$ref`` ends up pointing at it. A field whose JSON schema inlines a
 narrower enum — :func:`~tempest_fastapi_sdk.utils.fields.image_media_type_field`
-publishes only the accepted ``ImageMediaType`` values — therefore leaves
+publishes only the accepted ``ImageMediaTypeEnum`` values — therefore leaves
 the full enum behind as an orphan component, and a client generator turns
 it into a dead type.
 

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tempest_fastapi_sdk.slides.exceptions import missing_extra_message
-from tempest_fastapi_sdk.slides.schemas import AnswerKey, SlideDeck, SlideTheme
+from tempest_fastapi_sdk.slides.schemas import AnswerKey, SlideDeck, SlideThemeEnum
 from tempest_fastapi_sdk.slides.vocabulary import AnswerKeyVocabulary, SlideVocabulary
 
 if TYPE_CHECKING:
@@ -89,13 +89,13 @@ def _stylesheet(name: str) -> str:
 
 
 def write_slides_html(
-    deck: SlideDeck, *, theme: SlideTheme, vocabulary: SlideVocabulary
+    deck: SlideDeck, *, theme: SlideThemeEnum, vocabulary: SlideVocabulary
 ) -> str:
     """Write a deck as a standalone HTML document, one 1280x720 frame per slide.
 
     Args:
         deck (SlideDeck): The deck.
-        theme (SlideTheme): Colour scheme.
+        theme (SlideThemeEnum): Colour scheme.
         vocabulary (SlideVocabulary): Labels and ``<html lang>``.
 
     Returns:
@@ -107,20 +107,20 @@ def write_slides_html(
     template = _environment().get_template("slides.html")
     return template.render(
         deck=deck,
-        theme=SlideTheme(theme).value,
+        theme=SlideThemeEnum(theme).value,
         vocabulary=vocabulary,
         styles=_stylesheet("slide_styles.css"),
     )
 
 
 def write_answer_key_html(
-    answer_key: AnswerKey, *, theme: SlideTheme, vocabulary: AnswerKeyVocabulary
+    answer_key: AnswerKey, *, theme: SlideThemeEnum, vocabulary: AnswerKeyVocabulary
 ) -> str:
     """Write an answer key as a standalone HTML document, A4 pages.
 
     Args:
         answer_key (AnswerKey): The answer key.
-        theme (SlideTheme): Colour scheme.
+        theme (SlideThemeEnum): Colour scheme.
         vocabulary (AnswerKeyVocabulary): Labels and ``<html lang>``.
 
     Returns:
@@ -132,7 +132,7 @@ def write_answer_key_html(
     template = _environment().get_template("answer_key.html")
     return template.render(
         answer_key=answer_key,
-        theme=SlideTheme(theme).value,
+        theme=SlideThemeEnum(theme).value,
         vocabulary=vocabulary,
         styles=_stylesheet("answer_key_styles.css"),
     )

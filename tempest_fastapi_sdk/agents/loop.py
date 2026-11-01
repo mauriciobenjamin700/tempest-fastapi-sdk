@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from tempest_fastapi_sdk.agents.schemas import AgentArtifact, AgentRun, StopReason
+from tempest_fastapi_sdk.agents.schemas import AgentArtifact, AgentRun, StopReasonEnum
 from tempest_fastapi_sdk.agents.tools import AgentContext
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
@@ -434,9 +434,9 @@ def succeeded(run: AgentRun) -> bool:
 
     Returns:
         bool: ``True`` when the stop reason is
-        :attr:`~tempest_fastapi_sdk.agents.StopReason.COMPLETED`.
+        :attr:`~tempest_fastapi_sdk.agents.StopReasonEnum.COMPLETED`.
     """
-    return run.stop_reason == StopReason.COMPLETED
+    return run.stop_reason == StopReasonEnum.COMPLETED
 
 
 __all__: list[str] = [

@@ -228,7 +228,7 @@ Toda aplicação brasileira acaba precisando de um `<select>` de estado e cidade
 A UF é uma `StrEnum` e cada estado conhece sua macro-região oficial do IBGE:
 
 ```python
-from tempest_fastapi_sdk import UF, Region, list_states, get_state, states_by_region
+from tempest_fastapi_sdk import UFEnum, RegionEnum, list_states, get_state, states_by_region
 
 
 # Todos os 27 estados, ordenados pela sigla.
@@ -241,15 +241,15 @@ print(sp.uf, sp.name, sp.region)        # SP São Paulo Sudeste
 print(len(sp.cities), sp.cities[:2])    # 645 ['Adamantina', 'Adolfo']
 
 # Agrupando por região.
-sudeste = states_by_region(Region.SOUTHEAST)
+sudeste = states_by_region(RegionEnum.SOUTHEAST)
 print([state.uf.value for state in sudeste])  # ['ES', 'MG', 'RJ', 'SP']
 ```
 
-Cada item é um `StateBR` (`uf: UF`, `name: str`, `region: Region`, `cities: list[str]`), pronto pra retornar direto de um endpoint.
+Cada item é um `StateBR` (`uf: UFEnum`, `name: str`, `region: RegionEnum`, `cities: list[str]`), pronto pra retornar direto de um endpoint.
 
 ### Validando UF e cidade em um schema
 
-`UFField` aceita a sigla em qualquer caixa (`"sp"`, `" RJ "`) e devolve um membro de `UF`. `CityNameField` só apara espaços — a validação cruzada "esta cidade existe nesta UF" é regra de negócio, então roda no service com `is_valid_city` / `normalize_city`:
+`UFField` aceita a sigla em qualquer caixa (`"sp"`, `" RJ "`) e devolve um membro de `UFEnum`. `CityNameField` só apara espaços — a validação cruzada "esta cidade existe nesta UF" é regra de negócio, então roda no service com `is_valid_city` / `normalize_city`:
 
 ```python
 from tempest_fastapi_sdk import BaseSchema
@@ -264,11 +264,11 @@ class AddressCreateSchema(BaseSchema):
 ```
 
 ```python
-from tempest_fastapi_sdk import UF, is_valid_city, normalize_city
+from tempest_fastapi_sdk import UFEnum, is_valid_city, normalize_city
 from tempest_fastapi_sdk.exceptions import ValidationException
 
 
-def validate_address(uf: UF, city: str) -> str:
+def validate_address(uf: UFEnum, city: str) -> str:
     """Garante que a cidade pertence à UF e devolve o nome canônico.
 
     Args:
@@ -340,7 +340,7 @@ city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
 | Função | O que faz |
 | --- | --- |
 | `is_valid_uf(value)` | `True` se a sigla existe (qualquer caixa/espaço). |
-| `normalize_uf(value)` | Devolve o `UF`; levanta `ValueError` se inválido. |
+| `normalize_uf(value)` | Devolve o `UFEnum`; levanta `ValueError` se inválido. |
 | `cities_by_uf(uf)` | Lista de municípios da UF, ordenada. |
 | `is_valid_city(uf, city)` | `True` se a cidade pertence à UF (ignora acentos/caixa). |
 | `normalize_city(uf, city)` | Nome canônico do município; levanta `ValueError` se não existe. |
@@ -350,7 +350,7 @@ city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
 
 #### Recapitulando
 
-- `UF` (StrEnum, 27 siglas) + `Region` (5 macro-regiões do IBGE).
+- `UFEnum` (StrEnum, 27 siglas) + `RegionEnum` (5 macro-regiões do IBGE).
 - `StateBR` / `CityBR` para respostas tipadas; `ChoiceBR` (`value`/`label`) para dropdowns.
 - `list_states`, `get_state`, `cities_by_uf`, `states_by_region` para consultar a tabela embutida.
 - `uf_choices`, `region_choices`, `city_choices` para `<select>` do frontend.
@@ -528,7 +528,7 @@ Todo helper tem sua própria receita — esta seção é o mapa rápido:
 | `LogUtils` + `configure_logging` | [Receita de logging estruturado & request IDs](logging.md) |
 | `MetricsUtils` (CPU/memória/disco/GPU) | [Receita de métricas do sistema](metrics.md) |
 | `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-telefone) |
-| `UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`, `region_choices`, `city_choices`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [Estados e municípios](#estados-e-municipios) |
+| `UFEnum`, `RegionEnum`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`, `region_choices`, `city_choices`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [Estados e municípios](#estados-e-municipios) |
 
 ## Recap
 

@@ -48,7 +48,7 @@ from tempest_fastapi_sdk.hostbridge.schemas import (
     HostPdfSchema,
     PowerActionSchema,
 )
-from tempest_fastapi_sdk.pdf.pages import PdfExtractor
+from tempest_fastapi_sdk.pdf.pages import PdfExtractorEnum
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -148,7 +148,7 @@ def make_hostbridge_router(
     )
     async def read_pdf(
         path: Annotated[str, Query(min_length=1)],
-        extractor: PdfExtractor = PdfExtractor.TEXT,
+        extractor: PdfExtractorEnum = PdfExtractorEnum.TEXT,
         password: str | None = None,
     ) -> HostPdfSchema:
         """Read a PDF on the host, page by page."""

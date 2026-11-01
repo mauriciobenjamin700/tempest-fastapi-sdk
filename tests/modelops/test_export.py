@@ -9,9 +9,9 @@ import pytest
 
 from tempest_fastapi_sdk.modelops import (
     ORT_CONFIG_SUFFIXES,
-    GraphOptimizationLevel,
-    ModelFormat,
-    OrtOptimizationStyle,
+    GraphOptimizationLevelEnum,
+    ModelFormatEnum,
+    OrtOptimizationStyleEnum,
     export_onnx_to_ort,
     optimize_onnx_graph,
 )
@@ -27,10 +27,10 @@ class TestExportOnnxToOrt:
         written = Path(result.output_path)
         assert written.suffix == ".ort"
         assert written.parent == output
-        assert result.format == ModelFormat.ORT
+        assert result.format == ModelFormatEnum.ORT
         assert result.source_path == str(tiny_onnx)
         assert result.output_size_mb > 0.0
-        assert result.optimization_style == OrtOptimizationStyle.FIXED
+        assert result.optimization_style == OrtOptimizationStyleEnum.FIXED
         assert result.extra_files
         assert any(
             config.endswith(ORT_CONFIG_SUFFIXES[0]) for config in result.extra_files
@@ -41,11 +41,11 @@ class TestExportOnnxToOrt:
         results = export_onnx_to_ort(
             tiny_onnx,
             tmp_path / "runtime",
-            optimization_style=OrtOptimizationStyle.RUNTIME,
+            optimization_style=OrtOptimizationStyleEnum.RUNTIME,
         )
         assert results
         assert all(
-            result.optimization_style == OrtOptimizationStyle.RUNTIME
+            result.optimization_style == OrtOptimizationStyleEnum.RUNTIME
             for result in results
         )
 
@@ -56,7 +56,7 @@ class TestExportOnnxToOrt:
         [result] = export_onnx_to_ort(
             tiny_onnx, tmp_path / "str", optimization_style="fixed"
         )
-        assert result.optimization_style == OrtOptimizationStyle.FIXED
+        assert result.optimization_style == OrtOptimizationStyleEnum.FIXED
 
     def test_converts_a_whole_directory(
         self, tiny_onnx: Path, bigger_onnx: Path, tmp_path: Path
@@ -87,7 +87,7 @@ class TestOptimizeOnnxGraph:
         destination = tmp_path / "nested" / "tiny.opt.onnx"
         result = optimize_onnx_graph(tiny_onnx, destination)
         assert destination.is_file()
-        assert result.format == ModelFormat.ONNX
+        assert result.format == ModelFormatEnum.ONNX
         assert result.output_size_mb > 0.0
         assert result.size_ratio > 0.0
         assert result.opset == 17
@@ -103,11 +103,11 @@ class TestOptimizeOnnxGraph:
         onnxruntime = pytest.importorskip("onnxruntime")
         from tempest_fastapi_sdk.modelops.export import _GRAPH_LEVEL_ATTRS
 
-        for level in GraphOptimizationLevel:
+        for level in GraphOptimizationLevelEnum:
             attribute = _GRAPH_LEVEL_ATTRS[level]
             assert attribute.startswith("ORT_")
-            if level is not GraphOptimizationLevel.LAYOUT:
-                assert hasattr(onnxruntime.GraphOptimizationLevel, attribute)
+            if level is not GraphOptimizationLevelEnum.LAYOUT:
+                assert hasattr(onnxruntime.GraphOptimizationLevelEnum, attribute)
 
     def test_missing_input_raises(self, tmp_path: Path) -> None:
         pytest.importorskip("onnxruntime")
@@ -131,5 +131,5 @@ class TestExportTorchToOnnx:
             dynamic_axes={"features": {0: "batch"}},
         )
         assert result.opset == 17
-        assert result.format == ModelFormat.ONNX
+        assert result.format == ModelFormatEnum.ONNX
         assert analyze_onnx(destination).n_parameters == 16 * 4 + 4

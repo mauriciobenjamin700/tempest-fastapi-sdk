@@ -32,8 +32,8 @@ from tempest_fastapi_sdk.admin import (
     TaskTrigger,
 )
 from tempest_fastapi_sdk.tasks import (
-    CronOffset,
-    JobStatus,
+    CronOffsetEnum,
+    JobStatusEnum,
     JobStore,
     TaskQueue,
     make_job_model,
@@ -347,7 +347,7 @@ class TestRunDetail:
             )
         assert response.status_code == 303
         assert response.headers["location"] == f"/admin/tasks/{job.id}"
-        assert (await store.get(job.id)).status == JobStatus.CANCELLED.value
+        assert (await store.get(job.id)).status == JobStatusEnum.CANCELLED.value
 
 
 class TestAccess:
@@ -373,7 +373,7 @@ def _real_queue() -> TaskQueue:
     """
     tq: TaskQueue = TaskQueue(InMemoryBroker())
 
-    @tq.cron("0 2 * * *", cron_offset=CronOffset.BRASILIA, name="backup")
+    @tq.cron("0 2 * * *", cron_offset=CronOffsetEnum.BRASILIA, name="backup")
     async def backup() -> None:
         return None
 

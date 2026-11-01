@@ -20,7 +20,7 @@ from httpx import ASGITransport, AsyncClient
 
 from tempest_fastapi_sdk import (
     AdminSite,
-    AdminSurface,
+    AdminSurfaceEnum,
     AsyncDatabaseManager,
     BaseUserModel,
     UserModelAuthBackend,
@@ -30,7 +30,7 @@ from tempest_fastapi_sdk.admin import (
     StorageBrowserError,
     StorageBrowserService,
     StorageObjectMissingError,
-    StoragePreview,
+    StoragePreviewEnum,
     check_storage_key,
     storage_preview_for,
 )
@@ -188,22 +188,22 @@ class TestKeysAndPreview:
     @pytest.mark.parametrize(
         ("content_type", "key", "expected"),
         [
-            ("image/png", "a.png", StoragePreview.IMAGE),
-            ("video/mp4", "a.mp4", StoragePreview.VIDEO),
-            ("audio/mpeg", "a.mp3", StoragePreview.AUDIO),
-            ("application/pdf", "a.pdf", StoragePreview.PDF),
-            ("text/plain; charset=utf-8", "a.txt", StoragePreview.TEXT),
-            ("application/json", "a.json", StoragePreview.TEXT),
-            ("application/octet-stream", "a.pdf", StoragePreview.PDF),
-            (None, "notes.md", StoragePreview.TEXT),
-            ("application/zip", "a.zip", StoragePreview.NONE),
+            ("image/png", "a.png", StoragePreviewEnum.IMAGE),
+            ("video/mp4", "a.mp4", StoragePreviewEnum.VIDEO),
+            ("audio/mpeg", "a.mp3", StoragePreviewEnum.AUDIO),
+            ("application/pdf", "a.pdf", StoragePreviewEnum.PDF),
+            ("text/plain; charset=utf-8", "a.txt", StoragePreviewEnum.TEXT),
+            ("application/json", "a.json", StoragePreviewEnum.TEXT),
+            ("application/octet-stream", "a.pdf", StoragePreviewEnum.PDF),
+            (None, "notes.md", StoragePreviewEnum.TEXT),
+            ("application/zip", "a.zip", StoragePreviewEnum.NONE),
         ],
     )
     def test_the_preview_follows_the_type(
         self,
         content_type: str | None,
         key: str,
-        expected: StoragePreview,
+        expected: StoragePreviewEnum,
     ) -> None:
         assert storage_preview_for(content_type, key) is expected
 
@@ -212,7 +212,7 @@ class TestKeysAndPreview:
         self, content_type: str
     ) -> None:
         """SVG and HTML can run script on the admin's origin if rendered."""
-        assert storage_preview_for(content_type, "x") is StoragePreview.TEXT
+        assert storage_preview_for(content_type, "x") is StoragePreviewEnum.TEXT
 
 
 class TestService:
@@ -286,7 +286,7 @@ class TestService:
         store = _store(tmp_path)
         await store.put_object("n.json", b'{"a": 1}', content_type="application/json")
         view = await StorageBrowserService(store).describe("n.json")
-        assert view.preview is StoragePreview.TEXT
+        assert view.preview is StoragePreviewEnum.TEXT
         assert view.text == '{"a": 1}'
         assert view.editable is True
 
@@ -296,7 +296,7 @@ class TestService:
         store = _store(tmp_path)
         await store.put_object("bad.txt", b"\xff\xfe\x00", content_type="text/plain")
         view = await StorageBrowserService(store).describe("bad.txt")
-        assert view.preview is StoragePreview.NONE
+        assert view.preview is StoragePreviewEnum.NONE
         assert view.text is None
         assert view.editable is False
 
@@ -304,7 +304,7 @@ class TestService:
         store = _store(tmp_path)
         await store.put_object("log.txt", b"x" * 20, content_type="text/plain")
         view = await StorageBrowserService(store, max_text_bytes=10).describe("log.txt")
-        assert view.preview is StoragePreview.TEXT
+        assert view.preview is StoragePreviewEnum.TEXT
         assert view.text is None
         assert view.editable is False
 
@@ -548,8 +548,8 @@ class TestPages:
     async def test_a_denied_surface_is_403_and_off_the_sidebar(
         self, db: AsyncDatabaseManager, tmp_path: Path
     ) -> None:
-        def deny_storage(_: Any, surface: AdminSurface) -> bool:
-            return surface is not AdminSurface.STORAGE
+        def deny_storage(_: Any, surface: AdminSurfaceEnum) -> bool:
+            return surface is not AdminSurfaceEnum.STORAGE
 
         app = _app(
             db,

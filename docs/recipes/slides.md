@@ -225,7 +225,7 @@ Um `SlideDeck`, cinco saídas:
 import asyncio
 from pathlib import Path
 
-from tempest_fastapi_sdk.slides import SlideDeck, SlideRenderer, SlideTheme, parse_slides
+from tempest_fastapi_sdk.slides import SlideDeck, SlideRenderer, SlideThemeEnum, parse_slides
 
 
 async def main() -> None:
@@ -234,8 +234,8 @@ async def main() -> None:
     renderer = SlideRenderer(max_concurrent=2)
     Path("aula.html").write_text(renderer.html(deck), encoding="utf-8")
     Path("aula.md").write_text(renderer.markdown(deck), encoding="utf-8")
-    Path("aula.pdf").write_bytes(await renderer.pdf(deck, theme=SlideTheme.DARK))
-    Path("aula.pptx").write_bytes(await renderer.pptx(deck, theme=SlideTheme.DARK))
+    Path("aula.pdf").write_bytes(await renderer.pdf(deck, theme=SlideThemeEnum.DARK))
+    Path("aula.pptx").write_bytes(await renderer.pptx(deck, theme=SlideThemeEnum.DARK))
     Path("roteiro.docx").write_bytes(await renderer.docx(deck))
 
 
@@ -280,8 +280,8 @@ Note:
 ask the class for a real-world example first.
 ```
 
-`SlideTheme.DEFAULT` é texto escuro sobre branco com destaque azul;
-`SlideTheme.DARK`, texto claro sobre fundo ardósia. `max_concurrent` limita
+`SlideThemeEnum.DEFAULT` é texto escuro sobre branco com destaque azul;
+`SlideThemeEnum.DARK`, texto claro sobre fundo ardósia. `max_concurrent` limita
 quantos PDF, PPTX e DOCX renderizam ao mesmo tempo nesse renderizador — cada
 um é CPU numa thread, e sem teto uma rajada de pedidos ocupa todos os núcleos.
 
@@ -640,7 +640,7 @@ from tempest_fastapi_sdk.slides import (
     MarkdownPdfRenderer,
     SlideDeck,
     SlideRenderer,
-    SlideTheme,
+    SlideThemeEnum,
     SlideVocabulary,
     parse_slides,
 )
@@ -663,7 +663,7 @@ class SlideSourceSchema(BaseSchema):
     """O texto estruturado de uma aula."""
 
     text: str = Field(title="Texto", description="Fonte no formato Aula/seção/tópicos.")
-    theme: SlideTheme = Field(default=SlideTheme.DEFAULT, title="Tema")
+    theme: SlideThemeEnum = Field(default=SlideThemeEnum.DEFAULT, title="Tema")
 
 
 class MarkdownSourceSchema(BaseSchema):

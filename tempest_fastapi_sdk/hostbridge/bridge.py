@@ -65,7 +65,7 @@ from tempest_fastapi_sdk.hostbridge.shell import (
     run_powershell,
     run_subprocess,
 )
-from tempest_fastapi_sdk.pdf.pages import PdfExtractor, read_pdf_pages
+from tempest_fastapi_sdk.pdf.pages import PdfExtractorEnum, read_pdf_pages
 
 MSG_SHUTDOWN_SCHEDULED: str = "Shutdown scheduled."
 MSG_SHUTDOWN_ABORTED: str = "Shutdown aborted."
@@ -458,14 +458,14 @@ class HostBridge:
     async def read_pdf(
         self,
         raw_path: str,
-        extractor: PdfExtractor = PdfExtractor.TEXT,
+        extractor: PdfExtractorEnum = PdfExtractorEnum.TEXT,
         password: str | None = None,
     ) -> HostPdfSchema:
         """Read a PDF on the host, page by page.
 
         Args:
             raw_path (str): The file's path, in WSL or Windows form.
-            extractor (PdfExtractor): ``TEXT`` for ``pypdf``, ``LAYOUT`` for
+            extractor (PdfExtractorEnum): ``TEXT`` for ``pypdf``, ``LAYOUT`` for
                 ``pdfplumber`` — which recovers columns and tables and needs
                 the ``[pdf-layout]`` extra.
             password (str | None): Password for an encrypted document.

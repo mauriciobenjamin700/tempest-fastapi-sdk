@@ -214,13 +214,13 @@ class BaseIntEnum(_EnumHelpers, int, Enum):
     """
 
 
-class Locale(BaseStrEnum):
+class LocaleEnum(BaseStrEnum):
     """BCP-47 locale tags (``language-REGION``) as a string enum.
 
     A canonical, dependency-free list of the locales apps commonly target,
     so a service never hard-codes a bare ``"pt-BR"`` string again. Each
     member's value is the BCP-47 tag itself, so members compare equal to and
-    bind to a ``String`` column as that tag (e.g. ``Locale.PT_BR == "pt-BR"``).
+    bind to a ``String`` column as that tag (e.g. ``LocaleEnum.PT_BR == "pt-BR"``).
 
     Pair it with :class:`tempest_fastapi_sdk.LocaleColumnMixin` to add a
     ``locale`` column to a model, and with
@@ -270,34 +270,34 @@ class Locale(BaseStrEnum):
     MS_MY = "ms-MY"
 
 
-def normalize_locale_tag(value: str | Locale) -> Locale:
-    """Coerce a loose locale string into a :class:`Locale` member.
+def normalize_locale_tag(value: str | LocaleEnum) -> LocaleEnum:
+    """Coerce a loose locale string into a :class:`LocaleEnum` member.
 
     Accepts any case and either separator — ``"pt_BR"``, ``"PT-BR"``,
-    ``"pt-br"`` all resolve to :attr:`Locale.PT_BR` — and the bare primary
+    ``"pt-br"`` all resolve to :attr:`LocaleEnum.PT_BR` — and the bare primary
     subtag (``"pt"`` -> ``PT_BR``, ``"en"`` -> ``EN_US``; the first member
     declared for that subtag wins). This is the normalizer behind
     :data:`tempest_fastapi_sdk.LocaleField`, mirroring ``normalize_uf`` for
     ``UFField``.
 
     Args:
-        value (str | Locale): The raw locale value; a :class:`Locale` is
+        value (str | LocaleEnum): The raw locale value; a :class:`LocaleEnum` is
             returned unchanged.
 
     Returns:
-        Locale: The matching member.
+        LocaleEnum: The matching member.
 
     Raises:
         ValueError: If ``value`` matches no supported locale.
     """
-    if isinstance(value, Locale):
+    if isinstance(value, LocaleEnum):
         return value
     key = str(value).strip().replace("_", "-").lower()
-    for locale in Locale:
+    for locale in LocaleEnum:
         if locale.value.lower() == key:
             return locale
     primary = key.split("-", 1)[0]
-    for locale in Locale:
+    for locale in LocaleEnum:
         if locale.value.split("-", 1)[0].lower() == primary:
             return locale
     raise ValueError(f"invalid locale {value!r}")
@@ -306,6 +306,6 @@ def normalize_locale_tag(value: str | Locale) -> Locale:
 __all__: list[str] = [
     "BaseIntEnum",
     "BaseStrEnum",
-    "Locale",
+    "LocaleEnum",
     "normalize_locale_tag",
 ]

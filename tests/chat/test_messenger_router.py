@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import (
 from tempest_fastapi_sdk import BaseModel, BaseRepository, BaseUserModel
 from tempest_fastapi_sdk.chat import (
     ChatService,
-    MessageKind,
-    ParticipantRole,
+    MessageKindEnum,
+    ParticipantRoleEnum,
     make_chat_router,
     make_conversation_model,
     make_conversation_participant_model,
@@ -424,7 +424,7 @@ class TestGroupRoutes:
         )
 
         first = listed.json()["items"][0]
-        assert first["kind"] == MessageKind.SYSTEM
+        assert first["kind"] == MessageKindEnum.SYSTEM
         assert first["payload"]["event"] == "conversation_created"
 
 
@@ -465,7 +465,7 @@ class TestRoles:
         owner = next(
             p for p in response.json()["participants"] if p["user_id"] == str(ANA)
         )
-        assert owner["role"] == ParticipantRole.OWNER
+        assert owner["role"] == ParticipantRoleEnum.OWNER
 
 
 class TestOutsiderRoutes:

@@ -24,8 +24,8 @@ from pydantic import ValidationError
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     OPENPIX_WEBHOOK_PUBLIC_KEY,
     OPENPIX_WEBHOOK_SIGNATURE_HEADER,
-    OpenPixEnvironment,
-    OpenPixEvent,
+    OpenPixEnvironmentEnum,
+    OpenPixEventEnum,
     OpenPixWebhookEvent,
     cents_to_reais,
     decode_public_key,
@@ -145,12 +145,14 @@ class TestEnvironment:
 
     def test_hosts_match_the_specification_servers(self) -> None:
         """Read from the spec's ``servers`` block."""
-        assert OpenPixEnvironment.PRODUCTION.base_url == "https://api.woovi.com"
-        assert OpenPixEnvironment.SANDBOX.base_url == "https://api.woovi-sandbox.com"
+        assert OpenPixEnvironmentEnum.PRODUCTION.base_url == "https://api.woovi.com"
+        assert (
+            OpenPixEnvironmentEnum.SANDBOX.base_url == "https://api.woovi-sandbox.com"
+        )
 
     def test_every_member_resolves(self) -> None:
         """A member added without a URL would raise only in production."""
-        for member in OpenPixEnvironment:
+        for member in OpenPixEnvironmentEnum:
             assert member.base_url.startswith("https://")
 
 
@@ -159,7 +161,7 @@ class TestEvents:
 
     def test_count_matches_the_specification(self) -> None:
         """``WebhookEventEnum`` declares 28 values."""
-        assert len(OpenPixEvent.values()) == 28
+        assert len(OpenPixEventEnum.values()) == 28
 
     def test_namespacing_is_not_uniform(self) -> None:
         """Charge events are prefixed, Pix-automatic ones are not.
@@ -167,12 +169,12 @@ class TestEvents:
         Pinned because it reads like a transcription slip and would
         "helpfully" get normalized by the next person through here.
         """
-        assert OpenPixEvent.CHARGE_COMPLETED.value == "OPENPIX:CHARGE_COMPLETED"
-        assert OpenPixEvent.PIX_AUTOMATIC_APPROVED.value == "PIX_AUTOMATIC_APPROVED"
+        assert OpenPixEventEnum.CHARGE_COMPLETED.value == "OPENPIX:CHARGE_COMPLETED"
+        assert OpenPixEventEnum.PIX_AUTOMATIC_APPROVED.value == "PIX_AUTOMATIC_APPROVED"
 
     def test_member_names_drop_the_namespace(self) -> None:
-        """``OpenPixEvent.CHARGE_COMPLETED`` reads better than the wire name."""
-        assert OpenPixEvent.CHARGE_COMPLETED.name == "CHARGE_COMPLETED"
+        """``OpenPixEventEnum.CHARGE_COMPLETED`` reads better than the wire name."""
+        assert OpenPixEventEnum.CHARGE_COMPLETED.name == "CHARGE_COMPLETED"
 
 
 class TestMoney:
@@ -284,7 +286,7 @@ class TestWebhookDependency:
         assert response.json() == {"event_name": "", "event": None, "keys": []}
 
     def test_event_stays_an_enum_not_a_string(self) -> None:
-        """``event is OpenPixEvent.X`` must work — the documented idiom.
+        """``event is OpenPixEventEnum.X`` must work — the documented idiom.
 
         The first version made this a ``BaseSchema``, whose
         ``use_enum_values=True`` stores the bare value. The identity check
@@ -293,10 +295,10 @@ class TestWebhookDependency:
         """
         parsed = OpenPixWebhookEvent(
             event_name="OPENPIX:CHARGE_COMPLETED",
-            event=OpenPixEvent.CHARGE_COMPLETED,
+            event=OpenPixEventEnum.CHARGE_COMPLETED,
         )
-        assert parsed.event is OpenPixEvent.CHARGE_COMPLETED
-        assert isinstance(parsed.event, OpenPixEvent)
+        assert parsed.event is OpenPixEventEnum.CHARGE_COMPLETED
+        assert isinstance(parsed.event, OpenPixEventEnum)
 
     def test_default_verifier_is_configured_for_openpix(self) -> None:
         """Header and algorithm come from the provider's own page."""

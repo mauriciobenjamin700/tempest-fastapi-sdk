@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from tempest_fastapi_sdk.db import AlembicHelper, SchemaSyncOutcome, migrations
+from tempest_fastapi_sdk.db import AlembicHelper, SchemaSyncOutcomeEnum, migrations
 
 _ENV_RUNNING: tuple[str, ...] = (
     "upgrade",
@@ -200,7 +200,7 @@ class TestAsyncCounterparts:
 
     async def test_sync_schema_from_lifespan_shape(self, helper: AlembicHelper) -> None:
         outcome = await helper.sync_schema_async()
-        assert outcome is SchemaSyncOutcome.SYNCED
+        assert outcome is SchemaSyncOutcomeEnum.SYNCED
         assert await helper.current_async() == helper.heads()[0]
 
     async def test_adopt_stamps_base_of_pre_alembic_schema(

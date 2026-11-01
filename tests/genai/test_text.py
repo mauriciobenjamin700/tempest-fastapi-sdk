@@ -10,7 +10,7 @@ import pytest
 from tempest_fastapi_sdk.genai import (
     GenerationConfig,
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
     TextGenerator,
     auto_dtype_name,
     resolve_device,
@@ -62,16 +62,16 @@ class TestInit:
     def test_auto_dtype_on_gpu(self) -> None:
         gen = TextGenerator("m", hardware=_gpu_hw())
         assert gen.device == "cuda"
-        assert gen.dtype == ModelDtype.BFLOAT16
+        assert gen.dtype == ModelDtypeEnum.BFLOAT16
 
     def test_auto_dtype_on_cpu(self) -> None:
         gen = TextGenerator("m", hardware=_cpu_hw())
         assert gen.device == "cpu"
-        assert gen.dtype == ModelDtype.FLOAT32
+        assert gen.dtype == ModelDtypeEnum.FLOAT32
 
     def test_quantization_accepted(self) -> None:
         gen = TextGenerator("m", quantization="int4", hardware=_gpu_hw())
-        assert gen.quantization == ModelDtype.INT4
+        assert gen.quantization == ModelDtypeEnum.INT4
 
     def test_bad_quantization_rejected(self) -> None:
         with pytest.raises(ValueError, match="quantization"):

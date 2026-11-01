@@ -55,7 +55,7 @@ Ported from zap-api's ``INBOUND_EVENT`` (``src/services/webhook.service.ts``).
 """
 
 
-class ZapWebhookEvent(BaseStrEnum):
+class ZapWebhookEventEnum(BaseStrEnum):
     """The ``event`` value the gateway POSTs to a consumer's webhook.
 
     One URL receives every event, and this is the field that tells them
@@ -84,9 +84,9 @@ class ZapWebhookEvent(BaseStrEnum):
             :attr:`ZapStatusCallback.error`.
 
     Examples:
-        >>> ZapWebhookEvent("message.read") is ZapWebhookEvent.MESSAGE_READ
+        >>> ZapWebhookEventEnum("message.read") is ZapWebhookEventEnum.MESSAGE_READ
         True
-        >>> ZapWebhookEvent.MESSAGE_RECEIVED == "message.received"
+        >>> ZapWebhookEventEnum.MESSAGE_RECEIVED == "message.received"
         True
     """
 
@@ -97,7 +97,7 @@ class ZapWebhookEvent(BaseStrEnum):
     MESSAGE_FAILED = "message.failed"
 
 
-class ZapInboundMediaType(BaseStrEnum):
+class ZapInboundMediaTypeEnum(BaseStrEnum):
     """The media category of an incoming message.
 
     The value of :attr:`ZapInboundMessage.media_type`. ``None`` there — not
@@ -115,7 +115,7 @@ class ZapInboundMediaType(BaseStrEnum):
         STICKER: A sticker.
 
     Examples:
-        >>> ZapInboundMediaType.AUDIO == "audio"
+        >>> ZapInboundMediaTypeEnum.AUDIO == "audio"
         True
     """
 
@@ -126,7 +126,7 @@ class ZapInboundMediaType(BaseStrEnum):
     STICKER = "sticker"
 
 
-class ZapOutboundKind(BaseStrEnum):
+class ZapOutboundKindEnum(BaseStrEnum):
     """What kind of send a status notification is about.
 
     The value of :attr:`ZapStatusCallback.kind`, one per ``/message/send-*``
@@ -146,7 +146,7 @@ class ZapOutboundKind(BaseStrEnum):
         REACTION: ``react``.
 
     Examples:
-        >>> ZapOutboundKind.REACTION == "reaction"
+        >>> ZapOutboundKindEnum.REACTION == "reaction"
         True
     """
 
@@ -158,7 +158,7 @@ class ZapOutboundKind(BaseStrEnum):
     REACTION = "reaction"
 
 
-class ZapJidServer(BaseStrEnum):
+class ZapJidServerEnum(BaseStrEnum):
     """The server part of a WhatsApp JID — what kind of address it is.
 
     A JID is ``<user>@<server>``, and the server says whether the address is
@@ -193,7 +193,7 @@ class ZapJidServer(BaseStrEnum):
         HOSTED_LID: The LID of a hosted phone number.
 
     Examples:
-        >>> ZapJidServer("g.us") is ZapJidServer.GROUP
+        >>> ZapJidServerEnum("g.us") is ZapJidServerEnum.GROUP
         True
     """
 
@@ -225,7 +225,7 @@ class ZapInboundMessage(BaseSchema):
     delivery, and unknown fields are kept (``extra="allow"``).
 
     Like every :class:`BaseSchema`, enum fields hold the enum's **value**:
-    compare ``message.media_type == ZapInboundMediaType.AUDIO``, not with
+    compare ``message.media_type == ZapInboundMediaTypeEnum.AUDIO``, not with
     ``is``. A :class:`~enum.StrEnum` member equals its string, so both
     spellings of the comparison work.
 
@@ -234,7 +234,7 @@ class ZapInboundMessage(BaseSchema):
     (leading indentation, a trailing newline) before the service sees it.
 
     Attributes:
-        event (ZapWebhookEvent): Always ``message.received``.
+        event (ZapWebhookEventEnum): Always ``message.received``.
         message_id (str): The WhatsApp message id. The key to dedupe on —
             the gateway retries a delivery until it gets a 2xx, so the same
             message can arrive more than once. It is also the argument
@@ -250,7 +250,7 @@ class ZapInboundMessage(BaseSchema):
         push_name (str | None): The name the sender set on their own
             profile. Not a verified identity.
         text (str | None): The text, or the media caption.
-        media_type (ZapInboundMediaType | None): The media category, or
+        media_type (ZapInboundMediaTypeEnum | None): The media category, or
             ``None`` for a plain text message.
         media_url (str | None): Link to ``GET /message/{messageId}/media``
             on the gateway — absolute when the gateway has
@@ -270,7 +270,7 @@ class ZapInboundMessage(BaseSchema):
         ...         "timestamp": "2026-04-21T18:30:00.000Z",
         ...     }
         ... )
-        >>> message.from_server is ZapJidServer.USER
+        >>> message.from_server is ZapJidServerEnum.USER
         True
         >>> message.media_type is None
         True
@@ -282,7 +282,7 @@ class ZapInboundMessage(BaseSchema):
         str_strip_whitespace=False,
     )
 
-    event: ZapWebhookEvent
+    event: ZapWebhookEventEnum
     message_id: str = Field(
         validation_alias="messageId",
         serialization_alias="messageId",
@@ -302,7 +302,7 @@ class ZapInboundMessage(BaseSchema):
         serialization_alias="pushName",
     )
     text: str | None = None
-    media_type: ZapInboundMediaType | None = Field(
+    media_type: ZapInboundMediaTypeEnum | None = Field(
         default=None,
         validation_alias="mediaType",
         serialization_alias="mediaType",
@@ -315,11 +315,11 @@ class ZapInboundMessage(BaseSchema):
     timestamp: datetime
 
     @property
-    def from_server(self) -> ZapJidServer | None:
+    def from_server(self) -> ZapJidServerEnum | None:
         """The kind of address :attr:`from_` is, read from its server part.
 
         Returns:
-            ZapJidServer | None: The server after the last ``@`` of
+            ZapJidServerEnum | None: The server after the last ``@`` of
             ``from_``, or ``None`` when there is no ``@`` or the server is
             one Baileys does not define.
 
@@ -331,13 +331,13 @@ class ZapInboundMessage(BaseSchema):
             ...         "from": "120363000000000000@g.us",
             ...         "timestamp": "2026-04-21T18:30:00.000Z",
             ...     }
-            ... ).from_server is ZapJidServer.GROUP
+            ... ).from_server is ZapJidServerEnum.GROUP
             True
         """
         _, separator, server = self.from_.rpartition("@")
-        if not separator or not ZapJidServer.has_value(server):
+        if not separator or not ZapJidServerEnum.has_value(server):
             return None
-        return ZapJidServer(server)
+        return ZapJidServerEnum(server)
 
 
 class ZapStatusCallback(BaseSchema):
@@ -359,15 +359,15 @@ class ZapStatusCallback(BaseSchema):
     **value**, as in every :class:`BaseSchema` — compare with ``==``.
 
     Attributes:
-        event (ZapWebhookEvent): ``message.sent``, ``message.delivered``,
+        event (ZapWebhookEventEnum): ``message.sent``, ``message.delivered``,
             ``message.read`` or ``message.failed``.
         id (str): The outbound row id — the ``id`` the ``202`` of the send
             answered. The key to correlate and dedupe on.
         consumer (str): The consumer name the message was sent under.
         to (str): The recipient as the send stored it.
         kind (str): Which send produced the message, one of
-            :class:`ZapOutboundKind` (compare
-            ``callback.kind == ZapOutboundKind.IMAGE``). Typed ``str``, not
+            :class:`ZapOutboundKindEnum` (compare
+            ``callback.kind == ZapOutboundKindEnum.IMAGE``). Typed ``str``, not
             the enum, on purpose: the gateway types it ``string`` on the
             wire, and a kind it adds later must not turn the status of a
             message into an ``event=None`` delivery.
@@ -394,13 +394,13 @@ class ZapStatusCallback(BaseSchema):
         ... )
         >>> callback.status == AcceptedResponseStatus.DELIVERED
         True
-        >>> callback.kind == ZapOutboundKind.TEXT
+        >>> callback.kind == ZapOutboundKindEnum.TEXT
         True
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    event: ZapWebhookEvent
+    event: ZapWebhookEventEnum
     id: str
     consumer: str
     to: str
@@ -424,7 +424,7 @@ class ZapWebhookDelivery:
     body that event carries, so a route dispatches on ``event`` and reads
     the matching field:
 
-    - ``ZapWebhookEvent.MESSAGE_RECEIVED`` — the message is in ``inbound``;
+    - ``ZapWebhookEventEnum.MESSAGE_RECEIVED`` — the message is in ``inbound``;
     - ``MESSAGE_SENT``, ``MESSAGE_DELIVERED``, ``MESSAGE_READ`` and
       ``MESSAGE_FAILED`` — the status is in ``status``;
     - ``None`` — neither is set; see below.
@@ -439,13 +439,13 @@ class ZapWebhookDelivery:
 
     A dataclass rather than a :class:`BaseSchema`, for the same reason as
     :class:`OpenPixWebhookEvent`: ``BaseSchema`` stores enums as their
-    value, and then ``delivery.event is ZapWebhookEvent.MESSAGE_RECEIVED``
+    value, and then ``delivery.event is ZapWebhookEventEnum.MESSAGE_RECEIVED``
     would be false on every delivery. Here ``event`` is the member itself.
 
     Attributes:
         event_name (str): The ``event`` field exactly as delivered, kept
             even when it is not a known value.
-        event (ZapWebhookEvent | None): The parsed event, or ``None`` as
+        event (ZapWebhookEventEnum | None): The parsed event, or ``None`` as
             described above.
         inbound (ZapInboundMessage | None): The parsed body of a
             ``message.received`` notification.
@@ -461,7 +461,7 @@ class ZapWebhookDelivery:
     """
 
     event_name: str
-    event: ZapWebhookEvent | None = None
+    event: ZapWebhookEventEnum | None = None
     inbound: ZapInboundMessage | None = None
     status: ZapStatusCallback | None = None
     payload: dict[str, Any] = field(default_factory=dict)
@@ -504,11 +504,11 @@ def _parse(event_name: str, payload: dict[str, Any], body: bytes) -> ZapWebhookD
         ZapWebhookDelivery: The delivery, with ``event`` set only when the
         matching typed body validated.
     """
-    if not ZapWebhookEvent.has_value(event_name):
+    if not ZapWebhookEventEnum.has_value(event_name):
         return ZapWebhookDelivery(event_name=event_name, payload=payload, body=body)
-    event: ZapWebhookEvent = ZapWebhookEvent(event_name)
+    event: ZapWebhookEventEnum = ZapWebhookEventEnum(event_name)
     try:
-        if event is ZapWebhookEvent.MESSAGE_RECEIVED:
+        if event is ZapWebhookEventEnum.MESSAGE_RECEIVED:
             inbound = ZapInboundMessage.model_validate(payload)
             return ZapWebhookDelivery(
                 event_name=event_name,
@@ -675,13 +675,13 @@ __all__: list[str] = [
     "ZAP_INBOUND_EVENT",
     "ZAP_WEBHOOK_SIGNATURE_HEADER",
     "ZAP_WEBHOOK_SIGNATURE_PREFIX",
-    "ZapInboundMediaType",
+    "ZapInboundMediaTypeEnum",
     "ZapInboundMessage",
-    "ZapJidServer",
-    "ZapOutboundKind",
+    "ZapJidServerEnum",
+    "ZapOutboundKindEnum",
     "ZapStatusCallback",
     "ZapWebhookDelivery",
-    "ZapWebhookEvent",
+    "ZapWebhookEventEnum",
     "is_forward_transition",
     "make_zap_webhook_dependency",
     "webhook_verifier",

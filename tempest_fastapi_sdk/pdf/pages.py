@@ -13,8 +13,8 @@ arrive:
 - **The document is encrypted.** A password has to reach the reader, and a
   wrong one has to be distinguishable from a corrupt file.
 
-Two backends, one call. :attr:`PdfExtractor.TEXT` is ``pypdf`` — fast, pure
-Python, right for a plain prose document. :attr:`PdfExtractor.LAYOUT` is
+Two backends, one call. :attr:`PdfExtractorEnum.TEXT` is ``pypdf`` — fast, pure
+Python, right for a plain prose document. :attr:`PdfExtractorEnum.LAYOUT` is
 ``pdfplumber``, which is slower and needs the ``[pdf-layout]`` extra, and is
 what recovers columns and tables.
 
@@ -24,9 +24,9 @@ layer, so it comes back with ``text=""`` rather than being dropped — entry
 handing a model an empty page is how a confident answer gets invented about
 something nobody read.
 
-    from tempest_fastapi_sdk.pdf import PdfExtractor, read_pdf_pages
+    from tempest_fastapi_sdk.pdf import PdfExtractorEnum, read_pdf_pages
 
-    result = await read_pdf_pages(data, extractor=PdfExtractor.LAYOUT)
+    result = await read_pdf_pages(data, extractor=PdfExtractorEnum.LAYOUT)
     for page in result.pages:
         print(page.page_number, page.text[:80], len(page.tables))
 """
@@ -69,7 +69,7 @@ class PdfExtractError(AppException):
     status_code: int = 422
 
 
-class PdfExtractor(BaseStrEnum):
+class PdfExtractorEnum(BaseStrEnum):
     """Which extraction backend reads the document.
 
     Attributes:
@@ -92,7 +92,7 @@ class PdfPage(BaseSchema):
         text (str): Plain text found on the page. Empty for a page with no
             text layer — a scan — rather than absent.
         tables (list[list[list[str]]]): Tables found on the page, only
-            populated by :attr:`PdfExtractor.LAYOUT`. Outer list: tables;
+            populated by :attr:`PdfExtractorEnum.LAYOUT`. Outer list: tables;
             middle: rows; inner: cells. A cell the extractor read as empty
             is ``""``, never ``None``, so a row is always a list of strings.
     """
@@ -112,12 +112,12 @@ class PdfPagesResult(BaseSchema):
     """A whole document, read page by page.
 
     Attributes:
-        extractor (PdfExtractor): Which backend produced this result.
+        extractor (PdfExtractorEnum): Which backend produced this result.
         page_count (int): Number of pages read.
         pages (list[PdfPage]): One entry per page, in document order.
     """
 
-    extractor: PdfExtractor
+    extractor: PdfExtractorEnum
     page_count: int = Field(..., ge=0)
     pages: list[PdfPage] = Field(default_factory=list)
 
@@ -288,7 +288,7 @@ def _extract_with_pdfplumber(data: bytes, password: str) -> list[PdfPage]:
 async def read_pdf_pages(
     data: bytes,
     *,
-    extractor: PdfExtractor = PdfExtractor.TEXT,
+    extractor: PdfExtractorEnum = PdfExtractorEnum.TEXT,
     password: str | None = None,
 ) -> PdfPagesResult:
     """Read a PDF page by page, optionally recovering layout and tables.
@@ -299,8 +299,8 @@ async def read_pdf_pages(
 
     Args:
         data (bytes): The PDF file contents.
-        extractor (PdfExtractor): Which backend to use. Defaults to
-            :attr:`PdfExtractor.TEXT`.
+        extractor (PdfExtractorEnum): Which backend to use. Defaults to
+            :attr:`PdfExtractorEnum.TEXT`.
         password (str | None): Password for an encrypted document.
 
     Returns:
@@ -314,7 +314,7 @@ async def read_pdf_pages(
     """
     reader = (
         _extract_with_pdfplumber
-        if extractor == PdfExtractor.LAYOUT
+        if extractor == PdfExtractorEnum.LAYOUT
         else _extract_with_pypdf
     )
     pages: list[PdfPage] = await asyncio.to_thread(reader, data, password or "")
@@ -324,7 +324,7 @@ async def read_pdf_pages(
 __all__: list[str] = [
     "PdfDecryptError",
     "PdfExtractError",
-    "PdfExtractor",
+    "PdfExtractorEnum",
     "PdfPage",
     "PdfPagesResult",
     "read_pdf_pages",

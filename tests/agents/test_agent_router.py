@@ -18,7 +18,7 @@ from tempest_fastapi_sdk.agents import (
     make_agent_router,
     make_agent_run_model,
 )
-from tempest_fastapi_sdk.agents.schemas import AgentArtifact, AgentRun, StopReason
+from tempest_fastapi_sdk.agents.schemas import AgentArtifact, AgentRun, StopReasonEnum
 from tempest_fastapi_sdk.agents.testing import ScriptedBackend as Recorder
 
 
@@ -200,7 +200,7 @@ class TestRunModel:
         run = AgentRun(
             goal="draw a cat",
             output="done",
-            stop_reason=StopReason.COMPLETED,
+            stop_reason=StopReasonEnum.COMPLETED,
             seconds=1.5,
             agent="artist",
             artifacts=[
@@ -220,7 +220,7 @@ class TestRunModel:
         assert not hasattr(row, "artifacts")
 
     def test_steps_serialize_to_json_safe_values(self) -> None:
-        from tempest_fastapi_sdk.agents import AgentStep, StepKind
+        from tempest_fastapi_sdk.agents import AgentStep, StepKindEnum
 
         model = make_agent_run_model(
             tablename="agent_runs_json_test", class_name="AgentRunRowB"
@@ -230,7 +230,7 @@ class TestRunModel:
             steps=[
                 AgentStep(
                     index=0,
-                    kind=StepKind.TOOL,
+                    kind=StepKindEnum.TOOL,
                     name="draw",
                     arguments={"filename": "a.png"},
                     output="drew it",

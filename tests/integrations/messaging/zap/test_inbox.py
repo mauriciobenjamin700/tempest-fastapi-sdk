@@ -24,10 +24,10 @@ from tempest_fastapi_sdk.integrations.messaging.zap import (
     ZapDeliveryMixin,
     ZapInboundMessage,
     ZapInboundMessageMixin,
-    ZapInboundOutcome,
+    ZapInboundOutcomeEnum,
     ZapInbox,
     ZapStatusCallback,
-    ZapStatusOutcome,
+    ZapStatusOutcomeEnum,
 )
 
 WHEN: str = "2026-04-21T18:30:00.000Z"
@@ -172,7 +172,7 @@ class TestClaim:
         outcome = await inbox.claim(
             inbound("A1", chatKey="5511999999999", pushName="Fulano", text="Oi")
         )
-        assert outcome is ZapInboundOutcome.STORED
+        assert outcome is ZapInboundOutcomeEnum.STORED
         row = await inbox.messages.get({"message_id": "A1"})
         assert (row.chat_key, row.push_name, row.text) == (
             "5511999999999",
@@ -186,7 +186,7 @@ class TestClaim:
         """The same ``messageId`` twice is one row and a ``duplicate``."""
         await inbox.claim(inbound("A1", chatKey="5511999999999", text="Oi"))
         outcome = await inbox.claim(inbound("A1", chatKey="5511999999999", text="Oi"))
-        assert outcome is ZapInboundOutcome.DUPLICATE
+        assert outcome is ZapInboundOutcomeEnum.DUPLICATE
         assert await inbox.messages.count() == 1
 
     async def test_group_is_skipped(
@@ -194,7 +194,7 @@ class TestClaim:
     ) -> None:
         """A group message is not stored."""
         outcome = await inbox.claim(inbound("G1", "120363000000000000@g.us"))
-        assert outcome is ZapInboundOutcome.SKIPPED
+        assert outcome is ZapInboundOutcomeEnum.SKIPPED
         assert await inbox.messages.count() == 0
 
     async def test_media_without_url_is_lost(
@@ -204,7 +204,7 @@ class TestClaim:
         outcome = await inbox.claim(
             inbound("A3", chatKey="5511999999999", mediaType="audio")
         )
-        assert outcome is ZapInboundOutcome.MEDIA_LOST
+        assert outcome is ZapInboundOutcomeEnum.MEDIA_LOST
         row = await inbox.messages.get({"message_id": "A3"})
         assert (row.media_type, row.text) == ("audio", None)
 
@@ -213,7 +213,7 @@ class TestClaim:
     ) -> None:
         """A LID the gateway could not map is stored with ``chat_key`` null."""
         outcome = await inbox.claim(inbound("L1", "145848633667620@lid", text="oi"))
-        assert outcome is ZapInboundOutcome.STORED
+        assert outcome is ZapInboundOutcomeEnum.STORED
         row = await inbox.messages.get({"message_id": "L1"})
         assert row.chat_key is None
 
@@ -238,7 +238,7 @@ class TestTrack:
         )
         assert accepted.id is not None
         outcome = await inbox.track(status(accepted.id, "delivered"))
-        assert outcome is ZapStatusOutcome.APPLIED
+        assert outcome is ZapStatusOutcomeEnum.APPLIED
         row = await inbox.deliveries.get({"outbound_id": accepted.id})
         assert row.status == "delivered"
 
@@ -248,7 +248,7 @@ class TestTrack:
         """A ``sent`` arriving after the ``read`` does not step down."""
         await inbox.track(status("out-9", "read"))
         outcome = await inbox.track(status("out-9", "sent"))
-        assert outcome is ZapStatusOutcome.STALE
+        assert outcome is ZapStatusOutcomeEnum.STALE
         row = await inbox.deliveries.get({"outbound_id": "out-9"})
         assert row.status == "read"
 
@@ -257,7 +257,7 @@ class TestTrack:
     ) -> None:
         """A callback that beats the send's commit is stored, not refused."""
         outcome = await inbox.track(status("out-7", "sent"))
-        assert outcome is ZapStatusOutcome.APPLIED
+        assert outcome is ZapStatusOutcomeEnum.APPLIED
         row = await inbox.deliveries.get({"outbound_id": "out-7"})
         assert (row.status, row.chat_key, row.idempotency_key) == (
             "sent",
@@ -280,7 +280,7 @@ class TestTrack:
         """A ``delivered`` already proves arrival; ``failed`` is stale."""
         await inbox.track(status("out-4", "delivered"))
         outcome = await inbox.track(status("out-4", "failed", error="late"))
-        assert outcome is ZapStatusOutcome.STALE
+        assert outcome is ZapStatusOutcomeEnum.STALE
         row = await inbox.deliveries.get({"outbound_id": "out-4"})
         assert (row.status, row.error) == ("delivered", None)
 
@@ -365,7 +365,7 @@ class TestRace:
             row = await BaseRepository(session, model=InboxDeliveryModel).get(
                 {"outbound_id": "out-1"}
             )
-        assert outcome is ZapStatusOutcome.APPLIED
+        assert outcome is ZapStatusOutcomeEnum.APPLIED
         assert row.status == "delivered"
 
     async def test_send_loser_attaches_its_key(

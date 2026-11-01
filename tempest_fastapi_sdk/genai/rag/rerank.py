@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.schemas import (
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
     precision_kwarg,
 )
 from tempest_fastapi_sdk.genai.text import (
@@ -87,7 +87,7 @@ class Reranker:
     Attributes:
         model_id (str): The HuggingFace cross-encoder id.
         device (str): The resolved device (``cuda`` / ``mps`` / ``cpu``).
-        dtype (ModelDtype): The resolved compute precision.
+        dtype (ModelDtypeEnum): The resolved compute precision.
         idle_unload_seconds (float | None): Idle threshold for
             :meth:`unload_if_idle`.
     """
@@ -97,7 +97,7 @@ class Reranker:
         model_id: str,
         *,
         device: str = "auto",
-        dtype: str | ModelDtype = "auto",
+        dtype: str | ModelDtypeEnum = "auto",
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
@@ -112,7 +112,7 @@ class Reranker:
         Args:
             model_id (str): HuggingFace cross-encoder id.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
-            dtype (str | ModelDtype): Compute precision, or ``"auto"``.
+            dtype (str | ModelDtypeEnum): Compute precision, or ``"auto"``.
             cache_dir (str | None): Where the downloaded weights are
                 written and read back from. ``None`` uses the
                 ``huggingface_hub`` default — ``$HF_HOME/hub``, or
@@ -139,9 +139,9 @@ class Reranker:
         self.model_id = model_id
         self.device = resolve_device(device, hardware)
         self.dtype = (
-            ModelDtype(auto_dtype_name(self.device))
+            ModelDtypeEnum(auto_dtype_name(self.device))
             if dtype == "auto"
-            else ModelDtype(dtype)
+            else ModelDtypeEnum(dtype)
         )
         self.cache_dir = cache_dir
         self.hf_token = hf_token

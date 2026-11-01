@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from tempest_fastapi_sdk.checks import (
-    CheckLevel,
+    CheckLevelEnum,
     CheckMessage,
     CheckRegistry,
     SystemCheckError,
@@ -40,7 +40,7 @@ class TestCheckMessage:
     def test_is_serious(self) -> None:
         assert error("x").is_serious() is True
         assert warning("x").is_serious() is False
-        assert warning("x").is_serious(CheckLevel.WARNING) is True
+        assert warning("x").is_serious(CheckLevelEnum.WARNING) is True
 
     def test_str_includes_hint_and_id(self) -> None:
         rendered = str(warning("bad", hint="fix it", id="X001"))
@@ -101,7 +101,7 @@ class TestRunSystemChecks:
         registry = CheckRegistry()
         registry.register(lambda _c: [warning("meh")])
         with pytest.raises(SystemCheckError):
-            run_system_checks(registry=registry, fail_level=CheckLevel.WARNING)
+            run_system_checks(registry=registry, fail_level=CheckLevelEnum.WARNING)
 
 
 class TestBuiltins:

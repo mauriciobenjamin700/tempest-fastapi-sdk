@@ -235,7 +235,7 @@ uploads = UploadUtils(
     qualquer extensão quando a allowlist não foi configurada, em vez de
     recusar todo upload com 415.
 
-## Foto com tipo declarado — `ImageMediaType`
+## Foto com tipo declarado — `ImageMediaTypeEnum`
 
 Às vezes o arquivo não passa pelo `UploadUtils`: a rota lê os bytes, junta
 com o tipo que o app declarou num campo e grava em outro lugar. Aí a
@@ -243,20 +243,20 @@ conferência que o `verify_magic_bytes` faria fica com você — e ela costuma
 nascer à mão: um `field_validator` que faz `strip().lower()`, uma allowlist de
 strings, um dict tipo → extensão e uma função que compara assinatura.
 
-O `ImageMediaType` é tudo isso num tipo de campo. Os membros são exatamente os
+O `ImageMediaTypeEnum` é tudo isso num tipo de campo. Os membros são exatamente os
 tipos de imagem que o `sniff_mime` reconhece pelos bytes: `JPEG`, `PNG`, `GIF`,
 `BMP`, `WEBP` e `HEIC`.
 
 ```python
 from pydantic import BaseModel, ValidationError
 
-from tempest_fastapi_sdk import ImageMediaType
+from tempest_fastapi_sdk import ImageMediaTypeEnum
 
 
 class EvidencePhotoSchema(BaseModel):
     """Foto que o cliente vai enviar."""
 
-    content_type: ImageMediaType
+    content_type: ImageMediaTypeEnum
 
 
 photo: EvidencePhotoSchema = EvidencePhotoSchema.model_validate(
@@ -300,19 +300,19 @@ from typing import Annotated
 
 from pydantic import BaseModel, ValidationError
 
-from tempest_fastapi_sdk import ImageMediaType, image_media_type_field
+from tempest_fastapi_sdk import ImageMediaTypeEnum, image_media_type_field
 
 
 class EvidencePhotoSchema(BaseModel):
     """Foto de câmera: GIF e BMP ficam de fora."""
 
     content_type: Annotated[
-        ImageMediaType,
+        ImageMediaTypeEnum,
         image_media_type_field(
-            ImageMediaType.JPEG,
-            ImageMediaType.PNG,
-            ImageMediaType.WEBP,
-            ImageMediaType.HEIC,
+            ImageMediaTypeEnum.JPEG,
+            ImageMediaTypeEnum.PNG,
+            ImageMediaTypeEnum.WEBP,
+            ImageMediaTypeEnum.HEIC,
             title="Tipo da foto",
         ),
     ]
@@ -345,7 +345,7 @@ value_error | Value error, image type must be one of: image/jpeg, image/png, ima
 ```
 
 - A normalização do enum roda **antes** da restrição: `IMAGE/PNG` e
-  `image/x-png` continuam virando `ImageMediaType.PNG`.
+  `image/x-png` continuam virando `ImageMediaTypeEnum.PNG`.
 - Tipo conhecido mas fora da lista é `value_error` (numa rota, `422`) com os
   permitidos na mensagem; tipo desconhecido continua sendo o erro `enum`.
 - O JSON Schema lista **só** os permitidos. `description` e `examples` saem
@@ -353,10 +353,10 @@ value_error | Value error, image type must be one of: image/jpeg, image/png, ima
 - Sem argumentos, `image_media_type_field()` aceita os seis e só preenche
   título, descrição e exemplo.
 
-!!! warning "O OpenAPI ganha um `ImageMediaType` órfão — `prune_orphan_enum_schemas`"
+!!! warning "O OpenAPI ganha um `ImageMediaTypeEnum` órfão — `prune_orphan_enum_schemas`"
     O FastAPI publica um componente para **todo** campo anotado com um
     `Enum`, mesmo quando o schema do campo traz o enum restrito inline. O
-    `components.schemas.ImageMediaType` sai com os seis membros e nenhum
+    `components.schemas.ImageMediaTypeEnum` sai com os seis membros e nenhum
     `$ref` aponta para ele, e o gerador de cliente cria um enum morto. Uma
     linha no `create_app` tira os enums que ninguém referencia (o `tempest
     new` já gera com ela):
@@ -390,7 +390,7 @@ from fastapi import FastAPI, Form, UploadFile
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk import (
-    ImageMediaType,
+    ImageMediaTypeEnum,
     InvalidFileTypeException,
     read_upload_capped,
     register_exception_handlers,
@@ -403,7 +403,7 @@ class PhotoResponseSchema(BaseModel):
     """Onde a foto foi gravada, e como o quê."""
 
     key: str
-    content_type: ImageMediaType
+    content_type: ImageMediaTypeEnum
 
 
 app = FastAPI()
@@ -412,7 +412,7 @@ register_exception_handlers(app)
 
 @app.post("/photos")
 async def upload_photo(
-    content_type: Annotated[ImageMediaType, Form()],
+    content_type: Annotated[ImageMediaTypeEnum, Form()],
     file: UploadFile,
 ) -> PhotoResponseSchema:
     """Aceita a foto só quando os bytes são do tipo declarado."""
@@ -586,7 +586,7 @@ direto no MinIO via URL presigned. Veja
   configurar por ambiente.
 - Arquivo que volta a ser servido: `allowed_extensions` + `verify_magic_bytes=True`
   + `allowed_mimetypes`, para o conteúdo bater com o tipo.
-- Bytes que não passam pelo `UploadUtils`: `ImageMediaType` como tipo do
+- Bytes que não passam pelo `UploadUtils`: `ImageMediaTypeEnum` como tipo do
   campo (aceita alias e maiúscula, `422` no resto) e `.matches(data)` para os
   bytes baterem com o tipo declarado — HEIC incluído.
 - `save()` recebe o `UploadFile` do FastAPI e devolve a **key**; é a key que

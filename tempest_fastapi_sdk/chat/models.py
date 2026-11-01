@@ -45,9 +45,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk.chat.constants import (
-    ConversationKind,
-    MessageKind,
-    ParticipantRole,
+    ConversationKindEnum,
+    MessageKindEnum,
+    ParticipantRoleEnum,
 )
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
 from tempest_fastapi_sdk.db.enums import enum_column
@@ -89,7 +89,7 @@ class BaseConversationModel(BaseModel):
     table. Write it in the same transaction as the message that moves it.
 
     Attributes:
-        kind (ConversationKind): Direct thread or group.
+        kind (ConversationKindEnum): Direct thread or group.
         title (str | None): Human label for a group. ``None`` for a
             direct thread.
         description (str | None): The group's subject text.
@@ -105,9 +105,9 @@ class BaseConversationModel(BaseModel):
 
     __abstract__ = True
 
-    kind: Mapped[ConversationKind] = enum_column(
-        ConversationKind,
-        default=ConversationKind.DIRECT,
+    kind: Mapped[ConversationKindEnum] = enum_column(
+        ConversationKindEnum,
+        default=ConversationKindEnum.DIRECT,
         nullable=False,
         index=True,
         doc="Whether this is a direct thread or a group.",
@@ -171,7 +171,7 @@ class BaseConversationParticipantModel(BaseModel):
     Attributes:
         conversation_id (UUID): FK to the conversation (set by subclass).
         user_id (UUID): FK to the participant user (set by subclass).
-        role (ParticipantRole): Member, admin or owner.
+        role (ParticipantRoleEnum): Member, admin or owner.
         joined_at (datetime | None): When the membership started.
         left_at (datetime | None): When it ended, or ``None`` while
             active.
@@ -201,9 +201,9 @@ class BaseConversationParticipantModel(BaseModel):
         index=True,
         doc="FK to the participant user (set by subclass).",
     )
-    role: Mapped[ParticipantRole] = enum_column(
-        ParticipantRole,
-        default=ParticipantRole.MEMBER,
+    role: Mapped[ParticipantRoleEnum] = enum_column(
+        ParticipantRoleEnum,
+        default=ParticipantRoleEnum.MEMBER,
         nullable=False,
         doc="What this participant may do in the conversation.",
     )
@@ -290,7 +290,7 @@ class BaseMessageModel(BaseModel):
             Non-null even for a ``SYSTEM`` notice: a system message
             always has an actor, and making the column nullable for the
             one kind that always has a value costs every reader a check.
-        kind (MessageKind): What the message carries.
+        kind (MessageKindEnum): What the message carries.
         body (str): Text, or the caption of a media message.
         client_id (str | None): Sender-generated id; unique per sender.
         reply_to_id (UUID | None): The message being replied to.
@@ -317,9 +317,9 @@ class BaseMessageModel(BaseModel):
         index=True,
         doc="FK to the sending user (set by subclass).",
     )
-    kind: Mapped[MessageKind] = enum_column(
-        MessageKind,
-        default=MessageKind.TEXT,
+    kind: Mapped[MessageKindEnum] = enum_column(
+        MessageKindEnum,
+        default=MessageKindEnum.TEXT,
         nullable=False,
         doc="What the message carries.",
     )

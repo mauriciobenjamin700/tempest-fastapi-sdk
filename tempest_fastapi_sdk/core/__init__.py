@@ -31,7 +31,7 @@ from tempest_fastapi_sdk.core.enums import (
     BaseStrEnum as BaseStrEnum,
 )
 from tempest_fastapi_sdk.core.enums import (
-    Locale as Locale,
+    LocaleEnum as LocaleEnum,
 )
 from tempest_fastapi_sdk.core.enums import (
     normalize_locale_tag as normalize_locale_tag,
@@ -129,7 +129,7 @@ __all__: list[str] = [
     "BaseStrEnum",
     "DocsLocale",
     "JSONFormatter",
-    "Locale",
+    "LocaleEnum",
     "RedactionFilter",
     "RedactionPolicy",
     "clear_request_id",

@@ -663,13 +663,13 @@ def check_config_cmd(
     The current working directory is put on ``sys.path`` so the project is
     importable when the command is invoked from its root.
     """
-    from tempest_fastapi_sdk.checks import CheckLevel, run_checks
+    from tempest_fastapi_sdk.checks import CheckLevelEnum, run_checks
 
     if "" not in sys.path and str(Path.cwd()) not in sys.path:
         sys.path.insert(0, str(Path.cwd()))
 
     try:
-        threshold = CheckLevel[fail_level.upper()]
+        threshold = CheckLevelEnum[fail_level.upper()]
     except KeyError as exc:
         raise typer.BadParameter(
             f"Unknown --fail-level {fail_level!r}; expected one of "
@@ -696,11 +696,11 @@ def check_config_cmd(
     messages = run_checks(context, tags=tags)
 
     colors = {
-        CheckLevel.DEBUG: "bright_black",
-        CheckLevel.INFO: "blue",
-        CheckLevel.WARNING: "yellow",
-        CheckLevel.ERROR: "red",
-        CheckLevel.CRITICAL: "bright_red",
+        CheckLevelEnum.DEBUG: "bright_black",
+        CheckLevelEnum.INFO: "blue",
+        CheckLevelEnum.WARNING: "yellow",
+        CheckLevelEnum.ERROR: "red",
+        CheckLevelEnum.CRITICAL: "bright_red",
     }
     for message in messages:
         typer.secho(str(message), fg=colors.get(message.level))

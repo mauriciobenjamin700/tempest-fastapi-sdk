@@ -24,9 +24,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
+    AdminPermissionEnum,
     AdminSite,
-    AdminSurface,
+    AdminSurfaceEnum,
     AsyncDatabaseManager,
     BaseModel,
     BaseUserModel,
@@ -77,27 +77,31 @@ class XUnreg(BaseModel):
     )
 
 
-_GRANTS: dict[str, dict[type[BaseModel], set[AdminPermission]]] = {
-    "reader": {XDept: {AdminPermission.VIEW}},
+_GRANTS: dict[str, dict[type[BaseModel], set[AdminPermissionEnum]]] = {
+    "reader": {XDept: {AdminPermissionEnum.VIEW}},
     "editor": {
-        XDept: {AdminPermission.VIEW},
-        XEmp: {AdminPermission.VIEW, AdminPermission.EDIT},
-        XTask: {AdminPermission.VIEW, AdminPermission.EDIT},
+        XDept: {AdminPermissionEnum.VIEW},
+        XEmp: {AdminPermissionEnum.VIEW, AdminPermissionEnum.EDIT},
+        XTask: {AdminPermissionEnum.VIEW, AdminPermissionEnum.EDIT},
     },
     "fk": {
-        XEmp: {AdminPermission.VIEW, AdminPermission.CREATE, AdminPermission.EDIT},
-        XTask: {AdminPermission.VIEW, AdminPermission.EDIT},
+        XEmp: {
+            AdminPermissionEnum.VIEW,
+            AdminPermissionEnum.CREATE,
+            AdminPermissionEnum.EDIT,
+        },
+        XTask: {AdminPermissionEnum.VIEW, AdminPermissionEnum.EDIT},
     },
 }
 
 
-def _policy(user: Any, admin: AdminModel[Any], action: AdminPermission) -> bool:
+def _policy(user: Any, admin: AdminModel[Any], action: AdminPermissionEnum) -> bool:
     """Grant everything to ``super`` and the ``_GRANTS`` table to the rest.
 
     Args:
         user (Any): The principal.
         admin (AdminModel[Any]): The admin asked about.
-        action (AdminPermission): The action.
+        action (AdminPermissionEnum): The action.
 
     Returns:
         bool: Whether the action is allowed.
@@ -107,12 +111,12 @@ def _policy(user: Any, admin: AdminModel[Any], action: AdminPermission) -> bool:
     return action in _GRANTS.get(user.role, {}).get(admin.model, set())
 
 
-def _surfaces(user: Any, surface: AdminSurface) -> bool:
+def _surfaces(user: Any, surface: AdminSurfaceEnum) -> bool:
     """Grant the non-model surfaces to ``super`` only.
 
     Args:
         user (Any): The principal.
-        surface (AdminSurface): The surface asked about.
+        surface (AdminSurfaceEnum): The surface asked about.
 
     Returns:
         bool: Whether the surface is allowed.

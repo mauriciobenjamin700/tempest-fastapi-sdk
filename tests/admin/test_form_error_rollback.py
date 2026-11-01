@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
+    AdminPermissionEnum,
     AdminSite,
     AsyncDatabaseManager,
     BaseModel,
@@ -62,13 +62,13 @@ _SEAT_SLUG = RollbackSeat.__tablename__
 SECRET = "r" * 48
 
 
-def _policy(principal: object, admin: object, action: AdminPermission) -> bool:
+def _policy(principal: object, admin: object, action: AdminPermissionEnum) -> bool:
     """Allow admins only, reading a principal column like a real policy.
 
     Args:
         principal (object): The signed-in principal.
         admin (object): The admin being accessed.
-        action (AdminPermission): The attempted action.
+        action (AdminPermissionEnum): The attempted action.
 
     Returns:
         bool: True when the principal is an administrator.

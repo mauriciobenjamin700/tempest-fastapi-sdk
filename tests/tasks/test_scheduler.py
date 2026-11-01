@@ -12,7 +12,7 @@ from taskiq.schedule_sources import LabelScheduleSource
 
 from tempest_fastapi_sdk.tasks import (
     AsyncTaskScheduler,
-    CronOffset,
+    CronOffsetEnum,
     TaskQueue,
 )
 
@@ -164,7 +164,7 @@ class TestAsyncTaskScheduler:
 
 
 class TestSchedulerLoopSurvivesADeclaredOffset:
-    """A ``CronOffset`` declaration must not end the scheduler loop.
+    """A ``CronOffsetEnum`` declaration must not end the scheduler loop.
 
     ``SchedulerLoop`` guards its tick with ``except CronValueError``
     only, so a ``ZoneInfoNotFoundError`` from an offset it cannot resolve
@@ -179,7 +179,7 @@ class TestSchedulerLoopSurvivesADeclaredOffset:
 
         @scheduler.cron(
             "* * * * *",
-            cron_offset=CronOffset.BRASILIA,
+            cron_offset=CronOffsetEnum.BRASILIA,
             task_name="with_offset",
         )
         async def with_offset() -> None:
@@ -211,7 +211,7 @@ class TestOffsetNormalizedAtEveryDoor:
     async def test_queue_cron(self) -> None:
         tq = TaskQueue(InMemoryBroker())
 
-        @tq.cron("0 2 * * *", cron_offset=CronOffset.BRASILIA)
+        @tq.cron("0 2 * * *", cron_offset=CronOffsetEnum.BRASILIA)
         async def a() -> None:
             return None
 
@@ -222,7 +222,7 @@ class TestOffsetNormalizedAtEveryDoor:
         tq = TaskQueue(InMemoryBroker())
 
         @tq.task(
-            schedule=[{"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA}],
+            schedule=[{"cron": "0 2 * * *", "cron_offset": CronOffsetEnum.BRASILIA}],
         )
         async def b() -> None:
             return None
@@ -233,7 +233,7 @@ class TestOffsetNormalizedAtEveryDoor:
     async def test_scheduler_cron(self) -> None:
         scheduler = AsyncTaskScheduler(InMemoryBroker())
 
-        @scheduler.cron("0 2 * * *", cron_offset=CronOffset.BRASILIA)
+        @scheduler.cron("0 2 * * *", cron_offset=CronOffsetEnum.BRASILIA)
         async def c() -> None:
             return None
 
@@ -243,7 +243,7 @@ class TestOffsetNormalizedAtEveryDoor:
         scheduler = AsyncTaskScheduler(InMemoryBroker())
 
         @scheduler.schedule(
-            [{"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA}],
+            [{"cron": "0 2 * * *", "cron_offset": CronOffsetEnum.BRASILIA}],
         )
         async def d() -> None:
             return None
@@ -258,7 +258,7 @@ class TestOffsetNormalizedAtEveryDoor:
 
         task = scheduler.register(
             e,
-            schedule=[{"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA}],
+            schedule=[{"cron": "0 2 * * *", "cron_offset": CronOffsetEnum.BRASILIA}],
             task_name="registered",
         )
         assert task.labels["schedule"][0]["cron_offset"] == timedelta(hours=-3)

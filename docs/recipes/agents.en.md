@@ -44,7 +44,7 @@ import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
 
 async def get_weather(arguments: dict[str, Any], _context: AgentContext) -> str:
@@ -66,7 +66,7 @@ weather_tool = text_tool(
 
 def build_agent() -> Agent:
     """Build the agent the rest of this page imports."""
-    return Agent(TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT), tools=[weather_tool])
+    return Agent(TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT), tools=[weather_tool])
 
 
 async def main() -> None:
@@ -188,13 +188,13 @@ import asyncio
 
 from agent_setup import weather_tool
 from tempest_fastapi_sdk.agents import Agent, AgentBudget
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
 
 async def main() -> None:
     """Run the same agent under an explicit ceiling."""
     agent = Agent(
-        TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
+        TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT),
         tools=[weather_tool],
         budget=AgentBudget(max_steps=8, max_seconds=90, max_tool_calls=5),
     )
@@ -287,7 +287,7 @@ import asyncio
 from pydantic import Field
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, tool
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 from tempest_fastapi_sdk.schemas import BaseSchema
 
 
@@ -307,7 +307,7 @@ async def get_weather(args: WeatherArgs, context: AgentContext) -> str:
 async def main() -> None:
     """Hand the decorated tool to an agent and run it."""
     agent = Agent(
-        TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
+        TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT),
         tools=[get_weather],
     )
     run = await agent.run("What is the 3-day forecast for Olinda?")
@@ -384,12 +384,12 @@ from tempest_fastapi_sdk.agents import (
 )
 from tempest_fastapi_sdk.genai import (
     Embedder,
-    EmbeddingModel,
+    EmbeddingModelEnum,
     ImageGenerator,
-    ImageModel,
+    ImageModelEnum,
     TextGenerator,
-    TextModel,
-    VisionModel,
+    TextModelEnum,
+    VisionModelEnum,
     VisionTextGenerator,
 )
 from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
@@ -404,17 +404,17 @@ from tempest_fastapi_sdk.genai.rag import (
 def build_multimodal_agent() -> Agent:
     """Wire one agent over every local model the SDK can run."""
     retriever = Retriever(
-        Embedder(EmbeddingModel.ALL_MINILM_L6_V2),
+        Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2),
         InMemoryVectorStore(),
     )
     web_search = WebSearch(
         SearxngBackend("http://localhost:8080", http_client=HTTPClient()),
     )
     return Agent(
-        TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT),
+        TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT),
         tools=[
-            generate_image_tool(ImageGenerator(ImageModel.SDXL_TURBO), default_steps=4),
-            describe_image_tool(VisionTextGenerator(VisionModel.QWEN2_VL_2B_INSTRUCT)),
+            generate_image_tool(ImageGenerator(ImageModelEnum.SDXL_TURBO), default_steps=4),
+            describe_image_tool(VisionTextGenerator(VisionModelEnum.QWEN2_VL_2B_INSTRUCT)),
             transcribe_audio_tool(SpeechToText("base")),
             speak_tool(TextToSpeech()),
             retrieve_tool(retriever),
@@ -453,10 +453,10 @@ def build_multimodal_agent() -> Agent:
     from pathlib import Path
 
     from tempest_fastapi_sdk.agents import AgentTool, describe_image_tool
-    from tempest_fastapi_sdk.genai import VisionModel, VisionTextGenerator
+    from tempest_fastapi_sdk.genai import VisionModelEnum, VisionTextGenerator
 
     tool: AgentTool = describe_image_tool(
-        VisionTextGenerator(VisionModel.QWEN2_VL_2B_INSTRUCT),
+        VisionTextGenerator(VisionModelEnum.QWEN2_VL_2B_INSTRUCT),
         path_root=Path("/srv/app/public-images"),
     )
     ```
@@ -526,7 +526,7 @@ import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, AgentToolError, text_tool
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
 
 async def save(arguments: dict[str, Any], _context: AgentContext) -> str:
@@ -548,7 +548,7 @@ save_tool = text_tool(
 
 async def main() -> None:
     """Show that a raising tool becomes an observation, not a crash."""
-    agent = Agent(TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT), tools=[save_tool])
+    agent = Agent(TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT), tools=[save_tool])
     run = await agent.run("Save the note 'buy bread'.")
 
     failed = [step for step in run.steps if step.error]
@@ -611,7 +611,7 @@ from tempest_fastapi_sdk.agents import (
     AgentTool,
     ToolResult,
 )
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
 
 async def render_report(
@@ -649,7 +649,7 @@ report_tool = AgentTool(
 
 async def main() -> None:
     """Run the agent and write the artifact it produced to disk."""
-    agent = Agent(TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT), tools=[report_tool])
+    agent = Agent(TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT), tools=[report_tool])
     run = await agent.run("Generate a 'Sales' report summarizing the quarter.")
 
     report = run.artifact("report.md")
@@ -693,7 +693,7 @@ from tempest_fastapi_sdk.agents import (
     InMemoryAgentRunSink,
     make_agent_router,
 )
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
 store = InMemoryAgentRunSink(max_runs=50)
 
@@ -708,7 +708,7 @@ def current_user(x_user_id: str = Header()) -> str:
 
 
 agent = Agent(
-    TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
+    TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT),
     tools=[weather_tool],
     run_sink=store,
 )
@@ -755,7 +755,7 @@ which also means an `<img src>` works directly.
     CPU one decode already takes every core: with no limit, four concurrent
     runs split the machine and all of them finish late. Build the generator
     with `max_concurrent=1` —
-    `TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT, max_concurrent=1)` — and
+    `TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT, max_concurrent=1)` — and
     the extra requests wait in line. Measured with that model, four
     concurrent calls: median latency from 22.73 s to 11.91 s, throughput from
     22.4 to 26.9 tokens/s. The agent's time budget counts the time spent in

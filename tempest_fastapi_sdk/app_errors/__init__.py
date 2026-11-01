@@ -60,7 +60,7 @@ from tempest_fastapi_sdk.app_errors.schemas import (
 from tempest_fastapi_sdk.app_errors.schemas import (
     AppErrorResponseSchema as AppErrorResponseSchema,
 )
-from tempest_fastapi_sdk.app_errors.schemas import AppPlatform as AppPlatform
+from tempest_fastapi_sdk.app_errors.schemas import AppPlatformEnum as AppPlatformEnum
 from tempest_fastapi_sdk.app_errors.service import (
     AppErrorService as AppErrorService,
 )
@@ -77,7 +77,7 @@ __all__: list[str] = [
     "AppErrorReportSchema",
     "AppErrorResponseSchema",
     "AppErrorService",
-    "AppPlatform",
+    "AppPlatformEnum",
     "BaseAppErrorModel",
     "make_app_error_model",
     "make_app_error_router",

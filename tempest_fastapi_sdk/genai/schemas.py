@@ -11,7 +11,7 @@ from tempest_fastapi_sdk.core import BaseStrEnum
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
-class ModelDtype(BaseStrEnum):
+class ModelDtypeEnum(BaseStrEnum):
     """Weight precision a model is loaded in.
 
     Fewer bytes per parameter → smaller memory footprint, at some quality
@@ -111,7 +111,7 @@ class CapacityReport(BaseSchema):
             estimate.
         device (str): The chosen device — ``"cuda"``, ``"mps"`` or
             ``"cpu"``.
-        dtype (ModelDtype): The precision the estimate assumes.
+        dtype (ModelDtypeEnum): The precision the estimate assumes.
         estimated_bytes (int): Estimated memory the model needs (weights +
             inference overhead).
         available_bytes (int): Memory available on ``device``; ``0`` when
@@ -130,7 +130,7 @@ class CapacityReport(BaseSchema):
 
     fits: bool
     device: str
-    dtype: ModelDtype
+    dtype: ModelDtypeEnum
     estimated_bytes: int
     available_bytes: int
     headroom_pct: float
@@ -740,6 +740,6 @@ __all__: list[str] = [
     "GenerationConfig",
     "HardwareInfo",
     "ImageGenerationConfig",
-    "ModelDtype",
+    "ModelDtypeEnum",
     "precision_kwarg",
 ]

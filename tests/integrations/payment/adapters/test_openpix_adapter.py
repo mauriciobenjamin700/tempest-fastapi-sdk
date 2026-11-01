@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixChargeRequest,
-    PixEventType,
+    PixEventTypeEnum,
     PixPayer,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
@@ -28,7 +28,7 @@ from tempest_fastapi_sdk.integrations.payment.openpix import (
     CreateChargeResponse,
     DeleteChargeResponse,
     GetChargeResponse,
-    OpenPixEvent,
+    OpenPixEventEnum,
     OpenPixWebhookEvent,
 )
 
@@ -152,7 +152,7 @@ async def test_create_maps_the_charge_into_the_contract() -> None:
     assert charge.reference == "order-1042"
     assert charge.amount_cents == 1990
     assert isinstance(charge.amount_cents, int)
-    assert charge.status is PaymentStatus.PENDING
+    assert charge.status is PaymentStatusEnum.PENDING
     assert charge.provider_status == "ACTIVE"
     assert charge.br_code == "00020126...5802BR"
     assert charge.qr_code_image_url is not None
@@ -239,7 +239,7 @@ async def test_completed_charge_maps_to_paid() -> None:
 
     charge = await provider.get_pix_charge("ch_global_1")
 
-    assert charge.status is PaymentStatus.PAID
+    assert charge.status is PaymentStatusEnum.PAID
     assert charge.provider_status == "COMPLETED"
 
 
@@ -257,7 +257,7 @@ async def test_cancel_reports_what_openpix_actually_returns() -> None:
 
     charge = await provider.cancel_pix_charge("ch_global_1")
 
-    assert charge.status is PaymentStatus.CANCELLED
+    assert charge.status is PaymentStatusEnum.CANCELLED
     assert charge.provider_charge_id == "ch_global_1"
     assert charge.provider_status == "OK"
     assert charge.br_code is None
@@ -269,7 +269,7 @@ def test_webhook_completion_becomes_a_paid_event() -> None:
     provider = OpenPixPixProvider(StubOpenPixClient())
     event = OpenPixWebhookEvent(
         event_name="OPENPIX:CHARGE_COMPLETED",
-        event=OpenPixEvent.CHARGE_COMPLETED,
+        event=OpenPixEventEnum.CHARGE_COMPLETED,
         payload={
             "charge": {
                 "status": "COMPLETED",
@@ -284,9 +284,9 @@ def test_webhook_completion_becomes_a_paid_event() -> None:
 
     parsed = provider.parse_webhook(event)
 
-    assert parsed.type is PixEventType.CHARGE_PAID
+    assert parsed.type is PixEventTypeEnum.CHARGE_PAID
     assert parsed.charge is not None
-    assert parsed.charge.status is PaymentStatus.PAID
+    assert parsed.charge.status is PaymentStatusEnum.PAID
     assert parsed.charge.amount_cents == 1990
     assert parsed.charge.paid_at == datetime(2026, 8, 22, 16, 44, 18, tzinfo=UTC)
 
@@ -302,7 +302,7 @@ def test_webhook_payload_keeps_fields_the_charge_schema_drops() -> None:
     provider = OpenPixPixProvider(StubOpenPixClient())
     event = OpenPixWebhookEvent(
         event_name="OPENPIX:CHARGE_COMPLETED",
-        event=OpenPixEvent.CHARGE_COMPLETED,
+        event=OpenPixEventEnum.CHARGE_COMPLETED,
         payload={
             "charge": {
                 "status": "COMPLETED",
@@ -324,13 +324,13 @@ def test_unmapped_event_keeps_its_name() -> None:
     provider = OpenPixPixProvider(StubOpenPixClient())
     event = OpenPixWebhookEvent(
         event_name="OPENPIX:DISPUTE_CREATED",
-        event=OpenPixEvent.DISPUTE_CREATED,
+        event=OpenPixEventEnum.DISPUTE_CREATED,
         payload={},
     )
 
     parsed = provider.parse_webhook(event)
 
-    assert parsed.type is PixEventType.UNKNOWN
+    assert parsed.type is PixEventTypeEnum.UNKNOWN
     assert parsed.provider_event_name == "OPENPIX:DISPUTE_CREATED"
 
 

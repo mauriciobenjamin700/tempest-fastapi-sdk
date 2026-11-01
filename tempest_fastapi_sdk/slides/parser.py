@@ -39,7 +39,7 @@ from tempest_fastapi_sdk.slides.schemas import (
     Slide,
     SlideBullet,
     SlideDeck,
-    SlideKind,
+    SlideKindEnum,
 )
 from tempest_fastapi_sdk.slides.vocabulary import (
     DEFAULT_ANSWER_KEY_VOCABULARY,
@@ -468,7 +468,7 @@ def _build_slides(lessons: list[_Lesson], vocabulary: SlideVocabulary) -> list[S
     for lesson in lessons:
         slides.append(
             Slide(
-                kind=SlideKind.LESSON_TITLE,
+                kind=SlideKindEnum.LESSON_TITLE,
                 title=lesson.title,
                 subtitle=vocabulary.lesson(lesson.index),
                 lesson_index=lesson.index,
@@ -476,7 +476,7 @@ def _build_slides(lessons: list[_Lesson], vocabulary: SlideVocabulary) -> list[S
         )
         for section in lesson.sections:
             is_conclusion = vocabulary.conclusion_marker in section.title.lower()
-            kind = SlideKind.CONCLUSION if is_conclusion else SlideKind.CONTENT
+            kind = SlideKindEnum.CONCLUSION if is_conclusion else SlideKindEnum.CONTENT
             for chunk, chunk_notes in _chunk_paragraphs(
                 section.paragraphs, section.paragraph_notes
             ):
@@ -493,7 +493,7 @@ def _build_slides(lessons: list[_Lesson], vocabulary: SlideVocabulary) -> list[S
                 end = start + MAX_BULLETS_PER_SLIDE
                 slides.append(
                     Slide(
-                        kind=SlideKind.BULLETS,
+                        kind=SlideKindEnum.BULLETS,
                         title=section.title,
                         bullets=section.bullets[start:end],
                         lesson_index=lesson.index,

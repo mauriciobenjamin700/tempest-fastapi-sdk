@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from tempest_fastapi_sdk.core.enums import BaseIntEnum
 
 
-class CheckLevel(BaseIntEnum):
+class CheckLevelEnum(BaseIntEnum):
     """Severity of a system-check message (mirrors logging levels).
 
     A run "fails" when any message reaches the configured threshold
@@ -27,23 +27,23 @@ class CheckMessage:
     """One finding produced by a system check.
 
     Attributes:
-        level (CheckLevel): The severity.
+        level (CheckLevelEnum): The severity.
         message (str): What is wrong (or noteworthy).
         hint (str | None): How to fix it, shown after the message.
         id (str | None): A stable identifier (e.g. ``"security.W001"``)
             for allow-listing or documentation.
     """
 
-    level: CheckLevel
+    level: CheckLevelEnum
     message: str
     hint: str | None = None
     id: str | None = None
 
-    def is_serious(self, threshold: CheckLevel = CheckLevel.ERROR) -> bool:
+    def is_serious(self, threshold: CheckLevelEnum = CheckLevelEnum.ERROR) -> bool:
         """Return whether this message reaches ``threshold``.
 
         Args:
-            threshold (CheckLevel): The level at or above which a
+            threshold (CheckLevelEnum): The level at or above which a
                 message is considered serious. Defaults to ``ERROR``.
 
         Returns:
@@ -77,7 +77,7 @@ def debug(
     Returns:
         CheckMessage: The message, tagged at this level.
     """
-    return CheckMessage(CheckLevel.DEBUG, message, hint=hint, id=id)
+    return CheckMessage(CheckLevelEnum.DEBUG, message, hint=hint, id=id)
 
 
 def info(
@@ -93,7 +93,7 @@ def info(
     Returns:
         CheckMessage: The message, tagged at this level.
     """
-    return CheckMessage(CheckLevel.INFO, message, hint=hint, id=id)
+    return CheckMessage(CheckLevelEnum.INFO, message, hint=hint, id=id)
 
 
 def warning(
@@ -109,7 +109,7 @@ def warning(
     Returns:
         CheckMessage: The message, tagged at this level.
     """
-    return CheckMessage(CheckLevel.WARNING, message, hint=hint, id=id)
+    return CheckMessage(CheckLevelEnum.WARNING, message, hint=hint, id=id)
 
 
 def error(
@@ -125,7 +125,7 @@ def error(
     Returns:
         CheckMessage: The message, tagged at this level.
     """
-    return CheckMessage(CheckLevel.ERROR, message, hint=hint, id=id)
+    return CheckMessage(CheckLevelEnum.ERROR, message, hint=hint, id=id)
 
 
 def critical(
@@ -141,11 +141,11 @@ def critical(
     Returns:
         CheckMessage: The message, tagged at this level.
     """
-    return CheckMessage(CheckLevel.CRITICAL, message, hint=hint, id=id)
+    return CheckMessage(CheckLevelEnum.CRITICAL, message, hint=hint, id=id)
 
 
 __all__: list[str] = [
-    "CheckLevel",
+    "CheckLevelEnum",
     "CheckMessage",
     "critical",
     "debug",

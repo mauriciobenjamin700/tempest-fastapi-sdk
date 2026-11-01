@@ -59,7 +59,7 @@ from tempest_fastapi_sdk.genai.schemas import (
     AudioGenerationConfig,
     GeneratedAudio,
     HardwareInfo,
-    ModelDtype,
+    ModelDtypeEnum,
 )
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
@@ -291,7 +291,7 @@ class AudioGenerator:
     Attributes:
         model_id (str): The HuggingFace model id.
         device (str): The resolved device (``cuda`` / ``mps`` / ``cpu``).
-        dtype (ModelDtype): The resolved compute precision.
+        dtype (ModelDtypeEnum): The resolved compute precision.
         source (ModelRef): The resolved weight identity forwarded to
             ``from_pretrained``.
         pipeline_kwargs (dict[str, Any]): Extra ``from_pretrained``
@@ -305,7 +305,7 @@ class AudioGenerator:
         model_id: str,
         *,
         device: str = "auto",
-        dtype: str | ModelDtype = "auto",
+        dtype: str | ModelDtypeEnum = "auto",
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
@@ -324,7 +324,7 @@ class AudioGenerator:
                 pipeline (``cvssp/audioldm-s-full-v2``,
                 ``ucsd-reach/musicldm``).
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
-            dtype (str | ModelDtype): Compute precision, or ``"auto"``
+            dtype (str | ModelDtypeEnum): Compute precision, or ``"auto"``
                 (bf16 on GPU, fp32 on CPU).
             cache_dir (str | None): Where weights are downloaded and read
                 back; ``None`` uses the ``huggingface_hub`` default.
@@ -357,9 +357,9 @@ class AudioGenerator:
         self.model_id = model_id
         self.device = resolve_device(device, hardware)
         self.dtype = (
-            ModelDtype(auto_dtype_name(self.device))
+            ModelDtypeEnum(auto_dtype_name(self.device))
             if dtype == "auto"
-            else ModelDtype(dtype)
+            else ModelDtypeEnum(dtype)
         )
         self.source = ModelRef(
             model_id=model_id,

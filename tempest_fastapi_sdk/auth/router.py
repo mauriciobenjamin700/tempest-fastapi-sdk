@@ -118,7 +118,7 @@ from tempest_fastapi_sdk.auth.token_delivery import (
     apply_auth_cookies,
     clear_auth_cookies,
 )
-from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose
+from tempest_fastapi_sdk.db.user_token_model import UserTokenPurposeEnum
 from tempest_fastapi_sdk.exceptions import (
     ConflictException,
     InvalidTokenException,
@@ -1666,7 +1666,7 @@ def make_auth_router(
                 _record, user = await service.peek_token(
                     session,
                     token=token,
-                    purpose=UserTokenPurpose.PASSWORD_RESET,
+                    purpose=UserTokenPurposeEnum.PASSWORD_RESET,
                 )
             except (InvalidTokenException, NotFoundException) as exc:
                 return _render_error(
@@ -1730,7 +1730,7 @@ def make_auth_router(
                     _record, user = await service.peek_token(
                         session,
                         token=token,
-                        purpose=UserTokenPurpose.PASSWORD_RESET,
+                        purpose=UserTokenPurposeEnum.PASSWORD_RESET,
                     )
                 except (InvalidTokenException, NotFoundException) as exc:
                     return _render_error(
@@ -1778,7 +1778,7 @@ def make_auth_router(
                     _record, peek_user = await service.peek_token(
                         session,
                         token=token,
-                        purpose=UserTokenPurpose.PASSWORD_RESET,
+                        purpose=UserTokenPurposeEnum.PASSWORD_RESET,
                     )
                 except (InvalidTokenException, NotFoundException):
                     return _render_error(

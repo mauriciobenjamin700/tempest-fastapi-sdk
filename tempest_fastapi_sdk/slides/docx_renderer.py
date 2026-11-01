@@ -17,7 +17,12 @@ from typing import TYPE_CHECKING
 
 from tempest_fastapi_sdk.slides.exceptions import missing_extra_message
 from tempest_fastapi_sdk.slides.html_renderer import strip_tags
-from tempest_fastapi_sdk.slides.schemas import AnswerKey, Slide, SlideDeck, SlideKind
+from tempest_fastapi_sdk.slides.schemas import (
+    AnswerKey,
+    Slide,
+    SlideDeck,
+    SlideKindEnum,
+)
 from tempest_fastapi_sdk.slides.vocabulary import AnswerKeyVocabulary, SlideVocabulary
 
 if TYPE_CHECKING:
@@ -93,9 +98,9 @@ def _eyebrow(slide: Slide, vocabulary: SlideVocabulary) -> str:
     Returns:
         str: The label, uppercased, or ``""`` when none applies.
     """
-    if slide.kind == SlideKind.LESSON_TITLE and slide.subtitle:
+    if slide.kind == SlideKindEnum.LESSON_TITLE and slide.subtitle:
         return slide.subtitle.upper()
-    if slide.kind == SlideKind.CONCLUSION:
+    if slide.kind == SlideKindEnum.CONCLUSION:
         return vocabulary.conclusion_label.upper()
     if slide.lesson_index is not None:
         return vocabulary.lesson(slide.lesson_index).upper()
@@ -130,10 +135,10 @@ def _slide_page(
         color=TITLE_COLOR,
         bold=True,
     )
-    if slide.kind == SlideKind.LESSON_TITLE:
+    if slide.kind == SlideKindEnum.LESSON_TITLE:
         run = document.add_paragraph().add_run(vocabulary.handout_cover_note)
         _style(run, size=11, color=MUTED_COLOR, italic=True)
-    elif slide.kind == SlideKind.BULLETS:
+    elif slide.kind == SlideKindEnum.BULLETS:
         for bullet in slide.bullets:
             paragraph = document.add_paragraph(style="List Bullet")
             paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY

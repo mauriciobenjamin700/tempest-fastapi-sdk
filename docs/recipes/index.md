@@ -149,7 +149,7 @@ enum/helper, ambos escondendo a lib.
 
 ```python
 from tempest_fastapi_sdk.queue import MessageBroker
-from tempest_fastapi_sdk.tasks import Cron, CronOffset, TaskQueue
+from tempest_fastapi_sdk.tasks import CronEnum, CronOffsetEnum, TaskQueue
 
 from src.core.settings import settings
 from src.queue import OrderPaid
@@ -163,7 +163,7 @@ tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
 async def on_paid(event: OrderPaid) -> None: ...
 
 
-@tq.cron(Cron.EVERY_WEEKDAY_9AM, cron_offset=CronOffset.BRASILIA)
+@tq.cron(CronEnum.EVERY_WEEKDAY_9AM, cron_offset=CronOffsetEnum.BRASILIA)
 async def digest() -> None: ...
 ```
 
@@ -488,7 +488,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Auth flow (signup/reset) »](auth-flow.md)** | `UserAuthService`, `make_auth_router` — signup / ativação / login / reset de senha, entrega de token (bearer/cookie/ambos), `BaseUserModel` |
 | **[Auth por introspecção (resource server) »](introspection-auth.md)** | `IntrospectionAuth` — validar bearer opaco perguntando ao provedor de identidade upstream |
 | **[Banco de dados »](database.md)** | `BaseModel`, `AsyncDatabaseManager`, `BaseRepository` (CRUD + filtros + bulk), paginação offset/cursor, mixins, `AlembicHelper`, `SlowQueryLogger` |
-| **[Busca textual (LIKE + full-text) »](text-search.md)** | `search()` portátil (ILIKE escapado, `AND` entre palavras), `full_text_search()` com `websearch_to_tsquery` + `ts_rank` no PostgreSQL, `TextSearchLanguage` / `TextSearchWeight` / `TokenMatch`, condições que entram em `where=` |
+| **[Busca textual (LIKE + full-text) »](text-search.md)** | `search()` portátil (ILIKE escapado, `AND` entre palavras), `full_text_search()` com `websearch_to_tsquery` + `ts_rank` no PostgreSQL, `TextSearchLanguageEnum` / `TextSearchWeightEnum` / `TokenMatchEnum`, condições que entram em `where=` |
 | **[Cache »](cache.md)** | `AsyncRedisManager` (+ `client_proxy`, para store construído no import), decorator `@cached`, `CacheInvalidator` (tag/namespace) |
 | **[Camada HTTP »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` (429 no envelope de erro do SDK), `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
 | **[Camada UI (páginas e componentes) »](ui.md)** | a camada `src/ui/` (páginas, layout, componentes, estilos), `Page` + `shell()` herdado, `Card` / `Alert` / `DataTable` (com `TableColumn` para link/form na célula) / `Pagination` / `EmptyState` / `NavBar`, `Shell` (inclusive `width="full"`) / `Grid`, scaffold via `tempest new --extras "ssr"` |
@@ -508,7 +508,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Email transacional »](email.md)** | `EmailUtils` — SMTP, corpo texto/HTML, anexos, templates Jinja2 |
 | **[Erros do app (relatados pelo cliente) »](app-errors.md)** | `make_app_error_model` (FK de usuário nullable, `SET NULL`, `created_at` indexado), `AppErrorService` (trunca em vez de recusar), listagem admin opt-in, intervalo de datas semiaberto |
 | **[Erros no OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
-| **[Escolhendo o modelo »](models.md)** | `TextModel` / `EmbeddingModel` / `RerankerModel` / `VisionModel` / `ImageModel` / `SpeechToTextModel` / `TextToSpeechModel` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
+| **[Escolhendo o modelo »](models.md)** | `TextModelEnum` / `EmbeddingModelEnum` / `RerankerModelEnum` / `VisionModelEnum` / `ImageModelEnum` / `SpeechToTextModelEnum` / `TextToSpeechModelEnum` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
 | **[Exportação e exclusão de titular (LGPD) »](subject-data.md)** | `SubjectGraph` (tabelas que o `DELETE` do titular alcança por cascata, derivadas da `MetaData`), `export` sem colunas secretas, `violations` + `assert_subject_graph_valid` como guard de CI, `SubjectObjectStorage` (prefixo por titular, upload direto com `presign_put` + `read` limitado, `delete_all` em lote) |
 | **[Fakes (sem provedor real) »](fakes.md)** | `FakePixProvider`, `FakeCardProvider`, `FakePayoutProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend`, `FakeObjectStorageClient` — onze costuras sem credencial e sem rede, dirigíveis (`advance`, `flag`, `fail_next`) e inspecionáveis |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
@@ -541,7 +541,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[n8n (automação de workflows) »](n8n.md)** | disparar o Webhook node com `HTTPClient` + Header Auth (resposta imediata ou Respond to Webhook, URL de teste vs produção), HTTP Request node chamando rota protegida por `make_token_dependency`, e outbox + `WebhookInbox`; executado contra n8n 2.43.7 |
 | **[Observabilidade (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
 | **[OpenPix (assinaturas e planos) »](openpix-subscriptions.md)** | `SubscriptionPayload`, `RECURRENT` vs `PIX_RECURRING` (Pix Automático), ciclo de vida e parcelas, o plano que mora no seu banco |
-| **[OpenPix (Pix via Woovi) »](openpix.md)** | Arquitetura em camadas, abrir cobrança, webhook verificado + conferência pela API, reconciliação, estorno, `OpenPixEnvironment`, `to_cents` |
+| **[OpenPix (Pix via Woovi) »](openpix.md)** | Arquitetura em camadas, abrir cobrança, webhook verificado + conferência pela API, reconciliação, estorno, `OpenPixEnvironmentEnum`, `to_cents` |
 | **[Outbox transacional »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |
 | **[Painel admin »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
 | **[PDFs »](pdf.md)** | Gerar: `PdfRenderer`, cinco documentos prontos (recibo/orçamento/relatório/contrato/comprovante) com schema Pydantic, `make_pdf_router`, `tempest pdf render`, política de assets. Ler: `extract_pdf_text`, `read_pdf_pages` (upload pela API, página por página, tabelas) |
@@ -550,9 +550,9 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Pipeline de transcrição (áudio → resumo) »](transcription-pipeline.md)** | os três estágios costurados: `StageMap` no próprio registro, cancelar uma transcrição já rodando por dentro do `on_progress`, `generate_with_usage` + `AIUsageStore` para saber quem pagou, `generate_structured_list` na etapa que devolve lista |
 | **[Planilhas (.xlsx) »](spreadsheets.md)** | `SheetWriter` (cursor de linha), `Column` (largura/máscara/alinhamento), `SheetStyle` como dado puro, formatos `BR_*` fixados em pt-BR, `new_workbook` / `workbook_to_bytes`; leitura de `.xlsx` com célula tipada (`read_xlsx_as`, `read_xlsx_sheets`) e de planilha pública do Google Sheets validada em schema (`read_google_sheet_as`, ou a pasta inteira com `read_google_sheet_xlsx`) |
 | **[Planos de query (EXPLAIN) »](query-plans.md)** | `explain_queries()` captura o bloco e explica na saída, `EXPLAIN ANALYZE` no PostgreSQL / `EXPLAIN QUERY PLAN` no SQLite, escrita nunca reexecutada, `report.slowest` |
-| **[Protocolo de Pix (um contrato, vários provedores) »](pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` campo por campo, `PaymentStatus` canônico ao lado do `provider_status` cru, os seis `PixEventType`, `OpenPixPixProvider` e `MercadoPagoPixProvider`, `PixProviderRouter` para migrar de provedor por fatia de pedidos, `confirm_pix_payment` + `claim_once` para liberar o pedido só depois de reler a cobrança, e uma vez só — e como escrever o seu adapter, com um fake in-memory para testar sem rede |
+| **[Protocolo de Pix (um contrato, vários provedores) »](pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` campo por campo, `PaymentStatusEnum` canônico ao lado do `provider_status` cru, os seis `PixEventTypeEnum`, `OpenPixPixProvider` e `MercadoPagoPixProvider`, `PixProviderRouter` para migrar de provedor por fatia de pedidos, `confirm_pix_payment` + `claim_once` para liberar o pedido só depois de reler a cobrança, e uma vez só — e como escrever o seu adapter, com um fake in-memory para testar sem rede |
 | **[Push (web + mobile) »](push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — uma chamada para navegador e celular, com poda unificada do aparelho morto |
-| **[Receber mensagens do WhatsApp (zap-api) »](zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC sobre o corpo cru, `ZapWebhookDelivery` com `inbound` / `status` já parseados pelo `event`, enums (`ZapWebhookEvent`, `ZapInboundMediaType`, `ZapJidServer`, `ZapOutboundKind`) para despachar sem string solta, camada completa model → repository → service → controller → router sobre `ZapInbox` + mixins (claim, status e envio prontos), `is_forward_transition` contra callback fora de ordem, mídia via `get_message_media` |
+| **[Receber mensagens do WhatsApp (zap-api) »](zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC sobre o corpo cru, `ZapWebhookDelivery` com `inbound` / `status` já parseados pelo `event`, enums (`ZapWebhookEventEnum`, `ZapInboundMediaTypeEnum`, `ZapJidServerEnum`, `ZapOutboundKindEnum`) para despachar sem string solta, camada completa model → repository → service → controller → router sobre `ZapInbox` + mixins (claim, status e envio prontos), `is_forward_transition` contra callback fora de ordem, mídia via `get_message_media` |
 | **[Reconhecimento facial »](faces.md)** | `FaceRecognizer` (detectar / embutir / comparar), `compare_faces`, packs de 16 MB ou 191 MB, sem opencv e sem torch |
 | **[Refresh tokens (rotação/revogação) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotação + detecção de reuso por família |
 | **[RevenueCat (assinatura in-app) »](revenuecat.md)** | `make_revenuecat_webhook_router` (header Authorization + HMAC opcional, segredo vazio recusa tudo, grava uma vez), `WebhookInbox` + `BaseWebhookEventModel` (inbox idempotente para qualquer provedor: claim, efeito e marca na mesma transação, `max_attempts` → `FAILED`), `normalize` → `SubscriptionSnapshot` sobre os 21 tipos de evento documentados, `RevenueCatClient.get_subscriber`, `RevenueCatSettings`, `FakeRevenueCatClient` |

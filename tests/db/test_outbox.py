@@ -17,7 +17,7 @@ from tempest_fastapi_sdk.db import (
     BaseOutboxModel,
     BaseRepository,
     OutboxRelay,
-    OutboxStatus,
+    OutboxStatusEnum,
 )
 
 
@@ -73,7 +73,7 @@ class TestNewEvent:
         event = _OutboxModel.new_event("widgets.created", {"id": 1})
         assert event.topic == "widgets.created"
         assert event.payload == {"id": 1}
-        assert event.status == OutboxStatus.PENDING.value
+        assert event.status == OutboxStatusEnum.PENDING.value
         assert event.attempts == 0
         assert event.max_attempts == 5
 
@@ -94,7 +94,7 @@ class TestSaveWithOutbox:
             events = (await session.execute(select(_OutboxModel))).scalars().all()
             assert len(widgets) == 1
             assert len(events) == 1
-            assert events[0].status == OutboxStatus.PENDING.value
+            assert events[0].status == OutboxStatusEnum.PENDING.value
 
 
 class TestOutboxRelay:
@@ -120,7 +120,7 @@ class TestOutboxRelay:
         assert published == [{"name": "a"}]
         async with outbox_db.get_session_context() as session:
             event = (await session.execute(select(_OutboxModel))).scalar_one()
-            assert event.status == OutboxStatus.SENT.value
+            assert event.status == OutboxStatusEnum.SENT.value
             assert event.sent_at is not None
 
     async def test_drain_empty_returns_zero(
@@ -151,7 +151,7 @@ class TestOutboxRelay:
         assert count == 0
         async with outbox_db.get_session_context() as session:
             event = (await session.execute(select(_OutboxModel))).scalar_one()
-            assert event.status == OutboxStatus.PENDING.value
+            assert event.status == OutboxStatusEnum.PENDING.value
             assert event.attempts == 1
             assert event.last_error == "broker down"
 
@@ -173,7 +173,7 @@ class TestOutboxRelay:
 
         async with outbox_db.get_session_context() as session:
             event = (await session.execute(select(_OutboxModel))).scalar_one()
-            assert event.status == OutboxStatus.FAILED.value
+            assert event.status == OutboxStatusEnum.FAILED.value
             assert event.attempts == 1
 
 

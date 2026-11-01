@@ -36,7 +36,7 @@ from tempest_fastapi_sdk.modelops.energy import (
 from tempest_fastapi_sdk.modelops.schemas import (
     BenchmarkProfile,
     BenchmarkReport,
-    EnergySource,
+    EnergySourceEnum,
     RuntimeAggregate,
     RuntimeSample,
     StaticModelMetrics,
@@ -321,7 +321,7 @@ def _aggregate(
     elif cpu_reading.energy_j is not None:
         energy_source = cpu_reading.source
     else:
-        energy_source = EnergySource.UNAVAILABLE
+        energy_source = EnergySourceEnum.UNAVAILABLE
 
     gpu_memory_peak: float | None = (
         max(gpu_memory_values) if gpu_memory_values else gpu_sampler.peak_memory_mb()

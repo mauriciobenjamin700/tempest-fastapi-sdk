@@ -18,7 +18,7 @@ from tempest_fastapi_sdk import prune_orphan_enum_schemas, register_exception_ha
 from tempest_fastapi_sdk.api import drop_orphan_enum_schemas
 from tempest_fastapi_sdk.schemas import BaseSchema
 from tempest_fastapi_sdk.utils.fields import image_media_type_field
-from tempest_fastapi_sdk.utils.media_types import ImageMediaType
+from tempest_fastapi_sdk.utils.media_types import ImageMediaTypeEnum
 
 
 class Status(StrEnum):
@@ -31,8 +31,8 @@ class EvidenceCreateSchema(BaseSchema):
     """A schema carrying the narrowed enum and a plain one."""
 
     photo_type: Annotated[
-        ImageMediaType,
-        image_media_type_field(ImageMediaType.JPEG, ImageMediaType.PNG),
+        ImageMediaTypeEnum,
+        image_media_type_field(ImageMediaTypeEnum.JPEG, ImageMediaTypeEnum.PNG),
     ]
     status: Status
 
@@ -75,15 +75,15 @@ def test_fastapi_alone_publishes_the_orphan() -> None:
     app = build(prune=False)
     document = json.dumps(app.openapi())
 
-    assert "ImageMediaType" in schemas(app)
-    assert "#/components/schemas/ImageMediaType" not in document
+    assert "ImageMediaTypeEnum" in schemas(app)
+    assert "#/components/schemas/ImageMediaTypeEnum" not in document
 
 
 def test_the_orphan_goes_and_the_narrowed_enum_stays_inline() -> None:
     app = build(prune=True)
     components = schemas(app)
 
-    assert "ImageMediaType" not in components
+    assert "ImageMediaTypeEnum" not in components
     assert components["EvidenceCreateSchema"]["properties"]["photo_type"]["enum"] == [
         "image/jpeg",
         "image/png",

@@ -10,12 +10,12 @@ from pathlib import Path
 import pytest
 
 from tempest_fastapi_sdk.modelops import (
-    CalibrationMethod,
-    HFOptimizationLevel,
-    HFQuantizationTarget,
-    QuantizationBackend,
-    QuantizationFormat,
-    QuantWeightType,
+    CalibrationMethodEnum,
+    HFOptimizationLevelEnum,
+    HFQuantizationTargetEnum,
+    QuantizationBackendEnum,
+    QuantizationFormatEnum,
+    QuantWeightTypeEnum,
     analyze_onnx,
     optimize_hf_onnx,
     quantize_hf_bnb,
@@ -36,11 +36,11 @@ from tempest_fastapi_sdk.modelops.quantize import (
 
 class TestEnumMaps:
     def test_every_weight_type_maps_to_a_runtime_member(self) -> None:
-        assert set(_QUANT_TYPE_ATTRS) == set(QuantWeightType)
+        assert set(_QUANT_TYPE_ATTRS) == set(QuantWeightTypeEnum)
 
     def test_every_format_and_method_maps(self) -> None:
-        assert set(_QUANT_FORMAT_ATTRS) == set(QuantizationFormat)
-        assert set(_CALIBRATION_ATTRS) == set(CalibrationMethod)
+        assert set(_QUANT_FORMAT_ATTRS) == set(QuantizationFormatEnum)
+        assert set(_CALIBRATION_ATTRS) == set(CalibrationMethodEnum)
 
     def test_an_unsupported_member_is_reported_not_guessed(self) -> None:
         quantization = pytest.importorskip("onnxruntime.quantization")
@@ -56,8 +56,8 @@ class TestQuantizeOnnxDynamic:
         destination = tmp_path / "tiny.int8.onnx"
         result = quantize_onnx_dynamic(tiny_onnx, destination)
         assert destination.is_file()
-        assert result.backend == QuantizationBackend.ONNXRUNTIME_DYNAMIC
-        assert result.weight_type == QuantWeightType.INT8
+        assert result.backend == QuantizationBackendEnum.ONNXRUNTIME_DYNAMIC
+        assert result.weight_type == QuantWeightTypeEnum.INT8
         assert result.compression_ratio > 1.0
         assert result.output_size_mb < result.source_size_mb
 
@@ -68,7 +68,7 @@ class TestQuantizeOnnxDynamic:
         result = quantize_onnx_dynamic(
             tiny_onnx, tmp_path / "u8.onnx", weight_type="uint8"
         )
-        assert result.weight_type == QuantWeightType.UINT8
+        assert result.weight_type == QuantWeightTypeEnum.UINT8
 
     def test_the_output_is_still_a_loadable_graph(
         self, tiny_onnx: Path, tmp_path: Path
@@ -104,7 +104,7 @@ class TestQuantizeOnnxStatic:
         result = quantize_onnx_static(
             tiny_onnx, tmp_path / "tiny.qdq.onnx", calibration_inputs=batches
         )
-        assert result.backend == QuantizationBackend.ONNXRUNTIME_STATIC
+        assert result.backend == QuantizationBackendEnum.ONNXRUNTIME_STATIC
         assert result.notes == ["calibrated on 2 batch(es)"]
         assert Path(result.output_path).is_file()
 
@@ -135,10 +135,10 @@ class TestPortedTables:
         assert unknown == set()
 
     def test_every_optimization_level_has_a_spec(self) -> None:
-        assert set(_OPTIMIZATION_SPECS) == set(HFOptimizationLevel)
+        assert set(_OPTIMIZATION_SPECS) == set(HFOptimizationLevelEnum)
 
     def test_every_quantization_target_has_a_spec(self) -> None:
-        assert set(_ISA_QUANTIZATION_SPECS) == set(HFQuantizationTarget)
+        assert set(_ISA_QUANTIZATION_SPECS) == set(HFQuantizationTargetEnum)
 
     def test_only_the_pre_vnni_x86_targets_tune_reduce_range(self) -> None:
         tunable = {
@@ -147,17 +147,17 @@ class TestPortedTables:
             if spec.tunable_reduce_range
         }
         assert tunable == {
-            HFQuantizationTarget.AVX2,
-            HFQuantizationTarget.AVX512,
+            HFQuantizationTargetEnum.AVX2,
+            HFQuantizationTargetEnum.AVX512,
         }
 
     def test_avx2_alone_takes_unsigned_weights(self) -> None:
         unsigned = {
             target
             for target, spec in _ISA_QUANTIZATION_SPECS.items()
-            if spec.weight_type is QuantWeightType.UINT8
+            if spec.weight_type is QuantWeightTypeEnum.UINT8
         }
-        assert unsigned == {HFQuantizationTarget.AVX2}
+        assert unsigned == {HFQuantizationTargetEnum.AVX2}
 
 
 class TestOptimizeHFOnnx:
@@ -245,7 +245,7 @@ class TestOptimizeHFOnnx:
             optimize_hf_onnx(
                 hf_export_dir,
                 tmp_path / "out",
-                level=HFOptimizationLevel.O4,
+                level=HFOptimizationLevelEnum.O4,
             )
 
     @pytest.mark.skipif(
@@ -265,8 +265,8 @@ class TestQuantizeHFOnnx:
         destination = tmp_path / "int8"
         result = quantize_hf_onnx(hf_export_dir, destination)
         assert (destination / "model.onnx").is_file()
-        assert result.backend == QuantizationBackend.ONNXRUNTIME_TRANSFORMERS
-        assert result.weight_type == QuantWeightType.INT8
+        assert result.backend == QuantizationBackendEnum.ONNXRUNTIME_TRANSFORMERS
+        assert result.weight_type == QuantWeightTypeEnum.INT8
         assert result.notes == ["targeted avx512_vnni"]
         assert result.output_size_mb < result.source_size_mb
 
@@ -284,9 +284,9 @@ class TestQuantizeHFOnnx:
     ) -> None:
         pytest.importorskip("onnxruntime")
         result = quantize_hf_onnx(
-            hf_export_dir, tmp_path / "u8", target=HFQuantizationTarget.AVX2
+            hf_export_dir, tmp_path / "u8", target=HFQuantizationTargetEnum.AVX2
         )
-        assert result.weight_type == QuantWeightType.UINT8
+        assert result.weight_type == QuantWeightTypeEnum.UINT8
 
     def test_a_plain_string_target_is_accepted(
         self, hf_export_dir: Path, tmp_path: Path
@@ -303,7 +303,7 @@ class TestQuantizeHFOnnx:
             quantize_hf_onnx(
                 hf_export_dir,
                 tmp_path / "out",
-                target=HFQuantizationTarget.AVX512_VNNI,
+                target=HFQuantizationTargetEnum.AVX512_VNNI,
                 reduce_range=True,
             )
 
@@ -314,7 +314,7 @@ class TestQuantizeHFOnnx:
         result = quantize_hf_onnx(
             hf_export_dir,
             tmp_path / "out",
-            target=HFQuantizationTarget.AVX512,
+            target=HFQuantizationTargetEnum.AVX512,
             reduce_range=True,
         )
         assert Path(result.output_path).is_dir()

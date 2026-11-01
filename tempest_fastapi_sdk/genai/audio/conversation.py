@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from tempest_fastapi_sdk.genai.audio.language import Language
+    from tempest_fastapi_sdk.genai.audio.language import LanguageEnum
     from tempest_fastapi_sdk.genai.audio.profiles import VoiceProfileService
     from tempest_fastapi_sdk.genai.audio.schemas import (
         Transcription,
@@ -162,7 +162,7 @@ class ConversationTranscriber:
         self,
         audio: str | Path | bytes,
         *,
-        language: Language | str | None = None,
+        language: LanguageEnum | str | None = None,
         num_speakers: int | Literal["auto"] | None = None,
         identify_with: VoiceProfileService | None = None,
         session: AsyncSession | None = None,
@@ -178,7 +178,7 @@ class ConversationTranscriber:
 
         Args:
             audio (str | Path | bytes): The recording.
-            language (Language | str | None): Force a language instead of
+            language (LanguageEnum | str | None): Force a language instead of
                 detecting it.
             num_speakers (int | Literal["auto"] | None): Override the
                 diarizer's setting for this call. ``None`` (default)

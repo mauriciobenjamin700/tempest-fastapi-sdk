@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from tempest_fastapi_sdk import Locale
+from tempest_fastapi_sdk import LocaleEnum
 from tempest_fastapi_sdk.utils import (
     CentsField,
     DecimalPercentField,
@@ -153,19 +153,19 @@ class TestLocaleField:
     @pytest.mark.parametrize(
         ("value", "expected"),
         [
-            ("pt-BR", Locale.PT_BR),
-            ("pt_BR", Locale.PT_BR),
-            ("PT-BR", Locale.PT_BR),
-            ("pt", Locale.PT_BR),
-            ("en", Locale.EN_US),
-            (Locale.EN_US, Locale.EN_US),
+            ("pt-BR", LocaleEnum.PT_BR),
+            ("pt_BR", LocaleEnum.PT_BR),
+            ("PT-BR", LocaleEnum.PT_BR),
+            ("pt", LocaleEnum.PT_BR),
+            ("en", LocaleEnum.EN_US),
+            (LocaleEnum.EN_US, LocaleEnum.EN_US),
         ],
     )
-    def test_normalizes_loose_input(self, value: object, expected: Locale) -> None:
+    def test_normalizes_loose_input(self, value: object, expected: LocaleEnum) -> None:
         assert LocaleModel(locale=value).locale is expected
 
     def test_yields_locale_member(self) -> None:
-        assert isinstance(LocaleModel(locale="pt-BR").locale, Locale)
+        assert isinstance(LocaleModel(locale="pt-BR").locale, LocaleEnum)
 
     def test_none_is_allowed(self) -> None:
         assert LocaleModel(locale=None).locale is None

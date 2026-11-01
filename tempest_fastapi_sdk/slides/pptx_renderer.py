@@ -17,7 +17,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from tempest_fastapi_sdk.slides.exceptions import missing_extra_message
-from tempest_fastapi_sdk.slides.schemas import Slide, SlideDeck, SlideKind, SlideTheme
+from tempest_fastapi_sdk.slides.schemas import (
+    Slide,
+    SlideDeck,
+    SlideKindEnum,
+    SlideThemeEnum,
+)
 from tempest_fastapi_sdk.slides.vocabulary import SlideVocabulary
 
 if TYPE_CHECKING:
@@ -63,8 +68,8 @@ class PptxPalette:
     hero_text: str
 
 
-PPTX_PALETTES: dict[SlideTheme, PptxPalette] = {
-    SlideTheme.DEFAULT: PptxPalette(
+PPTX_PALETTES: dict[SlideThemeEnum, PptxPalette] = {
+    SlideThemeEnum.DEFAULT: PptxPalette(
         background="FFFFFF",
         text="1F2937",
         muted="6B7280",
@@ -72,7 +77,7 @@ PPTX_PALETTES: dict[SlideTheme, PptxPalette] = {
         hero_background="1E3A8A",
         hero_text="FFFFFF",
     ),
-    SlideTheme.DARK: PptxPalette(
+    SlideThemeEnum.DARK: PptxPalette(
         background="0F172A",
         text="E2E8F0",
         muted="94A3B8",
@@ -138,7 +143,7 @@ class _Writer:
             target (PptxSlide): The python-pptx slide.
             slide (Slide): The slide to draw.
         """
-        is_hero = slide.kind == SlideKind.LESSON_TITLE
+        is_hero = slide.kind == SlideKindEnum.LESSON_TITLE
         fill = target.background.fill
         fill.solid()
         fill.fore_color.rgb = self._rgb(
@@ -167,7 +172,7 @@ class _Writer:
                 bold=True,
                 color=self.palette.text,
             )
-            if slide.kind == SlideKind.BULLETS:
+            if slide.kind == SlideKindEnum.BULLETS:
                 self._draw_bullets(target, slide)
             else:
                 self._draw_paragraphs(target, slide)
@@ -185,7 +190,7 @@ class _Writer:
         Returns:
             str: The conclusion label, the lesson label, or ``""``.
         """
-        if slide.kind == SlideKind.CONCLUSION:
+        if slide.kind == SlideKindEnum.CONCLUSION:
             return self.vocabulary.conclusion_label.upper()
         if slide.lesson_index is not None:
             return self.vocabulary.lesson(slide.lesson_index).upper()
@@ -412,13 +417,13 @@ class _Writer:
 
 
 def write_slides_pptx(
-    deck: SlideDeck, *, theme: SlideTheme, vocabulary: SlideVocabulary
+    deck: SlideDeck, *, theme: SlideThemeEnum, vocabulary: SlideVocabulary
 ) -> bytes:
     """Write a deck as a ``.pptx`` file, synchronously.
 
     Args:
         deck (SlideDeck): The deck.
-        theme (SlideTheme): Which palette to use.
+        theme (SlideThemeEnum): Which palette to use.
         vocabulary (SlideVocabulary): Labels to print.
 
     Returns:
@@ -427,4 +432,4 @@ def write_slides_pptx(
     Raises:
         ImportError: When ``python-pptx`` is missing.
     """
-    return _Writer(deck, PPTX_PALETTES[SlideTheme(theme)], vocabulary).write()
+    return _Writer(deck, PPTX_PALETTES[SlideThemeEnum(theme)], vocabulary).write()

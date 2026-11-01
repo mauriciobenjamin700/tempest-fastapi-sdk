@@ -19,20 +19,20 @@ uso.
 ## O enum
 
 ```python
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 
-gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+gen = TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT)
 ```
 
-`TextModel` é um `StrEnum`: cada membro **é** a string do id, então ele
+`TextModelEnum` é um `StrEnum`: cada membro **é** a string do id, então ele
 vai direto em qualquer lugar que aceita `str` — construtor, settings,
 JSON, query param.
 
 ```python
-from tempest_fastapi_sdk.genai import TextModel
+from tempest_fastapi_sdk.genai import TextModelEnum
 
-assert TextModel.QWEN2_5_7B_INSTRUCT == "Qwen/Qwen2.5-7B-Instruct"
-print(f"carregando {TextModel.QWEN2_5_7B_INSTRUCT}")
+assert TextModelEnum.QWEN2_5_7B_INSTRUCT == "Qwen/Qwen2.5-7B-Instruct"
+print(f"carregando {TextModelEnum.QWEN2_5_7B_INSTRUCT}")
 ```
 
 !!! info "É um ponto de partida, não uma lista fechada"
@@ -43,15 +43,15 @@ Um enum por tarefa:
 
 | Enum | Alimenta |
 | --- | --- |
-| `TextModel` | `TextGenerator`, `Agent`, `AIChatPipeline` |
-| `EmbeddingModel` | `Embedder`, `Retriever`, `HybridRetriever` |
-| `RerankerModel` | `Reranker` |
-| `VisionModel` | `VisionTextGenerator`, `describe_image_tool` |
-| `ImageModel` | `ImageGenerator`, `generate_image_tool` |
-| `SpeechToTextModel` | `SpeechToText`, `transcribe_audio_tool` |
-| `TextToSpeechModel` | `TextToSpeech`, `speak_tool` |
+| `TextModelEnum` | `TextGenerator`, `Agent`, `AIChatPipeline` |
+| `EmbeddingModelEnum` | `Embedder`, `Retriever`, `HybridRetriever` |
+| `RerankerModelEnum` | `Reranker` |
+| `VisionModelEnum` | `VisionTextGenerator`, `describe_image_tool` |
+| `ImageModelEnum` | `ImageGenerator`, `generate_image_tool` |
+| `SpeechToTextModelEnum` | `SpeechToText`, `transcribe_audio_tool` |
+| `TextToSpeechModelEnum` | `TextToSpeech`, `speak_tool` |
 
-## Texto e agentes — `TextModel`
+## Texto e agentes — `TextModelEnum`
 
 | Membro | Params | VRAM (bf16) | Use quando |
 | --- | --- | --- | --- |
@@ -77,9 +77,9 @@ Um enum por tarefa:
     do device (bf16 em GPU, fp32 em CPU) até int4:
 
     ```python
-    from tempest_fastapi_sdk.genai import TextModel, recommend
+    from tempest_fastapi_sdk.genai import TextModelEnum, recommend
 
-    report = recommend(model_id=TextModel.QWEN2_5_7B_INSTRUCT)
+    report = recommend(model_id=TextModelEnum.QWEN2_5_7B_INSTRUCT)
     print(report.dtype, report.fits, report.device)
     ```
 
@@ -88,7 +88,7 @@ Um enum por tarefa:
     `chat_with_tools`. Modelos abaixo de ~1.5B costumam ignorar o schema
     e responder em texto — o agente vira um respondedor de tiro único.
 
-## Embeddings e RAG — `EmbeddingModel`
+## Embeddings e RAG — `EmbeddingModelEnum`
 
 | Membro | Dim | Idiomas | Use quando |
 | --- | --- | --- | --- |
@@ -110,14 +110,14 @@ dimensões e recebe 384. Você não escreve o prefixo à mão: declare os dois n
 ```python title="e5_rag.py" hl_lines="12 13"
 import asyncio
 
-from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModelEnum
 from tempest_fastapi_sdk.genai.rag import Chunk, InMemoryVectorStore, Retriever
 
 
 async def main() -> None:
     """Index two passages and search them with E5's role prefixes."""
     embedder = Embedder(
-        EmbeddingModel.MULTILINGUAL_E5_LARGE,
+        EmbeddingModelEnum.MULTILINGUAL_E5_LARGE,
         normalize=True,
         query_prefix="query: ",
         passage_prefix="passage: ",
@@ -152,7 +152,7 @@ comportamento de antes.
     `embed_passages` continuam funcionando no `Retriever` pelo `embed()` puro
     — e, nesse caso, sem prefixo.
 
-## Rerank — `RerankerModel`
+## Rerank — `RerankerModelEnum`
 
 | Membro | Use quando |
 | --- | --- |
@@ -164,7 +164,7 @@ cross-encoder reordena para `top_k`. Ele lê query e trecho juntos, então
 custa caro por par — não é substituto do embedder, é o filtro fino
 depois dele.
 
-## Visão — `VisionModel`
+## Visão — `VisionModelEnum`
 
 | Membro | Params | Use quando |
 | --- | --- | --- |
@@ -172,7 +172,7 @@ depois dele.
 | `QWEN2_VL_7B_INSTRUCT` | 7B | Pergunta e resposta visual de verdade; 16 GB. |
 | `LLAVA_1_5_7B` | 7B | A referência clássica, com muito material publicado. |
 
-## Imagem — `ImageModel`
+## Imagem — `ImageModelEnum`
 
 | Membro | Passos | Use quando |
 | --- | --- | --- |
@@ -187,15 +187,15 @@ depois dele.
 
     ```python
     from tempest_fastapi_sdk.agents import generate_image_tool
-    from tempest_fastapi_sdk.genai import ImageGenerator, ImageModel
+    from tempest_fastapi_sdk.genai import ImageGenerator, ImageModelEnum
 
     tool = generate_image_tool(
-        ImageGenerator(ImageModel.SDXL_TURBO),
+        ImageGenerator(ImageModelEnum.SDXL_TURBO),
         default_steps=4,
     )
     ```
 
-## Áudio — `SpeechToTextModel` e `TextToSpeechModel`
+## Áudio — `SpeechToTextModelEnum` e `TextToSpeechModelEnum`
 
 | Membro (STT) | Use quando |
 | --- | --- |
@@ -219,21 +219,21 @@ import asyncio
 from tempest_fastapi_sdk.agents import Agent, describe_image_tool, generate_image_tool
 from tempest_fastapi_sdk.genai import (
     ImageGenerator,
-    ImageModel,
+    ImageModelEnum,
     TextGenerator,
-    TextModel,
-    VisionModel,
+    TextModelEnum,
+    VisionModelEnum,
     VisionTextGenerator,
 )
 
 agent = Agent(
-    TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT),
+    TextGenerator(TextModelEnum.QWEN2_5_7B_INSTRUCT),
     tools=[
         generate_image_tool(
-            ImageGenerator(ImageModel.SDXL_TURBO),
+            ImageGenerator(ImageModelEnum.SDXL_TURBO),
             default_steps=4,
         ),
-        describe_image_tool(VisionTextGenerator(VisionModel.QWEN2_VL_2B_INSTRUCT)),
+        describe_image_tool(VisionTextGenerator(VisionModelEnum.QWEN2_VL_2B_INSTRUCT)),
     ],
 )
 
@@ -252,8 +252,8 @@ asyncio.run(main())
 ## Recapitulando
 
 * O id continua sendo `str` — o enum só dá nome ao que o SDK exercita.
-* `TextModel.QWEN2_5_7B_INSTRUCT` é o ponto de partida para trabalho
+* `TextModelEnum.QWEN2_5_7B_INSTRUCT` é o ponto de partida para trabalho
   real; `QWEN2_5_0_5B_INSTRUCT` é para teste, não para qualidade.
-* Trocar `EmbeddingModel` obriga a reindexar o corpus.
+* Trocar `EmbeddingModelEnum` obriga a reindexar o corpus.
 * Checkpoint de imagem turbo quer ~4 passos; completo, ~30.
 * Antes de baixar 15 GB, pergunte ao `recommend()` se cabe.

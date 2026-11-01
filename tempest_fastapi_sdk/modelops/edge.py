@@ -55,7 +55,7 @@ from tempest_fastapi_sdk.modelops.serving import (
 from tempest_fastapi_sdk.modelops.sklearn import (
     DEFAULT_OPSET,
     ExportVerification,
-    TensorDtype,
+    TensorDtypeEnum,
     export_sklearn_to_onnx,
     verify_sklearn_onnx,
 )
@@ -587,7 +587,7 @@ def edge_pipeline(
     bins: int = DEFAULT_BINS,
     compress: bool = True,
     compact: bool = False,
-    dtype: TensorDtype = TensorDtype.FLOAT32,
+    dtype: TensorDtypeEnum = TensorDtypeEnum.FLOAT32,
     opset: int = DEFAULT_OPSET,
 ) -> EdgePackage:
     """Turn a fitted estimator into a directory you ship as-is.
@@ -653,7 +653,7 @@ def edge_pipeline(
             estimator has no compact representation, rather than quietly
             shipping only ONNX — a package that silently lacks the file the
             app expects fails at the worst moment.
-        dtype (TensorDtype): Input element type.
+        dtype (TensorDtypeEnum): Input element type.
         opset (int): Target ONNX opset.
 
     Returns:

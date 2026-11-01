@@ -69,7 +69,7 @@ class PushDispatcher(Protocol):
 
     Attributes:
         platforms (frozenset[str]): Which
-            :class:`~tempest_fastapi_sdk.push.PushPlatform` values this
+            :class:`~tempest_fastapi_sdk.push.PushPlatformEnum` values this
             transport can deliver to, as their string values.
     """
 

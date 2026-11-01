@@ -19,7 +19,7 @@ from tempest_fastapi_sdk.push.dispatcher import PushDeviceGoneError, PushError
 from tempest_fastapi_sdk.push.schemas import (
     PushDevice,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
 )
 from tempest_fastapi_sdk.webpush.dispatcher import (
     WebPushDispatcher,
@@ -43,7 +43,7 @@ class WebPushTransport:
             transport claims.
     """
 
-    platforms: frozenset[str] = frozenset({PushPlatform.WEB.value})
+    platforms: frozenset[str] = frozenset({PushPlatformEnum.WEB.value})
 
     def __init__(self, dispatcher: WebPushDispatcher) -> None:
         """Initialize the transport.

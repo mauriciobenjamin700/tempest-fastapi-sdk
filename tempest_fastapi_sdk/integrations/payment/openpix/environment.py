@@ -17,7 +17,7 @@ from __future__ import annotations
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 
-class OpenPixEnvironment(BaseStrEnum):
+class OpenPixEnvironmentEnum(BaseStrEnum):
     """An OpenPix API environment.
 
     Attributes:
@@ -39,9 +39,9 @@ class OpenPixEnvironment(BaseStrEnum):
         return _BASE_URLS[self]
 
 
-_BASE_URLS: dict[OpenPixEnvironment, str] = {
-    OpenPixEnvironment.PRODUCTION: "https://api.woovi.com",
-    OpenPixEnvironment.SANDBOX: "https://api.woovi-sandbox.com",
+_BASE_URLS: dict[OpenPixEnvironmentEnum, str] = {
+    OpenPixEnvironmentEnum.PRODUCTION: "https://api.woovi.com",
+    OpenPixEnvironmentEnum.SANDBOX: "https://api.woovi-sandbox.com",
 }
 """Base URL per environment.
 
@@ -50,4 +50,4 @@ Taken from the ``servers`` block of the OpenPix OpenAPI specification
 """
 
 
-__all__: list[str] = ["OpenPixEnvironment"]
+__all__: list[str] = ["OpenPixEnvironmentEnum"]

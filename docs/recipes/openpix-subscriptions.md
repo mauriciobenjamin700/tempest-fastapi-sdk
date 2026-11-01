@@ -194,8 +194,8 @@ payload = SubscriptionPayload(
 !!! warning "Os eventos do Pix Automático não têm o prefixo `OPENPIX:`"
     Se o seu handler filtra por `event_name.startswith("OPENPIX:")`, ele
     descarta a família inteira em silêncio. Compare com os membros de
-    `OpenPixEvent`, não com strings:
-    `OpenPixEvent.PIX_AUTOMATIC_APPROVED.value == "PIX_AUTOMATIC_APPROVED"`.
+    `OpenPixEventEnum`, não com strings:
+    `OpenPixEventEnum.PIX_AUTOMATIC_APPROVED.value == "PIX_AUTOMATIC_APPROVED"`.
 
 ## Recebendo o dinheiro de cada ciclo
 
@@ -204,7 +204,7 @@ Aqui não há API nova: **cada ciclo vira uma cobrança comum**, com o mesmo
 cobrança carrega a assinatura.
 
 ```python
-from tempest_fastapi_sdk.integrations.payment.openpix import Charge, OpenPixEvent
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge, OpenPixEventEnum
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixWebhookEvent
 
 
@@ -218,7 +218,7 @@ def subscription_of(event: OpenPixWebhookEvent) -> str | None:
         str | None: O `correlationID` da assinatura, ou `None` quando a
         cobrança é avulsa.
     """
-    if event.event is not OpenPixEvent.CHARGE_COMPLETED:
+    if event.event is not OpenPixEventEnum.CHARGE_COMPLETED:
         return None
     charge = Charge.model_validate(event.payload["charge"])
     if charge.subscription is None:

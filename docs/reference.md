@@ -48,9 +48,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.AdminModel
 ::: tempest_fastapi_sdk.admin.config.Inline
 ::: tempest_fastapi_sdk.admin.config.Lens
-::: tempest_fastapi_sdk.admin.permissions.AdminPermission
+::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum
 ::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
-::: tempest_fastapi_sdk.admin.permissions.AdminSurface
+::: tempest_fastapi_sdk.admin.permissions.AdminSurfaceEnum
 ::: tempest_fastapi_sdk.admin.permissions.AdminSurfacePolicy
 ::: tempest_fastapi_sdk.admin.dashboard.MetricCard
 ::: tempest_fastapi_sdk.admin.dashboard.MetricValue
@@ -169,10 +169,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.integrity.describe_database_error
 ::: tempest_fastapi_sdk.db.integrity.WITHHELD_NOTICE
 ::: tempest_fastapi_sdk.db.integrity.IntegrityFailure
-::: tempest_fastapi_sdk.db.integrity.IntegrityViolation
+::: tempest_fastapi_sdk.db.integrity.IntegrityViolationEnum
 ::: tempest_fastapi_sdk.db.naming.legacy_constraint_renames
 ::: tempest_fastapi_sdk.db.naming.ConstraintRename
-::: tempest_fastapi_sdk.db.naming.ConstraintKind
+::: tempest_fastapi_sdk.db.naming.ConstraintKindEnum
 ::: tempest_fastapi_sdk.db.naming.LEGACY_NAMING_CONVENTION
 ::: tempest_fastapi_sdk.db.expressions.F
 ::: tempest_fastapi_sdk.db.expressions.Q
@@ -180,7 +180,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.expressions.resolve_filter_key
 ::: tempest_fastapi_sdk.db.expressions.FILTER_OPERATORS
 ::: tempest_fastapi_sdk.db.expressions.DroppedFilterWarning
-::: tempest_fastapi_sdk.db.signals.RepositorySignal
+::: tempest_fastapi_sdk.db.signals.RepositorySignalEnum
 ::: tempest_fastapi_sdk.db.signals.connect
 ::: tempest_fastapi_sdk.db.signals.on_signal
 ::: tempest_fastapi_sdk.db.tenant.TenantScopedRepository
@@ -196,7 +196,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.slow_query.SlowQueryLogger
 ::: tempest_fastapi_sdk.db.outbox.BaseOutboxModel
 ::: tempest_fastapi_sdk.db.outbox.OutboxRelay
-::: tempest_fastapi_sdk.db.outbox.OutboxStatus
+::: tempest_fastapi_sdk.db.outbox.OutboxStatusEnum
 ::: tempest_fastapi_sdk.db.webhook_inbox.BaseWebhookEventModel
 ::: tempest_fastapi_sdk.db.webhook_inbox.WebhookInbox
 ::: tempest_fastapi_sdk.db.webhook_inbox.WebhookEventStatusEnum
@@ -206,7 +206,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.webhook_inbox.DEFAULT_WEBHOOK_BACKOFF_SECONDS
 ::: tempest_fastapi_sdk.db.webhook_inbox.STALE_WEBHOOK_ERROR
 ::: tempest_fastapi_sdk.db.audit.BaseAuditLogModel
-::: tempest_fastapi_sdk.db.audit.AuditAction
+::: tempest_fastapi_sdk.db.audit.AuditActionEnum
 ::: tempest_fastapi_sdk.db.audit.AuditRequestMixin
 ::: tempest_fastapi_sdk.db.audit.AuditRequestContext
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
@@ -221,7 +221,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.audit.AUDIT_USER_AGENT_MAX_LENGTH
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
-::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
+::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcomeEnum
 ::: tempest_fastapi_sdk.db.migrations.require_sqlite_foreign_keys_off
 ::: tempest_fastapi_sdk.db.alembic_env.run_alembic_env
 ::: tempest_fastapi_sdk.db.alembic_env.DEFAULT_REVISION_HOOKS
@@ -234,9 +234,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.transaction.savepoint
 ::: tempest_fastapi_sdk.db.transaction.in_transaction
 ::: tempest_fastapi_sdk.db.transaction.transaction_depth
-::: tempest_fastapi_sdk.db.search.TextSearchLanguage
-::: tempest_fastapi_sdk.db.search.TextSearchWeight
-::: tempest_fastapi_sdk.db.search.TokenMatch
+::: tempest_fastapi_sdk.db.search.TextSearchLanguageEnum
+::: tempest_fastapi_sdk.db.search.TextSearchWeightEnum
+::: tempest_fastapi_sdk.db.search.TokenMatchEnum
 ::: tempest_fastapi_sdk.db.search.like_search_condition
 ::: tempest_fastapi_sdk.db.search.full_text_condition
 ::: tempest_fastapi_sdk.db.search.full_text_rank
@@ -262,7 +262,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.explain.explain_queries
 ::: tempest_fastapi_sdk.db.explain.ExplainReport
 ::: tempest_fastapi_sdk.db.explain.QueryPlan
-::: tempest_fastapi_sdk.db.explain.ExplainDetail
+::: tempest_fastapi_sdk.db.explain.ExplainDetailEnum
 
 ---
 
@@ -319,7 +319,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.pdf.reader.DEFAULT_TRUNCATION_NOTICE
 ::: tempest_fastapi_sdk.pdf.reader.DEFAULT_PARTIAL_PAGE_NOTICE
 ::: tempest_fastapi_sdk.pdf.pages.read_pdf_pages
-::: tempest_fastapi_sdk.pdf.pages.PdfExtractor
+::: tempest_fastapi_sdk.pdf.pages.PdfExtractorEnum
 ::: tempest_fastapi_sdk.pdf.pages.PdfPage
 ::: tempest_fastapi_sdk.pdf.pages.PdfPagesResult
 ::: tempest_fastapi_sdk.pdf.pages.PdfDecryptError
@@ -437,8 +437,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.slides.schemas.SlideDeck
 ::: tempest_fastapi_sdk.slides.schemas.Slide
 ::: tempest_fastapi_sdk.slides.schemas.SlideBullet
-::: tempest_fastapi_sdk.slides.schemas.SlideKind
-::: tempest_fastapi_sdk.slides.schemas.SlideTheme
+::: tempest_fastapi_sdk.slides.schemas.SlideKindEnum
+::: tempest_fastapi_sdk.slides.schemas.SlideThemeEnum
 ::: tempest_fastapi_sdk.slides.schemas.AnswerKey
 ::: tempest_fastapi_sdk.slides.schemas.AnswerKeySection
 ::: tempest_fastapi_sdk.slides.schemas.AnswerKeyItem
@@ -603,9 +603,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.queue.topology.DeadLetterSpec
 ::: tempest_fastapi_sdk.queue.topology.ExchangeSpec
 ::: tempest_fastapi_sdk.queue.topology.ExchangeBinding
-::: tempest_fastapi_sdk.queue.topology.ExchangeKind
-::: tempest_fastapi_sdk.queue.topology.QueueType
-::: tempest_fastapi_sdk.queue.topology.Transport
+::: tempest_fastapi_sdk.queue.topology.ExchangeKindEnum
+::: tempest_fastapi_sdk.queue.topology.QueueTypeEnum
+::: tempest_fastapi_sdk.queue.topology.TransportEnum
 ::: tempest_fastapi_sdk.queue.topology.UnsupportedTopologyError
 ::: tempest_fastapi_sdk.queue.reliability.ConsumerRetryPolicy
 ::: tempest_fastapi_sdk.queue.reliability.RetryTopology
@@ -613,7 +613,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.queue.reliability.delivery_attempt
 ::: tempest_fastapi_sdk.queue.reliability.QueueMetrics
 ::: tempest_fastapi_sdk.queue.dedup.DedupStore
-::: tempest_fastapi_sdk.queue.dedup.DedupState
+::: tempest_fastapi_sdk.queue.dedup.DedupStateEnum
 ::: tempest_fastapi_sdk.queue.dedup.MemoryDedupStore
 ::: tempest_fastapi_sdk.queue.dedup.RedisDedupStore
 ::: tempest_fastapi_sdk.queue.dedup.ConcurrentDeliveryError
@@ -784,7 +784,7 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.app_errors.models.make_app_error_model
 ::: tempest_fastapi_sdk.app_errors.service.AppErrorService
 ::: tempest_fastapi_sdk.app_errors.router.make_app_error_router
-::: tempest_fastapi_sdk.app_errors.schemas.AppPlatform
+::: tempest_fastapi_sdk.app_errors.schemas.AppPlatformEnum
 ::: tempest_fastapi_sdk.app_errors.schemas.AppErrorReportSchema
 ::: tempest_fastapi_sdk.app_errors.schemas.AppErrorCreateSchema
 ::: tempest_fastapi_sdk.app_errors.schemas.AppErrorResponseSchema
@@ -800,21 +800,21 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.base.PixCharge
 ::: tempest_fastapi_sdk.integrations.payment.base.PixPayer
 ::: tempest_fastapi_sdk.integrations.payment.base.PixPaymentEvent
-::: tempest_fastapi_sdk.integrations.payment.base.PaymentStatus
-::: tempest_fastapi_sdk.integrations.payment.base.PixEventType
+::: tempest_fastapi_sdk.integrations.payment.base.PaymentStatusEnum
+::: tempest_fastapi_sdk.integrations.payment.base.PixEventTypeEnum
 ::: tempest_fastapi_sdk.integrations.payment.base.CardProvider
 ::: tempest_fastapi_sdk.integrations.payment.base.CardChargeRequest
 ::: tempest_fastapi_sdk.integrations.payment.base.CardCharge
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutProvider
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutRequest
 ::: tempest_fastapi_sdk.integrations.payment.base.PayoutResult
-::: tempest_fastapi_sdk.integrations.payment.base.PayoutStatus
+::: tempest_fastapi_sdk.integrations.payment.base.PayoutStatusEnum
 
 ### `tempest_fastapi_sdk.integrations.payment.settlement`
 
 ::: tempest_fastapi_sdk.integrations.payment.settlement.confirm_pix_payment
 ::: tempest_fastapi_sdk.integrations.payment.settlement.PixPaymentConfirmation
-::: tempest_fastapi_sdk.integrations.payment.settlement.PixConfirmationOutcome
+::: tempest_fastapi_sdk.integrations.payment.settlement.PixConfirmationOutcomeEnum
 
 ### `tempest_fastapi_sdk.integrations.payment.routing`
 
@@ -862,10 +862,10 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZAP_INBOUND_EVENT
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZAP_WEBHOOK_SIGNATURE_HEADER
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZAP_WEBHOOK_SIGNATURE_PREFIX
-::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapWebhookEvent
-::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapInboundMediaType
-::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapJidServer
-::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapOutboundKind
+::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapWebhookEventEnum
+::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapInboundMediaTypeEnum
+::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapJidServerEnum
+::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapOutboundKindEnum
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapInboundMessage
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapStatusCallback
 ::: tempest_fastapi_sdk.integrations.messaging.zap.webhooks.ZapWebhookDelivery
@@ -884,8 +884,8 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapInboundMessageMixin
 ::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapDeliveryMixin
-::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapInboundOutcome
-::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapStatusOutcome
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapInboundOutcomeEnum
+::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapStatusOutcomeEnum
 ::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.ZapInbox
 ::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.DEFAULT_ACCEPTED_SERVERS
 ::: tempest_fastapi_sdk.integrations.messaging.zap.inbox.InboundT
@@ -897,7 +897,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.client.MercadoPagoClient
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.environment.DEFAULT_BASE_URL
-::: tempest_fastapi_sdk.integrations.payment.mercado_pago.events.MercadoPagoEvent
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.events.MercadoPagoEventEnum
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.to_cents
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.from_cents
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.format_amount
@@ -917,8 +917,8 @@ então importar o namespace não constrói nenhum modelo.
 ### `tempest_fastapi_sdk.integrations.payment.openpix`
 
 ::: tempest_fastapi_sdk.integrations.payment.openpix.client.OpenPixClient
-::: tempest_fastapi_sdk.integrations.payment.openpix.environment.OpenPixEnvironment
-::: tempest_fastapi_sdk.integrations.payment.openpix.events.OpenPixEvent
+::: tempest_fastapi_sdk.integrations.payment.openpix.environment.OpenPixEnvironmentEnum
+::: tempest_fastapi_sdk.integrations.payment.openpix.events.OpenPixEventEnum
 ::: tempest_fastapi_sdk.integrations.payment.openpix.money.to_cents
 ::: tempest_fastapi_sdk.integrations.payment.openpix.money.reais_to_cents
 ::: tempest_fastapi_sdk.integrations.payment.openpix.money.cents_to_reais
@@ -1210,7 +1210,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.push.dispatcher.PushDeviceGoneError
 ::: tempest_fastapi_sdk.push.transports.webpush.WebPushTransport
 ::: tempest_fastapi_sdk.push.transports.fcm.FCMTransport
-::: tempest_fastapi_sdk.push.schemas.PushPlatform
+::: tempest_fastapi_sdk.push.schemas.PushPlatformEnum
 ::: tempest_fastapi_sdk.push.schemas.PushDevice
 ::: tempest_fastapi_sdk.push.schemas.PushPayloadSchema
 ::: tempest_fastapi_sdk.push.schemas.DeviceRegistrationSchema
@@ -1420,7 +1420,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ### `tempest_fastapi_sdk.checks`
 
-::: tempest_fastapi_sdk.checks.messages.CheckLevel
+::: tempest_fastapi_sdk.checks.messages.CheckLevelEnum
 ::: tempest_fastapi_sdk.checks.messages.CheckMessage
 ::: tempest_fastapi_sdk.checks.registry.CheckRegistry
 ::: tempest_fastapi_sdk.checks.registry.check
@@ -1477,7 +1477,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicy
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicyViolation
-::: tempest_fastapi_sdk.utils.password.PasswordViolationCode
+::: tempest_fastapi_sdk.utils.password.PasswordViolationCodeEnum
 ::: tempest_fastapi_sdk.utils.password.check_password_policy
 ::: tempest_fastapi_sdk.utils.password.generate_password
 ::: tempest_fastapi_sdk.utils.password.DEFAULT_GENERATED_PASSWORD_LENGTH
@@ -1498,7 +1498,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.download.DownloadUtils
 ::: tempest_fastapi_sdk.utils.download.INLINE_SAFE_MEDIA_TYPES
 ::: tempest_fastapi_sdk.utils.media_types.guess_media_type
-::: tempest_fastapi_sdk.utils.media_types.ImageMediaType
+::: tempest_fastapi_sdk.utils.media_types.ImageMediaTypeEnum
 ::: tempest_fastapi_sdk.utils.fields.image_media_type_field
 ::: tempest_fastapi_sdk.utils.fields.AllowedImageMediaTypes
 ::: tempest_fastapi_sdk.utils.media_types.XLSX_MEDIA_TYPE
@@ -1527,8 +1527,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.signed_url.verify_path
 ::: tempest_fastapi_sdk.utils.signed_url.SIGNED_URL_EXPIRES_PARAM
 ::: tempest_fastapi_sdk.utils.signed_url.SIGNED_URL_SIGNATURE_PARAM
-::: tempest_fastapi_sdk.utils.locations.UF
-::: tempest_fastapi_sdk.utils.locations.Region
+::: tempest_fastapi_sdk.utils.locations.UFEnum
+::: tempest_fastapi_sdk.utils.locations.RegionEnum
 ::: tempest_fastapi_sdk.utils.locations.StateBR
 ::: tempest_fastapi_sdk.utils.locations.CityBR
 ::: tempest_fastapi_sdk.utils.locations.list_states

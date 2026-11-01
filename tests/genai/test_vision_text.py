@@ -6,7 +6,7 @@ import io
 
 import pytest
 
-from tempest_fastapi_sdk.genai import HardwareInfo, ModelDtype, VisionTextGenerator
+from tempest_fastapi_sdk.genai import HardwareInfo, ModelDtypeEnum, VisionTextGenerator
 from tempest_fastapi_sdk.genai.vision_text import _load_image
 
 
@@ -63,7 +63,7 @@ class TestInit:
     def test_auto_dtype_on_cpu(self) -> None:
         gen = VisionTextGenerator("m", hardware=_cpu_hw())
         assert gen.device == "cpu"
-        assert gen.dtype == ModelDtype.FLOAT32
+        assert gen.dtype == ModelDtypeEnum.FLOAT32
         assert gen.is_loaded is False
 
     def test_unload_when_not_loaded_is_noop(self) -> None:

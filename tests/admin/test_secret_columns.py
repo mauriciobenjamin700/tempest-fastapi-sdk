@@ -27,7 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AdminModel,
-    AdminPermission,
+    AdminPermissionEnum,
     AdminSite,
     AsyncDatabaseManager,
     BaseModel,
@@ -73,18 +73,18 @@ class SecAgent(BaseUserModel):
     )
 
 
-def _policy(user: Any, admin: AdminModel[Any], action: AdminPermission) -> bool:
+def _policy(user: Any, admin: AdminModel[Any], action: AdminPermissionEnum) -> bool:
     """Grant everything to ``super`` and only ``VIEW`` to the viewer.
 
     Args:
         user (Any): The principal.
         admin (AdminModel[Any]): The admin asked about.
-        action (AdminPermission): The action.
+        action (AdminPermissionEnum): The action.
 
     Returns:
         bool: Whether the action is allowed.
     """
-    return bool(user.role == "super" or action is AdminPermission.VIEW)
+    return bool(user.role == "super" or action is AdminPermissionEnum.VIEW)
 
 
 @dataclass

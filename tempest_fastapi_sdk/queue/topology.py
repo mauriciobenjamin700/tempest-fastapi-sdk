@@ -20,7 +20,7 @@ and each transport translates the part it understands.
 ORDERS_PAID = QueueSpec(
     name="orders.paid",
     dead_letter=DeadLetterSpec(exchange="dlx"),
-    queue_type=QueueType.QUORUM,
+    queue_type=QueueTypeEnum.QUORUM,
 )
 
 @mq.on(ORDERS_PAID)
@@ -64,7 +64,7 @@ DEAD_LETTER_QUEUE_SUFFIX: Final[str] = ".dlq"
 """Suffix :meth:`QueueSpec.consumer` gives the dead-letter queue it names."""
 
 
-class Transport(BaseStrEnum):
+class TransportEnum(BaseStrEnum):
     """Which broker a :class:`QueueSpec` is being translated for.
 
     Detected from the FastStream broker class rather than recorded at
@@ -80,7 +80,7 @@ class Transport(BaseStrEnum):
     UNKNOWN = "unknown"
 
 
-class QueueType(BaseStrEnum):
+class QueueTypeEnum(BaseStrEnum):
     """RabbitMQ queue implementation.
 
     Attributes:
@@ -101,7 +101,7 @@ class QueueType(BaseStrEnum):
     QUORUM = "quorum"
 
 
-class ExchangeKind(BaseStrEnum):
+class ExchangeKindEnum(BaseStrEnum):
     """AMQP exchange type.
 
     Mirrors ``faststream.rabbit.ExchangeType`` value for value, so the
@@ -130,7 +130,7 @@ class ExchangeSpec:
 
     Attributes:
         name (str): The exchange name.
-        kind (ExchangeKind): The exchange type.
+        kind (ExchangeKindEnum): The exchange type.
         durable (bool): Whether it survives a broker restart. ``True``,
             because a non-durable exchange vanishes on restart and takes
             every binding to it along, so the queues behind it stop
@@ -138,7 +138,7 @@ class ExchangeSpec:
     """
 
     name: str
-    kind: ExchangeKind = ExchangeKind.TOPIC
+    kind: ExchangeKindEnum = ExchangeKindEnum.TOPIC
     durable: bool = True
 
 
@@ -163,11 +163,11 @@ class ExchangeBinding:
     routing_key: str
 
 
-_TRANSPORT_MARKERS: Final[tuple[tuple[str, Transport], ...]] = (
-    ("rabbit", Transport.RABBITMQ),
-    ("redis", Transport.REDIS),
-    ("kafka", Transport.KAFKA),
-    ("nats", Transport.NATS),
+_TRANSPORT_MARKERS: Final[tuple[tuple[str, TransportEnum], ...]] = (
+    ("rabbit", TransportEnum.RABBITMQ),
+    ("redis", TransportEnum.REDIS),
+    ("kafka", TransportEnum.KAFKA),
+    ("nats", TransportEnum.NATS),
 )
 """Substring of a FastStream broker class name, and what it identifies.
 
@@ -259,10 +259,10 @@ class QueueSpec:
         message_ttl_ms (int | None): Discard (or dead-letter) a message
             after this many milliseconds.
         max_priority (int | None): Enable a priority queue with this many
-            levels. Incompatible with :attr:`QueueType.QUORUM`.
+            levels. Incompatible with :attr:`QueueTypeEnum.QUORUM`.
         max_length (int | None): Cap the queue at this many messages;
             overflow is dead-lettered when :attr:`dead_letter` is set.
-        queue_type (QueueType): Classic or quorum.
+        queue_type (QueueTypeEnum): Classic or quorum.
         binding (ExchangeBinding | None): Bind the queue to an exchange
             under a routing key, so it receives its own copy of what is
             published there. ``None`` leaves the queue on the default
@@ -275,7 +275,7 @@ class QueueSpec:
     message_ttl_ms: int | None = None
     max_priority: int | None = None
     max_length: int | None = None
-    queue_type: QueueType = QueueType.CLASSIC
+    queue_type: QueueTypeEnum = QueueTypeEnum.CLASSIC
     binding: ExchangeBinding | None = None
 
     @classmethod
@@ -286,7 +286,7 @@ class QueueSpec:
         *,
         exchange: ExchangeSpec | str,
         dead_letter_exchange: str | None = None,
-        queue_type: QueueType = QueueType.CLASSIC,
+        queue_type: QueueTypeEnum = QueueTypeEnum.CLASSIC,
     ) -> QueueSpec:
         """Build one consumer's queue for an event published to ``exchange``.
 
@@ -310,7 +310,7 @@ class QueueSpec:
                 published to. A bare name is a durable topic exchange.
             dead_letter_exchange (str | None): Exchange rejected messages
                 go to, or ``None`` to discard them.
-            queue_type (QueueType): Classic or quorum.
+            queue_type (QueueTypeEnum): Classic or quorum.
 
         Returns:
             QueueSpec: The spec to pass to
@@ -347,11 +347,11 @@ class QueueSpec:
                 quorum queue, which RabbitMQ does not implement.
             ValueError: When a numeric field is not positive.
         """
-        if self.max_priority is not None and self.queue_type is QueueType.QUORUM:
+        if self.max_priority is not None and self.queue_type is QueueTypeEnum.QUORUM:
             raise UnsupportedTopologyError(
                 f"QueueSpec({self.name!r}) sets max_priority on a quorum "
                 "queue; RabbitMQ implements priorities only for classic "
-                "queues. Drop max_priority, or use QueueType.CLASSIC.",
+                "queues. Drop max_priority, or use QueueTypeEnum.CLASSIC.",
             )
         for field_name in ("message_ttl_ms", "max_priority", "max_length"):
             value = getattr(self, field_name)
@@ -374,7 +374,7 @@ def channel_name(channel: str | QueueSpec) -> str:
     return channel.name if isinstance(channel, QueueSpec) else channel
 
 
-def detect_transport(broker: Any) -> Transport:
+def detect_transport(broker: Any) -> TransportEnum:
     """Classify a FastStream broker by its class name.
 
     Uses the class name rather than ``isinstance`` so nothing has to be
@@ -386,7 +386,7 @@ def detect_transport(broker: Any) -> Transport:
         broker (Any): The FastStream broker instance.
 
     Returns:
-        Transport: The detected transport, or :attr:`Transport.UNKNOWN`
+        TransportEnum: The detected transport, or :attr:`TransportEnum.UNKNOWN`
         for a custom or test broker — which is treated as supporting
         nothing beyond a name, the conservative direction.
     """
@@ -394,10 +394,10 @@ def detect_transport(broker: Any) -> Transport:
     for marker, transport in _TRANSPORT_MARKERS:
         if marker in name:
             return transport
-    return Transport.UNKNOWN
+    return TransportEnum.UNKNOWN
 
 
-def unsupported_fields(spec: QueueSpec, transport: Transport) -> list[str]:
+def unsupported_fields(spec: QueueSpec, transport: TransportEnum) -> list[str]:
     """List the fields ``transport`` cannot express for ``spec``.
 
     Only fields set away from their default count. That is what keeps a
@@ -407,13 +407,13 @@ def unsupported_fields(spec: QueueSpec, transport: Transport) -> list[str]:
 
     Args:
         spec (QueueSpec): The topology being translated.
-        transport (Transport): The transport to translate for.
+        transport (TransportEnum): The transport to translate for.
 
     Returns:
         list[str]: Field names that were set and cannot be honored, in
         declaration order. Empty when the spec translates cleanly.
     """
-    if transport is Transport.RABBITMQ:
+    if transport is TransportEnum.RABBITMQ:
         return []
     defaults = {
         field.name: field.default for field in fields(spec) if field.name != "name"
@@ -423,12 +423,12 @@ def unsupported_fields(spec: QueueSpec, transport: Transport) -> list[str]:
     ]
 
 
-def require_supported(spec: QueueSpec, transport: Transport) -> None:
+def require_supported(spec: QueueSpec, transport: TransportEnum) -> None:
     """Raise when ``transport`` cannot honor every field ``spec`` sets.
 
     Args:
         spec (QueueSpec): The topology being translated.
-        transport (Transport): The transport to translate for.
+        transport (TransportEnum): The transport to translate for.
 
     Raises:
         UnsupportedTopologyError: Naming each field that cannot be
@@ -524,12 +524,12 @@ def to_rabbit_exchange(exchange: ExchangeSpec) -> Any:
     )
 
 
-def resolve_channel(channel: str | QueueSpec, transport: Transport) -> Any:
+def resolve_channel(channel: str | QueueSpec, transport: TransportEnum) -> Any:
     """Turn a channel into what FastStream expects for ``transport``.
 
     Args:
         channel (str | QueueSpec): A bare channel or a full spec.
-        transport (Transport): The active transport.
+        transport (TransportEnum): The active transport.
 
     Returns:
         Any: A ``RabbitQueue`` for a spec on RabbitMQ, otherwise the
@@ -544,7 +544,7 @@ def resolve_channel(channel: str | QueueSpec, transport: Transport) -> Any:
     if not isinstance(channel, QueueSpec):
         return channel
     require_supported(channel, transport)
-    if transport is Transport.RABBITMQ:
+    if transport is TransportEnum.RABBITMQ:
         return to_rabbit_queue(channel)
     return channel.name
 
@@ -559,11 +559,11 @@ __all__: list[str] = [
     "QUEUE_TYPE_ARG",
     "DeadLetterSpec",
     "ExchangeBinding",
-    "ExchangeKind",
+    "ExchangeKindEnum",
     "ExchangeSpec",
     "QueueSpec",
-    "QueueType",
-    "Transport",
+    "QueueTypeEnum",
+    "TransportEnum",
     "UnsupportedTopologyError",
     "channel_name",
     "detect_transport",

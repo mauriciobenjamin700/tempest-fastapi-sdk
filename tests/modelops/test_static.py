@@ -10,7 +10,7 @@ import pytest
 
 from tempest_fastapi_sdk.modelops import (
     REMOTE_PROVIDERS,
-    ModelFormat,
+    ModelFormatEnum,
     analyze_model,
     analyze_onnx,
     analyze_ort,
@@ -54,7 +54,7 @@ class TestAnalyzeOnnx:
     def test_reads_parameters_opset_and_shapes(self, tiny_onnx: Path) -> None:
         metrics = analyze_onnx(tiny_onnx)
         assert metrics.name == "tiny"
-        assert metrics.format == ModelFormat.ONNX
+        assert metrics.format == ModelFormatEnum.ONNX
         assert metrics.n_parameters == 8 * 64 + 64
         assert metrics.opset == 17
         assert metrics.disk_size_mb > 0.0
@@ -87,7 +87,7 @@ class TestAnalyzeOrt:
         pytest.importorskip("onnxruntime")
         [result] = export_onnx_to_ort(tiny_onnx, tmp_path / "out")
         metrics = analyze_ort(result.output_path)
-        assert metrics.format == ModelFormat.ORT
+        assert metrics.format == ModelFormatEnum.ORT
         assert metrics.n_parameters == 0
         assert metrics.disk_size_mb > 0.0
         assert metrics.inputs[0].shape == ["batch", 8]
@@ -100,7 +100,7 @@ class TestAnalyzeOrt:
 
 class TestAnalyzeModel:
     def test_dispatches_on_the_suffix(self, tiny_onnx: Path) -> None:
-        assert analyze_model(tiny_onnx).format == ModelFormat.ONNX
+        assert analyze_model(tiny_onnx).format == ModelFormatEnum.ONNX
 
     def test_refuses_a_torch_checkpoint(self, tmp_path: Path) -> None:
         checkpoint = tmp_path / "weights.pt"
@@ -117,7 +117,7 @@ class TestAnalyzeTorch:
         metrics = analyze_torch(
             torch.nn.Linear(128, 10), example_input=torch.randn(1, 128)
         )
-        assert metrics.format == ModelFormat.TORCH
+        assert metrics.format == ModelFormatEnum.TORCH
         assert metrics.n_parameters == 128 * 10 + 10
         assert metrics.n_trainable_parameters == metrics.n_parameters
         assert metrics.gflops is not None

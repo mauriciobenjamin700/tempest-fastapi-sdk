@@ -127,14 +127,14 @@ And the sweep that processes what arrived, every 5 minutes:
 
 ```python
 # src/tasks/billing.py
-from tempest_fastapi_sdk.tasks import Cron, TaskQueue
+from tempest_fastapi_sdk.tasks import CronEnum, TaskQueue
 
 from src.billing import apply_event, db, inbox
 
 tq = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/", resources=[db])
 
 
-@tq.cron(Cron.EVERY_5_MINUTES)
+@tq.cron(CronEnum.EVERY_5_MINUTES)
 async def sweep_webhook_inbox() -> None:
     """Process every inbox event that is due."""
     await inbox.drain_once(apply_event)

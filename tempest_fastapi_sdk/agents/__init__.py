@@ -91,8 +91,8 @@ from tempest_fastapi_sdk.agents.schemas import AgentArtifact as AgentArtifact
 from tempest_fastapi_sdk.agents.schemas import AgentBudget as AgentBudget
 from tempest_fastapi_sdk.agents.schemas import AgentRun as AgentRun
 from tempest_fastapi_sdk.agents.schemas import AgentStep as AgentStep
-from tempest_fastapi_sdk.agents.schemas import StepKind as StepKind
-from tempest_fastapi_sdk.agents.schemas import StopReason as StopReason
+from tempest_fastapi_sdk.agents.schemas import StepKindEnum as StepKindEnum
+from tempest_fastapi_sdk.agents.schemas import StopReasonEnum as StopReasonEnum
 from tempest_fastapi_sdk.agents.schemas import ToolResult as ToolResult
 from tempest_fastapi_sdk.agents.skills import LOAD_SKILL_TOOL as LOAD_SKILL_TOOL
 from tempest_fastapi_sdk.agents.skills import Skill as Skill
@@ -165,8 +165,8 @@ __all__: list[str] = [
     "OwnerDependency",
     "RedisFactStore",
     "Skill",
-    "StepKind",
-    "StopReason",
+    "StepKindEnum",
+    "StopReasonEnum",
     "StructuredRun",
     "ToolCallingBackend",
     "ToolHandler",

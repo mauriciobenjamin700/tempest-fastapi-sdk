@@ -32,7 +32,7 @@ import pytest
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
     CardChargeRequest,
-    PaymentStatus,
+    PaymentStatusEnum,
     PixChargeRequest,
     PixPayer,
 )
@@ -125,12 +125,12 @@ async def test_pix_create_read_and_cancel(http: HTTPClient) -> None:
     read = await provider.get_pix_charge(created.provider_charge_id)
     cancelled = await provider.cancel_pix_charge(created.provider_charge_id)
 
-    assert created.status is PaymentStatus.PENDING
+    assert created.status is PaymentStatusEnum.PENDING
     assert created.amount_cents == 1990
     assert created.br_code
     assert created.qr_code_base64
     assert read.provider_charge_id == created.provider_charge_id
-    assert cancelled.status is PaymentStatus.CANCELLED
+    assert cancelled.status is PaymentStatusEnum.CANCELLED
 
 
 async def test_pix_paid_then_refunded_in_two_steps(http: HTTPClient) -> None:
@@ -147,18 +147,18 @@ async def test_pix_paid_then_refunded_in_two_steps(http: HTTPClient) -> None:
     for _ in range(10):
         await asyncio.sleep(2)
         paid = await provider.get_pix_charge(created.provider_charge_id)
-        if paid.status is not PaymentStatus.PENDING:
+        if paid.status is not PaymentStatusEnum.PENDING:
             break
     partial = await provider.refund_pix_charge(
         created.provider_charge_id, amount_cents=500
     )
     full = await provider.refund_pix_charge(created.provider_charge_id)
 
-    assert paid.status is PaymentStatus.PAID
+    assert paid.status is PaymentStatusEnum.PAID
     assert paid.end_to_end_id
-    assert partial.status is PaymentStatus.PAID
+    assert partial.status is PaymentStatusEnum.PAID
     assert partial.raw["status_detail"] == "partially_refunded"
-    assert full.status is PaymentStatus.REFUNDED
+    assert full.status is PaymentStatusEnum.REFUNDED
 
 
 async def test_card_approved_declined_and_refunded(http: HTTPClient) -> None:
@@ -188,11 +188,11 @@ async def test_card_approved_declined_and_refunded(http: HTTPClient) -> None:
     )
     full = await provider.refund_card_charge(approved.provider_charge_id)
 
-    assert approved.status is PaymentStatus.PAID
-    assert declined.status is PaymentStatus.FAILED
+    assert approved.status is PaymentStatusEnum.PAID
+    assert declined.status is PaymentStatusEnum.FAILED
     assert declined.status_detail == "rejected_by_issuer"
     assert partial.refunded_cents == 3000
-    assert full.status is PaymentStatus.REFUNDED
+    assert full.status is PaymentStatusEnum.REFUNDED
     assert full.refunded_cents == 10000
 
 
@@ -219,7 +219,7 @@ async def test_card_authorize_capture_and_release(http: HTTPClient) -> None:
     )
     released = await provider.cancel_card_charge(released_hold.provider_charge_id)
 
-    assert held.status is PaymentStatus.AUTHORIZED
-    assert captured.status is PaymentStatus.PAID
+    assert held.status is PaymentStatusEnum.AUTHORIZED
+    assert captured.status is PaymentStatusEnum.PAID
     assert captured.amount_cents == 10000
-    assert released.status is PaymentStatus.CANCELLED
+    assert released.status is PaymentStatusEnum.CANCELLED

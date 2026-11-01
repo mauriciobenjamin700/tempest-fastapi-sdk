@@ -19,7 +19,7 @@
 | `tempest_fastapi_sdk.cache` | `AsyncRedisManager`, `@cached` |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.core` | `JSONFormatter`, `configure_logging`, request-ID context, `BaseStrEnum` / `BaseIntEnum` |
-| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `UserTokenPurpose`, `BaseRepository` (with `bulk_*`), `AsyncDatabaseManager`, `AlembicHelper` (+ `sync_schema` / `adopt`), `SchemaSyncOutcome`, `AuditMixin`, `SoftDeleteMixin`, `reorder_base_columns_first`, `compose_hooks` |
+| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `UserTokenPurposeEnum`, `BaseRepository` (with `bulk_*`), `AsyncDatabaseManager`, `AlembicHelper` (+ `sync_schema` / `adopt`), `SchemaSyncOutcomeEnum`, `AuditMixin`, `SoftDeleteMixin`, `reorder_base_columns_first`, `compose_hooks` |
 | `tempest_fastapi_sdk.exceptions` | `AppException` hierarchy (404 / 409 / 401 / 403 / 422 / 429 / file-too-large / invalid-file-type / JWT) |
 | `tempest_fastapi_sdk.queue` | `MessageBroker` (recommended typed facade), `AsyncQueueManager` / `AsyncBrokerManager` (FastStream / RabbitMQ lifecycle wrappers) |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema`, cursor pagination |

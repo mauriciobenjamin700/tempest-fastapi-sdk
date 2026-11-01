@@ -58,8 +58,8 @@ from tempest_fastapi_sdk.modelops.compact import (
 )
 from tempest_fastapi_sdk.modelops.compact import COMPACT_SUFFIX as COMPACT_SUFFIX
 from tempest_fastapi_sdk.modelops.compact import CompactExport as CompactExport
-from tempest_fastapi_sdk.modelops.compact import CompactKind as CompactKind
-from tempest_fastapi_sdk.modelops.compact import CompactTask as CompactTask
+from tempest_fastapi_sdk.modelops.compact import CompactKindEnum as CompactKindEnum
+from tempest_fastapi_sdk.modelops.compact import CompactTaskEnum as CompactTaskEnum
 from tempest_fastapi_sdk.modelops.compact import (
     UnsupportedEstimatorError as UnsupportedEstimatorError,
 )
@@ -141,7 +141,7 @@ from tempest_fastapi_sdk.modelops.monitoring import (
     PSI_SIGNIFICANT as PSI_SIGNIFICANT,
 )
 from tempest_fastapi_sdk.modelops.monitoring import DriftReport as DriftReport
-from tempest_fastapi_sdk.modelops.monitoring import DriftVerdict as DriftVerdict
+from tempest_fastapi_sdk.modelops.monitoring import DriftVerdictEnum as DriftVerdictEnum
 from tempest_fastapi_sdk.modelops.monitoring import FeatureBaseline as FeatureBaseline
 from tempest_fastapi_sdk.modelops.monitoring import FeatureBins as FeatureBins
 from tempest_fastapi_sdk.modelops.monitoring import FeatureDrift as FeatureDrift
@@ -217,35 +217,37 @@ from tempest_fastapi_sdk.modelops.schemas import (
 )
 from tempest_fastapi_sdk.modelops.schemas import BenchmarkReport as BenchmarkReport
 from tempest_fastapi_sdk.modelops.schemas import (
-    CalibrationMethod as CalibrationMethod,
+    CalibrationMethodEnum as CalibrationMethodEnum,
 )
 from tempest_fastapi_sdk.modelops.schemas import EnergyReading as EnergyReading
-from tempest_fastapi_sdk.modelops.schemas import EnergySource as EnergySource
+from tempest_fastapi_sdk.modelops.schemas import EnergySourceEnum as EnergySourceEnum
 from tempest_fastapi_sdk.modelops.schemas import ExportResult as ExportResult
 from tempest_fastapi_sdk.modelops.schemas import (
-    GraphOptimizationLevel as GraphOptimizationLevel,
+    GraphOptimizationLevelEnum as GraphOptimizationLevelEnum,
 )
 from tempest_fastapi_sdk.modelops.schemas import (
-    HFOptimizationLevel as HFOptimizationLevel,
+    HFOptimizationLevelEnum as HFOptimizationLevelEnum,
 )
 from tempest_fastapi_sdk.modelops.schemas import (
-    HFQuantizationTarget as HFQuantizationTarget,
+    HFQuantizationTargetEnum as HFQuantizationTargetEnum,
 )
-from tempest_fastapi_sdk.modelops.schemas import ModelFormat as ModelFormat
+from tempest_fastapi_sdk.modelops.schemas import ModelFormatEnum as ModelFormatEnum
 from tempest_fastapi_sdk.modelops.schemas import (
-    OrtOptimizationStyle as OrtOptimizationStyle,
+    OrtOptimizationStyleEnum as OrtOptimizationStyleEnum,
 )
 from tempest_fastapi_sdk.modelops.schemas import ParetoPoint as ParetoPoint
 from tempest_fastapi_sdk.modelops.schemas import (
-    QuantizationBackend as QuantizationBackend,
+    QuantizationBackendEnum as QuantizationBackendEnum,
 )
 from tempest_fastapi_sdk.modelops.schemas import (
-    QuantizationFormat as QuantizationFormat,
+    QuantizationFormatEnum as QuantizationFormatEnum,
 )
 from tempest_fastapi_sdk.modelops.schemas import (
     QuantizationResult as QuantizationResult,
 )
-from tempest_fastapi_sdk.modelops.schemas import QuantWeightType as QuantWeightType
+from tempest_fastapi_sdk.modelops.schemas import (
+    QuantWeightTypeEnum as QuantWeightTypeEnum,
+)
 from tempest_fastapi_sdk.modelops.schemas import (
     RuntimeAggregate as RuntimeAggregate,
 )
@@ -270,7 +272,7 @@ from tempest_fastapi_sdk.modelops.sklearn import (
     ExportVerification as ExportVerification,
 )
 from tempest_fastapi_sdk.modelops.sklearn import SklearnExport as SklearnExport
-from tempest_fastapi_sdk.modelops.sklearn import TensorDtype as TensorDtype
+from tempest_fastapi_sdk.modelops.sklearn import TensorDtypeEnum as TensorDtypeEnum
 from tempest_fastapi_sdk.modelops.sklearn import edge_bundle as edge_bundle
 from tempest_fastapi_sdk.modelops.sklearn import (
     export_sklearn_to_onnx as export_sklearn_to_onnx,
@@ -351,31 +353,31 @@ __all__: list[str] = [
     "ArtifactSource",
     "BenchmarkProfile",
     "BenchmarkReport",
-    "CalibrationMethod",
+    "CalibrationMethodEnum",
     "CompactExport",
-    "CompactKind",
-    "CompactTask",
+    "CompactKindEnum",
+    "CompactTaskEnum",
     "DriftReport",
-    "DriftVerdict",
+    "DriftVerdictEnum",
     "EdgeBundle",
     "EdgeManifest",
     "EdgePackage",
     "EdgeStage",
     "EnergyReading",
-    "EnergySource",
+    "EnergySourceEnum",
     "ExportResult",
     "ExportVerification",
     "FeatureBaseline",
     "FeatureBins",
     "FeatureDrift",
-    "GraphOptimizationLevel",
-    "HFOptimizationLevel",
-    "HFQuantizationTarget",
+    "GraphOptimizationLevelEnum",
+    "HFOptimizationLevelEnum",
+    "HFQuantizationTargetEnum",
     "LatencyReport",
     "LoadedArtifact",
     "LoadedEdgePackage",
     "ModelFile",
-    "ModelFormat",
+    "ModelFormatEnum",
     "ModelInput",
     "ModelOutput",
     "MonitoringReport",
@@ -383,7 +385,7 @@ __all__: list[str] = [
     "NvidiaSmiPowerSampler",
     "NvmlPowerSampler",
     "OnnxPredictor",
-    "OrtOptimizationStyle",
+    "OrtOptimizationStyleEnum",
     "ParetoPoint",
     "PowerSampler",
     "PredictRequestSchema",
@@ -393,9 +395,9 @@ __all__: list[str] = [
     "PredictionMetrics",
     "PredictionMonitor",
     "PredictorInfo",
-    "QuantWeightType",
-    "QuantizationBackend",
-    "QuantizationFormat",
+    "QuantWeightTypeEnum",
+    "QuantizationBackendEnum",
+    "QuantizationFormatEnum",
     "QuantizationResult",
     "RaplEnergySampler",
     "RegistryModelSource",
@@ -404,7 +406,7 @@ __all__: list[str] = [
     "RuntimeSample",
     "SklearnExport",
     "StaticModelMetrics",
-    "TensorDtype",
+    "TensorDtypeEnum",
     "TensorSpec",
     "UnsupportedEstimatorError",
     "analyze_model",

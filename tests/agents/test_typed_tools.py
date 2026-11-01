@@ -12,7 +12,7 @@ from tempest_fastapi_sdk.agents import (
     AgentBudget,
     AgentContext,
     AgentToolError,
-    StopReason,
+    StopReasonEnum,
     StructuredRun,
     final_answer_tool,
     run_structured,
@@ -349,7 +349,7 @@ class TestRunStructured:
         )
         run = await run_structured(Agent(backend), "the goal", Summary)
         assert run.goal == "the goal"
-        assert run.stop_reason == StopReason.COMPLETED
+        assert run.stop_reason == StopReasonEnum.COMPLETED
         assert len(run.steps) >= 2
 
     @pytest.mark.asyncio
@@ -360,7 +360,7 @@ class TestRunStructured:
         )
         agent = Agent(backend, budget=AgentBudget(max_steps=2, max_seconds=None))
         run = await run_structured(agent, "g", Summary)
-        assert run.stop_reason == StopReason.MAX_STEPS
+        assert run.stop_reason == StopReasonEnum.MAX_STEPS
         assert run.data is None
 
     @pytest.mark.asyncio
@@ -453,7 +453,7 @@ class TestExtractionRetry:
         backend = Scripted([{"content": "", "tool_calls": []}])
         run = await run_structured(Agent(backend), "g", Summary)
         assert run.data is None
-        assert run.stop_reason == StopReason.EMPTY_RESPONSE
+        assert run.stop_reason == StopReasonEnum.EMPTY_RESPONSE
         assert run.succeeded is False
         assert run.parse_error == "the run produced no answer"
         assert len(backend.specs_seen) == 1

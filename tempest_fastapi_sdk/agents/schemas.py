@@ -23,7 +23,7 @@ from tempest_fastapi_sdk.core import BaseStrEnum
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
-class StepKind(BaseStrEnum):
+class StepKindEnum(BaseStrEnum):
     """What produced one step of the trace.
 
     * ``MODEL`` — the language model was asked to think or answer.
@@ -40,7 +40,7 @@ class StepKind(BaseStrEnum):
     AGENT = "agent"
 
 
-class StopReason(BaseStrEnum):
+class StopReasonEnum(BaseStrEnum):
     """Why a run ended.
 
     Only ``COMPLETED`` means the model decided it was done. The rest are
@@ -186,7 +186,7 @@ class AgentStep(BaseSchema):
 
     Attributes:
         index (int): Position in the run, from ``0``.
-        kind (StepKind): Whether the model or a tool produced it.
+        kind (StepKindEnum): Whether the model or a tool produced it.
         name (str): The tool name, or ``"chat"`` for a model turn.
         arguments (dict[str, Any]): Arguments the model passed to the tool.
         output (str): What the step produced, as the model saw it.
@@ -202,7 +202,7 @@ class AgentStep(BaseSchema):
         description="Position in the run.",
         examples=[0],
     )
-    kind: StepKind = Field(
+    kind: StepKindEnum = Field(
         title="Kind",
         description="Whether the model or a tool produced this step.",
         examples=["tool"],
@@ -312,7 +312,7 @@ class AgentRun(BaseSchema):
         output (str): The final answer.
         steps (list[AgentStep]): The trace, in order.
         artifacts (list[AgentArtifact]): Everything the run produced.
-        stop_reason (StopReason): Why it ended — check this before
+        stop_reason (StopReasonEnum): Why it ended — check this before
             trusting ``output``.
         seconds (float): Total wall-clock duration.
         agent (str): The agent's name, for traces holding more than one.
@@ -355,8 +355,8 @@ class AgentRun(BaseSchema):
         title="Artifacts",
         description="Everything the run produced.",
     )
-    stop_reason: StopReason = Field(
-        default=StopReason.COMPLETED,
+    stop_reason: StopReasonEnum = Field(
+        default=StopReasonEnum.COMPLETED,
         title="Stop reason",
         description="Why the run ended.",
         examples=["completed"],
@@ -379,13 +379,13 @@ class AgentRun(BaseSchema):
         """Return whether the model finished on its own terms.
 
         Returns:
-            bool: ``True`` only for :attr:`StopReason.COMPLETED`. A run cut
+            bool: ``True`` only for :attr:`StopReasonEnum.COMPLETED`. A run cut
             off by a budget may still carry useful text, but calling it a
             success would hide a truncation; a run whose model answered with
-            nothing ends :attr:`StopReason.EMPTY_RESPONSE`, so a successful
+            nothing ends :attr:`StopReasonEnum.EMPTY_RESPONSE`, so a successful
             run never ends on an empty model reply.
         """
-        return self.stop_reason == StopReason.COMPLETED
+        return self.stop_reason == StopReasonEnum.COMPLETED
 
     @property
     def tool_calls(self) -> list[str]:
@@ -400,7 +400,7 @@ class AgentRun(BaseSchema):
         return [
             step.name
             for step in self.steps
-            if step.kind in (StepKind.TOOL, StepKind.AGENT)
+            if step.kind in (StepKindEnum.TOOL, StepKindEnum.AGENT)
         ]
 
     def artifact(self, name: str) -> AgentArtifact | None:
@@ -428,7 +428,7 @@ __all__: list[str] = [
     "AgentBudget",
     "AgentRun",
     "AgentStep",
-    "StepKind",
-    "StopReason",
+    "StepKindEnum",
+    "StopReasonEnum",
     "ToolResult",
 ]

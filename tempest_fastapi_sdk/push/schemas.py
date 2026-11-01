@@ -19,7 +19,7 @@ from pydantic import ConfigDict, Field
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
-class PushPlatform(StrEnum):
+class PushPlatformEnum(StrEnum):
     """The kind of device a notification is going to.
 
     Attributes:
@@ -63,7 +63,7 @@ class PushDevice:
     whole fleet without the caller sorting devices by kind first.
 
     Attributes:
-        platform (PushPlatform): Which transport delivers to this device.
+        platform (PushPlatformEnum): Which transport delivers to this device.
         token (str): The per-device identity — a Web Push endpoint URL for
             ``WEB``, an FCM registration token for ``IOS`` / ``ANDROID``.
         p256dh (str | None): Browser ECDH public key. ``WEB`` only.
@@ -72,7 +72,7 @@ class PushDevice:
             milliseconds since epoch, when the subscription reported one.
     """
 
-    platform: PushPlatform
+    platform: PushPlatformEnum
     token: str
     p256dh: str | None = None
     auth: str | None = None
@@ -173,7 +173,7 @@ class DeviceRegistrationSchema(BaseSchema):
     Attributes:
         token (str): Push endpoint URL (web) or FCM registration token
             (mobile).
-        platform (PushPlatform): Which kind of device this is.
+        platform (PushPlatformEnum): Which kind of device this is.
         p256dh (str | None): Browser ECDH public key. Required for ``web``.
         auth (str | None): Browser auth secret. Required for ``web``.
         expiration_time (int | None): Browser ``expirationTime``, when
@@ -203,7 +203,7 @@ class DeviceRegistrationSchema(BaseSchema):
             "fMEXAMPLE:APA91bH...",
         ],
     )
-    platform: PushPlatform = Field(
+    platform: PushPlatformEnum = Field(
         title="Device platform",
         description="Which transport delivers to this device.",
         examples=["web", "ios", "android"],
@@ -241,7 +241,7 @@ class PushResult:
     """The outcome of one delivery attempt.
 
     Attributes:
-        platform (PushPlatform): The device's platform.
+        platform (PushPlatformEnum): The device's platform.
         masked_token (str): The device, identified safely for logs.
         delivered (bool): Whether the provider accepted the message.
         pruned (bool): Whether the provider reported the device as gone, so
@@ -250,7 +250,7 @@ class PushResult:
             attempt neither delivered nor pruned.
     """
 
-    platform: PushPlatform
+    platform: PushPlatformEnum
     masked_token: str
     delivered: bool
     pruned: bool = False
@@ -329,7 +329,7 @@ __all__: list[str] = [
     "PushDevice",
     "PushFanoutResult",
     "PushPayloadSchema",
-    "PushPlatform",
+    "PushPlatformEnum",
     "PushResult",
     "mask_push_token",
 ]

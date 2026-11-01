@@ -198,10 +198,10 @@ class TestGeneratedSurface:
         """The generated constant comes from the spec's first server."""
         from tempest_fastapi_sdk.integrations.payment.openpix import (
             DEFAULT_BASE_URL,
-            OpenPixEnvironment,
+            OpenPixEnvironmentEnum,
         )
 
-        assert OpenPixEnvironment.PRODUCTION.base_url == DEFAULT_BASE_URL
+        assert OpenPixEnvironmentEnum.PRODUCTION.base_url == DEFAULT_BASE_URL
 
 
 class TestLazyLoading:

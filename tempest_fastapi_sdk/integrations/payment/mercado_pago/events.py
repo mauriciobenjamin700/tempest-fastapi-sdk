@@ -12,14 +12,14 @@ Mercado Pago's portal documents more topics than these (subscriptions,
 invoices, claims). They are deliberately absent: the specification is what
 this package is generated from and what the drift test pins, and adding a
 member the vendored artifact does not mention would be transcription, not
-measurement. :attr:`MercadoPagoEvent.UNKNOWN` is what a topic outside this
+measurement. :attr:`MercadoPagoEventEnum.UNKNOWN` is what a topic outside this
 list resolves to, with its original string preserved by the caller.
 """
 
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 
-class MercadoPagoEvent(BaseStrEnum):
+class MercadoPagoEventEnum(BaseStrEnum):
     """A notification topic, as Mercado Pago names it.
 
     Attributes:
@@ -37,4 +37,4 @@ class MercadoPagoEvent(BaseStrEnum):
     UNKNOWN = "unknown"
 
 
-__all__: list[str] = ["MercadoPagoEvent"]
+__all__: list[str] = ["MercadoPagoEventEnum"]

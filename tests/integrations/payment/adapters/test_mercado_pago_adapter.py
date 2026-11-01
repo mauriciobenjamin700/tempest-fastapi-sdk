@@ -28,10 +28,10 @@ from fastapi.testclient import TestClient
 from tempest_fastapi_sdk import HTTPClient, register_exception_handlers
 from tempest_fastapi_sdk.integrations.payment import (
     CardChargeRequest,
-    PaymentStatus,
+    PaymentStatusEnum,
     PixChargeRequest,
-    PixConfirmationOutcome,
-    PixEventType,
+    PixConfirmationOutcomeEnum,
+    PixEventTypeEnum,
     PixPayer,
     confirm_pix_payment,
 )
@@ -43,7 +43,7 @@ from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     DEFAULT_BASE_URL,
-    MercadoPagoEvent,
+    MercadoPagoEventEnum,
     MercadoPagoWebhookEvent,
     sign_manifest,
 )
@@ -216,7 +216,7 @@ class TestPix:
         assert charge.provider_charge_id == body["id"]
         assert charge.reference == "tempest-orders-pix"
         assert charge.amount_cents == 1990
-        assert charge.status is PaymentStatus.PENDING
+        assert charge.status is PaymentStatusEnum.PENDING
         assert charge.provider_status == "action_required"
         assert charge.br_code is not None
         assert charge.br_code.startswith("000201")
@@ -234,8 +234,8 @@ class TestPix:
         read = await provider.get_pix_charge(created["id"])
         cancelled = await provider.cancel_pix_charge(created["id"])
 
-        assert read.status is PaymentStatus.PENDING
-        assert cancelled.status is PaymentStatus.CANCELLED
+        assert read.status is PaymentStatusEnum.PENDING
+        assert cancelled.status is PaymentStatusEnum.CANCELLED
         assert recorder.requests[0].method == "GET"
         assert recorder.requests[0].url.path == f"/v1/orders/{created['id']}"
         assert recorder.requests[1].method == "POST"
@@ -336,7 +336,7 @@ class TestPix:
 
         charge = await provider.get_pix_charge(order["id"])
 
-        assert charge.status is PaymentStatus.PAID
+        assert charge.status is PaymentStatusEnum.PAID
         assert charge.provider_status == "processed"
         assert charge.end_to_end_id == "PIXPRUEBA183442965660"
 
@@ -347,7 +347,7 @@ class TestPix:
 
         charge = await provider.get_pix_charge(order["id"])
 
-        assert charge.status is PaymentStatus.EXPIRED
+        assert charge.status is PaymentStatusEnum.EXPIRED
         assert charge.provider_status == "canceled"
 
     async def test_a_partial_refund_addresses_the_payment(self) -> None:
@@ -367,7 +367,7 @@ class TestPix:
         assert [r.method for r in recorder.requests] == ["GET", "POST", "GET"]
         assert refund.url.path == f"/v1/orders/{paid['id']}/refund"
         assert _body(refund) == {"transactions": [{"id": payment_id, "amount": "5.00"}]}
-        assert charge.status is PaymentStatus.PAID
+        assert charge.status is PaymentStatusEnum.PAID
         assert charge.amount_cents == 1990
         assert charge.raw["status_detail"] == "partially_refunded"
         assert charge.raw["transactions"]["refunds"][0]["amount"] == "5.00"
@@ -384,7 +384,7 @@ class TestPix:
 
         assert [r.method for r in recorder.requests] == ["POST", "GET"]
         assert recorder.requests[0].content == b""
-        assert charge.status is PaymentStatus.REFUNDED
+        assert charge.status is PaymentStatusEnum.REFUNDED
 
     async def test_a_refund_is_retried_on_not_yet_with_the_same_key(self) -> None:
         """Same retry rule as the card refund."""
@@ -401,7 +401,7 @@ class TestPix:
         posts = [r for r in recorder.requests if r.method == "POST"]
         assert len(posts) == 2
         assert len({r.headers["X-Idempotency-Key"] for r in posts}) == 1
-        assert charge.status is PaymentStatus.REFUNDED
+        assert charge.status is PaymentStatusEnum.REFUNDED
 
     async def test_an_unpaid_pix_cannot_be_refunded(self) -> None:
         """Observed: `409 cannot_refund_order`, raised at once."""
@@ -441,7 +441,7 @@ class TestCard:
 
         charge = await provider.create_card_charge(_card())
 
-        assert charge.status is PaymentStatus.PAID
+        assert charge.status is PaymentStatusEnum.PAID
         assert charge.status_detail == "accredited"
         assert charge.amount_cents == 10000
         assert charge.refunded_cents == 0
@@ -455,7 +455,7 @@ class TestCard:
         charge = await provider.create_card_charge(_card())
 
         assert fixture("card_rejected")[0] == 402
-        assert charge.status is PaymentStatus.FAILED
+        assert charge.status is PaymentStatusEnum.FAILED
         assert charge.provider_status == "failed"
         assert charge.status_detail == "rejected_by_issuer"
         assert charge.reference == "tempest-orders-card-rejected"
@@ -482,11 +482,11 @@ class TestCard:
 
         assert "total_amount" not in capture
         assert _body(recorder.requests[0])["capture_mode"] == "manual"
-        assert authorized.status is PaymentStatus.AUTHORIZED
+        assert authorized.status is PaymentStatusEnum.AUTHORIZED
         assert authorized.status_detail == "waiting_capture"
         assert recorder.requests[1].url.path.endswith("/capture")
         assert recorder.requests[2].method == "GET"
-        assert captured.status is PaymentStatus.PAID
+        assert captured.status is PaymentStatusEnum.PAID
         assert captured.amount_cents == 10000
 
     async def test_cancel_an_authorization(self) -> None:
@@ -497,7 +497,7 @@ class TestCard:
 
         charge = await provider.cancel_card_charge("ORD1")
 
-        assert charge.status is PaymentStatus.CANCELLED
+        assert charge.status is PaymentStatusEnum.CANCELLED
 
     async def test_a_transient_409_is_retried_with_the_same_key(self) -> None:
         """Measured 3/10 on an immediate cancel; the retry succeeded."""
@@ -521,7 +521,7 @@ class TestCard:
         charge = await provider.cancel_card_charge("ORD1")
 
         keys = {r.headers["X-Idempotency-Key"] for r in recorder.requests}
-        assert charge.status is PaymentStatus.CANCELLED
+        assert charge.status is PaymentStatusEnum.CANCELLED
         assert len(recorder.requests) == 2
         assert len(keys) == 1
 
@@ -569,7 +569,7 @@ class TestCard:
 
         charge = await provider.refund_card_charge("ORD1")
 
-        assert charge.status is PaymentStatus.REFUNDED
+        assert charge.status is PaymentStatusEnum.REFUNDED
         assert [r.method for r in recorder.requests] == ["POST", "POST", "GET"]
 
     async def test_a_422_on_cancel_is_not_retried(self) -> None:
@@ -615,7 +615,7 @@ class TestCard:
         assert _body(refund) == {
             "transactions": [{"id": payment_id, "amount": "30.00"}]
         }
-        assert charge.status is PaymentStatus.PAID
+        assert charge.status is PaymentStatusEnum.PAID
         assert charge.refunded_cents == 3000
 
     async def test_full_refund_posts_no_body(self) -> None:
@@ -628,7 +628,7 @@ class TestCard:
         charge = await provider.refund_card_charge("ORD1")
 
         assert recorder.requests[0].content in (b"", b"null")
-        assert charge.status is PaymentStatus.REFUNDED
+        assert charge.status is PaymentStatusEnum.REFUNDED
         assert charge.refunded_cents == 10000
 
 
@@ -648,9 +648,9 @@ def _notification(
     return MercadoPagoWebhookEvent(
         topic=topic,
         event=(
-            MercadoPagoEvent.from_value(topic)
-            if MercadoPagoEvent.has_value(topic)
-            else MercadoPagoEvent.UNKNOWN
+            MercadoPagoEventEnum.from_value(topic)
+            if MercadoPagoEventEnum.has_value(topic)
+            else MercadoPagoEventEnum.UNKNOWN
         ),
         data_id=data_id,
         payload={"action": action, "type": topic, "data": {"id": data_id}},
@@ -671,9 +671,9 @@ class TestDelivery:
             await provider.read_delivery(_notification(order["id"]))
         )
 
-        assert event.type is PixEventType.CHARGE_CANCELLED
+        assert event.type is PixEventTypeEnum.CHARGE_CANCELLED
         assert event.charge is not None
-        assert event.charge.status is PaymentStatus.CANCELLED
+        assert event.charge.status is PaymentStatusEnum.CANCELLED
         assert event.provider_event_name == "order.updated"
 
     async def test_an_expired_pix_is_charge_expired(self) -> None:
@@ -685,7 +685,7 @@ class TestDelivery:
             await provider.read_delivery(_notification(order["id"]))
         )
 
-        assert event.type is PixEventType.CHARGE_EXPIRED
+        assert event.type is PixEventTypeEnum.CHARGE_EXPIRED
 
     async def test_a_paid_pix_is_charge_paid(self) -> None:
         """Observed paid order."""
@@ -696,7 +696,7 @@ class TestDelivery:
             await provider.read_delivery(_notification(order["id"]))
         )
 
-        assert event.type is PixEventType.CHARGE_PAID
+        assert event.type is PixEventTypeEnum.CHARGE_PAID
 
     async def test_a_pending_pix_is_charge_created(self) -> None:
         """Waiting for transfer."""
@@ -707,7 +707,7 @@ class TestDelivery:
             await provider.read_delivery(_notification(order["id"]))
         )
 
-        assert event.type is PixEventType.CHARGE_CREATED
+        assert event.type is PixEventTypeEnum.CHARGE_CREATED
 
     async def test_an_action_alone_identifies_an_order_delivery(self) -> None:
         """Topic absent, `order.*` action present: still re-read."""
@@ -727,7 +727,7 @@ class TestDelivery:
         )
 
         assert recorder.requests == []
-        assert provider.parse_webhook(delivery).type is PixEventType.UNKNOWN
+        assert provider.parse_webhook(delivery).type is PixEventTypeEnum.UNKNOWN
 
     async def test_an_id_that_is_not_an_order_id_is_not_fetched(self) -> None:
         """Nothing but `[A-Za-z0-9]+` reaches the path."""
@@ -758,7 +758,7 @@ class TestDelivery:
 
         assert provider.parse_webhook(delivery).charge is None
         assert card is not None
-        assert card.status is PaymentStatus.PAID
+        assert card.status is PaymentStatusEnum.PAID
 
     def test_the_bare_notification_is_refused(self) -> None:
         """It carries no state."""
@@ -775,7 +775,7 @@ class TestDelivery:
             MercadoPagoOrderDelivery(notification=_notification("ORD1"))
         )
 
-        assert event.type is PixEventType.UNKNOWN
+        assert event.type is PixEventTypeEnum.UNKNOWN
 
 
 def _signed(data_id: str, ts: str | None = None) -> dict[str, str]:
@@ -824,7 +824,7 @@ def _app(provider: MercadoPagoPixProvider, order_id: str, amount_cents: int) -> 
             dict[str, Any]: What happened.
         """
         event = provider.parse_webhook(delivery)
-        if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
+        if event.type is not PixEventTypeEnum.CHARGE_PAID or event.charge is None:
             return {"settled": None, "type": event.type.value}
         confirmation = await confirm_pix_payment(
             provider,
@@ -874,7 +874,7 @@ class TestWebhookRoute:
                 json={"action": "order.updated", "type": "order"},
             )
 
-        assert answer.json() == {"settled": PixConfirmationOutcome.PAID.value}
+        assert answer.json() == {"settled": PixConfirmationOutcomeEnum.PAID.value}
 
     def test_a_bad_signature_is_401_before_any_read(self) -> None:
         """No signature, no re-read."""

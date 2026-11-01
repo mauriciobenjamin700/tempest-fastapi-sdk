@@ -5,7 +5,7 @@ import pytest
 from tempest_fastapi_sdk.pdf import (
     PdfDecryptError,
     PdfExtractError,
-    PdfExtractor,
+    PdfExtractorEnum,
     read_pdf_pages,
 )
 
@@ -52,9 +52,11 @@ def two_page_pdf() -> bytes:
 class TestExtractors:
     """Both backends read the same document and agree on its shape."""
 
-    @pytest.mark.parametrize("extractor", [PdfExtractor.TEXT, PdfExtractor.LAYOUT])
+    @pytest.mark.parametrize(
+        "extractor", [PdfExtractorEnum.TEXT, PdfExtractorEnum.LAYOUT]
+    )
     async def test_page_boundaries_survive(
-        self, two_page_pdf: bytes, extractor: PdfExtractor
+        self, two_page_pdf: bytes, extractor: PdfExtractorEnum
     ) -> None:
         """Entry ``n`` is page ``n``, which is what lets a quote be cited."""
         result = await read_pdf_pages(two_page_pdf, extractor=extractor)
@@ -65,14 +67,14 @@ class TestExtractors:
 
     async def test_the_result_names_its_extractor(self, two_page_pdf: bytes) -> None:
         """A caller can tell whether tables were even looked for."""
-        result = await read_pdf_pages(two_page_pdf, extractor=PdfExtractor.LAYOUT)
-        assert result.extractor == PdfExtractor.LAYOUT
+        result = await read_pdf_pages(two_page_pdf, extractor=PdfExtractorEnum.LAYOUT)
+        assert result.extractor == PdfExtractorEnum.LAYOUT
 
     async def test_the_text_backend_never_reports_tables(
         self, two_page_pdf: bytes
     ) -> None:
         """``pypdf`` cannot recover a grid, so it claims none."""
-        result = await read_pdf_pages(two_page_pdf, extractor=PdfExtractor.TEXT)
+        result = await read_pdf_pages(two_page_pdf, extractor=PdfExtractorEnum.TEXT)
         assert all(page.tables == [] for page in result.pages)
 
     async def test_a_page_without_text_is_kept_as_empty(self) -> None:
@@ -89,16 +91,22 @@ class TestExtractors:
 class TestEncryptedDocuments:
     """A password has to reach the reader, and a wrong one has to be legible."""
 
-    @pytest.mark.parametrize("extractor", [PdfExtractor.TEXT, PdfExtractor.LAYOUT])
-    async def test_the_right_password_opens_it(self, extractor: PdfExtractor) -> None:
+    @pytest.mark.parametrize(
+        "extractor", [PdfExtractorEnum.TEXT, PdfExtractorEnum.LAYOUT]
+    )
+    async def test_the_right_password_opens_it(
+        self, extractor: PdfExtractorEnum
+    ) -> None:
         """With the password, the document reads normally."""
         data = _build_pdf(["Secret body"], password="hunter2")
         result = await read_pdf_pages(data, extractor=extractor, password="hunter2")
         assert "Secret body" in result.pages[0].text
 
-    @pytest.mark.parametrize("extractor", [PdfExtractor.TEXT, PdfExtractor.LAYOUT])
+    @pytest.mark.parametrize(
+        "extractor", [PdfExtractorEnum.TEXT, PdfExtractorEnum.LAYOUT]
+    )
     async def test_a_wrong_password_is_its_own_error(
-        self, extractor: PdfExtractor
+        self, extractor: PdfExtractorEnum
     ) -> None:
         """A wrong password is fixable; a corrupt file is not.
 
@@ -109,9 +117,11 @@ class TestEncryptedDocuments:
         with pytest.raises(PdfDecryptError):
             await read_pdf_pages(data, extractor=extractor, password="wrong")
 
-    @pytest.mark.parametrize("extractor", [PdfExtractor.TEXT, PdfExtractor.LAYOUT])
+    @pytest.mark.parametrize(
+        "extractor", [PdfExtractorEnum.TEXT, PdfExtractorEnum.LAYOUT]
+    )
     async def test_a_missing_password_is_the_same_error(
-        self, extractor: PdfExtractor
+        self, extractor: PdfExtractorEnum
     ) -> None:
         """Supplying nothing for an encrypted file reports the same fix."""
         data = _build_pdf(["Secret body"], password="hunter2")
@@ -122,8 +132,12 @@ class TestEncryptedDocuments:
 class TestMalformedInput:
     """Bytes that are not a PDF are a parse failure, not a crash."""
 
-    @pytest.mark.parametrize("extractor", [PdfExtractor.TEXT, PdfExtractor.LAYOUT])
-    async def test_garbage_raises_extract_error(self, extractor: PdfExtractor) -> None:
+    @pytest.mark.parametrize(
+        "extractor", [PdfExtractorEnum.TEXT, PdfExtractorEnum.LAYOUT]
+    )
+    async def test_garbage_raises_extract_error(
+        self, extractor: PdfExtractorEnum
+    ) -> None:
         """Both backends report the same code for unreadable input."""
         with pytest.raises(PdfExtractError):
             await read_pdf_pages(b"this is not a pdf", extractor=extractor)

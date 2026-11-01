@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from tempest_fastapi_sdk.modelops import (
-    EnergySource,
+    EnergySourceEnum,
     NullPowerSampler,
     benchmark,
     benchmark_models,
@@ -89,7 +89,7 @@ class TestBenchmark:
             cpu_energy_sampler=NullPowerSampler(),
         ).runtime
         assert runtime.energy_per_inference_j is None
-        assert runtime.energy_source == EnergySource.UNAVAILABLE
+        assert runtime.energy_source == EnergySourceEnum.UNAVAILABLE
         assert runtime.gpu_memory_peak_mb is None
 
     def test_sync_brackets_every_timed_call(self) -> None:

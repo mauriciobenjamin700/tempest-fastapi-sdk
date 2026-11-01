@@ -289,7 +289,7 @@ class TestScriptedBackend:
 
     @pytest.mark.asyncio
     async def test_repeat_last_drives_a_budget_to_fire(self) -> None:
-        from tempest_fastapi_sdk.agents import AgentBudget, StopReason, text_tool
+        from tempest_fastapi_sdk.agents import AgentBudget, StopReasonEnum, text_tool
 
         async def noop(_arguments: dict[str, Any], _ctx: AgentContext) -> str:
             return "x"
@@ -303,7 +303,7 @@ class TestScriptedBackend:
             tools=[text_tool("t", "T.", noop)],
             budget=AgentBudget(max_steps=4, max_seconds=None),
         ).run("loop")
-        assert run.stop_reason == StopReason.MAX_STEPS
+        assert run.stop_reason == StopReasonEnum.MAX_STEPS
 
     @pytest.mark.asyncio
     async def test_several_tools_in_one_turn(self) -> None:
@@ -334,10 +334,10 @@ class TestScriptedBackend:
 class TestFailingBackend:
     @pytest.mark.asyncio
     async def test_it_becomes_an_error_stop_not_an_exception(self) -> None:
-        from tempest_fastapi_sdk.agents import StopReason
+        from tempest_fastapi_sdk.agents import StopReasonEnum
 
         run = await Agent(FailingBackend("db is gone")).run("go")
-        assert run.stop_reason == StopReason.ERROR
+        assert run.stop_reason == StopReasonEnum.ERROR
         assert "db is gone" in run.output
 
 

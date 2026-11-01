@@ -34,7 +34,7 @@ from tempest_fastapi_sdk import (
     enable_sqlite_savepoints,
     make_user_token_model,
 )
-from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose
+from tempest_fastapi_sdk.db.user_token_model import UserTokenPurposeEnum
 from tempest_fastapi_sdk.exceptions import InvalidTokenException
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
 from tests.wallet.support import postgres_url as postgres_url
@@ -188,7 +188,7 @@ class TestConcurrentRedemption:
 
         async with maker() as late:
             await service.peek_token(
-                late, token=token, purpose=UserTokenPurpose.PASSWORD_RESET
+                late, token=token, purpose=UserTokenPurposeEnum.PASSWORD_RESET
             )
             await late.commit()
             async with maker() as early:

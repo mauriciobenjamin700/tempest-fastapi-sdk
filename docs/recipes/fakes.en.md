@@ -22,7 +22,7 @@ move that state:
 import asyncio
 
 from tempest_fastapi_sdk.integrations.payment import (
-    PaymentStatus,
+    PaymentStatusEnum,
     PixChargeRequest,
     PixProvider,
 )
@@ -39,7 +39,7 @@ async def main() -> None:
     )
     print(charge.status.value)
 
-    event = fake.advance(charge.provider_charge_id, PaymentStatus.PAID)
+    event = fake.advance(charge.provider_charge_id, PaymentStatusEnum.PAID)
     print(event.type.value)
 
 
@@ -105,7 +105,7 @@ import asyncio
 
 from tempest_fastapi_sdk.integrations.payment import (
     CardChargeRequest,
-    PaymentStatus,
+    PaymentStatusEnum,
 )
 from tempest_fastapi_sdk.testing.fakes import FakeCardProvider
 
@@ -126,7 +126,7 @@ async def main() -> None:
     partial = await card.refund_card_charge(paid.provider_charge_id, amount_cents=3000)
     full = await card.refund_card_charge(paid.provider_charge_id)
 
-    assert declined.status is PaymentStatus.FAILED
+    assert declined.status is PaymentStatusEnum.FAILED
     print(declined.status_detail, partial.status.value, full.status.value)
 
 
@@ -142,7 +142,7 @@ rejected_by_issuer paid refunded
 is not authorized, refunding what was not paid, refunding more than is left
 — raise `ValueError`: the refusal branch is reachable, but the exception type
 is the fake's (the real adapter raises `httpx.HTTPStatusError`).
-`advance(id, PaymentStatus.CHARGED_BACK)` reaches a chargeback, which no
+`advance(id, PaymentStatusEnum.CHARGED_BACK)` reaches a chargeback, which no
 contract method does.
 
 ## Email: an outbox instead of SMTP

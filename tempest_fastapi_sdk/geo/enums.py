@@ -5,7 +5,7 @@ from __future__ import annotations
 from tempest_fastapi_sdk.core import BaseStrEnum
 
 
-class TravelMode(BaseStrEnum):
+class TravelModeEnum(BaseStrEnum):
     """A way of travelling by road between two points.
 
     Used to pick an average speed (offline heuristic) or to scale a
@@ -21,5 +21,5 @@ class TravelMode(BaseStrEnum):
 
 
 __all__: list[str] = [
-    "TravelMode",
+    "TravelModeEnum",
 ]

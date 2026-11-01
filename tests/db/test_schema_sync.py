@@ -18,7 +18,7 @@ from tempest_fastapi_sdk.db import (
     AlembicHelper,
     AmbiguousBaseRevisionError,
     DestructiveMigrationError,
-    SchemaSyncOutcome,
+    SchemaSyncOutcomeEnum,
 )
 
 BASELINE: str = (
@@ -185,7 +185,7 @@ class TestTheReportedDefect:
         """The same starting point, through the SDK, ends up correct."""
         write_legacy_schema(db_path)
 
-        assert two_revisions.sync_schema() is SchemaSyncOutcome.ADOPTED
+        assert two_revisions.sync_schema() is SchemaSyncOutcomeEnum.ADOPTED
 
         assert "edited_at" in columns(db_path, "messages")
         assert two_revisions.current() == two_revisions.heads()[0]
@@ -207,7 +207,7 @@ class TestRepairingAWrongStamp:
         two_revisions.stamp("base")
         assert two_revisions.current() is None
 
-        assert two_revisions.sync_schema() is SchemaSyncOutcome.ADOPTED
+        assert two_revisions.sync_schema() is SchemaSyncOutcomeEnum.ADOPTED
         assert "edited_at" in columns(db_path, "messages")
         assert two_revisions.current() == two_revisions.heads()[0]
 
@@ -221,7 +221,7 @@ class TestSyncSchema:
         db_path: Path,
     ) -> None:
         """No stamp is written; the baseline creates the tables."""
-        assert two_revisions.sync_schema() is SchemaSyncOutcome.SYNCED
+        assert two_revisions.sync_schema() is SchemaSyncOutcomeEnum.SYNCED
         assert columns(db_path, "messages") == {"id", "body", "edited_at"}
 
     def test_already_stamped_database_only_upgrades(
@@ -238,7 +238,7 @@ class TestSyncSchema:
             "sa.Column('pinned', sa.Boolean(), nullable=True))",
         )
 
-        assert two_revisions.sync_schema() is SchemaSyncOutcome.SYNCED
+        assert two_revisions.sync_schema() is SchemaSyncOutcomeEnum.SYNCED
         assert "pinned" in columns(db_path, "messages")
 
     def test_project_without_revisions_leaves_the_database_alone(
@@ -249,7 +249,7 @@ class TestSyncSchema:
         """Nothing to apply is a reported outcome, not a crash."""
         write_legacy_schema(db_path)
 
-        assert helper.sync_schema() is SchemaSyncOutcome.NO_MIGRATIONS
+        assert helper.sync_schema() is SchemaSyncOutcomeEnum.NO_MIGRATIONS
         assert helper.current() is None
 
     def test_empty_database_runs_a_tree_that_drops_on_the_way(
@@ -266,7 +266,7 @@ class TestSyncSchema:
         """
         add_revision(two_revisions, "drop body", "op.drop_column('messages', 'body')")
 
-        assert two_revisions.sync_schema() is SchemaSyncOutcome.SYNCED
+        assert two_revisions.sync_schema() is SchemaSyncOutcomeEnum.SYNCED
         assert columns(db_path, "messages") == {"id", "edited_at"}
         assert two_revisions.current() == two_revisions.heads()[0]
 
@@ -303,7 +303,7 @@ class TestSyncSchema:
         two_revisions.sync_schema()
         add_revision(two_revisions, "drop body", "op.drop_column('messages', 'body')")
 
-        assert two_revisions.sync_schema(force=True) is SchemaSyncOutcome.SYNCED
+        assert two_revisions.sync_schema(force=True) is SchemaSyncOutcomeEnum.SYNCED
         assert "body" not in columns(db_path, "messages")
 
 

@@ -79,7 +79,7 @@ def _secret_search_columns(model: type[Any]) -> frozenset[str]:
     return _ALWAYS_SECRET_COLUMNS | declared
 
 
-class TextSearchLanguage(BaseStrEnum):
+class TextSearchLanguageEnum(BaseStrEnum):
     """PostgreSQL text-search configuration used for stemming.
 
     The configuration decides which stemmer and stop-word list apply, so
@@ -116,7 +116,7 @@ class TextSearchLanguage(BaseStrEnum):
     TURKISH = "turkish"
 
 
-class TokenMatch(BaseStrEnum):
+class TokenMatchEnum(BaseStrEnum):
     """How the words of a search term combine.
 
     Attributes:
@@ -131,7 +131,7 @@ class TokenMatch(BaseStrEnum):
     ANY = "any"
 
 
-class TextSearchWeight(BaseStrEnum):
+class TextSearchWeightEnum(BaseStrEnum):
     """Relative importance of a column in the relevance score.
 
     PostgreSQL ranks ``A`` highest and ``D`` lowest, so a term found in a
@@ -146,7 +146,7 @@ class TextSearchWeight(BaseStrEnum):
     D = "D"
 
 
-def _regconfig(language: TextSearchLanguage) -> ColumnElement[Any]:
+def _regconfig(language: TextSearchLanguageEnum) -> ColumnElement[Any]:
     """Render the text-search configuration as a SQL literal.
 
     ``to_tsvector`` / ``websearch_to_tsquery`` take a ``regconfig`` as
@@ -158,12 +158,12 @@ def _regconfig(language: TextSearchLanguage) -> ColumnElement[Any]:
     also what SQLAlchemy's own ``postgresql_regconfig`` option does.
 
     Inlining is safe here because the value can only come from
-    :class:`TextSearchLanguage`, a closed enum of lowercase ASCII names;
+    :class:`TextSearchLanguageEnum`, a closed enum of lowercase ASCII names;
     the assertion below pins that so a future member with a quote in it
     fails loudly instead of becoming an injection point.
 
     Args:
-        language (TextSearchLanguage): The configuration to render.
+        language (TextSearchLanguageEnum): The configuration to render.
 
     Returns:
         ColumnElement[Any]: The quoted configuration name as SQL.
@@ -175,7 +175,7 @@ def _regconfig(language: TextSearchLanguage) -> ColumnElement[Any]:
     value = language.value
     if not value.isalpha() or not value.islower():
         raise ValueError(
-            f"TextSearchLanguage value {value!r} is not a bare lowercase name; "
+            f"TextSearchLanguageEnum value {value!r} is not a bare lowercase name; "
             "it cannot be inlined into SQL safely.",
         )
     return literal_column(f"'{value}'")
@@ -252,7 +252,7 @@ def like_search_condition(
     term: str,
     fields: Sequence[ColumnRef],
     *,
-    token_match: TokenMatch = TokenMatch.ALL,
+    token_match: TokenMatchEnum = TokenMatchEnum.ALL,
     searchable: Collection[str] | None = None,
 ) -> ColumnElement[bool] | None:
     """Build a portable substring-search condition.
@@ -268,7 +268,7 @@ def like_search_condition(
         term (str): The raw search term.
         fields (Sequence[ColumnRef]): Columns to search, by name or as
             mapped attributes. Must not be empty.
-        token_match (TokenMatch): Whether every token must match or any
+        token_match (TokenMatchEnum): Whether every token must match or any
             single one is enough.
         searchable (Collection[str] | None): The columns ``fields`` may
             name (see :func:`resolve_search_column`). ``None`` accepts any
@@ -297,7 +297,9 @@ def like_search_condition(
         )
         for token in tokens
     ]
-    combined = and_(*per_token) if token_match is TokenMatch.ALL else or_(*per_token)
+    combined = (
+        and_(*per_token) if token_match is TokenMatchEnum.ALL else or_(*per_token)
+    )
     return combined
 
 
@@ -306,10 +308,10 @@ def full_text_condition(
     term: str,
     fields: Sequence[ColumnRef],
     *,
-    language: TextSearchLanguage = TextSearchLanguage.PORTUGUESE,
-    weights: Mapping[str, TextSearchWeight] | None = None,
+    language: TextSearchLanguageEnum = TextSearchLanguageEnum.PORTUGUESE,
+    weights: Mapping[str, TextSearchWeightEnum] | None = None,
     dialect: str = POSTGRESQL_DIALECT,
-    token_match: TokenMatch = TokenMatch.ALL,
+    token_match: TokenMatchEnum = TokenMatchEnum.ALL,
     searchable: Collection[str] | None = None,
 ) -> ColumnElement[bool] | None:
     """Build a full-text match condition, or the portable fallback.
@@ -328,15 +330,15 @@ def full_text_condition(
         model (type[Any]): The model being searched.
         term (str): The raw search term.
         fields (Sequence[ColumnRef]): Columns to search.
-        language (TextSearchLanguage): Stemming configuration.
-        weights (Mapping[str, TextSearchWeight] | None): Per-column
+        language (TextSearchLanguageEnum): Stemming configuration.
+        weights (Mapping[str, TextSearchWeightEnum] | None): Per-column
             weight, keyed by column name. Columns left out default to
             ``D``. Only affects :func:`full_text_rank`; supplying it
             changes how the vector is built, so the same mapping must be
             passed to both calls for the score to line up.
         dialect (str): The active SQLAlchemy dialect name. Compared
             against :data:`POSTGRESQL_DIALECT`.
-        token_match (TokenMatch): Used only by the fallback path;
+        token_match (TokenMatchEnum): Used only by the fallback path;
             PostgreSQL's ``websearch_to_tsquery`` already treats
             space-separated words as ``AND``.
         searchable (Collection[str] | None): The columns ``fields`` may
@@ -367,8 +369,8 @@ def full_text_rank(
     term: str,
     fields: Sequence[ColumnRef],
     *,
-    language: TextSearchLanguage = TextSearchLanguage.PORTUGUESE,
-    weights: Mapping[str, TextSearchWeight] | None = None,
+    language: TextSearchLanguageEnum = TextSearchLanguageEnum.PORTUGUESE,
+    weights: Mapping[str, TextSearchWeightEnum] | None = None,
     dialect: str = POSTGRESQL_DIALECT,
     searchable: Collection[str] | None = None,
 ) -> ColumnElement[Any] | None:
@@ -378,8 +380,8 @@ def full_text_rank(
         model (type[Any]): The model being searched.
         term (str): The raw search term.
         fields (Sequence[ColumnRef]): Columns to search.
-        language (TextSearchLanguage): Stemming configuration.
-        weights (Mapping[str, TextSearchWeight] | None): Per-column
+        language (TextSearchLanguageEnum): Stemming configuration.
+        weights (Mapping[str, TextSearchWeightEnum] | None): Per-column
             weight; must match what was passed to
             :func:`full_text_condition`.
         dialect (str): The active SQLAlchemy dialect name.
@@ -452,8 +454,8 @@ def _resolve_columns(
 def _tsvector(
     model: type[Any],
     fields: Sequence[ColumnRef],
-    language: TextSearchLanguage,
-    weights: Mapping[str, TextSearchWeight] | None,
+    language: TextSearchLanguageEnum,
+    weights: Mapping[str, TextSearchWeightEnum] | None,
     searchable: Collection[str] | None,
 ) -> ColumnElement[Any]:
     """Build the ``tsvector`` document from the searched columns.
@@ -471,8 +473,8 @@ def _tsvector(
     Args:
         model (type[Any]): The model being searched.
         fields (Sequence[ColumnRef]): Columns forming the document.
-        language (TextSearchLanguage): Stemming configuration.
-        weights (Mapping[str, TextSearchWeight] | None): Per-column
+        language (TextSearchLanguageEnum): Stemming configuration.
+        weights (Mapping[str, TextSearchWeightEnum] | None): Per-column
             weight keyed by column name; absent columns get ``D``.
         searchable (Collection[str] | None): The columns ``fields`` may
             name; ``None`` accepts any non-secret mapped column.
@@ -493,7 +495,7 @@ def _tsvector(
     vectors: list[ColumnElement[Any]] = [
         func.setweight(
             func.to_tsvector(_regconfig(language), func.coalesce(column, "")),
-            weights.get(column.key, TextSearchWeight.D).value,
+            weights.get(column.key, TextSearchWeightEnum.D).value,
         )
         for column in columns
     ]
@@ -503,9 +505,9 @@ def _tsvector(
 __all__: list[str] = [
     "POSTGRESQL_DIALECT",
     "ColumnRef",
-    "TextSearchLanguage",
-    "TextSearchWeight",
-    "TokenMatch",
+    "TextSearchLanguageEnum",
+    "TextSearchWeightEnum",
+    "TokenMatchEnum",
     "full_text_condition",
     "full_text_rank",
     "like_search_condition",

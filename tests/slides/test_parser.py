@@ -12,7 +12,7 @@ import pytest
 
 from tempest_fastapi_sdk.slides import (
     AnswerKeyVocabulary,
-    SlideKind,
+    SlideKindEnum,
     SlideSourceEmptyError,
     SlideSourceTooLargeError,
     SlideVocabulary,
@@ -123,12 +123,12 @@ SAMPLE_ANSWER_KEY: str = (
 )
 
 
-def _kinds(text: str, kind: SlideKind) -> int:
+def _kinds(text: str, kind: SlideKindEnum) -> int:
     """Count the slides of one kind a Portuguese text produces.
 
     Args:
         text (str): The source.
-        kind (SlideKind): The kind to count.
+        kind (SlideKindEnum): The kind to count.
 
     Returns:
         int: How many slides have that kind.
@@ -141,13 +141,13 @@ class TestParseSlidesPortuguese:
     def test_each_lesson_header_becomes_a_cover(self) -> None:
         """``Aula N:`` opens a lesson whose cover carries the lesson label."""
         deck = parse_slides(SAMPLE_DECK, vocabulary=PT_BR_SLIDES)
-        covers = [s for s in deck.slides if s.kind == SlideKind.LESSON_TITLE]
+        covers = [s for s in deck.slides if s.kind == SlideKindEnum.LESSON_TITLE]
         assert [c.subtitle for c in covers] == ["Aula 1", "Aula 2"]
 
     def test_bullets_of_one_section_share_a_slide(self) -> None:
         """Three ``Term: description`` lines under one heading make one slide."""
         deck = parse_slides(SAMPLE_DECK, vocabulary=PT_BR_SLIDES)
-        bullets = [s for s in deck.slides if s.kind == SlideKind.BULLETS]
+        bullets = [s for s in deck.slides if s.kind == SlideKindEnum.BULLETS]
         assert len(bullets) == 1
         assert {b.term for b in bullets[0].bullets} == {
             "Porta NOT (Inversora)",
@@ -166,7 +166,7 @@ class TestParseSlidesPortuguese:
     def test_conclusion_marker_selects_the_conclusion_kind(self) -> None:
         """A heading containing ``conclus`` renders as a conclusion."""
         deck = parse_slides(SAMPLE_DECK, vocabulary=PT_BR_SLIDES)
-        conclusions = [s for s in deck.slides if s.kind == SlideKind.CONCLUSION]
+        conclusions = [s for s in deck.slides if s.kind == SlideKindEnum.CONCLUSION]
         assert [c.title for c in conclusions] == ["Conclusão da Unidade"]
 
     def test_slides_are_numbered_in_order(self) -> None:
@@ -193,7 +193,7 @@ class TestParseSlidesPortuguese:
             "que toda informação pode ser representada por apenas dois estados: "
             "Ligado (1) ou Desligado (0).\n"
         )
-        assert _kinds(text, SlideKind.BULLETS) == 0
+        assert _kinds(text, SlideKindEnum.BULLETS) == 0
 
     def test_copula_in_the_head_is_not_a_bullet(self) -> None:
         """``O mundo real é analógico: ...`` reads as prose."""
@@ -201,8 +201,8 @@ class TestParseSlidesPortuguese:
             "Aula 1: Teste\nSeção\nO mundo real é analógico: a temperatura não "
             "pula de 20°C para 21°C; ela passa por todos os valores.\n"
         )
-        assert _kinds(text, SlideKind.BULLETS) == 0
-        assert _kinds(text, SlideKind.CONTENT) == 1
+        assert _kinds(text, SlideKindEnum.BULLETS) == 0
+        assert _kinds(text, SlideKindEnum.CONTENT) == 1
 
     def test_unbalanced_parenthesis_in_the_head_is_not_a_bullet(self) -> None:
         """An unclosed ``(`` before the colon means the colon is mid-sentence."""
@@ -210,7 +210,7 @@ class TestParseSlidesPortuguese:
             "Aula 1: Teste\nSeção\nO processo de transformar uma tensão (ex: "
             "vinda de um microfone) em um número binário envolve três etapas.\n"
         )
-        assert _kinds(text, SlideKind.BULLETS) == 0
+        assert _kinds(text, SlideKindEnum.BULLETS) == 0
 
     def test_question_heading_opens_a_section(self) -> None:
         """A heading may end in ``?``."""
@@ -219,7 +219,7 @@ class TestParseSlidesPortuguese:
             "um dispositivo que detecta uma mudança em uma grandeza física.\n"
         )
         deck = parse_slides(text, vocabulary=PT_BR_SLIDES)
-        content = [s for s in deck.slides if s.kind == SlideKind.CONTENT]
+        content = [s for s in deck.slides if s.kind == SlideKindEnum.CONTENT]
         assert [c.title for c in content] == ["O que são Sensores e Transdutores?"]
 
     def test_leading_dash_and_bare_bullets_parse_alike(self) -> None:
@@ -230,7 +230,7 @@ class TestParseSlidesPortuguese:
             "Verificar conexões: distinguir portas USB, HDMI e de rede\n"
         )
         deck = parse_slides(text, vocabulary=PT_BR_SLIDES)
-        bullets = [s for s in deck.slides if s.kind == SlideKind.BULLETS]
+        bullets = [s for s in deck.slides if s.kind == SlideKindEnum.BULLETS]
         assert {b.term for b in bullets[0].bullets} == {
             "Identificar dispositivos",
             "Verificar conexões",
@@ -243,7 +243,7 @@ class TestParseSlidesPortuguese:
             "automaticamente ao conectá-lo\n"
         )
         deck = parse_slides(text, vocabulary=PT_BR_SLIDES)
-        bullets = [s for s in deck.slides if s.kind == SlideKind.BULLETS]
+        bullets = [s for s in deck.slides if s.kind == SlideKindEnum.BULLETS]
         assert bullets[0].bullets[0].term == "Plug-and-play"
 
     def test_notes_attach_to_the_item_right_above(self) -> None:
@@ -255,8 +255,8 @@ class TestParseSlidesPortuguese:
             "Nota: Mostrar tabela verdade.\n"
         )
         deck = parse_slides(text, vocabulary=PT_BR_SLIDES)
-        content = next(s for s in deck.slides if s.kind == SlideKind.CONTENT)
-        bullets = next(s for s in deck.slides if s.kind == SlideKind.BULLETS)
+        content = next(s for s in deck.slides if s.kind == SlideKindEnum.CONTENT)
+        bullets = next(s for s in deck.slides if s.kind == SlideKindEnum.BULLETS)
         assert content.notes == "Lembrar do exemplo do LED."
         assert bullets.notes == "Mostrar tabela verdade."
 
@@ -276,7 +276,7 @@ class TestParseSlidesSplitting:
             f"Term {i}: a description long enough to count" for i in range(8)
         )
         deck = parse_slides(f"Lesson 1: Many\nThe list\n{lines}\n")
-        sizes = [len(s.bullets) for s in deck.slides if s.kind == SlideKind.BULLETS]
+        sizes = [len(s.bullets) for s in deck.slides if s.kind == SlideKindEnum.BULLETS]
         assert sizes == [6, 2]
 
     def test_long_paragraphs_spill_without_being_cut(self) -> None:
@@ -284,7 +284,7 @@ class TestParseSlidesSplitting:
         paragraph = "word " * 100
         text = f"Lesson 1: Long\nThe section\n{paragraph}\n\n{paragraph}\n"
         deck = parse_slides(text)
-        content = [s for s in deck.slides if s.kind == SlideKind.CONTENT]
+        content = [s for s in deck.slides if s.kind == SlideKindEnum.CONTENT]
         assert [len(s.paragraphs) for s in content] == [1, 1]
 
 
@@ -295,7 +295,7 @@ class TestParseSlidesEnglishDefaults:
             "Lesson 2: Gates\nWrapping up the conclusion\nGates compose circuits.\n"
         )
         assert deck.slides[0].subtitle == "Lesson 2"
-        assert deck.slides[1].kind == SlideKind.CONCLUSION
+        assert deck.slides[1].kind == SlideKindEnum.CONCLUSION
 
     def test_portuguese_header_is_plain_content_under_defaults(self) -> None:
         """``Aula 1:`` is not a marker in English; it is a heading."""
@@ -307,7 +307,7 @@ class TestParseSlidesEnglishDefaults:
         deck = parse_slides(
             "Lesson 1: X\nA section\nThe result is: forty-two after two passes\n"
         )
-        assert all(s.kind != SlideKind.BULLETS for s in deck.slides)
+        assert all(s.kind != SlideKindEnum.BULLETS for s in deck.slides)
 
 
 class TestSourceLimits:

@@ -194,7 +194,7 @@ payload = SubscriptionPayload(
 
 !!! warning "Pix Automático events carry no `OPENPIX:` prefix"
     If your handler filters on `event_name.startswith("OPENPIX:")`, it drops
-    the whole family silently. Compare against `OpenPixEvent` members, not
+    the whole family silently. Compare against `OpenPixEventEnum` members, not
     strings: `OpenPixEvent.PIX_AUTOMATIC_APPROVED.value ==
     "PIX_AUTOMATIC_APPROVED"`.
 
@@ -205,7 +205,7 @@ same `OPENPIX:CHARGE_COMPLETED` as the one-off recipe. What changes is that
 the charge carries the subscription.
 
 ```python
-from tempest_fastapi_sdk.integrations.payment.openpix import Charge, OpenPixEvent
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge, OpenPixEventEnum
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixWebhookEvent
 
 
@@ -219,7 +219,7 @@ def subscription_of(event: OpenPixWebhookEvent) -> str | None:
         str | None: The subscription's `correlationID`, or `None` when the
         charge is a one-off.
     """
-    if event.event is not OpenPixEvent.CHARGE_COMPLETED:
+    if event.event is not OpenPixEventEnum.CHARGE_COMPLETED:
         return None
     charge = Charge.model_validate(event.payload["charge"])
     if charge.subscription is None:

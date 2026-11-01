@@ -330,14 +330,14 @@ you do not decide what to do with a `False`:
 - An empty secret refuses everything — "no secret configured" does not
   become an open route.
 - A topic this SDK does not name does **not** fail the route: `event`
-  becomes `MercadoPagoEvent.UNKNOWN` and `topic` keeps the string. A body
+  becomes `MercadoPagoEventEnum.UNKNOWN` and `topic` keeps the string. A body
   that is not JSON does not either: `payload` stays empty and `body` carries
   the bytes.
 
 - An Orders notification should arrive with the `order` topic or an
   `order.*` action: the provider's document lists `order.created` and
   `order.updated`, but a live Orders delivery **has not been observed** here
-  yet. `MercadoPagoEvent` only names the topics the spec declares
+  yet. `MercadoPagoEventEnum` only names the topics the spec declares
   (`payment`, `merchant_order`, `point_integration_wh`), so for Orders
   `event.event` is `UNKNOWN` — which is why the example decides on the
   `topic` and the action, as `make_mercado_pago_webhook_delivery_dependency`
@@ -448,7 +448,7 @@ from fastapi import Depends, FastAPI
 
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
-    PixEventType,
+    PixEventTypeEnum,
     confirm_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters import (
@@ -481,7 +481,7 @@ async def webhook(
     if card is not None:
         return {"card": card.status.value, "detail": card.status_detail}
     event = pix.parse_webhook(delivery)
-    if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
+    if event.type is not PixEventTypeEnum.CHARGE_PAID or event.charge is None:
         return {"settled": None}
     confirmation = await confirm_pix_payment(
         pix,

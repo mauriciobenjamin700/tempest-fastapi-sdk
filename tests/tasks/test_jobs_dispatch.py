@@ -35,7 +35,7 @@ from tempest_fastapi_sdk.tasks import (
     STORE_OWNED_JOB_COLUMNS,
     BaseJobModel,
     JobCancelledError,
-    JobStatus,
+    JobStatusEnum,
     JobStore,
     ReclaimedJobs,
     make_job_model,
@@ -117,7 +117,7 @@ class TestSucceedValues:
 
         done = await store.succeed(job.id, values={"object_key": "exports/a.zip"})
 
-        assert done.status == JobStatus.DONE.value
+        assert done.status == JobStatusEnum.DONE.value
         assert done.object_key == "exports/a.zip"
         assert (await store.get(job.id)).object_key == "exports/a.zip"
 
@@ -132,7 +132,7 @@ class TestSucceedValues:
             await store.succeed(job.id, values={"object_key": "exports/a.zip"})
 
         row = await store.get(job.id)
-        assert row.status == JobStatus.CANCELLED.value
+        assert row.status == JobStatusEnum.CANCELLED.value
         assert row.object_key is None
 
     async def test_an_unknown_column_is_refused_before_any_write(
@@ -144,7 +144,7 @@ class TestSucceedValues:
         with pytest.raises(ValueError, match="no column of _KeyedJobModel: nope"):
             await store.succeed(job.id, values={"nope": 1})
 
-        assert (await store.get(job.id)).status == JobStatus.RUNNING.value
+        assert (await store.get(job.id)).status == JobStatusEnum.RUNNING.value
 
     @pytest.mark.parametrize("column", ["status", "finished_at", "result_id"])
     async def test_a_store_owned_column_is_refused(
@@ -156,7 +156,7 @@ class TestSucceedValues:
         with pytest.raises(ValueError, match=f"JobStore controls: {column}"):
             await store.succeed(job.id, values={column: None})
 
-        assert (await store.get(job.id)).status == JobStatus.RUNNING.value
+        assert (await store.get(job.id)).status == JobStatusEnum.RUNNING.value
 
     def test_store_owned_columns_are_exactly_the_base_model_columns(self) -> None:
         """A column added to ``BaseJobModel`` must be classified here.
@@ -218,14 +218,14 @@ class TestSucceedValues:
                 await asyncio.gather(_succeed(), _cancel())
                 row = await worker.get(job.id)
                 outcomes.add(row.status)
-                if row.status == JobStatus.CANCELLED.value:
+                if row.status == JobStatusEnum.CANCELLED.value:
                     assert row.object_key is None
                 else:
-                    assert row.status == JobStatus.DONE.value
+                    assert row.status == JobStatusEnum.DONE.value
                     assert row.object_key == "k"
         finally:
             await other.disconnect()
-        assert outcomes <= {JobStatus.DONE.value, JobStatus.CANCELLED.value}
+        assert outcomes <= {JobStatusEnum.DONE.value, JobStatusEnum.CANCELLED.value}
 
     async def test_the_two_transaction_workaround_is_the_one_that_breaks(
         self, store: JobStore[_KeyedJobModel], keyed_db: AsyncDatabaseManager
@@ -249,7 +249,7 @@ class TestSucceedValues:
             await store.succeed(job.id)
 
         row = await store.get(job.id)
-        assert row.status == JobStatus.CANCELLED.value
+        assert row.status == JobStatusEnum.CANCELLED.value
         assert row.object_key == "exports/a.zip"
 
 
@@ -290,7 +290,7 @@ class TestReclaimIds:
             await _worker(job_id)
 
         row = await store.get(job.id)
-        assert row.status == JobStatus.DONE.value
+        assert row.status == JobStatusEnum.DONE.value
         assert row.attempts == 2
         assert row.object_key == "exports/b.zip"
 
@@ -319,7 +319,7 @@ class TestRedispatchQueued:
 
         assert resent == [job.id]
         assert sent == [job.id]
-        assert (await store.get(job.id)).status == JobStatus.DONE.value
+        assert (await store.get(job.id)).status == JobStatusEnum.DONE.value
 
     async def test_a_resent_row_waits_a_full_window_before_the_next_send(
         self, store: JobStore[_KeyedJobModel], keyed_db: AsyncDatabaseManager

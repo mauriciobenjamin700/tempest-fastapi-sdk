@@ -157,7 +157,7 @@ Modelops — exportar, medir e quantizar os modelos que o serviço serve:
 | Feature | Status | Onde |
 |---------|--------|------|
 | **Benchmark de CPU/RAM/GPU/energia** | ✅ v0.173 | `benchmark` cronometra qualquer callable; `benchmark_onnx`/`benchmark_torch`/`benchmark_models` são construídos em cima. Warm-up descartado + N repetições, mediana e IQR primeiro (latência tem cauda pesada), p95/p99, throughput, pico e delta de RSS, memória de GPU. [Modelops »](recipes/modelops.md) |
-| **Medição de energia com proveniência** | ✅ v0.173 | `NvmlPowerSampler` (prefere o contador de energia total do driver, cai pra integração de potência), `NvidiaSmiPowerSampler`, `RaplEnergySampler` (energia do pacote de CPU via powercap, com wraparound) e `NullPowerSampler`. Todo número carrega um `EnergySource` — nenhum deles é wall-plug. Execução em CPU não resolve sampler de GPU. |
+| **Medição de energia com proveniência** | ✅ v0.173 | `NvmlPowerSampler` (prefere o contador de energia total do driver, cai pra integração de potência), `NvidiaSmiPowerSampler`, `RaplEnergySampler` (energia do pacote de CPU via powercap, com wraparound) e `NullPowerSampler`. Todo número carrega um `EnergySourceEnum` — nenhum deles é wall-plug. Execução em CPU não resolve sampler de GPU. |
 | **Ranking: score composto + Pareto** | ✅ v0.173 | `composite_scores` com pesos renormalizados sobre as dimensões efetivamente medidas, `pareto_points` pulando eixos não medidos em vez de assumir o melhor, `rank` → `BenchmarkReport` com pesos efetivos e descrição do host. |
 | **`.onnx` → `.ort` e otimização de grafo** | ✅ v0.173 | `export_onnx_to_ort` (arquivo ou diretório, estilo `FIXED`/`RUNTIME`, `target_platform`, type reduction, `.required_operators.config` pro build mínimo), `export_torch_to_onnx` e `optimize_onnx_graph`. |
 | **Quantização ONNX e HuggingFace** | ✅ v0.173 | `quantize_onnx_dynamic`, `quantize_onnx_static` (reader de calibração a partir de qualquer iterável de feeds), e o caminho de export transformers sobre o ferramental do próprio ONNX Runtime: `optimize_hf_onnx` (`O1`–`O4`), `quantize_hf_onnx` (arm64/avx2/avx512/avx512_vnni) — mais `quantize_hf_bnb` (int4/int8 em PyTorch). Sem dependência de `optimum`, então nada aqui limita a sua versão de `transformers`. |
@@ -315,7 +315,7 @@ Painel admin — RBAC granular (Tier 3):
 
 | Feature | Status | Onde |
 |---------|--------|------|
-| **RBAC granular** | ✅ v0.119 | `make_admin_router(access_policy=...)` — hook `(principal, admin, AdminPermission)` → bool consultado em toda ação (VIEW/CREATE/EDIT/DELETE). Nega → `403`, e some do dashboard/nav no VIEW. Compõe com os flags `can_*` (ambos precisam liberar). Restringe um admin não-super a subconjuntos de modelo/ação. [Receita »](recipes/admin.md) |
+| **RBAC granular** | ✅ v0.119 | `make_admin_router(access_policy=...)` — hook `(principal, admin, AdminPermissionEnum)` → bool consultado em toda ação (VIEW/CREATE/EDIT/DELETE). Nega → `403`, e some do dashboard/nav no VIEW. Compõe com os flags `can_*` (ambos precisam liberar). Restringe um admin não-super a subconjuntos de modelo/ação. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.118.0
 

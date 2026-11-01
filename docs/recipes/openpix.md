@@ -65,7 +65,7 @@ barulhento.
 !!! warning "Um caractere separa produção de teste"
     Produção é `api.woovi.com`. Testes é `api.woovi-sandbox.com`. O AppID de um
     não vale no outro, e a diferença é um sufixo numa URL que carrega dinheiro
-    de verdade — por isso `OpenPixEnvironment` existe em vez de uma string no
+    de verdade — por isso `OpenPixEnvironmentEnum` existe em vez de uma string no
     `.env`.
 
     Produção mudou de `api.openpix.com.br` na v0.260.0, seguindo o `servers` do
@@ -325,7 +325,7 @@ from fastapi import APIRouter, Depends
 
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     Charge,
-    OpenPixEvent,
+    OpenPixEventEnum,
     OpenPixWebhookEvent,
     make_openpix_webhook_dependency,
 )
@@ -351,7 +351,7 @@ async def receive_openpix(
     Returns:
         Uma confirmação, para a OpenPix parar de reentregar.
     """
-    if event.event is not OpenPixEvent.CHARGE_COMPLETED:
+    if event.event is not OpenPixEventEnum.CHARGE_COMPLETED:
         return {"status": "ignored", "event": event.event_name}
 
     charge = Charge.model_validate(event.payload["charge"])
@@ -365,7 +365,7 @@ async def receive_openpix(
 
 A dependência faz três coisas antes do corpo da rota rodar: confere a
 assinatura RSA do header `x-webhook-signature`, decodifica o JSON e resolve a
-string `event` para um membro de `OpenPixEvent`. O que sobra em
+string `event` para um membro de `OpenPixEventEnum`. O que sobra em
 `event.payload` é o dict cru — você valida só o ramo que interessa.
 
 Medido com esse router de pé (chave de teste, corpo assinado):
@@ -452,7 +452,7 @@ async def is_paid(self, reference: str) -> bool:
     A comparação por `==` não muda: valor conhecido continua batendo com o
     membro do enum. Se você ramifica em `status`, trate o caso de fora da
     lista — pelo contrato canônico isso é
-    [`PaymentStatus.UNKNOWN`](pix-protocol.md#estados).
+    [`PaymentStatusEnum.UNKNOWN`](pix-protocol.md#estados).
 
 ### A reconciliação
 
@@ -727,11 +727,11 @@ async def register_webhook(client: OpenPixClient, url: str) -> None:
 ```
 
 !!! note "O prefixo dos eventos não é uniforme, e isso é da OpenPix"
-    `OpenPixEvent` traz os 28 eventos verbatim. Cobrança, transação, movimento
+    `OpenPixEventEnum` traz os 28 eventos verbatim. Cobrança, transação, movimento
     e disputa carregam o namespace `OPENPIX:`
-    (`OpenPixEvent.CHARGE_COMPLETED.value == "OPENPIX:CHARGE_COMPLETED"`). As
+    (`OpenPixEventEnum.CHARGE_COMPLETED.value == "OPENPIX:CHARGE_COMPLETED"`). As
     famílias Pix-automático e account-register **não**
-    (`OpenPixEvent.PIX_AUTOMATIC_APPROVED.value == "PIX_AUTOMATIC_APPROVED"`).
+    (`OpenPixEventEnum.PIX_AUTOMATIC_APPROVED.value == "PIX_AUTOMATIC_APPROVED"`).
     Parece erro de transcrição, não é — e por isso tem teste fixando os dois
     casos.
 
@@ -809,7 +809,7 @@ diferentes:
 | Metade | O que é | De onde vem |
 | --- | --- | --- |
 | **Gerada** | `OpenPixClient`, `DEFAULT_BASE_URL`, 684 classes de schema | A spec, verbatim |
-| **À mão** | `OpenPixEnvironment`, `OpenPixEvent`, webhook, helpers de dinheiro | O que a spec **não** diz |
+| **À mão** | `OpenPixEnvironmentEnum`, `OpenPixEventEnum`, webhook, helpers de dinheiro | O que a spec **não** diz |
 
 !!! info "A metade gerada é versionada, não escrita à mão"
     `scripts/regen_openpix.py` produz `schemas.py` e `client.py` a partir da
@@ -833,7 +833,7 @@ diferentes:
 ## Recapitulando
 
 1. **Um `HTTPClient` por processo**, criado no lifespan, com o AppID em
-   `default_headers` e a base URL vinda de `OpenPixEnvironment`.
+   `default_headers` e a base URL vinda de `OpenPixEnvironmentEnum`.
 2. **`correlationID` é o id do seu pedido** — é ele que amarra criação,
    webhook, consulta e estorno.
 3. **Abrir a cobrança** é `create_charge` com `return_existing=True`; a

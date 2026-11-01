@@ -143,7 +143,7 @@ exactly the scenario the ceiling exists for:
 ```python
 import pytest
 
-from tempest_fastapi_sdk.agents import Agent, AgentBudget, AgentContext, StopReason, text_tool
+from tempest_fastapi_sdk.agents import Agent, AgentBudget, AgentContext, StopReasonEnum, text_tool
 from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies_with_tool
 
 
@@ -166,7 +166,7 @@ async def test_the_step_budget_stops_a_runaway_agent() -> None:
         budget=AgentBudget(max_steps=4, max_seconds=None),
     ).run("do it forever")
 
-    assert run.stop_reason == StopReason.MAX_STEPS
+    assert run.stop_reason == StopReasonEnum.MAX_STEPS
     assert run.succeeded is False
 ```
 
@@ -299,7 +299,7 @@ uses `messages_seen` to show the API key stayed out of the conversation.
 ```python title="test_outage.py" hl_lines="12"
 import pytest
 
-from tempest_fastapi_sdk.agents import Agent, StopReason
+from tempest_fastapi_sdk.agents import Agent, StopReasonEnum
 from tempest_fastapi_sdk.agents.testing import FailingBackend
 
 
@@ -308,12 +308,12 @@ async def test_a_backend_outage_does_not_escape() -> None:
     """A dead model must become an ERROR stop, not an exception."""
     run = await Agent(FailingBackend("ollama is down")).run("hi")
 
-    assert run.stop_reason == StopReason.ERROR
+    assert run.stop_reason == StopReasonEnum.ERROR
     assert "ollama is down" in run.output
 ```
 
 This matters because an agent usually sits behind an endpoint: an escaping
-exception is a 500, while a `StopReason.ERROR` is a response you control.
+exception is a 500, while a `StopReasonEnum.ERROR` is a response you control.
 
 ## Did the script run out?
 
@@ -347,7 +347,7 @@ fast suite:
 import pytest
 
 from tempest_fastapi_sdk.agents import Agent, AgentBudget
-from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
 from test_agent import get_weather
 
 
@@ -356,7 +356,7 @@ from test_agent import get_weather
 async def test_a_real_model_picks_the_weather_tool() -> None:
     """The model must reach for the tool when the goal calls for it."""
     generator = TextGenerator(
-        TextModel.QWEN2_5_0_5B_INSTRUCT,
+        TextModelEnum.QWEN2_5_0_5B_INSTRUCT,
         device="cpu",
         local_files_only=True,
     )

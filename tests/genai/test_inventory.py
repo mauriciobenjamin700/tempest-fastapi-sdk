@@ -165,10 +165,10 @@ class TestDescribeModel:
         assert describe_model(Exploding()).loaded is False
 
     def test_enum_dtype_is_reported_by_value(self) -> None:
-        from tempest_fastapi_sdk.genai import ModelDtype
+        from tempest_fastapi_sdk.genai import ModelDtypeEnum
 
         handle = FakeHandle(dtype=None)
-        handle.dtype = ModelDtype.FLOAT16
+        handle.dtype = ModelDtypeEnum.FLOAT16
         assert describe_model(handle).dtype == "float16"
 
 

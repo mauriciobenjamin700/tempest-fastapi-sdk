@@ -14,14 +14,14 @@ dashboard/nav for ``VIEW``). It composes with — does not replace — the
 must allow an action.
 
 ```python
-from tempest_fastapi_sdk.admin import AdminPermission
+from tempest_fastapi_sdk.admin import AdminPermissionEnum
 
 
-def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
+def policy(user: UserModel, admin: AdminModel, action: AdminPermissionEnum) -> bool:
     if user.role == "superadmin":
         return True
     if user.role == "support":
-        return action is AdminPermission.VIEW
+        return action is AdminPermissionEnum.VIEW
     return False
 
 
@@ -36,17 +36,17 @@ throwaway ``AdminModel(child)``), an editable inline's add row needs
 list filter or autocomplete needs ``VIEW`` on the referenced admin.
 
 The panels that are not about one model — the SQL console, the task
-panel and the logs page — are an :class:`AdminSurface`, decided by an
+panel and the logs page — are an :class:`AdminSurfaceEnum`, decided by an
 :data:`AdminSurfacePolicy` passed as ``surface_policy``. Once an
 ``access_policy`` is configured they are **denied** to everyone unless a
 ``surface_policy`` says otherwise, because a principal the model policy
 restricts would otherwise read any table through the console:
 
 ```python
-from tempest_fastapi_sdk.admin import AdminSurface
+from tempest_fastapi_sdk.admin import AdminSurfaceEnum
 
 
-def surfaces(user: UserModel, surface: AdminSurface) -> bool:
+def surfaces(user: UserModel, surface: AdminSurfaceEnum) -> bool:
     return user.role == "superadmin"
 
 
@@ -67,7 +67,7 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.admin.config import AdminModel
 
 
-class AdminPermission(BaseStrEnum):
+class AdminPermissionEnum(BaseStrEnum):
     """An admin action gated by an :data:`AdminAccessPolicy`."""
 
     VIEW = "view"
@@ -76,7 +76,7 @@ class AdminPermission(BaseStrEnum):
     DELETE = "delete"
 
 
-class AdminSurface(BaseStrEnum):
+class AdminSurfaceEnum(BaseStrEnum):
     """An admin panel that is not about one model.
 
     Gated by an :data:`AdminSurfacePolicy` instead of the per-model
@@ -93,7 +93,7 @@ class AdminSurface(BaseStrEnum):
 #: A policy deciding whether ``principal`` may perform ``action`` on the
 #: model behind ``admin``. Sync or ``async``; return truthy to allow.
 AdminAccessPolicy = Callable[
-    [Any, "AdminModel[Any]", AdminPermission],
+    [Any, "AdminModel[Any]", AdminPermissionEnum],
     bool | Awaitable[bool],
 ]
 
@@ -102,14 +102,14 @@ AdminAccessPolicy = Callable[
 #: console, the task panel, the logs page or the storage browser). Sync or
 #: ``async``; return truthy to allow.
 AdminSurfacePolicy = Callable[
-    [Any, AdminSurface],
+    [Any, AdminSurfaceEnum],
     bool | Awaitable[bool],
 ]
 
 
 __all__: list[str] = [
     "AdminAccessPolicy",
-    "AdminPermission",
-    "AdminSurface",
+    "AdminPermissionEnum",
+    "AdminSurfaceEnum",
     "AdminSurfacePolicy",
 ]

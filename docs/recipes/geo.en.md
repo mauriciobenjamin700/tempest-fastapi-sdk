@@ -50,15 +50,15 @@ average speed, scaled by the mode factor.
 from tempest_fastapi_sdk.geo import (
     Coordinate,
     TravelEstimate,
-    TravelMode,
+    TravelModeEnum,
     estimate_travel,
 )
 
 origin = Coordinate(latitude=-23.5505, longitude=-46.6333)
 destination = Coordinate(latitude=-23.5015, longitude=-46.6553)
 
-by_car: TravelEstimate = estimate_travel(origin, destination, TravelMode.CAR)
-by_bus: TravelEstimate = estimate_travel(origin, destination, TravelMode.BUS)
+by_car: TravelEstimate = estimate_travel(origin, destination, TravelModeEnum.CAR)
+by_bus: TravelEstimate = estimate_travel(origin, destination, TravelModeEnum.BUS)
 
 print(by_car.distance_km, by_car.duration_minutes)   # 7.659817427032203 9.191780912438643
 print(by_bus.duration_minutes)                        # larger (bus stops)
@@ -68,7 +68,7 @@ print(by_car.source)                                  # "heuristic"
 The defaults are tunable per call:
 
 ```python
-from tempest_fastapi_sdk.geo import Coordinate, TravelMode, estimate_travel
+from tempest_fastapi_sdk.geo import Coordinate, TravelModeEnum, estimate_travel
 
 destination = Coordinate(latitude=-7.9899, longitude=-34.8386)
 
@@ -78,7 +78,7 @@ origin = Coordinate(latitude=-8.0476, longitude=-34.8770)
 estimate_travel(
     origin,
     destination,
-    TravelMode.MOTORCYCLE,
+    TravelModeEnum.MOTORCYCLE,
     circuity_factor=1.4,       # windier road
     car_speed_kmh=70.0,        # highway leg
 )
@@ -100,7 +100,7 @@ road distance.
 ```python
 import httpx
 
-from tempest_fastapi_sdk.geo import Coordinate, OSRMBackend, TravelMode
+from tempest_fastapi_sdk.geo import Coordinate, OSRMBackend, TravelModeEnum
 
 origin = Coordinate(latitude=-23.5505, longitude=-46.6333)
 destination = Coordinate(latitude=-22.9068, longitude=-43.1729)
@@ -110,7 +110,7 @@ async def route() -> None:
     """Query the real route via an OSRM server."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         backend = OSRMBackend(http_client=client)  # public demo by default
-        estimate = await backend.route(origin, destination, mode=TravelMode.CAR)
+        estimate = await backend.route(origin, destination, mode=TravelModeEnum.CAR)
         print(estimate.distance_km, estimate.duration_minutes)
 ```
 
@@ -158,7 +158,7 @@ architecture (schema → service → controller → router → dependency).
 
 ```python
 # src/schemas/geo.py
-from tempest_fastapi_sdk.geo import Coordinate, TravelEstimate, TravelMode
+from tempest_fastapi_sdk.geo import Coordinate, TravelEstimate, TravelModeEnum
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
@@ -173,7 +173,7 @@ class RouteRequestSchema(BaseSchema):
 
     origin: Coordinate
     destination: Coordinate
-    mode: TravelMode = TravelMode.CAR
+    mode: TravelModeEnum = TravelModeEnum.CAR
 
 
 # The response is the SDK's own TravelEstimate — nothing to redefine.
@@ -188,7 +188,7 @@ from tempest_fastapi_sdk.geo import (
     Coordinate,
     RoutingBackend,
     TravelEstimate,
-    TravelMode,
+    TravelModeEnum,
     estimate_travel,
 )
 
@@ -213,7 +213,7 @@ class GeoService:
         self,
         origin: Coordinate,
         destination: Coordinate,
-        mode: TravelMode = TravelMode.CAR,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
     ) -> TravelEstimate:
         """Estimate the trip, real route with an offline fallback.
 
@@ -907,7 +907,7 @@ the first that answers:
 
 1. the **CEP** found in `address` or `complement` (`extract_cep`), through
    `cep_to_coordinate`;
-2. the **full address** — `"address, city, UF, Brasil"`, empty parts left
+2. the **full address** — `"address, city, UFEnum, Brasil"`, empty parts left
    out — geocoded;
 3. the **state centroid** (`uf_centroid`), offline.
 

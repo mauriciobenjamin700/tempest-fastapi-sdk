@@ -35,7 +35,7 @@ from tempest_fastapi_sdk import (
     LEGACY_NAMING_CONVENTION,
     NAMING_CONVENTION,
     BaseModel,
-    ConstraintKind,
+    ConstraintKindEnum,
     ConstraintRename,
     legacy_constraint_renames,
 )
@@ -254,18 +254,18 @@ class TestLegacyConstraintRenames:
 
         assert [(r.kind, r.old_name, r.new_name) for r in renames] == [
             (
-                ConstraintKind.FOREIGN_KEY,
+                ConstraintKindEnum.FOREIGN_KEY,
                 "fk_books_tenant_id_authors",
                 "fk_books_tenant_id_author_id_authors",
             ),
             (
-                ConstraintKind.INDEX,
+                ConstraintKindEnum.INDEX,
                 "ix_books_title",
                 "ix_books_title_books_author",
             ),
-            (ConstraintKind.UNIQUE, "uq_books_title", "uq_books_title_author"),
+            (ConstraintKindEnum.UNIQUE, "uq_books_title", "uq_books_title_author"),
             (
-                ConstraintKind.UNIQUE,
+                ConstraintKindEnum.UNIQUE,
                 "uq_books_title",
                 "uq_books_title_release_year",
             ),
@@ -309,7 +309,7 @@ class TestLegacyConstraintRenames:
 
         [rename] = legacy_constraint_renames(metadata)
 
-        assert rename.kind is ConstraintKind.INDEX
+        assert rename.kind is ConstraintKindEnum.INDEX
         assert rename.old_name == "ix_books_title"
         assert rename.new_name == "ix_books_title_books_tenant_id"
 
@@ -317,8 +317,8 @@ class TestLegacyConstraintRenames:
         renames = legacy_constraint_renames(
             _books(NAMING_CONVENTION, schema="Library").metadata,
         )
-        index = next(r for r in renames if r.kind is ConstraintKind.INDEX)
-        unique = next(r for r in renames if r.kind is ConstraintKind.UNIQUE)
+        index = next(r for r in renames if r.kind is ConstraintKindEnum.INDEX)
+        unique = next(r for r in renames if r.kind is ConstraintKindEnum.UNIQUE)
 
         assert unique.schema == "Library"
         assert unique.statement(postgresql.dialect()).startswith(
@@ -354,7 +354,7 @@ class TestLegacyConstraintRenames:
 
     def test_inverse_swaps_the_names(self) -> None:
         rename = ConstraintRename(
-            kind=ConstraintKind.UNIQUE,
+            kind=ConstraintKindEnum.UNIQUE,
             table="books",
             schema=None,
             columns=("title", "release_year"),

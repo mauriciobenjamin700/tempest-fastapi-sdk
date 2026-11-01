@@ -333,7 +333,7 @@ class TaskPanelService(Generic[JobT]):
 
         Args:
             status (str | None): Restrict to one
-                :class:`~tempest_fastapi_sdk.tasks.JobStatus` value.
+                :class:`~tempest_fastapi_sdk.tasks.JobStatusEnum` value.
 
         Returns:
             list[JobT]: The rows, newest first. Empty when no job

@@ -188,7 +188,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   settings / constructor. **First-boot bootstrap (v0.275.0):**
   `AlembicHelper.sync_schema()` tells an empty database, one that
   predates Alembic and one already migrated apart, reporting which path
-  it took via `SchemaSyncOutcome`; `adopt()` stamps the **base** (never
+  it took via `SchemaSyncOutcomeEnum`; `adopt()` stamps the **base** (never
   `head`), `base_revision()` and `has_existing_schema()` are the two
   questions behind it. On an empty database the whole tree runs without the
   destructive guard (no data to lose), so a past `drop_column` never blocks
@@ -420,7 +420,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   sync functions the router and the admin log page are now shells over.
 - **Database error introspection** — `parse_integrity_error()` reads an
   `IntegrityError` back into the constraint that refused it
-  (`IntegrityFailure` / `IntegrityViolation`), so a service answers `409`
+  (`IntegrityFailure` / `IntegrityViolationEnum`), so a service answers `409`
   naming the field instead of a generic conflict (v0.280.0). Covers Postgres
   and SQLite, the two dialects the SDK supports; every pattern was read off a
   real server, and `tests/db/test_integrity_live.py` (marked `docker`)
@@ -652,7 +652,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   counter, falls back to integrating power), `NvidiaSmiPowerSampler`,
   `RaplEnergySampler` (CPU package via powercap, package domains only,
   wraparound handled), `NullPowerSampler`; `resolve_power_sampler`/
-  `resolve_cpu_energy_sampler`; every reading carries an `EnergySource` and a
+  `resolve_cpu_energy_sampler`; every reading carries an `EnergySourceEnum` and a
   CPU run resolves no GPU sampler. **Ranking:** `composite_scores`
   (`DEFAULT_COST_WEIGHTS`, weights renormalized over measured dims twice),
   `pareto_points` (unmeasured axis skipped, cost-only frontier without
@@ -732,7 +732,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `TextGenerator(dtype="auto")` loads — `float32` on CPU, not `bfloat16`,
   measured RSS in `docs/recipes/genai.md#em-cpu`), `estimate_model_bytes`/
   `bytes_per_param`/`fetch_num_params` (Hub metadata, no weight download),
-  `ModelDtype`. Capacity fns import WITHOUT the extra. **Shipped (v0.98) —
+  `ModelDtypeEnum`. Capacity fns import WITHOUT the extra. **Shipped (v0.98) —
   `TextGenerator`**: local causal LM (`generate`/`chat`/`stream` async via
   to_thread), auto device/dtype, int8/int4 quant (BitsAndBytesConfig), lazy
   `load` + `unload`/`unload_if_idle` (+ `idle_unload_seconds`),
@@ -787,7 +787,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (faster-whisper transcribe → `Transcription`) + `TextToSpeech` (Coqui TTS
   synthesize → WAV bytes, XTTS voice cloning via `speaker_wav`), lazy +
   to_thread + semaphore, auto device/compute. **Language presets (v0.103):**
-  `Language` enum (PT_BR/EN_US) + `preset_for`/`TextToSpeech.for_language`
+  `LanguageEnum` enum (PT_BR/EN_US) + `preset_for`/`TextToSpeech.for_language`
   — resolves Whisper code + default TTS model per language;
   `transcribe`/`synthesize` accept the enum, a raw code, or None. **Shipped (v0.97) — RAG context**
   (`tempest_fastapi_sdk.genai.rag`, `[genai-rag]` extra = httpx +
@@ -1069,7 +1069,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
   answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +
   `artifacts` + `stop_reason`); `AgentBudget` bounds steps/wall-clock/tool
-  calls and `StopReason` names which fired (`succeeded` is `COMPLETED` only —
+  calls and `StopReasonEnum` names which fired (`succeeded` is `COMPLETED` only —
   a truncated run still carries text; a model reply with no text and no tool
   call is `EMPTY_RESPONSE`, not `COMPLETED`, since v0.303.2). **Three deliberate properties:** a
   raising tool becomes an observation fed back to the model, never a crashed
@@ -1101,7 +1101,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   A->B->A into a readable refusal), and the **child's work returns**
   (artifacts namespaced `<agent>/<name>`; a truncated child comes back as
   `[stopped: …] …` instead of passing partial work as complete). New
-  `StepKind.AGENT` + `AgentStep.children`/`.agent`/`.total_steps` — a
+  `StepKindEnum.AGENT` + `AgentStep.children`/`.agent`/`.total_steps` — a
   delegation can cost as much as a whole run and must not read as a function
   call. **Loops:** `run_until(agent, goal, until=)` repeats until a predicate
   *you* wrote accepts (real Python — parse it, import it, call it — a far
@@ -1404,7 +1404,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Mercado Pago (v0.249.0)** — `integrations/payment/mercado_pago`: 324
   schemas e 143 operações geradas da OpenAPI oficial do provedor
   (`mercadopago/openapi`, Apache-2.0, commit `73bc0e49`), mais
-  `DEFAULT_BASE_URL`, `MercadoPagoEvent`, os helpers de dinheiro e a
+  `DEFAULT_BASE_URL`, `MercadoPagoEventEnum`, os helpers de dinheiro e a
   verificação de webhook. Codegen escolhido por medição: 261 KB de spec e
   0,76 s / 107 MB de import, contra 847 KB e 0,67 s / 107 MB do OpenPix — o
   argumento que fechou o codegen no Stripe não se aplica. 142 das 143
@@ -1477,7 +1477,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Mercado Pago pela API de Orders: Pix, cartão e rollout (v0.311.0)** —
   `MercadoPagoPixProvider` e `MercadoPagoCardProvider` sobre `/v1/orders`,
   contrato novo `CardProvider` / `CardCharge` / `CardChargeRequest`
-  (`PaymentStatus.AUTHORIZED`), `make_mercado_pago_webhook_delivery_dependency`
+  (`PaymentStatusEnum.AUTHORIZED`), `make_mercado_pago_webhook_delivery_dependency`
   + `MercadoPagoOrderDelivery` (verifica e relê a order; notificação crua
   recusada; `404` é resposta) e `PixProviderRouter`. A API de Payments e as 7
   operações de QR presencial marcadas `deprecated` saíram do cliente, com os
@@ -1570,7 +1570,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   propósito); bloco `customer` só com `name` violando o `oneOf` da própria
   spec (**#240** — `name` é necessário nas três variantes e suficiente em
   nenhuma); status fora do enum virando 500 na API e `PENDING` silencioso no
-  webhook (**#241** — os dois agora dão `PaymentStatus.UNKNOWN`, membro novo,
+  webhook (**#241** — os dois agora dão `PaymentStatusEnum.UNKNOWN`, membro novo,
   e a leitura da API parou de recusar); `charge_id` sem escape no path, onde
   `order#42` virava um `DELETE` em `/charge/order` (**#242** — corrigido no
   **emissor**, `_path_param` com `quote(..., safe="")`, valendo para 58
@@ -1590,7 +1590,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   pré-visualização (imagem, vídeo, áudio, PDF pela rota `raw`; texto escapado
   num editor in-place com checagem de ETag), upload, troca de conteúdo,
   renomeação (cópia + exclusão) e exclusão, `read_only=True` e
-  `AdminSurface.STORAGE` na `surface_policy`. Protocolo `AdminStorageClient`
+  `AdminSurfaceEnum.STORAGE` na `surface_policy`. Protocolo `AdminStorageClient`
   com as cinco chamadas que `AsyncMinIOClient` e `LocalObjectStorageClient`
   já tinham — nenhum método novo nos clientes. SVG/HTML **nunca** renderizam:
   a rota `raw` reaproveita `object_download_response` (allowlist inline +
@@ -1688,7 +1688,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   da auditoria completa de 2026-10-29 (artefatos fora do repo, em
   `~/security-audit-skill/tempest-fastapi-sdk/run-1`), mais três itens que o
   dono pediu na mesma release, em 14 advisories GHSA. Superfície nova:
-  `surface_policy`/`AdminSurface` e `BaseModel.__secret_columns__` no admin,
+  `surface_policy`/`AdminSurfaceEnum` e `BaseModel.__secret_columns__` no admin,
   `AdminSessionRevocations`, `SessionStore.touch`, `redact_capability_urls`,
   `AttemptThrottle.reserve`/`release`, `credential_headers=` e
   `allow_anonymous=` no cache e na idempotência, `result_serializer=` no
@@ -1738,7 +1738,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   medido. **Breaking:** o documento novo traz `operationId` em 125 de 125
   operações onde o antigo tinha zero, então os 125 métodos mudaram de nome
   (`post_api_v1_charge` → `create_charge`); superfície foi de 373/106 para
-  **686 schemas / 125 operações**; `OpenPixEnvironment.PRODUCTION` virou
+  **686 schemas / 125 operações**; `OpenPixEnvironmentEnum.PRODUCTION` virou
   `https://api.woovi.com`. Tabela de renomeação em `docs/migration.md`.
 - **Dois métodos que não podiam funcionar, corrigidos na raiz (v0.260.0)** —
   `post_api_v1_dispute_id_evidence` montava `/api/v1/dispute/:id/evidence`, com
@@ -1805,7 +1805,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Canonical Pix contract (v0.246.0)** — `integrations/payment/base.py`:
   `PixProvider` (a plain `Protocol`, like every other provider seam here),
   `PixChargeRequest` / `PixCharge` / `PixPayer` / `PixPaymentEvent`, and a
-  `PaymentStatus` a service can branch on. The reason it exists is measured
+  `PaymentStatusEnum` a service can branch on. The reason it exists is measured
   divergence: OpenPix states cents in a `float` with three charge states,
   Mercado Pago states reais in a `float` with nine payment states, five order
   states and four transaction states — so `charge.status == "COMPLETED"`
@@ -1814,7 +1814,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   whole payload in `raw`, because `BaseSchema` is `extra="ignore"` and would
   otherwise drop everything the contract does not model. It also turns
   `use_enum_values` **off**: with `BaseSchema`'s default, `status` would hold
-  the string and `charge.status is PaymentStatus.PAID` would be `False` on
+  the string and `charge.status is PaymentStatusEnum.PAID` would be `False` on
   every charge while `==` kept working. `adapters/openpix.py` ships the first
   translation; adapters resolve lazily, so importing
   `integrations.payment` still leaves `openpix.schemas` out of `sys.modules`
@@ -1825,7 +1825,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   environment, plus the AppID in `Authorization` **raw** (no `Bearer`). Sandbox
   is the default, and the field is a `Literal`, so `prod` fails at load instead
   of charging the wrong environment. The field is a string rather than
-  `OpenPixEnvironment` so `settings` never drags the lazy `integrations`
+  `OpenPixEnvironmentEnum` so `settings` never drags the lazy `integrations`
   namespace in — the enum is imported inside the method, keeping one source of
   truth for the hosts.
 - **Web app revalidation + immutable paths (unreleased)** —
@@ -1943,7 +1943,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `Rule.declarations`, not in `Style`.
 - **Geolocation (v0.104, `[geo]` extra = httpx)** — `tempest_fastapi_sdk.geo`,
   distance + travel-time between two points with no paid API. Two layers over
-  shared schemas (`Coordinate`, `TravelEstimate`, `TravelMode` CAR/MOTORCYCLE/
+  shared schemas (`Coordinate`, `TravelEstimate`, `TravelModeEnum` CAR/MOTORCYCLE/
   BUS): offline heuristic — `haversine_km` (great-circle) + `estimate_travel`
   (road = Haversine x circuity factor; time = car avg speed x mode factor,
   `source="heuristic"`, zero deps/network); real routing — `RoutingBackend`
@@ -1977,7 +1977,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `cache_misses=False` leaves a `None` answer uncached by default;
   `OSRMBackend.matrix` (table → `DistanceMatrix`) + `route(with_geometry=True)`
   (decoded into `TravelEstimate.geometry`) + per-mode `DEFAULT_MODE_PROFILES`;
-  polyline codec (`encode_polyline`/`decode_polyline`); `TravelMode.BICYCLE`/
+  polyline codec (`encode_polyline`/`decode_polyline`); `TravelModeEnum.BICYCLE`/
   `PEDESTRIAN`; BR `uf_centroid`/`UF_CENTROIDS` (offline) + `cep_to_coordinate`.
 - **GenAI ergonomics (v0.105)** — `GenerationConfig` (typed generation
   params over `**kwargs`, `config=` on `generate`/`chat`/`stream`),
@@ -2029,7 +2029,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `claim_once` for run-once settlement. `openpix_fee_cents` /
   `split_net` in basis points, ported from alofans-api (identical on
   every total from 1 to 200 000 cents). Payout contract
-  `PayoutProvider`/`PayoutRequest`/`PayoutResult`/`PayoutStatus` in
+  `PayoutProvider`/`PayoutRequest`/`PayoutResult`/`PayoutStatusEnum` in
   `integrations.payment.base`, `OpenPixPayoutProvider` (autoApprove;
   refuses an `HTTPClient` that retries), `FakePayoutProvider`,
   `make_wallet_router`. Concurrency measured against Postgres
@@ -2048,7 +2048,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hatches).
   **(unreleased)** `sniff_mime` recognizes HEIC (`HEIC_BRANDS`, from
   libheif; `mif1`/`msf1` only with an HEVC compatible brand, so AVIF stays
-  out) and `ImageMediaType` is the field type for a declared image
+  out) and `ImageMediaTypeEnum` is the field type for a declared image
   `Content-Type` (aliases, any case, `.extension`, `.matches(data)`).
   **(unreleased, #615)** `image_media_type_field(*allowed)` narrows it to a
   subset, in validation and in the published `enum`.
@@ -2191,8 +2191,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   And the documented `taskiq worker src.tasks:tq.broker` **could not
   start**: the CLI resolves `module:attr` with a plain `getattr`, so every
   dotted form raised `AttributeError` — docs now bind `broker = tq.broker`
-  first. **Cron without syntax**: `Cron`/`CronOffset`
-  (`BRASILIA` etc.)/`Weekday` enums + `daily`/`weekdays`/`every_n_minutes`/
+  first. **Cron without syntax**: `CronEnum`/`CronOffsetEnum`
+  (`BRASILIA` etc.)/`WeekdayEnum` enums + `daily`/`weekdays`/`every_n_minutes`/
   `weekly`/`monthly`/… builders (dependency-free). `AsyncBrokerManager`
   renamed to **`AsyncQueueManager`** (v0.94.0; old alias kept); legacy
   `AsyncTaskBrokerManager`/`AsyncTaskScheduler` kept. Outbox
@@ -2238,7 +2238,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   dígitos nacionais, ao contrário de `normalize_phone_br`),
   `MobilePhoneBRField` e `parse_phone_br` -> `PhoneNumberBR`
   (DDD/número/`is_mobile`/E.164, `None` no que a ANATEL não atribui).
-- **BR localities** — `UF` (StrEnum, 27 siglas) + `Region`
+- **BR localities** — `UFEnum` (StrEnum, 27 siglas) + `RegionEnum`
   (5 macro-regiões IBGE), `StateBR`/`CityBR` schemas, offline
   dataset of 27 states + 5606 municipalities (IBGE-derived,
   DF as 36 administrative regions), `list_states`/`get_state`/
@@ -2260,7 +2260,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Feature flags** — `tempest_fastapi_sdk.flags`: `FeatureFlags`
   over `Memory` / `Env` / `Redis` / `Composite` backends +
   `make_flag_dependency` route guard.
-- **Audit trail** — `BaseAuditLogModel` + `AuditAction`,
+- **Audit trail** — `BaseAuditLogModel` + `AuditActionEnum`,
   `snapshot_model` / `diff_snapshots`, `BaseRepository` opt-in
   (`audit_model=...` + `add_audited` / `update_audited` /
   `delete_audited`, same-tx). Opt-in `AuditRequestMixin` (`event`
@@ -2359,14 +2359,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   subpackage, ~150 ms on the first generated name (Python 3.11, parent package
   already imported); a subprocess test asserts
   `…openpix.schemas` stays out of `sys.modules` on import. The vendored spec is
-  build-time only, outside the wheel. Hand-written half: `OpenPixEnvironment`
+  build-time only, outside the wheel. Hand-written half: `OpenPixEnvironmentEnum`
   (production/sandbox are different domains), `to_cents`/`reais_to_cents`/
   `cents_to_reais` (spec says *"Value in cents"* then types it `number`;
   `to_cents` **refuses a fraction**, `reais_to_cents` rounds half-up unlike
-  built-in `round`), `OpenPixEvent` (28 events, `OPENPIX:` prefix **not**
+  built-in `round`), `OpenPixEventEnum` (28 events, `OPENPIX:` prefix **not**
   uniform, pinned by test), and `make_openpix_webhook_dependency()`.
   `OpenPixWebhookEvent` is a frozen **dataclass** — `BaseSchema`'s
-  `use_enum_values=True` would make `event.event is OpenPixEvent.X` **silently
+  `use_enum_values=True` would make `event.event is OpenPixEventEnum.X` **silently
   false on every delivery**. Unknown event and non-JSON-but-verified body stay
   200 on purpose. **Key is RSA-1024** (verified on load): proves origin, does
   **not** authorize moving money — re-read the charge, keep the handler
@@ -2567,7 +2567,7 @@ Now in the covers list.
 4. **Dashboard business metrics / charts** — `MetricCard` +
    `MetricValue` / `MetricTrend` / `MetricPartition`
    (`AdminSite(dashboard_cards=[...])`), distinct from the system panel.
-5. **RBAC granular** — `AdminPermission` + `AdminAccessPolicy` (per-model /
+5. **RBAC granular** — `AdminPermissionEnum` + `AdminAccessPolicy` (per-model /
    per-action), beyond `is_admin` + `can_create`/`can_edit`/`can_delete`.
 6. **CSV import** — `AdminModel(can_import=True)` + the CSV import page /
    bulk-create endpoint (counterpart to the export).
@@ -2719,10 +2719,10 @@ Cada uma é uma linha na spec do gateway, e nenhuma exige mudança aqui —
 `make zap-regen` passa a expor assim que forem declaradas.
 
 **Enums do webhook (#417, v0.304.0).** Todo valor que o consumidor do
-webhook comparava como string tem enum: `ZapWebhookEvent`,
-`ZapInboundMediaType`, `ZapOutboundKind` (valores de `ZapStatusCallback.kind`,
+webhook comparava como string tem enum: `ZapWebhookEventEnum`,
+`ZapInboundMediaTypeEnum`, `ZapOutboundKindEnum` (valores de `ZapStatusCallback.kind`,
 que segue `str` para tipo novo do gateway não derrubar o status) e
-`ZapJidServer` (servidor do JID), lido por `ZapInboundMessage.from_server`.
+`ZapJidServerEnum` (servidor do JID), lido por `ZapInboundMessage.from_server`.
 Valores fixados por teste contra a fonte (`OutboundKind` do gateway,
 `JidServer` do Baileys 7.0.0-rc14). A receita `recipes/zap-inbound` é o
 tutorial em quatro passos, até a camada model → repository → service →
@@ -3154,7 +3154,7 @@ gateway, porque a spec descreve o webhook só em prosa (#374). Fecha o item
   modela (nunca `500`). Recusa ser construída sem secret.
 - `is_forward_transition` para status fora de ordem, portado do
   `OUTRANKED_BY` do gateway.
-- `webhook_verifier`, `ZapWebhookEvent`, `ZapInboundMediaType` e as
+- `webhook_verifier`, `ZapWebhookEventEnum`, `ZapInboundMediaTypeEnum` e as
   constantes `ZAP_WEBHOOK_SIGNATURE_HEADER`, `ZAP_WEBHOOK_SIGNATURE_PREFIX`,
   `ZAP_INBOUND_EVENT`.
 - Fixture cruzada: os dois exemplos do README do gateway, assinados pelo
@@ -3267,7 +3267,7 @@ pública e é o que a fábrica monta por baixo quando recebe `secret`.
 ## Códigos de recusa do produto e conta desativada (#424, #425)
 
 `AuthExceptions` (classe por ponto de recusa, tipada pela default, então
-status e custo não mudam), `PasswordViolationCode` como `message_key` com
+status e custo não mudam), `PasswordViolationCodeEnum` como `message_key` com
 tradução default, `confirm_password_reset` de usuário removido →
 `InvalidTokenException`, e `AUTH_REVEAL_INACTIVE_ACCOUNT` → `403`
 `ACCOUNT_INACTIVE` só com a senha certa. Guard:
@@ -3368,7 +3368,7 @@ fábrica de webhook, na forma de `make_stripe_webhook_dependency` e
 `x-signature` e `x-request-id`, roda `verify_signature` e devolve
 `MercadoPagoWebhookEvent`; falha vira `UnauthorizedException` (401) antes do
 handler. `data_id` vem da query porque o corpo não é assinado; tópico
-desconhecido vira `MercadoPagoEvent.UNKNOWN`, corpo não-JSON não derruba. A
+desconhecido vira `MercadoPagoEventEnum.UNKNOWN`, corpo não-JSON não derruba. A
 receita `mercado-pago.md` monta a rota com a fábrica. Testes:
 `tests/integrations/payment/mercado_pago/test_webhook_dependency.py`.
 
@@ -3830,7 +3830,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   v0.323.0 (#592)** — `QueueSpec.consumer(consumer, channel, exchange=...,
   dead_letter_exchange=...)` monta a fila `<consumer>.<channel>` ligada ao
   exchange pela chave do evento (`ExchangeSpec`, `ExchangeBinding`,
-  `ExchangeKind`), com dead-letter chaveado pelo nome da fila e
+  `ExchangeKindEnum`), com dead-letter chaveado pelo nome da fila e
   `DeadLetterSpec.queue` (`<fila>.dlq`). `declare_topology()` declara e liga a
   DLQ, e o `connect()` roda isso **antes** do `start()`.
   `MessageBroker.publish(..., exchange=ExchangeSpec | str)` tipado, declarando
@@ -3921,7 +3921,7 @@ cadastro pendente comum. Com `AUTH_AUTO_ACTIVATE=true` o cadastro não consulta
   assinatura por `bound_purpose`); `SubjectObjectStorage.presign_post`;
   `filename`/`media_type`/`as_attachment` assinados no `presigned_get_url` dos
   dois backends e no `presign`. `prune_orphan_enum_schemas` remove do OpenAPI
-  o enum que o FastAPI publica sem `$ref` (o `ImageMediaType` do
+  o enum que o FastAPI publica sem `$ref` (o `ImageMediaTypeEnum` do
   `image_media_type_field`); o scaffold chama. Testes:
   `tests/storage/test_presign.py`, `tests/storage/test_local_presign.py`,
   `tests/storage/test_presign_live.py` (docker), `tests/api/test_openapi_pruning.py`.
@@ -3995,7 +3995,7 @@ obrigatório em `text` e status sem `update`.
   `outbound_id` com `is_forward_transition`, cria a linha do callback que
   chega antes do envio) e `send_text` (uma linha por `idempotency_key`, sem
   regredir o status que o `track` já gravou).
-- `ZapInboundOutcome`, `ZapStatusOutcome`; `ZapSendFailedException` (502,
+- `ZapInboundOutcomeEnum`, `ZapStatusOutcomeEnum`; `ZapSendFailedException` (502,
   `ZAP_SEND_FAILED`).
 - Testes: `tests/integrations/messaging/zap/test_inbox.py`.
 - Fora de escopo: decidir a resposta (regra do consumidor) e baixar mídia

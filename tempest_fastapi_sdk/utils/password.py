@@ -68,7 +68,7 @@ class PasswordPolicy:
         )
 
 
-class PasswordViolationCode(BaseStrEnum):
+class PasswordViolationCodeEnum(BaseStrEnum):
     """Which rule of a :class:`PasswordPolicy` a password broke.
 
     Stable identifiers a client can branch on and a message catalog can
@@ -97,13 +97,13 @@ class PasswordPolicyViolation:
         message (str): Human-readable reason.
         details (dict[str, Any]): Structured context — the bound that
             was crossed, or the character classes that were missing.
-        code (PasswordViolationCode): Which rule was broken, stable
+        code (PasswordViolationCodeEnum): Which rule was broken, stable
             across releases and locales.
     """
 
     message: str
     details: dict[str, Any]
-    code: PasswordViolationCode
+    code: PasswordViolationCodeEnum
 
 
 def check_password_policy(
@@ -137,7 +137,7 @@ def check_password_policy(
         return PasswordPolicyViolation(
             message=f"password must be at least {floor} characters",
             details={"min_length": floor},
-            code=PasswordViolationCode.PASSWORD_TOO_SHORT,
+            code=PasswordViolationCodeEnum.PASSWORD_TOO_SHORT,
         )
     encoded_length = len(password.encode("utf-8"))
     if encoded_length > policy.max_bytes:
@@ -147,7 +147,7 @@ def check_password_policy(
                 "max_bytes": policy.max_bytes,
                 "length_bytes": encoded_length,
             },
-            code=PasswordViolationCode.PASSWORD_TOO_LONG,
+            code=PasswordViolationCodeEnum.PASSWORD_TOO_LONG,
         )
     if not policy.require_complexity:
         return None
@@ -168,7 +168,7 @@ def check_password_policy(
                 + " character"
             ),
             details={"missing_classes": missing},
-            code=PasswordViolationCode.PASSWORD_TOO_WEAK,
+            code=PasswordViolationCodeEnum.PASSWORD_TOO_WEAK,
         )
     return None
 
@@ -375,7 +375,7 @@ __all__: list[str] = [
     "PasswordPolicy",
     "PasswordPolicyViolation",
     "PasswordUtils",
-    "PasswordViolationCode",
+    "PasswordViolationCodeEnum",
     "check_password_policy",
     "generate_password",
 ]

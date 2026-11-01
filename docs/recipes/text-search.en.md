@@ -287,7 +287,7 @@ The `if` is not decoration: a blank term makes `search_condition` return
 
 ```python
 from src.db.models import ArticleModel
-from tempest_fastapi_sdk import BaseRepository, TextSearchLanguage
+from tempest_fastapi_sdk import BaseRepository, TextSearchLanguageEnum
 
 
 async def ranked(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
@@ -302,7 +302,7 @@ async def ranked(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
     return await articles.full_text_search(
         "nota fiscal",
         fields=["title", "body"],
-        language=TextSearchLanguage.PORTUGUESE,
+        language=TextSearchLanguageEnum.PORTUGUESE,
     )
 ```
 
@@ -326,7 +326,7 @@ A term in the title should outrank the same term in the body:
 
 ```python
 from src.db.models import ArticleModel
-from tempest_fastapi_sdk import BaseRepository, TextSearchWeight
+from tempest_fastapi_sdk import BaseRepository, TextSearchWeightEnum
 
 
 async def title_first(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
@@ -341,7 +341,7 @@ async def title_first(articles: BaseRepository[ArticleModel]) -> list[ArticleMod
     return await articles.full_text_search(
         "nota fiscal",
         fields=["title", "body"],
-        weights={"title": TextSearchWeight.A},
+        weights={"title": TextSearchWeightEnum.A},
     )
 ```
 
@@ -389,5 +389,5 @@ def can_rank(articles: BaseRepository[ArticleModel]) -> bool:
 - `supports_full_text` tells you which of the two you got.
 - `hashed_password` and `__secret_columns__` are never searchable;
   `searchable_columns` narrows `fields` when it comes from the request.
-- `TextSearchLanguage`, `TextSearchWeight` and `TokenMatch` are enums: no
+- `TextSearchLanguageEnum`, `TextSearchWeightEnum` and `TokenMatchEnum` are enums: no
   magic strings at the call site.

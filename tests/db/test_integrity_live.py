@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from tempest_fastapi_sdk import (
-    IntegrityViolation,
+    IntegrityViolationEnum,
     parse_integrity_error,
     redact_database_errors,
 )
@@ -126,7 +126,7 @@ class _SharedAssertions:
             engine (AsyncEngine): The engine under test.
         """
         failure = parse_integrity_error(await _violate(engine, DUPLICATE))
-        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.kind is IntegrityViolationEnum.UNIQUE
         assert failure.column == "email"
 
     async def assert_composite(self, engine: AsyncEngine) -> None:
@@ -136,7 +136,7 @@ class _SharedAssertions:
             engine (AsyncEngine): The engine under test.
         """
         failure = parse_integrity_error(await _violate(engine, COMPOSITE))
-        assert failure.kind is IntegrityViolation.UNIQUE
+        assert failure.kind is IntegrityViolationEnum.UNIQUE
         assert failure.columns == ("nickname", "age")
         assert failure.column is None
 
@@ -147,7 +147,7 @@ class _SharedAssertions:
             engine (AsyncEngine): The engine under test.
         """
         failure = parse_integrity_error(await _violate(engine, NULL_EMAIL))
-        assert failure.kind is IntegrityViolation.NOT_NULL
+        assert failure.kind is IntegrityViolationEnum.NOT_NULL
         assert failure.column == "email"
         assert failure.table == "users"
 
@@ -158,7 +158,7 @@ class _SharedAssertions:
             engine (AsyncEngine): The engine under test.
         """
         failure = parse_integrity_error(await _violate(engine, BAD_AGE))
-        assert failure.kind is IntegrityViolation.CHECK
+        assert failure.kind is IntegrityViolationEnum.CHECK
         assert failure.constraint is not None
 
     async def assert_foreign_key(self, engine: AsyncEngine) -> None:
@@ -168,7 +168,7 @@ class _SharedAssertions:
             engine (AsyncEngine): The engine under test.
         """
         failure = parse_integrity_error(await _violate(engine, ORPHAN))
-        assert failure.kind is IntegrityViolation.FOREIGN_KEY
+        assert failure.kind is IntegrityViolationEnum.FOREIGN_KEY
 
 
 class TestSQLiteLive(_SharedAssertions):
@@ -217,7 +217,7 @@ class TestSQLiteLive(_SharedAssertions):
         """
         failure = parse_integrity_error(await _violate(engine, ORPHAN))
 
-        assert failure.kind is IntegrityViolation.FOREIGN_KEY
+        assert failure.kind is IntegrityViolationEnum.FOREIGN_KEY
         assert failure.columns == ()
         assert failure.table is None
 

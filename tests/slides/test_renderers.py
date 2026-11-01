@@ -23,7 +23,7 @@ from tempest_fastapi_sdk.slides import (
     AnswerKeyVocabulary,
     SlideDeck,
     SlideRenderer,
-    SlideTheme,
+    SlideThemeEnum,
     SlideVocabulary,
     parse_slides,
 )
@@ -109,7 +109,9 @@ class TestSlideHtml:
 
     def test_theme_selects_the_body_class(self, deck: SlideDeck) -> None:
         """``dark`` switches the CSS variables block."""
-        assert 'class="theme-dark"' in SlideRenderer().html(deck, theme=SlideTheme.DARK)
+        assert 'class="theme-dark"' in SlideRenderer().html(
+            deck, theme=SlideThemeEnum.DARK
+        )
 
 
 class TestSlideMarkdown:
@@ -147,7 +149,7 @@ class TestSlidePptx:
     async def test_eyebrow_uses_the_vocabulary(self, deck: SlideDeck) -> None:
         """The conclusion eyebrow is the vocabulary's, uppercased."""
         payload = await SlideRenderer(vocabulary=PT_LABELS).pptx(
-            deck, theme=SlideTheme.DARK
+            deck, theme=SlideThemeEnum.DARK
         )
         presentation = pptx.Presentation(io.BytesIO(payload))
         texts = {
@@ -269,7 +271,7 @@ class TestMissingExtra:
         with pytest.raises(ImportError, match=r"tempest-fastapi-sdk\[slides\]"):
             write_slides_pptx(
                 parse_slides(DECK_SOURCE),
-                theme=SlideTheme.DEFAULT,
+                theme=SlideThemeEnum.DEFAULT,
                 vocabulary=DEFAULT_SLIDE_VOCABULARY,
             )
 

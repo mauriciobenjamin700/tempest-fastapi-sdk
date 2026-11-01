@@ -12,7 +12,7 @@ from __future__ import annotations
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 
-class ConversationKind(BaseStrEnum):
+class ConversationKindEnum(BaseStrEnum):
     """Whether a conversation is a private pair or a named group.
 
     The split is a column rather than "a group is one with a title",
@@ -29,7 +29,7 @@ class ConversationKind(BaseStrEnum):
     GROUP = "group"
 
 
-class ParticipantRole(BaseStrEnum):
+class ParticipantRoleEnum(BaseStrEnum):
     """What a participant may do inside a conversation.
 
     Attributes:
@@ -43,7 +43,7 @@ class ParticipantRole(BaseStrEnum):
     OWNER = "owner"
 
 
-class MessageKind(BaseStrEnum):
+class MessageKindEnum(BaseStrEnum):
     """What a message carries.
 
     ``body`` holds the text of a :attr:`TEXT` message and the caption of
@@ -74,8 +74,8 @@ class MessageKind(BaseStrEnum):
     SYSTEM = "system"
 
 
-class SystemEvent(BaseStrEnum):
-    """The structured event behind a :attr:`MessageKind.SYSTEM` message.
+class SystemEventEnum(BaseStrEnum):
+    """The structured event behind a :attr:`MessageKindEnum.SYSTEM` message.
 
     The client renders from this plus ``payload``'s ids, so the notice
     is localized and the names are links. The rendered ``body`` the
@@ -102,8 +102,8 @@ class SystemEvent(BaseStrEnum):
 
 
 __all__: list[str] = [
-    "ConversationKind",
-    "MessageKind",
-    "ParticipantRole",
-    "SystemEvent",
+    "ConversationKindEnum",
+    "MessageKindEnum",
+    "ParticipantRoleEnum",
+    "SystemEventEnum",
 ]

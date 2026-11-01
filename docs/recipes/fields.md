@@ -115,17 +115,17 @@ class CategorySchema(BaseSchema):
 
 ## Locale
 
-`LocaleField` é o par do `UFField` para idioma: um `Annotated[Locale, ...]`
+`LocaleField` é o par do `UFField` para idioma: um `Annotated[LocaleEnum, ...]`
 que **normaliza a entrada** para a forma canônica do enum
-[`Locale`](../reference.md). Sob `BaseSchema` o atributo populado é a `str`
+[`LocaleEnum`](../reference.md). Sob `BaseSchema` o atributo populado é a `str`
 canônica, não o membro — `BaseSchema` liga `use_enum_values=True`, então
-`"pt_BR"` entra e `"pt-BR"` sai, e `isinstance(valor, Locale)` é `False`.
+`"pt_BR"` entra e `"pt-BR"` sai, e `isinstance(valor, LocaleEnum)` é `False`.
 Num `pydantic.BaseModel` puro, sem essa config, você recebe o membro. Aceita variação de caixa/separador
-(`"pt_BR"`, `"PT-BR"`) e o subtag primário (`"pt"` → `Locale.PT_BR`); uma
+(`"pt_BR"`, `"PT-BR"`) e o subtag primário (`"pt"` → `LocaleEnum.PT_BR`); uma
 tag fora do enum vira `422`.
 
 ```python
-from tempest_fastapi_sdk import BaseSchema, Locale
+from tempest_fastapi_sdk import BaseSchema, LocaleEnum
 from tempest_fastapi_sdk.utils import LocaleField
 
 
@@ -134,9 +134,9 @@ class ProfileUpdateSchema(BaseSchema):
 ```
 
 !!! tip "Enum vs. Field"
-    Use o **enum `Locale`** quando você já tem a tag canônica (constantes,
+    Use o **enum `LocaleEnum`** quando você já tem a tag canônica (constantes,
     lógica interna). Use o **`LocaleField`** num schema de request, quando a
-    entrada é do cliente e vale normalizar — mesma relação de `UF` para
+    entrada é do cliente e vale normalizar — mesma relação de `UFEnum` para
     `UFField`. Para gravar o idioma numa tabela, veja o
     [`LocaleColumnMixin`](database.md#locale-idioma-preferido-do-usuario).
 

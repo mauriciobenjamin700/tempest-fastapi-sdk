@@ -40,7 +40,7 @@ from tempest_fastapi_sdk.push.schemas import (
 from tempest_fastapi_sdk.push.schemas import PushDevice as PushDevice
 from tempest_fastapi_sdk.push.schemas import PushFanoutResult as PushFanoutResult
 from tempest_fastapi_sdk.push.schemas import PushPayloadSchema as PushPayloadSchema
-from tempest_fastapi_sdk.push.schemas import PushPlatform as PushPlatform
+from tempest_fastapi_sdk.push.schemas import PushPlatformEnum as PushPlatformEnum
 from tempest_fastapi_sdk.push.schemas import PushResult as PushResult
 from tempest_fastapi_sdk.push.schemas import mask_push_token as mask_push_token
 from tempest_fastapi_sdk.push.service import DeviceService as DeviceService
@@ -57,7 +57,7 @@ __all__: list[str] = [
     "PushError",
     "PushFanoutResult",
     "PushPayloadSchema",
-    "PushPlatform",
+    "PushPlatformEnum",
     "PushResult",
     "WebPushTransport",
     "make_push_router",

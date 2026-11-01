@@ -1586,7 +1586,7 @@ Decision table:
     | `PASSWORD_TOO_WEAK` | missing a character class (complexity on) | `Password must contain a lowercase letter, an uppercase letter, a digit and a special character` |
 
     The same value is on `PasswordPolicyViolation.code`
-    (`PasswordViolationCode`), for callers of `check_password_policy`. To
+    (`PasswordViolationCodeEnum`), for callers of `check_password_policy`. To
     change the `code` too, see
     [your product's error codes](#your-products-error-codes-authexceptions-v03050).
 

@@ -15,7 +15,7 @@ from tempest_fastapi_sdk.core.enums import BaseStrEnum
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
-class SlideKind(BaseStrEnum):
+class SlideKindEnum(BaseStrEnum):
     """The visual variant a slide is rendered as.
 
     Attributes:
@@ -34,7 +34,7 @@ class SlideKind(BaseStrEnum):
     CONCLUSION = "conclusion"
 
 
-class SlideTheme(BaseStrEnum):
+class SlideThemeEnum(BaseStrEnum):
     """The colour scheme applied by the HTML, PDF and PPTX renderers.
 
     Attributes:
@@ -71,7 +71,7 @@ class Slide(BaseSchema):
     """A single slide, ready to render.
 
     Attributes:
-        kind (SlideKind): Which layout the slide uses.
+        kind (SlideKindEnum): Which layout the slide uses.
         title (str): Title shown at the top.
         subtitle (str | None): Eyebrow of a lesson-title slide.
         paragraphs (list[str]): Body paragraphs of a content or
@@ -86,10 +86,10 @@ class Slide(BaseSchema):
             block; HTML and PDF leave them out.
     """
 
-    kind: SlideKind = Field(
+    kind: SlideKindEnum = Field(
         title="Kind",
         description="Which layout the slide uses.",
-        examples=[SlideKind.CONTENT],
+        examples=[SlideKindEnum.CONTENT],
     )
     title: str = Field(
         title="Title",

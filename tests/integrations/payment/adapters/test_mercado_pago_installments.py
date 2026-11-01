@@ -20,7 +20,7 @@ import httpx
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
     CardChargeRequest,
-    PaymentStatus,
+    PaymentStatusEnum,
     PixPayer,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
@@ -116,7 +116,7 @@ class TestInstallments:
 
         charge = await provider.create_card_charge(installment_request())
 
-        assert charge.status is PaymentStatus.PAID
+        assert charge.status is PaymentStatusEnum.PAID
         assert charge.amount_cents == 100000
         assert charge.installments == 3
         assert charge.installment_amount_cents == 37077

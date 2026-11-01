@@ -88,7 +88,9 @@ class TestGeneratedEvents:
     def test_member_names_are_derived_not_invented(self) -> None:
         """The naming rule is mechanical, so it can be checked in one line."""
         assert member_name("payment_intent.succeeded") == "PAYMENT_INTENT_SUCCEEDED"
-        assert StripeEvent.PAYMENT_INTENT_SUCCEEDED.value == "payment_intent.succeeded"
+        assert (
+            StripeEvent.PAYMENT_INTENT_SUCCEEDED.value == "payment_intent.succeeded"
+        )
 
     def test_the_wildcard_is_not_an_event(self) -> None:
         """``*`` subscribes to everything; it is not a delivery's type."""

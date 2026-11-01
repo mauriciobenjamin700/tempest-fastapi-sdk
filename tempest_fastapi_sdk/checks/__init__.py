@@ -12,7 +12,7 @@ Re-exports use the PEP 484 ``from x import Y as Y`` explicit form plus
 
 # Importing builtins registers the built-in checks as a side effect.
 from tempest_fastapi_sdk.checks import builtins as builtins
-from tempest_fastapi_sdk.checks.messages import CheckLevel as CheckLevel
+from tempest_fastapi_sdk.checks.messages import CheckLevelEnum as CheckLevelEnum
 from tempest_fastapi_sdk.checks.messages import CheckMessage as CheckMessage
 from tempest_fastapi_sdk.checks.messages import critical as critical
 from tempest_fastapi_sdk.checks.messages import debug as debug
@@ -30,7 +30,7 @@ from tempest_fastapi_sdk.checks.registry import run_system_checks as run_system_
 
 __all__: list[str] = [
     "CheckFn",
-    "CheckLevel",
+    "CheckLevelEnum",
     "CheckMessage",
     "CheckRegistry",
     "SystemCheckError",

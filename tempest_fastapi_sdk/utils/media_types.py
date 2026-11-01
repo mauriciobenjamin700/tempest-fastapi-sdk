@@ -88,7 +88,7 @@ def guess_media_type(filename: str) -> str | None:
     return guessed
 
 
-class ImageMediaType(BaseStrEnum):
+class ImageMediaTypeEnum(BaseStrEnum):
     """Image media types whose bytes :func:`sniff_mime` can verify.
 
     Exactly the ``image/*`` members of
@@ -103,9 +103,9 @@ class ImageMediaType(BaseStrEnum):
     and the JSON Schema lists the canonical values.
 
     Examples:
-        >>> ImageMediaType(" Image/JPG ")
-        <ImageMediaType.JPEG: 'image/jpeg'>
-        >>> ImageMediaType.HEIC.extension
+        >>> ImageMediaTypeEnum(" Image/JPG ")
+        <ImageMediaTypeEnum.JPEG: 'image/jpeg'>
+        >>> ImageMediaTypeEnum.HEIC.extension
         'heic'
     """
 
@@ -117,7 +117,7 @@ class ImageMediaType(BaseStrEnum):
     HEIC = "image/heic"
 
     @classmethod
-    def _missing_(cls, value: object) -> ImageMediaType | None:
+    def _missing_(cls, value: object) -> ImageMediaTypeEnum | None:
         """Resolve a non-canonical spelling to its member.
 
         Called by ``Enum`` (and by Pydantic's enum validator) when the
@@ -129,7 +129,7 @@ class ImageMediaType(BaseStrEnum):
             value (object): The raw value that matched no member.
 
         Returns:
-            ImageMediaType | None: The matching member, or ``None`` so
+            ImageMediaTypeEnum | None: The matching member, or ``None`` so
             ``Enum`` raises its ``ValueError``.
         """
         if not isinstance(value, str):
@@ -170,20 +170,20 @@ class ImageMediaType(BaseStrEnum):
 
 
 _IMAGE_EXTENSIONS: dict[str, str] = {
-    ImageMediaType.JPEG.value: "jpg",
-    ImageMediaType.PNG.value: "png",
-    ImageMediaType.GIF.value: "gif",
-    ImageMediaType.BMP.value: "bmp",
-    ImageMediaType.WEBP.value: "webp",
-    ImageMediaType.HEIC.value: "heic",
+    ImageMediaTypeEnum.JPEG.value: "jpg",
+    ImageMediaTypeEnum.PNG.value: "png",
+    ImageMediaTypeEnum.GIF.value: "gif",
+    ImageMediaTypeEnum.BMP.value: "bmp",
+    ImageMediaTypeEnum.WEBP.value: "webp",
+    ImageMediaTypeEnum.HEIC.value: "heic",
 }
-"""Media type → file extension for :attr:`ImageMediaType.extension`."""
+"""Media type → file extension for :attr:`ImageMediaTypeEnum.extension`."""
 
 
 __all__: list[str] = [
     "DOCX_MEDIA_TYPE",
     "PPTX_MEDIA_TYPE",
     "XLSX_MEDIA_TYPE",
-    "ImageMediaType",
+    "ImageMediaTypeEnum",
     "guess_media_type",
 ]

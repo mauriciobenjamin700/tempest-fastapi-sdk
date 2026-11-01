@@ -20,7 +20,7 @@ import pytest_asyncio
 from tempest_fastapi_sdk.db import AsyncDatabaseManager
 from tempest_fastapi_sdk.tasks import (
     BaseJobModel,
-    JobStatus,
+    JobStatusEnum,
     JobStore,
     Phase,
     PhasePlan,
@@ -305,7 +305,7 @@ class TestListingAndWatching:
         await store.claim(finished.id)
         await store.succeed(finished.id)
         in_flight = await store.list_recent(
-            statuses=(JobStatus.QUEUED, JobStatus.RUNNING),
+            statuses=(JobStatusEnum.QUEUED, JobStatusEnum.RUNNING),
         )
         assert {job.id for job in in_flight} == {queued.id, running.id}
 
@@ -315,8 +315,8 @@ class TestListingAndWatching:
     ) -> None:
         with pytest.raises(ValueError, match="not both"):
             await store.list_recent(
-                status=JobStatus.QUEUED,
-                statuses=(JobStatus.RUNNING,),
+                status=JobStatusEnum.QUEUED,
+                statuses=(JobStatusEnum.RUNNING,),
             )
 
     async def test_watching_progress_yields_between_status_changes(

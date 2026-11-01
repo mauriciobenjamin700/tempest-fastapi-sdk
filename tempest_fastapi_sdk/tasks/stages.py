@@ -22,10 +22,10 @@ column-name convention; it resolves the names and performs the transitions.
         prefix="doc_",
     )
 
-    STAGES.mark(document, "summary", StageStatus.RUNNING)
-    if STAGES.owns(document, "summary", StageStatus.RUNNING):
+    STAGES.mark(document, "summary", StageStatusEnum.RUNNING)
+    if STAGES.owns(document, "summary", StageStatusEnum.RUNNING):
         document.doc_result_summary = text
-        STAGES.mark(document, "summary", StageStatus.DONE)
+        STAGES.mark(document, "summary", StageStatusEnum.DONE)
 
 **It declares no columns.** The project writes its own ``mapped_column``
 declarations, so migrations, types and indexes stay where a reader expects
@@ -48,7 +48,7 @@ from enum import StrEnum
 from typing import Any
 
 
-class StageStatus(StrEnum):
+class StageStatusEnum(StrEnum):
     """Where one stage of a pipeline is.
 
     * ``PENDING`` — queued, nobody has started it.
@@ -68,8 +68,8 @@ class StageStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
-RUNNING_STAGE_STATUSES: frozenset[StageStatus] = frozenset(
-    {StageStatus.PENDING, StageStatus.RUNNING},
+RUNNING_STAGE_STATUSES: frozenset[StageStatusEnum] = frozenset(
+    {StageStatusEnum.PENDING, StageStatusEnum.RUNNING},
 )
 """Statuses with work left to stop — what :meth:`StageMap.cancel` accepts.
 
@@ -77,8 +77,8 @@ RUNNING_STAGE_STATUSES: frozenset[StageStatus] = frozenset(
 up, so there is something to stop even though nothing is running yet.
 """
 
-TERMINAL_STAGE_STATUSES: frozenset[StageStatus] = frozenset(
-    {StageStatus.DONE, StageStatus.FAILED, StageStatus.CANCELLED},
+TERMINAL_STAGE_STATUSES: frozenset[StageStatusEnum] = frozenset(
+    {StageStatusEnum.DONE, StageStatusEnum.FAILED, StageStatusEnum.CANCELLED},
 )
 """Statuses a stage does not leave on its own; only an explicit restart."""
 
@@ -89,7 +89,7 @@ class StageColumns:
 
     Attributes:
         name (str): The stage's name.
-        status (str): Attribute holding the :class:`StageStatus`.
+        status (str): Attribute holding the :class:`StageStatusEnum`.
         error (str): Attribute holding the failure message.
         result (str): Attribute holding what the stage produced.
     """
@@ -192,7 +192,7 @@ class StageMap:
                 f"unknown stage {stage!r}; declared: {', '.join(self._order)}",
             ) from None
 
-    def status(self, record: Any, stage: str) -> StageStatus | None:
+    def status(self, record: Any, stage: str) -> StageStatusEnum | None:
         """Read a stage's status off a record.
 
         Args:
@@ -200,7 +200,7 @@ class StageMap:
             stage (str): The stage name.
 
         Returns:
-            StageStatus | None: The status, or ``None`` when the column is
+            StageStatusEnum | None: The status, or ``None`` when the column is
             empty — which means the stage was never requested, a state
             worth distinguishing from ``PENDING``.
 
@@ -208,7 +208,7 @@ class StageMap:
             KeyError: When the stage was not declared.
         """
         raw = getattr(record, self.columns(stage).status, None)
-        return StageStatus(raw) if raw is not None else None
+        return StageStatusEnum(raw) if raw is not None else None
 
     def is_running(self, record: Any, stage: str) -> bool:
         """Does this stage still have work to stop?
@@ -225,7 +225,7 @@ class StageMap:
         """
         return self.status(record, stage) in RUNNING_STAGE_STATUSES
 
-    def owns(self, record: Any, stage: str, expected: StageStatus) -> bool:
+    def owns(self, record: Any, stage: str, expected: StageStatusEnum) -> bool:
         """Does the run that set ``expected`` still own this stage?
 
         The check to make **before writing a result**, and it is about
@@ -240,7 +240,7 @@ class StageMap:
                 holds the old status and would answer ``True`` no matter
                 what happened meanwhile.
             stage (str): The stage name.
-            expected (StageStatus): What this run left the stage at.
+            expected (StageStatusEnum): What this run left the stage at.
 
         Returns:
             bool: ``True`` when the stage is still at ``expected``.
@@ -254,7 +254,7 @@ class StageMap:
         self,
         record: Any,
         stage: str,
-        status: StageStatus,
+        status: StageStatusEnum,
         *,
         error: str | None = None,
         result: Any = None,
@@ -271,7 +271,7 @@ class StageMap:
         Args:
             record (Any): The row.
             stage (str): The stage name.
-            status (StageStatus): The new status.
+            status (StageStatusEnum): The new status.
             error (str | None): The failure message; only meaningful with
                 ``FAILED``.
             result (Any): What the stage produced. ``None`` leaves the
@@ -285,13 +285,15 @@ class StageMap:
                 transitions, and silently dropping the message would hide
                 it.
         """
-        if error is not None and status is not StageStatus.FAILED:
+        if error is not None and status is not StageStatusEnum.FAILED:
             raise ValueError(
                 f"error= is only meaningful with FAILED, got {status.value}",
             )
         columns = self.columns(stage)
         setattr(record, columns.status, status.value)
-        setattr(record, columns.error, error if status is StageStatus.FAILED else None)
+        setattr(
+            record, columns.error, error if status is StageStatusEnum.FAILED else None
+        )
         if result is not None:
             setattr(record, columns.result, result)
 
@@ -329,13 +331,13 @@ class StageMap:
         ignored: list[str] = []
         for stage in requested:
             if self.is_running(record, stage):
-                self.mark(record, stage, StageStatus.CANCELLED)
+                self.mark(record, stage, StageStatusEnum.CANCELLED)
                 cancelled.append(stage)
             else:
                 ignored.append(stage)
         return cancelled, ignored
 
-    def snapshot(self, record: Any) -> dict[str, StageStatus | None]:
+    def snapshot(self, record: Any) -> dict[str, StageStatusEnum | None]:
         """Read every stage's status at once.
 
         What a status endpoint serializes, and what a test asserts on
@@ -345,7 +347,7 @@ class StageMap:
             record (Any): The row.
 
         Returns:
-            dict[str, StageStatus | None]: Status per stage, in declaration
+            dict[str, StageStatusEnum | None]: Status per stage, in declaration
             order.
         """
         return {stage: self.status(record, stage) for stage in self._order}
@@ -356,5 +358,5 @@ __all__: list[str] = [
     "TERMINAL_STAGE_STATUSES",
     "StageColumns",
     "StageMap",
-    "StageStatus",
+    "StageStatusEnum",
 ]

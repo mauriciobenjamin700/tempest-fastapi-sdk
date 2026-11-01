@@ -59,7 +59,7 @@ class BaseWalletEntryModel(BaseModel):
         user_id (UUID): FK to the wallet owner (set by subclass).
         kind (str): What the movement is (``"SALE"``, ``"WITHDRAW"``...).
             The service writes the values in
-            :class:`~tempest_fastapi_sdk.wallet.WalletEntryKind`; the
+            :class:`~tempest_fastapi_sdk.wallet.WalletEntryKindEnum`; the
             application writes its own for credits.
         amount_cents (int): Signed amount — positive credits, negative
             debits.

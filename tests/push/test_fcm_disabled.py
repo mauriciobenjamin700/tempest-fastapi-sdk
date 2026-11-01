@@ -21,7 +21,7 @@ from tempest_fastapi_sdk import (
     IntegrationDisabledException,
     PushDevice,
     PushPayloadSchema,
-    PushPlatform,
+    PushPlatformEnum,
 )
 from tempest_fastapi_sdk.auth import FirebaseAuth
 
@@ -59,7 +59,7 @@ def test_building_it_logs_one_warning(caplog: pytest.LogCaptureFixture) -> None:
 
 async def test_direct_send_raises() -> None:
     transport = FCMTransport(auth=disabled_auth())
-    device = PushDevice(token="t" * 40, platform=PushPlatform.ANDROID)
+    device = PushDevice(token="t" * 40, platform=PushPlatformEnum.ANDROID)
     with pytest.raises(IntegrationDisabledException):
         await transport.send(device, PushPayloadSchema(title="Hi"))
 

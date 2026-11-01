@@ -1,4 +1,4 @@
-"""``image_media_type_field`` restricts an ``ImageMediaType`` field (#615)."""
+"""``image_media_type_field`` restricts an ``ImageMediaTypeEnum`` field (#615)."""
 
 from __future__ import annotations
 
@@ -12,43 +12,43 @@ from pydantic import ValidationError
 from tempest_fastapi_sdk import (
     BaseSchema,
     CursorPaginationFilterSchema,
-    ImageMediaType,
+    ImageMediaTypeEnum,
     image_media_type_field,
 )
 from tempest_fastapi_sdk.utils import AllowedImageMediaTypes
 
-PHOTO_TYPES: tuple[ImageMediaType, ...] = (
-    ImageMediaType.JPEG,
-    ImageMediaType.PNG,
-    ImageMediaType.WEBP,
-    ImageMediaType.HEIC,
+PHOTO_TYPES: tuple[ImageMediaTypeEnum, ...] = (
+    ImageMediaTypeEnum.JPEG,
+    ImageMediaTypeEnum.PNG,
+    ImageMediaTypeEnum.WEBP,
+    ImageMediaTypeEnum.HEIC,
 )
 """What a service storing camera photos accepts."""
 
 
 class EvidenceSchema(BaseSchema):
     photo_type: Annotated[
-        ImageMediaType,
+        ImageMediaTypeEnum,
         image_media_type_field(*PHOTO_TYPES, title="Photo type"),
     ]
 
 
 class AnyImageSchema(BaseSchema):
-    image_type: Annotated[ImageMediaType, image_media_type_field()]
+    image_type: Annotated[ImageMediaTypeEnum, image_media_type_field()]
 
 
 class TestValidation:
     @pytest.mark.parametrize(
         "raw, expected",
         [
-            ("image/jpeg", ImageMediaType.JPEG),
-            ("IMAGE/JPG ", ImageMediaType.JPEG),
-            ("image/pjpeg", ImageMediaType.JPEG),
-            ("image/heic", ImageMediaType.HEIC),
+            ("image/jpeg", ImageMediaTypeEnum.JPEG),
+            ("IMAGE/JPG ", ImageMediaTypeEnum.JPEG),
+            ("image/pjpeg", ImageMediaTypeEnum.JPEG),
+            ("image/heic", ImageMediaTypeEnum.HEIC),
         ],
     )
     def test_the_enum_normalizes_before_the_check(
-        self, raw: str, expected: ImageMediaType
+        self, raw: str, expected: ImageMediaTypeEnum
     ) -> None:
         assert EvidenceSchema(photo_type=raw).photo_type == expected
 
@@ -65,7 +65,7 @@ class TestValidation:
         assert caught.value.errors()[0]["type"] == "enum"
 
     def test_without_arguments_every_member_is_allowed(self) -> None:
-        for member in ImageMediaType:
+        for member in ImageMediaTypeEnum:
             assert AnyImageSchema(image_type=member.value).image_type == member
 
     def test_an_empty_restriction_is_refused(self) -> None:
@@ -83,7 +83,7 @@ class TestSchema:
 
     def test_explicit_metadata_wins(self) -> None:
         info = image_media_type_field(
-            ImageMediaType.PNG,
+            ImageMediaTypeEnum.PNG,
             title="Logo",
             description="PNG only.",
             examples=["image/png"],

@@ -17,7 +17,7 @@ from tempest_fastapi_sdk.db.explain import (
     POSTGRESQL_ANALYZE_PREFIX,
     POSTGRESQL_PLAN_PREFIX,
     SQLITE_PLAN_PREFIX,
-    ExplainDetail,
+    ExplainDetailEnum,
     ExplainReport,
     QueryPlan,
     _postgresql_plan,
@@ -106,7 +106,7 @@ class TestSqliteOutput:
         async with explain_queries(session) as report:
             await notes.list()
         plan = report.plans[0]
-        assert plan.detail is ExplainDetail.PLAN_ONLY
+        assert plan.detail is ExplainDetailEnum.PLAN_ONLY
         assert plan.total_cost is None
         assert plan.duration_ms is None
 
@@ -146,14 +146,14 @@ class TestWritesAreNeverReExecuted:
     def test_a_select_is_analyzed_on_postgresql(self) -> None:
         prefix, detail = _prefix_for(select(Note), dialect="postgresql", analyze=True)
         assert prefix == POSTGRESQL_ANALYZE_PREFIX
-        assert detail is ExplainDetail.MEASURED
+        assert detail is ExplainDetailEnum.MEASURED
 
     def test_a_write_is_never_analyzed_on_postgresql(self) -> None:
         prefix, detail = _prefix_for(
             Note.__table__.insert(), dialect="postgresql", analyze=True
         )
         assert prefix == POSTGRESQL_PLAN_PREFIX
-        assert detail is ExplainDetail.ESTIMATED
+        assert detail is ExplainDetailEnum.ESTIMATED
 
     def test_raw_text_is_classified_by_its_keyword(self) -> None:
         read, _ = _prefix_for(text("  SELECT 1"), dialect="postgresql", analyze=True)
@@ -166,7 +166,7 @@ class TestWritesAreNeverReExecuted:
     def test_analyze_false_keeps_everything_to_estimates(self) -> None:
         prefix, detail = _prefix_for(select(Note), dialect="postgresql", analyze=False)
         assert prefix == POSTGRESQL_PLAN_PREFIX
-        assert detail is ExplainDetail.ESTIMATED
+        assert detail is ExplainDetailEnum.ESTIMATED
 
     def test_sqlite_never_executes_what_it_explains(self) -> None:
         prefix, _ = _prefix_for(select(Note), dialect="sqlite", analyze=True)
@@ -179,7 +179,7 @@ class TestWritesAreNeverReExecuted:
 
 class TestPostgresParsing:
     def test_reads_cost_time_and_rows(self) -> None:
-        plan = _postgresql_plan("SELECT 1", [(PG_PAYLOAD,)], ExplainDetail.MEASURED)
+        plan = _postgresql_plan("SELECT 1", [(PG_PAYLOAD,)], ExplainDetailEnum.MEASURED)
         assert plan.total_cost == 431.25
         assert plan.duration_ms == 12.75
         assert plan.rows == 1904
@@ -189,25 +189,27 @@ class TestPostgresParsing:
         import json
 
         plan = _postgresql_plan(
-            "SELECT 1", [(json.dumps(PG_PAYLOAD),)], ExplainDetail.MEASURED
+            "SELECT 1", [(json.dumps(PG_PAYLOAD),)], ExplainDetailEnum.MEASURED
         )
         assert plan.total_cost == 431.25
 
     def test_estimated_rows_are_used_when_nothing_was_measured(self) -> None:
         payload = [{"Plan": {"Total Cost": 10.0, "Plan Rows": 7}}]
-        plan = _postgresql_plan("SELECT 1", [(payload,)], ExplainDetail.ESTIMATED)
+        plan = _postgresql_plan("SELECT 1", [(payload,)], ExplainDetailEnum.ESTIMATED)
         assert plan.rows == 7
         assert plan.duration_ms is None
 
     def test_missing_metrics_stay_none(self) -> None:
         """Defaulting to zero would read as 'free'."""
-        plan = _postgresql_plan("SELECT 1", [([{"Plan": {}}],)], ExplainDetail.MEASURED)
+        plan = _postgresql_plan(
+            "SELECT 1", [([{"Plan": {}}],)], ExplainDetailEnum.MEASURED
+        )
         assert plan.total_cost is None
         assert plan.duration_ms is None
         assert plan.rows is None
 
     def test_empty_output_does_not_raise(self) -> None:
-        plan = _postgresql_plan("SELECT 1", [], ExplainDetail.MEASURED)
+        plan = _postgresql_plan("SELECT 1", [], ExplainDetailEnum.MEASURED)
         assert plan.total_cost is None
 
 
@@ -223,14 +225,14 @@ class TestReportAggregates:
             plans=[
                 QueryPlan(
                     sql="a",
-                    detail=ExplainDetail.MEASURED,
+                    detail=ExplainDetailEnum.MEASURED,
                     plan_text="",
                     duration_ms=3.0,
                     total_cost=10.0,
                 ),
                 QueryPlan(
                     sql="b",
-                    detail=ExplainDetail.MEASURED,
+                    detail=ExplainDetailEnum.MEASURED,
                     plan_text="",
                     duration_ms=9.0,
                     total_cost=2.0,
@@ -249,13 +251,13 @@ class TestReportAggregates:
             plans=[
                 QueryPlan(
                     sql="a",
-                    detail=ExplainDetail.ESTIMATED,
+                    detail=ExplainDetailEnum.ESTIMATED,
                     plan_text="",
                     total_cost=1.0,
                 ),
                 QueryPlan(
                     sql="b",
-                    detail=ExplainDetail.ESTIMATED,
+                    detail=ExplainDetailEnum.ESTIMATED,
                     plan_text="",
                     total_cost=5.0,
                 ),
@@ -267,7 +269,9 @@ class TestReportAggregates:
 
     def test_slowest_is_none_without_metrics(self) -> None:
         report = ExplainReport(
-            plans=[QueryPlan(sql="a", detail=ExplainDetail.PLAN_ONLY, plan_text="")],
+            plans=[
+                QueryPlan(sql="a", detail=ExplainDetailEnum.PLAN_ONLY, plan_text="")
+            ],
         )
         assert report.slowest is None
 
@@ -276,7 +280,9 @@ class TestReportAggregates:
 
     def test_total_duration_is_none_without_timings(self) -> None:
         report = ExplainReport(
-            plans=[QueryPlan(sql="a", detail=ExplainDetail.PLAN_ONLY, plan_text="")],
+            plans=[
+                QueryPlan(sql="a", detail=ExplainDetailEnum.PLAN_ONLY, plan_text="")
+            ],
         )
         assert report.total_duration_ms is None
 
@@ -289,7 +295,7 @@ class TestReportAggregates:
     def test_long_sql_is_truncated_in_the_summary(self) -> None:
         plan = QueryPlan(
             sql="SELECT " + "x" * 300,
-            detail=ExplainDetail.PLAN_ONLY,
+            detail=ExplainDetailEnum.PLAN_ONLY,
             plan_text="",
         )
         assert plan.summary().endswith("...")

@@ -14,7 +14,7 @@ events wait durably in the table until it recovers.
 
 This module ships three pieces:
 
-* :class:`OutboxStatus` — the lifecycle enum (pending → sent / failed).
+* :class:`OutboxStatusEnum` — the lifecycle enum (pending → sent / failed).
 * :class:`BaseOutboxModel` — the abstract outbox table; the consuming
   project subclasses it (picks ``__tablename__``), exactly like
   :class:`~tempest_fastapi_sdk.db.user_model.BaseUserModel`.
@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("tempest_fastapi_sdk.db.outbox")
 
 
-class OutboxStatus(StrEnum):
+class OutboxStatusEnum(StrEnum):
     """Lifecycle of an outbox event.
 
     * ``PENDING`` — written, not yet published. The relay picks these.
@@ -86,7 +86,7 @@ class BaseOutboxModel(BaseModel):
         topic (str): Where the event goes — a queue name, routing key,
             exchange/topic, etc. Interpreted by the ``publish`` callable.
         payload (dict[str, Any]): The event body, stored as JSON.
-        status (str): One of :class:`OutboxStatus`. Indexed so the
+        status (str): One of :class:`OutboxStatusEnum`. Indexed so the
             relay's ``WHERE status = 'pending'`` scan stays cheap.
         attempts (int): How many publish attempts have been made.
         max_attempts (int): Attempt budget; once ``attempts`` reaches
@@ -114,9 +114,9 @@ class BaseOutboxModel(BaseModel):
     status: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
-        default=OutboxStatus.PENDING.value,
+        default=OutboxStatusEnum.PENDING.value,
         index=True,
-        doc="Lifecycle status (OutboxStatus value).",
+        doc="Lifecycle status (OutboxStatusEnum value).",
     )
     attempts: Mapped[int] = mapped_column(
         Integer,
@@ -178,7 +178,7 @@ class BaseOutboxModel(BaseModel):
             id=uuid4(),
             topic=topic,
             payload=payload,
-            status=OutboxStatus.PENDING.value,
+            status=OutboxStatusEnum.PENDING.value,
             attempts=0,
             max_attempts=max_attempts,
             available_at=utcnow(),
@@ -333,7 +333,7 @@ class OutboxRelay:
             stmt = (
                 select(self._model)
                 .where(
-                    self._model.status == OutboxStatus.PENDING.value,
+                    self._model.status == OutboxStatusEnum.PENDING.value,
                     self._model.available_at <= now,
                 )
                 .order_by(self._model.available_at)
@@ -349,7 +349,7 @@ class OutboxRelay:
                 except Exception as exc:
                     self._mark_failure(event, exc)
                 else:
-                    event.status = OutboxStatus.SENT.value
+                    event.status = OutboxStatusEnum.SENT.value
                     event.sent_at = utcnow()
                     published += 1
         return published
@@ -364,7 +364,7 @@ class OutboxRelay:
         event.attempts += 1
         event.last_error = str(exc)
         if event.attempts >= event.max_attempts:
-            event.status = OutboxStatus.FAILED.value
+            event.status = OutboxStatusEnum.FAILED.value
             logger.error(
                 "outbox event %s exhausted %d attempts, marking FAILED: %s",
                 event.id,
@@ -416,5 +416,5 @@ class OutboxRelay:
 __all__: list[str] = [
     "BaseOutboxModel",
     "OutboxRelay",
-    "OutboxStatus",
+    "OutboxStatusEnum",
 ]

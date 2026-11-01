@@ -28,7 +28,7 @@ from tempest_fastapi_sdk import BaseSchema, BaseStrEnum
 from tempest_fastapi_sdk.utils.regex import PixKeyType
 
 
-class PaymentStatus(BaseStrEnum):
+class PaymentStatusEnum(BaseStrEnum):
     """The state of a charge, in the vocabulary the SDK guarantees.
 
     A provider's own string is never discarded — it travels alongside in
@@ -36,7 +36,7 @@ class PaymentStatus(BaseStrEnum):
     on.
 
     :attr:`UNKNOWN` exists for the same reason
-    :attr:`PixEventType.UNKNOWN` does: a provider can report a state this
+    :attr:`PixEventTypeEnum.UNKNOWN` does: a provider can report a state this
     SDK version has never seen, and the two ways of hiding that are both
     worse than saying so. Falling through to :attr:`PENDING` reports a
     charge as awaiting payment when the provider just said it is not;
@@ -80,7 +80,7 @@ class PaymentStatus(BaseStrEnum):
     UNKNOWN = "unknown"
 
 
-class PixEventType(BaseStrEnum):
+class PixEventTypeEnum(BaseStrEnum):
     """What a webhook delivery means, once the provider name is dropped.
 
     Attributes:
@@ -107,9 +107,9 @@ class _EnumSafeSchema(BaseSchema):
     """A :class:`BaseSchema` that keeps enum members as enum members.
 
     ``BaseSchema`` sets ``use_enum_values=True``, which stores the *value*
-    instead of the member. A field annotated ``PaymentStatus`` would then
+    instead of the member. A field annotated ``PaymentStatusEnum`` would then
     hold a plain ``str`` at runtime while the type-checker still reads it
-    as the enum, so ``charge.status is PaymentStatus.PAID`` is always
+    as the enum, so ``charge.status is PaymentStatusEnum.PAID`` is always
     ``False`` — silently, on every charge. ``BaseStrEnum`` mixes in ``str``,
     so ``==`` keeps working either way, which is exactly what makes the
     defect survive review.
@@ -209,7 +209,7 @@ class PixCharge(_EnumSafeSchema):
         currency (str): ISO 4217 code. Pix is BRL-only, and the field
             exists so the contract does not have to change the day a
             provider settles in another currency.
-        status (PaymentStatus): The canonical state.
+        status (PaymentStatusEnum): The canonical state.
         provider_status (str): The provider's own string, kept verbatim for
             logs and support — the canonical mapping loses detail on
             purpose, and this is where the detail stays.
@@ -244,7 +244,7 @@ class PixCharge(_EnumSafeSchema):
     reference: str = Field(description="Identificador no lado do serviço.")
     amount_cents: int = Field(description="Valor da cobrança em centavos.")
     currency: str = Field(default="BRL", description="Código ISO 4217.")
-    status: PaymentStatus = Field(description="Estado canônico da cobrança.")
+    status: PaymentStatusEnum = Field(description="Estado canônico da cobrança.")
     provider_status: str = Field(description="Estado como o provedor o nomeia, cru.")
     br_code: str | None = Field(default=None, description="String copia-e-cola EMV.")
     qr_code_base64: str | None = Field(
@@ -276,16 +276,16 @@ class PixPaymentEvent(_EnumSafeSchema):
 
     Attributes:
         provider (str): The provider that delivered the event.
-        type (PixEventType): The canonical meaning.
+        type (PixEventTypeEnum): The canonical meaning.
         provider_event_name (str): The provider's own event name, kept even
-            when it maps to :attr:`PixEventType.UNKNOWN`.
+            when it maps to :attr:`PixEventTypeEnum.UNKNOWN`.
         charge (PixCharge | None): The charge the event is about, when the
             payload carried enough to build one.
         raw (dict[str, Any]): The decoded delivery body.
     """
 
     provider: str = Field(description="Provedor que entregou o evento.")
-    type: PixEventType = Field(description="Significado canônico do evento.")
+    type: PixEventTypeEnum = Field(description="Significado canônico do evento.")
     provider_event_name: str = Field(
         description="Nome do evento como o provedor o envia."
     )
@@ -392,7 +392,7 @@ class CardChargeRequest(BaseSchema):
             the options the provider offered for this card and amount.
         capture (bool): ``True`` charges at once. ``False`` only
             authorizes: the charge comes back
-            :attr:`PaymentStatus.AUTHORIZED` and waits for
+            :attr:`PaymentStatusEnum.AUTHORIZED` and waits for
             :meth:`CardProvider.capture_card_charge` or
             :meth:`CardProvider.cancel_card_charge`.
         description (str | None): Free text, where the provider supports it.
@@ -427,10 +427,10 @@ class CardCharge(_EnumSafeSchema):
         amount_cents (int): The amount charged, in cents.
         refunded_cents (int): How much of it went back to the payer. A
             partial refund leaves :attr:`status` at
-            :attr:`PaymentStatus.PAID` and shows here.
+            :attr:`PaymentStatusEnum.PAID` and shows here.
         currency (str): ISO 4217 code.
-        status (PaymentStatus): The canonical state. A declined card is
-            :attr:`PaymentStatus.FAILED`, returned, not raised: the charge
+        status (PaymentStatusEnum): The canonical state. A declined card is
+            :attr:`PaymentStatusEnum.FAILED`, returned, not raised: the charge
             exists at the provider, and the reason is in
             :attr:`status_detail`.
         provider_status (str): The provider's own status string.
@@ -458,7 +458,7 @@ class CardCharge(_EnumSafeSchema):
     amount_cents: int = Field(description="Valor cobrado em centavos.")
     refunded_cents: int = Field(default=0, description="Valor devolvido em centavos.")
     currency: str = Field(default="BRL", description="Código ISO 4217.")
-    status: PaymentStatus = Field(description="Estado canônico da cobrança.")
+    status: PaymentStatusEnum = Field(description="Estado canônico da cobrança.")
     provider_status: str = Field(description="Estado como o provedor o nomeia, cru.")
     status_detail: str | None = Field(
         default=None, description="Motivo do estado, como o provedor o nomeia."
@@ -485,7 +485,7 @@ class CardProvider(Protocol):
     and declined with a reason. Structural, like every provider seam here.
 
     A decline is a **result**, not an exception: ``create_card_charge``
-    returns a :class:`CardCharge` with :attr:`PaymentStatus.FAILED` and the
+    returns a :class:`CardCharge` with :attr:`PaymentStatusEnum.FAILED` and the
     reason in :attr:`CardCharge.status_detail`. Exceptions are for the call
     itself failing — transport, an invalid request — where whether a charge
     exists is the open question.
@@ -503,8 +503,8 @@ class CardProvider(Protocol):
             request (CardChargeRequest): What to charge, and how.
 
         Returns:
-            CardCharge: The charge — :attr:`PaymentStatus.PAID`,
-            :attr:`PaymentStatus.AUTHORIZED` or :attr:`PaymentStatus.FAILED`.
+            CardCharge: The charge — :attr:`PaymentStatusEnum.PAID`,
+            :attr:`PaymentStatusEnum.AUTHORIZED` or :attr:`PaymentStatusEnum.FAILED`.
         """
         ...
 
@@ -558,7 +558,7 @@ class CardProvider(Protocol):
         ...
 
 
-class PayoutStatus(BaseStrEnum):
+class PayoutStatusEnum(BaseStrEnum):
     """Where a payout stands right after the provider accepted it.
 
     A refusal is not a status here: it is
@@ -605,14 +605,14 @@ class PayoutResult(_EnumSafeSchema):
 
     Attributes:
         correlation_id (str): Echo of :attr:`PayoutRequest.correlation_id`.
-        status (PayoutStatus): Confirmed or still pending.
+        status (PayoutStatusEnum): Confirmed or still pending.
         provider (str): Which provider handled it.
         provider_status (str | None): The provider's own status string,
             kept so a value the mapping did not anticipate is still visible.
     """
 
     correlation_id: str
-    status: PayoutStatus
+    status: PayoutStatusEnum
     provider: str
     provider_status: str | None = None
 
@@ -650,14 +650,14 @@ __all__: list[str] = [
     "CardCharge",
     "CardChargeRequest",
     "CardProvider",
-    "PaymentStatus",
+    "PaymentStatusEnum",
     "PayoutProvider",
     "PayoutRequest",
     "PayoutResult",
-    "PayoutStatus",
+    "PayoutStatusEnum",
     "PixCharge",
     "PixChargeRequest",
-    "PixEventType",
+    "PixEventTypeEnum",
     "PixPayer",
     "PixPaymentEvent",
     "PixProvider",

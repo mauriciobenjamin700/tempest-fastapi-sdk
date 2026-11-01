@@ -16,7 +16,7 @@ from tempest_fastapi_sdk.queue.consumer import subscribe as subscribe
 from tempest_fastapi_sdk.queue.dedup import (
     ConcurrentDeliveryError as ConcurrentDeliveryError,
 )
-from tempest_fastapi_sdk.queue.dedup import DedupState as DedupState
+from tempest_fastapi_sdk.queue.dedup import DedupStateEnum as DedupStateEnum
 from tempest_fastapi_sdk.queue.dedup import DedupStore as DedupStore
 from tempest_fastapi_sdk.queue.dedup import MemoryDedupStore as MemoryDedupStore
 from tempest_fastapi_sdk.queue.dedup import RedisDedupStore as RedisDedupStore
@@ -34,11 +34,11 @@ from tempest_fastapi_sdk.queue.reliability import (
 from tempest_fastapi_sdk.queue.reliability import retry_queues as retry_queues
 from tempest_fastapi_sdk.queue.topology import DeadLetterSpec as DeadLetterSpec
 from tempest_fastapi_sdk.queue.topology import ExchangeBinding as ExchangeBinding
-from tempest_fastapi_sdk.queue.topology import ExchangeKind as ExchangeKind
+from tempest_fastapi_sdk.queue.topology import ExchangeKindEnum as ExchangeKindEnum
 from tempest_fastapi_sdk.queue.topology import ExchangeSpec as ExchangeSpec
 from tempest_fastapi_sdk.queue.topology import QueueSpec as QueueSpec
-from tempest_fastapi_sdk.queue.topology import QueueType as QueueType
-from tempest_fastapi_sdk.queue.topology import Transport as Transport
+from tempest_fastapi_sdk.queue.topology import QueueTypeEnum as QueueTypeEnum
+from tempest_fastapi_sdk.queue.topology import TransportEnum as TransportEnum
 from tempest_fastapi_sdk.queue.topology import (
     UnsupportedTopologyError as UnsupportedTopologyError,
 )
@@ -53,21 +53,21 @@ __all__: list[str] = [
     "Consumer",
     "ConsumerRetryPolicy",
     "DeadLetterSpec",
-    "DedupState",
+    "DedupStateEnum",
     "DedupStore",
     "ExchangeBinding",
-    "ExchangeKind",
+    "ExchangeKindEnum",
     "ExchangeSpec",
     "MemoryDedupStore",
     "MessageBroker",
     "Publisher",
     "QueueMetrics",
     "QueueSpec",
-    "QueueType",
+    "QueueTypeEnum",
     "RedisDedupStore",
     "RetryTopology",
     "Subscription",
-    "Transport",
+    "TransportEnum",
     "UnsupportedTopologyError",
     "consume_span",
     "delivery_attempt",

@@ -1295,17 +1295,17 @@ class TaskQueue:
         """Register a task to run on a cron schedule.
 
         For readable schedules without hand-writing cron syntax, pass a
-        :class:`tempest_fastapi_sdk.tasks.Cron` member or a builder result
+        :class:`tempest_fastapi_sdk.tasks.CronEnum` member or a builder result
         (:func:`~tempest_fastapi_sdk.tasks.daily`,
         :func:`~tempest_fastapi_sdk.tasks.weekdays`, …) as ``expr``, and a
-        :class:`~tempest_fastapi_sdk.tasks.CronOffset` member as
+        :class:`~tempest_fastapi_sdk.tasks.CronOffsetEnum` member as
         ``cron_offset``.
 
         Args:
             expr (str): A cron expression (``"*/5 * * * *"`` = every five
-                minutes), a :class:`Cron` member, or a builder result.
+                minutes), a :class:`CronEnum` member, or a builder result.
             cron_offset (str | timedelta | None): Timezone offset applied
-                to ``expr`` — ``"-03:00"``, a :class:`CronOffset` member,
+                to ``expr`` — ``"-03:00"``, a :class:`CronOffsetEnum` member,
                 or a :class:`~datetime.timedelta`.
             name (str | None): Override the task name.
             **options (Any): Extra TaskIQ labels forwarded to the task.

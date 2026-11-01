@@ -1568,7 +1568,7 @@ Tabela de decisão:
     | `PASSWORD_TOO_WEAK` | falta classe de caractere (complexidade ligada) | `A senha precisa ter letra minúscula, letra maiúscula, número e caractere especial` |
 
     O mesmo valor está em `PasswordPolicyViolation.code`
-    (`PasswordViolationCode`), para quem chama `check_password_policy` direto.
+    (`PasswordViolationCodeEnum`), para quem chama `check_password_policy` direto.
     Para trocar também o `code`, veja
     [os códigos de erro do seu produto](#codigos-de-erro-do-seu-produto-authexceptions-v03050).
 

@@ -326,13 +326,13 @@ não extrai nada do request à mão, e não decide o que fazer com um `False`:
 - Segredo vazio recusa tudo — "nenhum segredo configurado" não vira rota
   aberta.
 - Tópico que este SDK não nomeia **não** derruba a rota: `event` vira
-  `MercadoPagoEvent.UNKNOWN` e `topic` guarda a string. Corpo que não é JSON
+  `MercadoPagoEventEnum.UNKNOWN` e `topic` guarda a string. Corpo que não é JSON
   também não: `payload` fica vazio e `body` traz os bytes.
 
 - Notificação de Orders deve chegar com o tópico `order` ou uma ação
   `order.*`: o documento do provedor lista `order.created` e
   `order.updated`, mas uma entrega real de Orders **ainda não foi observada**
-  aqui. `MercadoPagoEvent` só nomeia os tópicos que a spec declara
+  aqui. `MercadoPagoEventEnum` só nomeia os tópicos que a spec declara
   (`payment`, `merchant_order`, `point_integration_wh`), então para Orders
   `event.event` é `UNKNOWN` — por isso o exemplo decide pelo `topic` e pela
   ação, como faz `make_mercado_pago_webhook_delivery_dependency` (seção
@@ -443,7 +443,7 @@ from fastapi import Depends, FastAPI
 
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
-    PixEventType,
+    PixEventTypeEnum,
     confirm_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters import (
@@ -476,7 +476,7 @@ async def webhook(
     if card is not None:
         return {"card": card.status.value, "detail": card.status_detail}
     event = pix.parse_webhook(delivery)
-    if event.type is not PixEventType.CHARGE_PAID or event.charge is None:
+    if event.type is not PixEventTypeEnum.CHARGE_PAID or event.charge is None:
         return {"settled": None}
     confirmation = await confirm_pix_payment(
         pix,

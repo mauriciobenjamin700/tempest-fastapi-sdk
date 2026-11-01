@@ -30,7 +30,7 @@ from tempest_fastapi_sdk.genai.audio.decoding import (
     DEFAULT_MAX_AUDIO_SECONDS,
     load_audio,
 )
-from tempest_fastapi_sdk.genai.audio.language import Language, whisper_language
+from tempest_fastapi_sdk.genai.audio.language import LanguageEnum, whisper_language
 from tempest_fastapi_sdk.genai.audio.schemas import Transcription, TranscriptionSegment
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
@@ -348,7 +348,7 @@ class SpeechToText:
         self,
         audio: str | Path | bytes,
         *,
-        language: Language | str | None = None,
+        language: LanguageEnum | str | None = None,
         with_segments: bool = True,
         beam_size: int | None = None,
         vad_filter: bool | None = None,
@@ -362,9 +362,9 @@ class SpeechToText:
         Args:
             audio (str | Path | bytes): Path of a local audio file, or raw
                 bytes. URLs are not fetched.
-            language (Language | str | None): Force the language — a
-                :class:`~tempest_fastapi_sdk.genai.audio.Language` member
-                (``Language.PT_BR``), a raw Whisper code (``"pt"``), or
+            language (LanguageEnum | str | None): Force the language — a
+                :class:`~tempest_fastapi_sdk.genai.audio.LanguageEnum` member
+                (``LanguageEnum.PT_BR``), a raw Whisper code (``"pt"``), or
                 ``None`` to auto-detect.
             with_segments (bool): Include per-span timestamps.
             beam_size (int | None): Override the instance beam width for

@@ -227,7 +227,7 @@ def _canonical_shares(shares: dict[str, float]) -> dict[str, float]:
     return merged
 
 
-class DriftVerdict(BaseStrEnum):
+class DriftVerdictEnum(BaseStrEnum):
     """How much the live population has moved from the baseline.
 
     Attributes:
@@ -329,7 +329,7 @@ class FeatureDrift(BaseSchema):
     Attributes:
         name (str): Feature name.
         psi (float): Population Stability Index against the baseline.
-        verdict (DriftVerdict): The PSI read against the conventional
+        verdict (DriftVerdictEnum): The PSI read against the conventional
             thresholds.
         proportions (list[float]): Observed share per bin, so a dashboard
             can show *where* it moved rather than only how much.
@@ -346,8 +346,8 @@ class FeatureDrift(BaseSchema):
         description="Population Stability Index against the baseline.",
         examples=[0.03],
     )
-    verdict: DriftVerdict = Field(
-        default=DriftVerdict.STABLE,
+    verdict: DriftVerdictEnum = Field(
+        default=DriftVerdictEnum.STABLE,
         title="Verdict",
         description="The PSI read against the conventional thresholds.",
     )
@@ -364,7 +364,7 @@ class DriftReport(BaseSchema):
     Attributes:
         features (list[FeatureDrift]): Per-feature drift, worst first.
         worst_psi (float): The highest PSI across features.
-        verdict (DriftVerdict): The worst feature's verdict, or
+        verdict (DriftVerdictEnum): The worst feature's verdict, or
             ``INSUFFICIENT_DATA``.
         n_rows (int): Rows in this window.
         sufficient_sample (bool): Whether the window holds at least
@@ -382,8 +382,8 @@ class DriftReport(BaseSchema):
         description="Highest PSI across features.",
         examples=[0.31],
     )
-    verdict: DriftVerdict = Field(
-        default=DriftVerdict.INSUFFICIENT_DATA,
+    verdict: DriftVerdictEnum = Field(
+        default=DriftVerdictEnum.INSUFFICIENT_DATA,
         title="Verdict",
         description="Overall drift verdict.",
     )
@@ -414,7 +414,7 @@ class PredictionDistribution(BaseSchema):
             baseline, when known.
         psi (float): PSI of the predicted-class distribution against the
             baseline. Zero when there is no baseline to compare against.
-        verdict (DriftVerdict): That PSI read against the thresholds.
+        verdict (DriftVerdictEnum): That PSI read against the thresholds.
         n_rows (int): Predictions in this window.
         mean (float | None): Mean predicted value, for a regressor.
         minimum (float | None): Smallest predicted value seen.
@@ -438,8 +438,8 @@ class PredictionDistribution(BaseSchema):
         description="PSI of the predicted-class distribution.",
         examples=[0.08],
     )
-    verdict: DriftVerdict = Field(
-        default=DriftVerdict.INSUFFICIENT_DATA,
+    verdict: DriftVerdictEnum = Field(
+        default=DriftVerdictEnum.INSUFFICIENT_DATA,
         title="Verdict",
         description="Output drift verdict.",
     )
@@ -708,7 +708,7 @@ def population_stability_index(
     return total
 
 
-def _verdict_for(psi: float, *, sufficient: bool) -> DriftVerdict:
+def _verdict_for(psi: float, *, sufficient: bool) -> DriftVerdictEnum:
     """Read a PSI against the conventional thresholds.
 
     Args:
@@ -717,17 +717,17 @@ def _verdict_for(psi: float, *, sufficient: bool) -> DriftVerdict:
             anything.
 
     Returns:
-        DriftVerdict: The verdict, or ``INSUFFICIENT_DATA`` when the
+        DriftVerdictEnum: The verdict, or ``INSUFFICIENT_DATA`` when the
         sample was too small — reported rather than hidden, since an
         unmonitored device and a stable one look the same otherwise.
     """
     if not sufficient:
-        return DriftVerdict.INSUFFICIENT_DATA
+        return DriftVerdictEnum.INSUFFICIENT_DATA
     if psi >= PSI_SIGNIFICANT:
-        return DriftVerdict.SIGNIFICANT
+        return DriftVerdictEnum.SIGNIFICANT
     if psi >= PSI_MODERATE:
-        return DriftVerdict.MODERATE
-    return DriftVerdict.STABLE
+        return DriftVerdictEnum.MODERATE
+    return DriftVerdictEnum.STABLE
 
 
 class PredictionMonitor:
@@ -1054,7 +1054,7 @@ class PredictionMonitor:
         shares = {key: count / total for key, count in self._label_counts.items()}
         baseline_shares = dict(self._baseline_shares)
         psi = 0.0
-        verdict = DriftVerdict.INSUFFICIENT_DATA
+        verdict = DriftVerdictEnum.INSUFFICIENT_DATA
         if baseline_shares:
             keys = sorted(set(baseline_shares) | set(shares))
             psi = population_stability_index(
@@ -1220,7 +1220,7 @@ __all__: list[str] = [
     "PSI_MODERATE",
     "PSI_SIGNIFICANT",
     "DriftReport",
-    "DriftVerdict",
+    "DriftVerdictEnum",
     "FeatureBaseline",
     "FeatureBins",
     "FeatureDrift",

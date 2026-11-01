@@ -33,7 +33,7 @@ Two halves, and it is worth knowing which is which:
   provider's, not ours.
 - **Hand-written** — ``DEFAULT_BASE_URL`` (the spec declares a single
   server: what separates test from production is the token, not the host),
-  ``MercadoPagoEvent``, the webhook verification, the money helpers (the
+  ``MercadoPagoEventEnum``, the webhook verification, the money helpers (the
   spec types money as ``number`` and states it in **reais**), and the Pix QR
   the spec never declares on a payment.
 
@@ -75,7 +75,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.environment import (
     DEFAULT_BASE_URL as DEFAULT_BASE_URL,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.events import (
-    MercadoPagoEvent as MercadoPagoEvent,
+    MercadoPagoEventEnum as MercadoPagoEventEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
     format_amount as format_amount,
@@ -134,7 +134,7 @@ _HAND_WRITTEN: tuple[str, ...] = (
     "MERCADO_PAGO_DATA_ID_QUERY",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
-    "MercadoPagoEvent",
+    "MercadoPagoEventEnum",
     "MercadoPagoWebhookEvent",
     "SignatureHeader",
     "build_manifest",
@@ -372,7 +372,7 @@ __all__: list[str] = [
     "MediationResolution",
     "MediationResolutionType",
     "MercadoPagoClient",
-    "MercadoPagoEvent",
+    "MercadoPagoEventEnum",
     "MercadoPagoWebhookEvent",
     "MerchantAnalyticsResponse",
     "MerchantAnalyticsResponsePeriod",

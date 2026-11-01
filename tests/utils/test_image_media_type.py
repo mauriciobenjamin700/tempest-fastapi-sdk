@@ -1,4 +1,4 @@
-"""Tests for :class:`tempest_fastapi_sdk.utils.media_types.ImageMediaType`."""
+"""Tests for :class:`tempest_fastapi_sdk.utils.media_types.ImageMediaTypeEnum`."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, ValidationError
 
-from tempest_fastapi_sdk import SNIFFABLE_MIMETYPES, ImageMediaType, sniff_mime
+from tempest_fastapi_sdk import SNIFFABLE_MIMETYPES, ImageMediaTypeEnum, sniff_mime
 
-_SAMPLES: dict[ImageMediaType, bytes] = {
-    ImageMediaType.JPEG: b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 20,
-    ImageMediaType.PNG: b"\x89PNG\r\n\x1a\n" + b"\x00" * 24,
-    ImageMediaType.GIF: b"GIF89a" + b"\x00" * 26,
-    ImageMediaType.BMP: b"BM" + b"\x00" * 30,
-    ImageMediaType.WEBP: b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 16,
-    ImageMediaType.HEIC: (
+_SAMPLES: dict[ImageMediaTypeEnum, bytes] = {
+    ImageMediaTypeEnum.JPEG: b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 20,
+    ImageMediaTypeEnum.PNG: b"\x89PNG\r\n\x1a\n" + b"\x00" * 24,
+    ImageMediaTypeEnum.GIF: b"GIF89a" + b"\x00" * 26,
+    ImageMediaTypeEnum.BMP: b"BM" + b"\x00" * 30,
+    ImageMediaTypeEnum.WEBP: b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 16,
+    ImageMediaTypeEnum.HEIC: (
         b"\x00\x00\x00\x1cftypheic\x00\x00\x00\x00mif1heicmiaf"
         b"\x00\x00\x01|meta\x00\x00\x00\x00"
     ),
@@ -27,7 +27,7 @@ _SAMPLES: dict[ImageMediaType, bytes] = {
 class PhotoSchema(BaseModel):
     """Schema carrying a declared image ``Content-Type``."""
 
-    content_type: ImageMediaType
+    content_type: ImageMediaTypeEnum
 
 
 app = FastAPI()
@@ -43,7 +43,7 @@ async def create_photo(payload: PhotoSchema) -> dict[str, str]:
 
 
 def test_members_are_exactly_the_sniffable_image_types() -> None:
-    assert {member.value for member in ImageMediaType} == {
+    assert {member.value for member in ImageMediaTypeEnum} == {
         mime for mime in SNIFFABLE_MIMETYPES if mime.startswith("image/")
     }
 
@@ -51,17 +51,17 @@ def test_members_are_exactly_the_sniffable_image_types() -> None:
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("image/jpeg", ImageMediaType.JPEG),
-        ("IMAGE/PNG", ImageMediaType.PNG),
-        ("  image/webp\n", ImageMediaType.WEBP),
-        ("Image/HEIC", ImageMediaType.HEIC),
-        ("image/jpg", ImageMediaType.JPEG),
-        (" Image/PJPEG ", ImageMediaType.JPEG),
-        ("image/x-png", ImageMediaType.PNG),
+        ("image/jpeg", ImageMediaTypeEnum.JPEG),
+        ("IMAGE/PNG", ImageMediaTypeEnum.PNG),
+        ("  image/webp\n", ImageMediaTypeEnum.WEBP),
+        ("Image/HEIC", ImageMediaTypeEnum.HEIC),
+        ("image/jpg", ImageMediaTypeEnum.JPEG),
+        (" Image/PJPEG ", ImageMediaTypeEnum.JPEG),
+        ("image/x-png", ImageMediaTypeEnum.PNG),
     ],
 )
-def test_lenient_lookup(raw: str, expected: ImageMediaType) -> None:
-    assert ImageMediaType(raw) is expected
+def test_lenient_lookup(raw: str, expected: ImageMediaTypeEnum) -> None:
+    assert ImageMediaTypeEnum(raw) is expected
     assert PhotoSchema(content_type=raw).content_type is expected  # type: ignore[arg-type]
     from_json = PhotoSchema.model_validate_json(json.dumps({"content_type": raw}))
     assert from_json.content_type is expected
@@ -75,8 +75,8 @@ def test_unknown_value_fails_validation(raw: str) -> None:
     with pytest.raises(ValidationError) as excinfo:
         PhotoSchema(content_type=raw)  # type: ignore[arg-type]
     assert excinfo.value.errors()[0]["type"] == "enum"
-    with pytest.raises(ValueError, match="is not a valid ImageMediaType"):
-        ImageMediaType(raw)
+    with pytest.raises(ValueError, match="is not a valid ImageMediaTypeEnum"):
+        ImageMediaTypeEnum(raw)
 
 
 def test_non_string_fails_validation() -> None:
@@ -86,7 +86,7 @@ def test_non_string_fails_validation() -> None:
 
 def test_json_schema_lists_canonical_values() -> None:
     schema = PhotoSchema.model_json_schema()
-    assert schema["$defs"]["ImageMediaType"]["enum"] == [
+    assert schema["$defs"]["ImageMediaTypeEnum"]["enum"] == [
         "image/jpeg",
         "image/png",
         "image/gif",
@@ -108,20 +108,20 @@ def test_route_accepts_alias_and_rejects_unknown_with_422() -> None:
 @pytest.mark.parametrize(
     ("member", "extension"),
     [
-        (ImageMediaType.JPEG, "jpg"),
-        (ImageMediaType.PNG, "png"),
-        (ImageMediaType.GIF, "gif"),
-        (ImageMediaType.BMP, "bmp"),
-        (ImageMediaType.WEBP, "webp"),
-        (ImageMediaType.HEIC, "heic"),
+        (ImageMediaTypeEnum.JPEG, "jpg"),
+        (ImageMediaTypeEnum.PNG, "png"),
+        (ImageMediaTypeEnum.GIF, "gif"),
+        (ImageMediaTypeEnum.BMP, "bmp"),
+        (ImageMediaTypeEnum.WEBP, "webp"),
+        (ImageMediaTypeEnum.HEIC, "heic"),
     ],
 )
-def test_extension(member: ImageMediaType, extension: str) -> None:
+def test_extension(member: ImageMediaTypeEnum, extension: str) -> None:
     assert member.extension == extension
 
 
-@pytest.mark.parametrize("member", list(ImageMediaType))
-def test_matches_own_signature_only(member: ImageMediaType) -> None:
+@pytest.mark.parametrize("member", list(ImageMediaTypeEnum))
+def test_matches_own_signature_only(member: ImageMediaTypeEnum) -> None:
     for candidate, data in _SAMPLES.items():
         assert member.matches(data) is (candidate is member)
         assert sniff_mime(data) == candidate.value
@@ -130,5 +130,5 @@ def test_matches_own_signature_only(member: ImageMediaType) -> None:
 def test_matches_rejects_polyglot_and_avif() -> None:
     html = b"<!DOCTYPE html><script>alert(1)</script>"
     avif = b"\x00\x00\x00 ftypavif\x00\x00\x00\x00avifmif1miafMA1B\x00\x00\x00\xebmeta"
-    assert not any(member.matches(html) for member in ImageMediaType)
-    assert not ImageMediaType.HEIC.matches(avif)
+    assert not any(member.matches(html) for member in ImageMediaTypeEnum)
+    assert not ImageMediaTypeEnum.HEIC.matches(avif)

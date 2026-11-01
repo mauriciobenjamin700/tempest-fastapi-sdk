@@ -63,7 +63,7 @@ DONE: Final[str] = "done"
 """Marker value for a message that completed successfully."""
 
 
-class DedupState(BaseStrEnum):
+class DedupStateEnum(BaseStrEnum):
     """What the store knew about a message id when it was claimed.
 
     Attributes:
@@ -97,11 +97,11 @@ class DedupStore(Protocol):
 
     Three operations, because two-phase marking needs them. :meth:`claim`
     must be **atomic** — two workers claiming the same id concurrently
-    must not both receive :attr:`DedupState.NEW`, which is why it is one
+    must not both receive :attr:`DedupStateEnum.NEW`, which is why it is one
     call rather than a get followed by a set.
     """
 
-    async def claim(self, key: str, *, ttl_seconds: int) -> DedupState:
+    async def claim(self, key: str, *, ttl_seconds: int) -> DedupStateEnum:
         """Mark ``key`` in-flight if it is unseen, and report what it was.
 
         Args:
@@ -109,7 +109,7 @@ class DedupStore(Protocol):
             ttl_seconds (int): How long the mark lives.
 
         Returns:
-            DedupState: What the store held before this call.
+            DedupStateEnum: What the store held before this call.
         """
         ...
 
@@ -165,7 +165,7 @@ class MemoryDedupStore:
             return None
         return marker
 
-    async def claim(self, key: str, *, ttl_seconds: int) -> DedupState:
+    async def claim(self, key: str, *, ttl_seconds: int) -> DedupStateEnum:
         """Claim ``key``, reporting what the store already held.
 
         Args:
@@ -173,15 +173,15 @@ class MemoryDedupStore:
             ttl_seconds (int): How long the mark lives.
 
         Returns:
-            DedupState: The prior state.
+            DedupStateEnum: The prior state.
         """
         marker = self._live(key)
         if marker == DONE:
-            return DedupState.DONE
+            return DedupStateEnum.DONE
         if marker == IN_FLIGHT:
-            return DedupState.IN_FLIGHT
+            return DedupStateEnum.IN_FLIGHT
         self.entries[key] = (IN_FLIGHT, time.monotonic() + ttl_seconds)
-        return DedupState.NEW
+        return DedupStateEnum.NEW
 
     async def complete(self, key: str, *, ttl_seconds: int) -> None:
         """Mark ``key`` done.
@@ -233,7 +233,7 @@ class RedisDedupStore:
         """
         return f"{self.prefix}{key}"
 
-    async def claim(self, key: str, *, ttl_seconds: int) -> DedupState:
+    async def claim(self, key: str, *, ttl_seconds: int) -> DedupStateEnum:
         """Claim ``key`` atomically via ``SET NX``.
 
         Args:
@@ -241,7 +241,7 @@ class RedisDedupStore:
             ttl_seconds (int): How long the mark lives.
 
         Returns:
-            DedupState: The prior state. A lost race reads the current
+            DedupStateEnum: The prior state. A lost race reads the current
             value to tell ``IN_FLIGHT`` from ``DONE``; a key that expires
             between the two calls reads as ``DONE``, which skips one
             message rather than running it twice — the safer way to be
@@ -254,10 +254,10 @@ class RedisDedupStore:
             ex=ttl_seconds,
         )
         if stored:
-            return DedupState.NEW
+            return DedupStateEnum.NEW
         current = await self.client.get(self._key(key))
         marker = current.decode() if isinstance(current, bytes) else current
-        return DedupState.IN_FLIGHT if marker == IN_FLIGHT else DedupState.DONE
+        return DedupStateEnum.IN_FLIGHT if marker == IN_FLIGHT else DedupStateEnum.DONE
 
     async def complete(self, key: str, *, ttl_seconds: int) -> None:
         """Mark ``key`` done.
@@ -350,9 +350,9 @@ def make_dedup_middleware(
                 return await call_next(msg)
 
             state = await store.claim(key, ttl_seconds=ttl_seconds)
-            if state is DedupState.DONE:
+            if state is DedupStateEnum.DONE:
                 return None
-            if state is DedupState.IN_FLIGHT:
+            if state is DedupStateEnum.IN_FLIGHT:
                 raise ConcurrentDeliveryError(
                     f"Message {key} is already being processed; rejecting this "
                     "delivery so it is offered again rather than acknowledged "
@@ -375,7 +375,7 @@ __all__: list[str] = [
     "DONE",
     "IN_FLIGHT",
     "ConcurrentDeliveryError",
-    "DedupState",
+    "DedupStateEnum",
     "DedupStore",
     "MemoryDedupStore",
     "RedisDedupStore",

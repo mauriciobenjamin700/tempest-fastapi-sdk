@@ -11,7 +11,7 @@ This module is the symmetric half of
 :mod:`tempest_fastapi_sdk.db.outbox`: the outbox is *a message to
 publish*, this is *work to execute*.
 
-* :class:`JobStatus` — the lifecycle (queued → running → done / failed).
+* :class:`JobStatusEnum` — the lifecycle (queued → running → done / failed).
 * :class:`BaseJobModel` — the abstract table; the project subclasses it
   and picks a ``__tablename__``, exactly like
   :class:`~tempest_fastapi_sdk.db.outbox.BaseOutboxModel`.
@@ -85,7 +85,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("tempest_fastapi_sdk.tasks.jobs")
 
 
-class JobStatus(StrEnum):
+class JobStatusEnum(StrEnum):
     """Lifecycle of a unit of long-running work.
 
     * ``QUEUED`` — the row exists, nobody has picked it up.
@@ -107,12 +107,16 @@ class JobStatus(StrEnum):
 
 
 TERMINAL_JOB_STATUSES: frozenset[str] = frozenset(
-    {JobStatus.DONE.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value},
+    {
+        JobStatusEnum.DONE.value,
+        JobStatusEnum.FAILED.value,
+        JobStatusEnum.CANCELLED.value,
+    },
 )
 """Statuses a job never leaves: the poll stops, the payload is gone."""
 
 CANCELLABLE_JOB_STATUSES: frozenset[str] = frozenset(
-    {JobStatus.QUEUED.value, JobStatus.RUNNING.value},
+    {JobStatusEnum.QUEUED.value, JobStatusEnum.RUNNING.value},
 )
 """Statuses with work left to stop — what :meth:`JobStore.cancel` accepts."""
 
@@ -255,7 +259,7 @@ class BaseJobModel(BaseModel):
     Attributes:
         kind (str): Which work this is — the discriminator a worker
             branches on and a filter the interface offers. Indexed.
-        status (str): One of :class:`JobStatus`. Indexed, because every
+        status (str): One of :class:`JobStatusEnum`. Indexed, because every
             listing and every poll filters on it.
         params (dict[str, Any]): Small input, as JSON. What fits in a
             message.
@@ -296,9 +300,9 @@ class BaseJobModel(BaseModel):
     status: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
-        default=JobStatus.QUEUED.value,
+        default=JobStatusEnum.QUEUED.value,
         index=True,
-        doc="Lifecycle status (JobStatus value).",
+        doc="Lifecycle status (JobStatusEnum value).",
     )
     stage: Mapped[str] = mapped_column(
         String(64),
@@ -394,7 +398,7 @@ class BaseJobModel(BaseModel):
         return cls(
             id=uuid4(),
             kind=kind,
-            status=JobStatus.QUEUED.value,
+            status=JobStatusEnum.QUEUED.value,
             params=params or {},
             payload=payload,
             attempts=0,
@@ -586,10 +590,10 @@ class JobStore(Generic[JobT]):
                     update(self._model)
                     .where(
                         self._model.id == job_id,
-                        self._model.status == JobStatus.QUEUED.value,
+                        self._model.status == JobStatusEnum.QUEUED.value,
                     )
                     .values(
-                        status=JobStatus.RUNNING.value,
+                        status=JobStatusEnum.RUNNING.value,
                         started_at=utcnow(),
                         attempts=self._model.attempts + 1,
                     ),
@@ -644,7 +648,7 @@ class JobStore(Generic[JobT]):
                     update(self._model)
                     .where(
                         self._model.id == job_id,
-                        self._model.status == JobStatus.RUNNING.value,
+                        self._model.status == JobStatusEnum.RUNNING.value,
                         self._model.progress < value,
                     )
                     .values(**values),
@@ -656,7 +660,7 @@ class JobStore(Generic[JobT]):
         self,
         job_id: UUID,
         *,
-        status: JobStatus,
+        status: JobStatusEnum,
         result_id: UUID | None,
         error: str | None,
         values: Mapping[str, Any] | None = None,
@@ -665,7 +669,7 @@ class JobStore(Generic[JobT]):
 
         Args:
             job_id (UUID): The job to close.
-            status (JobStatus): ``DONE`` or ``FAILED``.
+            status (JobStatusEnum): ``DONE`` or ``FAILED``.
             result_id (UUID | None): What the work produced.
             error (str | None): Why it stopped.
             values (Mapping[str, Any] | None): Extra project columns
@@ -694,14 +698,14 @@ class JobStore(Generic[JobT]):
                         error=error,
                         payload=None,
                         finished_at=utcnow(),
-                        **({"progress": 1.0} if status is JobStatus.DONE else {}),
+                        **({"progress": 1.0} if status is JobStatusEnum.DONE else {}),
                         **(values or {}),
                     ),
                 ),
             )
             if result.rowcount == 0:
                 job = await self._require(session, job_id)
-                if job.status == JobStatus.CANCELLED.value:
+                if job.status == JobStatusEnum.CANCELLED.value:
                     raise JobCancelledError(
                         f"job {job_id} was cancelled while it was running",
                     )
@@ -786,7 +790,7 @@ class JobStore(Generic[JobT]):
         extra = None if values is None else self._project_values(values)
         return await self._finish(
             job_id,
-            status=JobStatus.DONE,
+            status=JobStatusEnum.DONE,
             result_id=result_id,
             error=None,
             values=extra,
@@ -809,7 +813,7 @@ class JobStore(Generic[JobT]):
         """
         return await self._finish(
             job_id,
-            status=JobStatus.FAILED,
+            status=JobStatusEnum.FAILED,
             result_id=None,
             error=reason,
         )
@@ -850,7 +854,7 @@ class JobStore(Generic[JobT]):
                         self._model.status.in_(sorted(CANCELLABLE_JOB_STATUSES)),
                     )
                     .values(
-                        status=JobStatus.CANCELLED.value,
+                        status=JobStatusEnum.CANCELLED.value,
                         error=reason,
                         payload=None,
                         finished_at=utcnow(),
@@ -885,7 +889,7 @@ class JobStore(Generic[JobT]):
             ).scalar_one_or_none()
         if status is None:
             return True
-        return bool(status == JobStatus.CANCELLED.value)
+        return bool(status == JobStatusEnum.CANCELLED.value)
 
     def cancellation_watch(self, job_id: UUID) -> Callable[[], Awaitable[bool]]:
         """Build the predicate :func:`run_cancellable` polls.
@@ -919,8 +923,8 @@ class JobStore(Generic[JobT]):
         self,
         *,
         kind: str | None = None,
-        status: JobStatus | str | None = None,
-        statuses: Sequence[JobStatus | str] | None = None,
+        status: JobStatusEnum | str | None = None,
+        statuses: Sequence[JobStatusEnum | str] | None = None,
         limit: int = 20,
     ) -> list[JobT]:
         """Return the most recently requested jobs, newest first.
@@ -935,8 +939,8 @@ class JobStore(Generic[JobT]):
 
         Args:
             kind (str | None): Restrict to one kind of work.
-            status (JobStatus | str | None): Restrict to one status.
-            statuses (Sequence[JobStatus | str] | None): Restrict to any
+            status (JobStatusEnum | str | None): Restrict to one status.
+            statuses (Sequence[JobStatusEnum | str] | None): Restrict to any
                 of several statuses.
             limit (int): Maximum rows. Defaults to ``20``.
 
@@ -1015,12 +1019,12 @@ class JobStore(Generic[JobT]):
                     await session.execute(
                         update(self._model)
                         .where(
-                            self._model.status == JobStatus.RUNNING.value,
+                            self._model.status == JobStatusEnum.RUNNING.value,
                             self._model.started_at < cutoff,
                             self._model.attempts >= self._model.max_attempts,
                         )
                         .values(
-                            status=JobStatus.FAILED.value,
+                            status=JobStatusEnum.FAILED.value,
                             error=STALE_JOB_ERROR,
                             payload=None,
                             finished_at=utcnow(),
@@ -1036,12 +1040,12 @@ class JobStore(Generic[JobT]):
                     await session.execute(
                         update(self._model)
                         .where(
-                            self._model.status == JobStatus.RUNNING.value,
+                            self._model.status == JobStatusEnum.RUNNING.value,
                             self._model.started_at < cutoff,
                             self._model.attempts < self._model.max_attempts,
                         )
                         .values(
-                            status=JobStatus.QUEUED.value,
+                            status=JobStatusEnum.QUEUED.value,
                             started_at=None,
                         )
                         .returning(self._model.id),
@@ -1129,7 +1133,7 @@ class JobStore(Generic[JobT]):
                     await session.execute(
                         select(self._model)
                         .where(
-                            self._model.status == JobStatus.QUEUED.value,
+                            self._model.status == JobStatusEnum.QUEUED.value,
                             self._model.updated_at < cutoff,
                         )
                         .order_by(self._model.updated_at)
@@ -1148,7 +1152,7 @@ class JobStore(Generic[JobT]):
                     update(self._model)
                     .where(
                         self._model.id == job.id,
-                        self._model.status == JobStatus.QUEUED.value,
+                        self._model.status == JobStatusEnum.QUEUED.value,
                     )
                     .values(updated_at=utcnow()),
                 )
@@ -1297,7 +1301,7 @@ __all__: list[str] = [
     "BaseJobModel",
     "JobAlreadyFinishedError",
     "JobNotFoundError",
-    "JobStatus",
+    "JobStatusEnum",
     "JobStore",
     "ReclaimedJobs",
     "make_job_admin_model",

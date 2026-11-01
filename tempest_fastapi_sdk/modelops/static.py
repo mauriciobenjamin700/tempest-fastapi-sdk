@@ -24,7 +24,7 @@ from typing import Any
 
 from tempest_fastapi_sdk.modelops._fs import size_mb
 from tempest_fastapi_sdk.modelops.schemas import (
-    ModelFormat,
+    ModelFormatEnum,
     StaticModelMetrics,
     TensorSpec,
 )
@@ -195,7 +195,7 @@ def analyze_onnx(
     return StaticModelMetrics(
         name=name or path.stem,
         path=str(path),
-        format=ModelFormat.ONNX,
+        format=ModelFormatEnum.ONNX,
         n_parameters=n_parameters,
         disk_size_mb=size_mb(path),
         opset=opset,
@@ -243,7 +243,7 @@ def analyze_ort(
     return StaticModelMetrics(
         name=name or path.stem,
         path=str(path),
-        format=ModelFormat.ORT,
+        format=ModelFormatEnum.ORT,
         disk_size_mb=size_mb(path),
         inputs=[
             TensorSpec(name=i.name, dtype=str(i.type), shape=list(i.shape))
@@ -307,7 +307,7 @@ def analyze_torch(
     return StaticModelMetrics(
         name=name or type(module).__name__,
         path=str(path) if path is not None else "",
-        format=ModelFormat.TORCH,
+        format=ModelFormatEnum.TORCH,
         n_parameters=sum(int(p.numel()) for p in parameters),
         n_trainable_parameters=sum(
             int(p.numel()) for p in parameters if p.requires_grad

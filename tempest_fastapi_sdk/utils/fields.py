@@ -34,8 +34,8 @@ from pydantic import (
 from pydantic.fields import FieldInfo
 from pydantic_core import core_schema
 
-from tempest_fastapi_sdk.core.enums import Locale, normalize_locale_tag
-from tempest_fastapi_sdk.utils.media_types import ImageMediaType
+from tempest_fastapi_sdk.core.enums import LocaleEnum, normalize_locale_tag
+from tempest_fastapi_sdk.utils.media_types import ImageMediaTypeEnum
 
 # --- Integers -------------------------------------------------------------
 
@@ -147,8 +147,8 @@ HexColorField = Annotated[
 
 # --- Enums ----------------------------------------------------------------
 
-LocaleField = Annotated[Locale, BeforeValidator(normalize_locale_tag)]
-"""Pydantic type that accepts a loose locale string and yields a :class:`Locale`.
+LocaleField = Annotated[LocaleEnum, BeforeValidator(normalize_locale_tag)]
+"""Pydantic type that accepts a loose locale string and yields a :class:`LocaleEnum`.
 
 The :class:`~pydantic.BeforeValidator` runs ahead of the enum coercion, so
 case and separator variants (``"pt_BR"``, ``"PT-BR"``) and the bare primary
@@ -160,36 +160,36 @@ plain ``str``.
 
 
 class AllowedImageMediaTypes:
-    """Pydantic metadata restricting an ``ImageMediaType`` field to a subset.
+    """Pydantic metadata restricting an ``ImageMediaTypeEnum`` field to a subset.
 
     Validates after the enum itself, so the normalization the enum already
     does — case, surrounding whitespace, aliases such as ``image/jpg`` — runs
     first, and narrows the OpenAPI schema to the allowed values only.
 
     Attributes:
-        allowed (tuple[ImageMediaType, ...]): The accepted types, in the
+        allowed (tuple[ImageMediaTypeEnum, ...]): The accepted types, in the
             order the schema lists them.
     """
 
-    def __init__(self, allowed: Sequence[ImageMediaType]) -> None:
+    def __init__(self, allowed: Sequence[ImageMediaTypeEnum]) -> None:
         """Store the accepted types.
 
         Args:
-            allowed (Sequence[ImageMediaType]): The accepted types.
+            allowed (Sequence[ImageMediaTypeEnum]): The accepted types.
 
         Raises:
             ValueError: When ``allowed`` is empty.
         """
         if not allowed:
             raise ValueError("image_media_type_field needs at least one type")
-        self.allowed: tuple[ImageMediaType, ...] = tuple(allowed)
+        self.allowed: tuple[ImageMediaTypeEnum, ...] = tuple(allowed)
 
     def __get_pydantic_core_schema__(
         self,
         source: Any,
         handler: GetCoreSchemaHandler,
     ) -> core_schema.CoreSchema:
-        """Validate as ``ImageMediaType``, then refuse what is not allowed.
+        """Validate as ``ImageMediaTypeEnum``, then refuse what is not allowed.
 
         Args:
             source (Any): The annotated type.
@@ -200,14 +200,14 @@ class AllowedImageMediaTypes:
         """
         allowed = self.allowed
 
-        def check(value: ImageMediaType) -> ImageMediaType:
+        def check(value: ImageMediaTypeEnum) -> ImageMediaTypeEnum:
             """Refuse a recognized type that is not in ``allowed``.
 
             Args:
-                value (ImageMediaType): The normalized type.
+                value (ImageMediaTypeEnum): The normalized type.
 
             Returns:
-                ImageMediaType: ``value``, unchanged.
+                ImageMediaTypeEnum: ``value``, unchanged.
 
             Raises:
                 ValueError: When ``value`` is not allowed (``422``).
@@ -237,37 +237,37 @@ class AllowedImageMediaTypes:
 
 
 def image_media_type_field(
-    *allowed: ImageMediaType,
+    *allowed: ImageMediaTypeEnum,
     title: str = "Image type",
     description: str | None = None,
     examples: list[str] | None = None,
 ) -> FieldInfo:
-    """Build the metadata of a field accepting some ``ImageMediaType`` values.
+    """Build the metadata of a field accepting some ``ImageMediaTypeEnum`` values.
 
     For a schema that takes the declared type of an upload — the photo of
     an evidence, of a product — and must refuse the types it does not
-    store. Put it in ``Annotated`` next to ``ImageMediaType``, so the static
+    store. Put it in ``Annotated`` next to ``ImageMediaTypeEnum``, so the static
     type is the enum::
 
         class EvidenceCreateSchema(BaseSchema):
             photo_type: Annotated[
-                ImageMediaType,
+                ImageMediaTypeEnum,
                 image_media_type_field(
-                    ImageMediaType.JPEG,
-                    ImageMediaType.PNG,
-                    ImageMediaType.WEBP,
-                    ImageMediaType.HEIC,
+                    ImageMediaTypeEnum.JPEG,
+                    ImageMediaTypeEnum.PNG,
+                    ImageMediaTypeEnum.WEBP,
+                    ImageMediaTypeEnum.HEIC,
                     title="Photo type",
                 ),
             ]
 
-    The value is normalized by :class:`ImageMediaType` (``"IMAGE/JPG "``
+    The value is normalized by :class:`ImageMediaTypeEnum` (``"IMAGE/JPG "``
     becomes ``image/jpeg``), a type outside ``allowed`` is a ``422``, and
     the OpenAPI schema lists ``allowed`` only.
 
     Args:
-        *allowed (ImageMediaType): The accepted types. None means every
-            member of :class:`ImageMediaType`.
+        *allowed (ImageMediaTypeEnum): The accepted types. None means every
+            member of :class:`ImageMediaTypeEnum`.
         title (str): The field title.
         description (str | None): The field description. ``None`` names
             the accepted types.
@@ -277,7 +277,7 @@ def image_media_type_field(
     Returns:
         FieldInfo: The field metadata, carrying the restriction.
     """
-    accepted: tuple[ImageMediaType, ...] = allowed or tuple(ImageMediaType)
+    accepted: tuple[ImageMediaTypeEnum, ...] = allowed or tuple(ImageMediaTypeEnum)
     info: FieldInfo = Field(
         title=title,
         description=description

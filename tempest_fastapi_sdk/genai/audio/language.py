@@ -1,8 +1,8 @@
 """Language presets for audio — pick ``pt-BR`` / ``en-US``, not model codes.
 
 STT and TTS want different identifiers per language (Whisper wants ``"pt"``,
-Coqui wants a model id). A :class:`Language` member hides that: choose
-``Language.PT_BR`` and the SDK resolves the Whisper code and a sensible
+Coqui wants a model id). A :class:`LanguageEnum` member hides that: choose
+``LanguageEnum.PT_BR`` and the SDK resolves the Whisper code and a sensible
 default TTS model for you. Dependency-free — imports without the
 ``[genai-audio]`` extra.
 """
@@ -13,7 +13,7 @@ from tempest_fastapi_sdk.core import BaseStrEnum
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
-class Language(BaseStrEnum):
+class LanguageEnum(BaseStrEnum):
     """A supported audio language.
 
     * ``PT_BR`` — Brazilian Portuguese.
@@ -40,13 +40,13 @@ class LanguagePreset(BaseSchema):
     tts_language: str | None = None
 
 
-_PRESETS: dict[Language, LanguagePreset] = {
-    Language.PT_BR: LanguagePreset(
+_PRESETS: dict[LanguageEnum, LanguagePreset] = {
+    LanguageEnum.PT_BR: LanguagePreset(
         whisper_language="pt",
         tts_model="tts_models/pt/cv/vits",
         tts_language=None,
     ),
-    Language.EN_US: LanguagePreset(
+    LanguageEnum.EN_US: LanguagePreset(
         whisper_language="en",
         tts_model="tts_models/en/ljspeech/vits",
         tts_language=None,
@@ -54,11 +54,11 @@ _PRESETS: dict[Language, LanguagePreset] = {
 }
 
 
-def preset_for(language: Language) -> LanguagePreset:
+def preset_for(language: LanguageEnum) -> LanguagePreset:
     """Return the audio preset for ``language``.
 
     Args:
-        language (Language): The target language.
+        language (LanguageEnum): The target language.
 
     Returns:
         LanguagePreset: Whisper code + default TTS model for it.
@@ -66,11 +66,11 @@ def preset_for(language: Language) -> LanguagePreset:
     return _PRESETS[language]
 
 
-def whisper_language(language: Language | str | None) -> str | None:
-    """Resolve a Whisper language code from a :class:`Language` or raw value.
+def whisper_language(language: LanguageEnum | str | None) -> str | None:
+    """Resolve a Whisper language code from a :class:`LanguageEnum` or raw value.
 
     Args:
-        language (Language | str | None): A :class:`Language` member, a raw
+        language (LanguageEnum | str | None): A :class:`LanguageEnum` member, a raw
             code (``"pt"``, passed through), or ``None`` (auto-detect).
 
     Returns:
@@ -78,16 +78,16 @@ def whisper_language(language: Language | str | None) -> str | None:
     """
     if language is None:
         return None
-    if isinstance(language, Language):
+    if isinstance(language, LanguageEnum):
         return _PRESETS[language].whisper_language
     return language
 
 
-def tts_language(language: Language | str | None) -> str | None:
+def tts_language(language: LanguageEnum | str | None) -> str | None:
     """Resolve a Coqui TTS language argument from a value.
 
     Args:
-        language (Language | str | None): A :class:`Language` member (mapped
+        language (LanguageEnum | str | None): A :class:`LanguageEnum` member (mapped
             to its preset's ``tts_language``), a raw code (passed through),
             or ``None``.
 
@@ -96,13 +96,13 @@ def tts_language(language: Language | str | None) -> str | None:
     """
     if language is None:
         return None
-    if isinstance(language, Language):
+    if isinstance(language, LanguageEnum):
         return _PRESETS[language].tts_language
     return language
 
 
 __all__: list[str] = [
-    "Language",
+    "LanguageEnum",
     "LanguagePreset",
     "preset_for",
     "tts_language",

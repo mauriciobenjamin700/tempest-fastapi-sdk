@@ -20,7 +20,7 @@ from tempest_fastapi_sdk.genai.schemas import HardwareInfo
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 
-class ModelFormat(BaseStrEnum):
+class ModelFormatEnum(BaseStrEnum):
     """On-disk format of a model artifact.
 
     * ``TORCH`` — a PyTorch checkpoint (``.pt`` / ``.pth``) or a live
@@ -35,7 +35,7 @@ class ModelFormat(BaseStrEnum):
     ORT = "ort"
 
 
-class OrtOptimizationStyle(BaseStrEnum):
+class OrtOptimizationStyleEnum(BaseStrEnum):
     """Optimization style applied when converting ``.onnx`` to ``.ort``.
 
     * ``FIXED`` — bake the optimizations in at conversion time. Smallest and
@@ -50,10 +50,10 @@ class OrtOptimizationStyle(BaseStrEnum):
     RUNTIME = "runtime"
 
 
-class GraphOptimizationLevel(BaseStrEnum):
+class GraphOptimizationLevelEnum(BaseStrEnum):
     """ONNX Runtime graph-optimization level.
 
-    Mirrors ``onnxruntime.GraphOptimizationLevel``. ``ALL`` is the usual
+    Mirrors ``onnxruntime.GraphOptimizationLevelEnum``. ``ALL`` is the usual
     choice when writing an optimized ``.onnx`` back to disk; the lower levels
     exist to isolate a regression introduced by a fusion.
     """
@@ -65,7 +65,7 @@ class GraphOptimizationLevel(BaseStrEnum):
     ALL = "all"
 
 
-class QuantWeightType(BaseStrEnum):
+class QuantWeightTypeEnum(BaseStrEnum):
     """Integer/float type the weights are quantized to.
 
     Names map 1:1 onto ``onnxruntime.quantization.QuantType`` members. The
@@ -83,7 +83,7 @@ class QuantWeightType(BaseStrEnum):
     FLOAT8E4M3FN = "float8e4m3fn"
 
 
-class QuantizationFormat(BaseStrEnum):
+class QuantizationFormatEnum(BaseStrEnum):
     """How quantized operators are represented in the graph.
 
     * ``QDQ`` — insert explicit ``QuantizeLinear`` / ``DequantizeLinear``
@@ -97,7 +97,7 @@ class QuantizationFormat(BaseStrEnum):
     QOPERATOR = "qoperator"
 
 
-class CalibrationMethod(BaseStrEnum):
+class CalibrationMethodEnum(BaseStrEnum):
     """Algorithm used to pick activation ranges during static quantization.
 
     ``MINMAX`` is the safe default. ``ENTROPY`` / ``PERCENTILE`` trade a
@@ -111,7 +111,7 @@ class CalibrationMethod(BaseStrEnum):
     DISTRIBUTION = "distribution"
 
 
-class QuantizationBackend(BaseStrEnum):
+class QuantizationBackendEnum(BaseStrEnum):
     """Which engine produced a quantized artifact.
 
     * ``ONNXRUNTIME_DYNAMIC`` — weights quantized ahead of time, activations
@@ -131,7 +131,7 @@ class QuantizationBackend(BaseStrEnum):
     BITSANDBYTES = "bitsandbytes"
 
 
-class HFOptimizationLevel(BaseStrEnum):
+class HFOptimizationLevelEnum(BaseStrEnum):
     """Graph-optimization preset for a transformers ONNX export.
 
     * ``O1`` — basic general optimizations.
@@ -147,7 +147,7 @@ class HFOptimizationLevel(BaseStrEnum):
     O4 = "O4"
 
 
-class HFQuantizationTarget(BaseStrEnum):
+class HFQuantizationTargetEnum(BaseStrEnum):
     """CPU instruction set a transformers export is quantized for.
 
     Picking the wrong one still produces a valid model, just a slower one —
@@ -170,7 +170,7 @@ class HFQuantizationTarget(BaseStrEnum):
     AVX512_VNNI = "avx512_vnni"
 
 
-class EnergySource(BaseStrEnum):
+class EnergySourceEnum(BaseStrEnum):
     """Where an energy figure came from — it changes how it must be read.
 
     * ``NVML_COUNTER`` — NVML's monotonic total-energy counter
@@ -235,7 +235,7 @@ class StaticModelMetrics(BaseSchema):
     Attributes:
         name (str): Display name; defaults to the file stem.
         path (str): Path that was inspected. Empty for an in-memory module.
-        format (ModelFormat): Artifact format.
+        format (ModelFormatEnum): Artifact format.
         n_parameters (int): Total parameter count.
         n_trainable_parameters (int | None): Parameters with gradients, when
             the format tracks that (PyTorch). ``None`` for ONNX/ORT.
@@ -259,10 +259,10 @@ class StaticModelMetrics(BaseSchema):
         description="Path inspected; empty for an in-memory module.",
         examples=["models/yolov8n-cls.onnx"],
     )
-    format: ModelFormat = Field(
+    format: ModelFormatEnum = Field(
         title="format",
         description="Artifact format (torch / onnx / ort).",
-        examples=[ModelFormat.ONNX],
+        examples=[ModelFormatEnum.ONNX],
     )
     n_parameters: int = Field(
         default=0,
@@ -316,7 +316,7 @@ class EnergyReading(BaseSchema):
     """Energy drawn over one measured window.
 
     Attributes:
-        source (EnergySource): How the figure was obtained. Always check it
+        source (EnergySourceEnum): How the figure was obtained. Always check it
             before quoting a number — a ``RAPL`` reading is CPU package only
             and an ``NVML_*`` reading is GPU only. Neither is wall-plug.
         duration_s (float): Length of the measured window in seconds.
@@ -328,10 +328,10 @@ class EnergyReading(BaseSchema):
         device_index (int | None): GPU index, for the NVML/SMI sources.
     """
 
-    source: EnergySource = Field(
+    source: EnergySourceEnum = Field(
         title="source",
         description="How the energy figure was obtained.",
-        examples=[EnergySource.NVML_COUNTER],
+        examples=[EnergySourceEnum.NVML_COUNTER],
     )
     duration_s: float = Field(
         default=0.0,
@@ -456,7 +456,7 @@ class RuntimeAggregate(BaseSchema):
         cpu_energy_j (float | None): CPU package energy over the window.
         energy_per_inference_j (float | None): Total measured energy divided
             by ``n_repetitions``.
-        energy_source (EnergySource): Provenance of the energy figures.
+        energy_source (EnergySourceEnum): Provenance of the energy figures.
     """
 
     device: str = Field(
@@ -582,11 +582,11 @@ class RuntimeAggregate(BaseSchema):
         description="Measured energy divided by the repetition count.",
         examples=[0.62],
     )
-    energy_source: EnergySource = Field(
-        default=EnergySource.UNAVAILABLE,
+    energy_source: EnergySourceEnum = Field(
+        default=EnergySourceEnum.UNAVAILABLE,
         title="energy_source",
         description="Provenance of the energy figures.",
-        examples=[EnergySource.NVML_COUNTER],
+        examples=[EnergySourceEnum.NVML_COUNTER],
     )
 
 
@@ -753,13 +753,13 @@ class ExportResult(BaseSchema):
     Attributes:
         source_path (str): Input artifact.
         output_path (str): Artifact that was written.
-        format (ModelFormat): Format of the output.
+        format (ModelFormatEnum): Format of the output.
         source_size_mb (float): Input size in MB.
         output_size_mb (float): Output size in MB.
         size_ratio (float): ``source_size_mb / output_size_mb``. Above 1.0
             means the output is smaller.
         opset (int | None): ONNX opset of the output, when known.
-        optimization_style (OrtOptimizationStyle | None): Style used for an
+        optimization_style (OrtOptimizationStyleEnum | None): Style used for an
             ``.ort`` conversion.
         extra_files (list[str]): Side artifacts written next to the output,
             such as the ``.required_operators.config`` that a minimal ONNX
@@ -776,10 +776,10 @@ class ExportResult(BaseSchema):
         description="Artifact that was written.",
         examples=["models/classify.ort"],
     )
-    format: ModelFormat = Field(
+    format: ModelFormatEnum = Field(
         title="format",
         description="Format of the written artifact.",
-        examples=[ModelFormat.ORT],
+        examples=[ModelFormatEnum.ORT],
     )
     source_size_mb: float = Field(
         default=0.0,
@@ -805,11 +805,11 @@ class ExportResult(BaseSchema):
         description="ONNX opset of the output.",
         examples=[17],
     )
-    optimization_style: OrtOptimizationStyle | None = Field(
+    optimization_style: OrtOptimizationStyleEnum | None = Field(
         default=None,
         title="optimization_style",
         description="Style used for an .ort conversion.",
-        examples=[OrtOptimizationStyle.FIXED],
+        examples=[OrtOptimizationStyleEnum.FIXED],
     )
     extra_files: list[str] = Field(
         default_factory=list,
@@ -825,8 +825,8 @@ class QuantizationResult(BaseSchema):
     Attributes:
         source_path (str): Model that was quantized.
         output_path (str): Quantized artifact.
-        backend (QuantizationBackend): Engine that did the work.
-        weight_type (QuantWeightType | None): Type the weights landed in.
+        backend (QuantizationBackendEnum): Engine that did the work.
+        weight_type (QuantWeightTypeEnum | None): Type the weights landed in.
         source_size_mb (float): Input size in MB.
         output_size_mb (float): Output size in MB.
         compression_ratio (float): ``source_size_mb / output_size_mb``.
@@ -845,16 +845,16 @@ class QuantizationResult(BaseSchema):
         description="Quantized artifact.",
         examples=["models/classify.int8.onnx"],
     )
-    backend: QuantizationBackend = Field(
+    backend: QuantizationBackendEnum = Field(
         title="backend",
         description="Engine that produced the artifact.",
-        examples=[QuantizationBackend.ONNXRUNTIME_DYNAMIC],
+        examples=[QuantizationBackendEnum.ONNXRUNTIME_DYNAMIC],
     )
-    weight_type: QuantWeightType | None = Field(
+    weight_type: QuantWeightTypeEnum | None = Field(
         default=None,
         title="weight_type",
         description="Type the weights were quantized to.",
-        examples=[QuantWeightType.INT8],
+        examples=[QuantWeightTypeEnum.INT8],
     )
     source_size_mb: float = Field(
         default=0.0,
@@ -891,19 +891,19 @@ class QuantizationResult(BaseSchema):
 __all__: list[str] = [
     "BenchmarkProfile",
     "BenchmarkReport",
-    "CalibrationMethod",
+    "CalibrationMethodEnum",
     "EnergyReading",
-    "EnergySource",
+    "EnergySourceEnum",
     "ExportResult",
-    "GraphOptimizationLevel",
-    "HFOptimizationLevel",
-    "HFQuantizationTarget",
-    "ModelFormat",
-    "OrtOptimizationStyle",
+    "GraphOptimizationLevelEnum",
+    "HFOptimizationLevelEnum",
+    "HFQuantizationTargetEnum",
+    "ModelFormatEnum",
+    "OrtOptimizationStyleEnum",
     "ParetoPoint",
-    "QuantWeightType",
-    "QuantizationBackend",
-    "QuantizationFormat",
+    "QuantWeightTypeEnum",
+    "QuantizationBackendEnum",
+    "QuantizationFormatEnum",
     "QuantizationResult",
     "RuntimeAggregate",
     "RuntimeSample",

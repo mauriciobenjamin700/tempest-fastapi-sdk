@@ -1095,7 +1095,7 @@ def to_response(error: IntegrityError) -> dict[str, Any]:
     }
 ```
 
-`IntegrityViolation` classifies into `unique`, `foreign_key`, `not_null`,
+`IntegrityViolationEnum` classifies into `unique`, `foreign_key`, `not_null`,
 `check` and `unknown`. `IntegrityFailure` carries what the server reported:
 `constraint`, `table`, `columns` (in the order listed) and `column`, the
 shortcut for the single-column case.
@@ -1146,7 +1146,7 @@ shortcut for the single-column case.
     alone.
 
 !!! check "Never raises"
-    An unknown message comes back as `IntegrityViolation.UNKNOWN` with the
+    An unknown message comes back as `IntegrityViolationEnum.UNKNOWN` with the
     text in `failure.message`. A parser for error prose that raises turns a
     handled 409 into an unhandled 500, which is worse than the generic
     conflict it was added to improve on.
@@ -1312,7 +1312,7 @@ across every service, register a **signal**. The repository emits four
 moments on the unit-of-work path:
 
 ```python
-from tempest_fastapi_sdk import RepositorySignal, on_signal
+from tempest_fastapi_sdk import RepositorySignalEnum, on_signal
 from tempest_fastapi_sdk.cache import AsyncRedisManager
 from tempest_fastapi_sdk.db import connect, disconnect
 
@@ -1325,7 +1325,7 @@ search_index = SearchIndex()
 
 
 # Decorator form
-@on_signal(UserModel, RepositorySignal.POST_SAVE)
+@on_signal(UserModel, RepositorySignalEnum.POST_SAVE)
 async def index_user(user: UserModel) -> None:
     """Reindex the user in search after the row commits."""
     await search_index.upsert(user.id, user.name)
@@ -1336,8 +1336,8 @@ async def bust_cache(user: UserModel) -> None:
     """Drop the user's cache entry once the row has committed."""
     await cache.client.delete(f"user:{user.id}")
 
-connect(UserModel, RepositorySignal.POST_SAVE, bust_cache)
-disconnect(UserModel, RepositorySignal.POST_SAVE, bust_cache)  # remove
+connect(UserModel, RepositorySignalEnum.POST_SAVE, bust_cache)
+disconnect(UserModel, RepositorySignalEnum.POST_SAVE, bust_cache)  # remove
 ```
 
 !!! note "`search_index` is illustrative; `cache` is not"
@@ -2187,21 +2187,21 @@ class UserModel(BaseModel, LocaleColumnMixin):
     email: Mapped[str] = mapped_column(unique=True)
 ```
 
-To write the value, use the `Locale` enum (a curated list of BCP-47 tags)
+To write the value, use the `LocaleEnum` enum (a curated list of BCP-47 tags)
 instead of typing the string by hand — each member **is** the tag itself, so
 it compares and stores as that tag:
 
 ```python
-from tempest_fastapi_sdk import Locale
+from tempest_fastapi_sdk import LocaleEnum
 
 from src.db.models import UserModel
 
 user = UserModel(name="Ana", email="ana@example.com")
 
 
-user.locale = Locale.PT_BR          # stores "pt-BR"
+user.locale = LocaleEnum.PT_BR          # stores "pt-BR"
 user.locale = "en-US"               # a raw string works too
-assert Locale.PT_BR == "pt-BR"      # a member is a str
+assert LocaleEnum.PT_BR == "pt-BR"      # a member is a str
 ```
 
 A `NULL` `locale` means "no preference": resolve it to your app's default
@@ -2210,7 +2210,7 @@ as an error. This is exactly the pair the [Web Push recipe »](webpush.md)
 uses to localize each notification's `title`/`body` by the recipient's
 `locale`.
 
-!!! note "`Locale` is curated, not exhaustive"
+!!! note "`LocaleEnum` is curated, not exhaustive"
     The enum covers the most widely used locales (pt/en/es/fr/de/… plus
     regional variants). Need a tag outside the list? The column is a `str`,
     so store the raw string and propose the new member upstream once it
@@ -2219,7 +2219,7 @@ uses to localize each notification's `title`/`body` by the recipient's
 **Recap:** mixins enter only when the domain needs them; soft-delete
 filtering is yours (`deleted_at IS NULL` via a raw query); the audit stamp
 lives in the service; the user's `locale` comes from `LocaleColumnMixin` +
-the `Locale` enum.
+the `LocaleEnum` enum.
 
 ---
 
