@@ -304,7 +304,6 @@ from src.core.settings import settings
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 verified = make_mercado_pago_webhook_dependency(
     settings.MERCADOPAGO_WEBHOOK_SECRET,
-    tolerance_seconds=300.0,
 )
 
 
@@ -393,14 +392,23 @@ def manifest_of_delivery(data_id: str, request_id: str, ts: str) -> str:
     return build_manifest(data_id=data_id, request_id=request_id, timestamp=ts)
 ```
 
-!!! tip "Turn the tolerance window on"
-    Without `tolerance_seconds`, a delivery captured off the wire verifies
-    forever: the signature covers a timestamp nobody checks. Upstream leaves
-    the window opt-in and so do we, but `300.0` is what makes the manifest's
-    `ts` do any work. The unit of `ts` is read by magnitude — the provider's
-    own artifacts disagree between seconds and milliseconds, and
+!!! info "The tolerance window is on by default"
+    Since 0.341.0, `verify_signature` and both dependency factories refuse a
+    `ts` more than `DEFAULT_TOLERANCE_SECONDS` (`300.0`) away from the clock.
+    Without the window, a delivery captured off the wire verifies forever:
+    the signature covers a timestamp nobody checks. Upstream leaves the
+    window opt-in; `tolerance_seconds=None` restores that behaviour. The
+    unit of `ts` is read by magnitude — the provider's own artifacts
+    disagree between seconds and milliseconds, and
     [their issue #458](https://github.com/mercadopago/sdk-nodejs/issues/458)
     was exactly that confusion.
+
+!!! warning "A retry carrying the original `ts` has not been measured"
+    If Mercado Pago retries a failed notification keeping the first
+    attempt's `ts`, a retry arriving after five minutes is refused with 401.
+    No live delivery has been observed yet to say whether a retry is
+    re-signed. If your route answers an error on purpose to force a retry,
+    pass a wider window (`tolerance_seconds=3600.0`).
 
 !!! info "A `v2` migration needs no release"
     The header can carry more than one hash (`ts=..,v1=..,v2=..`). The verifier
@@ -459,7 +467,6 @@ pix: MercadoPagoPixProvider = MercadoPagoPixProvider(http)
 delivery_dependency = make_mercado_pago_webhook_delivery_dependency(
     "<webhook secret>",
     pix,
-    tolerance_seconds=300.0,
 )
 
 app: FastAPI = FastAPI()
@@ -651,7 +658,8 @@ make mercadopago-diff
 - Cards require client-side tokenization, with the Public Key.
 - Webhook verification is ported from the provider's validator, with the
   manifest omitting absent pairs and digests checked against `openssl`;
-  only a live delivery is still missing. Turn `tolerance_seconds` on.
+  only a live delivery is still missing. The `ts` window is on by default
+  (300 s).
 - `make_mercado_pago_webhook_dependency` builds the route: it reads
   `data.id`, `x-signature` and `x-request-id`, refuses with 401 before the
   handler, and hands over the signed `data_id` — the body is not signed.

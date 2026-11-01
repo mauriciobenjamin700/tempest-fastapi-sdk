@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `verify_signature` do Mercado Pago e as duas fábricas de dependency
+  (`make_mercado_pago_webhook_dependency`,
+  `make_mercado_pago_webhook_delivery_dependency`) passam a conferir o `ts`
+  por padrão, com `DEFAULT_TOLERANCE_SECONDS = 300.0`: antes o default era
+  `None` e uma entrega capturada do fio verificava para sempre.
+  `tolerance_seconds=None` mantém o comportamento do upstream.
+- `SheetWriter` grava toda `str` como texto, mesmo começando com `=`: o
+  `openpyxl` a transformava em fórmula viva, então um valor de usuário como
+  `=HYPERLINK(...)` virava link em toda planilha exportada. Fórmula legítima
+  vai embrulhada no novo `Formula`.
+
+### Added
+
+- `DEFAULT_TOLERANCE_SECONDS` em
+  `tempest_fastapi_sdk.integrations.payment.mercado_pago`.
+- `Formula` em `tempest_fastapi_sdk.spreadsheet`, para escrever uma fórmula
+  viva de propósito; `CellValue` passa a aceitá-lo.
+
 ## [0.340.0] — 2026-11-01
 
 ### Security

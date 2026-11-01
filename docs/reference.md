@@ -334,6 +334,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.spreadsheet.writer.SheetWriter
 ::: tempest_fastapi_sdk.spreadsheet.writer.Column
 ::: tempest_fastapi_sdk.spreadsheet.writer.CellValue
+::: tempest_fastapi_sdk.spreadsheet.writer.Formula
 ::: tempest_fastapi_sdk.spreadsheet.writer.new_workbook
 ::: tempest_fastapi_sdk.spreadsheet.writer.workbook_to_bytes
 ::: tempest_fastapi_sdk.spreadsheet.styles.SheetStyle
@@ -903,6 +904,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MercadoPagoWebhookEvent
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.SignatureHeader
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.DEFAULT_SIGNATURE_VERSIONS
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.DEFAULT_TOLERANCE_SECONDS
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MERCADO_PAGO_DATA_ID_QUERY
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.make_mercado_pago_webhook_dependency
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.verify_signature

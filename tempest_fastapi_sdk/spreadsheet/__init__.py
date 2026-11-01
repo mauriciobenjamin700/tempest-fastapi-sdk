@@ -172,6 +172,9 @@ from tempest_fastapi_sdk.spreadsheet.writer import (
     Column as Column,
 )
 from tempest_fastapi_sdk.spreadsheet.writer import (
+    Formula as Formula,
+)
+from tempest_fastapi_sdk.spreadsheet.writer import (
     SheetWriter as SheetWriter,
 )
 from tempest_fastapi_sdk.spreadsheet.writer import (
@@ -203,6 +206,7 @@ __all__: list[str] = [
     "XLSX_MEDIA_TYPE",
     "CellValue",
     "Column",
+    "Formula",
     "GoogleSheetAccessError",
     "GoogleSheetRowError",
     "InvalidSpreadsheetError",

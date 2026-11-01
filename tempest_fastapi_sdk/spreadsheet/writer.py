@@ -54,17 +54,52 @@ if TYPE_CHECKING:
     from openpyxl.workbook import Workbook
     from openpyxl.worksheet.worksheet import Worksheet
 
-CellValue = str | int | float | Decimal | date | datetime | None
+
+@dataclass(frozen=True, slots=True)
+class Formula:
+    """A live formula, written to the cell as one.
+
+    A plain ``str`` is always written as **text**, even when it starts with
+    ``=``: the value usually comes from a user, a database row or an import,
+    and ``openpyxl`` would otherwise turn ``=HYPERLINK("https://...")`` typed
+    into a name field into a live formula in every exported file. Wrapping
+    the expression is how the code that builds a closing check says "this
+    one is mine".
+
+    Attributes:
+        expression (str): The formula, starting with ``=`` —
+            ``"=SUM(B5:B24)"``.
+
+    Raises:
+        ValueError: If ``expression`` does not start with ``=``.
+    """
+
+    expression: str
+
+    def __post_init__(self) -> None:
+        """Reject an expression Excel would not read as a formula.
+
+        Raises:
+            ValueError: If ``expression`` does not start with ``=``.
+        """
+        if not self.expression.startswith("="):
+            raise ValueError(
+                f"Formula expression must start with '=', got {self.expression!r}"
+            )
+
+
+CellValue = str | int | float | Decimal | date | datetime | Formula | None
 """What a cell may receive.
 
-Narrower than what ``openpyxl`` accepts (it also takes ``bytes``, rich text
-and formula objects) and deliberately so — widening it to ``object`` is what
-lets an unconverted domain object reach a cell and land in the file as its
+Narrower than what ``openpyxl`` accepts (it also takes ``bytes`` and rich
+text) and deliberately so — widening it to ``object`` is what lets an
+unconverted domain object reach a cell and land in the file as its
 ``repr``.
 
-A ``str`` starting with ``=`` is written as a live formula by ``openpyxl``,
-which is how a closing check can react to an edited value instead of
-freezing the number that was true at generation time.
+A ``str`` is written as text, whatever its first character; a
+:class:`Formula` is written as a live formula. Before this split, any
+``str`` starting with ``=`` became a formula, which made every exported
+user-controlled string a formula-injection vector.
 """
 
 _MISSING_DEPENDENCY = (
@@ -178,7 +213,7 @@ class SheetWriter:
         alignment = self._alignment(horizontal="center", wrap=True)
         for text in lines:
             self.sheet.merge_cells(f"A{self.row}:{last_column}{self.row}")
-            cell = self.sheet.cell(row=self.row, column=1, value=text)
+            cell = self._put(self.row, 1, text)
             cell.font = font
             cell.alignment = alignment
             self.row += 1
@@ -207,7 +242,7 @@ class SheetWriter:
         alignment = self._alignment(horizontal="center", wrap=True)
         border = self._border()
         for index, text in enumerate(texts, start=1):
-            cell = self.sheet.cell(row=self.row, column=index, value=text)
+            cell = self._put(self.row, index, text)
             cell.font = font
             cell.fill = fill
             cell.alignment = alignment
@@ -230,6 +265,8 @@ class SheetWriter:
             values (Sequence[CellValue]): Cell values, left to right. A
                 value of ``None`` leaves the cell empty but still styled, so
                 a total row can skip the middle columns and keep its fill.
+                A ``str`` is always text; wrap a formula in
+                :class:`Formula`.
                 Values may be shorter or longer than :attr:`columns`;
                 columns beyond the declared ones get no format.
             formats (Sequence[str | None] | None): Per-cell number formats
@@ -249,7 +286,7 @@ class SheetWriter:
         edge = self._border() if border else None
         for index, value in enumerate(values, start=1):
             column = self.columns[index - 1] if index <= len(self.columns) else None
-            cell = self.sheet.cell(row=self.row, column=index, value=value)
+            cell = self._put(self.row, index, value)
             cell.font = self._font(bold=bold, size=self.style.header_size)
             if fill is not None:
                 cell.fill = fill
@@ -332,6 +369,31 @@ class SheetWriter:
                 :meth:`header_row` is exactly the header band.
         """
         self.sheet.freeze_panes = f"A{row if row is not None else self.row}"
+
+    def _put(self, row: int, column: int, value: CellValue) -> Any:
+        """Write one value, keeping text as text.
+
+        ``openpyxl`` binds any ``str`` starting with ``=`` as a formula.
+        Resetting the data type to ``"s"`` stores it as an inline string
+        instead, so the file shows exactly what the caller passed and no
+        spreadsheet evaluates it. ``+``, ``-`` and ``@`` need nothing: in an
+        ``.xlsx`` they are only a formula prefix when someone types them,
+        and a stored string cell is never re-parsed.
+
+        Args:
+            row (int): 1-based row.
+            column (int): 1-based column.
+            value (CellValue): The value to write.
+
+        Returns:
+            Any: The ``openpyxl`` cell, for the caller to style.
+        """
+        if isinstance(value, Formula):
+            return self.sheet.cell(row=row, column=column, value=value.expression)
+        cell = self.sheet.cell(row=row, column=column, value=value)
+        if isinstance(value, str) and value.startswith("="):
+            cell.data_type = "s"
+        return cell
 
     def _format_for(
         self,

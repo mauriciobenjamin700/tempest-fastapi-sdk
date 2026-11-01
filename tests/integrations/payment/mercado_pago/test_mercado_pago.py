@@ -21,6 +21,7 @@ import pytest
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     DEFAULT_BASE_URL,
     DEFAULT_SIGNATURE_VERSIONS,
+    DEFAULT_TOLERANCE_SECONDS,
     MercadoPagoEvent,
     SignatureHeader,
     build_manifest,
@@ -36,6 +37,19 @@ SECRET: str = "a-webhook-secret"
 DATA_ID: str = "1234567890"
 REQUEST_ID: str = "b3f1c0d2-8a41-4d0e-9f5a-2c7e1f9b0a44"
 TIMESTAMP: str = "1771891200"
+
+
+def _at_signing() -> float:
+    """Return the clock at the moment :data:`TIMESTAMP` was signed.
+
+    :func:`verify_signature` checks drift by default, so a test about the
+    HMAC pins the clock here; otherwise a rejection could come from the
+    stale ``ts`` instead of the defect the test names.
+
+    Returns:
+        float: :data:`TIMESTAMP` as seconds since the epoch.
+    """
+    return float(TIMESTAMP)
 
 
 class TestMoney:
@@ -269,6 +283,7 @@ class TestVerifySignature:
         assert verify_signature(
             secret=SECRET,
             signature_header=self._header(digest),
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
@@ -289,6 +304,7 @@ class TestVerifySignature:
         assert verify_signature(
             secret=SECRET,
             signature_header=self._header(digest),
+            now=_at_signing,
             request_id=REQUEST_ID,
         )
 
@@ -310,6 +326,7 @@ class TestVerifySignature:
         assert not verify_signature(
             secret=SECRET,
             signature_header=self._header(old_digest),
+            now=_at_signing,
             request_id=REQUEST_ID,
         )
 
@@ -329,6 +346,7 @@ class TestVerifySignature:
         assert not verify_signature(
             secret=SECRET,
             signature_header=self._header(digest),
+            now=_at_signing,
             data_id="9999999999",
             request_id=REQUEST_ID,
         )
@@ -345,6 +363,7 @@ class TestVerifySignature:
         assert not verify_signature(
             secret=SECRET,
             signature_header=f"ts=1771891999,v1={digest}",
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
@@ -361,6 +380,7 @@ class TestVerifySignature:
         assert not verify_signature(
             secret=SECRET,
             signature_header=self._header(digest),
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
@@ -374,6 +394,7 @@ class TestVerifySignature:
         assert not verify_signature(
             secret="",
             signature_header=self._header("whatever"),
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
@@ -383,6 +404,7 @@ class TestVerifySignature:
         assert not verify_signature(
             secret=SECRET,
             signature_header="not-a-signature",
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
@@ -396,6 +418,7 @@ class TestVerifySignature:
         assert not verify_signature(
             secret=SECRET,
             signature_header=f"ts=abc,v1={digest}",
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
@@ -413,12 +436,14 @@ class TestVerifySignature:
         assert not verify_signature(
             secret=SECRET,
             signature_header=header,
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
         assert verify_signature(
             secret=SECRET,
             signature_header=header,
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
             versions=("v2", "v1"),
@@ -437,12 +462,14 @@ class TestVerifySignature:
         assert verify_signature(
             secret=SECRET,
             signature_header=header,
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
         )
         assert not verify_signature(
             secret=SECRET,
             signature_header=header,
+            now=_at_signing,
             data_id=DATA_ID,
             request_id=REQUEST_ID,
             versions=("v2", "v1"),
@@ -473,18 +500,38 @@ class TestReplayWindow:
         )
         return f"ts={timestamp},v1={digest}"
 
-    def test_off_by_default(self) -> None:
-        """A years-old delivery still verifies when no window is asked for.
+    def test_on_by_default(self) -> None:
+        """A years-old delivery is refused when no window is passed.
 
-        Not an oversight — upstream leaves it opt-in too. It is documented
-        so that "the signature covers a timestamp" is not mistaken for
-        "the timestamp is checked".
+        Upstream leaves the window opt-in, so a captured delivery verifies
+        forever there. :data:`DEFAULT_TOLERANCE_SECONDS` closes that.
         """
+        assert DEFAULT_TOLERANCE_SECONDS == 300.0
+        assert not verify_signature(
+            secret=SECRET,
+            signature_header=self._signed("1000000000"),
+            data_id=DATA_ID,
+            request_id=REQUEST_ID,
+        )
+
+    def test_default_window_accepts_a_current_delivery(self) -> None:
+        """The default window is not a blanket refusal."""
         assert verify_signature(
             secret=SECRET,
             signature_header=self._signed("1000000000"),
             data_id=DATA_ID,
             request_id=REQUEST_ID,
+            now=lambda: 1000000000.0 + DEFAULT_TOLERANCE_SECONDS,
+        )
+
+    def test_none_restores_the_upstream_behaviour(self) -> None:
+        """``tolerance_seconds=None`` skips the check, as upstream does."""
+        assert verify_signature(
+            secret=SECRET,
+            signature_header=self._signed("1000000000"),
+            data_id=DATA_ID,
+            request_id=REQUEST_ID,
+            tolerance_seconds=None,
         )
 
     def test_inside_the_window_passes(self) -> None:

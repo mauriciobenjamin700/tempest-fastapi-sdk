@@ -3350,7 +3350,7 @@ webhook; agora o `settle` relê com o helper e marca `paid_at` sob
 
 ## Webhook do Mercado Pago numa dependency (0.309.0, #437)
 
-`make_mercado_pago_webhook_dependency(secret, *, tolerance_seconds=None,
+`make_mercado_pago_webhook_dependency(secret, *, tolerance_seconds=DEFAULT_TOLERANCE_SECONDS,
 versions=DEFAULT_SIGNATURE_VERSIONS, error_message=...)` fecha a terceira
 fábrica de webhook, na forma de `make_stripe_webhook_dependency` e
 `make_openpix_webhook_dependency`: lê `?data.id` (`MERCADO_PAGO_DATA_ID_QUERY`),
@@ -4084,3 +4084,12 @@ propósito: stream de bytes de áudio (o `HTTPClient.stream` entrega linhas) e
   `MarkdownArchiveError` (catálogo pt-BR + en-US).
 - Testes: `tests/slides/`. Receita: `docs/recipes/slides.md`.
 - Fora de escopo: router pronto (a receita mostra as rotas à mão) e OCR.
+
+## Segurança, rascunhos antigos (Unreleased)
+
+Dois GHSA de outubro que continuavam abertos: `verify_signature` do Mercado
+Pago e as duas fábricas de dependency conferem o `ts` por padrão
+(`DEFAULT_TOLERANCE_SECONDS = 300.0`; `None` volta ao upstream); o
+`SheetWriter` grava toda `str` como texto (`inlineStr`), e fórmula viva vai
+em `Formula`. No `.xlsx` só o `=` era vetor — `+ - @` já saíam como texto,
+medido no XML gravado pelo `openpyxl` 3.1.5.

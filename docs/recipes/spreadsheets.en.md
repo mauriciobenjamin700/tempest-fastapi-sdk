@@ -270,18 +270,37 @@ row skips the middle columns without losing its fill.
 
 ## Live formulas
 
-A string starting with `=` becomes a real formula:
+Wrap the expression in `Formula` and it becomes a real formula:
 
 ```python
-from tempest_fastapi_sdk.spreadsheet import Column, SheetWriter, new_workbook
+from tempest_fastapi_sdk.spreadsheet import (
+    Column,
+    Formula,
+    SheetWriter,
+    new_workbook,
+)
 
 workbook = new_workbook("Budget")
 writer = SheetWriter(workbook["Budget"], [Column("Item"), Column("Amount")])
-writer.write_row(["Checked sum", "=SUM(B5:B24)"])
+writer.write_row(["Checked sum", Formula("=SUM(B5:B24)")])
 ```
 
 Worth it for closing checks. An auditor who edits a value sees the number
 react, instead of reading a constant that was true only at generation time.
+
+A plain `str` is always **text**, even when it starts with `=`. A cell's
+value usually comes from a user, a database row or an import, and
+`openpyxl` would turn `=HYPERLINK("https://...")` typed into a name field
+into a live link in every exported sheet. Through `SheetWriter` the cell is
+stored as `inlineStr` in the XML and shows exactly what was passed.
+`Formula("SUM(B5:B24)")`, without the `=`, raises `ValueError`.
+
+!!! info "Only `=` needs handling in `.xlsx`"
+    In CSV, `+`, `-`, `@`, tab and CR also open a formula, and the admin's
+    CSV export neutralizes them. In `.xlsx`, `openpyxl` treats only a `str`
+    starting with `=` as a formula; the others are written as text, and no
+    spreadsheet re-evaluates a stored text cell. That is why `SheetWriter`
+    leaves the value untouched — no leading apostrophe.
 
 ## Theme
 
