@@ -665,6 +665,236 @@ shown, with no sign that a half is missing. Override the sentence with
     pip install "tempest-fastapi-sdk[pdf-read]"
     ```
 
+## Reading a PDF received by the API
+
+`extract_pdf_text` and `extract_pdf_pages` answer "give me the text" for code
+that already holds the bytes. In an API the PDF arrives as an upload, and
+what you want to return (or pass along in your own code) is an **object**:
+how many pages, each page's text, the tables, with a schema OpenAPI can
+describe.
+
+That is what `read_pdf_pages` does. It takes the bytes and returns a
+`PdfPagesResult`, a Pydantic schema shipped by the SDK:
+
+| Field | Type | What it is |
+| --- | --- | --- |
+| `extractor` | `PdfExtractor` | which reader produced the result (`text` or `layout`) |
+| `page_count` | `int` | number of pages read |
+| `pages` | `list[PdfPage]` | one entry per page, in document order |
+
+Each `PdfPage` carries `page_number` (starting at 1), `text` and `tables`.
+
+### The route
+
+Install both reading extras: `[pdf-read]` for the text reader and
+`[pdf-layout]` for the one that recovers columns and tables.
+
+```bash
+uv add "tempest-fastapi-sdk[pdf-read,pdf-layout,upload]"
+```
+
+```python
+# main.py
+from typing import Annotated
+
+from fastapi import FastAPI, File, Form, UploadFile
+
+from tempest_fastapi_sdk import BodySizeLimitMiddleware, register_exception_handlers
+from tempest_fastapi_sdk.pdf import PdfExtractor, PdfPagesResult, read_pdf_pages
+
+app: FastAPI = FastAPI()
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=10 * 1024 * 1024)
+register_exception_handlers(app)
+
+
+@app.post("/api/documents/read", response_model=PdfPagesResult)
+async def read_document(
+    file: Annotated[UploadFile, File()],
+    extractor: Annotated[PdfExtractor, Form()] = PdfExtractor.TEXT,
+    password: Annotated[str | None, Form()] = None,
+) -> PdfPagesResult:
+    data: bytes = await file.read()
+    return await read_pdf_pages(data, extractor=extractor, password=password)
+```
+
+Start it with `uv run uvicorn main:app` and send a two-page PDF:
+
+```bash
+curl -s http://127.0.0.1:8000/api/documents/read -F file=@contrato.pdf
+```
+
+```json
+{
+  "extractor": "text",
+  "page_count": 2,
+  "pages": [
+    {"page_number": 1, "text": "Contrato 042\nValor total: R$ 1.234,56", "tables": []},
+    {"page_number": 2, "text": "Anexo\nItem Qtd\nParafuso 10\nPorca 20", "tables": []}
+  ]
+}
+```
+
+Piece by piece:
+
+- **`File()` and `Form()`.** The upload is `multipart/form-data`, so the
+  fields next to the file (`extractor`, `password`) come in as `Form`, not
+  JSON. `[upload]` brings `python-multipart`, which FastAPI requires to read
+  that format.
+- **`extractor` is the enum.** FastAPI validates the value: `extractor=ocr`
+  returns `422` with `Input should be 'text' or 'layout'` before anything is
+  read.
+- **`await file.read()`** hands over the bytes; `read_pdf_pages` does the
+  rest.
+- **`read_pdf_pages` is `async`.** Both readers are synchronous and
+  CPU-bound, so it runs the work in a thread (`asyncio.to_thread`) instead of
+  blocking the event loop.
+- **`response_model=PdfPagesResult`.** Since the return type is an SDK
+  schema, the route's OpenAPI already describes `PdfPagesResult`, `PdfPage`
+  and `PdfExtractor` without you declaring anything.
+- **`BodySizeLimitMiddleware`** refuses an oversized body before any parsing
+  (details below).
+
+!!! tip "PDF with a table: `extractor=layout`"
+    The same file with `-F extractor=layout` fills `tables` on page 2:
+
+    ```json
+    {"page_number": 2, "text": "Anexo\nItem Qtd\nParafuso 10\nPorca 20", "tables": [[["Item", "Qtd"], ["Parafuso", "10"], ["Porca", "20"]]]}
+    ```
+
+    `text` is `pypdf`: fast, running prose, `tables` always empty. `layout`
+    is `pdfplumber`: slower, but it recovers columns and returns each table
+    as a list of rows, each row a list of cells (`str`, never `None`).
+
+### Iterating over the pages
+
+In the route above the object goes straight into the response. When your
+service needs to **do** something with the document, it is a regular
+Pydantic schema: iterate `pages`.
+
+```python
+import asyncio
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import PdfExtractor, PdfPagesResult, read_pdf_pages
+
+
+async def main() -> None:
+    data: bytes = Path("contrato.pdf").read_bytes()
+    result: PdfPagesResult = await read_pdf_pages(data, extractor=PdfExtractor.LAYOUT)
+    print(f"{result.page_count} pages, reader {result.extractor}")
+    for page in result.pages:
+        print(f"--- page {page.page_number} ---")
+        print(page.text)
+        for table in page.tables:
+            header, *rows = table
+            for row in rows:
+                print(dict(zip(header, row, strict=True)))
+
+
+asyncio.run(main())
+```
+
+```text
+2 pages, reader layout
+--- page 1 ---
+Contrato 042
+Valor total: R$ 1.234,56
+--- page 2 ---
+Anexo
+Item Qtd
+Parafuso 10
+Porca 20
+{'Item': 'Parafuso', 'Qtd': '10'}
+{'Item': 'Porca', 'Qtd': '20'}
+```
+
+`page_number` is the number a human reads in the footer, and entry `n` is
+always page `n`: a page without text comes back with `text=""` instead of
+disappearing from the list.
+
+### When the PDF does not cooperate
+
+With `register_exception_handlers`, each failure becomes the SDK envelope,
+with a stable `code` for the client to act on:
+
+| Situation | HTTP | `code` |
+| --- | --- | --- |
+| encrypted PDF with no password, or the wrong one | `400` | `PDF_DECRYPT_FAILED` |
+| a file that is not a PDF | `422` | `PDF_EXTRACT_FAILED` |
+| body above `max_bytes` | `413` | `REQUEST_BODY_TOO_LARGE` |
+| `extractor` outside the enum | `422` | FastAPI validation error |
+| a scan (no text layer) | `200` | none: `text` is `""` |
+
+```bash
+curl -s http://127.0.0.1:8000/api/documents/read -F file=@contrato-protegido.pdf
+```
+
+```json
+{"detail": "PDF is encrypted. Provide the correct password.", "code": "PDF_DECRYPT_FAILED", "details": {}}
+```
+
+With the right `-F password=...`, the response matches the unencrypted PDF.
+For a file that is not a PDF:
+
+```json
+{"detail": "Failed to extract PDF content.", "code": "PDF_EXTRACT_FAILED", "details": {"reason": "Stream has ended unexpectedly"}}
+```
+
+`reason` comes from the reader and changes with it: the same file with
+`extractor=layout` says `No /Root object! - Is this really a PDF?`. Branch on
+`code`, never on the `reason` text.
+
+!!! info "Without `register_exception_handlers`, the `code` is gone"
+    The status stays right, but the body becomes just
+    `{"detail": "PDF is encrypted. Provide the correct password."}`. The
+    client loses `code` and ends up comparing messages.
+
+!!! warning "A scan is a `200` with empty text"
+    The case that does **not** become an error is the dangerous one: a
+    scanned PDF is an image with no text layer, and the response is `200`
+    with `"text": ""` on every page. Before handing the result to a model,
+    check:
+
+    ```python
+    import asyncio
+    from pathlib import Path
+
+    from tempest_fastapi_sdk.pdf import PdfPagesResult, read_pdf_pages
+
+
+    async def main() -> None:
+        for name in ("contrato.pdf", "digitalizado.pdf"):
+            result: PdfPagesResult = await read_pdf_pages(Path(name).read_bytes())
+            without_text: list[int] = [
+                page.page_number for page in result.pages if not page.text
+            ]
+            print(name, without_text)
+
+
+    asyncio.run(main())
+    ```
+
+    ```text
+    contrato.pdf []
+    digitalizado.pdf [1]
+    ```
+
+    Pages in that list go to an OCR path, which this module does not have.
+
+!!! note "Why the limit is middleware and not an `if` in the route"
+    By the time your function runs, Starlette **has already read the whole
+    upload**: the file goes into a `SpooledTemporaryFile` (1 MiB in memory,
+    the rest on disk). An `if len(data) > ...` inside the route arrives too
+    late. `BodySizeLimitMiddleware` cuts earlier, from `Content-Length` or by
+    counting bytes on a `chunked` upload, and answers `413`.
+
+    The ceiling applies to the request **body**, not the file: multipart adds
+    headers and the `extractor` field. Measured: a file of exactly 10 MiB is
+    refused with `max_bytes=10 * 1024 * 1024`. Leave headroom. The
+    middleware covers the whole app; a route that accepts larger files goes
+    into `exclude_paths=` and applies its own limit (see the
+    [HTTP recipe](http.md)).
+
 ## Recap
 
 - `PdfRenderer` renders HTML, a template, or a typed document; always `async`.
@@ -682,6 +912,10 @@ shown, with no sign that a half is missing. Override the sentence with
 - `extract_pdf_text` / `extract_pdf_pages` read one back, in the separate
   `[pdf-read]` extra. **Text layer only**: a scan returns `""`, and checking
   for that is on you.
+- `read_pdf_pages` returns a typed `PdfPagesResult` (`pages`, each with
+  `page_number`, `text` and `tables`): it is what an upload route returns, with
+  `BodySizeLimitMiddleware` in front and `register_exception_handlers` for the
+  `code` of an encrypted or invalid PDF.
 
 Next: [Transactional email](email.md) to send the document as an attachment, or
 [Versioned artifacts](artifact-registry.md) if you need to keep every issued
