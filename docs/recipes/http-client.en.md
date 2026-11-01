@@ -116,6 +116,13 @@ async def call() -> None:
     [`genai`](genai.md) generators already default to it on the client they
     build.
 
+!!! info "Binary bodies: `stream_bytes()`"
+    `client.stream_bytes(...)` has the same retry and circuit-breaker
+    contract as `stream()`, but yields the body as `bytes` chunks as the
+    server flushes them — audio, a file download. In both, an error status
+    has its body read before the raise, so `exc.response.content` carries the
+    server's message.
+
 !!! tip "Keep it as a singleton in resources.py"
     Build the `HTTPClient` once (in `src/api/dependencies/resources.py`),
     expose a `get_http_client`, and close it on the lifespan with

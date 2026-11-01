@@ -1861,7 +1861,9 @@ asyncio.run(main())
   stopped at 13.95 s.
 - **It is slow.** On the RTX 4070 Ti SUPER, in bf16 (the default), those
   35.75 s took 88.6 s; in fp16, 12.7 s took 24 to 27 s. For real-time
-  replies, prefer `OllamaSpeech`.
+  replies, prefer `OllamaSpeech`. `suno/bark` (the large checkpoint) is
+  slower still: on the same Portuguese text, 12.68 s of audio took 35.4 s at
+  a 2.3 GiB peak, against 11.37 s in 19 s and 0.92 GiB for `bark-small`.
 - **Errors answer `422`**, with `details={"field": ...}`. Before the model
   loads: text with nothing to speak (`text`), a seed outside `0..2**64 - 1`
   (`seed`) and a `speaker` that is not a voice of the requested `language`
@@ -1888,7 +1890,7 @@ Weight licences change; check the model card before shipping.
 
 | Model | Task | Weight licence | Runs on |
 | --- | --- | --- | --- |
-| `hexgrad/Kokoro-82M` | TTS | `apache-2.0` | `kokoro` package (requires Python `<3.13`) |
+| `hexgrad/Kokoro-82M` | TTS | `apache-2.0` | `kokoro` package (requires Python `<3.13`); `kokoro-onnx` 0.6.1 requires `<3.14` and a native espeak, so the SDK does not wrap it |
 | `nari-labs/Dia-1.6B-0626` | TTS | `apache-2.0` | `transformers` (`DiaForConditionalGeneration`, outside the pipeline) |
 | `sesame/csm-1b` | TTS | `apache-2.0` (gated) | `transformers` |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | TTS | `apache-2.0` | not in `transformers` 4.57.6 |
@@ -2038,6 +2040,45 @@ What `OllamaSpeech` does for you:
   stays empty. There is no `keep_alive` either, which these endpoints ignore.
 - **A path is a path.** `transcribe("https://...")` raises
   `FileNotFoundError` without touching the network, like `SpeechToText`.
+
+#### Streamed voice: `stream_speech`
+
+`synthesize` waits for the whole clip. `stream_speech` yields each piece as
+the daemon flushes it — 16-bit mono 24 kHz PCM by default, no header, the
+format a streaming player wants — with the same errors:
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.genai import OllamaSpeech
+
+speech = OllamaSpeech("lfm3-audio", timeout=180.0)
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/speak")
+async def speak(text: str) -> StreamingResponse:
+    """Return the speech as PCM while it is generated.
+
+    Args:
+        text (str): The text to speak.
+
+    Returns:
+        StreamingResponse: 16-bit mono 24 kHz PCM.
+    """
+    return StreamingResponse(
+        speech.stream_speech(text, voice="female-portuguese"),
+        media_type="audio/L16; rate=24000; channels=1",
+    )
+```
+
+Measured with a warm `lfm3-audio`: on a text of ~18 s of audio, the first
+chunk arrived in 24 to 30 ms, against 1.76 s for the whole `synthesize`. An
+unknown voice becomes a `ValidationException` before the first chunk;
+`language` is refused before any request.
 
 #### Serving over HTTP: `/tts` and `/transcribe`
 
@@ -2249,6 +2290,44 @@ What differs from diffusion, all measured on an RTX 4070 Ti SUPER with
 
 !!! warning "Non-commercial weights"
     MusicGen checkpoints are `cc-by-nc-4.0`.
+
+#### Following a melody: `musicgen-melody`
+
+With a `musicgen-melody` checkpoint, `generate(melody=...)` takes a reference
+clip (path or bytes) and the music follows its melody. `MusicGenerator`
+detects the checkpoint type at load (`accepts_melody`), decodes the clip with
+`load_audio` (a 16-bit WAV needs nothing else; other formats need PyAV, from
+`[genai-audio]`) and casts the features to the model's precision — in bf16,
+without that, `transformers` breaks with
+`mat1 and mat2 must have the same dtype`.
+
+```python
+import asyncio
+from pathlib import Path
+
+from tempest_fastapi_sdk.genai import AudioGenerationConfig, MusicGenerator
+
+melody_model = MusicGenerator("facebook/musicgen-melody")
+
+
+async def main() -> None:
+    """Redo rock.wav as an acoustic guitar."""
+    clips = await melody_model.generate(
+        "calm acoustic guitar version",
+        config=AudioGenerationConfig(seconds=10.0, seed=0),
+        melody=Path("rock.wav"),
+    )
+    Path("guitar.wav").write_bytes(clips[0].data)
+
+
+asyncio.run(main())
+```
+
+Measured on the RTX 4070 Ti SUPER, in bf16: 10 s took 10.8 s with the model
+warm (3.3 GiB peak; 30 s, 4.3 GiB) and the same seed repeated the result. A
+melody on a checkpoint without support (`musicgen-small`) answers `422` with
+`details={"field": "melody"}`. `musicgen-melody` weights are `cc-by-nc-4.0`
+too.
 
 ### Serving over HTTP: `/audio`
 

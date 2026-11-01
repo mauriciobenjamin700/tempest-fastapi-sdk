@@ -317,6 +317,95 @@ class TestStream:
         assert calls["n"] == 2
 
 
+class TestStreamBytes:
+    async def test_yields_the_body_bytes(self) -> None:
+        payload = bytes(range(256)) * 64
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=payload)
+
+        client = HTTPClient(transport=_mock_transport(handler), failure_threshold=0)
+        try:
+            chunks = [c async for c in client.stream_bytes("GET", "http://api.test/a")]
+            assert b"".join(chunks) == payload
+            assert all(isinstance(chunk, bytes) for chunk in chunks)
+        finally:
+            await client.aclose()
+
+    async def test_retries_open_on_5xx_then_streams(self) -> None:
+        statuses = iter([503, 200])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            code = next(statuses)
+            return (
+                httpx.Response(200, content=b"\x00\x01")
+                if code == 200
+                else httpx.Response(code)
+            )
+
+        client = HTTPClient(
+            transport=_mock_transport(handler),
+            retry_policy=RetryPolicy(max_attempts=2, backoff_initial_seconds=0.001),
+            failure_threshold=0,
+        )
+        try:
+            chunks = [c async for c in client.stream_bytes("GET", "http://api.test/a")]
+            assert b"".join(chunks) == b"\x00\x01"
+        finally:
+            await client.aclose()
+
+    async def test_error_body_is_readable_on_the_exception(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": "bad voice"})
+
+        client = HTTPClient(transport=_mock_transport(handler), failure_threshold=0)
+        try:
+            with pytest.raises(httpx.HTTPStatusError) as caught:
+                async for _ in client.stream_bytes("POST", "http://api.test/a"):
+                    pass
+            assert caught.value.response.json() == {"error": "bad voice"}
+        finally:
+            await client.aclose()
+
+    async def test_line_stream_error_body_is_readable_too(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, text="nope")
+
+        client = HTTPClient(transport=_mock_transport(handler), failure_threshold=0)
+        try:
+            with pytest.raises(httpx.HTTPStatusError) as caught:
+                async for _ in client.stream("GET", "http://api.test/s"):
+                    pass
+            assert caught.value.response.text == "nope"
+        finally:
+            await client.aclose()
+
+
+class TestStreamEarlyClose:
+    async def test_closing_after_one_chunk_closes_the_response(self) -> None:
+        closed: list[bool] = []
+
+        class _Body(httpx.AsyncByteStream):
+            async def __aiter__(self) -> AsyncIterator[bytes]:
+                for _ in range(100):
+                    yield b"chunk"
+
+            async def aclose(self) -> None:
+                closed.append(True)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, stream=_Body())
+
+        client = HTTPClient(transport=_mock_transport(handler), failure_threshold=0)
+        try:
+            chunks = client.stream_bytes("GET", "http://api.test/a")
+            assert await chunks.__anext__() == b"chunk"
+            await chunks.aclose()
+            assert closed == [True]
+        finally:
+            await client.aclose()
+
+
 class TestReadTimeoutRetry:
     """``RetryPolicy.retry_on_read_timeout`` gates only the read timeout."""
 

@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `OllamaSpeech.stream_speech`: fala em stream, chunk a chunk (PCM por
+  padrão), com os mesmos erros do `synthesize`. Medido com o `lfm3-audio`:
+  primeiro chunk em 24 a 30 ms contra 1,76 s do `synthesize` de ~18 s de
+  áudio.
+- `HTTPClient.stream_bytes`: corpo binário em chunks, com o contrato de retry
+  e circuit-breaker do `stream`. Nos dois, um status de erro tem o corpo lido
+  antes do `raise` (`exc.response.content` traz a mensagem do servidor), e
+  fechar o gerador cedo fecha a conexão na hora.
+- `MusicGenerator(melody=...)` e `accepts_melody`: com um checkpoint
+  `musicgen-melody`, a música segue a melodia de um clipe de referência
+  (decodificado pelo `load_audio`, features convertidas para a precisão do
+  modelo, sem o que o bf16 quebra com `mat1 and mat2 must have the same
+  dtype`); melodia num checkpoint sem suporte é `422`, arquivo inexistente é
+  recusado antes de carregar o modelo e clipe acima de `MAX_MELODY_SECONDS`
+  (60) é `422`. Medido com `transformers` 4.57.6 em bf16 na RTX 4070 Ti
+  SUPER: 10 s em 10,8 s, pico de 3,3 GiB.
 - `tempest user set-password --audit-model` (e `--event`, padrão
   `user.password_set`): a rotação feita pelo operador grava um evento com
   quantas sessões e passkeys revogou, na mesma transação do hash novo, como o

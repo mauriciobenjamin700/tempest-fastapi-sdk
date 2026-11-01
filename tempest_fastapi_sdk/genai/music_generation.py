@@ -41,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import secrets
+from pathlib import Path
 from typing import Any
 
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
@@ -59,6 +60,17 @@ from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _MAX_SEED: int = 2**32 - 1
+
+MAX_MELODY_SECONDS: float = 60.0
+"""Longest reference melody ``generate`` decodes.
+
+A clip far longer than the output only costs decode time and memory on the
+worker thread, which holds the model while it runs; past this the decode
+refuses with ``422`` (``details["max_seconds"]``).
+"""
+
+MELODY_MODEL_TYPE: str = "musicgen_melody"
+"""``config.model_type`` of the checkpoints that accept a reference melody."""
 
 UNSUPPORTED_FIELDS: tuple[str, ...] = ("steps", "negative_prompt")
 """``AudioGenerationConfig`` fields MusicGen has no equivalent for."""
@@ -241,6 +253,7 @@ class MusicGenerator:
         self._sample_rate: int = 0
         self._frame_rate: int = 0
         self._max_positions: int = 0
+        self._melody: bool = False
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._lifecycle = ModelLifecycle(
             build=self._build,
@@ -307,11 +320,22 @@ class MusicGenerator:
             ImportError: When the ``[genai]`` extra is missing.
             OSError: When the checkpoint cannot be downloaded or read.
             ValueError: When the checkpoint is not a MusicGen model.
+
+        The checkpoint config is read once more (``AutoConfig``, from the
+        same cache and pinning as the weights) to pick the melody class.
         """
         torch, transformers = _require_transformers()
         loader = self.source.loader_kwargs()
+        model_type = transformers.AutoConfig.from_pretrained(
+            self.model_id, **loader
+        ).model_type
+        model_class = (
+            transformers.MusicgenMelodyForConditionalGeneration
+            if model_type == MELODY_MODEL_TYPE
+            else transformers.MusicgenForConditionalGeneration
+        )
         processor = transformers.AutoProcessor.from_pretrained(self.model_id, **loader)
-        model = transformers.MusicgenForConditionalGeneration.from_pretrained(
+        model = model_class.from_pretrained(
             self.model_id,
             **precision_kwarg(getattr(torch, self.dtype.value)),
             **loader,
@@ -330,8 +354,21 @@ class MusicGenerator:
         self._sample_rate = sample_rate
         self._frame_rate = frame_rate
         self._max_positions = max_positions
+        self._melody = model_type == MELODY_MODEL_TYPE
         self._processor = processor
         self._model = model
+
+    @property
+    def accepts_melody(self) -> bool:
+        """Return whether the checkpoint conditions on a reference melody.
+
+        Loads the model on first access, which blocks.
+
+        Returns:
+            bool: ``True`` for a ``musicgen_melody`` checkpoint.
+        """
+        self.load()
+        return self._melody
 
     def unload(self) -> None:
         """Free the model and its memory; waits for renders in flight."""
@@ -362,6 +399,7 @@ class MusicGenerator:
         prompt: str,
         config: AudioGenerationConfig | None,
         seed: int,
+        melody: str | Path | bytes | None = None,
     ) -> list[GeneratedAudio]:
         """Load if needed, check the config, render and encode.
 
@@ -373,13 +411,16 @@ class MusicGenerator:
             prompt (str): The music to generate.
             config (AudioGenerationConfig | None): The call's config.
             seed (int): The seed for ``torch.manual_seed``.
+            melody (str | Path | bytes | None): Reference melody, decoded
+                here, on the worker thread.
 
         Returns:
             list[GeneratedAudio]: One entry per generated clip.
 
         Raises:
             ValidationException: When the config cannot be honoured (see
-                :func:`check_music_config`).
+                :func:`check_music_config`), or a melody is given to a
+                checkpoint that does not take one.
         """
         with self._lifecycle.use():
             check_music_config(
@@ -387,13 +428,39 @@ class MusicGenerator:
                 frame_rate=self._frame_rate,
                 max_positions=self._max_positions,
             )
+            if melody is not None and not self._melody:
+                raise ValidationException(
+                    message=(
+                        f"{self.model_id} does not take a melody; use a "
+                        "musicgen-melody checkpoint"
+                    ),
+                    details={"field": "melody"},
+                )
             torch, _ = _require_transformers()
             count = config.num_waveforms if config is not None else 1
+            processor_kwargs: dict[str, Any] = {}
+            if melody is not None:
+                from tempest_fastapi_sdk.genai.audio.decoding import load_audio
+
+                samples = load_audio(
+                    melody,
+                    target_rate=self._sample_rate,
+                    max_seconds=MAX_MELODY_SECONDS,
+                )
+                processor_kwargs = {
+                    "audio": [samples] * count,
+                    "sampling_rate": self._sample_rate,
+                }
             inputs = self._processor(
                 text=[prompt] * count,
                 padding=True,
                 return_tensors="pt",
+                **processor_kwargs,
             ).to(self.device)
+            if "input_features" in inputs:
+                inputs["input_features"] = inputs["input_features"].to(
+                    self._model.dtype
+                )
             kwargs: dict[str, Any] = {"do_sample": True}
             if config is not None and config.seconds is not None:
                 kwargs["max_new_tokens"] = music_tokens(
@@ -423,6 +490,7 @@ class MusicGenerator:
         prompt: str,
         *,
         config: AudioGenerationConfig | None = None,
+        melody: str | Path | bytes | None = None,
     ) -> list[GeneratedAudio]:
         """Generate one or more music clips from a text prompt.
 
@@ -431,6 +499,18 @@ class MusicGenerator:
             config (AudioGenerationConfig | None): ``seconds``,
                 ``guidance_scale``, ``seed`` and ``num_waveforms``.
                 ``steps`` and ``negative_prompt`` are refused.
+            melody (str | Path | bytes | None): A reference clip (path or
+                bytes) whose melody the music follows; only a
+                ``musicgen-melody`` checkpoint takes one. It is decoded with
+                :func:`~tempest_fastapi_sdk.genai.audio.load_audio` (a 16-bit
+                WAV needs nothing else; other formats need PyAV, from
+                ``[genai-audio]``), mixed to mono at the model's rate, and
+                its input features are cast to the model's precision -- in
+                bf16 they otherwise fail with ``mat1 and mat2 must have the
+                same dtype``. A string is always a path, never fetched; a
+                missing file is refused before the model loads, and a clip
+                longer than :data:`MAX_MELODY_SECONDS` is refused when
+                decoded.
 
         Returns:
             list[GeneratedAudio]: The clips, mono or stereo as the checkpoint
@@ -446,9 +526,19 @@ class MusicGenerator:
             ImportError: When the ``[genai]`` extra is missing.
             ValidationException: When the config cannot be honoured;
                 ``steps`` and ``negative_prompt`` are refused before the
-                model loads.
+                model loads, a melody for a checkpoint without melody
+                support after.
+            FileNotFoundError: When ``melody`` is a path that does not exist.
         """
         refuse_unsupported_fields(config)
+        if (
+            melody is not None
+            and not isinstance(melody, bytes)
+            and not await asyncio.to_thread(Path(melody).is_file)
+        ):
+            raise FileNotFoundError(
+                f"melody must be a local file, got {Path(melody).name!r}",
+            )
         seed = (
             config.seed
             if config is not None and config.seed is not None
@@ -456,15 +546,16 @@ class MusicGenerator:
         )
         async with genai_span("audio", self.model_id):
             if self.metrics is None:
-                return await self._render(prompt, config, seed)
+                return await self._render(prompt, config, seed, melody)
             async with self.metrics.track(self.model_id, "audio"):
-                return await self._render(prompt, config, seed)
+                return await self._render(prompt, config, seed, melody)
 
     async def _render(
         self,
         prompt: str,
         config: AudioGenerationConfig | None,
         seed: int,
+        melody: str | Path | bytes | None = None,
     ) -> list[GeneratedAudio]:
         """Run the blocking generation off the event loop, one at a time.
 
@@ -472,15 +563,18 @@ class MusicGenerator:
             prompt (str): The music to generate.
             config (AudioGenerationConfig | None): The call's config.
             seed (int): The seed for this render.
+            melody (str | Path | bytes | None): Reference melody, or ``None``.
 
         Returns:
             list[GeneratedAudio]: The encoded clips.
         """
         async with self._semaphore:
-            return await asyncio.to_thread(self._run_sync, prompt, config, seed)
+            return await asyncio.to_thread(self._run_sync, prompt, config, seed, melody)
 
 
 __all__: list[str] = [
+    "MAX_MELODY_SECONDS",
+    "MELODY_MODEL_TYPE",
     "UNSUPPORTED_FIELDS",
     "MusicGenerator",
     "check_music_config",

@@ -39,6 +39,8 @@ from __future__ import annotations
 
 import asyncio
 import struct
+from collections.abc import AsyncIterator
+from contextlib import aclosing
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -51,6 +53,7 @@ from tempest_fastapi_sdk.genai.ollama import (
     DEFAULT_OLLAMA_URL,
     OllamaError,
     _OllamaClientMixin,
+    _require_httpx,
 )
 from tempest_fastapi_sdk.genai.tracing import genai_span
 
@@ -318,20 +321,7 @@ class OllamaSpeech(_OllamaClientMixin):
             httpx.HTTPError: When the daemon cannot be reached or does not
                 answer in time.
         """
-        _refuse_language(language)
-        if voice is not None and speaker is not None and voice != speaker:
-            raise ValidationException(
-                message="voice and speaker name different voices",
-                details={"field": "speaker"},
-            )
-        voice = voice if voice is not None else speaker
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "input": text,
-            "response_format": response_format,
-        }
-        if voice is not None:
-            payload["voice"] = voice
+        payload = self._speech_payload(text, voice, speaker, language, response_format)
         async with genai_span("speech", self.model):
             response = await self._http().post(
                 f"{self.base_url}/v1/audio/speech",
@@ -344,6 +334,110 @@ class OllamaSpeech(_OllamaClientMixin):
         if out_path is not None:
             await asyncio.to_thread(Path(out_path).write_bytes, audio)
         return audio
+
+    def _speech_payload(
+        self,
+        text: str,
+        voice: str | None,
+        speaker: str | None,
+        language: str | None,
+        response_format: SpeechFormat,
+    ) -> dict[str, Any]:
+        """Validate the voice arguments and build the speech request body.
+
+        Args:
+            text (str): The text to speak.
+            voice (str | None): The voice name.
+            speaker (str | None): The same as ``voice``.
+            language (str | None): Must be ``None``.
+            response_format (SpeechFormat): ``"wav"`` or ``"pcm"``.
+
+        Returns:
+            dict[str, Any]: The JSON body for ``/v1/audio/speech``.
+
+        Raises:
+            ValidationException: When ``language`` is given, or ``voice`` and
+                ``speaker`` name different voices.
+        """
+        _refuse_language(language)
+        if voice is not None and speaker is not None and voice != speaker:
+            raise ValidationException(
+                message="voice and speaker name different voices",
+                details={"field": "speaker"},
+            )
+        chosen = voice if voice is not None else speaker
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "input": text,
+            "response_format": response_format,
+        }
+        if chosen is not None:
+            payload["voice"] = chosen
+        return payload
+
+    async def stream_speech(
+        self,
+        text: str,
+        /,
+        *,
+        voice: str | None = None,
+        speaker: str | None = None,
+        language: str | None = None,
+        response_format: SpeechFormat = "pcm",
+    ) -> AsyncIterator[bytes]:
+        """Yield the speech audio as the daemon generates it.
+
+        Where :meth:`synthesize` waits for the whole clip, this yields each
+        chunk as the daemon flushes it, so a player (or a
+        ``StreamingResponse``) starts before synthesis ends. ``"pcm"`` (the
+        default here) is raw 16-bit mono 24 kHz with no header, the format a
+        streaming player wants; ``"wav"`` starts with a header whose sizes
+        are the streamed ``0xFFFFFFFF`` placeholder, since the length is not
+        known up front.
+
+        Args:
+            text (str): The text to speak.
+            voice (str | None): A voice name from :meth:`voices`.
+            speaker (str | None): The same as ``voice``.
+            language (str | None): Must stay ``None``; the voice decides the
+                language.
+            response_format (SpeechFormat): ``"pcm"`` or ``"wav"``.
+
+        Closing the iterator early (a client that disconnects from a
+        ``StreamingResponse``) closes the daemon connection right away. There
+        is no tracing span here, unlike :meth:`synthesize`: a span held across
+        ``yield`` is closed by whoever finalizes the generator, and a consumer
+        that breaks out of the loop without closing it leaves that to the event loop, in
+        another context -- measured with OpenTelemetry installed, every such
+        stream logged ``Failed to detach context``. A ``"wav"`` stream is
+        passed through as the daemon sends it; only :meth:`synthesize`, which
+        holds the whole clip, can rewrite the header sizes.
+
+        Yields:
+            bytes: The audio, chunk by chunk.
+
+        Raises:
+            ValidationException: Before any request when ``language`` is
+                given or ``voice`` and ``speaker`` disagree; before the
+                first chunk when the daemon refuses with ``400``.
+            OllamaError: When the model is not pulled or the daemon fails.
+            httpx.HTTPError: When the daemon cannot be reached or does not
+                answer in time.
+        """
+        payload = self._speech_payload(text, voice, speaker, language, response_format)
+        httpx = _require_httpx()
+        chunks = self._http().stream_bytes(
+            "POST",
+            f"{self.base_url}/v1/audio/speech",
+            json=payload,
+        )
+        async with aclosing(chunks):
+            try:
+                async for chunk in chunks:
+                    yield chunk
+            except httpx.HTTPStatusError as exc:
+                _raise_for_response(self.model, exc.response)
+                raise
 
     async def transcribe(
         self,
