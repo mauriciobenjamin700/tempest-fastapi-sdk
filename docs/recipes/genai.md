@@ -990,7 +990,7 @@ async def main() -> None:
     # num chat NOVO, recupera o que importa daquele usuário:
     hits = await memory.search(
         user_id="u1",
-        query="qual stack ele usa?",
+        query="Com que framework e banco ele trabalha?",
         exclude_chat_id="c2",     # ignora o chat atual
     )
     for hit in hits:
@@ -999,6 +999,17 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+```text
+0.68  Trabalho com FastAPI e Postgres.
+```
+
+Só uma lembrança volta. Contra essa consulta, "Prefiro respostas curtas e
+diretas." tem similaridade 0,537, abaixo do piso de 0,55, e sai antes do
+re-rank. O piso é o que decide o que chega ao modelo: uma consulta vaga como
+"qual stack ele usa?" fica em 0,433 contra o texto certo e não recupera nada
+(medido com `nomic-embed-text`). Calibre `min_similarity` com consultas
+reais do seu produto, não com a do exemplo.
 
 `search` filtra pelo `user_id`, aplica o piso de similaridade
 (`min_similarity`) e então mistura o decaimento de recência — cada

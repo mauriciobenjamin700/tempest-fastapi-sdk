@@ -994,7 +994,7 @@ async def main() -> None:
     # in a NEW chat, recall what matters for that user:
     hits = await memory.search(
         user_id="u1",
-        query="what stack does he use?",
+        query="Which framework and database does he work with?",
         exclude_chat_id="c2",     # ignore the current chat
     )
     for hit in hits:
@@ -1003,6 +1003,17 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+```text
+0.58  I work with FastAPI and Postgres.
+```
+
+Only one memory comes back. Against this query, "I prefer short, direct
+answers." scores 0.388 similarity, below the 0.55 floor, and is dropped
+before the re-rank. The floor decides what reaches the model: a vague query
+such as "what stack does he use?" scores 0.429 against the right text and
+recalls nothing (measured with `nomic-embed-text`). Calibrate
+`min_similarity` with your product's real queries, not the example's.
 
 `search` filters by `user_id`, applies the similarity floor
 (`min_similarity`), then blends in the recency decay — each `MemoryHit`
