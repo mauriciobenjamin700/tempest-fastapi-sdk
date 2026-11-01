@@ -112,9 +112,11 @@ class SSEBroker:
                 ``"orders-api:sse"``): Redis pub/sub is shared by every
                 client of the instance regardless of the DB index, so the
                 prefix is the only thing that keeps one service's events out
-                of another's streams. Pick values where no prefix plus ``":"``
-                starts another, since the subscription is the
-                ``"<prefix>:*"`` pattern. Defaults to
+                of another's streams. A nested prefix (``app`` next to
+                ``app:chat``) is safe since 0.340.0: the ``"<prefix>:*"``
+                pattern still receives the longer prefix's messages, but each
+                envelope carries the prefix that published it and the
+                receiver drops the ones that are not its own. Defaults to
                 ``"sse"``, which is kept for
                 compatibility; with a Redis client it logs a warning naming
                 the risk rather than failing, so existing single-service
@@ -283,10 +285,7 @@ class SSEBroker:
                 ServerSentEvent(data=data, event=event, id=id, retry=retry),
             )
             return
-        envelope = json.dumps(
-            {"data": data, "event": event, "id": id, "retry": retry},
-            default=str,
-        )
+        envelope = self._envelope(data, event=event, id=id, retry=retry)
         await self._redis.publish(self._key(channel), envelope)
 
     async def broadcast(
@@ -326,10 +325,7 @@ class SSEBroker:
         if self._redis is None:
             await self._emit_everywhere(frame)
             return
-        envelope = json.dumps(
-            {"data": data, "event": event, "id": id, "retry": retry},
-            default=str,
-        )
+        envelope = self._envelope(data, event=event, id=id, retry=retry)
         await self._redis.publish(self._key(BROADCAST_CHANNEL), envelope)
 
     async def run(self) -> None:
@@ -377,6 +373,41 @@ class SSEBroker:
             await self._pubsub.aclose()
             self._pubsub = None
 
+    def _envelope(
+        self,
+        data: SSEData,
+        *,
+        event: str | None,
+        id: str | None,
+        retry: int | None,
+    ) -> str:
+        """Serialize one event for ``PUBLISH``, stamped with this prefix.
+
+        The ``prefix`` field is what lets a receiver tell its own messages
+        from a nested prefix's: ``PSUBSCRIBE app:*`` also matches every key
+        a broker with prefix ``app:chat`` publishes (``app:chat:room``), and
+        the channel name alone cannot say which broker sent it.
+
+        Args:
+            data (SSEData): Payload.
+            event (str | None): SSE event name.
+            id (str | None): ``Last-Event-ID``.
+            retry (int | None): Reconnect hint (ms).
+
+        Returns:
+            str: The JSON envelope.
+        """
+        return json.dumps(
+            {
+                "data": data,
+                "event": event,
+                "id": id,
+                "retry": retry,
+                "prefix": self.channel_prefix,
+            },
+            default=str,
+        )
+
     def _key(self, channel: str) -> str:
         """Return the Redis channel key for ``channel``."""
         return f"{self.channel_prefix}:{channel}"
@@ -387,7 +418,11 @@ class SSEBroker:
         The envelope is checked against the shape :meth:`publish` writes —
         a JSON object whose ``event`` and ``id`` are strings or ``None`` and
         whose ``retry`` is an integer or ``None`` — before any stream sees
-        it.
+        it. An envelope stamped with another ``prefix`` is dropped: it was
+        published by a broker whose prefix nests under this one (``app`` and
+        ``app:chat``), and reached this worker only because ``<prefix>:*``
+        matches the longer key. An envelope with no ``prefix`` (written by
+        an SDK before 0.340.0, during a rolling deploy) is still delivered.
 
         Args:
             channel_key (str | bytes): The Redis channel
@@ -405,6 +440,9 @@ class SSEBroker:
         payload: Any = json.loads(body)
         if not isinstance(payload, dict):
             raise ValueError("SSE envelope is not a JSON object.")
+        sender = payload.get("prefix")
+        if sender is not None and sender != self.channel_prefix:
+            return
         event: Any = payload.get("event")
         event_id: Any = payload.get("id")
         retry: Any = payload.get("retry")

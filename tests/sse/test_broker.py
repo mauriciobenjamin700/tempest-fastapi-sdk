@@ -312,6 +312,64 @@ class TestChannelPrefixIsolation:
             with pytest.raises(asyncio.CancelledError):
                 await task
 
+    async def test_nested_prefixes_do_not_cross_deliver(self) -> None:
+        """``app:*`` matches ``app:chat:room``; the envelope prefix stops it."""
+        redis_a, redis_b = await self._pair_on_one_server()
+        outer = SSEBroker(redis=redis_a, heartbeat_seconds=None, channel_prefix="app")
+        inner = SSEBroker(
+            redis=redis_b, heartbeat_seconds=None, channel_prefix="app:chat"
+        )
+        task_outer = asyncio.create_task(outer.run())
+        task_inner = asyncio.create_task(inner.run())
+        async with asyncio.timeout(10.0):
+            while await redis_a.pubsub_numpat() < 2:
+                await asyncio.sleep(0.01)
+
+        victim = outer.register("chat:room")
+        victim_frames = victim.stream()
+        own = inner.register("room")
+        own_frames = own.stream()
+
+        await inner.publish("room", "inner-private", event="m")
+        await inner.broadcast("inner-notice", event="notice")
+
+        assert b"data: inner-private" in await _first_frame(own_frames, timeout=2.0)
+        assert b"data: inner-notice" in await _first_frame(own_frames, timeout=2.0)
+        with pytest.raises(asyncio.TimeoutError):
+            await _first_frame(victim_frames, timeout=0.5)
+
+        for broker, task in ((outer, task_outer), (inner, task_inner)):
+            await broker.aclose()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    async def test_envelope_without_prefix_is_still_delivered(self) -> None:
+        """A publisher from before the stamp, mid rolling deploy, still reaches."""
+        broker = SSEBroker(heartbeat_seconds=None, channel_prefix="app")
+        stream = broker.register("u1")
+        frames = stream.stream()
+        await broker._dispatch_raw("app:u1", '{"data": "old", "event": null}')
+        assert b"data: old" in await _first_frame(frames)
+
+    async def test_envelope_carries_the_publishing_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        published: list[tuple[str, str]] = []
+
+        async def _record(channel: str, message: str) -> int:
+            published.append((channel, message))
+            return 1
+
+        client = fakeredis_async.FakeRedis(decode_responses=True)
+        monkeypatch.setattr(client, "publish", _record)
+        broker = SSEBroker(
+            redis=client, heartbeat_seconds=None, channel_prefix="svc:sse"
+        )
+        await broker.publish("42", "x")
+        assert published[0][0] == "svc:sse:42"
+        assert '"prefix": "svc:sse"' in published[0][1]
+
     def test_default_prefix_with_redis_warns(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
