@@ -4011,6 +4011,14 @@ Funciona com `cvssp/audioldm-s-full-v2` (efeitos) e `ucsd-reach/musicldm`
 recusados na carga. As classes AudioLDM/MusicLDM estão em
 `diffusers/pipelines/deprecated` (código congelado).
 
+## Áudio, rodada 3 (Unreleased)
+
+`OllamaSpeech.stream_speech` sobre o novo `HTTPClient.stream_bytes`;
+`MusicGenerator` com `musicgen-melody` (`melody=`). Medido e documentado,
+sem código novo: `suno/bark` grande (mais lento que o small no mesmo PT).
+Fora, de propósito: Kokoro (o `kokoro-onnx` 0.6.1 exige Python `<3.14` e
+espeak nativo) e Stable Audio (gated; depende de aceite da licença no HF).
+
 ## Voz com Bark (Unreleased)
 
 `BarkSpeech` em `genai/audio/bark.py`, extra `[genai]`, pesos MIT, vozes PT.

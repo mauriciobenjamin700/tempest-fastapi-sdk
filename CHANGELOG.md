@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `OllamaSpeech.stream_speech`: fala em stream, chunk a chunk (PCM por
+  padrão), com os mesmos erros do `synthesize`. Medido com o `lfm3-audio`:
+  primeiro chunk em 24 a 30 ms contra 1,76 s do `synthesize` de ~18 s de
+  áudio.
+- `HTTPClient.stream_bytes`: corpo binário em chunks, com o contrato de retry
+  e circuit-breaker do `stream`. Nos dois, um status de erro tem o corpo lido
+  antes do `raise` (`exc.response.content` traz a mensagem do servidor).
+- `MusicGenerator(melody=...)` e `accepts_melody`: com um checkpoint
+  `musicgen-melody`, a música segue a melodia de um clipe de referência
+  (decodificado pelo `load_audio`, features convertidas para a precisão do
+  modelo, sem o que o bf16 quebra com `mat1 and mat2 must have the same
+  dtype`); melodia num checkpoint sem suporte é `422`. Medido: 10 s em
+  10,8 s, pico de 3,3 GiB.
+
 - `BarkSpeech` (`tempest_fastapi_sdk.genai.audio`, extra `[genai]`): TTS
   local com o Bark (`suno/bark-small`, pesos MIT) e os 261 presets de voz do
   checkpoint (130 `v2/` e 131 legados), português incluído. Satisfaz `SpeechSynthesizer`, então serve o

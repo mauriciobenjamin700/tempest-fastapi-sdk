@@ -101,6 +101,13 @@ async def call() -> None:
     já consumiu. Até esta versão o `ReadTimeout` no meio do stream era
     refeito, e o chamador via `["Hello ", "Hello ", "world"]` de dois POSTs.
 
+!!! info "Corpo binário: `stream_bytes()`"
+    `client.stream_bytes(...)` tem o mesmo contrato de retry e
+    circuit-breaker do `stream()`, mas entrega o corpo em chunks de `bytes`
+    conforme o servidor descarrega — áudio, download de arquivo. Nos dois,
+    um status de erro tem o corpo lido antes do `raise`, então
+    `exc.response.content` traz a mensagem do servidor.
+
 !!! warning "Timeout de leitura numa chamada cara"
     Um `ReadTimeout` quer dizer que o request **chegou** ao servidor e a
     resposta não veio a tempo. Numa chamada rápida isso é conexão travada, e

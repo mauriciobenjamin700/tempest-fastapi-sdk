@@ -53,6 +53,17 @@ class FakeArray:
         return self.array
 
 
+class FakeFeatures:
+    """Records the dtype the features were cast to."""
+
+    def __init__(self) -> None:
+        self.dtype: str = "float32"
+
+    def to(self, dtype: str) -> FakeFeatures:
+        self.dtype = dtype
+        return self
+
+
 class FakeInputs(dict[str, Any]):
     def to(self, device: str) -> FakeInputs:
         return self
@@ -63,10 +74,20 @@ class FakeProcessor:
         self.texts: list[str] = []
 
     def __call__(
-        self, text: list[str], padding: bool, return_tensors: str
+        self,
+        text: list[str],
+        padding: bool,
+        return_tensors: str,
+        audio: list[Any] | None = None,
+        sampling_rate: int | None = None,
     ) -> FakeInputs:
         self.texts = text
-        return FakeInputs(input_ids=len(text))
+        self.audio = audio
+        self.sampling_rate = sampling_rate
+        inputs = FakeInputs(input_ids=len(text))
+        if audio is not None:
+            inputs["input_features"] = FakeFeatures()
+        return inputs
 
 
 class FakeModel:
@@ -77,6 +98,8 @@ class FakeModel:
             audio_encoder=SimpleNamespace(sampling_rate=32000, frame_rate=FRAME_RATE),
             decoder=SimpleNamespace(max_position_embeddings=MAX_POSITIONS),
         )
+
+    dtype: str = "bfloat16"
 
     def to(self, device: str) -> FakeModel:
         return self
@@ -112,21 +135,36 @@ class FakeTorch:
         yield
 
 
-def _install(monkeypatch: pytest.MonkeyPatch, channels: int = 1) -> SimpleNamespace:
+def _install(
+    monkeypatch: pytest.MonkeyPatch,
+    channels: int = 1,
+    model_type: str = "musicgen",
+) -> SimpleNamespace:
     """Inject fake torch + transformers into the module."""
     model = FakeModel(channels)
     processor = FakeProcessor()
     torch = FakeTorch()
+    loaded: list[str] = []
+
+    def _load(kind: str) -> Any:
+        def _from_pretrained(*args: Any, **kwargs: Any) -> FakeModel:
+            loaded.append(kind)
+            return model
+
+        return SimpleNamespace(from_pretrained=_from_pretrained)
+
     transformers = SimpleNamespace(
-        AutoProcessor=SimpleNamespace(from_pretrained=lambda *a, **k: processor),
-        MusicgenForConditionalGeneration=SimpleNamespace(
-            from_pretrained=lambda *a, **k: model
+        AutoConfig=SimpleNamespace(
+            from_pretrained=lambda *a, **k: SimpleNamespace(model_type=model_type)
         ),
+        AutoProcessor=SimpleNamespace(from_pretrained=lambda *a, **k: processor),
+        MusicgenForConditionalGeneration=_load("musicgen"),
+        MusicgenMelodyForConditionalGeneration=_load("musicgen_melody"),
     )
     monkeypatch.setattr(
         music_module, "_require_transformers", lambda: (torch, transformers)
     )
-    return SimpleNamespace(model=model, processor=processor, torch=torch)
+    return SimpleNamespace(model=model, processor=processor, torch=torch, loaded=loaded)
 
 
 def _channels_and_frames(data: bytes) -> tuple[int, int]:
@@ -382,3 +420,71 @@ class TestMissingExtra:
         monkeypatch.setattr(builtins, "__import__", fail)
         with pytest.raises(ImportError, match=r"\[genai\]"):
             music_module._require_transformers()
+
+
+def _wav(seconds: float = 0.5, rate: int = 32000) -> bytes:
+    """Build a short 16-bit mono WAV.
+
+    Args:
+        seconds (float): Duration.
+        rate (int): Sample rate.
+
+    Returns:
+        bytes: The WAV.
+    """
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as writer:
+        writer.setnchannels(1)
+        writer.setsampwidth(2)
+        writer.setframerate(rate)
+        writer.writeframes(b"\x10\x00" * int(seconds * rate))
+    return buffer.getvalue()
+
+
+class TestMelody:
+    async def test_melody_checkpoint_loads_the_melody_class(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fakes = _install(monkeypatch, model_type="musicgen_melody")
+        generator = MusicGenerator("facebook/musicgen-melody", device="cpu")
+        assert generator.accepts_melody is True
+        assert fakes.loaded == ["musicgen_melody"]
+
+    async def test_melody_reaches_the_processor_and_features_are_cast(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fakes = _install(monkeypatch, model_type="musicgen_melody")
+        await MusicGenerator("m", device="cpu").generate(
+            "acoustic version",
+            config=AudioGenerationConfig(seconds=1.0, num_waveforms=2),
+            melody=_wav(),
+        )
+        assert fakes.processor.sampling_rate == 32000
+        assert len(fakes.processor.audio) == 2
+        assert fakes.processor.audio[0].shape == (16000,)
+        assert fakes.model.calls[0]["input_features"].dtype == "bfloat16"
+
+    async def test_melody_on_a_plain_checkpoint_is_a_422(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fakes = _install(monkeypatch)
+        with pytest.raises(ValidationException) as caught:
+            await MusicGenerator("m", device="cpu").generate("x", melody=_wav())
+        assert caught.value.details == {"field": "melody"}
+        assert fakes.model.calls == []
+
+    async def test_melody_path_must_exist(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        _install(monkeypatch, model_type="musicgen_melody")
+        with pytest.raises(FileNotFoundError):
+            await MusicGenerator("m", device="cpu").generate(
+                "x", melody=tmp_path / "missing.wav"
+            )
+
+    async def test_plain_checkpoint_loads_the_plain_class(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fakes = _install(monkeypatch)
+        assert MusicGenerator("m", device="cpu").accepts_melody is False
+        assert fakes.loaded == ["musicgen"]
