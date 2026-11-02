@@ -32,7 +32,9 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Query
 
+from tempest_fastapi_sdk.api.error_docs import error_responses
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
+from tempest_fastapi_sdk.exceptions import ForbiddenException, UnauthorizedException
 from tempest_fastapi_sdk.hostbridge.bridge import HostBridge
 from tempest_fastapi_sdk.hostbridge.schemas import (
     CommandResultSchema,
@@ -74,7 +76,9 @@ def make_hostbridge_router(
             one more place a permissive default could enter.
         dependencies (Sequence[Depends]): Auth (and anything else) applied to
             every route. Required, and an empty sequence is refused — see
-            this module's docstring for why.
+            this module's docstring for why. Because they are auth by
+            contract, every route documents ``401`` and ``403`` in the
+            OpenAPI.
         prefix (str): Path prefix for the routes. Defaults to ``"/system"``.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["system"]``.
         destructive (bool): Also mount the write side — command execution,
@@ -103,6 +107,7 @@ def make_hostbridge_router(
         prefix=prefix,
         tags=list(tags) if tags is not None else ["system"],
         dependencies=list(dependencies),
+        responses=error_responses(UnauthorizedException, ForbiddenException),
     )
 
     @router.get(

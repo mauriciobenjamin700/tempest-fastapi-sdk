@@ -831,6 +831,20 @@ def make_auth_router(
         legacy_claims=token_legacy_claims,
         session_dependency=session_provider,
     )
+    authenticated_responses: dict[int | str, dict[str, Any]] = error_responses(
+        UnauthorizedException,
+        service.exceptions.account_inactive,
+    )
+    """``responses=`` for every route behind ``current_user_dep``.
+
+    Each of those routes answers ``401`` without a valid token and ``403``
+    for an inactive account, but declared neither, so the OpenAPI showed an
+    operation with ``security`` and no ``401`` (#691): generated clients did
+    not type the error, and a service guarding "every secured operation
+    documents 401" failed only for mounting this router. One dict, so a new
+    authenticated route is one argument away from the same contract;
+    ``tests/auth/test_auth_router_openapi_401.py`` fails if it is left out.
+    """
     current_claims_dep = make_bearer_token_dependency(
         service.jwt,
         cookie_name=cookies.access_name if cookie_enabled else None,
@@ -1182,6 +1196,7 @@ def make_auth_router(
 
     @router.get(
         "/me",
+        responses=authenticated_responses,
         response_model=me_response_model or AuthUserSchema,
         summary=route_docs.summary("auth.me"),
         description=route_docs.description("auth.me"),
@@ -1204,6 +1219,7 @@ def make_auth_router(
 
     @router.post(
         "/password-change",
+        responses=authenticated_responses,
         response_model=LoginResponseSchema,
         summary=route_docs.summary("auth.password_change"),
         description=route_docs.description("auth.password_change"),
@@ -1318,6 +1334,7 @@ def make_auth_router(
 
     @router.post(
         "/email-change/request",
+        responses=authenticated_responses,
         response_model=EmailChangeResponseSchema,
         status_code=status.HTTP_202_ACCEPTED,
         summary=route_docs.summary("auth.email_change_request"),
@@ -1359,6 +1376,7 @@ def make_auth_router(
 
     @router.post(
         "/email-verify/request",
+        responses=authenticated_responses,
         response_model=EmailChangeResponseSchema,
         status_code=status.HTTP_202_ACCEPTED,
         summary=route_docs.summary("auth.email_verify_request"),
@@ -1916,6 +1934,7 @@ def make_auth_router(
             summary=route_docs.summary("auth.mfa_enroll"),
             description=route_docs.description("auth.mfa_enroll"),
             responses={
+                **authenticated_responses,
                 status.HTTP_409_CONFLICT: {
                     "description": route_docs.text("auth.mfa_enroll.409"),
                 },
@@ -1953,6 +1972,7 @@ def make_auth_router(
 
         @router.post(
             "/mfa/confirm",
+            responses=authenticated_responses,
             response_model=LoginResponseSchema,
             summary=route_docs.summary("auth.mfa_confirm"),
             description=route_docs.description("auth.mfa_confirm"),
@@ -2000,6 +2020,7 @@ def make_auth_router(
 
         @router.post(
             "/mfa/disable",
+            responses=authenticated_responses,
             status_code=status.HTTP_204_NO_CONTENT,
             summary=route_docs.summary("auth.mfa_disable"),
             description=route_docs.description("auth.mfa_disable"),
@@ -2080,6 +2101,7 @@ def make_auth_router(
 
         @router.post(
             "/webauthn/register/begin",
+            responses=authenticated_responses,
             response_model=WebAuthnOptionsSchema,
             summary=route_docs.summary("auth.webauthn_register_begin"),
             description=route_docs.description("auth.webauthn_register_begin"),
@@ -2132,6 +2154,7 @@ def make_auth_router(
 
         @router.post(
             "/webauthn/register/complete",
+            responses=authenticated_responses,
             response_model=WebAuthnCredentialSchema,
             summary=route_docs.summary("auth.webauthn_register_complete"),
             description=route_docs.description("auth.webauthn_register_complete"),
@@ -2228,6 +2251,7 @@ def make_auth_router(
 
         @router.get(
             "/webauthn/credentials",
+            responses=authenticated_responses,
             response_model=list[WebAuthnCredentialSchema],
             summary=route_docs.summary("auth.webauthn_list_credentials"),
             description=route_docs.description("auth.webauthn_list_credentials"),
@@ -2251,6 +2275,7 @@ def make_auth_router(
 
         @router.post(
             "/webauthn/credentials/delete",
+            responses=authenticated_responses,
             status_code=status.HTTP_204_NO_CONTENT,
             summary=route_docs.summary("auth.webauthn_delete_credential"),
             description=route_docs.description("auth.webauthn_delete_credential"),
@@ -2544,6 +2569,7 @@ def make_auth_router(
 
         @router.get(
             "/oauth/accounts",
+            responses=authenticated_responses,
             response_model=list[OAuthAccountSchema],
             summary=route_docs.summary("auth.oauth_list_accounts"),
             description=route_docs.description("auth.oauth_list_accounts"),
@@ -2566,6 +2592,7 @@ def make_auth_router(
 
         @router.post(
             "/oauth/accounts/unlink",
+            responses=authenticated_responses,
             status_code=status.HTTP_204_NO_CONTENT,
             summary=route_docs.summary("auth.oauth_unlink_account"),
             description=route_docs.description("auth.oauth_unlink_account"),
