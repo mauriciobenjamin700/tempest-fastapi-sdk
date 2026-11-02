@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `HostedGenAISettings` ganha `GENAI_PROVIDER` (`anthropic`, `openai`,
+  `google` ou `deepseek`), `GENAI_API_KEY` e `GENAI_BASE_URL`, para o serviço
+  escolher no `.env` o provedor de todos os modelos, em vez de inferi-lo do
+  prefixo do id e manter uma variável de chave por fornecedor. Com
+  `GENAI_PROVIDER` preenchido, `hosted_kwargs(model)` usa esse provedor para
+  todo modelo, com a chave `GENAI_API_KEY` (ou, vazia, a `*_API_KEY` do
+  provedor) e a URL `GENAI_BASE_URL` (ou a `*_BASE_URL` do provedor); modelo
+  cujo prefixo é de outro provedor e `provider=` que discorda levantam
+  `ValueError` em vez de trocar em silêncio, e id sem prefixo conhecido vai
+  para o provedor escolhido. Vazio ou ausente (`GENAI_PROVIDER=` no `.env`
+  vira `None`), o comportamento é o de antes, fixado em teste.
+  `genai_effective_api_key()` diz a chave que será usada.
+  `production_violations()` recusa `GENAI_PROVIDER` sem chave efetiva;
+  serviço que não define o provedor não é cobrado. Teste:
+  `tests/settings/test_hosted_genai_settings.py::TestGenericProvider` e
+  `TestGenericProviderProductionGuard` (9 falham com a regra desligada).
+
 ### Fixed
 
 - `make_auth_router`: as 13 rotas autenticadas (`/auth/me`, troca de senha e
