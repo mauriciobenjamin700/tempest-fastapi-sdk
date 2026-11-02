@@ -414,6 +414,66 @@ Os testes desta superfície rodam sobre `httpx.MockTransport`: eles fixam o
 request que cada backend monta e a leitura da resposta documentada, não o
 comportamento de um provedor ao vivo.
 
+## Um provedor escolhido no `.env`
+
+Ler o provedor do prefixo do id é cômodo, mas deixa uma decisão de negócio
+escondida no nome de um modelo, e cada provedor pede a sua variável de chave.
+Quando o serviço manda **todos** os modelos para **um** provedor, diga isso
+no `.env`, com provedor, chave e (se quiser) a URL:
+
+```bash
+# .env
+GENAI_PROVIDER=openai
+GENAI_API_KEY=sk-...
+# GENAI_BASE_URL=https://gateway.interno/v1   # vazio usa a URL do provedor
+AI_MODEL_FREE=gpt-5-mini
+AI_MODEL_FAMILY=gpt-5
+```
+
+```python
+from tempest_fastapi_sdk import BaseAppSettings, HostedGenAISettings
+from tempest_fastapi_sdk.genai import TextBackend, hosted_generator
+
+
+class Settings(HostedGenAISettings, BaseAppSettings):
+    """Settings do serviço: os dois modelos vêm do mesmo provedor."""
+
+    AI_MODEL_FREE: str = "gpt-5-mini"
+    AI_MODEL_FAMILY: str = "gpt-5"
+
+
+def backend_do_plano(settings: Settings, familia: bool) -> TextBackend:
+    """Monta o gerador do plano com o provedor do `.env`."""
+    modelo = settings.AI_MODEL_FAMILY if familia else settings.AI_MODEL_FREE
+    return hosted_generator(**settings.hosted_kwargs(modelo))
+
+
+settings = Settings(GENAI_PROVIDER="openai", GENAI_API_KEY="sk-...")
+print(settings.hosted_kwargs(settings.AI_MODEL_FREE)["provider"])  # openai
+```
+
+Com `GENAI_PROVIDER` preenchido, o `hosted_kwargs` muda de regra:
+
+- **O provedor é o do `.env`**, para todo modelo. Id com prefixo de outro
+  provedor (`claude-...` com `GENAI_PROVIDER=openai`) levanta `ValueError`
+  em vez de trocar de provedor em silêncio; id sem prefixo conhecido
+  (fine-tune, modelo atrás de um servidor compatível com OpenAI) vai para o
+  provedor escolhido.
+- **A chave é `GENAI_API_KEY`**; vazia, cai na chave própria do provedor
+  (`OPENAI_API_KEY`...). A URL é `GENAI_BASE_URL` ou, vazia, a do provedor.
+- **`provider=`** que discorda do `.env` levanta `ValueError`: um serviço
+  conversa com um provedor.
+- **Sem `GENAI_PROVIDER`** (ausente ou vazio), nada muda: o provedor sai do
+  prefixo, como na seção acima.
+
+!!! check "O boot de produção cobra a chave"
+
+    Com `EnvironmentSettings` composto e `ENV=production`, `GENAI_PROVIDER`
+    preenchido sem chave efetiva (nem `GENAI_API_KEY`, nem a do provedor)
+    derruba o boot listando `GENAI_API_KEY`. Serviço que não define
+    `GENAI_PROVIDER` não é cobrado: as chaves por provedor continuam
+    opcionais.
+
 ## Embeddings (OpenAI)
 
 `OpenAICompatEmbedder` cumpre o `SupportsEmbed`, então entra no `Retriever`
@@ -518,6 +578,8 @@ Ollama, e não leva nenhum teto para o lock de quem consome.
   que o `OllamaGenerator`: troque a construção, mantenha o resto.
 - `HostedGenAISettings` + `anthropic_kwargs()` / `openai_kwargs()` /
   `deepseek_kwargs()` / `google_kwargs()` montam o backend por splat.
+- `GENAI_PROVIDER` + `GENAI_API_KEY` (+ `GENAI_BASE_URL`) fixam um provedor
+  para todos os modelos, pelo `.env`; modelo de outro provedor levanta.
 - `hosted_generator(**settings.hosted_kwargs(modelo))` escolhe o provedor
   pelo id do modelo; `complete_structured` devolve saída, uso e motivo de
   parada em qualquer desfecho (o uso, quando o provedor o informa), com imagem
