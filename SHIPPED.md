@@ -880,7 +880,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `HostedGenAISettings` ganha `GOOGLE_*`, `google_kwargs()` e
   `hosted_kwargs(model)`. Receita: seção "Resultado completo" de
   `docs/recipes/genai-hosted.md`.
-- **Um provedor hospedado escolhido no `.env` (Unreleased, extra
+- **Um provedor hospedado escolhido no `.env` (v0.344.0, extra
   `[genai-hosted]`)** — `HostedGenAISettings` ganha `GENAI_PROVIDER`,
   `GENAI_API_KEY` e `GENAI_BASE_URL`. Com `GENAI_PROVIDER` preenchido,
   `hosted_kwargs` manda todo modelo para esse provedor (chave e URL genéricas,

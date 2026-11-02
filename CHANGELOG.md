@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.344.0] — 2026-11-02
+
 ### Added
 
 - `HostedGenAISettings` ganha `GENAI_PROVIDER` (`anthropic`, `openai`,
@@ -24,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `production_violations()` recusa `GENAI_PROVIDER` sem chave efetiva;
   serviço que não define o provedor não é cobrado. Teste:
   `tests/settings/test_hosted_genai_settings.py::TestGenericProvider` e
-  `TestGenericProviderProductionGuard` (9 falham com a regra desligada).
+  `TestGenericProviderProductionGuard`.
 
 ### Fixed
 
