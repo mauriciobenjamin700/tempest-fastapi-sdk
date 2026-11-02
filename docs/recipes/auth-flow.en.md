@@ -2998,6 +2998,7 @@ Since v0.49.0, `UserAuthService` builds that dependency for you — `current_use
 2. Decodes and verifies the JWT with **the same `JWTUtils` the service signs with** — no second secret to keep in sync.
 3. Pulls the `sub` (user id) from the payload, opens a session from `db=`, and returns the persisted `UserModel`.
 4. Refuses a deactivated account with `403` *(v0.305.0+)* — see below.
+5. Answers `401` when the `sub` matches no account — an account deleted after the token was issued *(v0.344.0+; it used to be `404`, which a front end does not read as "session over")*. With `soft=True`, yields `None`.
 
 ### 1. Declare the dependency once
 

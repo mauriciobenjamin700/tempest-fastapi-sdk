@@ -2906,6 +2906,35 @@ class UserAuthService:
             cookie_name if cookie_name is not None else self._access_cookie_name()
         )
 
+        async def load_token_user(
+            subject: str | UUID,
+            session: AsyncSession,
+        ) -> BaseUserModel | None:
+            """Load the token's user, declining a subject that resolves to none.
+
+            :meth:`get_user` raises ``NotFoundException`` for a deleted
+            account or a malformed subject. Let through, that reached the
+            client as ``404 NOT_FOUND`` on a URL that exists, and a front
+            end that treats ``401`` as "session over, back to login" kept
+            the dead session forever. Returning ``None`` is the loader
+            declining the subject, which
+            :func:`~tempest_fastapi_sdk.make_jwt_user_dependency` answers
+            like a missing or invalid token: ``401``, or ``None`` under
+            ``soft=True``.
+
+            Args:
+                subject (str | UUID): The token's ``sub`` claim.
+                session (AsyncSession): The request-scoped session.
+
+            Returns:
+                BaseUserModel | None: The user, or ``None`` when no
+                account matches the subject.
+            """
+            try:
+                return await self.get_user(subject, session)
+            except NotFoundException:
+                return None
+
         async def load_active_user(
             subject: str | UUID,
             session: AsyncSession,
@@ -2917,16 +2946,17 @@ class UserAuthService:
                 session (AsyncSession): The request-scoped session.
 
             Returns:
-                BaseUserModel | None: The active user, or ``None`` for an
-                inactive one under ``soft=True``.
+                BaseUserModel | None: The active user; ``None`` when no
+                account matches the subject, or for an inactive one under
+                ``soft=True``.
 
             Raises:
                 AppException: ``inactive_exception()`` (``403`` by
                     default) for an inactive account when ``soft`` is
                     ``False``.
             """
-            user = await self.get_user(subject, session)
-            if user.is_active:
+            user = await load_token_user(subject, session)
+            if user is None or user.is_active:
                 return user
             if soft:
                 return None
@@ -2937,7 +2967,7 @@ class UserAuthService:
 
         return make_jwt_user_dependency(
             self.jwt,
-            load_active_user if require_active else self.get_user,
+            load_active_user if require_active else load_token_user,
             soft=soft,
             cookie_name=resolved_cookie_name,
             query_param=query_param,
