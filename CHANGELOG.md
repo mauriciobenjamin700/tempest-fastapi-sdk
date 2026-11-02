@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sub` e a dependency responde `401`, como para token inválido; com
   `soft=True`, devolve `None` (antes também era `404`). Vale também para
   `require_active=False` (#690).
+- `ErrorEnvelopeMiddleware` com exceção que recusa atributos novos
+  (`minio.error.S3Error`, cujo `__setattr__` levanta `AttributeError`): a
+  marcação de "envelope já enviado" levantava depois do 500, então o erro
+  era logado duas vezes e a exceção que chegava ao servidor ASGI era o
+  `AttributeError`, com a original só no `__context__` (#692). A marcação
+  agora cai num `WeakSet` quando o atributo é recusado e nunca levanta; o
+  atributo continua sendo o caminho principal porque exceção builtin
+  (`ValueError`, `OSError`) não aceita weakref.
 
 ## [0.343.0] — 2026-11-01
 
