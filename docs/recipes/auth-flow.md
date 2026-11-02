@@ -2966,6 +2966,7 @@ Desde a v0.49.0, o próprio `UserAuthService` constrói essa dependency — `cur
 2. Decodifica e verifica o JWT com **o mesmo `JWTUtils` que o service usou pra assinar** — sem segundo segredo pra manter sincronizado.
 3. Pega o `sub` (id do usuário) do payload, abre uma sessão a partir do `db=` e devolve o `UserModel` persistido.
 4. Recusa a conta desativada com `403` *(v0.305.0+)* — ver abaixo.
+5. Responde `401` quando o `sub` não acha conta — conta apagada depois de o token ser emitido *(v0.344.0+; antes era `404`, que o front não lê como "sessão encerrada")*. Com `soft=True`, devolve `None`.
 
 ### 1. Declare a dependency uma vez
 

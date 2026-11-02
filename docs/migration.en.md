@@ -2,6 +2,12 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.344.0 — token of a deleted account
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `UserAuthService.current_user_dependency` | A valid token of a deleted account (or a `sub` that is not a UUID) answers `401 UNAUTHORIZED` instead of `404 NOT_FOUND`; with `soft=True`, the dependency yields `None` | Nothing, if the client already treats `401` as session over. Whoever handled the `404` of those routes switches to `401`; whoever reimplemented the loader just to translate the `404` can go back to `current_user_dependency()` |
+
 ## 0.343.0 — every SDK enum ends in `Enum`
 
 Eighty hand-written public enums gained the suffix the others already had

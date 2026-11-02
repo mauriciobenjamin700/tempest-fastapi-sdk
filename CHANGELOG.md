@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `UserAuthService.current_user_dependency`: token válido de conta apagada
+  respondia `404 NOT_FOUND` em toda rota protegida, porque o
+  `NotFoundException` do `get_user` passava direto. Agora o loader recusa o
+  `sub` e a dependency responde `401`, como para token inválido; com
+  `soft=True`, devolve `None` (antes também era `404`). Vale também para
+  `require_active=False` (#690).
 - `ErrorEnvelopeMiddleware` com exceção que recusa atributos novos
   (`minio.error.S3Error`, cujo `__setattr__` levanta `AttributeError`): a
   marcação de "envelope já enviado" levantava depois do 500, então o erro

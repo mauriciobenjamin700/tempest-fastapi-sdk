@@ -369,10 +369,14 @@ def make_jwt_user_dependency(
             as a string) and returns the loaded user. When
             ``session_dependency`` is set it is called as
             ``user_loader(subject, session)``. Returning ``None``
-            refuses the request when ``soft`` is ``False``; raising
-            :class:`UnauthorizedException` or
-            :class:`NotFoundException` from inside the loader still works
-            and lets you choose the message.
+            refuses the request when ``soft`` is ``False`` (``401``) and
+            yields ``None`` when it is ``True``; that is the answer for a
+            subject that resolves to no account. Raising
+            :class:`UnauthorizedException` from inside the loader also
+            works and lets you choose the message. Raising
+            :class:`NotFoundException` reaches the client as ``404`` on a
+            URL that exists, which a front end does not read as "session
+            over" — return ``None`` instead.
         soft (bool): When ``True``, return ``None`` instead of
             raising on a missing or invalid token, and when the loader
             declines the subject.
