@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from starlette.websockets import WebSocket
 
 from tempest_fastapi_sdk import (
@@ -294,3 +294,105 @@ class TestEachFailureIsHandledOnce:
             client.get("/boom")
         unhandled = [r for r in caplog.records if "Unhandled exception" in r.message]
         assert len(unhandled) == 1
+
+
+class FrozenError(Exception):
+    """An exception that refuses new attributes, like ``minio.error.S3Error``."""
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Refuse every attribute assignment.
+
+        Args:
+            name (str): The attribute name.
+            value (object): The value, ignored.
+
+        Raises:
+            AttributeError: Always.
+        """
+        raise AttributeError(f"{type(self).__name__} is frozen")
+
+
+class TestAFrozenExceptionIsHandledOnce:
+    """An exception whose ``__setattr__`` refuses the flag (#692).
+
+    Before, the ``setattr`` that marks the exception raised
+    ``AttributeError`` after the envelope was sent: the 500 was logged and
+    reported to ``on_server_error`` twice, and the exception reaching the
+    ASGI server was the ``AttributeError``, with the real one only as its
+    ``__context__``.
+    """
+
+    def _app(self, calls: list[str]) -> FastAPI:
+        """Build an app whose route raises :class:`FrozenError`.
+
+        Args:
+            calls (list[str]): Receives the exception message per call.
+
+        Returns:
+            FastAPI: The app.
+        """
+
+        async def record(request: Request, exc: Exception) -> None:
+            calls.append(str(exc))
+
+        app = FastAPI()
+        register_exception_handlers(app, on_server_error=record)
+
+        @app.get("/frozen")
+        async def frozen() -> None:
+            raise FrozenError("storage down")
+
+        return app
+
+    def test_the_envelope_is_sent(self) -> None:
+        client = TestClient(self._app([]), raise_server_exceptions=False)
+        response = client.get("/frozen")
+        assert response.status_code == 500
+        assert response.json()["code"] == "INTERNAL_SERVER_ERROR"
+
+    def test_the_error_is_logged_once(self, caplog: pytest.LogCaptureFixture) -> None:
+        client = TestClient(self._app([]), raise_server_exceptions=False)
+        with caplog.at_level("ERROR", logger="tempest_fastapi_sdk.api.handlers"):
+            client.get("/frozen")
+        unhandled = [r for r in caplog.records if "Unhandled exception" in r.message]
+        assert len(unhandled) == 1
+
+    def test_on_server_error_fires_once(self) -> None:
+        calls: list[str] = []
+        TestClient(self._app(calls), raise_server_exceptions=False).get("/frozen")
+        assert calls == ["storage down"]
+
+    async def test_the_original_exception_propagates(self) -> None:
+        """The ASGI server sees the cause, not a marking ``AttributeError``.
+
+        Called as a bare ASGI app on purpose: ``TestClient`` and
+        ``httpx.ASGITransport`` re-raise through ``contextlib``, which
+        assigns ``__traceback__`` and so trips the frozen ``__setattr__`` on
+        the client side, where no ASGI server would.
+        """
+        app = self._app([])
+        sent: list[Message] = []
+
+        async def receive() -> Message:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message: Message) -> None:
+            sent.append(message)
+
+        scope: Scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/frozen",
+            "raw_path": b"/frozen",
+            "query_string": b"",
+            "root_path": "",
+            "headers": [],
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+        }
+        with pytest.raises(FrozenError, match="storage down"):
+            await app(scope, receive, send)
+        assert sent[0]["status"] == 500
