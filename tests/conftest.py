@@ -1,9 +1,10 @@
 """Shared pytest fixtures."""
 
+import contextlib
 import os
 import shutil
 import subprocess
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -95,6 +96,82 @@ DOCS_BUILD_COMMAND: list[str] = [
 ]
 """How :func:`built_site` builds the site, isolated from the test environment."""
 
+SITE_BUILD_LOCK: Path = ROOT / ".site-build.lock"
+"""File the xdist workers lock so only one of them builds ``site/``.
+
+Outside ``site/`` on purpose: ``mkdocs build`` cleans its output directory.
+"""
+
+
+@contextlib.contextmanager
+def _exclusive(lock_path: Path) -> Iterator[None]:
+    """Hold an exclusive lock on ``lock_path`` across processes.
+
+    ``fcntl.flock`` blocks until the holder releases it, and the kernel
+    releases it when the holder dies, so a crashed worker cannot leave the
+    others waiting. Where ``fcntl`` does not exist (Windows) the lock is a
+    no-op and every worker builds, as before.
+
+    Args:
+        lock_path (Path): The lock file, created when missing.
+
+    Yields:
+        None: While the lock is held.
+    """
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - Windows
+        yield
+        return
+    with lock_path.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _site_is_fresh(stamp: Path) -> bool:
+    """Tell whether the built site is newer than every docs input.
+
+    Args:
+        stamp (Path): ``site/llms.txt``, the last file the build writes.
+
+    Returns:
+        bool: ``True`` when ``stamp`` exists and is not older than the
+        newest input.
+    """
+    return stamp.exists() and stamp.stat().st_mtime >= _newest_docs_input_mtime()
+
+
+def build_once(
+    is_fresh: Callable[[], bool],
+    build: Callable[[], subprocess.CompletedProcess[str] | None],
+    lock_path: Path,
+) -> subprocess.CompletedProcess[str] | None:
+    """Run ``build`` unless the output is fresh, one process at a time.
+
+    Checks freshness before taking the lock (the common case, a site
+    already built, never waits) and again after (a worker that waited finds
+    what the holder built and skips).
+
+    Args:
+        is_fresh (Callable[[], bool]): Whether the output is up to date.
+        build (Callable[[], subprocess.CompletedProcess[str] | None]): Builds
+            it.
+        lock_path (Path): Lock shared by every process that may build.
+
+    Returns:
+        subprocess.CompletedProcess[str] | None: What ``build`` returned, or
+        ``None`` when nothing was built.
+    """
+    if is_fresh():
+        return None
+    with _exclusive(lock_path):
+        if is_fresh():
+            return None
+        return build()
+
 
 @pytest.fixture(scope="session")
 def built_site() -> Path:
@@ -114,6 +191,17 @@ def built_site() -> Path:
     every other worker lost ``aiosqlite`` and the extras, and the matrix
     reported 637 failures and 2142 errors that the code did not have.
 
+    ``scope="session"`` is per **worker** under pytest-xdist, so every
+    worker that drew one of these tests used to build the site at once,
+    into the same ``site/``. Measured on a fresh worktree with no other
+    load: the 26 docs tests took 253 s against the 300 s ``timeout``, with
+    up to 32 ``mkdocs build`` processes alive. With a second ``make check``
+    competing for the CPU it passed 300 s, and pytest-timeout killed the
+    worker — reported only as ``node down: Not properly terminated``,
+    because the timeout banner goes to the worker's stderr, which xdist
+    does not forward (#694). The workers now take :data:`SITE_BUILD_LOCK`:
+    the first one builds, the others wait and find the site fresh.
+
     Returns:
         Path: The built ``site/`` directory.
     """
@@ -121,17 +209,21 @@ def built_site() -> Path:
         pytest.skip("uv is required to build the documentation")
     site = ROOT / "site"
     stamp = site / "llms.txt"
-    fresh = stamp.exists() and stamp.stat().st_mtime >= _newest_docs_input_mtime()
-    if not fresh:
-        completed = subprocess.run(
+    completed = build_once(
+        lambda: _site_is_fresh(stamp),
+        lambda: subprocess.run(
             DOCS_BUILD_COMMAND,
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
-        )
-        if completed.returncode != 0:  # pragma: no cover - build failure
-            pytest.fail(f"mkdocs build failed:\n{completed.stdout}{completed.stderr}")
+        ),
+        SITE_BUILD_LOCK,
+    )
+    if (
+        completed is not None and completed.returncode != 0
+    ):  # pragma: no cover - build failure
+        pytest.fail(f"mkdocs build failed:\n{completed.stdout}{completed.stderr}")
     return site
 
 

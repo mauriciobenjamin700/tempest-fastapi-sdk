@@ -25,6 +25,7 @@ logs/
 .vscode/
 .idea/
 site/
+.site-build.lock
 
 # Claude Code: project config is versioned; only per-machine overrides are not
 .claude/*.local.json
