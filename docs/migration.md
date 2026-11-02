@@ -2,6 +2,12 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.344.0 — token de conta apagada
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `UserAuthService.current_user_dependency` | Token válido de conta apagada (ou `sub` que não é UUID) responde `401 UNAUTHORIZED` em vez de `404 NOT_FOUND`; com `soft=True`, a dependency devolve `None` | Nada, se o cliente já trata `401` como sessão encerrada. Quem tratava o `404` dessas rotas troca para `401`; quem reimplementou o loader só para traduzir o `404` pode voltar ao `current_user_dependency()` |
+
 ## 0.343.0 — todo enum do SDK termina em `Enum`
 
 Oitenta enums públicos escritos à mão ganharam o sufixo que os outros já
