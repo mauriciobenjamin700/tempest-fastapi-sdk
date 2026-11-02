@@ -412,6 +412,67 @@ The tests for this surface run over `httpx.MockTransport`: they pin the
 request each backend builds and the reading of the documented response, not
 the behavior of a live provider.
 
+## One provider chosen in `.env`
+
+Reading the provider off the model id prefix is convenient, but it hides a
+business decision inside a model name, and each provider wants its own key
+variable. When the service sends **every** model to **one** provider, say so
+in `.env`, with the provider, the key and (optionally) the URL:
+
+```bash
+# .env
+GENAI_PROVIDER=openai
+GENAI_API_KEY=sk-...
+# GENAI_BASE_URL=https://internal-gateway/v1   # empty uses the provider URL
+AI_MODEL_FREE=gpt-5-mini
+AI_MODEL_FAMILY=gpt-5
+```
+
+```python
+from tempest_fastapi_sdk import BaseAppSettings, HostedGenAISettings
+from tempest_fastapi_sdk.genai import TextBackend, hosted_generator
+
+
+class Settings(HostedGenAISettings, BaseAppSettings):
+    """Service settings: both models come from the same provider."""
+
+    AI_MODEL_FREE: str = "gpt-5-mini"
+    AI_MODEL_FAMILY: str = "gpt-5"
+
+
+def plan_backend(settings: Settings, family: bool) -> TextBackend:
+    """Build the plan's generator with the provider from `.env`."""
+    model = settings.AI_MODEL_FAMILY if family else settings.AI_MODEL_FREE
+    return hosted_generator(**settings.hosted_kwargs(model))
+
+
+settings = Settings(GENAI_PROVIDER="openai", GENAI_API_KEY="sk-...")
+print(settings.hosted_kwargs(settings.AI_MODEL_FREE)["provider"])  # openai
+```
+
+With `GENAI_PROVIDER` set, `hosted_kwargs` changes rule:
+
+- **The provider is the one in `.env`**, for every model. An id with another
+  provider's prefix (`claude-...` with `GENAI_PROVIDER=openai`) raises
+  `ValueError` instead of switching provider silently; an id with no known
+  prefix (a fine-tune, a model behind an OpenAI-compatible server) goes to
+  the chosen provider.
+- **The key is `GENAI_API_KEY`**; empty, it falls back to the provider's own
+  key (`OPENAI_API_KEY`...). The URL is `GENAI_BASE_URL` or, when empty, the
+  provider's.
+- **A `provider=`** that disagrees with `.env` raises `ValueError`: one
+  service talks to one provider.
+- **Without `GENAI_PROVIDER`** (absent or empty), nothing changes: the
+  provider comes from the prefix, as in the section above.
+
+!!! check "The production boot demands the key"
+
+    With `EnvironmentSettings` composed and `ENV=production`, a
+    `GENAI_PROVIDER` with no effective key (neither `GENAI_API_KEY` nor the
+    provider's own) refuses the boot, listing `GENAI_API_KEY`. A service that
+    never sets `GENAI_PROVIDER` is not affected: the per-provider keys stay
+    optional.
+
 ## Embeddings (OpenAI)
 
 `OpenAICompatEmbedder` implements `SupportsEmbed`, so it goes into a
@@ -518,6 +579,8 @@ as Ollama's, and puts no upper bound in any consumer's lock.
   protocols as `OllamaGenerator`: change the construction, keep the rest.
 - `HostedGenAISettings` + `anthropic_kwargs()` / `openai_kwargs()` /
   `deepseek_kwargs()` / `google_kwargs()` build the backend by splat.
+- `GENAI_PROVIDER` + `GENAI_API_KEY` (+ `GENAI_BASE_URL`) pin one provider
+  for every model from `.env`; another provider's model raises.
 - `hosted_generator(**settings.hosted_kwargs(model))` picks the provider
   from the model id; `complete_structured` returns output, usage and stop
   reason whatever the outcome (usage, when the provider reports it), with

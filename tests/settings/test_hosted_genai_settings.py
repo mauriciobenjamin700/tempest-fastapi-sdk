@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from typing import get_args
+
 import httpx
 import pytest
+from pydantic import ValidationError
 from pydantic_settings import SettingsConfigDict
 
 from tempest_fastapi_sdk import (
     BaseAppSettings,
+    EnvironmentSettings,
     GenAISettings,
     HostedGenAISettings,
     ServerSettings,
@@ -20,6 +24,7 @@ from tempest_fastapi_sdk.genai import (
     DEFAULT_GOOGLE_OPENAI_URL,
     DEFAULT_OPENAI_URL,
     GOOGLE_EFFORT_VALUES,
+    HOSTED_PROVIDERS,
     AnthropicGenerator,
     OpenAICompatGenerator,
     hosted_generator,
@@ -28,6 +33,12 @@ from tempest_fastapi_sdk.genai import (
 
 class Composed(ServerSettings, GenAISettings, HostedGenAISettings, BaseAppSettings):
     """The mixin composes with the local-weights one and the server one."""
+
+    model_config = SettingsConfigDict(env_file=None)
+
+
+class ProductionHosted(EnvironmentSettings, HostedGenAISettings):
+    """The mixin under the production guard."""
 
     model_config = SettingsConfigDict(env_file=None)
 
@@ -162,3 +173,146 @@ class TestHostedKwargs:
     def test_unknown_provider_is_refused(self) -> None:
         with pytest.raises(ValueError, match="unknown hosted provider"):
             HostedGenAISettings().hosted_kwargs("x", provider="mistral")
+
+
+class TestGenericProvider:
+    """``GENAI_PROVIDER`` / ``GENAI_API_KEY`` / ``GENAI_BASE_URL``."""
+
+    def test_provider_literal_matches_the_generator_constant(self) -> None:
+        field = HostedGenAISettings.model_fields["GENAI_PROVIDER"]
+        literal = get_args(field.annotation)[0]
+        assert get_args(literal) == HOSTED_PROVIDERS
+
+    @pytest.mark.parametrize(
+        ("provider", "model", "default_url"),
+        [
+            ("anthropic", "claude-haiku-5-5", DEFAULT_ANTHROPIC_URL),
+            ("openai", "gpt-5", DEFAULT_OPENAI_URL),
+            ("google", "gemini-3-flash", DEFAULT_GOOGLE_OPENAI_URL),
+            ("deepseek", "deepseek-flash", DEFAULT_DEEPSEEK_URL),
+        ],
+    )
+    def test_generic_key_goes_to_the_chosen_provider(
+        self,
+        provider: str,
+        model: str,
+        default_url: str,
+    ) -> None:
+        settings = HostedGenAISettings(
+            GENAI_PROVIDER=provider,
+            GENAI_API_KEY="sk-generic",
+            ANTHROPIC_API_KEY="sk-ant",
+            OPENAI_API_KEY="sk-openai",
+        )
+        kwargs = settings.hosted_kwargs(model)
+        assert kwargs == {
+            "model": model,
+            "api_key": "sk-generic",
+            "base_url": default_url,
+            "provider": provider,
+        }
+        gen = hosted_generator(**kwargs)
+        assert gen.model == model
+
+    def test_falls_back_to_the_provider_key_and_url(self) -> None:
+        settings = HostedGenAISettings(
+            GENAI_PROVIDER="openai",
+            OPENAI_API_KEY="sk-openai",
+            OPENAI_BASE_URL="https://proxy.example/v1",
+        )
+        kwargs = settings.hosted_kwargs("gpt-5")
+        assert kwargs["api_key"] == "sk-openai"
+        assert kwargs["base_url"] == "https://proxy.example/v1"
+
+    def test_generic_base_url_wins(self) -> None:
+        settings = HostedGenAISettings(
+            GENAI_PROVIDER="openai",
+            GENAI_API_KEY="sk",
+            GENAI_BASE_URL="https://gateway.example/v1",
+        )
+        assert (
+            settings.hosted_kwargs("gpt-5")["base_url"] == "https://gateway.example/v1"
+        )
+
+    def test_model_of_another_provider_is_refused(self) -> None:
+        settings = HostedGenAISettings(GENAI_PROVIDER="openai", GENAI_API_KEY="sk")
+        with pytest.raises(ValueError, match="belongs to 'anthropic'"):
+            settings.hosted_kwargs("claude-haiku-5-5")
+
+    def test_disagreeing_provider_argument_is_refused(self) -> None:
+        settings = HostedGenAISettings(GENAI_PROVIDER="openai", GENAI_API_KEY="sk")
+        with pytest.raises(ValueError, match="disagrees with GENAI_PROVIDER"):
+            settings.hosted_kwargs("gpt-5", provider="google")
+
+    def test_unprefixed_model_goes_to_the_chosen_provider(self) -> None:
+        settings = HostedGenAISettings(GENAI_PROVIDER="openai", GENAI_API_KEY="sk")
+        kwargs = settings.hosted_kwargs("my-finetune")
+        assert kwargs["provider"] == "openai"
+        assert kwargs["api_key"] == "sk"
+
+    def test_unset_keeps_the_prefix_resolution(self) -> None:
+        settings = HostedGenAISettings(
+            GENAI_API_KEY="sk-ignored",
+            GENAI_BASE_URL="https://ignored.example",
+            ANTHROPIC_API_KEY="sk-ant",
+        )
+        assert settings.GENAI_PROVIDER is None
+        kwargs = settings.hosted_kwargs("claude-haiku-5-5")
+        assert kwargs == {
+            "model": "claude-haiku-5-5",
+            "api_key": "sk-ant",
+            "base_url": DEFAULT_ANTHROPIC_URL,
+            "provider": "anthropic",
+        }
+
+    def test_blank_provider_in_env_is_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GENAI_PROVIDER", "  ")
+        assert HostedGenAISettings().GENAI_PROVIDER is None
+
+    def test_reads_the_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GENAI_PROVIDER", "deepseek")
+        monkeypatch.setenv("GENAI_API_KEY", "sk-env")
+        settings = HostedGenAISettings()
+        assert settings.hosted_kwargs("deepseek-flash")["api_key"] == "sk-env"
+
+    def test_unknown_provider_value_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            HostedGenAISettings(GENAI_PROVIDER="mistral")
+
+
+class TestGenericProviderProductionGuard:
+    def test_chosen_provider_without_any_key_is_a_violation(self) -> None:
+        violations = HostedGenAISettings(
+            GENAI_PROVIDER="openai"
+        ).production_violations()
+        assert any(
+            v.startswith("GENAI_API_KEY") and "OPENAI_API_KEY" in v for v in violations
+        )
+
+    @pytest.mark.parametrize(
+        "keys",
+        [{"GENAI_API_KEY": "sk"}, {"OPENAI_API_KEY": "sk"}],
+    )
+    def test_any_effective_key_satisfies_the_guard(self, keys: dict[str, str]) -> None:
+        settings = HostedGenAISettings(GENAI_PROVIDER="openai", **keys)
+        assert not any(
+            v.startswith("GENAI_API_KEY") for v in settings.production_violations()
+        )
+
+    def test_service_without_provider_is_not_affected(self) -> None:
+        violations = HostedGenAISettings().production_violations()
+        assert not any(v.startswith("GENAI_API_KEY") for v in violations)
+
+    def test_environment_settings_refuse_the_boot(self) -> None:
+        with pytest.raises(ValidationError, match="GENAI_API_KEY"):
+            ProductionHosted(ENV="production", GENAI_PROVIDER="anthropic")
+
+    def test_environment_settings_boot_with_a_key(self) -> None:
+        settings = ProductionHosted(
+            ENV="production",
+            GENAI_PROVIDER="anthropic",
+            GENAI_API_KEY="sk-ant",
+        )
+        assert settings.genai_effective_api_key() == "sk-ant"

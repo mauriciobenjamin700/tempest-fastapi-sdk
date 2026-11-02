@@ -880,6 +880,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `HostedGenAISettings` ganha `GOOGLE_*`, `google_kwargs()` e
   `hosted_kwargs(model)`. Receita: seção "Resultado completo" de
   `docs/recipes/genai-hosted.md`.
+- **Um provedor hospedado escolhido no `.env` (Unreleased, extra
+  `[genai-hosted]`)** — `HostedGenAISettings` ganha `GENAI_PROVIDER`,
+  `GENAI_API_KEY` e `GENAI_BASE_URL`. Com `GENAI_PROVIDER` preenchido,
+  `hosted_kwargs` manda todo modelo para esse provedor (chave e URL genéricas,
+  com volta para as do provedor), recusa modelo cujo prefixo é de outro
+  provedor e `provider=` que discorda; vazio, nada muda.
+  `genai_effective_api_key()` e o guard de produção (provedor sem chave
+  efetiva derruba o boot). Receita: seção "Um provedor escolhido no `.env`"
+  de `docs/recipes/genai-hosted.md`.
 - **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
   `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
   `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,

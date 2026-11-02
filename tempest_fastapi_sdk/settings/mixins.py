@@ -4310,6 +4310,17 @@ class HostedGenAISettings(BaseAppSettings):
 
         hosted_generator(**settings.hosted_kwargs("claude-haiku-5-5"))
 
+    A service that wants the provider, the key and the API root stated
+    explicitly — one provider for every model it calls, chosen in ``.env``
+    rather than inferred from a model id — sets ``GENAI_PROVIDER``,
+    ``GENAI_API_KEY`` and, optionally, ``GENAI_BASE_URL``. With
+    ``GENAI_PROVIDER`` set, :meth:`hosted_kwargs` uses that provider for every
+    model, takes ``GENAI_API_KEY`` (falling back to the provider's own
+    ``*_API_KEY``) and ``GENAI_BASE_URL`` (falling back to the provider's own
+    ``*_BASE_URL``), and refuses a model id whose prefix names a different
+    provider instead of switching silently. Unset, nothing changes: the
+    provider still comes from the model id.
+
     The mapping is also where the per-provider wire differences live: the
     OpenAI kwargs send ``max_new_tokens`` as ``max_completion_tokens`` (the
     OpenAI spec marks ``max_tokens`` deprecated) and ask for JSON with
@@ -4344,8 +4355,45 @@ class HostedGenAISettings(BaseAppSettings):
             ``"https://generativelanguage.googleapis.com/v1beta/openai"``.
         GOOGLE_MODEL (str): Model id. No default: Gemini model ids are not
             hard-coded in this SDK. Default: ``""``.
+        GENAI_PROVIDER (Literal["anthropic", "openai", "google", "deepseek"] | None):
+            The one provider every model goes to. ``None`` (or empty in
+            ``.env``) keeps resolving the provider from each model id.
+            Default: ``None``.
+        GENAI_API_KEY (str): Key for ``GENAI_PROVIDER``; empty falls back to
+            that provider's ``*_API_KEY``. Default: ``""``.
+        GENAI_BASE_URL (str): API root for ``GENAI_PROVIDER``; empty falls
+            back to that provider's ``*_BASE_URL``. Default: ``""``.
     """
 
+    GENAI_PROVIDER: Literal["anthropic", "openai", "google", "deepseek"] | None = Field(
+        default=None,
+        title="Hosted provider",
+        description=(
+            "The single provider every model is sent to. Unset keeps "
+            "resolving the provider from the model id. The same values as "
+            "``genai.HOSTED_PROVIDERS``, written out so settings never "
+            "import ``genai``."
+        ),
+        examples=[None, "anthropic", "openai", "google", "deepseek"],
+    )
+    GENAI_API_KEY: str = Field(
+        default="",
+        title="Hosted provider API key",
+        description=(
+            "Key sent to ``GENAI_PROVIDER``. Empty falls back to that "
+            "provider's own ``*_API_KEY``."
+        ),
+        examples=["", "sk-..."],
+    )
+    GENAI_BASE_URL: str = Field(
+        default="",
+        title="Hosted provider API root",
+        description=(
+            "API root of ``GENAI_PROVIDER``. Empty falls back to that "
+            "provider's own ``*_BASE_URL``."
+        ),
+        examples=["", "https://api.openai.com/v1"],
+    )
     ANTHROPIC_API_KEY: str = Field(
         default="",
         title="Anthropic API key",
@@ -4430,6 +4478,73 @@ class HostedGenAISettings(BaseAppSettings):
         ),
         examples=[""],
     )
+
+    @field_validator("GENAI_PROVIDER", mode="before")
+    @classmethod
+    def _blank_provider_is_unset(cls, value: object) -> object:
+        """Read an empty or blank ``GENAI_PROVIDER`` as unset.
+
+        ``GENAI_PROVIDER=`` in a ``.env`` arrives as ``""``, which the
+        literal would reject; documenting the key empty must mean "resolve
+        from the model id", as it does when the key is absent.
+
+        Args:
+            value (object): The raw configured value.
+
+        Returns:
+            object: ``None`` for an empty or blank string, the stripped
+            string otherwise (the literal check then decides).
+        """
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    def _provider_credentials(self) -> dict[str, tuple[str, str]]:
+        """Map each provider to its own key and API root.
+
+        Returns:
+            dict[str, tuple[str, str]]: ``(api_key, base_url)`` by provider.
+        """
+        return {
+            "anthropic": (self.ANTHROPIC_API_KEY, self.ANTHROPIC_BASE_URL),
+            "openai": (self.OPENAI_API_KEY, self.OPENAI_BASE_URL),
+            "google": (self.GOOGLE_API_KEY, self.GOOGLE_BASE_URL),
+            "deepseek": (self.DEEPSEEK_API_KEY, self.DEEPSEEK_BASE_URL),
+        }
+
+    def genai_effective_api_key(self) -> str:
+        """The key ``GENAI_PROVIDER`` will be called with.
+
+        Returns:
+            str: ``GENAI_API_KEY``, or the provider's own ``*_API_KEY`` when
+            it is empty; ``""`` when ``GENAI_PROVIDER`` is unset.
+        """
+        if self.GENAI_PROVIDER is None:
+            return ""
+        return (
+            self.GENAI_API_KEY or self._provider_credentials()[self.GENAI_PROVIDER][0]
+        )
+
+    def production_violations(self) -> list[str]:
+        """Refuse a chosen provider with no key to call it.
+
+        A service that never sets ``GENAI_PROVIDER`` is not affected: the
+        per-provider keys may stay empty for the providers it does not use.
+
+        Returns:
+            list[str]: The parent's entries plus one when ``GENAI_PROVIDER``
+            is set and neither ``GENAI_API_KEY`` nor the provider's own
+            ``*_API_KEY`` holds a key.
+        """
+        violations: list[str] = super().production_violations()
+        if self.GENAI_PROVIDER is not None and not self.genai_effective_api_key():
+            own = f"{self.GENAI_PROVIDER.upper()}_API_KEY"
+            violations.append(
+                f"GENAI_API_KEY: empty with GENAI_PROVIDER={self.GENAI_PROVIDER} "
+                f"(and {own} empty too)"
+            )
+        return violations
 
     def anthropic_kwargs(self) -> dict[str, Any]:
         """Map these settings onto ``AnthropicGenerator``.
@@ -4520,10 +4635,20 @@ class HostedGenAISettings(BaseAppSettings):
     ) -> dict[str, Any]:
         """Map these settings onto ``hosted_generator`` for ``model``.
 
-        The provider comes from ``provider`` or, when ``None``, from the model
-        id (``genai.resolve_provider``); the key and the API root are that
-        provider's fields here. An empty key is returned as is — the
-        generator constructor raises on it, as with the other ``*_kwargs``.
+        Without ``GENAI_PROVIDER``, the provider comes from ``provider`` or,
+        when ``None``, from the model id (``genai.resolve_provider``); the
+        key and the API root are that provider's fields here.
+
+        With ``GENAI_PROVIDER`` set, that provider takes every model: the
+        key is ``GENAI_API_KEY`` (or the provider's own ``*_API_KEY`` when
+        empty) and the API root is ``GENAI_BASE_URL`` (or the provider's own
+        ``*_BASE_URL``). A model id whose prefix names another provider, or a
+        ``provider`` argument that disagrees, raises instead of switching
+        silently; an id with no known prefix (a fine-tune, a model behind an
+        OpenAI-compatible server) goes to ``GENAI_PROVIDER``.
+
+        An empty key is returned as is — the generator constructor raises on
+        it, as with the other ``*_kwargs``.
 
         Args:
             model (str): The model id to call.
@@ -4537,17 +4662,37 @@ class HostedGenAISettings(BaseAppSettings):
 
         Raises:
             ValueError: When the provider cannot be resolved from ``model``,
-                or ``provider`` names one this mixin has no fields for.
+                ``provider`` names one this mixin has no fields for, or
+                ``model``/``provider`` disagree with ``GENAI_PROVIDER``.
         """
         from tempest_fastapi_sdk.genai.providers import resolve_provider
 
+        credentials = self._provider_credentials()
+        chosen = self.GENAI_PROVIDER
+        if chosen is not None:
+            if provider is not None and provider != chosen:
+                raise ValueError(
+                    f"provider={provider!r} disagrees with GENAI_PROVIDER={chosen!r}; "
+                    "one service calls one hosted provider.",
+                )
+            try:
+                inferred: str | None = resolve_provider(model)
+            except ValueError:
+                inferred = None
+            if inferred is not None and inferred != chosen:
+                raise ValueError(
+                    f"model {model!r} belongs to {inferred!r} but "
+                    f"GENAI_PROVIDER={chosen!r}; set a {chosen} model id or "
+                    "change GENAI_PROVIDER.",
+                )
+            own_key, own_url = credentials[chosen]
+            return {
+                "model": model,
+                "api_key": self.GENAI_API_KEY or own_key,
+                "base_url": self.GENAI_BASE_URL or own_url,
+                "provider": chosen,
+            }
         resolved = provider or resolve_provider(model)
-        credentials: dict[str, tuple[str, str]] = {
-            "anthropic": (self.ANTHROPIC_API_KEY, self.ANTHROPIC_BASE_URL),
-            "openai": (self.OPENAI_API_KEY, self.OPENAI_BASE_URL),
-            "google": (self.GOOGLE_API_KEY, self.GOOGLE_BASE_URL),
-            "deepseek": (self.DEEPSEEK_API_KEY, self.DEEPSEEK_BASE_URL),
-        }
         if resolved not in credentials:
             raise ValueError(
                 f"unknown hosted provider {resolved!r}; expected one of "
