@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `make_auth_router`: as 13 rotas autenticadas (`/auth/me`, troca de senha e
+  de e-mail, `email-verify/request`, MFA, passkeys, contas OAuth) tinham
+  `security` no OpenAPI e nenhuma resposta `401`, e também não declaravam o
+  `403` `ACCOUNT_INACTIVE` que respondem. Agora declaram os dois, a partir de
+  um dict único; `signup`, `login` e `refresh` ficam como estavam (#691).
+- `make_hostbridge_router` documenta `401` e `403` em toda rota: as
+  `dependencies=` são auth por contrato, e a rota aparecia com `security` e
+  sem `401` quando a dependency usava bearer.
 - `UserAuthService.current_user_dependency`: token válido de conta apagada
   respondia `404 NOT_FOUND` em toda rota protegida, porque o
   `NotFoundException` do `get_user` passava direto. Agora o loader recusa o
