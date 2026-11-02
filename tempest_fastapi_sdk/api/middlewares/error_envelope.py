@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import weakref
 from collections.abc import Awaitable, Callable
 from typing import Final
 
@@ -17,9 +18,59 @@ _ENVELOPED_FLAG: Final[str] = "__tempest_error_enveloped__"
 
 An attribute on the exception, not a key in ``scope``: a middleware may
 hand a copied scope downstream, and the exception is the one object
-``ServerErrorMiddleware`` is guaranteed to see. Weak references are not
-an option, since built-in exceptions do not support them.
+``ServerErrorMiddleware`` is guaranteed to see. Weak references alone are
+not an option, since built-in exceptions do not support them (measured on
+CPython 3.12: ``ValueError``, ``KeyError``, ``OSError`` and ``Exception``
+all raise ``TypeError`` on ``weakref.ref``).
 """
+
+_ENVELOPED_FROZEN: Final[weakref.WeakSet[BaseException]] = weakref.WeakSet()
+"""Enveloped exceptions that refuse :data:`_ENVELOPED_FLAG`.
+
+An exception class may forbid new attributes — ``minio.error.S3Error``
+raises ``AttributeError`` from ``__setattr__``. Such a class is defined in
+Python, so its instances accept weak references, and the set forgets each
+one when it is collected.
+"""
+
+
+def _mark_enveloped(exc: BaseException) -> None:
+    """Record that ``exc`` already had its envelope sent.
+
+    Tries the attribute first, which every built-in exception accepts, and
+    falls back to :data:`_ENVELOPED_FROZEN` for a class that refuses it.
+    Never raises: the caller re-raises ``exc`` right after, and an error
+    here would replace it — the ASGI server would log the marking failure
+    instead of the cause, and ``ServerErrorMiddleware`` would log and
+    report the request a second time.
+
+    Args:
+        exc (BaseException): The exception just enveloped.
+    """
+    try:
+        setattr(exc, _ENVELOPED_FLAG, True)
+    except Exception:
+        try:
+            _ENVELOPED_FROZEN.add(exc)
+        except TypeError:
+            return
+
+
+def _is_enveloped(exc: BaseException) -> bool:
+    """Tell whether ``exc`` was marked by :func:`_mark_enveloped`.
+
+    Args:
+        exc (BaseException): The exception ``ServerErrorMiddleware`` got.
+
+    Returns:
+        bool: ``True`` when its envelope was already sent.
+    """
+    if getattr(exc, _ENVELOPED_FLAG, False) is True:
+        return True
+    try:
+        return exc in _ENVELOPED_FROZEN
+    except TypeError:
+        return False
 
 
 def _skip_enveloped(handler: ErrorEnvelopeHandler) -> ErrorEnvelopeHandler:
@@ -41,7 +92,7 @@ def _skip_enveloped(handler: ErrorEnvelopeHandler) -> ErrorEnvelopeHandler:
     """
 
     async def _guarded(request: Request, exc: Exception) -> Response:
-        if getattr(exc, _ENVELOPED_FLAG, False) is True:
+        if _is_enveloped(exc):
             return Response(status_code=500)
         return await handler(request, exc)
 
@@ -144,7 +195,7 @@ class ErrorEnvelopeMiddleware:
                     await response.background()
             else:
                 await response(scope, receive, send)
-            setattr(exc, _ENVELOPED_FLAG, True)
+            _mark_enveloped(exc)
             raise
 
 
