@@ -19,6 +19,8 @@ import json
 from typing import Any
 
 import httpx
+import pytest
+from pydantic import ValidationError
 
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment.openpix import (
@@ -106,10 +108,24 @@ class TestCreateChargeBody:
         )
         assert recorder.body["splits"] == [{"value": 100, "pixKey": "key@example.com"}]
 
-    async def test_an_empty_array_the_caller_chose_is_still_sent(self) -> None:
-        """``splits=[]`` is a claim the caller made; the provider judges it."""
+    def test_an_empty_split_list_is_refused_before_the_request(self) -> None:
+        """``splits=[]`` used to go on the wire and come back as a 400 (#699).
+
+        Woovi answers ``400 O array de split precisa ter ao menos um item`` to
+        ``"splits": []``. The overlay declares ``minItems: 1`` on the field, so
+        the payload refuses it at construction, naming the field, before any
+        request is built.
+        """
+        with pytest.raises(ValidationError) as caught:
+            ChargePayload(correlation_id="probe-0003", value=1190, splits=[])
+
+        assert [error["loc"] for error in caught.value.errors()] == [("splits",)]
+        assert caught.value.errors()[0]["type"] == "too_short"
+
+    async def test_none_still_stays_off_the_wire(self) -> None:
+        """The workaround the issue documents keeps working: ``or None``."""
         recorder = _Recorder()
         await _client(recorder).create_charge(
-            body=ChargePayload(correlation_id="probe-0003", value=1190, splits=[])
+            body=ChargePayload(correlation_id="probe-0004", value=1190, splits=None)
         )
-        assert recorder.body["splits"] == []
+        assert "splits" not in recorder.body
