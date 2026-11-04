@@ -84,6 +84,34 @@ branch ``main``) marks ``max_tokens`` deprecated in favor of
 ``HostedGenAISettings.openai_kwargs()`` selects.
 """
 
+DOCUMENT_PROVIDERS: Final[frozenset[HostedProvider]] = frozenset(
+    {"anthropic", "openai"},
+)
+"""Hosted providers whose documentation describes PDF input.
+
+Read on 2026-11-04:
+
+* ``anthropic`` — ``document`` blocks with a ``base64`` ``application/pdf``
+  source (https://platform.claude.com/docs/en/build-with-claude/pdf-support).
+* ``openai`` — "Chat Completions accepts only PDF files as ``file`` content
+  parts", with ``file_data`` as a ``data:application/pdf;base64,...`` URL
+  (https://developers.openai.com/api/docs/guides/pdf-files).
+
+Left out, because their documentation does not describe it:
+
+* ``google`` — the OpenAI-compatibility page
+  (https://ai.google.dev/gemini-api/docs/openai, which redirects to
+  https://aistudio.google.com/docs/openai) documents image (``image_url``)
+  and audio (``input_audio``) parts, and no ``file`` part.
+* ``deepseek`` — the chat-completion reference
+  (https://api-docs.deepseek.com/api/create-chat-completion) lists a
+  ``file`` part, but describes ``file_data`` as "a base64-encoded data URL
+  of the image" and names no PDF or document format.
+
+The SDK's tests pin the request built for each provider, not a provider's
+answer: membership here is what the documentation says, not a live call.
+"""
+
 MODEL_PREFIXES: Final[tuple[tuple[str, HostedProvider], ...]] = (
     ("claude-", "anthropic"),
     ("gpt-", "openai"),
@@ -129,6 +157,30 @@ def resolve_provider(model: str) -> HostedProvider:
     )
 
 
+def supports_documents(provider: str | None) -> bool:
+    """Tell whether ``provider`` documents PDF input.
+
+    For a service that sends :func:`~tempest_fastapi_sdk.genai.document_part`
+    to check at boot, or before offering a PDF route, instead of finding out
+    from the ``ValueError`` the generator raises on the first call.
+
+    Args:
+        provider (str | None): A hosted provider name — typically
+            ``settings.GENAI_PROVIDER`` or :func:`resolve_provider` of the
+            model id. ``None`` and an unknown name answer ``False``.
+
+    Returns:
+        bool: ``True`` when ``provider`` is in :data:`DOCUMENT_PROVIDERS`.
+
+    Example:
+        >>> supports_documents("anthropic")
+        True
+        >>> supports_documents("deepseek")
+        False
+    """
+    return provider in DOCUMENT_PROVIDERS
+
+
 def hosted_generator(
     model: str,
     *,
@@ -153,6 +205,11 @@ def hosted_generator(
       structured output and :data:`GOOGLE_EFFORT_VALUES`;
     * ``deepseek`` — ``json_object`` structured output (the only JSON mode
       DeepSeek documents) and no ``reasoning_effort`` field.
+
+    ``google`` and ``deepseek`` are also built with
+    ``accepts_documents=False`` (see :func:`supports_documents`): a call
+    carrying a :func:`~tempest_fastapi_sdk.genai.document_part` raises
+    ``ValueError`` before the request is sent.
 
     ``HostedGenAISettings.hosted_kwargs()`` returns exactly these keyword
     arguments, so building from settings is a splat.
@@ -226,6 +283,7 @@ def hosted_generator(
             provider="google",
             structured_output="json_schema",
             effort_values=GOOGLE_EFFORT_VALUES,
+            accepts_documents=supports_documents("google"),
         )
     return OpenAICompatGenerator(
         model,
@@ -238,11 +296,13 @@ def hosted_generator(
         provider="deepseek",
         structured_output="json_object",
         effort_field=None,
+        accepts_documents=supports_documents("deepseek"),
     )
 
 
 __all__: list[str] = [
     "DEFAULT_GOOGLE_OPENAI_URL",
+    "DOCUMENT_PROVIDERS",
     "GOOGLE_EFFORT_VALUES",
     "HOSTED_PROVIDERS",
     "MODEL_PREFIXES",
@@ -250,4 +310,5 @@ __all__: list[str] = [
     "HostedProvider",
     "hosted_generator",
     "resolve_provider",
+    "supports_documents",
 ]

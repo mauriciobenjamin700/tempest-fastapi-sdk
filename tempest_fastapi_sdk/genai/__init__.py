@@ -26,6 +26,9 @@ from tempest_fastapi_sdk.genai.anthropic import (
     AnthropicGenerator as AnthropicGenerator,
 )
 from tempest_fastapi_sdk.genai.anthropic import (
+    to_anthropic_document as to_anthropic_document,
+)
+from tempest_fastapi_sdk.genai.anthropic import (
     to_anthropic_image as to_anthropic_image,
 )
 from tempest_fastapi_sdk.genai.audio_generation import (
@@ -46,6 +49,13 @@ from tempest_fastapi_sdk.genai.catalog import (
     TextToSpeechModelEnum as TextToSpeechModelEnum,
 )
 from tempest_fastapi_sdk.genai.catalog import VisionModelEnum as VisionModelEnum
+from tempest_fastapi_sdk.genai.completion import (
+    DEFAULT_DOCUMENT_FILENAME as DEFAULT_DOCUMENT_FILENAME,
+)
+from tempest_fastapi_sdk.genai.completion import (
+    DOCUMENT_MEDIA_TYPES as DOCUMENT_MEDIA_TYPES,
+)
+from tempest_fastapi_sdk.genai.completion import PDF_MEDIA_TYPE as PDF_MEDIA_TYPE
 from tempest_fastapi_sdk.genai.completion import Effort as Effort
 from tempest_fastapi_sdk.genai.completion import StopReason as StopReason
 from tempest_fastapi_sdk.genai.completion import (
@@ -57,7 +67,9 @@ from tempest_fastapi_sdk.genai.completion import (
 from tempest_fastapi_sdk.genai.completion import (
     build_structured_completion as build_structured_completion,
 )
+from tempest_fastapi_sdk.genai.completion import document_part as document_part
 from tempest_fastapi_sdk.genai.completion import image_part as image_part
+from tempest_fastapi_sdk.genai.completion import is_document_part as is_document_part
 from tempest_fastapi_sdk.genai.embeddings import (
     AsyncEmbeddingCache as AsyncEmbeddingCache,
 )
@@ -185,6 +197,9 @@ from tempest_fastapi_sdk.genai.providers import (
     DEFAULT_GOOGLE_OPENAI_URL as DEFAULT_GOOGLE_OPENAI_URL,
 )
 from tempest_fastapi_sdk.genai.providers import (
+    DOCUMENT_PROVIDERS as DOCUMENT_PROVIDERS,
+)
+from tempest_fastapi_sdk.genai.providers import (
     GOOGLE_EFFORT_VALUES as GOOGLE_EFFORT_VALUES,
 )
 from tempest_fastapi_sdk.genai.providers import (
@@ -197,6 +212,9 @@ from tempest_fastapi_sdk.genai.providers import (
 from tempest_fastapi_sdk.genai.providers import HostedProvider as HostedProvider
 from tempest_fastapi_sdk.genai.providers import hosted_generator as hosted_generator
 from tempest_fastapi_sdk.genai.providers import resolve_provider as resolve_provider
+from tempest_fastapi_sdk.genai.providers import (
+    supports_documents as supports_documents,
+)
 from tempest_fastapi_sdk.genai.registry import ModelRegistry as ModelRegistry
 from tempest_fastapi_sdk.genai.router import make_genai_router as make_genai_router
 from tempest_fastapi_sdk.genai.schemas import (
@@ -302,14 +320,18 @@ __all__: list[str] = [
     "DEFAULT_ANTHROPIC_URL",
     "DEFAULT_DEEPSEEK_MODEL",
     "DEFAULT_DEEPSEEK_URL",
+    "DEFAULT_DOCUMENT_FILENAME",
     "DEFAULT_GOOGLE_OPENAI_URL",
     "DEFAULT_OLLAMA_URL",
     "DEFAULT_OPENAI_URL",
+    "DOCUMENT_MEDIA_TYPES",
+    "DOCUMENT_PROVIDERS",
     "GOOGLE_EFFORT_VALUES",
     "HOSTED_PROVIDERS",
     "MODEL_PREFIXES",
     "OPENAI_FINISH_REASONS",
     "OPENAI_MAX_TOKENS_FIELD",
+    "PDF_MEDIA_TYPE",
     "AIChatPipeline",
     "AIChatResult",
     "AIUsageStore",
@@ -400,6 +422,7 @@ __all__: list[str] = [
     "count_message_tokens",
     "count_tokens",
     "describe_model",
+    "document_part",
     "download_model",
     "estimate_model_bytes",
     "extract_json_list",
@@ -410,6 +433,7 @@ __all__: list[str] = [
     "hosted_generator",
     "image_part",
     "is_deterministic",
+    "is_document_part",
     "list_cached_models",
     "make_ai_chat_router",
     "make_ai_usage_model",
@@ -426,6 +450,8 @@ __all__: list[str] = [
     "resolve_provider",
     "resolve_revision",
     "runtime_report",
+    "supports_documents",
+    "to_anthropic_document",
     "to_anthropic_image",
     "truncate_messages",
 ]
