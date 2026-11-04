@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Plugin do mypy `tempest_fastapi_sdk.mypy`: num modelo com
+  `use_enum_values=True` (todo `BaseSchema`), ler um campo anotado com enum
+  dá o tipo do **valor** — `str` para enum de `str`, `int` para enum de
+  `int`, `object` para `Enum` puro, recursivo em `Optional`, união, `list`,
+  `tuple` e `dict` — e o construtor aceita o membro ou o valor. Sem ele, o
+  mypy `--strict` aceitava `order.status.value`, `.name` e passar o campo a
+  uma função que espera o enum, e os três levantam `AttributeError` em
+  runtime. Liga com `plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]`,
+  em qualquer ordem. `pydantic.BaseModel` comum e `use_enum_values=False`
+  ficam intocados. Só o mypy roda plugin.
+
+### Changed
+
+- `tempest new` escreve o plugin novo no `[tool.mypy]` do projeto gerado, e
+  o próprio SDK passou a usá-lo: achou 7 chamadas schema → schema que só
+  funcionavam porque o Pydantic converte o valor de volta (o construtor agora
+  aceita o valor) e uma por genérico subscrito em `agents/structured.py`, que
+  virou `StopReasonEnum(...)`. A receita de slides converte o tema com
+  `SlideThemeEnum(payload.theme)`.
+
+### Added
+
 - `AppException.log_level` (`ClassVar[int | None]`, padrão `None`): a exceção
   declara a severidade com que o handler a loga. Declarado, o registro sai
   nesse nível, sem traceback, sem o marcador `http_500` (fora do `500.log` e

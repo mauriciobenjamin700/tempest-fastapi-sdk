@@ -3793,6 +3793,13 @@ init_typed = true
 warn_required_dynamic_aliases = true
 ```
 
+The second plugin closes a hole `BaseSchema`'s `use_enum_values=True` opens: an enum field holds the **value** at runtime, but mypy reads the annotation, so `order.status.value` type-checks and raises `AttributeError`. With `tempest_fastapi_sdk.mypy` listed, mypy reads such a field as `str` / `int` and the constructor accepts the member or the value (`tempest new` writes it as of v0.345.0; mypy only — pyright and Pylance do not run plugins):
+
+```toml
+[tool.mypy]
+plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]
+```
+
 See the [Typing recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/typing/) for the full guide, including what `init_typed` starts refusing.
 
 ### Hardened static files + cookie helpers recipe
