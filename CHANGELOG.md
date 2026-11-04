@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `provisioning_qr_terminal(uri)` e `provisioning_qr_data_uri(uri, *,
+  kind="svg")` desenham a `provisioning_uri` do MFA como QR code, para o
+  cadastro não depender de digitar o segredo à mão. O de terminal usa meio
+  bloco (`▀`, `▄`, `█` e espaço): uma URI de 95 caracteres sai em 49 colunas
+  por 25 linhas, e uma de 159 em 61 colunas; `background="light"` inverte
+  para terminal claro. O de `data:` devolve SVG (ou PNG) em base64, pronto
+  para um `<img>`. Os dois rodam sobre o `segno`, que entra no extra `[mfa]`
+  (`segno>=1.6.6`, sem upper bound e sem dependência em runtime), importado
+  na primeira chamada. Exportados no topo e em `tempest_fastapi_sdk.utils`,
+  com `PROVISIONING_QR_ERROR`, `PROVISIONING_QR_BORDER` e
+  `PROVISIONING_QR_SCALE` (#703).
+- `MFAEnrollResponseSchema.provisioning_qr`: o `POST /auth/mfa/enroll`
+  devolve a URI já desenhada como data URI SVG. Ligado por padrão, sem
+  setting: o campo é opcional e aditivo, e sem `segno` instalado vale `None`
+  em vez de derrubar a rota. `tempest user create --require-mfa` imprime o QR
+  no terminal antes da URI. Testes: `tests/utils/test_totp_qr.py` (cada
+  formato lido de volta e decodificado com `zxing-cpp`),
+  `tests/auth/test_mfa_qr.py` e `tests/cli/test_user_mfa.py`.
+
 ## [0.344.0] — 2026-11-02
 
 ### Added

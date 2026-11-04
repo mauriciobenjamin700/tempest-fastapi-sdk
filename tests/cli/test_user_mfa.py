@@ -38,7 +38,7 @@ from tempest_fastapi_sdk import (
     make_web_authn_credential_model,
 )
 from tempest_fastapi_sdk.cli.main import app
-from tempest_fastapi_sdk.utils.totp import TOTPHelper
+from tempest_fastapi_sdk.utils.totp import TOTPHelper, provisioning_qr_terminal
 
 runner = CliRunner()
 
@@ -227,6 +227,17 @@ class TestCreateRequireMfa:
         enabled = _scalar(project_db, select(_CLIMfaUserModel.totp_enabled_at))
         assert enabled is not None
         assert _count(project_db, _CLIMfaRecoveryCode) > 0
+
+    def test_prints_the_uri_as_a_terminal_qr_code(self, project_db: str) -> None:
+        result = _create(code_input=f"{_code()}\n")
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        uri = next(
+            line.split("otpauth URI:", 1)[1].strip()
+            for line in result.stdout.splitlines()
+            if "otpauth URI:" in line
+        )
+        assert provisioning_qr_terminal(uri) in result.stdout
 
     def test_three_wrong_codes_write_nothing(self, project_db: str) -> None:
         result = _create(

@@ -146,6 +146,7 @@ from tempest_fastapi_sdk.utils.token_types import (
     PASSWORD_AMR,
     token_amr,
 )
+from tempest_fastapi_sdk.utils.totp import provisioning_qr_data_uri
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -1951,8 +1952,9 @@ def make_auth_router(
                 user (BaseUserModel): The authenticated caller.
 
             Returns:
-                MFAEnrollResponseSchema: The shared secret, provisioning URI and
-            one-time recovery codes — returned only once.
+                MFAEnrollResponseSchema: The shared secret, provisioning URI,
+            its QR code (``None`` without ``segno``) and one-time recovery
+            codes — returned only once.
 
             Raises:
                 MFAAlreadyEnrolledException: When MFA is already active
@@ -1964,9 +1966,14 @@ def make_auth_router(
                 recovery_code_model=recovery_code_model,
             )
             await session.commit()
+            try:
+                qr: str | None = provisioning_qr_data_uri(uri)
+            except ImportError:
+                qr = None
             return MFAEnrollResponseSchema(
                 secret=secret,
                 provisioning_uri=uri,
+                provisioning_qr=qr,
                 recovery_codes=codes,
             )
 

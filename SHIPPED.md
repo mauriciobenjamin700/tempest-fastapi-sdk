@@ -4125,3 +4125,17 @@ ausência como produção. Recusado: `AuthSettings` herdar `EnvironmentSettings`
 `make_token_dependency` / `require_x_token` recusam segredo vazio com
 `ValueError`, no contrato que o `make_logs_router` já tinha
 (`allow_unauthenticated=True` como opt-out).
+
+## QR code do cadastro de MFA (Unreleased, #703)
+
+`provisioning_qr_terminal(uri)` desenha o `otpauth://` em meio-bloco para o
+terminal (49 colunas × 25 linhas para uma URI de 95 caracteres, 61 colunas
+para uma de 159, com `segno` 1.6.6) e `provisioning_qr_data_uri(uri,
+kind="svg" | "png")` devolve o `data:` URI em base64. Os dois vivem em
+`utils/totp.py`, sobre o `segno`, que entra no extra `[mfa]`. O
+`POST /auth/mfa/enroll` ganha `provisioning_qr` (SVG), ligado por padrão e
+`None` sem `segno`; o `tempest user create --require-mfa` imprime o QR antes
+da URI. Testes: `tests/utils/test_totp_qr.py` (lê cada formato de volta à
+matriz e decodifica com `zxing-cpp`), `tests/auth/test_mfa_qr.py` e
+`tests/cli/test_user_mfa.py`. Receita: seção "QR code" de
+`docs/recipes/mfa.md`.

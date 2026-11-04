@@ -667,8 +667,9 @@ async def _create_user(
     """Insert one user row, return its id as a string.
 
     With ``recovery_code_model`` the second factor is enrolled before
-    anything is committed: the secret and its ``otpauth://`` URI are printed,
-    the operator types a code from the authenticator app (up to
+    anything is committed: the URI drawn as a terminal QR code (when
+    ``segno`` is installed), the ``otpauth://`` URI and the secret are
+    printed, the operator types a code from the authenticator app (up to
     :data:`MFA_CODE_ATTEMPTS` times), and only an accepted code lets the row
     reach the database. With ``audit_model`` a ``record_event`` row is
     written in that same transaction, so the account and its audit entry
@@ -703,6 +704,7 @@ async def _create_user(
         ConflictException,
         UnauthorizedException,
     )
+    from tempest_fastapi_sdk.utils.totp import provisioning_qr_terminal
 
     db = AsyncDatabaseManager(database_url)
     await db.connect()
@@ -732,6 +734,12 @@ async def _create_user(
                     recovery_code_model=recovery_code_model,
                 )
                 typer.echo("Add this account to the authenticator app:")
+                try:
+                    drawing: str | None = provisioning_qr_terminal(uri)
+                except ImportError:
+                    drawing = None
+                if drawing is not None:
+                    typer.echo(drawing)
                 typer.echo(f"  otpauth URI: {uri}")
                 typer.echo(f"  secret:      {secret}")
 
