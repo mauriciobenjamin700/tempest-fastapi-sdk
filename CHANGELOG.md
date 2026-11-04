@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runtime. Liga com `plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]`,
   em qualquer ordem. `pydantic.BaseModel` comum e `use_enum_values=False`
   ficam intocados. Só o mypy roda plugin.
+- `AppException.log_level` (`ClassVar[int | None]`, padrão `None`): a exceção
+  declara a severidade com que o handler a loga. Declarado, o registro sai
+  nesse nível, sem traceback, sem o marcador `http_500` (fora do `500.log` e
+  da fonte "500" do painel) e sem chamar o `on_server_error`; status e
+  envelope não mudam. `None` mantém a regra anterior (#702).
 
 ### Changed
 
@@ -28,17 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aceita o valor) e uma por genérico subscrito em `agents/structured.py`, que
   virou `StopReasonEnum(...)`. A receita de slides converte o tema com
   `SlideThemeEnum(payload.theme)`.
-
-### Added
-
-- `AppException.log_level` (`ClassVar[int | None]`, padrão `None`): a exceção
-  declara a severidade com que o handler a loga. Declarado, o registro sai
-  nesse nível, sem traceback, sem o marcador `http_500` (fora do `500.log` e
-  da fonte "500" do painel) e sem chamar o `on_server_error`; status e
-  envelope não mudam. `None` mantém a regra anterior (#702).
-
-### Changed
-
 - `IntegrationDisabledException` (`503 INTEGRATION_DISABLED`) e
   `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`) passam a ser logadas em
   `WARNING`, sem traceback, fora do `500.log` e sem `on_server_error`. A
