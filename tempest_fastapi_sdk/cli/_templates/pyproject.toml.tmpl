@@ -71,7 +71,7 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-plugins = ["pydantic.mypy"]
+plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]
 
 # Without `init_typed`, the pydantic plugin types every model constructor
 # argument as `Any`, so a `str` handed to an `int` field type-checks clean.

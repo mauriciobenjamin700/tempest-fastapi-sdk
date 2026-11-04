@@ -354,6 +354,8 @@ def main() -> int:
         print(f"  overlay: ! {entry} (type corrected, by pointer)")
     for entry in report.lifted_enums:
         print(f"  overlay: ~ {entry} (enum lifted to its own component)")
+    for entry in report.non_empty_arrays:
+        print(f"  overlay: [] {entry} (minItems 1: an empty array is refused)")
     return 0
 
 

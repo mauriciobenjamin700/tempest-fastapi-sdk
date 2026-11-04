@@ -684,7 +684,7 @@ register_exception_handlers(app, catalog=default_message_catalog())
 async def slides_pptx(payload: SlideSourceSchema) -> Response:
     """Return the lesson as a PowerPoint presentation."""
     deck: SlideDeck = parse_slides(payload.text, vocabulary=PT_BR)
-    content: bytes = await slides.pptx(deck, theme=payload.theme)
+    content: bytes = await slides.pptx(deck, theme=SlideThemeEnum(payload.theme))
     return Response(
         content=content,
         media_type=PPTX_MEDIA_TYPE,

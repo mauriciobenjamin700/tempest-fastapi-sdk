@@ -4136,3 +4136,14 @@ ausência como produção. Recusado: `AuthSettings` herdar `EnvironmentSettings`
 `make_token_dependency` / `require_x_token` recusam segredo vazio com
 `ValueError`, no contrato que o `make_logs_router` já tinha
 (`allow_unauthenticated=True` como opt-out).
+
+
+## Plugin do mypy para `use_enum_values` (Unreleased)
+
+`tempest_fastapi_sdk/mypy.py`. Hook de MRO grava em `TypeInfo.metadata` se a
+classe guarda valor de enum (`model_config` do corpo ou herdado — sobrevive
+ao cache incremental); hook de atributo tipa a leitura do campo como o valor;
+hook de assinatura deixa o construtor aceitar membro ou valor. Os hooks só
+respondem para modelo/campo que qualifica, porque o mypy guarda só o primeiro
+plugin que responde. Fora: pyright/Pylance (não rodam plugin) e construtor
+por genérico subscrito (`Model[T](...)`, sem nome para hook).

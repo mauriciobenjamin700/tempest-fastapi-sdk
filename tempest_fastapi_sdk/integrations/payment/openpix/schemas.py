@@ -13809,6 +13809,7 @@ class ChargePayload(BaseSchema):
             "This is the array that will configure how will be splitted the value of "
             "the charge"
         ),
+        min_length=1,
         default=None,
     )
 

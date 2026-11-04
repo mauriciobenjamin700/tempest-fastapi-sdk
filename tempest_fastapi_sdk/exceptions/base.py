@@ -104,6 +104,19 @@ class AppException(HTTPException):
         field (str | None): Name of the input this failure is about,
             emitted at the top of the envelope. ``None`` (the default)
             keeps the key out of the body entirely.
+        log_level (int | None): Severity the exception handler logs this
+            exception at, for a response that is expected rather than a
+            failure. ``None`` (the default) keeps the handler's rule:
+            ``INFO`` for 4xx, and for 5xx the handler's ``log_level`` with
+            a traceback, the ``http_500`` marker that routes the record to
+            ``500.log`` and the admin's "500" source, and the
+            ``on_server_error`` callback. A declared level replaces all of
+            that: the record is logged at it, without a traceback, without
+            the marker, and ``on_server_error`` is not called. The status
+            code and the envelope do not change.
+            :class:`~tempest_fastapi_sdk.IntegrationDisabledException`
+            declares ``logging.WARNING``: an integration switched off by
+            configuration answers ``503`` by design.
 
     Instance attributes:
         status_code (int): The status code attached to this instance.
@@ -136,6 +149,7 @@ class AppException(HTTPException):
     message_key: str | None = None
     field: str | None = None
     details_example: ClassVar[dict[str, Any]] = {}
+    log_level: ClassVar[int | None] = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Warn when a subclass inherits one of the SDK's generic codes.
