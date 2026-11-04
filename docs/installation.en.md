@@ -54,7 +54,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[geo]` | `httpx` | geospatial helpers: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + routing), `GeoPointMixin` |
 | `[http]` | `httpx` (already in the base package) | `HTTPClient` + `RetryPolicy` + circuit-breaker. The extra is optional: `HTTPClient` works on the base install, and declaring the extra only records the intent in the service's `pyproject.toml` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
-| `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow |
+| `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow + enrollment QR code (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
 | `[modelops]` | `psutil`, `nvidia-ml-py`, `numpy` | benchmark any callable: latency, RAM, GPU and energy (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`); drift monitoring (`baseline_from_samples`, `PredictionMonitor`) and reading the compact format (`read_compact`, `predict_compact`) |
 | `[modelops-compose]` | `ort-vision-sdk[compose]` | fuse a detector and a classifier into one `.onnx`: `fuse_detect_classify`. Running the fused graph is `[vision]` (`DetectClassify`), which pulls no `onnx` |

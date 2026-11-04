@@ -6436,6 +6436,7 @@ metrics = [
 ]
 mfa = [
     { name = "pyotp" },
+    { name = "segno" },
 ]
 minio = [
     { name = "minio" },
@@ -6733,6 +6734,7 @@ requires-dist = [
     { name = "redis", marker = "extra == 'cache'", specifier = ">=8.1.0" },
     { name = "safetensors", marker = "extra == 'genai'", specifier = ">=0.8.0" },
     { name = "segno", marker = "extra == 'all'", specifier = ">=1.6.6" },
+    { name = "segno", marker = "extra == 'mfa'", specifier = ">=1.6.6" },
     { name = "segno", marker = "extra == 'pdf'", specifier = ">=1.6.6" },
     { name = "sherpa-onnx", marker = "extra == 'genai-diarization'", specifier = ">=1.13.7" },
     { name = "sherpa-onnx-core", marker = "extra == 'genai-diarization'" },

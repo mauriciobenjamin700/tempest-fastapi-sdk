@@ -1485,6 +1485,13 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.token_types.token_type_allowed
 ::: tempest_fastapi_sdk.utils.token_types.token_amr
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper
+::: tempest_fastapi_sdk.utils.totp.provisioning_qr_terminal
+::: tempest_fastapi_sdk.utils.totp.provisioning_qr_data_uri
+::: tempest_fastapi_sdk.utils.totp.ProvisioningQrKind
+::: tempest_fastapi_sdk.utils.totp.ProvisioningQrBackground
+::: tempest_fastapi_sdk.utils.totp.PROVISIONING_QR_ERROR
+::: tempest_fastapi_sdk.utils.totp.PROVISIONING_QR_BORDER
+::: tempest_fastapi_sdk.utils.totp.PROVISIONING_QR_SCALE
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils
 ::: tempest_fastapi_sdk.utils.upload.SNIFFABLE_MIMETYPES

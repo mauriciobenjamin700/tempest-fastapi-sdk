@@ -2049,6 +2049,12 @@ if TYPE_CHECKING:
         PriceField as PriceField,
     )
     from tempest_fastapi_sdk.utils import (
+        ProvisioningQrBackground as ProvisioningQrBackground,
+    )
+    from tempest_fastapi_sdk.utils import (
+        ProvisioningQrKind as ProvisioningQrKind,
+    )
+    from tempest_fastapi_sdk.utils import (
         RatingField as RatingField,
     )
     from tempest_fastapi_sdk.utils import (
@@ -2227,6 +2233,12 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils import (
         parse_phone_br as parse_phone_br,
+    )
+    from tempest_fastapi_sdk.utils import (
+        provisioning_qr_data_uri as provisioning_qr_data_uri,
+    )
+    from tempest_fastapi_sdk.utils import (
+        provisioning_qr_terminal as provisioning_qr_terminal,
     )
     from tempest_fastapi_sdk.utils import (
         quantize_money as quantize_money,
@@ -2984,6 +2996,10 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "ThrottleBackend": "tempest_fastapi_sdk.utils",
     "ThrottleStatus": "tempest_fastapi_sdk.utils",
     "TOTPHelper": "tempest_fastapi_sdk.utils",
+    "ProvisioningQrBackground": "tempest_fastapi_sdk.utils",
+    "ProvisioningQrKind": "tempest_fastapi_sdk.utils",
+    "provisioning_qr_data_uri": "tempest_fastapi_sdk.utils",
+    "provisioning_qr_terminal": "tempest_fastapi_sdk.utils",
     "UFField": "tempest_fastapi_sdk.utils",
     "UploadResult": "tempest_fastapi_sdk.utils",
     "UploadStorage": "tempest_fastapi_sdk.utils",
@@ -3532,6 +3548,8 @@ __all__: list[str] = [
     "PresignedPost",
     "PriceField",
     "PrometheusMiddleware",
+    "ProvisioningQrBackground",
+    "ProvisioningQrKind",
     "PublicSchemeMiddleware",
     "PushDevice",
     "PushDeviceGoneError",
@@ -3845,6 +3863,8 @@ __all__: list[str] = [
     "permission",
     "plan_by_header",
     "plan_by_jwt_claim",
+    "provisioning_qr_data_uri",
+    "provisioning_qr_terminal",
     "prune_orphan_enum_schemas",
     "quantize_money",
     "raises",

@@ -452,7 +452,28 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.token_types import (
         token_type_allowed as token_type_allowed,
     )
+    from tempest_fastapi_sdk.utils.totp import (
+        PROVISIONING_QR_BORDER as PROVISIONING_QR_BORDER,
+    )
+    from tempest_fastapi_sdk.utils.totp import (
+        PROVISIONING_QR_ERROR as PROVISIONING_QR_ERROR,
+    )
+    from tempest_fastapi_sdk.utils.totp import (
+        PROVISIONING_QR_SCALE as PROVISIONING_QR_SCALE,
+    )
+    from tempest_fastapi_sdk.utils.totp import (
+        ProvisioningQrBackground as ProvisioningQrBackground,
+    )
+    from tempest_fastapi_sdk.utils.totp import (
+        ProvisioningQrKind as ProvisioningQrKind,
+    )
     from tempest_fastapi_sdk.utils.totp import TOTPHelper as TOTPHelper
+    from tempest_fastapi_sdk.utils.totp import (
+        provisioning_qr_data_uri as provisioning_qr_data_uri,
+    )
+    from tempest_fastapi_sdk.utils.totp import (
+        provisioning_qr_terminal as provisioning_qr_terminal,
+    )
     from tempest_fastapi_sdk.utils.upload import (
         HEIC_BRANDS as HEIC_BRANDS,
     )
@@ -632,6 +653,13 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "STREAM_TOKEN_TYPE": "tempest_fastapi_sdk.utils.token_types",
     "token_amr": "tempest_fastapi_sdk.utils.token_types",
     "token_type_allowed": "tempest_fastapi_sdk.utils.token_types",
+    "PROVISIONING_QR_BORDER": "tempest_fastapi_sdk.utils.totp",
+    "PROVISIONING_QR_ERROR": "tempest_fastapi_sdk.utils.totp",
+    "PROVISIONING_QR_SCALE": "tempest_fastapi_sdk.utils.totp",
+    "ProvisioningQrBackground": "tempest_fastapi_sdk.utils.totp",
+    "ProvisioningQrKind": "tempest_fastapi_sdk.utils.totp",
+    "provisioning_qr_data_uri": "tempest_fastapi_sdk.utils.totp",
+    "provisioning_qr_terminal": "tempest_fastapi_sdk.utils.totp",
     "TOTPHelper": "tempest_fastapi_sdk.utils.totp",
     "HEIC_BRANDS": "tempest_fastapi_sdk.utils.upload",
     "HEIF_STRUCTURAL_BRANDS": "tempest_fastapi_sdk.utils.upload",
@@ -717,6 +745,9 @@ __all__: list[str] = [
     "PASSWORD_AMR",
     "PHONE_BR_PATTERN",
     "PPTX_MEDIA_TYPE",
+    "PROVISIONING_QR_BORDER",
+    "PROVISIONING_QR_ERROR",
+    "PROVISIONING_QR_SCALE",
     "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "SIGNED_URL_EXPIRES_PARAM",
@@ -778,6 +809,8 @@ __all__: list[str] = [
     "PositiveFloatField",
     "PositiveIntField",
     "PriceField",
+    "ProvisioningQrBackground",
+    "ProvisioningQrKind",
     "RatingField",
     "RatioField",
     "RegionEnum",
@@ -839,6 +872,8 @@ __all__: list[str] = [
     "parse_client_ip",
     "parse_currency_br",
     "parse_phone_br",
+    "provisioning_qr_data_uri",
+    "provisioning_qr_terminal",
     "quantize_money",
     "read_upload_capped",
     "region_choices",
