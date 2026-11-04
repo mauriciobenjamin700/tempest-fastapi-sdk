@@ -266,6 +266,10 @@ def make_app_exception_handler(
     ``log_level`` with a traceback and the
     :data:`HTTP_500_MARKER` flag so ``500.log`` captures them.
 
+    An exception class that declares its own ``log_level`` (an expected
+    answer, such as ``503 INTEGRATION_DISABLED``) is logged at that level
+    instead, with no traceback, no marker and no ``on_server_error`` call.
+
     When a ``catalog`` is supplied, the ``detail`` field is localized:
     the locale is negotiated from the request's ``Accept-Language``
     header (falling back to ``default_locale``) and the exception's
@@ -348,7 +352,8 @@ def make_app_exception_handler(
             or request.headers.get("X-Request-ID")
             or request.headers.get("x-request-id")
         )
-        is_server_error = exc.status_code >= 500
+        declared_level = type(exc).log_level
+        is_server_error = exc.status_code >= 500 and declared_level is None
         extra: dict[str, Any] = {
             "request_id": request_id,
             "path": request.url.path,
@@ -357,8 +362,14 @@ def make_app_exception_handler(
         }
         if is_server_error:
             extra[HTTP_500_MARKER] = True
+        if declared_level is not None:
+            level = declared_level
+        elif is_server_error:
+            level = log_level
+        else:
+            level = logging.INFO
         log.log(
-            log_level if is_server_error else logging.INFO,
+            level,
             "AppException %s (%s) during %s %s: %s",
             exc.status_code,
             exc.code,

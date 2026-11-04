@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AppException.log_level` (`ClassVar[int | None]`, padrão `None`): a exceção
+  declara a severidade com que o handler a loga. Declarado, o registro sai
+  nesse nível, sem traceback, sem o marcador `http_500` (fora do `500.log` e
+  da fonte "500" do painel) e sem chamar o `on_server_error`; status e
+  envelope não mudam. `None` mantém a regra anterior (#702).
+
+### Changed
+
+- `IntegrationDisabledException` (`503 INTEGRATION_DISABLED`) e
+  `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`) passam a ser logadas em
+  `WARNING`, sem traceback, fora do `500.log` e sem `on_server_error`. A
+  primeira é a resposta configurada de uma integração desligada; a segunda já
+  é logada em `ERROR` pelo mailer antes de levantar. Num serviço com storage e
+  IA desligados, 8 dos 11 registros da fonte "500" eram o `503` da primeira.
+
 ## [0.344.0] — 2026-11-02
 
 ### Added
