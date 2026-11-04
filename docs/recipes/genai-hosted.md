@@ -474,6 +474,124 @@ Com `GENAI_PROVIDER` preenchido, o `hosted_kwargs` muda de regra:
     `GENAI_PROVIDER` não é cobrado: as chaves por provedor continuam
     opcionais.
 
+## PDF: `document_part` e `supports_documents`
+
+Imagem você já manda com `image_part`. PDF tem o mesmo problema, com um
+agravante: cada provedor escreve a parte de documento de um jeito, e nem todo
+provedor aceita uma. Escrever o bloco à mão (o `document` da Anthropic, por
+exemplo) prende o serviço a um provedor — trocar `GENAI_PROVIDER` passa a
+quebrar só o fluxo de PDF, e só em produção.
+
+`document_part` monta a parte uma vez, e cada gerador a traduz ou recusa:
+
+```python
+import asyncio
+from pathlib import Path
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import BaseAppSettings, HostedGenAISettings
+from tempest_fastapi_sdk.genai import (
+    StructuredCompletion,
+    StructuredCompletionBackend,
+    document_part,
+    hosted_generator,
+    supports_documents,
+)
+
+
+class Settings(HostedGenAISettings, BaseAppSettings):
+    """Settings do serviço."""
+
+    AI_MODEL: str = "claude-haiku-5-5"
+
+
+class Agenda(BaseModel):
+    """Os eventos lidos do comunicado."""
+
+    eventos: list[str]
+
+
+async def ler_agenda(
+    backend: StructuredCompletionBackend,
+    pdf: bytes,
+) -> StructuredCompletion[Agenda]:
+    """Extrai os eventos de um comunicado em PDF."""
+    return await backend.complete_structured(
+        [
+            {
+                "role": "user",
+                "content": [
+                    document_part(pdf, filename="comunicado.pdf"),
+                    {"type": "text", "text": "Liste os eventos."},
+                ],
+            },
+        ],
+        Agenda,
+        max_tokens=2048,
+    )
+
+
+async def main() -> None:
+    """Confere o provedor no boot e lê o PDF."""
+    settings = Settings()
+    kwargs = settings.hosted_kwargs(settings.AI_MODEL)
+    if not supports_documents(kwargs["provider"]):
+        raise SystemExit(f"{kwargs['provider']} não documenta entrada de PDF")
+    backend = hosted_generator(**kwargs)
+    resultado = await ler_agenda(backend, Path("comunicado.pdf").read_bytes())
+    print(resultado.output)
+
+
+asyncio.run(main())
+```
+
+Pedaço por pedaço:
+
+- **`document_part(dados, media_type="application/pdf", *, filename=None)`**
+  monta a parte `file` do Chat Completions da OpenAI: `file_data` é uma data
+  URL base64 e `filename` vai junto (`document.pdf` quando você não passa um,
+  porque todo exemplo base64 do guia da OpenAI manda um nome). Só
+  `application/pdf` é aceito; outro tipo, ou bytes vazios, levanta
+  `ValueError` na hora. Texto puro vai numa parte `text`.
+- **Anthropic:** o `AnthropicGenerator` traduz a parte para um bloco
+  `document` com `source` base64, e o `filename` vira o `title` do bloco.
+- **OpenAI:** o `OpenAICompatGenerator` repassa a parte como está.
+- **Google e DeepSeek:** o gerador que o `hosted_generator` monta para eles
+  (e o que `google_kwargs()` / `deepseek_kwargs()` montam) levanta
+  `ValueError` **antes** de abrir a conexão quando uma mensagem carrega a
+  parte, com uma mensagem que nomeia o provedor. Texto e imagem continuam
+  saindo normalmente.
+- **`supports_documents(provider)`** responde a mesma pergunta sem chamar
+  nada: `True` para `anthropic` e `openai`, `False` para `google`,
+  `deepseek`, `None` e nome desconhecido. É o que o serviço checa no boot, ou
+  antes de oferecer a rota de PDF. A lista está em `DOCUMENT_PROVIDERS`.
+
+De onde saiu cada linha da tabela, lida em 2026-11-04:
+
+| Provedor | O que a documentação diz | Resultado no SDK |
+| --- | --- | --- |
+| Anthropic | bloco `document` com `source` base64 `application/pdf`, segundo a documentação da Anthropic (<https://platform.claude.com/docs/en/build-with-claude/pdf-support>) | traduz |
+| OpenAI | "Chat Completions accepts only PDF files as `file` content parts", com `file_data` em data URL, segundo a documentação da OpenAI (<https://developers.openai.com/api/docs/guides/pdf-files>) | repassa |
+| Google | a página do endpoint compatível (<https://ai.google.dev/gemini-api/docs/openai>) documenta imagem e áudio, e nenhuma parte `file` | `ValueError` |
+| DeepSeek | a referência do chat (<https://api-docs.deepseek.com/api/create-chat-completion>) lista uma parte `file`, mas descreve `file_data` como data URL "of the image" e não cita PDF | `ValueError` |
+
+!!! warning "Testado o request, não a resposta"
+
+    Os testes desta parte rodam sobre `httpx.MockTransport`: fixam o corpo
+    que cada gerador monta e o `ValueError` sem nenhum request. Nenhum
+    provedor foi chamado de verdade — que a Anthropic e a OpenAI leiam o PDF
+    é o que a documentação delas diz, não algo que o SDK mediu. Se o Google
+    ou o DeepSeek passarem a documentar PDF, a mudança é uma linha em
+    `DOCUMENT_PROVIDERS`.
+
+!!! tip "Servidor compatível genérico"
+
+    `OpenAICompatGenerator` construído à mão (vLLM, um gateway próprio)
+    repassa a parte por padrão (`accepts_documents=True`): o SDK não sabe o
+    que aquele servidor aceita, e quem responde é ele. Passe
+    `accepts_documents=False` para recusar antes da chamada.
+
 ## Embeddings (OpenAI)
 
 `OpenAICompatEmbedder` cumpre o `SupportsEmbed`, então entra no `Retriever`
@@ -584,6 +702,9 @@ Ollama, e não leva nenhum teto para o lock de quem consome.
   pelo id do modelo; `complete_structured` devolve saída, uso e motivo de
   parada em qualquer desfecho (o uso, quando o provedor o informa), com imagem
   por `image_part`.
+- PDF vai por `document_part`: bloco `document` na Anthropic, parte `file` na
+  OpenAI, `ValueError` antes da chamada no Google e no DeepSeek;
+  `supports_documents(provider)` responde no boot.
 - Tool calling, saída estruturada e stream funcionam nos quatro (no Gemini,
   tool calling e stream vão pelo endpoint compatível sem teste próprio);
   embeddings só na OpenAI (`OpenAICompatEmbedder`).

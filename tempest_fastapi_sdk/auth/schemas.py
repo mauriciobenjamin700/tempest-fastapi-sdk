@@ -1000,6 +1000,12 @@ class MFAEnrollResponseSchema(BaseSchema):
         provisioning_uri (str): ``otpauth://`` URI to render as a
             QR code. Authenticator apps scan it to import the
             secret + issuer + account name in one step.
+        provisioning_qr (str | None): ``provisioning_uri`` already
+            drawn as a QR code, as a ``data:image/svg+xml;base64,...``
+            URI the app drops into an ``<img>``. ``None`` when
+            ``segno`` is not installed (it ships with the ``[mfa]``
+            extra), so a service without it keeps the same response.
+            The image IS the secret: show it once, never log or store it.
         recovery_codes (list[str]): N single-use codes
             (``AUTH_MFA_RECOVERY_CODES_COUNT``, default 10).
             Display prominently — the user MUST save them
@@ -1025,6 +1031,17 @@ class MFAEnrollResponseSchema(BaseSchema):
         examples=[
             "otpauth://totp/Acme:ana%40example.com?secret=JBSW…&issuer=Acme",
         ],
+    )
+    provisioning_qr: str | None = Field(
+        default=None,
+        title="Provisioning QR code (SVG data URI)",
+        description=(
+            "provisioning_uri drawn as a QR code, as a "
+            "data:image/svg+xml;base64 URI ready for an <img>. Null when "
+            "the server has no QR encoder installed. Shown ONCE: the "
+            "image carries the TOTP secret."
+        ),
+        examples=["data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDov…"],
     )
     recovery_codes: list[str] = Field(
         default_factory=list,

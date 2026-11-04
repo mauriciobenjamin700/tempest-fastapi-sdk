@@ -20,13 +20,18 @@ model produced. Only transport and HTTP errors still raise, as the typed
 :func:`image_part` builds the image content part both generators accept, in
 the OpenAI shape the SDK's message lists already use; the Anthropic
 generator translates it to a Messages API ``image`` block on the way out.
+:func:`document_part` does the same for a PDF: an OpenAI ``file`` part that
+the Anthropic generator translates to a ``document`` block, and that the
+OpenAI-compatible generator refuses before any HTTP call when its provider
+documents no PDF input (see
+:func:`~tempest_fastapi_sdk.genai.supports_documents`).
 """
 
 from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Final, Generic, Literal, Protocol
 
 from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
 from tempest_fastapi_sdk.genai.tokens import TokenUsage
@@ -118,7 +123,8 @@ class StructuredCompletionBackend(Protocol):
 
         Args:
             messages (list[dict[str, Any]]): Chat turns; images as
-                :func:`image_part` content parts.
+                :func:`image_part` and PDFs as :func:`document_part`
+                content parts.
             schema (type[StructuredT]): The Pydantic model to produce.
             effort (Effort | None): Reasoning effort, or ``None`` for the
                 provider default.
@@ -158,6 +164,95 @@ def image_part(data: bytes, media_type: str) -> dict[str, Any]:
         "type": "image_url",
         "image_url": {"url": f"data:{media_type};base64,{encoded}"},
     }
+
+
+PDF_MEDIA_TYPE: Final[str] = "application/pdf"
+"""The media type of a PDF, the default of :func:`document_part`."""
+
+DOCUMENT_MEDIA_TYPES: Final[frozenset[str]] = frozenset({PDF_MEDIA_TYPE})
+"""Media types :func:`document_part` accepts.
+
+Only PDF. The OpenAI PDF guide
+(https://developers.openai.com/api/docs/guides/pdf-files) says Chat
+Completions "supports only ``.pdf`` (``application/pdf``)" for
+``file_data``, and the base64 ``document`` source of the Anthropic PDF guide
+(https://platform.claude.com/docs/en/build-with-claude/pdf-support) is
+``application/pdf``. Plain text goes in a ``text`` part instead.
+"""
+
+DEFAULT_DOCUMENT_FILENAME: Final[str] = "document.pdf"
+"""The ``filename`` :func:`document_part` sends when the caller gives none.
+
+Every base64 example of the OpenAI PDF guide passes a ``filename`` next to
+``file_data``, so the part always carries one.
+"""
+
+
+def document_part(
+    data: bytes,
+    media_type: str = PDF_MEDIA_TYPE,
+    *,
+    filename: str | None = None,
+) -> dict[str, Any]:
+    """Build a document content part for a message's ``content`` list.
+
+    The shape is the OpenAI Chat Completions ``file`` part with the bytes as
+    a base64 ``data:`` URL in ``file_data``, which is what the OpenAI PDF
+    guide (https://developers.openai.com/api/docs/guides/pdf-files) sends.
+    The Anthropic generator translates it to a Messages API ``document``
+    block with a ``base64`` source; an OpenAI-compatible generator built for
+    a provider without documented PDF input (Gemini's compatible endpoint,
+    DeepSeek) raises ``ValueError`` on it before the request is sent.
+
+    Args:
+        data (bytes): The document bytes.
+        media_type (str): Its media type; only ``application/pdf`` is
+            accepted (:data:`DOCUMENT_MEDIA_TYPES`).
+        filename (str | None): The name the model sees. ``None`` sends
+            :data:`DEFAULT_DOCUMENT_FILENAME`. The Anthropic generator sends
+            it as the block's ``title``.
+
+    Returns:
+        dict[str, Any]: ``{"type": "file", "file": {"filename": ...,
+        "file_data": "data:<media_type>;base64,<data>"}}``.
+
+    Raises:
+        ValueError: When ``media_type`` is not in
+            :data:`DOCUMENT_MEDIA_TYPES`, or ``data`` is empty.
+
+    Example:
+        >>> part = document_part(b"%PDF-1.7...", filename="agenda.pdf")
+        >>> text = {"type": "text", "text": "Summarize it."}
+        >>> messages = [{"role": "user", "content": [part, text]}]
+    """
+    if media_type not in DOCUMENT_MEDIA_TYPES:
+        raise ValueError(
+            f"document_part accepts {sorted(DOCUMENT_MEDIA_TYPES)}, got "
+            f"{media_type!r}; send plain text as a text part.",
+        )
+    if not data:
+        raise ValueError("document_part got empty data.")
+    encoded = base64.standard_b64encode(data).decode("ascii")
+    return {
+        "type": "file",
+        "file": {
+            "filename": filename or DEFAULT_DOCUMENT_FILENAME,
+            "file_data": f"data:{media_type};base64,{encoded}",
+        },
+    }
+
+
+def is_document_part(part: Any) -> bool:
+    """Tell whether a content part is a document (an OpenAI ``file`` part).
+
+    Args:
+        part (Any): One item of a message's ``content`` list.
+
+    Returns:
+        bool: ``True`` for a dict whose ``type`` is ``"file"``, the shape
+        :func:`document_part` builds.
+    """
+    return isinstance(part, dict) and part.get("type") == "file"
 
 
 def build_structured_completion(
@@ -214,10 +309,15 @@ def build_structured_completion(
 
 
 __all__: list[str] = [
+    "DEFAULT_DOCUMENT_FILENAME",
+    "DOCUMENT_MEDIA_TYPES",
+    "PDF_MEDIA_TYPE",
     "Effort",
     "StopReason",
     "StructuredCompletion",
     "StructuredCompletionBackend",
     "build_structured_completion",
+    "document_part",
     "image_part",
+    "is_document_part",
 ]

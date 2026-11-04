@@ -377,6 +377,88 @@ traceback vai junto sempre que houver um sendo tratado.
     O default segue `False`, então call site existente não muda de saída.
 
 
+## 503 esperado não é falha — `log_level` na exceção
+
+Todo `AppException` com `status_code >= 500` cai no `500.log` com traceback,
+como bug. Só que alguns `5xx` são **resposta prevista**: a integração que o
+`.env` desligou (`STORAGE_ENABLED=false`) responde `503 INTEGRATION_DISABLED`
+de propósito. Num serviço com storage e IA desligados, 8 dos 11 registros da
+fonte "500" do painel eram esse `503`, cada um com o traceback inteiro, e o
+único bug de verdade ficou no meio deles.
+
+A exceção declara a severidade do próprio log no atributo de classe
+`log_level`:
+
+```python
+import logging
+from typing import ClassVar
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import (
+    AppException,
+    IntegrationDisabledException,
+    register_exception_handlers,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+
+class MaintenanceException(AppException):
+    """Manutenção programada: 503 esperado, não falha."""
+
+    status_code: int = 503
+    message: str = "Em manutenção programada"
+    code: str = "MAINTENANCE"
+    log_level: ClassVar[int | None] = logging.WARNING
+
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/arquivos")
+async def arquivos() -> None:
+    raise IntegrationDisabledException("storage")
+
+
+@app.get("/relatorio")
+async def relatorio() -> None:
+    raise MaintenanceException()
+
+
+client: TestClient = TestClient(app)
+print(client.get("/arquivos").status_code)
+print(client.get("/relatorio").status_code)
+```
+
+Saída (medida; as linhas `httpx` do `TestClient` foram omitidas):
+
+```text
+WARNING tempest_fastapi_sdk.api.handlers: AppException 503 (INTEGRATION_DISABLED) during GET /arquivos: The storage integration is disabled in this environment
+WARNING tempest_fastapi_sdk.api.handlers: AppException 503 (MAINTENANCE) during GET /relatorio: Em manutenção programada
+503
+503
+```
+
+Com `log_level` declarado, o handler:
+
+- loga **nesse nível**, sem traceback;
+- não põe o marcador `http_500`, então o registro fica fora do `500.log` e da
+  fonte "500" do painel (continua no `warning.log`);
+- não chama o `on_server_error`.
+
+O status e o envelope não mudam. `None`, o default, mantém a regra de antes.
+Do SDK, declaram `logging.WARNING` o `IntegrationDisabledException` e o
+`EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`), cuja falha de SMTP o mailer
+já loga em `ERROR` antes de levantar.
+
+!!! warning "Declare só o que é previsto"
+    Um `5xx` de falha real (o upstream caiu, o banco recusou) continua sem
+    `log_level`: é ele que precisa do traceback e do `500.log`.
+
+
 ## O banco cita o valor — `redact_database_errors`
 
 Um `IntegrityError` que ninguém tratou chega ao catch-all, e o traceback que

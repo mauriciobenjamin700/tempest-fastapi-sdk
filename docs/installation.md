@@ -54,7 +54,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[geo]` | `httpx` | helpers geoespaciais: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + rotas), `GeoPointMixin` |
 | `[http]` | `httpx` (já vem no pacote base) | `HTTPClient` + `RetryPolicy` + circuit-breaker. O extra é opcional: o `HTTPClient` funciona na instalação base, e declarar o extra só registra a intenção no `pyproject.toml` do serviço |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
-| `[mfa]` | `pyotp` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth |
+| `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth + QR code do cadastro (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
 | `[modelops]` | `psutil`, `nvidia-ml-py`, `numpy` | benchmark de qualquer callable: latência, RAM, GPU e energia (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`); monitoramento de deriva (`baseline_from_samples`, `PredictionMonitor`) e leitura do formato compacto (`read_compact`, `predict_compact`) |
 | `[modelops-compose]` | `ort-vision-sdk[compose]` | fundir um detector e um classificador num único `.onnx`: `fuse_detect_classify`. Rodar o grafo fundido é `[vision]` (`DetectClassify`), que não puxa `onnx` |

@@ -120,6 +120,7 @@ prometheus = [
 ]
 mfa = [
     "pyotp>=2.10.0",
+    "segno>=1.6.6",
 ]
 webauthn = [
     "fido2>=2.2.1",
@@ -585,7 +586,7 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
-plugins = ["pydantic.mypy"]
+plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]
 
 # `init_typed` makes the plugin type each model constructor argument with the
 # field's annotation instead of `Any`; without it no schema construction in

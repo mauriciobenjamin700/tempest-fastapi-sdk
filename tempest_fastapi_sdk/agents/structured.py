@@ -254,7 +254,7 @@ async def run_structured[OutputT: BaseModel](
         output=run.output,
         steps=run.steps,
         artifacts=run.artifacts,
-        stop_reason=run.stop_reason,
+        stop_reason=StopReasonEnum(run.stop_reason),
         seconds=run.seconds,
         agent=run.agent,
         data=data,

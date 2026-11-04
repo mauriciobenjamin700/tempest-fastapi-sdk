@@ -4590,7 +4590,8 @@ class HostedGenAISettings(BaseAppSettings):
             ``provider="deepseek"``, ``structured_output="json_object"`` and
             ``effort_field=None`` (DeepSeek does not document
             ``reasoning_effort``, so ``effort`` is not sent, as with
-            ``hosted_generator``).
+            ``hosted_generator``) and ``accepts_documents=False`` (no PDF
+            input documented, see ``genai.supports_documents``).
         """
         return {
             "model": self.DEEPSEEK_MODEL,
@@ -4599,6 +4600,7 @@ class HostedGenAISettings(BaseAppSettings):
             "provider": "deepseek",
             "structured_output": "json_object",
             "effort_field": None,
+            "accepts_documents": False,
         }
 
     def google_kwargs(self) -> dict[str, Any]:
@@ -4606,8 +4608,10 @@ class HostedGenAISettings(BaseAppSettings):
 
         Returns:
             dict[str, Any]: ``model``, ``api_key``, ``base_url``,
-            ``provider="google"``, ``structured_output="json_schema"`` and
-            ``effort_values=GOOGLE_EFFORT_VALUES``.
+            ``provider="google"``, ``structured_output="json_schema"``,
+            ``effort_values=GOOGLE_EFFORT_VALUES`` and
+            ``accepts_documents=False`` (no PDF input documented on the
+            OpenAI-compatible endpoint, see ``genai.supports_documents``).
 
         Raises:
             ValueError: When ``GOOGLE_MODEL`` is empty.
@@ -4625,6 +4629,7 @@ class HostedGenAISettings(BaseAppSettings):
             "provider": "google",
             "structured_output": "json_schema",
             "effort_values": GOOGLE_EFFORT_VALUES,
+            "accepts_documents": False,
         }
 
     def hosted_kwargs(

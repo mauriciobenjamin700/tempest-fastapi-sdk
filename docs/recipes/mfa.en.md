@@ -35,7 +35,7 @@ The flow has two moments:
 
 ## Setup
 
-Requires the `[mfa]` extra (installs `pyotp`), on top of `[auth]`:
+Requires the `[mfa]` extra (installs `pyotp` and `segno`, which draws the QR code), on top of `[auth]`:
 
 ```bash
 uv add "tempest-fastapi-sdk[auth,mfa]>=0.151.1"
@@ -156,7 +156,7 @@ The four are only mounted when `AUTH_MFA_ENABLED=True`:
 
 | Method | Path | Auth | Body / Output | Behavior |
 |--------|------|------|---------------|----------|
-| POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Generates secret + QR URI + N recovery codes. **Shown only once.** Does NOT activate MFA yet. With MFA already active, answers `409` (`MFA_ALREADY_ENROLLED`) and changes nothing. |
+| POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Generates secret + QR URI + the drawn QR (`provisioning_qr`) + N recovery codes. **Shown only once.** Does NOT activate MFA yet. With MFA already active, answers `409` (`MFA_ALREADY_ENROLLED`) and changes nothing. |
 | POST | `/auth/mfa/confirm` | Bearer JWT | `MFAConfirmSchema` → `LoginResponseSchema` | Confirms enrollment with the first code. From here MFA is active. Revokes the user's refresh tokens and returns a new pair carrying the MFA `amr` ([details](#confirming-mfa-ends-the-other-sessions)). |
 | POST | `/auth/mfa/verify` | — | `MFAVerifySchema` → `LoginResponseSchema` | Login step 2: swaps `mfa_token` + code for the JWT pair. Five wrong codes per account in 15 min give `429` ([attempt limit](#attempt-limit)). |
 | POST | `/auth/mfa/disable` | Bearer JWT | `MFADisableSchema` | Disables MFA. Requires password **and** an active code (TOTP or recovery). |
@@ -173,7 +173,7 @@ headers = {"Authorization": f"Bearer {access}"}
 # 1. Enroll — returns secret, QR URI and the recovery codes (once!)
 r = httpx.post(f"{BASE}/auth/mfa/enroll", headers=headers)
 data = r.json()
-print(data["provisioning_uri"])   # render as a QR code
+print(data["provisioning_qr"])    # SVG data URI: use it in <img src="...">
 print(data["recovery_codes"])     # show the user — save OFFLINE
 
 # 2. User scans the QR in the Authenticator and types the generated code:
@@ -184,6 +184,117 @@ httpx.post(f"{BASE}/auth/mfa/confirm", headers=headers, json={"code": code})
 
 !!! danger "Recovery codes appear ONCE"
     The `enroll` response is the only time `secret` and `recovery_codes` leave in plaintext. Show them prominently and tell the user to store them offline.
+
+### QR code: in the terminal and in the response
+
+Every authenticator app reads QR codes, and it is the path people know. Typing 32 base32 characters by hand is slow and error-prone. That is why the `enroll` response already carries the `provisioning_uri` drawn, and the SDK has two functions to draw it wherever you need:
+
+| Function | Returns | For |
+|----------|---------|-----|
+| `provisioning_qr_data_uri(uri, *, kind="svg")` | `data:image/svg+xml;base64,...` (or `data:image/png;base64,...` with `kind="png"`) | an `<img>` in a page or in the app |
+| `provisioning_qr_terminal(uri, *, background="dark")` | text made of half blocks (`▀`, `▄`, `█` and space) | `print` / `typer.echo` in a CLI |
+
+Both run on `segno`, which ships with the `[mfa]` extra and is imported at the first call only.
+
+#### In the API response
+
+`POST /auth/mfa/enroll` returns the `provisioning_qr` field, an SVG data URI. The frontend drops it straight into an `<img src="...">`, with no QR library on its side:
+
+```json
+{
+  "secret": "GGZPWWOVQ6QIXMCMDOARELP3SR7JF424",
+  "provisioning_uri": "otpauth://totp/Tempest:ana%40example.com?secret=GGZPWWOVQ6QIXMCMDOARELP3SR7JF424&issuer=Tempest",
+  "provisioning_qr": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIH...",
+  "recovery_codes": ["..."]
+}
+```
+
+The field is **on by default, with no setting**: it is optional and purely additive, so whoever already consumes the response keeps reading the same fields. If the server does not have `segno` installed (say, it installed `pyotp` without the `[mfa]` extra), `provisioning_qr` comes back `null` and the rest of the response is unchanged — the route does not break for lack of a drawing.
+
+Mounting your own endpoint, call the function directly. This endpoint returns a page with the QR:
+
+```python
+from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService, provisioning_qr_data_uri
+
+from src.api.dependencies import get_auth_service, get_current_user, get_session
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+router = APIRouter()
+
+
+@router.post("/mfa/enroll-page", response_class=HTMLResponse)
+async def enroll_page(
+    service: UserAuthService = Depends(get_auth_service),
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+) -> HTMLResponse:
+    """Enroll TOTP and show the QR code once."""
+    secret, uri, codes = await service.mfa_enroll(
+        session,
+        user=user,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    await session.commit()
+    qr = provisioning_qr_data_uri(uri)
+    items = "".join(f"<li><code>{code}</code></li>" for code in codes)
+    return HTMLResponse(
+        f'<img src="{qr}" alt="Authenticator app QR code">'
+        f"<p>Or type the secret: <code>{secret}</code></p>"
+        f"<ul>{items}</ul>",
+        headers={"Cache-Control": "no-store"},
+    )
+```
+
+`Cache-Control: no-store` asks the browser and any proxy not to keep the page: it carries the secret.
+
+#### In the terminal
+
+`provisioning_qr_terminal` draws each character one module wide and two modules tall, so the QR stays square in a terminal, whose cells are taller than they are wide. A 95-character URI (issuer `Tempest`, `ana@example.com`, 32-character secret) prints **49 columns by 25 lines**, and a 159-character one (22-character issuer, 41-character e-mail) **61 columns** — both fit in 80 (measured with `segno` 1.6.6). This function enrolls and shows the QR:
+
+```python
+import typer
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService, provisioning_qr_terminal
+
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+
+async def enroll_in_terminal(
+    service: UserAuthService,
+    session: AsyncSession,
+    user: UserModel,
+) -> list[str]:
+    """Enroll TOTP and draw the QR in the terminal.
+
+    Returns:
+        The recovery codes, to show once.
+    """
+    secret, uri, codes = await service.mfa_enroll(
+        session,
+        user=user,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    typer.echo(provisioning_qr_terminal(uri))
+    typer.echo(f"or type the secret: {secret}")
+    return codes
+```
+
+!!! tip "Light terminal"
+    The characters paint in the text colour. On a dark terminal (the default) the function draws the **light** modules and the border, so the camera reads dark on light, as on paper. On a light-background terminal pass `background="light"`: then it draws the dark modules.
+
+`tempest user create --require-mfa` already does this: it prints the QR before the URI ([Bootstrapping the first privileged account](#bootstrapping-the-first-privileged-account)).
+
+!!! warning "The QR code IS the secret"
+    The QR carries the `provisioning_uri`, and the URI carries the TOTP secret. Whoever photographs the screen generates every future code of the account. So:
+
+    - **show it once**, in the `enroll` response, and offer no "see it again" — rotating the secret is `disable` + `enroll`;
+    - **never log** the QR, the URI or the secret, not even at `DEBUG`;
+    - **do not store the image** — not on disk, not in a cache, not in upload storage.
 
 ### Rotating the secret: `disable`, then `enroll`
 
@@ -582,6 +693,31 @@ tempest user create --email staff@example.com --admin --require-mfa \
 
 ```text
 Add this account to the authenticator app:
+█████████████████████████████████████████████████
+█████████████████████████████████████████████████
+████ ▄▄▄▄▄ █▄ ▀ █▄█▄▄█  █  █▀  █▄▀▀ ██ ▄▄▄▄▄ ████
+████ █   █ █▀  ▀▄▄▀▄▀ ▄▄▄▀▄▄▄▀▀ ▀▄█▀▀█ █   █ ████
+████ █▄▄▄█ █  ▄▀▀ ▄  ▀▀ ███▄█  ▄  █▀██ █▄▄▄█ ████
+████▄▄▄▄▄▄▄█ ▀ ▀▄▀ █▄▀ █ ▀ ▀ █▄█ ▀ █ █▄▄▄▄▄▄▄████
+████▄▀▀▀▄▀▄▄ █ ▀█  ▄ ▄███▄▄▀██ ▀ ▄ █  ▄  ▄█▀ ████
+█████▄▄ ▄▄▄▀▄▀▄ ▄▀▀█▀▀ ▀█▀▄  ▄  ▄ █▀█▄▄▄▄ ▄ ▄████
+████▀▀▄▄▀█▄ ▀▀█▄█▀▄▀▀▀▀▀▄▄ ▄ █▀▀  ▀██ ▀▀▀█▀▀█████
+████▄▀  █ ▄█▄██ █ ▀▀ ▀█ ▀   █▄  █ ██ █  ██▄▀ ████
+████▄ ▄▀▀▄▄▄   ██ ▀▀ ▀▀█▀▄▀█▄ ▀▄▀▀▀ ▄ ▀ ▀▄▀█▀████
+████▀█▀▀▀▀▄██▄ ▄  ▄███▄▀█ ▄  █  █  █▄█ ▀█ ▄▀▄████
+████▄  ▀  ▄█▄█▀▀█▄▀█▀█▀▄▀█▀▀▄██ ▀▀█▄▄ ▀ ▀█ ▄▀████
+████▀ ▄▀▀▀▄▄▀ ▄▀█▄ █▄ ▄█▀ █▄▄▄ ▄▄▀ █▄▄ ▀▀███ ████
+████▄▄▀█ █▄ ▄▀▄▄  ▀▀ ▄▀▄▀▄ ▀▄▄█   █▄▀▀▀  ▄▀▀▀████
+████▄▄▀▀█▄▄▄▀▀ ▀█▀▄ █▀ █▀▀   █ ▄█ ▄██▄▄█ ▀█  ████
+████▀█▀█▀▄▄█▀▄ █▄█▀ ▄██ ▀▄▄█ ▀▄ ▀ ▀█▄ ▀▄▀█▀ █████
+██████▄▀▄ ▄█▄▀ ▀▄▀▀█ ▀▄█▄▀▄ ▀█▀ █  █ ▀ ▄█▄█▀▄████
+████▄▄▄▄██▄▄ ██▀▀███▄▄▄ █▀ █▄ ██▀█▀▄ ▄▄▄ █▀█ ████
+████ ▄▄▄▄▄ █▄ ▀▀▄██▀█ ▀▀▄█▀▄█▄▀▄▀ ▄▀ █▄█  ▄█ ████
+████ █   █ █▄█▄█▀▀ ███▄▄██▄▀█▀█▀█▄▀ ▄ ▄▄▄▄ █▀████
+████ █▄▄▄█ ██▀█▀  █▄▄▀▄█ ▀▄▄ █▄ █ ▄▄▀ █▀█▀▄▀ ████
+████▄▄▄▄▄▄▄█▄██████▄▄▄█▄█▄▄▄▄████▄██▄███▄▄█▄█████
+█████████████████████████████████████████████████
+█████████████████████████████████████████████████
   otpauth URI: otpauth://totp/Tempest:staff%40example.com?secret=GGZPWWOVQ6QIXMCMDOARELP3SR7JF424&issuer=Tempest
   secret:      GGZPWWOVQ6QIXMCMDOARELP3SR7JF424
 Code from the authenticator app: 123456
@@ -746,6 +882,7 @@ Callers of `UserAuthService.signup` get, in the second tuple item, `None`
 ## Security
 
 - **TOTP secret persisted on the `UserModel`.** Consider encrypting the `totp_secret` column at rest (Postgres `pgcrypto` or an application-level Fernet wrapper).
+- **The QR code is the secret.** `provisioning_qr` and the URI leave only in the `enroll` response, and the SDK does not log them; show them once and do not store the image ([QR code](#qr-code-in-the-terminal-and-in-the-response)).
 - **Recovery codes stored as SHA-256 hashes.** The plaintext leaves only once at enrollment; a table leak yields no usable codes.
 - **Recovery codes are single-use.** `used_at` is stamped on consume; replay is rejected.
 - **`disable` requires password + code, and `enroll` is not a shortcut around it.** A hijacked session cannot disable MFA on its own — it needs the password **and** an active factor. `enroll` over active MFA answers `409` instead of wiping the recovery codes, so the access token alone cannot reset the factor.
@@ -759,8 +896,11 @@ Callers of `UserAuthService.signup` get, in the second tuple item, `None`
 
 - TOTP is the 6-digit code in an Authenticator app: the server and the app
   share a secret, and the code is derived from it plus the clock.
-- The extra is `[mfa]` (it brings `pyotp`) on top of `[auth]`, and nothing is
-  mounted unless `AUTH_MFA_ENABLED=True`.
+- The extra is `[mfa]` (it brings `pyotp` and `segno`) on top of `[auth]`, and
+  nothing is mounted unless `AUTH_MFA_ENABLED=True`.
+- `enroll` returns the QR ready (`provisioning_qr`, an SVG data URI; `null`
+  without `segno`), and `provisioning_qr_terminal` draws the same QR in a CLI.
+  The QR is the secret: show it once, never log it, do not store it.
 - The router requires `recovery_code_model`: without it, it raises
   `RuntimeError` at wiring time rather than in production — losing the phone
   with no recovery code means losing the account.
