@@ -1,5 +1,6 @@
 """503s raised when an integration is switched off or cannot be reached."""
 
+import logging
 from typing import Any, ClassVar
 
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -21,6 +22,12 @@ class IntegrationDisabledException(AppException):
     :meth:`~tempest_fastapi_sdk.settings.BaseAppSettings.disabled_integrations`
     lists (``"storage"``, ``"email"``, ``"firebase"``, ``"revenuecat"``).
 
+    Logged at ``WARNING``, without a traceback and outside ``500.log``
+    (``log_level``): the ``503`` is the configured answer, not a failure.
+    Logged as a 5xx error, eight of eleven records in one service's "500"
+    source were this exception, with storage and AI switched off, and the
+    one real bug was buried among them.
+
     Attributes:
         integration (str): The integration that refused the call.
     """
@@ -29,6 +36,7 @@ class IntegrationDisabledException(AppException):
     message: str = "This integration is disabled in this environment"
     code: str = "INTEGRATION_DISABLED"
     details_example: ClassVar[dict[str, Any]] = {"integration": "email"}
+    log_level: ClassVar[int | None] = logging.WARNING
 
     def __init__(self, integration: str, *, message: str | None = None) -> None:
         """Initialize the exception.
@@ -62,7 +70,10 @@ class EmailDeliveryException(AppException):
 
     The response carries no ``details``: the host, the port and the
     recipient are server-side facts, and the client can only retry later.
-    They are logged once, at ``ERROR``, by the mailer that raised.
+    They are logged once, at ``ERROR``, by the mailer that raised — which
+    is why the exception handler logs it at ``WARNING`` without a traceback
+    (``log_level``): a second ``ERROR`` record with a traceback reported
+    the same outage twice.
 
     It is not :class:`IntegrationDisabledException`: that one means the
     deployment chose to run without e-mail, this one means e-mail is
@@ -72,6 +83,7 @@ class EmailDeliveryException(AppException):
     status_code: int = 503
     message: str = "The e-mail server could not be reached; try again later"
     code: str = "EMAIL_UNAVAILABLE"
+    log_level: ClassVar[int | None] = logging.WARNING
 
 
 class ZapSendFailedException(AppException):

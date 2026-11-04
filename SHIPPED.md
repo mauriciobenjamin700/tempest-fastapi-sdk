@@ -889,6 +889,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `genai_effective_api_key()` e o guard de produção (provedor sem chave
   efetiva derruba o boot). Receita: seção "Um provedor escolhido no `.env`"
   de `docs/recipes/genai-hosted.md`.
+- **PDF agnóstico de provedor (Unreleased, extra `[genai-hosted]`, #701)** —
+  `document_part(data, media_type="application/pdf", *, filename=None)` monta
+  a parte `file` do Chat Completions; o `AnthropicGenerator` a traduz para o
+  bloco `document` base64 (`to_anthropic_document`, `filename` → `title`), o
+  formato OpenAI a repassa, e Google/DeepSeek levantam `ValueError` antes de
+  qualquer request (`OpenAICompatGenerator(accepts_documents=False)`, que
+  `hosted_generator` e `google_kwargs()`/`deepseek_kwargs()` passam).
+  `supports_documents(provider)` / `DOCUMENT_PROVIDERS` para checar no boot.
+  Formato fixado por `httpx.MockTransport`, não por chamada a provedor real.
+  Teste: `tests/genai/test_document_part.py`. Receita: seção "PDF" de
+  `docs/recipes/genai-hosted.md`.
 - **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
   `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
   `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,
@@ -4125,6 +4136,17 @@ ausência como produção. Recusado: `AuthSettings` herdar `EnvironmentSettings`
 `make_token_dependency` / `require_x_token` recusam segredo vazio com
 `ValueError`, no contrato que o `make_logs_router` já tinha
 (`allow_unauthenticated=True` como opt-out).
+
+
+## Plugin do mypy para `use_enum_values` (Unreleased)
+
+`tempest_fastapi_sdk/mypy.py`. Hook de MRO grava em `TypeInfo.metadata` se a
+classe guarda valor de enum (`model_config` do corpo ou herdado — sobrevive
+ao cache incremental); hook de atributo tipa a leitura do campo como o valor;
+hook de assinatura deixa o construtor aceitar membro ou valor. Os hooks só
+respondem para modelo/campo que qualifica, porque o mypy guarda só o primeiro
+plugin que responde. Fora: pyright/Pylance (não rodam plugin) e construtor
+por genérico subscrito (`Model[T](...)`, sem nome para hook).
 
 ## QR code do cadastro de MFA (Unreleased, #703)
 

@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Plugin do mypy `tempest_fastapi_sdk.mypy`: num modelo com
+  `use_enum_values=True` (todo `BaseSchema`), ler um campo anotado com enum
+  dá o tipo do **valor** — `str` para enum de `str`, `int` para enum de
+  `int`, `object` para `Enum` puro, recursivo em `Optional`, união, `list`,
+  `tuple` e `dict` — e o construtor aceita o membro ou o valor. Sem ele, o
+  mypy `--strict` aceitava `order.status.value`, `.name` e passar o campo a
+  uma função que espera o enum, e os três levantam `AttributeError` em
+  runtime. Liga com `plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]`,
+  em qualquer ordem. `pydantic.BaseModel` comum e `use_enum_values=False`
+  ficam intocados. Só o mypy roda plugin.
+- `AppException.log_level` (`ClassVar[int | None]`, padrão `None`): a exceção
+  declara a severidade com que o handler a loga. Declarado, o registro sai
+  nesse nível, sem traceback, sem o marcador `http_500` (fora do `500.log` e
+  da fonte "500" do painel) e sem chamar o `on_server_error`; status e
+  envelope não mudam. `None` mantém a regra anterior (#702).
+
+- `document_part(data, media_type="application/pdf", *, filename=None)` ao
+  lado do `image_part`: o PDF entra na mensagem uma vez e cada gerador
+  hospedado o leva no formato do seu provedor (#701). A parte é a `file` do
+  Chat Completions da OpenAI (`file_data` em data URL base64 + `filename`,
+  `document.pdf` quando omitido), que o formato OpenAI repassa e o
+  `AnthropicGenerator` traduz para o bloco `document` com `source` base64
+  (`to_anthropic_document`; o `filename` vira `title`). Google (endpoint
+  compatível) e DeepSeek não documentam entrada de PDF, então o gerador que
+  `hosted_generator`, `google_kwargs()` e `deepseek_kwargs()` montam para
+  eles levanta `ValueError` **antes** de qualquer request, em vez de deixar o
+  provedor devolver um 400 em produção — o novo
+  `OpenAICompatGenerator(accepts_documents=False)`; servidor compatível
+  genérico continua repassando (`True` por padrão). `supports_documents(provider)`
+  e `DOCUMENT_PROVIDERS` deixam o serviço recusar a feature no boot. Só
+  `application/pdf` é aceito (`DOCUMENT_MEDIA_TYPES`). Fontes, lidas em
+  2026-11-04: <https://developers.openai.com/api/docs/guides/pdf-files> e
+  <https://platform.claude.com/docs/en/build-with-claude/pdf-support>. Os
+  testes fixam o corpo do request por `httpx.MockTransport`; nenhum provedor
+  foi chamado. Teste: `tests/genai/test_document_part.py`.
 - `provisioning_qr_terminal(uri)` e `provisioning_qr_data_uri(uri, *,
   kind="svg")` desenham a `provisioning_uri` do MFA como QR code, para o
   cadastro não depender de digitar o segredo à mão. O de terminal usa meio
@@ -27,6 +62,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no terminal antes da URI. Testes: `tests/utils/test_totp_qr.py` (cada
   formato lido de volta e decodificado com `zxing-cpp`),
   `tests/auth/test_mfa_qr.py` e `tests/cli/test_user_mfa.py`.
+
+### Changed
+
+- `tempest new` escreve o plugin novo no `[tool.mypy]` do projeto gerado, e
+  o próprio SDK passou a usá-lo: achou 7 chamadas schema → schema que só
+  funcionavam porque o Pydantic converte o valor de volta (o construtor agora
+  aceita o valor) e uma por genérico subscrito em `agents/structured.py`, que
+  virou `StopReasonEnum(...)`. A receita de slides converte o tema com
+  `SlideThemeEnum(payload.theme)`.
+- `IntegrationDisabledException` (`503 INTEGRATION_DISABLED`) e
+  `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`) passam a ser logadas em
+  `WARNING`, sem traceback, fora do `500.log` e sem `on_server_error`. A
+  primeira é a resposta configurada de uma integração desligada; a segunda já
+  é logada em `ERROR` pelo mailer antes de levantar. Num serviço com storage e
+  IA desligados, 8 dos 11 registros da fonte "500" eram o `503` da primeira.
+
+### Fixed
+
+- OpenPix: `ChargePayload(splits=[])` levanta `ValidationError` apontando o
+  campo (`too_short`), em vez de mandar `"splits": []` e voltar `400 O array
+  de split precisa ter ao menos um item` da Woovi em produção. O overlay da
+  spec declara `minItems: 1` só nesse campo, onde a recusa foi observada;
+  `splits=None` e omitir o campo continuam fora do corpo (#699).
 
 ## [0.344.0] — 2026-11-02
 

@@ -380,6 +380,89 @@ traceback rides along whenever one is being handled.
     The default stays `False`, so existing call sites do not change output.
 
 
+## An expected 503 is not a failure — `log_level` on the exception
+
+Every `AppException` with `status_code >= 500` lands in `500.log` with a
+traceback, like a bug. Some `5xx` are **planned answers**, though: the
+integration the `.env` switched off (`STORAGE_ENABLED=false`) answers
+`503 INTEGRATION_DISABLED` on purpose. In a service with storage and AI switched
+off, 8 of the 11 records in the panel's "500" source were that `503`, each with
+the full traceback, and the one real bug sat among them.
+
+The exception declares its own log severity in the `log_level` class
+attribute:
+
+```python
+import logging
+from typing import ClassVar
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import (
+    AppException,
+    IntegrationDisabledException,
+    register_exception_handlers,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+
+class MaintenanceException(AppException):
+    """Scheduled maintenance: an expected 503, not a failure."""
+
+    status_code: int = 503
+    message: str = "Scheduled maintenance"
+    code: str = "MAINTENANCE"
+    log_level: ClassVar[int | None] = logging.WARNING
+
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/files")
+async def files() -> None:
+    raise IntegrationDisabledException("storage")
+
+
+@app.get("/report")
+async def report() -> None:
+    raise MaintenanceException()
+
+
+client: TestClient = TestClient(app)
+print(client.get("/files").status_code)
+print(client.get("/report").status_code)
+```
+
+Output (measured; the `TestClient`'s `httpx` lines are omitted):
+
+```text
+WARNING tempest_fastapi_sdk.api.handlers: AppException 503 (INTEGRATION_DISABLED) during GET /files: The storage integration is disabled in this environment
+WARNING tempest_fastapi_sdk.api.handlers: AppException 503 (MAINTENANCE) during GET /report: Scheduled maintenance
+503
+503
+```
+
+With `log_level` declared, the handler:
+
+- logs **at that level**, without a traceback;
+- does not set the `http_500` marker, so the record stays out of `500.log` and
+  the panel's "500" source (it still lands in `warning.log`);
+- does not call `on_server_error`.
+
+The status and the envelope do not change. `None`, the default, keeps the
+previous rule. In the SDK, `IntegrationDisabledException` and
+`EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`) declare `logging.WARNING`;
+for the latter, the mailer already logs the SMTP failure at `ERROR` before
+raising.
+
+!!! warning "Declare only what is planned"
+    A real-failure `5xx` (the upstream went down, the database refused) keeps
+    no `log_level`: that is the one that needs the traceback and `500.log`.
+
+
 ## The database quotes the value — `redact_database_errors`
 
 An `IntegrityError` nobody handled reaches the catch-all, and the traceback

@@ -51,6 +51,7 @@ from tempest_fastapi_sdk.genai.completion import (
     StopReason,
     StructuredCompletion,
     build_structured_completion,
+    is_document_part,
 )
 from tempest_fastapi_sdk.genai.hosted import (
     HostedAPIError,
@@ -227,12 +228,63 @@ def to_anthropic_image(part: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def to_anthropic_document(part: dict[str, Any]) -> dict[str, Any]:
+    """Translate an OpenAI ``file`` content part into a Messages API block.
+
+    The part's ``file_data`` (a ``data:<media_type>;base64,<data>`` URL, as
+    :func:`~tempest_fastapi_sdk.genai.document_part` builds it) becomes the
+    ``base64`` source of a ``document`` block, the shape of the PDF guide
+    (https://platform.claude.com/docs/en/build-with-claude/pdf-support), and
+    its ``filename`` becomes the block's optional ``title``, which the
+    citations guide
+    (https://platform.claude.com/docs/en/build-with-claude/citations) says is
+    passed to the model.
+
+    Args:
+        part (dict[str, Any]): ``{"type": "file", "file": {"file_data":
+            ..., "filename": ...}}``.
+
+    Returns:
+        dict[str, Any]: ``{"type": "document", "source": {"type": "base64",
+        "media_type": ..., "data": ...}}``, plus ``title`` when the part
+        names a file.
+
+    Raises:
+        ValueError: When the part carries no ``file_data`` (an OpenAI
+            ``file_id`` names a file in OpenAI's storage, which Anthropic
+            cannot read), or ``file_data`` is not a base64 ``data:`` URL.
+    """
+    raw = part.get("file")
+    file = raw if isinstance(raw, dict) else {}
+    url = str(file.get("file_data") or "")
+    if not url:
+        raise ValueError(
+            "file part without file_data; Anthropic cannot read an OpenAI "
+            "file_id. Build the part with document_part(bytes).",
+        )
+    if not url.startswith(_DATA_URL_PREFIX):
+        raise ValueError("file_data must be a data:<media_type>;base64 URL")
+    header, _, data = url[len(_DATA_URL_PREFIX) :].partition(",")
+    media_type, _, encoding = header.partition(";")
+    if encoding != "base64" or not data:
+        raise ValueError("file_data URL must be base64-encoded")
+    block: dict[str, Any] = {
+        "type": "document",
+        "source": {"type": "base64", "media_type": media_type, "data": data},
+    }
+    filename = file.get("filename")
+    if filename:
+        block["title"] = str(filename)
+    return block
+
+
 def _translate_parts(content: list[Any]) -> list[dict[str, Any]]:
     """Translate the parts of a list ``content`` into Messages API blocks.
 
-    ``image_url`` parts become ``image`` blocks; bare strings become ``text``
-    blocks; every other part (``text``, or a native Messages API block) is
-    passed through untouched.
+    ``image_url`` parts become ``image`` blocks and ``file`` parts become
+    ``document`` blocks; bare strings become ``text`` blocks; every other
+    part (``text``, or a native Messages API block) is passed through
+    untouched.
 
     Args:
         content (list[Any]): The turn's content parts.
@@ -246,6 +298,8 @@ def _translate_parts(content: list[Any]) -> list[dict[str, Any]]:
             blocks.append({"type": "text", "text": part})
         elif isinstance(part, dict) and part.get("type") == "image_url":
             blocks.append(to_anthropic_image(part))
+        elif is_document_part(part):
+            blocks.append(to_anthropic_document(part))
         elif isinstance(part, dict):
             blocks.append(part)
     return blocks
@@ -268,8 +322,10 @@ def to_anthropic_messages(
     * A turn whose ``content`` is a list keeps it as blocks: OpenAI
       ``image_url`` parts (as :func:`~tempest_fastapi_sdk.genai.image_part`
       builds them) become ``image`` blocks through
-      :func:`to_anthropic_image`, and native Messages API blocks are passed
-      through untouched.
+      :func:`to_anthropic_image`, OpenAI ``file`` parts (as
+      :func:`~tempest_fastapi_sdk.genai.document_part` builds them) become
+      ``document`` blocks through :func:`to_anthropic_document`, and native
+      Messages API blocks are passed through untouched.
 
     Args:
         messages (list[dict[str, Any]]): The conversation, oldest first.
@@ -342,7 +398,7 @@ def to_anthropic_messages(
             out.append({"role": "assistant", "content": blocks})
             continue
         if isinstance(content, list) and any(
-            isinstance(item, dict) and item.get("type") == "image_url"
+            isinstance(item, dict) and item.get("type") in ("image_url", "file")
             for item in content
         ):
             out.append({"role": role, "content": _translate_parts(content)})
@@ -1056,6 +1112,7 @@ __all__: list[str] = [
     "DEFAULT_ANTHROPIC_URL",
     "AnthropicGenerator",
     "anthropic_usage",
+    "to_anthropic_document",
     "to_anthropic_image",
     "to_anthropic_messages",
     "to_anthropic_tools",

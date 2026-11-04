@@ -149,7 +149,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | Self-hosted voice — `SpeechToText` (STT) + `TextToSpeech` (TTS) + `LanguageEnum` presets (PT-BR/EN-US). Since 0.342.0 no `transformers<5` cap: `coqui-tts` 0.28.0 runs on transformers 5, so the extra no longer holds `huggingface-hub`, `tokenizers` or `diffusers` back — [details](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/installation/#genai-audio-transformers-bound) |
 | `[genai-diarization]` | `sherpa-onnx` | Speaker diarization on ONNX Runtime (no PyTorch) — `SpeakerDiarizer`, `ConversationTranscriber`, `ensure_models` |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face detection and recognition on ONNX Runtime (no opencv, no torch, no system libraries) — `FaceRecognizer`, `compare_faces`, 16 MB default pack |
-| `[genai-hosted]` | `httpx` | Hosted providers — `AnthropicGenerator` (Messages API) and `OpenAICompatGenerator` (OpenAI, DeepSeek, Gemini) behind the same `TextBackend` / `ToolCallingBackend` / `StructuredTextBackend` protocols as Ollama, `complete_structured` → `StructuredCompletion` (output, usage and stop reason on every outcome; images via `image_part`), `hosted_generator` (provider from the model id), `OpenAICompatEmbedder`, `HostedGenAISettings` (+ `hosted_kwargs()`), typed `HostedAPIError` family; no vendor SDK |
+| `[genai-hosted]` | `httpx` | Hosted providers — `AnthropicGenerator` (Messages API) and `OpenAICompatGenerator` (OpenAI, DeepSeek, Gemini) behind the same `TextBackend` / `ToolCallingBackend` / `StructuredTextBackend` protocols as Ollama, `complete_structured` → `StructuredCompletion` (output, usage and stop reason on every outcome; images via `image_part`, PDFs via `document_part`, `supports_documents`), `hosted_generator` (provider from the model id), `OpenAICompatEmbedder`, `HostedGenAISettings` (+ `hosted_kwargs()`), typed `HostedAPIError` family; no vendor SDK |
 | `[genai-ollama]` | `httpx` | Ollama backend — `OllamaGenerator` / `OllamaEmbedder` run text + embeddings against a local Ollama daemon instead of loading torch weights; drop into `make_genai_router` / `Retriever`; `OllamaSpeech` speaks (`/v1/audio/speech`) and transcribes (`lfm3-audio`) through the same daemon |
 | `[genai-chroma]` | `chromadb` | ChromaDB store — `ChromaVectorStore` (a `VectorStore`) + `ChatMemory` (recency-aware per-user long-term chat memory) |
 | `[genai-onnx]` | `onnxruntime`, `tokenizers` | Torch-free embeddings — `OnnxEmbedder` runs an ONNX-exported sentence model on CPU (attention-mask mean pooling), a `SupportsEmbed` drop-in for `Retriever` |
@@ -3791,6 +3791,13 @@ One setting is easy to miss and worth checking in an older service: `plugins = [
 [tool.pydantic-mypy]
 init_typed = true
 warn_required_dynamic_aliases = true
+```
+
+The second plugin closes a hole `BaseSchema`'s `use_enum_values=True` opens: an enum field holds the **value** at runtime, but mypy reads the annotation, so `order.status.value` type-checks and raises `AttributeError`. With `tempest_fastapi_sdk.mypy` listed, mypy reads such a field as `str` / `int` and the constructor accepts the member or the value (`tempest new` writes it as of v0.345.0; mypy only — pyright and Pylance do not run plugins):
+
+```toml
+[tool.mypy]
+plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]
 ```
 
 See the [Typing recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/typing/) for the full guide, including what `init_typed` starts refusing.

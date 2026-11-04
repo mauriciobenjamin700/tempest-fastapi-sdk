@@ -119,6 +119,97 @@ quem está errado é a CI.
     `Decimal("1.5")` no call site. Em biblioteca de construtor público,
     decida caso a caso.
 
+## Campo enum sob `use_enum_values`: o plugin `tempest_fastapi_sdk.mypy`
+
+O `BaseSchema` liga `use_enum_values=True`: um campo anotado com um enum
+guarda o **valor** (`"paid"`), não o membro. A anotação continua dizendo o
+enum, então o mypy aceita código que o runtime recusa:
+
+```python
+from typing import reveal_type
+
+from tempest_fastapi_sdk import BaseSchema, BaseStrEnum
+
+# docs-guard: skip — os erros abaixo são o assunto da seção
+
+
+class StatusEnum(BaseStrEnum):
+    """Order status."""
+
+    PAID = "paid"
+    OPEN = "open"
+
+
+class OrderSchema(BaseSchema):
+    """An order as the API returns it."""
+
+    status: StatusEnum
+
+
+def label(status: StatusEnum) -> str:
+    """Return the member name of a status."""
+    return status.name
+
+
+order = OrderSchema(status=StatusEnum.PAID)
+reveal_type(order.status)
+print(order.status == StatusEnum.PAID)
+print(order.status.value)
+print(label(order.status))
+```
+
+Só com `plugins = ["pydantic.mypy"]` (mypy 2.3.1, pydantic 2.13.5):
+
+```text
+order.py:27: note: Revealed type is "order.StatusEnum"
+Success: no issues found in 1 source file
+```
+
+E em runtime:
+
+```text
+AttributeError: 'str' object has no attribute 'value'
+```
+
+Com o plugin do SDK ao lado:
+
+```toml
+[tool.mypy]
+plugins = ["pydantic.mypy", "tempest_fastapi_sdk.mypy"]
+```
+
+```text
+order.py:27: note: Revealed type is "str"
+order.py:29: error: "str" has no attribute "value"  [attr-defined]
+order.py:30: error: Argument 1 to "label" has incompatible type "str"; expected "StatusEnum"  [arg-type]
+```
+
+O que o plugin faz:
+
+- **Leitura** de um campo enum de modelo `use_enum_values` sai com o tipo do
+  valor: `str` para enum de `str` (`BaseStrEnum`, `StrEnum`), `int` para enum
+  de `int`, `object` para `Enum` puro, cujo valor pode ser qualquer coisa.
+  Vale dentro de `Optional`, união, `list`, `tuple`, `dict`.
+- **Construtor** aceita o membro **ou** o valor: passar o campo de um schema
+  para o construtor de outro é um `str`, que o Pydantic valida de volta.
+- **Comparação** continua livre: `order.status == StatusEnum.PAID` é `True`
+  em runtime e passa no mypy.
+- `pydantic.BaseModel` comum e schema com `use_enum_values=False` ficam como
+  estão. A ordem dos dois plugins na lista não importa.
+
+!!! check "Projeto novo já nasce com isso"
+    O `tempest new` escreve os dois plugins desde a v0.345.0. Ligado no
+    próprio SDK, o plugin achou 7 chamadas schema → schema que só
+    funcionavam porque o Pydantic converte o valor de volta; o construtor
+    passou a aceitar o valor, e a única chamada por genérico subscrito
+    (`Model[T](...)`) virou conversão explícita.
+
+!!! warning "Só o mypy roda plugin"
+    Pyright, Pylance e basedpyright continuam lendo a anotação como está.
+    E construtor chamado por genérico subscrito (`Model[T](...)`) não tem
+    nome para o mypy oferecer hook: converta no call site
+    (`StatusEnum(valor)`), que o Pydantic também aceita.
+
 ## Configurar o rigor da tipagem (`[tool.tempest]`)
 
 Quão rigorosos os gates são é um knob no `pyproject.toml`. Um único
