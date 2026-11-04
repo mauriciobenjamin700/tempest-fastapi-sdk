@@ -889,6 +889,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `genai_effective_api_key()` e o guard de produção (provedor sem chave
   efetiva derruba o boot). Receita: seção "Um provedor escolhido no `.env`"
   de `docs/recipes/genai-hosted.md`.
+- **PDF agnóstico de provedor (Unreleased, extra `[genai-hosted]`, #701)** —
+  `document_part(data, media_type="application/pdf", *, filename=None)` monta
+  a parte `file` do Chat Completions; o `AnthropicGenerator` a traduz para o
+  bloco `document` base64 (`to_anthropic_document`, `filename` → `title`), o
+  formato OpenAI a repassa, e Google/DeepSeek levantam `ValueError` antes de
+  qualquer request (`OpenAICompatGenerator(accepts_documents=False)`, que
+  `hosted_generator` e `google_kwargs()`/`deepseek_kwargs()` passam).
+  `supports_documents(provider)` / `DOCUMENT_PROVIDERS` para checar no boot.
+  Formato fixado por `httpx.MockTransport`, não por chamada a provedor real.
+  Teste: `tests/genai/test_document_part.py`. Receita: seção "PDF" de
+  `docs/recipes/genai-hosted.md`.
 - **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
   `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
   `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,

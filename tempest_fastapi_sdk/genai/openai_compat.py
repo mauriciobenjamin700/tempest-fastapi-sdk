@@ -65,6 +65,7 @@ from tempest_fastapi_sdk.genai.completion import (
     StopReason,
     StructuredCompletion,
     build_structured_completion,
+    is_document_part,
 )
 from tempest_fastapi_sdk.genai.hosted import (
     HostedAPIError,
@@ -184,6 +185,7 @@ class OpenAICompatGenerator:
         structured_output: StructuredOutputMode = "json_schema",
         effort_field: str | None = "reasoning_effort",
         effort_values: Mapping[str, str] | None = None,
+        accepts_documents: bool = True,
     ) -> None:
         """Configure the client. No network call happens here.
 
@@ -254,6 +256,16 @@ class OpenAICompatGenerator:
                 set (Gemini's ``GOOGLE_EFFORT_VALUES``). ``None`` sends the
                 value as given. A value missing from the mapping is sent as
                 given.
+            accepts_documents (bool): Whether this provider takes the
+                ``file`` content part that
+                :func:`~tempest_fastapi_sdk.genai.document_part` builds.
+                ``True`` by default: the part is sent as is, and a provider
+                that refuses it answers with its own error. ``False`` makes
+                every call carrying one raise ``ValueError`` before the
+                request is sent — what
+                :func:`~tempest_fastapi_sdk.genai.hosted_generator` sets for a
+                provider whose documentation describes no PDF input
+                (:func:`~tempest_fastapi_sdk.genai.supports_documents`).
 
         Raises:
             ValueError: When ``api_key`` is empty.
@@ -276,6 +288,7 @@ class OpenAICompatGenerator:
         self.structured_output: StructuredOutputMode = structured_output
         self.effort_field: str | None = effort_field
         self.effort_values: dict[str, str] = dict(effort_values or {})
+        self.accepts_documents: bool = accepts_documents
         self._client: HTTPClient | None = http_client
         self._owns_client: bool = http_client is None
         self._transport = transport
@@ -361,6 +374,8 @@ class OpenAICompatGenerator:
             TypeError: When ``overrides`` names ``model``, ``messages`` or
                 ``stream`` — fields this class computes and a keyword must
                 not silently replace.
+            ValueError: When a turn carries a ``file`` part and the instance
+                was built with ``accepts_documents=False``.
         """
         reserved = _RESERVED_BODY_KEYS.intersection(overrides)
         if reserved:
@@ -368,6 +383,13 @@ class OpenAICompatGenerator:
                 f"{sorted(reserved)} cannot be passed as a generation keyword; "
                 "the model is fixed at construction and the messages and "
                 "stream flag are set by the method you call.",
+            )
+        if not self.accepts_documents and _carries_document(messages):
+            raise ValueError(
+                f"provider {self.provider!r} documents no PDF input on its "
+                "OpenAI-compatible chat endpoint, so the document_part was "
+                "not sent. Check supports_documents(provider) at boot, or "
+                "use a provider that accepts documents (anthropic, openai).",
             )
         params: dict[str, Any] = {}
         if config is not None:
@@ -819,6 +841,22 @@ def _sse_delta(line: str) -> str:
         return ""
     delta = choices[0].get("delta") or {}
     return str(delta.get("content") or "")
+
+
+def _carries_document(messages: list[dict[str, Any]]) -> bool:
+    """Tell whether any turn's list ``content`` holds a ``file`` part.
+
+    Args:
+        messages (list[dict[str, Any]]): The conversation.
+
+    Returns:
+        bool: ``True`` when some turn carries a document part.
+    """
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, list) and any(map(is_document_part, content)):
+            return True
+    return False
 
 
 def _wire_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `document_part(data, media_type="application/pdf", *, filename=None)` ao
+  lado do `image_part`: o PDF entra na mensagem uma vez e cada gerador
+  hospedado o leva no formato do seu provedor (#701). A parte é a `file` do
+  Chat Completions da OpenAI (`file_data` em data URL base64 + `filename`,
+  `document.pdf` quando omitido), que o formato OpenAI repassa e o
+  `AnthropicGenerator` traduz para o bloco `document` com `source` base64
+  (`to_anthropic_document`; o `filename` vira `title`). Google (endpoint
+  compatível) e DeepSeek não documentam entrada de PDF, então o gerador que
+  `hosted_generator`, `google_kwargs()` e `deepseek_kwargs()` montam para
+  eles levanta `ValueError` **antes** de qualquer request, em vez de deixar o
+  provedor devolver um 400 em produção — o novo
+  `OpenAICompatGenerator(accepts_documents=False)`; servidor compatível
+  genérico continua repassando (`True` por padrão). `supports_documents(provider)`
+  e `DOCUMENT_PROVIDERS` deixam o serviço recusar a feature no boot. Só
+  `application/pdf` é aceito (`DOCUMENT_MEDIA_TYPES`). Fontes, lidas em
+  2026-11-04: <https://developers.openai.com/api/docs/guides/pdf-files> e
+  <https://platform.claude.com/docs/en/build-with-claude/pdf-support>. Os
+  testes fixam o corpo do request por `httpx.MockTransport`; nenhum provedor
+  foi chamado. Teste: `tests/genai/test_document_part.py`.
+
 ## [0.344.0] — 2026-11-02
 
 ### Added
