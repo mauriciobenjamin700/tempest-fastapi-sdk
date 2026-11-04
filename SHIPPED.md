@@ -2503,6 +2503,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   overriding it in silence).
   Missing base falls back to `origin/<base>`; an empty comparison exits
   `1`. Recipe: `docs/recipes/cli.md`.
+  **`tempest bundle-route` (Unreleased, #700)** — one route's code as
+  markdown for an AI chat: the route is resolved on the live app (same
+  expansion as `tempest routes`), its endpoint and whole `Depends` tree
+  are the starting points, and the project's code is followed statically
+  with `ast`, per symbol, through the re-exporting `__init__.py` files
+  (following whole modules would pull every domain in). Whole files,
+  ordered router → dependencies → controllers → services → repositories
+  → models → schemas → core → other; only `.py` under the project's own
+  packages, never `.env`/stdlib/`site-packages`/`.venv`/the SDK.
+  Ambiguous path exits `2` listing the methods, unknown route exits `1`
+  with close matches; `--output`, `--max-depth`, `--app`. Recipe:
+  `docs/recipes/cli.md`.
 
 - **Quality gate lives in `tempest-cli` (v0.226.0)** — `lint` / `fix` /
   `format` / `fmt-check` / `type` / `test` / `check` / `pr-prompt` moved

@@ -4214,6 +4214,15 @@ tempest openapi-export --out contracts/openapi.json --check   # exit 1 when it d
 
 `tempest routes` reads the effective paths from FastAPI's own route expansion, so a router mounted with `include_router` is listed (a comprehension over `app.routes` lists none of its paths since FastAPI 0.141.1), and routes kept out of the schema — HTML pages, internal endpoints — are listed with `SCHEMA=no` next to the dependencies guarding them. `tempest openapi-export` writes the document `openapi-client` (or any other generator) consumes without booting the service; `--check` compares it against the committed file and names the operations that moved, which is the CI guard against an undeclared contract change. Both take `--app module:attr` when the app does not sit at one of the scaffolded locations.
 
+#### One route's code for an AI chat — `tempest bundle-route`
+
+```bash
+tempest bundle-route "GET /api/products"              # markdown on stdout, summary on stderr
+tempest bundle-route "GET /api/products" --output bug.md --max-depth 2
+```
+
+It resolves the route on the live app, starts from the endpoint and its whole `Depends` tree, and follows the project's own code statically (`ast`), per symbol, through the re-exporting `__init__.py` files — so a `products` route bundles the products router, controller, service, repository, model and schemas, and not the other domains. Every file goes in whole, ordered by layer. Only `.py` files of the project's packages are read, never `.env`, `site-packages` or the SDK; the bundle is still your source code, so review it before pasting. On the scaffold plus the `products` recipe domain, `GET /api/products` bundles 11 files, 399 lines. Recipe: [CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/).
+
 #### Generate artifacts in an existing project — `tempest generate`
 
 ```bash

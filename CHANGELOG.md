@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `tempest bundle-route "METHOD /path"` empacota o código de uma rota num
+  markdown para colar num chat de IA e perguntar sobre um bug: o router, as
+  dependências (`Depends`, inclusive as herdadas do `include_router`), o
+  controller, o service, o repository, o model, os schemas e o `core` que a
+  rota alcança, cada arquivo inteiro num bloco `python`, ordenados por
+  camada, com cabeçalho (método, path, endpoint, dependências) e a tabela de
+  arquivos com a contagem de linhas. A rota é resolvida no app vivo, como no
+  `tempest routes`; o código é seguido **estaticamente** (`ast`), por
+  símbolo e não por módulo, atravessando os `__init__.py` que re-exportam:
+  seguir módulos inteiros puxaria todos os domínios do projeto por esses
+  re-exports. Só lê `.py` dos pacotes do projeto (`src`/`app`) sob a raiz —
+  nunca `.env`, stdlib, `site-packages`, `.venv` nem o SDK. Sem método, o
+  path precisa ter um só; com vários, sai com código 2 listando-os; rota
+  inexistente sai com 1 e sugere as parecidas. `--output` grava em arquivo,
+  `--max-depth N` limita os saltos, `--app` aponta o app. Medido no
+  `tempest new` + domínio `products` do `CLAUDE.md` gerado:
+  `GET /api/products` dá 11 arquivos, 399 linhas, sem o `service_info`
+  (#700). Teste: `tests/cli/test_route_bundle.py` e
+  `tests/cli/test_scaffold_runtime.py::test_bundle_route_follows_the_recipe_domain_layer_by_layer`.
+
 ## [0.344.0] — 2026-11-02
 
 ### Added
