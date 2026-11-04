@@ -621,3 +621,30 @@ class TestWhatTheOverlayLeavesAlone:
 
         assert _typed(patched, "status") == "number"
         assert report.integer_fields == 0
+
+
+class TestNonEmptyArrays:
+    """``ChargePayload.splits`` refuses ``[]``, which Woovi answers with 400 (#699)."""
+
+    def test_the_correction_fires_on_the_document_we_vendor(self) -> None:
+        _, report = apply(_vendored())
+
+        assert report.non_empty_arrays == ("ChargePayload.splits",)
+
+    def test_the_patched_array_declares_min_items(self) -> None:
+        patched, _ = apply(_vendored())
+
+        splits = patched["components"]["schemas"]["ChargePayload"]["properties"][
+            "splits"
+        ]
+        assert splits["minItems"] == 1
+
+    def test_a_constraint_upstream_declared_retires(self) -> None:
+        document = _vendored()
+        document["components"]["schemas"]["ChargePayload"]["properties"]["splits"][
+            "minItems"
+        ] = 1
+
+        _, report = apply(document)
+
+        assert report.non_empty_arrays == ()

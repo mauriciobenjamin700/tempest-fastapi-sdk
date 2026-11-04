@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   é logada em `ERROR` pelo mailer antes de levantar. Num serviço com storage e
   IA desligados, 8 dos 11 registros da fonte "500" eram o `503` da primeira.
 
+### Fixed
+
+- OpenPix: `ChargePayload(splits=[])` levanta `ValidationError` apontando o
+  campo (`too_short`), em vez de mandar `"splits": []` e voltar `400 O array
+  de split precisa ter ao menos um item` da Woovi em produção. O overlay da
+  spec declara `minItems: 1` só nesse campo, onde a recusa foi observada;
+  `splits=None` e omitir o campo continuam fora do corpo (#699).
+
 ## [0.344.0] — 2026-11-02
 
 ### Added

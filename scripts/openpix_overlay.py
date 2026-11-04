@@ -7,7 +7,8 @@ one named correction at a time, each carrying the evidence that justifies
 it. Editing the vendored file would blend the two and make the next
 refresh unreadable.
 
-Two kinds of correction, in the order :func:`apply` runs them:
+The corrections, in the order :func:`apply` runs them (the last one,
+non-empty arrays, is described at :data:`NON_EMPTY_ARRAYS`):
 
 * **Integer units.** The specification types money and counts as
   ``number``. Woovi settles in whole centavos, and says so in the field's
@@ -301,6 +302,26 @@ callback keys contain a literal ``#``, which is not special to a pointer
 and is written as-is.
 """
 
+NON_EMPTY_ARRAYS: dict[str, tuple[str, ...]] = {
+    "ChargePayload": ("splits",),
+}
+"""Request-body arrays the API refuses when present and empty.
+
+The document declares ``ChargePayload.splits`` as an optional ``array`` with
+no ``minItems``, and Woovi answers ``400 O array de split precisa ter ao menos
+um item`` to ``"splits": []`` (issue #699, in production on
+``POST /api/purchases/tickets/batch`` of a consumer on 0.331.0; the same body
+without the key is accepted, issue #236). The generator already drops an
+unset or ``None`` array from the body; an explicit ``[]`` counts as set and
+went on the wire. Declaring ``minItems: 1`` makes the generated field refuse
+``[]`` with a ``ValidationError`` that names it, in the consumer's test,
+instead of a ``400`` from the provider in production.
+
+Scoped to the field where the refusal was observed: the generator is
+generic, and in another API an empty array can be a statement (``PATCH``
+clearing a list).
+"""
+
 LIFTED_ENUMS: dict[str, dict[str, str]] = {
     "Charge": {"status": "ChargeStatus"},
     "Payment": {"status": "PaymentStatus"},
@@ -404,6 +425,8 @@ class OverlayReport:
         lifted_enums (tuple[str, ...]): ``Schema.property`` entries whose
             inline ``enum`` this overlay moved into a component of its
             own, leaving the property unconstrained.
+        non_empty_arrays (tuple[str, ...]): ``Schema.property`` arrays this
+            overlay declared ``minItems: 1``.
     """
 
     integer_fields: int = 0
@@ -411,6 +434,7 @@ class OverlayReport:
     retyped_properties: tuple[str, ...] = ()
     retyped_pointers: tuple[str, ...] = ()
     lifted_enums: tuple[str, ...] = ()
+    non_empty_arrays: tuple[str, ...] = ()
 
 
 @dataclass
@@ -614,6 +638,41 @@ def _declare(
     return tuple(added)
 
 
+def _require_items(
+    document: dict[str, Any],
+    schema_name: str,
+    properties: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Declare ``minItems: 1`` on array properties of a component schema.
+
+    Args:
+        document (dict[str, Any]): The document being patched.
+        schema_name (str): The ``components.schemas`` key.
+        properties (tuple[str, ...]): Array properties to constrain.
+
+    Returns:
+        tuple[str, ...]: ``Schema.property`` for each one constrained. A
+        property that is missing, not an array, or already declares
+        ``minItems`` is skipped, so the overlay retires quietly the day
+        the provider declares the constraint itself.
+    """
+    schemas = document.get("components", {}).get("schemas", {})
+    target = schemas.get(schema_name)
+    if not isinstance(target, dict):
+        return ()
+    declared = target.get("properties", {})
+    constrained: list[str] = []
+    for name in properties:
+        schema = declared.get(name)
+        if not isinstance(schema, dict) or schema.get("type") != "array":
+            continue
+        if "minItems" in schema:
+            continue
+        schema["minItems"] = 1
+        constrained.append(f"{schema_name}.{name}")
+    return tuple(constrained)
+
+
 def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
     """Return a corrected copy of the specification.
 
@@ -646,12 +705,17 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
     for schema_name, properties in LIFTED_ENUMS.items():
         unconstrained += lift_enum(patched, schema_name, properties)
 
+    non_empty: tuple[str, ...] = ()
+    for schema_name, array_properties in NON_EMPTY_ARRAYS.items():
+        non_empty += _require_items(patched, schema_name, array_properties)
+
     return patched, OverlayReport(
         integer_fields=counter.retyped,
         added_properties=added,
         retyped_properties=retyped,
         retyped_pointers=pointers,
         lifted_enums=unconstrained,
+        non_empty_arrays=non_empty,
     )
 
 
@@ -663,6 +727,7 @@ __all__: list[str] = [
     "LIFTED_ENUMS",
     "MISTYPED_POINTERS",
     "MISTYPED_PROPERTIES",
+    "NON_EMPTY_ARRAYS",
     "NOT_CENTS_PATTERN",
     "STATUS_CODE_PATTERN",
     "OverlayReport",
