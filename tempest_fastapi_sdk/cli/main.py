@@ -43,6 +43,7 @@ from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
 from tempest_fastapi_sdk.cli.queue import queue_app
+from tempest_fastapi_sdk.cli.route_bundle import bundle_route_command
 from tempest_fastapi_sdk.cli.routes import routes_command
 from tempest_fastapi_sdk.cli.secrets import secrets_app
 from tempest_fastapi_sdk.cli.serve import serve_command
@@ -200,6 +201,7 @@ app.add_typer(voice_app, name="voice")
 # (`routes` next to `permissions`, `openapi-export` next to
 # `openapi-client`).
 app.command("routes")(routes_command)
+app.command("bundle-route")(bundle_route_command)
 app.command("openapi-export")(openapi_export_command)
 app.command("serve")(serve_command)
 app.command("shell")(shell_command)

@@ -647,3 +647,44 @@ def test_generated_suite_runs_in_parallel(scaffolded: Path) -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "4 passed" in completed.stdout
     assert not (scaffolded / "app.db").exists()
+
+
+def test_bundle_route_follows_the_recipe_domain_layer_by_layer(
+    scaffolded: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``tempest bundle-route`` on the recipe's listing route, as written.
+
+    The scaffold re-exports every domain from each layer's ``__init__``
+    and keeps every controller provider in one file, so the bundle of a
+    ``products`` route must reach the products router, controller,
+    service, repository and model through those re-exports while leaving
+    the ``service_info`` controller and schema out.
+    """
+    monkeypatch.chdir(scaffolded)
+    result = runner.invoke(cli_app, ["bundle-route", "GET /api/products"])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    paths = [
+        line.removeprefix("## `").removesuffix("`")
+        for line in result.stdout.splitlines()
+        if line.startswith("## `")
+    ]
+    assert paths[0] == "src/api/routers/product.py"
+    for expected in (
+        "src/api/dependencies/controllers.py",
+        "src/controllers/products/product.py",
+        "src/services/products/product.py",
+        "src/db/repositories/products/product.py",
+        "src/db/models/products/product.py",
+        "src/schemas/product.py",
+    ):
+        assert expected in paths, paths
+    assert not any("service_info" in path for path in paths), paths
+    assert not any(path.startswith(".venv") or path == ".env" for path in paths)
+    assert "11 file(s), 399 line(s)" in result.stderr
+    ambiguous = runner.invoke(cli_app, ["bundle-route", "/api/products"])
+    assert ambiguous.exit_code == 2
+    assert (
+        "error: /api/products is served by several methods: GET, POST. "
+        "Name one, e.g. 'GET /api/products'." in ambiguous.stderr
+    )

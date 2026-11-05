@@ -1633,6 +1633,153 @@ resolve, ele **lista o que tentou e por quê** antes de sair com código 2.
 `--match` que não casa com nada sai com código 1, pra typo em script falhar
 em vez de parecer aplicação sem rota.
 
+### Empacotar uma rota para a IA — `tempest bundle-route`
+
+Um endpoint deu bug e você quer perguntar pro GPT, pro Gemini ou pro Claude.
+A pergunta só tem resposta boa se a IA enxergar o caminho inteiro da
+requisição: o router, a dependência que monta o controller, o controller, o
+service, o repository, o model e os schemas. Colar isso à mão é abrir oito
+arquivos — e quase sempre falta justamente aquele onde o bug mora.
+
+`tempest bundle-route` monta esse pacote pra você, em markdown:
+
+```bash
+tempest new demo
+cd demo
+cp .env.example .env
+tempest bundle-route "GET /api/"
+```
+
+O começo da saída, medido num projeto recém-gerado:
+
+```text
+# Route bundle: `GET /api/`
+
+- **Method:** `GET`
+- **Path:** `/api/`
+- **Endpoint:** `index`
+- **Dependencies:** `get_service_info_controller`, `get_settings`
+
+## Files (6 files, 277 lines)
+
+| Layer | File | Lines |
+| --- | --- | --- |
+| router | `src/api/routers/service_info.py` | 30 |
+| dependencies | `src/api/dependencies/controllers.py` | 37 |
+| controllers | `src/controllers/system/service_info.py` | 40 |
+| schemas | `src/schemas/service_info.py` | 23 |
+| core | `src/core/settings.py` | 117 |
+| other | `src/scripts/composition.py` | 30 |
+```
+
+Depois da tabela vem cada arquivo **inteiro**, numa seção `` ## `caminho` ``
+com um bloco `python`, na mesma ordem. Cole tudo no chat e escreva a pergunta
+embaixo.
+
+Num domínio de verdade o pacote cresce do jeito que você espera: com o
+domínio `products` que o `CLAUDE.md` gerado ensina a escrever,
+`tempest bundle-route "GET /api/products"` deu **11 arquivos, 399 linhas** —
+router, `api/dependencies/controllers.py` e `resources.py`, controller,
+service, repository, model, schema, `core/exceptions.py`,
+`db/configs/names.py` e `scripts/composition.py`. Nenhum arquivo do
+`service_info`.
+
+O resumo sai em `stderr`, então o `stdout` é só o markdown:
+
+```text
+GET /api/: 6 file(s), 277 line(s). The bundle is your source code: review it before pasting it anywhere.
+```
+
+#### Como ele acha os arquivos
+
+1. **A rota é resolvida no app vivo**, pela mesma expansão do
+   `tempest routes` — prefixo do `include_router` já aplicado. O ponto de
+   partida é o endpoint e **toda** a árvore de `Depends`, inclusive a
+   dependência herdada do `include_router`.
+2. **Daí em diante, tudo é estático.** Cada módulo do projeto é lido com
+   `ast`; nada além do próprio app é importado ou executado.
+3. **O caminho é por símbolo, não por módulo.** O scaffold manda importar do
+   pacote (`from src.services import ProductService`), e cada `__init__.py`
+   re-exporta todos os domínios. Seguir o módulo inteiro puxaria o projeto
+   todo. Em vez disso, o nome é seguido pelo re-export até o arquivo que o
+   **define**, e só os nomes que aquela definição usa são seguidos depois.
+4. **O arquivo entra inteiro** assim que uma definição dele é alcançada. É
+   por isso que o `api/dependencies/controllers.py` aparece com os providers
+   dos outros domínios dentro — mas os controllers desses domínios não.
+   Um `__init__.py` atravessado só como re-export não entra.
+
+A ordem é por camada: router, dependencies, controllers, services,
+repositories, models, schemas, core, e o resto. O arquivo do endpoint vem
+sempre primeiro.
+
+!!! warning "O pacote é o seu código-fonte"
+    O comando só lê arquivos `.py` dos pacotes do projeto (`src/` ou `app/`)
+    dentro da raiz — **nunca** o `.env`, a biblioteca padrão, o
+    `site-packages`, uma `.venv` dentro do projeto, nem o próprio SDK. Mas o
+    que ele lê é o seu código, inteiro, e pode ser proprietário. Valor
+    escrito direto no código (um default de `Settings`, uma chave de teste)
+    vai junto. Releia antes de colar num serviço de terceiro: quem decide
+    onde o código vai é você.
+
+#### Escolher a rota
+
+O argumento é `"MÉTODO /path"`, com o path que o `tempest routes` imprime. O
+método não diferencia maiúscula de minúscula. Sem método, o path precisa ter
+um só:
+
+```bash
+tempest bundle-route "GET /api/products"
+tempest bundle-route /api/                               # só um método serve esse path
+tempest bundle-route "get /api/"                         # método em minúscula também vale
+```
+
+Quando a escolha não é única, o comando para em vez de adivinhar:
+
+- **Path com vários métodos e nenhum nomeado** sai com código `2` e lista os
+  métodos: `tempest bundle-route /api/products`, no domínio da receita, responde `error: /api/products is served by several methods: GET, POST. Name one, e.g. 'GET /api/products'.`
+- **Rota que não existe** sai com código `1` e sugere as parecidas:
+
+```text
+error: no route matches 'GET /health'.
+  did you mean: GET /health/liveness
+  did you mean: GET /health/readiness
+  did you mean: GET /api/
+  did you mean: GET /redoc
+  did you mean: GET /openapi.json
+  run `tempest routes` to list every route.
+```
+
+- **Rota servida por código instalado** (o `/health/liveness` do SDK, por
+  exemplo) não alcança nenhum arquivo do projeto e sai com código `1`.
+
+#### Opções
+
+```bash
+tempest bundle-route "GET /api/" --output bug.md         # grava no arquivo, stdout vazio
+tempest bundle-route "GET /api/" --max-depth 0           # só os arquivos que definem endpoint e dependências
+tempest bundle-route "GET /api/" --app src.server:app    # app fora dos lugares convencionais
+```
+
+`--max-depth` conta os saltos a partir do endpoint e das dependências. Com
+`0`, a mesma rota `GET /api/` cai para **3 arquivos, 184 linhas** (router,
+`api/dependencies/controllers.py` e `core/settings.py`, onde mora o
+`get_settings`). Sem a opção, tudo que é alcançável entra.
+
+!!! tip "O app precisa importar"
+    Como no `tempest routes`, o comando importa o app do projeto, então o
+    `.env` (ou as variáveis de ambiente) precisa estar lá — por isso o
+    `cp .env.example .env` no exemplo. Quando o import falha, ele lista o que
+    tentou e por quê, e sai com código `2`.
+
+#### Recap
+
+- `tempest bundle-route "MÉTODO /path"` junta o código de uma rota num
+  markdown pronto pra colar num chat de IA.
+- A rota sai do app vivo; o código é seguido por símbolo, estaticamente,
+  sem atravessar para outros domínios.
+- Só `.py` do projeto, nunca `.env` nem pacote instalado — e mesmo assim é o
+  seu código: revise antes de colar.
+
 ### Erros documentados no OpenAPI — `tempest openapi-errors`
 
 Compara, por rota, as `AppException` que o fluxo pode levantar com o que a rota
