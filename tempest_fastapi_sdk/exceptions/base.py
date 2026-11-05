@@ -115,8 +115,10 @@ class AppException(HTTPException):
             the marker, and ``on_server_error`` is not called. The status
             code and the envelope do not change.
             :class:`~tempest_fastapi_sdk.IntegrationDisabledException`
-            declares ``logging.WARNING``: an integration switched off by
-            configuration answers ``503`` by design.
+            declares ``logging.WARNING`` (an integration switched off by
+            configuration answers ``503`` by design), and so does
+            :class:`~tempest_fastapi_sdk.EmailDeliveryException`, whose SMTP
+            failure the mailer already logged at ``ERROR``.
 
     Instance attributes:
         status_code (int): The status code attached to this instance.

@@ -889,7 +889,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `genai_effective_api_key()` e o guard de produção (provedor sem chave
   efetiva derruba o boot). Receita: seção "Um provedor escolhido no `.env`"
   de `docs/recipes/genai-hosted.md`.
-- **PDF agnóstico de provedor (Unreleased, extra `[genai-hosted]`, #701)** —
+- **PDF agnóstico de provedor (v0.345.0, extra `[genai-hosted]`, #701)** —
   `document_part(data, media_type="application/pdf", *, filename=None)` monta
   a parte `file` do Chat Completions; o `AnthropicGenerator` a traduz para o
   bloco `document` base64 (`to_anthropic_document`, `filename` → `title`), o
@@ -2514,7 +2514,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   overriding it in silence).
   Missing base falls back to `origin/<base>`; an empty comparison exits
   `1`. Recipe: `docs/recipes/cli.md`.
-  **`tempest bundle-route` (Unreleased, #700)** — one route's code as
+  **`tempest bundle-route` (v0.345.0, #700)** — one route's code as
   markdown for an AI chat: the route is resolved on the live app (same
   expansion as `tempest routes`), its endpoint and whole `Depends` tree
   are the starting points, and the project's code is followed statically
@@ -4150,7 +4150,7 @@ ausência como produção. Recusado: `AuthSettings` herdar `EnvironmentSettings`
 (`allow_unauthenticated=True` como opt-out).
 
 
-## Plugin do mypy para `use_enum_values` (Unreleased)
+## Plugin do mypy para `use_enum_values` (v0.345.0)
 
 `tempest_fastapi_sdk/mypy.py`. Hook de MRO grava em `TypeInfo.metadata` se a
 classe guarda valor de enum (`model_config` do corpo ou herdado — sobrevive
@@ -4160,7 +4160,7 @@ respondem para modelo/campo que qualifica, porque o mypy guarda só o primeiro
 plugin que responde. Fora: pyright/Pylance (não rodam plugin) e construtor
 por genérico subscrito (`Model[T](...)`, sem nome para hook).
 
-## QR code do cadastro de MFA (Unreleased, #703)
+## QR code do cadastro de MFA (v0.345.0, #703)
 
 `provisioning_qr_terminal(uri)` desenha o `otpauth://` em meio-bloco para o
 terminal (49 colunas × 25 linhas para uma URI de 95 caracteres, 61 colunas

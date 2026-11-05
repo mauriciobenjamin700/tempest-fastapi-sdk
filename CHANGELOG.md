@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.345.0] — 2026-11-04
+
 ### Added
 
 - Plugin do mypy `tempest_fastapi_sdk.mypy`: num modelo com
@@ -52,9 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   para terminal claro. O de `data:` devolve SVG (ou PNG) em base64, pronto
   para um `<img>`. Os dois rodam sobre o `segno`, que entra no extra `[mfa]`
   (`segno>=1.6.6`, sem upper bound e sem dependência em runtime), importado
-  na primeira chamada. Exportados no topo e em `tempest_fastapi_sdk.utils`,
-  com `PROVISIONING_QR_ERROR`, `PROVISIONING_QR_BORDER` e
-  `PROVISIONING_QR_SCALE` (#703).
+  na primeira chamada. As duas funções saem no topo e em `tempest_fastapi_sdk.utils`; as
+  constantes `PROVISIONING_QR_ERROR`, `PROVISIONING_QR_BORDER` e
+  `PROVISIONING_QR_SCALE`, só em `tempest_fastapi_sdk.utils` (#703).
 - `MFAEnrollResponseSchema.provisioning_qr`: o `POST /auth/mfa/enroll`
   devolve a URI já desenhada como data URI SVG. Ligado por padrão, sem
   setting: o campo é opcional e aditivo, e sem `segno` instalado vale `None`
