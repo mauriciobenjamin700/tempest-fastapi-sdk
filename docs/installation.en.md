@@ -53,6 +53,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-rag]` | `trafilatura`, `pymupdf`, `pgvector`, `httpx` | RAG ingestion: web scraping, PDF extraction, and pgvector embeddings |
 | `[geo]` | `httpx` | geospatial helpers: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + routing), `GeoPointMixin` |
 | `[http]` | `httpx` (already in the base package) | `HTTPClient` + `RetryPolicy` + circuit-breaker. The extra is optional: `HTTPClient` works on the base install, and declaring the extra only records the intent in the service's `pyproject.toml` |
+| `[image]` | `pillow` | `strip_image_metadata`: re-encodes a user's photo in the same format without EXIF (GPS, device), XMP, IPTC, ICC and text chunks, with a pixel ceiling against decompression bombs |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow + enrollment QR code (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |

@@ -3,7 +3,8 @@
 The feature-rich helpers each require an optional extra
 (:class:`PasswordUtils` → ``[auth]``, :class:`JWTUtils` → ``[auth]``,
 :class:`EmailUtils` → ``[email]``, :class:`UploadUtils` → ``[upload]``,
-:class:`MetricsUtils` → ``[metrics]``). The missing dependency is
+:class:`MetricsUtils` → ``[metrics]``,
+:func:`strip_image_metadata` → ``[image]``). The missing dependency is
 deferred until first instantiation, so ``import tempest_fastapi_sdk``
 keeps working when only a subset of extras is installed; the
 ``ImportError`` is raised with a clear hint the moment the helper is
@@ -139,6 +140,18 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils.http_client import (
         HTTPClient as HTTPClient,
+    )
+    from tempest_fastapi_sdk.utils.images import (
+        DEFAULT_JPEG_QUALITY as DEFAULT_JPEG_QUALITY,
+    )
+    from tempest_fastapi_sdk.utils.images import (
+        DEFAULT_MAX_IMAGE_PIXELS as DEFAULT_MAX_IMAGE_PIXELS,
+    )
+    from tempest_fastapi_sdk.utils.images import (
+        DEFAULT_WEBP_QUALITY as DEFAULT_WEBP_QUALITY,
+    )
+    from tempest_fastapi_sdk.utils.images import (
+        strip_image_metadata as strip_image_metadata,
     )
     from tempest_fastapi_sdk.utils.jwt import JWTUtils as JWTUtils
     from tempest_fastapi_sdk.utils.locations import (
@@ -565,6 +578,10 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "states_by_region": "tempest_fastapi_sdk.utils.locations",
     "uf_choices": "tempest_fastapi_sdk.utils.locations",
     "LogUtils": "tempest_fastapi_sdk.utils.log",
+    "DEFAULT_JPEG_QUALITY": "tempest_fastapi_sdk.utils.images",
+    "DEFAULT_MAX_IMAGE_PIXELS": "tempest_fastapi_sdk.utils.images",
+    "DEFAULT_WEBP_QUALITY": "tempest_fastapi_sdk.utils.images",
+    "strip_image_metadata": "tempest_fastapi_sdk.utils.images",
     "DOCX_MEDIA_TYPE": "tempest_fastapi_sdk.utils.media_types",
     "PPTX_MEDIA_TYPE": "tempest_fastapi_sdk.utils.media_types",
     "XLSX_MEDIA_TYPE": "tempest_fastapi_sdk.utils.media_types",
@@ -734,6 +751,9 @@ __all__: list[str] = [
     "CPF_CNPJ_PATTERN",
     "CPF_PATTERN",
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
+    "DEFAULT_JPEG_QUALITY",
+    "DEFAULT_MAX_IMAGE_PIXELS",
+    "DEFAULT_WEBP_QUALITY",
     "DOCX_MEDIA_TYPE",
     "HEIC_BRANDS",
     "HEIF_STRUCTURAL_BRANDS",
@@ -881,6 +901,7 @@ __all__: list[str] = [
     "sign_path",
     "sniff_mime",
     "states_by_region",
+    "strip_image_metadata",
     "to_utc",
     "token_amr",
     "token_type_allowed",

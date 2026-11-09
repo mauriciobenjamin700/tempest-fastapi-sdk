@@ -97,6 +97,16 @@ nada — a mesma costura que o SDK usa em `RateLimitStore`, `QuotaStore`,
     `"."` e `".."` levantam `ValueError` antes de enviar: o ponto não é
     escapado, e até a v0.334.1 `..` subia um nível no path.
 
+!!! check "Repetir a criação devolve a mesma cobrança"
+    O `reference` é também a chave de idempotência da criação. Se a
+    resposta se perde (timeout, conexão caída) e você repete o
+    `create_pix_charge` com o mesmo `reference`, volta a cobrança que já
+    existe, não uma segunda. Na OpenPix isso é o `?return_existing=true`,
+    que o adapter manda desde a v0.346.0 (a spec da Woovi o descreve como
+    "make the endpoint idempotent"); no Mercado Pago, o `X-Idempotency-Key`.
+    O SDK testa o request que sai, não a resposta do provedor: a repetição
+    contra o sandbox ainda não foi medida.
+
 ### O que sai: `PixCharge`
 
 | campo | tipo | para quê |

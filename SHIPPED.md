@@ -4196,3 +4196,18 @@ Receita: seção "Cifra em repouso" de `docs/recipes/local-storage.md`. Testes:
 `tests/storage/test_local_encryption_router.py`,
 `tests/settings/test_storage_encryption_settings.py`,
 `tests/cli/test_storage_encryption_cli.py`.
+
+## Metadados de imagem (unreleased, #713)
+
+`strip_image_metadata` em `utils/images.py`, extra `[image]` (`pillow`):
+recodifica JPEG/PNG/WEBP/GIF/BMP no mesmo formato só com os pixels e a
+transparência (EXIF, XMP, IPTC, ICC, comentário, `tEXt`/`iTXt`/`zTXt` saem),
+orientação aplicada antes com `exif_transpose(in_place=True)`. Teto de pixels
+lido do cabeçalho antes do `load()`; o `MAX_IMAGE_PIXELS` global do Pillow não
+é tocado, e o `DecompressionBombError` dele vira `ImageTooLargeException`.
+Decisões: animação volta como primeiro quadro; WEBP sem perda (`VP8L`, lido
+nos cabeçalhos de chunk) continua sem perda; HEIC recusado com `415`.
+Medido no Pillow 13.0.0, JPEG de 8000 x 6000: pico de memória +186 MB em pé,
++368 MB com rotação de 90°. Erros em `exceptions/image.py`. Testes:
+`tests/utils/test_images.py` (imagens geradas no teste, sem binário). Receita:
+`docs/recipes/image-metadata.md`.

@@ -357,6 +357,23 @@ class TestTheBodyThatLeavesTheProcess:
             "expiresIn": 3600,
         }
 
+    async def test_the_create_asks_for_the_existing_charge(self) -> None:
+        """A retried create asks for the first charge, not a second one.
+
+        ``reference`` is the protocol's idempotency key. On OpenPix that is
+        ``?return_existing=true``, which Woovi's specification describes as
+        making the create idempotent on ``correlationID``. This pins the
+        request that leaves the process; the provider's answer to a repeat
+        has not been measured against the sandbox.
+        """
+        wire = Wire({"charge": CAPTURED_CHARGE})
+
+        await provider_over(wire).create_pix_charge(
+            PixChargeRequest(amount_cents=500, reference="order-1")
+        )
+
+        assert wire.sent.url.params.get("return_existing") == "true"
+
     async def test_an_array_nobody_informed_stays_off_the_wire(self) -> None:
         """#236, asserted where the consumer meets it.
 

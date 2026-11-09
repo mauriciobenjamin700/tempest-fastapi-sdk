@@ -277,7 +277,8 @@ asyncio.run(main())
 ```
 
 Recipes: [File store](file-store.md), [Uploads](uploads.md),
-[Downloads](downloads.md), [Storage](storage.md).
+[Downloads](downloads.md), [Storage](storage.md),
+[Image metadata](image-metadata.md).
 
 ### Domain extras
 
@@ -511,6 +512,7 @@ come back here to plug in each capability as you need it.
 | **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` (429 in the SDK error envelope), `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
 | **[Idempotency »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — safe replay of POST/PUT/PATCH/DELETE |
 | **[Image generation (local) »](image-generation.md)** | `ImageGenerator` (local diffusers — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` carrying the reproducing seed, `make_genai_router(image_generator=...)` → `POST /image` |
+| **[Image metadata »](image-metadata.md)** | `strip_image_metadata` — re-encodes a user's photo in the same format without EXIF (GPS, device), XMP, IPTC, ICC and text chunks, applies the orientation first, pixel ceiling against decompression bombs, typed errors (`ImageDecodeException`, `ImageTypeMismatchException`, `ImageFormatUnsupportedException`, `ImageTooLargeException`) |
 | **[Integration client (OpenAPI) »](openapi-client.md)** | `tempest openapi-client` — Pydantic schemas + a typed client from a third party's spec |
 | **[Introspection auth (resource server) »](introspection-auth.md)** | `IntrospectionAuth` — validate an opaque bearer by asking the upstream identity provider |
 | **[Jobs (long work with status) »](jobs.md)** | `BaseJobModel` + `JobStore` — one row per unit of work, `claim`/`succeed`/`fail`, `watch` for the screen, `reclaim_stale`; cooperative cancellation (`cancel` + `run_cancellable`); `StageMap` for several stages on the record itself |

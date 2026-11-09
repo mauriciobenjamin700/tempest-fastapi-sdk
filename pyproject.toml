@@ -178,6 +178,12 @@ slides-mermaid = [
 spreadsheet = [
     "openpyxl>=3.1.5",
 ]
+image = [
+    # Re-encoding a user image without its metadata (strip_image_metadata).
+    # Pillow declares no upper bound; the floor matches the one [faces],
+    # [genai-vlm] and [genai-image] already use.
+    "pillow>=13.0.0",
+]
 vision = [
     "ort-vision-sdk>=0.8.0",
 ]
@@ -349,6 +355,7 @@ all = [
     "pypdf>=6.21.4",
     "pdfplumber>=0.11.7",
     "openpyxl>=3.1.5",
+    "pillow>=13.0.0",
     "python-pptx>=1.0.2",
     "python-docx>=1.2.0",
     "markdown>=3.11.2",

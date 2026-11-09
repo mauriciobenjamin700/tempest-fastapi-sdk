@@ -45,6 +45,18 @@ from tempest_fastapi_sdk.exceptions.i18n import (
 from tempest_fastapi_sdk.exceptions.i18n import (
     parse_accept_language as parse_accept_language,
 )
+from tempest_fastapi_sdk.exceptions.image import (
+    ImageDecodeException as ImageDecodeException,
+)
+from tempest_fastapi_sdk.exceptions.image import (
+    ImageFormatUnsupportedException as ImageFormatUnsupportedException,
+)
+from tempest_fastapi_sdk.exceptions.image import (
+    ImageTooLargeException as ImageTooLargeException,
+)
+from tempest_fastapi_sdk.exceptions.image import (
+    ImageTypeMismatchException as ImageTypeMismatchException,
+)
 from tempest_fastapi_sdk.exceptions.integration import (
     EmailDeliveryException as EmailDeliveryException,
 )
@@ -171,6 +183,10 @@ __all__: list[str] = [
     "FileTooLargeException",
     "FileTooSmallException",
     "ForbiddenException",
+    "ImageDecodeException",
+    "ImageFormatUnsupportedException",
+    "ImageTooLargeException",
+    "ImageTypeMismatchException",
     "InheritedErrorCodeWarning",
     "InsufficientBalanceException",
     "IntegrationDisabledException",
