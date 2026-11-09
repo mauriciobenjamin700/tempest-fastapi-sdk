@@ -108,6 +108,9 @@ from tempest_fastapi_sdk.exceptions.signed_url import (
 from tempest_fastapi_sdk.exceptions.signed_url import (
     InvalidSignedURLException as InvalidSignedURLException,
 )
+from tempest_fastapi_sdk.exceptions.storage import (
+    StorageIntegrityException as StorageIntegrityException,
+)
 from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException as TooManyRequestsException,
 )
@@ -196,6 +199,7 @@ __all__: list[str] = [
     "PayoutRejectedException",
     "PayoutUncertainException",
     "PushEndpointNotPublicException",
+    "StorageIntegrityException",
     "TooManyRequestsException",
     "UnauthorizedException",
     "UnknownFilterKeyException",

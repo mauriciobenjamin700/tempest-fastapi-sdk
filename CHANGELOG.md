@@ -14,6 +14,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recentes), e **Read at** mostra quando os arquivos foram lidos. Antes,
   ver registro novo exigia sair e voltar da aba. É um link, sem JavaScript,
   e aparece também no estado vazio (#711).
+- Cifra em repouso no `LocalObjectStorageClient` (#714):
+  `encryption_keys={"id": <32 bytes>, ...}` cifra todo objeto com
+  AES-256-GCM em blocos de 64 KiB (construção STREAM: nonce = prefixo
+  aleatório por arquivo + contador + marca de último bloco; cabeçalho e
+  `<bucket>/<key>` como dado autenticado), em todo caminho de escrita
+  (`put_object`, `write_stream`, `PUT` e `POST` assinados) e de leitura
+  (`stream_object`, `download_response`, `GET` assinado). `stat_object` devolve
+  o tamanho em claro, e `Range` e `SubjectObjectStorage.read(max_bytes=)`
+  decifram só os blocos que servem. A primeira chave grava e qualquer uma lê
+  pelo id; `reencrypt()` passa os objetos para a chave da frente e
+  `encrypt_existing()` cifra o que já estava em claro, os dois idempotentes,
+  com `list_buckets()` ao lado. Arquivo sem cabeçalho só é lido com
+  `allow_plaintext_read=True`. Adulteração, truncamento, bloco fora de ordem,
+  arquivo movido para outra chave, chave desconhecida ou texto em claro
+  recusado levantam `StorageIntegrityException` (`500
+  STORAGE_INTEGRITY_ERROR`, `details={"reason": ...}`), e nenhum byte de bloco
+  não autenticado sai. Sem chave, nada muda.
+- `StorageSettings` ganha `STORAGE_LOCAL_ENCRYPTION_KEYS` (JSON de id → chave
+  em base64, validada com 32 bytes) e `STORAGE_LOCAL_ALLOW_PLAINTEXT_READ`,
+  repassados por `local_storage_kwargs()` só quando há chave. Com
+  `ENV=production`, backend local e nenhuma chave, o boot segue com um
+  `WARNING` no logger `tempest_fastapi_sdk.settings`: recusar quebraria quem
+  já roda o backend local em produção.
+- `tempest storage encrypt-local` e `tempest storage reencrypt-local` migram o
+  volume de `STORAGE_LOCAL_DIR`, bucket por bucket (`--bucket` limita a um).
+- Extra `[storage-encryption]` (`cryptography`); o `[all]` já o cobria.
 
 ## [0.345.0] — 2026-11-04
 

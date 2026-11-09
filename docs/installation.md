@@ -70,6 +70,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[slides-mermaid]` | `playwright` | desenhar blocos `` ```mermaid `` no `MarkdownPdfRenderer` (`render_mermaid=True`). Exige `playwright install chromium`; por isso fica **fora do `[all]`** |
 | `[sqlite]` | `aiosqlite` | driver async SQLite para URLs `sqlite+aiosqlite://` (default de dev) |
 | `[ssr]` | `tempestweb` | SSR com HTMX: `build_web_app`, `make_htmx_router`, `Page`, helper `htmx` |
+| `[storage-encryption]` | `cryptography` | cifra em repouso do `LocalObjectStorageClient` (`encryption_keys`, `STORAGE_LOCAL_ENCRYPTION_KEYS`) e os comandos `tempest storage encrypt-local` / `reencrypt-local`. [Receita](recipes/local-storage.md#cifra-em-repouso) |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` sobre Redis Streams, result backend e o lease do scheduler |
 | `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | a suíte do serviço e o `tempest test` em paralelo (o padrão desde o `tempest-cli` 0.6.0). Sem teto próprio; herda `pytest<10` do `pytest-asyncio` e `pluggy<2` do `pytest`. Ferramenta de teste, não helper — fica **fora do `[all]`**. [Receita](recipes/testing.md#a-suite-em-paralelo-o-padrao-do-tempest-test) |

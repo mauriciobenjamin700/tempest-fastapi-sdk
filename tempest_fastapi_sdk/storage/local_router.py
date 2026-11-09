@@ -128,6 +128,13 @@ def make_local_storage_router(
     ``403 SIGNED_URL_INVALID``, an expired one ``403 SIGNED_URL_EXPIRED``.
     Both routes stay out of the OpenAPI schema.
 
+    With ``encryption_keys`` on the client the routes do not change shape:
+    ``PUT`` and ``POST`` store the body encrypted, the caps count the
+    plaintext, and ``GET`` (``Range`` included) answers the plaintext. A
+    stored file whose first served block fails its check answers
+    ``500 STORAGE_INTEGRITY_ERROR`` with no byte of it; a later block that
+    fails cuts the connection after the blocks that verified.
+
     Args:
         client (LocalObjectStorageClient): The store whose links to serve.
         as_attachment (bool): ``True`` makes downloads save as a file;

@@ -7,7 +7,8 @@ conventions without forking the wire protocol. Install with the
 
 :class:`LocalObjectStorageClient` answers the same calls from a directory
 of the server and signs links to the app's own routes, which
-:func:`make_local_storage_router` serves. It needs no extra.
+:func:`make_local_storage_router` serves. It needs no extra, except
+``[storage-encryption]`` to encrypt the files at rest (``encryption_keys``).
 """
 
 from tempest_fastapi_sdk.storage._download import (
@@ -46,6 +47,21 @@ from tempest_fastapi_sdk.storage.local_client import (
 from tempest_fastapi_sdk.storage.local_client import (
     LocalObjectStorageClient as LocalObjectStorageClient,
 )
+from tempest_fastapi_sdk.storage.local_crypto import (
+    LOCAL_ENCRYPTION_BLOCK_SIZE as LOCAL_ENCRYPTION_BLOCK_SIZE,
+)
+from tempest_fastapi_sdk.storage.local_crypto import (
+    LOCAL_ENCRYPTION_FORMAT_VERSION as LOCAL_ENCRYPTION_FORMAT_VERSION,
+)
+from tempest_fastapi_sdk.storage.local_crypto import (
+    LOCAL_ENCRYPTION_KEY_BYTES as LOCAL_ENCRYPTION_KEY_BYTES,
+)
+from tempest_fastapi_sdk.storage.local_crypto import (
+    LOCAL_ENCRYPTION_MAGIC as LOCAL_ENCRYPTION_MAGIC,
+)
+from tempest_fastapi_sdk.storage.local_crypto import (
+    LocalObjectCipher as LocalObjectCipher,
+)
 from tempest_fastapi_sdk.storage.local_router import (
     make_local_storage_router as make_local_storage_router,
 )
@@ -71,6 +87,10 @@ from tempest_fastapi_sdk.storage.presign import (
 __all__: list[str] = [
     "DEFAULT_LOCAL_MAX_UPLOAD_BYTES",
     "DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX",
+    "LOCAL_ENCRYPTION_BLOCK_SIZE",
+    "LOCAL_ENCRYPTION_FORMAT_VERSION",
+    "LOCAL_ENCRYPTION_KEY_BYTES",
+    "LOCAL_ENCRYPTION_MAGIC",
     "LOCAL_META_SUFFIX",
     "LOCAL_PRESIGN_MAX_EXPIRES",
     "LOCAL_STORAGE_CHUNK_SIZE",
@@ -80,6 +100,7 @@ __all__: list[str] = [
     "POST_FILE_FIELD",
     "AsyncMinIOClient",
     "DownloadableStore",
+    "LocalObjectCipher",
     "LocalObjectNotFoundError",
     "LocalObjectStorageClient",
     "ObjectDeleteError",

@@ -16,7 +16,8 @@ o link "presigned" aponta para a **sua API**, assinado com
 [`sign_path`](../reference.md#tempest_fastapi_sdk.utils.signed_url.sign_path), e o
 `make_local_storage_router` serve essas rotas.
 
-Não precisa de extra: só biblioteca padrão e o FastAPI que o SDK já traz.
+Não precisa de extra: só biblioteca padrão e o FastAPI que o SDK já traz. A
+cifra em repouso, opcional, pede o `[storage-encryption]`.
 
 ## O primeiro objeto
 
@@ -320,6 +321,251 @@ Objeto ausente levanta `LocalObjectNotFoundError`, um `FileNotFoundError` com
 `code = "NoSuchKey"` — o código que o S3 responde. Código que decide pelo
 `code` do erro do S3 continua funcionando.
 
+## Cifra em repouso
+
+Até aqui os arquivos ficam **em claro** no disco. Se o seu serviço guarda foto
+de documento, de caderno ou qualquer coisa pessoal, quem tiver acesso ao
+disco, a um snapshot do volume ou a um backup dele lê tudo — mesmo que o
+banco cifre as colunas de conteúdo.
+
+Os bytes entram e saem por caminhos que são do SDK (o `PUT`/`POST` assinado
+que o app chama direto, o `GET` assinado, o `download_response`), então a
+cifra mora no cliente: passe `encryption_keys` e todo caminho de escrita
+cifra, todo caminho de leitura decifra. O resto do serviço não muda.
+
+### Gerando a chave
+
+Cada chave tem 32 bytes (AES-256). Gere uma em base64:
+
+```bash
+python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
+```
+
+```text
+2yk6fNE3HpXOhHypqJSA3ncp6UWjTI/4jORNYXz2RDo=
+```
+
+E instale o extra que traz a cifra (`cryptography`):
+
+```bash
+uv add "tempest-fastapi-sdk[storage-encryption]"
+```
+
+### O primeiro objeto cifrado
+
+```python
+import asyncio
+import os
+
+from tempest_fastapi_sdk import LocalObjectStorageClient
+
+
+async def main() -> None:
+    """Grava um objeto cifrado, olha o disco e lê de volta."""
+    storage = LocalObjectStorageClient(
+        "var/storage",
+        public_url="http://127.0.0.1:8000",
+        signing_secret="troque-por-um-segredo-longo",
+        encryption_keys={"2026-11": os.urandom(32)},
+    )
+    await storage.put_object(
+        "cadernos/foto.jpg",
+        b"conteudo do caderno",
+        content_type="image/jpeg",
+    )
+    on_disk = storage.object_path("cadernos/foto.jpg").read_bytes()
+    stat = await storage.stat_object("cadernos/foto.jpg")
+    stream = await storage.stream_object("cadernos/foto.jpg")
+    body = b"".join([chunk async for chunk in stream])
+    print(on_disk[:8], b"caderno" in on_disk, len(on_disk))
+    print(stat.size, body)
+
+
+asyncio.run(main())
+```
+
+```text
+b'TFSDKENC' False 59
+19 b'conteudo do caderno'
+```
+
+Pedaço por pedaço:
+
+* `encryption_keys` é um dicionário de **id → chave**. O id vai gravado no
+  cabeçalho de cada arquivo; a chave, nunca.
+* O arquivo no disco começa com o marcador `TFSDKENC` e não contém o texto:
+  são 59 bytes para 19 de conteúdo (cabeçalho + 16 bytes de tag por bloco).
+* `stat_object` responde o tamanho **em claro** (19), que é o que você compara
+  com o teto de upload.
+* `stream_object` devolve os bytes originais.
+
+!!! warning "A chave do exemplo some com o processo"
+    `os.urandom(32)` no código serve para ver a cifra funcionando. Num
+    serviço, a chave vem do ambiente (veja as settings abaixo): sem ela, nada
+    do que foi gravado volta a abrir.
+
+### Como funciona
+
+O arquivo é cortado em blocos de 64 KiB (`LOCAL_ENCRYPTION_BLOCK_SIZE`) e cada
+bloco é cifrado com AES-256-GCM, do `cryptography`. É a construção STREAM:
+
+* o nonce de cada bloco é um prefixo aleatório do arquivo + o número do
+  bloco + uma marca de "último bloco";
+* o cabeçalho (versão do formato, id da chave, prefixo) e o
+  `<bucket>/<key>` do objeto entram como dado autenticado.
+
+Por isso a escrita e a leitura continuam em stream, sem carregar o arquivo
+inteiro, e cada adulteração vira erro:
+
+| O que aconteceu com o arquivo | Resultado |
+| --- | --- |
+| byte trocado no conteúdo, na tag ou no prefixo do nonce | `StorageIntegrityException`, `reason="authentication"` |
+| versão desconhecida ou cabeçalho cortado | `reason="format"` |
+| blocos fora de ordem | `reason="authentication"` |
+| último bloco removido | `reason="authentication"` |
+| cortado no meio de uma tag | `reason="format"` |
+| copiado ou renomeado para outra chave ou bucket | `reason="authentication"` |
+| cifrado com uma chave que o cliente não tem | `reason="unknown_key"` |
+| arquivo em claro, sem `allow_plaintext_read` | `reason="plaintext"` |
+
+`StorageIntegrityException` é um `AppException` com status `500` e
+`code="STORAGE_INTEGRITY_ERROR"`. O `details` leva só o `reason` — nunca o
+nome do objeto nem um byte dele.
+
+!!! check "Nenhum byte sem autenticação"
+    Cada bloco só é entregue depois que a tag dele confere. O primeiro bloco
+    é conferido **antes** de `stream_object` devolver o stream, então pelo
+    router um arquivo adulterado responde `500 STORAGE_INTEGRITY_ERROR`
+    limpo. Se um bloco do meio falhar, a resposta já começou: a conexão é
+    cortada depois dos blocos que conferiram (medido com uvicorn e httpx:
+    `200`, 2 blocos de 64 KiB recebidos, depois `RemoteProtocolError` por
+    faltar o resto do `Content-Length`).
+
+### Pela API, nada muda
+
+O `make_local_storage_router` não muda de forma:
+
+* o `PUT` e o `POST` assinados gravam cifrado; o teto (`max_upload_bytes`,
+  `max_bytes`) conta o conteúdo, não o cabeçalho nem as tags;
+* o `GET` assinado entrega em claro, com `Content-Length` do conteúdo;
+* `Range` funciona: o cliente decifra só os blocos que o intervalo cobre.
+  `SubjectObjectStorage.read(..., max_bytes=...)` também para no limite e
+  não decifra além dele.
+
+### Pelas settings
+
+```env
+STORAGE_BACKEND=local
+STORAGE_LOCAL_ENCRYPTION_KEYS='{"2026-11":"2yk6fNE3HpXOhHypqJSA3ncp6UWjTI/4jORNYXz2RDo="}'
+```
+
+| Variável | Padrão | Para quê |
+| --- | --- | --- |
+| `STORAGE_LOCAL_ENCRYPTION_KEYS` | `{}` | JSON de id → chave em base64; a **primeira** grava, todas leem |
+| `STORAGE_LOCAL_ALLOW_PLAINTEXT_READ` | `false` | lê arquivo antigo, sem cabeçalho, em claro (só durante a migração) |
+
+`local_storage_kwargs()` decodifica as chaves e repassa `encryption_keys` e
+`allow_plaintext_read` ao cliente, e `build_storage_client()` já sai cifrando.
+Sem chave, o dicionário é o de antes. Chave que não é base64 de 32 bytes
+derruba o boot com o id dela na mensagem, nunca o valor.
+
+!!! info "Produção sem chave: aviso, não recusa"
+    Com `ENV=production`, `STORAGE_BACKEND=local` e nenhuma chave, o boot
+    **segue** e loga um `WARNING` no logger `tempest_fastapi_sdk.settings`.
+    Recusar quebraria, sem aviso, todo serviço que já roda o backend local em
+    produção no dia do upgrade. Ligue a cifra e o aviso some.
+
+### Migrando um volume que já tem arquivos
+
+O arquivo gravado antes da chave não tem cabeçalho. Com a chave ligada ele é
+recusado (`reason="plaintext"`), a não ser que você permita a leitura em claro
+durante a migração:
+
+1. Gere a chave e suba com as duas variáveis:
+
+    ```env
+    STORAGE_LOCAL_ENCRYPTION_KEYS='{"2026-11":"<base64>"}'
+    STORAGE_LOCAL_ALLOW_PLAINTEXT_READ=true
+    ```
+
+    A partir daqui, todo arquivo novo já é gravado cifrado, e o antigo
+    continua abrindo.
+
+2. Cifre o que existe, de preferência numa janela sem escrita:
+
+    ```bash
+    tempest storage encrypt-local
+    ```
+
+    ```text
+    docs: 1 object(s) encrypted
+    uploads: 1 object(s) encrypted
+    ```
+
+    O comando passa por todo bucket de `STORAGE_LOCAL_DIR` (`--bucket` limita
+    a um) e é **idempotente**: arquivo já cifrado é pulado, então rodar de
+    novo depois de uma interrupção não regrava nada. Content type e metadata
+    ficam; o ETag passa a ser o MD5 do arquivo cifrado.
+
+3. Tire `STORAGE_LOCAL_ALLOW_PLAINTEXT_READ` e reinicie.
+
+Em código, o mesmo é `await storage.encrypt_existing()` (por bucket, com
+`await storage.list_buckets()`).
+
+!!! warning "Escrita durante a migração"
+    Cada arquivo é regravado em `tmp/` e só entra no lugar se não mudou
+    enquanto era lido (mesmo inode, tamanho e data). A conferência e a troca
+    são dois passos, então uma escrita que caia exatamente entre os dois se
+    perde. Rode com o serviço parado ou sem upload em andamento.
+
+### Rodando a chave
+
+A primeira chave do JSON grava; qualquer uma lê, pelo id do cabeçalho:
+
+1. Ponha a chave nova **na frente** e mantenha a antiga:
+
+    ```env
+    STORAGE_LOCAL_ENCRYPTION_KEYS='{"2027-05":"<nova>","2026-11":"<antiga>"}'
+    ```
+
+    Gravação nova já sai na `2027-05`; o que está na `2026-11` continua
+    abrindo.
+
+2. Regrave o que está na chave antiga:
+
+    ```bash
+    tempest storage reencrypt-local
+    ```
+
+    Idempotente também: o que já está na chave da frente é pulado. Arquivo
+    que não decifra (chave fora do anel, arquivo danificado) para o comando
+    com o erro e código de saída `1`, sem regravar nada dele. Em código:
+    `await storage.reencrypt()`.
+
+3. Tire a chave antiga do JSON.
+
+### O que a cifra protege, e o que não
+
+Protege os arquivos **parados**: o disco, um snapshot do volume, um backup
+copiado para outro lugar, um volume montado por engano em outra máquina.
+
+Não protege:
+
+* **o processo comprometido.** A API decifra para servir; quem roda código
+  nela lê o que ela lê.
+* **a chave no mesmo lugar dos dados.** Chave no `.env` que vai junto do
+  volume no mesmo backup é cadeado com a chave pendurada. Guarde-a num
+  gerenciador de segredos ou ao menos fora do volume e do backup dele.
+* **o que já vazou antes da migração.** Backups e snapshots antigos
+  continuam em claro, e o disco pode guardar os blocos liberados do arquivo
+  antigo. Rode os backups antigos para fora do ciclo de retenção.
+* **o metadado.** Nome da chave (`<bucket>/<key>`), content type, metadata do
+  usuário e o tamanho aproximado continuam visíveis no disco.
+
+!!! tip "Uma chave por ambiente"
+    Desenvolvimento, homologação e produção com chaves diferentes: um backup
+    de produção restaurado por engano em outro ambiente não abre.
+
 ## Antes de ir para produção
 
 !!! warning "Uma máquina só"
@@ -378,3 +624,10 @@ Objeto ausente levanta `LocalObjectNotFoundError`, um `FileNotFoundError` com
   mexer no resto do serviço.
 * Uma máquina só, volume compartilhado entre API e worker, backup do
   diretório.
+* `encryption_keys` (`STORAGE_LOCAL_ENCRYPTION_KEYS`) cifra cada arquivo em
+  blocos AES-256-GCM: a primeira chave grava, todas leem, e adulteração vira
+  `StorageIntegrityException`.
+* `tempest storage encrypt-local` migra o volume antigo e
+  `tempest storage reencrypt-local` fecha a rotação; os dois são idempotentes.
+* A cifra protege disco, snapshot e backup; não protege o processo nem a chave
+  guardada junto dos dados.

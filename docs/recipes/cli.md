@@ -1455,6 +1455,18 @@ usado para assinar URL são os do serviço.
 Bucket vazio lista nada e sai com 0 — "nenhum objeto" é resultado, não falha,
 a mesma convenção dos repositories do SDK.
 
+Dois comandos agem sobre o backend local (`STORAGE_BACKEND=local`), pelo
+`LocalObjectStorageClient(**settings.local_storage_kwargs())`, e migram o
+volume para a [cifra em repouso](local-storage.md#cifra-em-repouso):
+
+```bash
+tempest storage encrypt-local               # cifra o que está em claro, em todo bucket
+tempest storage reencrypt-local --bucket uploads   # passa para a primeira chave
+```
+
+Os dois são idempotentes e saem com código 2 sem
+`STORAGE_LOCAL_ENCRYPTION_KEYS`.
+
 ### Feature flags — `tempest flags`
 
 Flag existe para ser movida sem deploy. Com o backend Redis, essa mudança
