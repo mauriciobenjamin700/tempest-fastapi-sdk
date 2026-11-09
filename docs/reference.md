@@ -554,6 +554,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.integration.IntegrationDisabledException
 ::: tempest_fastapi_sdk.exceptions.integration.EmailDeliveryException
 ::: tempest_fastapi_sdk.exceptions.integration.ZapSendFailedException
+::: tempest_fastapi_sdk.exceptions.storage.StorageIntegrityException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
 ::: tempest_fastapi_sdk.exceptions.jwt.ExpiredTokenException
 ::: tempest_fastapi_sdk.exceptions.signed_url.InvalidSignedURLException
@@ -1273,6 +1274,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.storage.local_client.bound_purpose
 ::: tempest_fastapi_sdk.storage.presign.PresignedPost
 ::: tempest_fastapi_sdk.storage.local_client.LocalObjectNotFoundError
+::: tempest_fastapi_sdk.storage.local_crypto.LocalObjectCipher
 ::: tempest_fastapi_sdk.storage.local_router.make_local_storage_router
 
 ### Alembic hooks

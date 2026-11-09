@@ -1422,6 +1422,9 @@ if TYPE_CHECKING:
         PushEndpointNotPublicException as PushEndpointNotPublicException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        StorageIntegrityException as StorageIntegrityException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         TooManyRequestsException as TooManyRequestsException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -2791,6 +2794,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "ImageTypeMismatchException": "tempest_fastapi_sdk.exceptions",
     "InheritedErrorCodeWarning": "tempest_fastapi_sdk.exceptions",
     "IntegrationDisabledException": "tempest_fastapi_sdk.exceptions",
+    "StorageIntegrityException": "tempest_fastapi_sdk.exceptions",
     "InvalidFileTypeException": "tempest_fastapi_sdk.exceptions",
     "InvalidFilterValueException": "tempest_fastapi_sdk.exceptions",
     "InvalidSignedURLException": "tempest_fastapi_sdk.exceptions",
@@ -3672,6 +3676,7 @@ __all__: list[str] = [
     "StateBR",
     "StaticCredentialAuthenticator",
     "StaticRateLimitPolicy",
+    "StorageIntegrityException",
     "StorageSettings",
     "StoredFileServiceMixin",
     "SupportsPresign",

@@ -28,6 +28,14 @@ Layout under ``base_dir``::
     meta/<bucket>/<key>.meta.json       content type, metadata, ETag
     tmp/                                in-flight writes
 
+With ``encryption_keys`` the bytes are sealed at rest: every write path
+(``put_object``, ``write_stream`` and the signed ``PUT``/``POST`` routes)
+encrypts with AES-256-GCM in blocks, and every read path (``stream_object``,
+``download_response``, the signed ``GET``, a ``Range`` included) decrypts
+only the blocks it serves. The format lives in
+:mod:`tempest_fastapi_sdk.storage.local_crypto`. Without keys nothing
+changes.
+
 A missing object raises :class:`LocalObjectNotFoundError`, a
 :class:`FileNotFoundError` carrying ``code = "NoSuchKey"`` — the code S3
 answers — so code that branches on the S3 code keeps working.
@@ -45,7 +53,14 @@ import hashlib
 import json
 import os
 import tempfile
-from collections.abc import AsyncIterator, Callable, Coroutine, Iterable
+from collections.abc import (
+    AsyncIterator,
+    Callable,
+    Coroutine,
+    Iterable,
+    Iterator,
+    Mapping,
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -53,9 +68,17 @@ from typing import IO, TYPE_CHECKING, Any, BinaryIO
 from urllib.parse import urlencode
 
 from tempest_fastapi_sdk.exceptions.integration import IntegrationDisabledException
+from tempest_fastapi_sdk.exceptions.storage import StorageIntegrityException
 from tempest_fastapi_sdk.settings.mixins import (
     DEFAULT_LOCAL_MAX_UPLOAD_BYTES,
     DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX,
+)
+from tempest_fastapi_sdk.storage.local_crypto import (
+    BlockEncryptor,
+    EncryptedHeader,
+    LocalObjectCipher,
+    block_layout,
+    check_encryption_keys,
 )
 from tempest_fastapi_sdk.storage.minio_client import ObjectDeleteError, ObjectStat
 from tempest_fastapi_sdk.storage.presign import (
@@ -169,6 +192,65 @@ class _ObjectMeta:
     etag: str
 
 
+class _ObjectWriter:
+    """Write a payload to its temporary file, sealing it when encrypted.
+
+    The ETag is the MD5 of what lands on disk: the payload itself without
+    encryption — what S3 answers for a single-part upload — and the sealed
+    file with it, so the metadata file never holds a hash of the plaintext.
+    """
+
+    def __init__(self, out: IO[bytes], encryptor: BlockEncryptor | None) -> None:
+        """Keep the file and write the header of an encrypted object.
+
+        Args:
+            out (IO[bytes]): The open temporary file.
+            encryptor (BlockEncryptor | None): The object's encryptor, or
+                ``None`` to write the payload as is.
+        """
+        self._out: IO[bytes] = out
+        self._encryptor: BlockEncryptor | None = encryptor
+        self._digest: Any = hashlib.md5(usedforsecurity=False)
+        if encryptor is not None:
+            self._emit(encryptor.header.raw)
+
+    def _emit(self, data: bytes) -> None:
+        """Write bytes to the file and to the ETag.
+
+        Args:
+            data (bytes): Bytes as stored.
+        """
+        if data:
+            self._digest.update(data)
+            self._out.write(data)
+
+    def write(self, chunk: bytes) -> None:
+        """Take the next payload chunk.
+
+        Args:
+            chunk (bytes): Plaintext bytes.
+        """
+        if self._encryptor is None:
+            self._emit(chunk)
+        else:
+            self._emit(self._encryptor.update(chunk))
+
+    def finish(self) -> str:
+        """Seal the last block, close the file and return the ETag.
+
+        Returns:
+            str: MD5 of the stored bytes, hex.
+        """
+        if self._encryptor is not None:
+            self._emit(self._encryptor.finalize())
+        self._out.close()
+        return str(self._digest.hexdigest())
+
+    def close(self) -> None:
+        """Close the file without sealing; safe after :meth:`finish`."""
+        self._out.close()
+
+
 def _segment_ok(segment: str) -> bool:
     """Tell whether one path segment of a bucket or key is acceptable.
 
@@ -216,6 +298,8 @@ class LocalObjectStorageClient:
         max_upload_bytes (int): Largest body the signed ``PUT`` accepts.
         enabled (bool): ``False`` makes every operation raise
             :class:`~tempest_fastapi_sdk.exceptions.IntegrationDisabledException`.
+        allow_plaintext_read (bool): Whether an object without the encrypted
+            header is served as plaintext while encryption is on.
     """
 
     def __init__(
@@ -228,6 +312,8 @@ class LocalObjectStorageClient:
         route_prefix: str = DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX,
         max_upload_bytes: int = DEFAULT_LOCAL_MAX_UPLOAD_BYTES,
         enabled: bool = True,
+        encryption_keys: Mapping[str, bytes] | None = None,
+        allow_plaintext_read: bool = False,
     ) -> None:
         """Create the store's directories and keep the signing material.
 
@@ -251,13 +337,31 @@ class LocalObjectStorageClient:
                 created and every operation raises
                 :class:`~tempest_fastapi_sdk.exceptions.IntegrationDisabledException`
                 (``503``). Default ``True``.
+            encryption_keys (Mapping[str, bytes] | None): Key id to 32-byte
+                AES-256 key. Set, every object written is encrypted at rest
+                with the **first** key (insertion order), and an object is
+                read with whichever key its header names — put a new key
+                first to rotate, and keep the old ones until
+                :meth:`reencrypt` ran. ``None`` or empty (default) stores
+                plaintext, exactly as before. Needs ``cryptography`` (the
+                ``[storage-encryption]`` extra).
+            allow_plaintext_read (bool): With ``encryption_keys``, serve an
+                object that has no encrypted header as plaintext — for a
+                store that held files before encryption was switched on,
+                until :meth:`encrypt_existing` converted them. ``False``
+                (default) refuses such a file with
+                :class:`~tempest_fastapi_sdk.exceptions.StorageIntegrityException`.
+                Ignored without keys.
 
         Raises:
             ValueError: When ``public_url`` has no ``http(s)://`` scheme,
                 ``route_prefix`` does not start with ``/``, the default
                 bucket is not a single valid segment, ``max_upload_bytes``
-                is not positive, or ``signing_secret`` is empty (only
-                checked when ``enabled``).
+                is not positive, ``signing_secret`` is empty (only
+                checked when ``enabled``), or a key id or key in
+                ``encryption_keys`` is malformed.
+            ImportError: When ``encryption_keys`` is set on an enabled
+                client and ``cryptography`` is not installed.
         """
         cleaned_url = public_url.rstrip("/")
         if not cleaned_url.startswith(("http://", "https://")):
@@ -276,13 +380,68 @@ class LocalObjectStorageClient:
         self.default_bucket: str = default_bucket
         self.max_upload_bytes: int = max_upload_bytes
         self.enabled: bool = enabled
+        self.allow_plaintext_read: bool = allow_plaintext_read
         self._secret: str = signing_secret
+        keys = check_encryption_keys(encryption_keys or {})
+        self._cipher: LocalObjectCipher | None = None
         if not enabled:
             return
         if not signing_secret:
             raise ValueError("signing_secret must be a non-empty string")
+        if keys:
+            self._cipher = LocalObjectCipher(keys)
         for name in (_OBJECTS_DIR, _META_DIR, _TMP_DIR):
             (self.base_dir / name).mkdir(parents=True, exist_ok=True)
+
+    @property
+    def encrypted(self) -> bool:
+        """Whether objects are written encrypted at rest.
+
+        Returns:
+            bool: ``True`` when the client holds ``encryption_keys``.
+        """
+        return self._cipher is not None
+
+    @property
+    def write_key_id(self) -> str | None:
+        """Id of the key new objects are sealed with.
+
+        Returns:
+            str | None: The first id of ``encryption_keys``; ``None``
+            without encryption.
+        """
+        return self._cipher.write_key_id if self._cipher is not None else None
+
+    def _object_name(self, key: str, bucket: str | None) -> str:
+        """Name an object as its encrypted blocks are bound to it.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Bucket; ``None`` for the default.
+
+        Returns:
+            str: ``<bucket>/<key>``.
+        """
+        return f"{self._bucket(bucket)}/{key}"
+
+    def _writer(self, out: IO[bytes], key: str, bucket: str | None) -> _ObjectWriter:
+        """Wrap a temporary file in the writer this store needs.
+
+        Args:
+            out (IO[bytes]): The open temporary file.
+            key (str): Object key.
+            bucket (str | None): Bucket; ``None`` for the default.
+
+        Returns:
+            _ObjectWriter: A sealing writer with ``encryption_keys``, a
+            plain one without.
+        """
+        encryptor = (
+            self._cipher.encryptor(self._object_name(key, bucket))
+            if self._cipher is not None
+            else None
+        )
+        return _ObjectWriter(out, encryptor)
 
     def _check_enabled(self) -> None:
         """Refuse the call when the integration is switched off.
@@ -477,13 +636,12 @@ class LocalObjectStorageClient:
             str: The ETag.
         """
         self.object_path(key, bucket=bucket)
-        digest = hashlib.md5(usedforsecurity=False)
         out, temp = self._temp_file()
         try:
-            with out:
+            writer = self._writer(out, key, bucket)
+            try:
                 if isinstance(data, bytes):
-                    digest.update(data)
-                    out.write(data)
+                    writer.write(data)
                 else:
                     remaining = None if length is None or length < 0 else length
                     while remaining is None or remaining > 0:
@@ -493,11 +651,12 @@ class LocalObjectStorageClient:
                         chunk = data.read(size)
                         if not chunk:
                             break
-                        digest.update(chunk)
-                        out.write(chunk)
+                        writer.write(chunk)
                         if remaining is not None:
                             remaining -= len(chunk)
-            etag = digest.hexdigest()
+                etag = writer.finish()
+            finally:
+                writer.close()
             self._commit(
                 temp,
                 key=key,
@@ -533,7 +692,8 @@ class LocalObjectStorageClient:
                 ``-1`` reads to the end.
 
         Returns:
-            str: The ETag — the MD5 of the payload, hex.
+            str: The ETag — the MD5 of the payload, hex; with
+            ``encryption_keys``, the MD5 of the encrypted file instead.
 
         Raises:
             ValueError: When the bucket or key is invalid.
@@ -578,7 +738,10 @@ class LocalObjectStorageClient:
                 cap.
 
         Returns:
-            str: The ETag — the MD5 of the payload, hex.
+            str: The ETag — the MD5 of the payload, hex; with
+            ``encryption_keys``, the MD5 of the encrypted file instead.
+            ``max_bytes`` always counts the payload, never the header and
+            tags encryption adds.
 
         Raises:
             FileTooLargeException: When the stream passes ``max_bytes``
@@ -591,10 +754,10 @@ class LocalObjectStorageClient:
 
         self._check_enabled()
         self.object_path(key, bucket=bucket)
-        digest = hashlib.md5(usedforsecurity=False)
         out, temp = await asyncio.to_thread(self._temp_file)
         total = 0
         try:
+            writer = self._writer(out, key, bucket)
             try:
                 async for chunk in chunks:
                     total += len(chunk)
@@ -602,11 +765,10 @@ class LocalObjectStorageClient:
                         raise FileTooLargeException(
                             details={"max_size_bytes": max_bytes},
                         )
-                    digest.update(chunk)
-                    await asyncio.to_thread(out.write, chunk)
+                    await asyncio.to_thread(writer.write, chunk)
+                etag = await asyncio.to_thread(writer.finish)
             finally:
-                await asyncio.to_thread(out.close)
-            etag = digest.hexdigest()
+                await asyncio.to_thread(writer.close)
             await asyncio.to_thread(
                 self._commit,
                 temp,
@@ -952,17 +1114,25 @@ class LocalObjectStorageClient:
 
         Raises:
             LocalObjectNotFoundError: When the object is not stored.
+            StorageIntegrityException: ``"format"`` when an encrypted
+                file's header or size is malformed.
         """
         target = self._bucket(bucket)
         path = self.object_path(key, bucket=bucket)
         if not path.is_file():
             raise LocalObjectNotFoundError(target, key)
         info = path.stat()
+        size = info.st_size
+        if self._cipher is not None:
+            with path.open("rb") as handle:
+                header = EncryptedHeader.read(handle)
+            if header is not None:
+                _, size = block_layout(info.st_size - len(header.raw))
         meta = self._read_meta(key, bucket)
         return ObjectStat(
             bucket=target,
             key=key,
-            size=info.st_size,
+            size=size,
             etag=(meta.etag or None) if meta is not None else None,
             content_type=meta.content_type if meta is not None else None,
             last_modified=datetime.fromtimestamp(info.st_mtime, tz=UTC),
@@ -985,10 +1155,15 @@ class LocalObjectStorageClient:
         Returns:
             ObjectStat: Size and modification time from the file; content
             type, metadata and ETag from the metadata file. ``raw`` is
-            ``None``: there is no ``minio`` object behind a disk.
+            ``None``: there is no ``minio`` object behind a disk. With
+            ``encryption_keys``, ``size`` is the plaintext size, computed
+            from the file's header and length without decrypting; a
+            plaintext file reports its own size.
 
         Raises:
             LocalObjectNotFoundError: When the object is not stored.
+            StorageIntegrityException: ``"format"`` when an encrypted
+                file's header or size is malformed.
             ValueError: When the bucket or key is invalid.
             IntegrationDisabledException: When built with ``enabled=False``.
         """
@@ -1016,6 +1191,94 @@ class LocalObjectStorageClient:
             raise LocalObjectNotFoundError(self._bucket(bucket), key) from None
         handle.seek(offset)
         return handle
+
+    def _open_decrypting_sync(
+        self,
+        key: str,
+        bucket: str | None,
+        offset: int,
+        length: int | None,
+    ) -> tuple[BinaryIO, Iterator[bytes] | None, bytes | None]:
+        """Open an object of an encrypted store and authenticate its first block.
+
+        Decrypting the first block of the range here, before any byte is
+        served, makes a wrong key, a renamed file or a tampered header fail
+        at :meth:`stream_object` — where the router still answers a clean
+        error — instead of in the middle of a response.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Bucket; ``None`` for the default.
+            offset (int): First plaintext byte.
+            length (int | None): Plaintext bytes from ``offset``; ``None``
+                reads to the end.
+
+        Returns:
+            tuple[BinaryIO, Iterator[bytes] | None, bytes | None]: The open
+            file; for an encrypted object the block iterator and its first
+            decrypted block (``None`` when the range is empty); for an
+            allowed plaintext object ``None`` twice, with the file at
+            ``offset``.
+
+        Raises:
+            LocalObjectNotFoundError: When the object is not stored.
+            StorageIntegrityException: When the file is plaintext and
+                ``allow_plaintext_read`` is off, or its header, size or
+                first block fails to verify.
+        """
+        cipher = self._cipher
+        assert cipher is not None
+        handle = self._open_sync(key, bucket, 0)
+        try:
+            header = EncryptedHeader.read(handle)
+            if header is None:
+                if not self.allow_plaintext_read:
+                    raise StorageIntegrityException("plaintext")
+                handle.seek(offset)
+                return handle, None, None
+            reader = cipher.reader(
+                handle,
+                header,
+                file_size=os.fstat(handle.fileno()).st_size,
+                object_name=self._object_name(key, bucket),
+            )
+            blocks = reader.iter_range(offset, length)
+            return handle, blocks, next(blocks, None)
+        except BaseException:
+            handle.close()
+            raise
+
+    @staticmethod
+    async def _decrypted_chunks(
+        handle: BinaryIO,
+        blocks: Iterator[bytes],
+        first: bytes | None,
+        chunk_size: int,
+    ) -> AsyncIterator[bytes]:
+        """Yield decrypted blocks in ``chunk_size`` slices, then close the file.
+
+        Each block is decrypted in a worker thread and yielded only after its
+        tag verified; a block that fails raises
+        :class:`~tempest_fastapi_sdk.exceptions.StorageIntegrityException`
+        and nothing of it is yielded.
+
+        Args:
+            handle (BinaryIO): The open file.
+            blocks (Iterator[bytes]): The remaining decrypted blocks.
+            first (bytes | None): The block already decrypted, if any.
+            chunk_size (int): Bytes per chunk.
+
+        Yields:
+            bytes: The next chunk of plaintext.
+        """
+        try:
+            block = first
+            while block is not None:
+                for start in range(0, len(block), chunk_size):
+                    yield block[start : start + chunk_size]
+                block = await asyncio.to_thread(next, blocks, None)
+        finally:
+            await asyncio.to_thread(handle.close)
 
     @staticmethod
     async def _chunks(
@@ -1069,6 +1332,13 @@ class LocalObjectStorageClient:
             length (int | None): Bytes to read from ``offset``; ``None``
                 reads to the end.
 
+        With ``encryption_keys``, ``offset`` and ``length`` count plaintext
+        bytes, and only the blocks that overlap the range are read and
+        decrypted — a ``Range`` request or a capped
+        :meth:`~tempest_fastapi_sdk.privacy.SubjectObjectStorage.read`
+        decrypts no more than it serves. The first block is authenticated
+        before this returns; every later one before it is yielded.
+
         Returns:
             AsyncIterator[bytes]: The chunks, in order; the file closes when
             the stream ends or is closed.
@@ -1078,6 +1348,11 @@ class LocalObjectStorageClient:
                 ``chunk_size`` is not positive, or the bucket or key is
                 invalid.
             LocalObjectNotFoundError: When the object is not stored.
+            StorageIntegrityException: With ``encryption_keys``, when a
+                block fails authentication, the file is cut or malformed,
+                its key id is not in the ring, or it is plaintext and
+                ``allow_plaintext_read`` is off. Raised here for the first
+                block of the range, and by the iterator for a later one.
             IntegrationDisabledException: When built with ``enabled=False``.
         """
         self._check_enabled()
@@ -1087,8 +1362,15 @@ class LocalObjectStorageClient:
             raise ValueError("length must be at least 1; pass None to read to the end")
         if chunk_size < 1:
             raise ValueError("chunk_size must be at least 1")
-        handle = await asyncio.to_thread(self._open_sync, key, bucket, offset)
-        return self._chunks(handle, length, chunk_size)
+        if self._cipher is None:
+            handle = await asyncio.to_thread(self._open_sync, key, bucket, offset)
+            return self._chunks(handle, length, chunk_size)
+        handle, blocks, first = await asyncio.to_thread(
+            self._open_decrypting_sync, key, bucket, offset, length
+        )
+        if blocks is None:
+            return self._chunks(handle, length, chunk_size)
+        return self._decrypted_chunks(handle, blocks, first, chunk_size)
 
     def _list_sync(self, prefix: str, bucket: str | None, recursive: bool) -> list[str]:
         """List keys under ``prefix``; the blocking half of :meth:`list_objects`.
@@ -1264,6 +1546,214 @@ class LocalObjectStorageClient:
         self._check_enabled()
         return await asyncio.to_thread(self._remove_many_sync, list(keys), bucket)
 
+    def _require_cipher(self) -> LocalObjectCipher:
+        """Return the key ring, refusing a store without one.
+
+        Returns:
+            LocalObjectCipher: The ring.
+
+        Raises:
+            ValueError: When the client has no ``encryption_keys``.
+        """
+        if self._cipher is None:
+            raise ValueError("this store has no encryption_keys to encrypt with")
+        return self._cipher
+
+    def _rewrite_sync(self, key: str, bucket: str | None, *, rotate: bool) -> bool:
+        """Rewrite one object sealed with the write key, when it needs it.
+
+        The new file is built in ``tmp/`` and swapped in only if the object
+        did not change while it was read (same inode, size and modification
+        time); a concurrent write wins and the object is left for the next
+        run. The check and the swap are two steps, so a write landing between
+        them is lost: run the migration while nothing writes.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Bucket; ``None`` for the default.
+            rotate (bool): ``True`` rewrites an object sealed with another
+                key; ``False`` encrypts a plaintext object.
+
+        Returns:
+            bool: ``True`` when the object was rewritten.
+
+        Raises:
+            StorageIntegrityException: When an object to rotate fails to
+                decrypt; nothing is written for it.
+        """
+        cipher = self._require_cipher()
+        path = self.object_path(key, bucket=bucket)
+        try:
+            handle = path.open("rb")
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+            return False
+        with handle:
+            before = os.fstat(handle.fileno())
+            header = EncryptedHeader.read(handle)
+            source: Iterable[bytes]
+            if rotate:
+                if header is None or header.key_id == cipher.write_key_id:
+                    return False
+                source = cipher.reader(
+                    handle,
+                    header,
+                    file_size=before.st_size,
+                    object_name=self._object_name(key, bucket),
+                ).iter_range(0, None)
+            else:
+                if header is not None:
+                    return False
+                source = iter(lambda: handle.read(LOCAL_STORAGE_CHUNK_SIZE), b"")
+            meta = self._read_meta(key, bucket)
+            out, temp = self._temp_file()
+            try:
+                writer = self._writer(out, key, bucket)
+                try:
+                    for chunk in source:
+                        writer.write(chunk)
+                    etag = writer.finish()
+                finally:
+                    writer.close()
+                try:
+                    after = path.stat()
+                except FileNotFoundError:
+                    return False
+                if (after.st_ino, after.st_size, after.st_mtime_ns) != (
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                ):
+                    return False
+                self._commit(
+                    temp,
+                    key=key,
+                    bucket=bucket,
+                    meta=_ObjectMeta(
+                        meta.content_type
+                        if meta is not None
+                        else "application/octet-stream",
+                        dict(meta.metadata) if meta is not None else {},
+                        etag,
+                    ),
+                )
+            finally:
+                temp.unlink(missing_ok=True)
+        return True
+
+    def _rewrite_all_sync(
+        self, prefix: str, bucket: str | None, *, rotate: bool
+    ) -> int:
+        """Run :meth:`_rewrite_sync` over every key under ``prefix``.
+
+        Args:
+            prefix (str): Key prefix.
+            bucket (str | None): Bucket; ``None`` for the default.
+            rotate (bool): Forwarded to :meth:`_rewrite_sync`.
+
+        Returns:
+            int: Objects rewritten.
+        """
+        self._require_cipher()
+        return sum(
+            self._rewrite_sync(key, bucket, rotate=rotate)
+            for key in self._list_sync(prefix, bucket, True)
+        )
+
+    async def encrypt_existing(
+        self,
+        prefix: str = "",
+        *,
+        bucket: str | None = None,
+    ) -> int:
+        """Encrypt every plaintext object under ``prefix`` with the write key.
+
+        The migration of a store that held files before ``encryption_keys``
+        was set. Idempotent: an object that already has the encrypted header
+        is skipped, so running it twice — or after an interrupted run —
+        rewrites nothing that is done. Content type and metadata are kept;
+        the ETag becomes the MD5 of the encrypted file. Runs whether
+        ``allow_plaintext_read`` is on or off.
+
+        Args:
+            prefix (str): Only keys starting with it. Default: all.
+            bucket (str | None): Bucket; ``None`` for the default. Use
+                :meth:`list_buckets` to cover every bucket.
+
+        Returns:
+            int: Objects encrypted by this call.
+
+        Raises:
+            ValueError: When the client has no ``encryption_keys``, or the
+                bucket is invalid.
+            OSError: When a file cannot be read or written.
+            IntegrationDisabledException: When built with ``enabled=False``.
+        """
+        self._check_enabled()
+        return await asyncio.to_thread(
+            self._rewrite_all_sync, prefix, bucket, rotate=False
+        )
+
+    async def reencrypt(
+        self,
+        prefix: str = "",
+        *,
+        bucket: str | None = None,
+    ) -> int:
+        """Rewrite every object sealed with an older key under the write key.
+
+        The second half of a key rotation: put the new key first in
+        ``encryption_keys`` (writes switch to it at once, reads keep working
+        with the old one), run this, then drop the old key. Idempotent: an
+        object already under the write key is skipped, and so is a plaintext
+        one (:meth:`encrypt_existing` handles those). An object that fails to
+        decrypt stops the run with the error, before anything is written for
+        it.
+
+        Args:
+            prefix (str): Only keys starting with it. Default: all.
+            bucket (str | None): Bucket; ``None`` for the default.
+
+        Returns:
+            int: Objects rewritten by this call.
+
+        Raises:
+            ValueError: When the client has no ``encryption_keys``, or the
+                bucket is invalid.
+            StorageIntegrityException: When an object fails to decrypt —
+                its key is no longer in the ring, or the file is damaged.
+            OSError: When a file cannot be read or written.
+            IntegrationDisabledException: When built with ``enabled=False``.
+        """
+        self._check_enabled()
+        return await asyncio.to_thread(
+            self._rewrite_all_sync, prefix, bucket, rotate=True
+        )
+
+    def _list_buckets_sync(self) -> list[str]:
+        """List bucket directories; the blocking half of :meth:`list_buckets`.
+
+        Returns:
+            list[str]: Bucket names, sorted.
+        """
+        root = self.base_dir / _OBJECTS_DIR
+        return sorted(
+            path.name
+            for path in root.iterdir()
+            if path.is_dir() and not path.name.startswith(".")
+        )
+
+    async def list_buckets(self) -> list[str]:
+        """List the buckets that hold at least one directory on disk.
+
+        Returns:
+            list[str]: Bucket names, sorted; ``[]`` for an empty store.
+
+        Raises:
+            IntegrationDisabledException: When built with ``enabled=False``.
+        """
+        self._check_enabled()
+        return await asyncio.to_thread(self._list_buckets_sync)
+
     async def download_response(
         self,
         key: str,
@@ -1301,8 +1791,16 @@ class LocalObjectStorageClient:
         Returns:
             StreamingResponse: ``200``, ``206``, ``304`` or ``416``.
 
+        With ``encryption_keys`` the response is the decrypted object;
+        ``Content-Length``, ``Range`` and ``Content-Range`` count plaintext
+        bytes, and a range decrypts only the blocks it covers.
+
         Raises:
             LocalObjectNotFoundError: When the object is not stored.
+            StorageIntegrityException: When the first block served fails to
+                verify (see :meth:`stream_object`). A later block that fails
+                aborts the stream after the response started; no byte of an
+                unverified block is sent.
             IntegrationDisabledException: When built with ``enabled=False``.
         """
         from tempest_fastapi_sdk.storage._download import object_download_response

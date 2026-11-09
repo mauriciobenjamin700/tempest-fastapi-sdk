@@ -4174,6 +4174,29 @@ matriz e decodifica com `zxing-cpp`), `tests/auth/test_mfa_qr.py` e
 `tests/cli/test_user_mfa.py`. Receita: seção "QR code" de
 `docs/recipes/mfa.md`.
 
+## Cifra em repouso do storage local (#714)
+
+`storage/local_crypto.py`: formato e cifra do `encryption_keys` do
+`LocalObjectStorageClient`. AES-256-GCM (`cryptography`, extra
+`[storage-encryption]`) em blocos de 64 KiB, construção STREAM (nonce =
+prefixo aleatório de 7 bytes + contador de 4 + marca de último bloco; AAD =
+cabeçalho + `<bucket>/<key>`). Cabeçalho `TFSDKENC` + versão + id da chave +
+prefixo; o tamanho em claro sai do tamanho do arquivo, sem decifrar. Escrita
+(`put_object`, `write_stream`, `PUT`/`POST` assinados) cifra; leitura
+(`stream_object`, `download_response`, `GET` assinado com `Range`) decifra só
+os blocos do intervalo e autentica o primeiro antes de devolver o stream.
+`StorageIntegrityException` (`500 STORAGE_INTEGRITY_ERROR`, `reason`),
+`allow_plaintext_read`, `encrypt_existing`, `reencrypt`, `list_buckets`;
+`STORAGE_LOCAL_ENCRYPTION_KEYS` / `STORAGE_LOCAL_ALLOW_PLAINTEXT_READ` no
+`StorageSettings` (produção sem chave = `WARNING`, não violação);
+`tempest storage encrypt-local` / `reencrypt-local`. ETag com cifra = MD5 do
+arquivo cifrado. Fora: metadado (nome, content type, metadata) segue em claro.
+Receita: seção "Cifra em repouso" de `docs/recipes/local-storage.md`. Testes:
+`tests/storage/test_local_encryption.py`,
+`tests/storage/test_local_encryption_router.py`,
+`tests/settings/test_storage_encryption_settings.py`,
+`tests/cli/test_storage_encryption_cli.py`.
+
 ## Metadados de imagem (unreleased, #713)
 
 `strip_image_metadata` em `utils/images.py`, extra `[image]` (`pillow`):

@@ -33,7 +33,10 @@ box.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import ipaddress
+import logging
 import re
 import warnings
 from collections.abc import Mapping
@@ -66,6 +69,9 @@ DEFAULT_LOCAL_STORAGE_ROUTE_PREFIX: str = "/storage"
 
 DEFAULT_LOCAL_MAX_UPLOAD_BYTES: int = 25 * 1024 * 1024
 """Largest body the signed local-storage ``PUT`` accepts by default (25 MiB)."""
+
+_settings_logger: logging.Logger = logging.getLogger("tempest_fastapi_sdk.settings")
+"""Logger of the production notices that warn instead of refusing the boot."""
 
 DEV_LOCAL_STORAGE_SIGNING_SECRET: str = "tempest-local-storage-dev-only"
 """Development placeholder of ``STORAGE_LOCAL_SIGNING_SECRET``.
@@ -3363,6 +3369,14 @@ class StorageSettings(BaseAppSettings):
             production.
         STORAGE_LOCAL_MAX_UPLOAD_BYTES (int): Largest body the signed local
             ``PUT`` accepts. Default: 25 MiB.
+        STORAGE_LOCAL_ENCRYPTION_KEYS (dict[str, str]): Key id to base64 of
+            a 32-byte AES-256 key, as JSON. Set, the local store encrypts
+            every object at rest with the **first** key and reads with any.
+            Default: ``{}`` (plaintext). Needs the ``[storage-encryption]``
+            extra.
+        STORAGE_LOCAL_ALLOW_PLAINTEXT_READ (bool): With keys, serve a file
+            written before encryption as plaintext until it is migrated.
+            Default: ``False``.
     """
 
     DEPRECATED_ENV_ALIASES: ClassVar[Mapping[str, str]] = {
@@ -3559,12 +3573,85 @@ class StorageSettings(BaseAppSettings):
         ),
         examples=[DEFAULT_LOCAL_MAX_UPLOAD_BYTES, 5 * 1024 * 1024],
     )
+    STORAGE_LOCAL_ENCRYPTION_KEYS: dict[str, str] = Field(
+        default_factory=dict,
+        title="Encryption keys of the local store",
+        description=(
+            "JSON object of key id to the base64 of a 32-byte key. Set, every "
+            "object the local store writes is encrypted at rest (AES-256-GCM) "
+            "with the **first** key, and read with whichever key its header "
+            "names. To rotate, put the new key first and keep the old one "
+            "until ``tempest storage reencrypt-local`` ran. Keep it out of the "
+            "volume and out of its backups."
+        ),
+        examples=[{}, {"k1": "C8MnsQiqOFRJoZgg4kT0gvXzknnci8XsEHs3+emnLJ4="}],
+    )
+    STORAGE_LOCAL_ALLOW_PLAINTEXT_READ: bool = Field(
+        default=False,
+        title="Read plaintext files of an encrypted local store",
+        description=(
+            "With ``STORAGE_LOCAL_ENCRYPTION_KEYS``, serve a file that has no "
+            "encrypted header as plaintext — for the files written before "
+            "encryption was switched on, until ``tempest storage "
+            "encrypt-local`` converted them. Off, such a file is refused."
+        ),
+        examples=[False, True],
+    )
+
+    @field_validator("STORAGE_LOCAL_ENCRYPTION_KEYS")
+    @classmethod
+    def _check_local_encryption_keys(cls, value: dict[str, str]) -> dict[str, str]:
+        """Refuse a key that is not the base64 of 32 bytes.
+
+        The message names the key id, never the key.
+
+        Args:
+            value (dict[str, str]): Key id to base64 key.
+
+        Returns:
+            dict[str, str]: ``value`` unchanged.
+
+        Raises:
+            ValueError: When a value is not base64, does not decode to 32
+                bytes, or a key id is empty or too long.
+        """
+        from tempest_fastapi_sdk.storage.local_crypto import check_encryption_keys
+
+        check_encryption_keys(cls.decode_local_encryption_keys(value))
+        return value
+
+    @staticmethod
+    def decode_local_encryption_keys(value: Mapping[str, str]) -> dict[str, bytes]:
+        """Decode the base64 keys of ``STORAGE_LOCAL_ENCRYPTION_KEYS``.
+
+        Args:
+            value (Mapping[str, str]): Key id to base64 key.
+
+        Returns:
+            dict[str, bytes]: Key id to raw key, in the same order.
+
+        Raises:
+            ValueError: When a value is not valid base64; the message names
+                the key id only.
+        """
+        decoded: dict[str, bytes] = {}
+        for key_id, encoded in value.items():
+            try:
+                decoded[key_id] = base64.b64decode(encoded, validate=True)
+            except (binascii.Error, ValueError):
+                raise ValueError(
+                    f"STORAGE_LOCAL_ENCRYPTION_KEYS[{key_id!r}] is not valid base64"
+                ) from None
+        return decoded
 
     def local_storage_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`LocalObjectStorageClient` kwargs.
 
         With ``STORAGE_ENABLED`` off the dictionary carries
-        ``enabled=False``, as :meth:`storage_kwargs` does for S3.
+        ``enabled=False``, as :meth:`storage_kwargs` does for S3. With
+        ``STORAGE_LOCAL_ENCRYPTION_KEYS`` set it carries the decoded
+        ``encryption_keys`` and ``allow_plaintext_read``; without keys
+        neither key is present, so the dictionary is the one it always was.
 
         Returns:
             dict[str, Any]: Keyword arguments ready to splat into
@@ -3578,6 +3665,11 @@ class StorageSettings(BaseAppSettings):
             "route_prefix": self.STORAGE_LOCAL_ROUTE_PREFIX,
             "max_upload_bytes": self.STORAGE_LOCAL_MAX_UPLOAD_BYTES,
         }
+        if self.STORAGE_LOCAL_ENCRYPTION_KEYS:
+            kwargs["encryption_keys"] = self.decode_local_encryption_keys(
+                self.STORAGE_LOCAL_ENCRYPTION_KEYS
+            )
+            kwargs["allow_plaintext_read"] = self.STORAGE_LOCAL_ALLOW_PLAINTEXT_READ
         if not self.STORAGE_ENABLED:
             kwargs["enabled"] = False
         return kwargs
@@ -3662,6 +3754,12 @@ class StorageSettings(BaseAppSettings):
         ``STORAGE_BACKEND=local`` the S3 fields are not checked — nothing
         reads them — and :meth:`local_storage_violations` runs instead.
 
+        A local store without ``STORAGE_LOCAL_ENCRYPTION_KEYS`` is **not** a
+        violation: refusing it would stop, on upgrade and without notice,
+        every service that already runs the local backend in production. It
+        logs a ``WARNING`` on the ``tempest_fastapi_sdk.settings`` logger
+        instead, each time the production guard runs.
+
         Returns:
             list[str]: The parent's entries plus one per offending field.
         """
@@ -3670,6 +3768,12 @@ class StorageSettings(BaseAppSettings):
             return violations
         if self.STORAGE_BACKEND == "local":
             violations.extend(self.local_storage_violations())
+            if not self.STORAGE_LOCAL_ENCRYPTION_KEYS:
+                _settings_logger.warning(
+                    "STORAGE_BACKEND=local in production without "
+                    "STORAGE_LOCAL_ENCRYPTION_KEYS: stored files stay in "
+                    "plaintext on the disk, its snapshots and its backups"
+                )
             return violations
         fields = StorageSettings.model_fields
         if fields["STORAGE_ACCESS_KEY"].default == self.STORAGE_ACCESS_KEY:

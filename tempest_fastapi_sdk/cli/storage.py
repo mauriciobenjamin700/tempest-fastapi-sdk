@@ -5,6 +5,11 @@ so the endpoint, credentials, region and — importantly — the *public*
 endpoint used to sign URLs are the ones the service uses. A presigned URL
 produced with the internal endpoint is valid and useless: the browser it
 is handed to cannot resolve ``minio:9000``.
+
+``encrypt-local`` and ``reencrypt-local`` act on the local backend instead,
+through ``LocalObjectStorageClient(**settings.local_storage_kwargs())``: they
+migrate the files under ``STORAGE_LOCAL_DIR`` to the encryption at rest that
+``STORAGE_LOCAL_ENCRYPTION_KEYS`` switches on.
 """
 
 from __future__ import annotations
@@ -102,6 +107,128 @@ def _run(operation: Callable[[Any], Awaitable[Any]]) -> Any:
             err=True,
         )
         raise typer.Exit(1) from exc
+
+
+def _local_kwargs() -> dict[str, Any]:
+    """Read the local-store kwargs off the project's settings.
+
+    Returns:
+        dict[str, Any]: Arguments for ``LocalObjectStorageClient``, with
+        ``encryption_keys``.
+
+    Raises:
+        typer.Exit: Exit code 2 when the project composes no
+            ``StorageSettings``, ``STORAGE_ENABLED`` is off, or
+            ``STORAGE_LOCAL_ENCRYPTION_KEYS`` is empty.
+    """
+    settings = load_project_settings()
+    if settings is None or not hasattr(settings, "local_storage_kwargs"):
+        typer.echo(
+            "error: this project has no object-store settings. Compose "
+            "StorageSettings into your Settings class.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    kwargs: dict[str, Any] = settings.local_storage_kwargs()
+    if kwargs.get("enabled") is False:
+        typer.echo(
+            "error: STORAGE_ENABLED=false — the object-store integration is "
+            "switched off in this environment.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if not kwargs.get("encryption_keys"):
+        typer.echo(
+            "error: STORAGE_LOCAL_ENCRYPTION_KEYS is empty — there is no key "
+            "to encrypt with.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return kwargs
+
+
+def _rewrite_local(bucket: str, prefix: str, *, rotate: bool) -> dict[str, int]:
+    """Run the local store's migration over one bucket or all of them.
+
+    Args:
+        bucket (str): Bucket to act on; empty for every bucket on disk.
+        prefix (str): Key prefix.
+        rotate (bool): ``True`` runs ``reencrypt``; ``False`` runs
+            ``encrypt_existing``.
+
+    Returns:
+        dict[str, int]: Objects rewritten, per bucket.
+
+    Raises:
+        typer.Exit: Exit code 2 when the ``[storage-encryption]`` extra is
+            missing; code 1 when an object fails, carrying the error.
+    """
+    kwargs = _local_kwargs()
+
+    async def _call() -> dict[str, int]:
+        from tempest_fastapi_sdk.storage import LocalObjectStorageClient
+
+        client = LocalObjectStorageClient(**kwargs)
+        buckets = [bucket] if bucket else await client.list_buckets()
+        done: dict[str, int] = {}
+        for name in buckets:
+            if rotate:
+                done[name] = await client.reencrypt(prefix, bucket=name)
+            else:
+                done[name] = await client.encrypt_existing(prefix, bucket=name)
+        return done
+
+    try:
+        return asyncio.run(_call())
+    except ImportError as exc:
+        typer.echo(
+            "error: encrypting the local store needs the [storage-encryption] "
+            'extra. Install it: uv add "tempest-fastapi-sdk[storage-encryption]".',
+            err=True,
+        )
+        raise typer.Exit(2) from exc
+    except Exception as exc:
+        typer.echo(f"error: {type(exc).__name__}: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+
+_LOCAL_BUCKET_OPTION: Any = typer.Option(
+    "",
+    "--bucket",
+    "-b",
+    help="Bucket to act on. Defaults to every bucket under STORAGE_LOCAL_DIR.",
+)
+
+
+@storage_app.command("encrypt-local")
+def storage_encrypt_local(
+    prefix: str = typer.Argument("", help="Key prefix. Empty covers every key."),
+    bucket: str = _LOCAL_BUCKET_OPTION,
+) -> None:
+    """Encrypt the plaintext files of the local store with the first key.
+
+    The migration of a volume written before STORAGE_LOCAL_ENCRYPTION_KEYS
+    was set. Idempotent: a file that is already encrypted is skipped, so it
+    is safe to run again after an interruption. Run it while nothing
+    writes to the store.
+    """
+    for name, count in _rewrite_local(bucket, prefix, rotate=False).items():
+        typer.echo(f"{name}: {count} object(s) encrypted")
+
+
+@storage_app.command("reencrypt-local")
+def storage_reencrypt_local(
+    prefix: str = typer.Argument("", help="Key prefix. Empty covers every key."),
+    bucket: str = _LOCAL_BUCKET_OPTION,
+) -> None:
+    """Rewrite files sealed with an older key under the first key.
+
+    The second half of a key rotation: put the new key first in
+    STORAGE_LOCAL_ENCRYPTION_KEYS, keep the old one, run this, then drop
+    the old key. Idempotent: a file already under the first key is skipped.
+    """
+    for name, count in _rewrite_local(bucket, prefix, rotate=True).items():
+        typer.echo(f"{name}: {count} object(s) re-encrypted")
 
 
 @storage_app.command("check")

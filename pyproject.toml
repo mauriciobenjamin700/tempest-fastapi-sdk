@@ -105,6 +105,12 @@ admin-sql = [
 minio = [
     "minio>=7.2.20",
 ]
+# Encryption at rest of the local object store (`encryption_keys` on
+# `LocalObjectStorageClient`): AES-256-GCM from `cryptography`, imported on
+# first use. The store itself needs no extra.
+storage-encryption = [
+    "cryptography>=50.0.1",
+]
 http = [
     "httpx>=0.28.1",
 ]

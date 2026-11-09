@@ -1464,6 +1464,18 @@ endpoint** used to sign URLs are the service's own.
 An empty bucket lists nothing and exits 0 — "no object" is a result, not a
 failure, the same convention the SDK's repositories follow.
 
+Two commands act on the local backend (`STORAGE_BACKEND=local`), through
+`LocalObjectStorageClient(**settings.local_storage_kwargs())`, and migrate the
+volume to [encryption at rest](local-storage.md#encryption-at-rest):
+
+```bash
+tempest storage encrypt-local               # encrypt what is plaintext, every bucket
+tempest storage reencrypt-local --bucket uploads   # move to the first key
+```
+
+Both are idempotent and exit with code 2 without
+`STORAGE_LOCAL_ENCRYPTION_KEYS`.
+
 ### Feature flags — `tempest flags`
 
 A flag exists to be moved without a deploy. With the Redis backend that move

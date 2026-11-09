@@ -71,6 +71,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[slides-mermaid]` | `playwright` | Drawing `` ```mermaid `` blocks in `MarkdownPdfRenderer` (`render_mermaid=True`). Needs `playwright install chromium`; that is why it stays **out of `[all]`** |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
 | `[ssr]` | `tempestweb` | HTMX-based SSR: `build_web_app`, `make_htmx_router`, `Page`, the `htmx` helper |
+| `[storage-encryption]` | `cryptography` | Encryption at rest of `LocalObjectStorageClient` (`encryption_keys`, `STORAGE_LOCAL_ENCRYPTION_KEYS`) and the `tempest storage encrypt-local` / `reencrypt-local` commands. [Recipe](recipes/local-storage.md#encryption-at-rest) |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` over Redis Streams, the result backend and the scheduler lease |
 | `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | the service's suite and `tempest test` in parallel (the default since `tempest-cli` 0.6.0). No bound of its own; inherits `pytest<10` from `pytest-asyncio` and `pluggy<2` from `pytest`. Test tooling, not a helper — kept **out of `[all]`**. [Recipe](recipes/testing.md#the-suite-in-parallel-the-tempest-test-default) |

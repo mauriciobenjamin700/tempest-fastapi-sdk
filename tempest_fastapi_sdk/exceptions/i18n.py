@@ -592,6 +592,9 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "Não foi possível falar com o servidor de e-mail; tente de novo mais tarde"
         ),
         "ZAP_SEND_FAILED": "O gateway do WhatsApp recusou a mensagem",
+        "STORAGE_INTEGRITY_ERROR": (
+            "O arquivo guardado não passou na verificação de integridade"
+        ),
         "VOICE_CONSENT_REQUIRED": ("O cadastro de voz exige consentimento gravado"),
     },
     "en-US": {
@@ -721,6 +724,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "The e-mail server could not be reached; try again later"
         ),
         "ZAP_SEND_FAILED": "The WhatsApp gateway refused the message",
+        "STORAGE_INTEGRITY_ERROR": "The stored object failed its integrity check",
         "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
     },
 }
