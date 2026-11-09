@@ -1335,6 +1335,18 @@ if TYPE_CHECKING:
         ForbiddenException as ForbiddenException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        ImageDecodeException as ImageDecodeException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        ImageFormatUnsupportedException as ImageFormatUnsupportedException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        ImageTooLargeException as ImageTooLargeException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        ImageTypeMismatchException as ImageTypeMismatchException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         InheritedErrorCodeWarning as InheritedErrorCodeWarning,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -1839,6 +1851,15 @@ if TYPE_CHECKING:
         DEFAULT_GENERATED_PASSWORD_LENGTH as DEFAULT_GENERATED_PASSWORD_LENGTH,
     )
     from tempest_fastapi_sdk.utils import (
+        DEFAULT_JPEG_QUALITY as DEFAULT_JPEG_QUALITY,
+    )
+    from tempest_fastapi_sdk.utils import (
+        DEFAULT_MAX_IMAGE_PIXELS as DEFAULT_MAX_IMAGE_PIXELS,
+    )
+    from tempest_fastapi_sdk.utils import (
+        DEFAULT_WEBP_QUALITY as DEFAULT_WEBP_QUALITY,
+    )
+    from tempest_fastapi_sdk.utils import (
         DOCX_MEDIA_TYPE as DOCX_MEDIA_TYPE,
     )
     from tempest_fastapi_sdk.utils import (
@@ -2257,6 +2278,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils import (
         states_by_region as states_by_region,
+    )
+    from tempest_fastapi_sdk.utils import (
+        strip_image_metadata as strip_image_metadata,
     )
     from tempest_fastapi_sdk.utils import (
         to_utc as to_utc,
@@ -2761,6 +2785,10 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "FileTooLargeException": "tempest_fastapi_sdk.exceptions",
     "FileTooSmallException": "tempest_fastapi_sdk.exceptions",
     "ForbiddenException": "tempest_fastapi_sdk.exceptions",
+    "ImageDecodeException": "tempest_fastapi_sdk.exceptions",
+    "ImageFormatUnsupportedException": "tempest_fastapi_sdk.exceptions",
+    "ImageTooLargeException": "tempest_fastapi_sdk.exceptions",
+    "ImageTypeMismatchException": "tempest_fastapi_sdk.exceptions",
     "InheritedErrorCodeWarning": "tempest_fastapi_sdk.exceptions",
     "IntegrationDisabledException": "tempest_fastapi_sdk.exceptions",
     "InvalidFileTypeException": "tempest_fastapi_sdk.exceptions",
@@ -2955,6 +2983,10 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "GPUMetrics": "tempest_fastapi_sdk.utils",
     "HexColorField": "tempest_fastapi_sdk.utils",
     "HTTPClient": "tempest_fastapi_sdk.utils",
+    "DEFAULT_JPEG_QUALITY": "tempest_fastapi_sdk.utils",
+    "DEFAULT_MAX_IMAGE_PIXELS": "tempest_fastapi_sdk.utils",
+    "DEFAULT_WEBP_QUALITY": "tempest_fastapi_sdk.utils",
+    "strip_image_metadata": "tempest_fastapi_sdk.utils",
     "ImageMediaTypeEnum": "tempest_fastapi_sdk.utils",
     "InMemoryThrottleBackend": "tempest_fastapi_sdk.utils",
     "JWTUtils": "tempest_fastapi_sdk.utils",
@@ -3188,11 +3220,13 @@ __all__: list[str] = [
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
     "DEFAULT_HONEYPOT_PATTERNS",
     "DEFAULT_HONEYPOT_QUERY_PATTERNS",
+    "DEFAULT_JPEG_QUALITY",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_LOG_BACKUP_COUNT",
     "DEFAULT_LOG_MAX_BYTES",
     "DEFAULT_MAX_CURSOR_LIMIT",
+    "DEFAULT_MAX_IMAGE_PIXELS",
     "DEFAULT_MAX_PAGE_SIZE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_REDACT_KEYS",
@@ -3205,6 +3239,7 @@ __all__: list[str] = [
     "DEFAULT_SYNC_WATERMARK_LAG",
     "DEFAULT_WEBHOOK_BACKOFF_SECONDS",
     "DEFAULT_WEBHOOK_MAX_ATTEMPTS",
+    "DEFAULT_WEBP_QUALITY",
     "DOCX_MEDIA_TYPE",
     "EMAIL_PATTERN",
     "ENUM_CLASS_SUFFIX",
@@ -3419,7 +3454,11 @@ __all__: list[str] = [
     "HostedGenAISettings",
     "IdempotencyMiddleware",
     "IdempotencyStore",
+    "ImageDecodeException",
+    "ImageFormatUnsupportedException",
     "ImageMediaTypeEnum",
+    "ImageTooLargeException",
+    "ImageTypeMismatchException",
     "InMemoryThrottleBackend",
     "InboxDrainReport",
     "InheritedErrorCodeWarning",
@@ -3913,6 +3952,7 @@ __all__: list[str] = [
     "stamp_locale",
     "states_by_region",
     "strict_types",
+    "strip_image_metadata",
     "supports_full_text",
     "sync_enum_types",
     "to_utc",

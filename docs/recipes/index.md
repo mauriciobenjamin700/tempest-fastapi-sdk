@@ -276,7 +276,8 @@ asyncio.run(main())
 ```
 
 Receitas: [File store](file-store.md), [Uploads](uploads.md),
-[Downloads](downloads.md), [Storage](storage.md).
+[Downloads](downloads.md), [Storage](storage.md),
+[Metadados de imagem](image-metadata.md).
 
 ### Extras de domínio
 
@@ -533,6 +534,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Mercado Pago (contas e credenciais de teste) »](mercado-pago-sandbox.md)** | passo a passo para criar a vendedora de teste e achar o token certo (Checkout Transparente / API de Orders), o que o pagador precisa ter, cartões de teste e a tabela de erros que cada desvio produz |
 | **[Mercado Pago (Pix, cartão, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (132 operações geradas da OpenAPI oficial do provedor, sem a API de Payments descontinuada), `MercadoPagoPixProvider` + `MercadoPagoCardProvider` (Pix e cartão pela API de Orders, recusa de cartão como resultado, autorizar e capturar, reembolso parcial), `make_mercado_pago_webhook_delivery_dependency` (webhook que relê a order), `AuthenticatedUser`, `to_cents` / `from_cents` (reais, não centavos), `make_mercado_pago_webhook_dependency`, `MercadoPagoSettings`, `x_idempotency_key` por chamada |
 | **[Mercado Pago (testando webhooks) »](mercado-pago-webhooks.md)** | simulação assinada local com `sign_manifest` relendo uma order real do sandbox (sem URL pública), os quatro casos que a rota precisa acertar, simulação do painel e entrega real por túnel |
+| **[Metadados de imagem »](image-metadata.md)** | `strip_image_metadata` — recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, aplica a orientação antes, teto de pixels contra decompression bomb, erros tipados (`ImageDecodeException`, `ImageTypeMismatchException`, `ImageFormatUnsupportedException`, `ImageTooLargeException`) |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, endpoints enroll/confirm/verify/disable no `make_auth_router`, códigos de recuperação |
 | **[Migrations »](migrations.md)** | `AlembicHelper.sync_schema()` / `adopt()` / `base_revision()` / `has_existing_schema()` — como o schema nasce, adotar banco que precede o Alembic, e por que `create_tables()` + `stamp("head")` quebra em silêncio |
