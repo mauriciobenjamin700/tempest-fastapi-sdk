@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.346.0] — 2026-11-09
+
 ### Added
 
 - Página de logs do admin ganha o botão **Refresh**: recarrega com a mesma

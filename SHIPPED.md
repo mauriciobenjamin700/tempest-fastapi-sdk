@@ -4174,7 +4174,7 @@ matriz e decodifica com `zxing-cpp`), `tests/auth/test_mfa_qr.py` e
 `tests/cli/test_user_mfa.py`. Receita: seção "QR code" de
 `docs/recipes/mfa.md`.
 
-## Cifra em repouso do storage local (#714)
+## Cifra em repouso do storage local (v0.346.0, #714)
 
 `storage/local_crypto.py`: formato e cifra do `encryption_keys` do
 `LocalObjectStorageClient`. AES-256-GCM (`cryptography`, extra
@@ -4197,7 +4197,7 @@ Receita: seção "Cifra em repouso" de `docs/recipes/local-storage.md`. Testes:
 `tests/settings/test_storage_encryption_settings.py`,
 `tests/cli/test_storage_encryption_cli.py`.
 
-## Metadados de imagem (unreleased, #713)
+## Metadados de imagem (v0.346.0, #713)
 
 `strip_image_metadata` em `utils/images.py`, extra `[image]` (`pillow`):
 recodifica JPEG/PNG/WEBP/GIF/BMP no mesmo formato só com os pixels e a
