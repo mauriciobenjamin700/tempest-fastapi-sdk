@@ -1,0 +1,6517 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Shared FastAPI/SQLAlchemy/Pydantic building blocks for Tempest projects — base schemas, async repository, exceptions, pagination, settings, admin, Web Push, Server-Sent Events, FastStream/TaskIQ brokers and Brazilian document/phone validation.">
+      
+      
+      
+        <link rel="canonical" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/oauth/">
+      
+      
+        <link rel="prev" href="../slides/">
+      
+      
+        <link rel="next" href="../spreadsheets/">
+      
+      
+        
+          <link rel="alternate" href="../../../recipes/oauth/" hreflang="pt">
+        
+          <link rel="alternate" href="./" hreflang="en">
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Social login (OAuth2/OIDC) - tempest-fastapi-sdk</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#social-login-oauth2-oidc" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../" title="tempest-fastapi-sdk" class="md-header__button md-logo" aria-label="tempest-fastapi-sdk" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tempest-fastapi-sdk
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Social login (OAuth2/OIDC)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../recipes/oauth/" hreflang="pt" class="md-select__link">
+              Português (BR)
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English (US)
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mauriciobenjamin700/tempest-fastapi-sdk
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Installation
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Recipes
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../reference/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../learning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Learning projects
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../migration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Migration guide
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="tempest-fastapi-sdk" class="md-nav__button md-logo" aria-label="tempest-fastapi-sdk" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tempest-fastapi-sdk
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mauriciobenjamin700/tempest-fastapi-sdk
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/uv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install uv
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/python-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pick your Python version
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/first-project/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Your first project
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Official reference docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recommended-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin site
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin-sql-console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin SQL console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents (advanced)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents (architecture)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents (concepts)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents (database)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents (prompts)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents (testing)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI agents (tools)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../app-errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    App error reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../audit-trail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit trail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auth flow (signup/reset)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../br-helpers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brazilian helpers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat (conversations + messages)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choosing a model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comments + ratings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_21" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_21" id="__nav_5_21_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complete examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_21_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_21">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Complete examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fullstack-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fullstack web (SSR, WASM, server)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../genai-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GenAI examples (flows)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../admin-showcase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrated example (complete admin)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../marketplace-local/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrated example (local marketplace)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrated/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrated example (Pix checkout)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vision/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Computer vision (ONNX)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subject-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data subject export and erasure (LGPD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Downloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../enum-columns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enum columns (safe on both databases)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi-errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Errors in OpenAPI (Swagger)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Face recognition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fakes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fakes (no real provider)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature-flags/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stored-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File in the service (mixin)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firebase-auth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firebase auth (ID token)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ui-forms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forms from Pydantic schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../geo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Geolocation (distance + time)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hostbridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host control (files, commands, power)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../genai-hosted/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hosted generative AI (Anthropic, OpenAI, DeepSeek, Google)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../http-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP client (outbound)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../http/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../idempotency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Idempotency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../image-generation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Image generation (local)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../image-metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Image metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration client (OpenAPI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../introspection-auth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introspection auth (resource server)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../jobs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jobs (long work with status)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kestra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kestra (workflow orchestrator)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../management-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management commands (tempest <cmd>)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mercado-pago/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mercado Pago (Pix, cards, boleto)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mercado-pago-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mercado Pago (test accounts and credentials)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mercado-pago-webhooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mercado Pago (testing webhooks)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mfa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MFA (TOTP / 2FA)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model-weights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model weights (Hub lifecycle)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modelops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modelops (export, bench, quantization)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multi-tenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-tenant
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../n8n/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    n8n (workflow automation)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../authz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object-level permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability (tracing)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../offline-sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline-first sync (delta)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openpix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenPix (Pix via Woovi)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openpix-subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenPix (subscriptions and plans)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDFs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permission-guards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Permission guards (@requires)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pix-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pix protocol (one contract, many providers)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../push/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Push (web + mobile)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query-plans/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query plans (EXPLAIN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queue-tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queue & Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../react-spa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    React SPA inside FastAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../realtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Real-time
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zap-inbound/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Receiving WhatsApp messages (zap-api)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../refresh-tokens/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Refresh tokens (rotation/revocation)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../revenuecat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RevenueCat (in-app subscriptions)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Safe deploys (migrations + shutdown)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../genai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted generative AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server-Sent Events (SSE)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth-pages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server-side login and signup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sessions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server-side sessions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../slides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slides, answer keys and Markdown to PDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Social login (OAuth2/OIDC)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Social login (OAuth2/OIDC)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-flow-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The flow, end to end
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-register-the-app-at-the-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Register the app at the provider
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-two-pieces-in-the-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Two pieces in the database
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-wire-it-into-the-router" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Wire it into the router
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-five-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The five routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#41-clients-with-no-browser-the-token-in-hand-flow-v02780" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Clients with no browser: the token-in-hand flow (v0.278.0+)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-create-accounts-or-only-authenticate-existing-ones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Create accounts, or only authenticate existing ones
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-linking-by-email-the-button-you-probably-do-not-want" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Linking by email: the button you probably do not want
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-how-the-jwt-pair-comes-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. How the JWT pair comes back
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. How the JWT pair comes back">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#account-with-totp-social-login-asks-for-the-code-too-v03140" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Account with TOTP: social login asks for the code too (v0.314.0+)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-linked-accounts-list-and-unlink" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Linked accounts: list and unlink
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#oauthuser-the-normalized-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OAuthUser, the normalized identity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#github" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GitHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#any-other-idp-oidcprovider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Any other IdP: OIDCProvider
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Any other IdP: OIDCProvider">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#verifying-the-realm-token-offline-oidctokenverifier-v02970" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verifying the realm token offline: OIDCTokenVerifier (v0.297.0+)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reusing-your-httpclient" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusing your HTTPClient
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#doing-it-by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Doing it by hand
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spreadsheets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spreadsheets (.xlsx)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ssr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SSR (typed pages)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ssr-actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SSR actions (confirmation, flash, redirect back)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage (MinIO/S3)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../local-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage on local disk
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stripe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stripe (cards + subscriptions)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System checks (check-config)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tempestweb-frontend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tempestweb frontend + SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../text-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Text search (LIKE + full-text)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../email/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional email
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../outbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactions (commit and savepoint)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transcription-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transcription pipeline (audio → summary)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ui-css/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Typed CSS (stylesheet and tokens)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../typing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Typing (static + runtime)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI layer (pages and components)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unified file store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../uploads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uploads (backends)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validated fields (ready-made types)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../artifact-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioned artifacts (models)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wallet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wallet and Pix payouts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../webpush/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Push
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../webauthn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAuthn / passkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../asyncapi-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket client (AsyncAPI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket router
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp (zap-api)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../learning/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Learning projects
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Learning projects
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../learning/marketplace/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Marketplace
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7_2" id="__nav_7_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Marketplace
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../learning/marketplace/business-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Business rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../learning/marketplace/domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../learning/marketplace/flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Critical flows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../learning/marketplace/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Endpoint map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../../" class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Recipes
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/edit/main/docs/recipes/oauth.en.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75z"/></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/raw/main/docs/recipes/oauth.en.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0 8a5 5 0 0 1-5-5 5 5 0 0 1 5-5 5 5 0 0 1 5 5 5 5 0 0 1-5 5m0-12.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5"/></svg>
+    </a>
+  
+
+
+<h1 id="social-login-oauth2-oidc">Social login (OAuth2 / OIDC)<a class="headerlink" href="#social-login-oauth2-oidc" title="Permanent link">&para;</a></h1>
+<p>"Sign in with Google" has four parts: send the user to the provider, take the
+<code>code</code> back, trade that <code>code</code> for an identity — and turn that identity into a
+<strong>session in your service</strong>. The SDK ships all four.</p>
+<p>The first three are the clients: <code>GoogleOAuthClient</code>, <code>GitHubOAuthClient</code> and
+the generic <code>OIDCProvider</code>, all ending at the same normalized identity
+(<code>OAuthUser</code>). The fourth — the one that decides who the person is in <em>your</em>
+database and mints <em>your</em> token — is <code>make_auth_router</code> as of v0.273.0, wired
+by <code>AUTH_OAUTH_ENABLED</code>.</p>
+<div class="admonition info">
+<p class="admonition-title">Why the fourth part matters so much</p>
+<p>Minting the token by hand is the step that looks trivial and is not. A
+<code>jwt.encode({"sub": str(user.id)})</code> produces a <strong>different</strong> token from the
+one <code>POST /auth/login</code> returns: no <code>typ</code> claim, no opaque refresh token, no
+rotation, no family-wide reuse detection and no <code>POST /auth/logout</code>. The
+service ends up with two session mechanisms, one of them with half the
+guarantees — and the day someone turns on <code>strict=True</code> in the type check,
+every Google login breaks at once.</p>
+</div>
+<p>The redirect login needs no extra beyond <code>[auth]</code> (bcrypt + PyJWT), which the
+<code>UserAuthService</code> behind <code>make_auth_router</code> already requires: <code>httpx</code> is a
+base dependency of the SDK and <code>HTTPClient</code> (retry + circuit breaker) is
+already bundled. Only <code>OIDCTokenVerifier</code>, which checks a realm's token offline
+(<a href="#verifying-the-realm-token-offline-oidctokenverifier-v02970">its own section</a>),
+needs <code>[oidc]</code>, which brings <code>cryptography</code>.</p>
+<h2 id="the-flow-end-to-end">The flow, end to end<a class="headerlink" href="#the-flow-end-to-end" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+    participant B as Browser
+    participant S as Your service
+    participant P as Provider (Google)
+    B-&gt;&gt;S: GET /auth/oauth/google/login
+    S-&gt;&gt;B: 302 -&gt; authorize_url (state in an HttpOnly cookie)
+    B-&gt;&gt;P: consent
+    P-&gt;&gt;B: 302 /auth/oauth/google/callback?code=...&amp;state=...
+    B-&gt;&gt;S: GET /auth/oauth/google/callback
+    S-&gt;&gt;S: compare the state against the cookie
+    S-&gt;&gt;P: POST token (exchange_code)
+    P-&gt;&gt;S: access_token (+ id_token)
+    S-&gt;&gt;P: GET userinfo (fetch_user)
+    P-&gt;&gt;S: profile
+    S-&gt;&gt;S: resolve (provider, subject) -&gt; local user
+    S-&gt;&gt;B: the same JWT pair POST /auth/login returns</code></pre>
+<h2 id="1-register-the-app-at-the-provider">1. Register the app at the provider<a class="headerlink" href="#1-register-the-app-at-the-provider" title="Permanent link">&para;</a></h2>
+<p>In the provider's console (Google Cloud, GitHub Developer Settings, Auth0…)
+create an OAuth credential and register the <strong>exact redirect URI</strong> your service
+exposes — <code>https://api.example.com/auth/oauth/google/callback</code>. Then compose the
+<code>OAuthSettings</code> mixin, which holds the credentials and <strong>derives</strong> that URI:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># src/core/settings.py</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">AuthSettings</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">DatabaseSettings</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">JWTSettings</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">OAuthSettings</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">ServerSettings</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">ServerSettings</span><span class="p">,</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">DatabaseSettings</span><span class="p">,</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">JWTSettings</span><span class="p">,</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">AuthSettings</span><span class="p">,</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">OAuthSettings</span><span class="p">,</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="p">):</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="sd">"""Environment-driven configuration."""</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="n">settings</span><span class="p">:</span> <span class="n">Settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
+</span></code></pre></div>
+<p><code>OAuthSettings</code> reads six environment variables:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OAUTH_REDIRECT_BASE_URL</code></td>
+<td><code>""</code></td>
+<td>Public origin of the service (<code>https://api.example.com</code>), no trailing slash and no path</td>
+</tr>
+<tr>
+<td><code>OAUTH_GOOGLE_CLIENT_ID</code></td>
+<td><code>""</code></td>
+<td><code>Client ID</code> from the Google console</td>
+</tr>
+<tr>
+<td><code>OAUTH_GOOGLE_CLIENT_SECRET</code></td>
+<td><code>""</code></td>
+<td>Matching <code>Client secret</code></td>
+</tr>
+<tr>
+<td><code>OAUTH_GOOGLE_EXTRA_AUDIENCES</code></td>
+<td><code>[]</code></td>
+<td>The project's other Google client ids (Android, iOS) whose token <code>POST /auth/oauth/google/token</code> accepts; in the environment, a JSON list (<code>'["android-id","ios-id"]'</code>)</td>
+</tr>
+<tr>
+<td><code>OAUTH_GITHUB_CLIENT_ID</code></td>
+<td><code>""</code></td>
+<td><code>Client ID</code> of the GitHub OAuth app</td>
+</tr>
+<tr>
+<td><code>OAUTH_GITHUB_CLIENT_SECRET</code></td>
+<td><code>""</code></td>
+<td>Matching <code>Client secret</code></td>
+</tr>
+</tbody>
+</table>
+<p>The redirect URI is not declared — it is <strong>derived</strong> from the base, the router
+prefix and the provider key:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">OAuthSettings</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">settings</span><span class="p">:</span> <span class="n">OAuthSettings</span> <span class="o">=</span> <span class="n">OAuthSettings</span><span class="p">(</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">OAUTH_REDIRECT_BASE_URL</span><span class="o">=</span><span class="s2">"https://api.example.com"</span><span class="p">,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">oauth_redirect_uri</span><span class="p">(</span><span class="s2">"google"</span><span class="p">))</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># https://api.example.com/auth/oauth/google/callback</span>
+</span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">The redirect URI must match byte for byte</p>
+<p>A trailing slash, <code>http</code> vs <code>https</code>, <code>127.0.0.1</code> vs <code>localhost</code> — any
+difference makes the provider refuse with <code>redirect_uri_mismatch</code>, and the
+refusal happens <strong>before</strong> the consent screen, which makes it look like a
+credential problem. Paste into the console exactly what <code>oauth_redirect_uri</code>
+prints. In development the base is your tunnel or <code>http://localhost:8000</code> —
+the provider redirects the <em>user agent</em>, not itself, so the container's
+internal address will not do.</p>
+</div>
+<h2 id="2-two-pieces-in-the-database">2. Two pieces in the database<a class="headerlink" href="#2-two-pieces-in-the-database" title="Permanent link">&para;</a></h2>
+<p>Social login writes to two tables: the user table (which gains a name column)
+and a new one, for linked identities.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># src/db/models.py</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">BaseUserModel</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">NameMixin</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">make_user_oauth_account_model</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">make_user_refresh_token_model</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">make_user_token_model</span><span class="p">,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">)</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">UserModel</span><span class="p">(</span><span class="n">NameMixin</span><span class="p">,</span> <span class="n">BaseUserModel</span><span class="p">):</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">    </span><span class="sd">"""The project's user table."""</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">__tablename__</span> <span class="o">=</span> <span class="s2">"users"</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="n">UserTokenModel</span> <span class="o">=</span> <span class="n">make_user_token_model</span><span class="p">(</span><span class="n">user_table</span><span class="o">=</span><span class="s2">"users"</span><span class="p">)</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">UserOAuthAccountModel</span> <span class="o">=</span> <span class="n">make_user_oauth_account_model</span><span class="p">(</span><span class="n">user_table</span><span class="o">=</span><span class="s2">"users"</span><span class="p">)</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">UserRefreshTokenModel</span> <span class="o">=</span> <span class="n">make_user_refresh_token_model</span><span class="p">(</span><span class="n">user_table</span><span class="o">=</span><span class="s2">"users"</span><span class="p">)</span>
+</span></code></pre></div>
+<p><strong><code>NameMixin</code></strong> exists because <code>BaseUserModel</code> ships no <code>name</code> column — it was
+designed for the admin login, which needs an email and a password, not a
+greeting. The callback creates accounts and stores the name the provider
+reports, so the column becomes necessary. Turning <code>AUTH_OAUTH_ENABLED</code> on
+without the mixin is refused at router construction, with a message naming what
+is missing — fail at boot, not at the first callback in production.</p>
+<p><strong>The identity table is separate</strong> — not two columns on <code>UserModel</code>. That is
+what lets the same person have Google <strong>and</strong> GitHub linked, and it is where the
+<code>UNIQUE (provider, subject)</code> lives that makes the identity, not the email, the
+key of the login.</p>
+<div class="admonition info">
+<p class="admonition-title">The key is <code>(provider, subject)</code>, never the email</p>
+<p>Emails change hands; a <code>subject</code> does not. Someone who changes their email
+at Google still signs into the same local account, because the <code>subject</code>
+did not change. The model declares both <code>UNIQUE</code> constraints on the abstract
+base itself, so a hand-written mapping cannot ship without them either.</p>
+</div>
+<p>Generate the migration with Alembic as usual — both changes (the <code>name</code> column
+and the new table) come out of a single <code>alembic revision --autogenerate</code>.</p>
+<h2 id="3-wire-it-into-the-router">3. Wire it into the router<a class="headerlink" href="#3-wire-it-into-the-router" title="Permanent link">&para;</a></h2>
+<p>Three lines: the client, the <code>oauth_account_model</code> on the service and
+<code>oauth_clients</code> on the router.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># src/api/dependencies/resources.py</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">AsyncDatabaseManager</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">GoogleOAuthClient</span><span class="p">,</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">UserAuthService</span><span class="p">,</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">UserModel</span><span class="p">,</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">UserOAuthAccountModel</span><span class="p">,</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">UserRefreshTokenModel</span><span class="p">,</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">UserTokenModel</span><span class="p">,</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="p">)</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="n">db</span><span class="p">:</span> <span class="n">AsyncDatabaseManager</span> <span class="o">=</span> <span class="n">AsyncDatabaseManager</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">database_kwargs</span><span class="p">())</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="n">google</span><span class="p">:</span> <span class="n">GoogleOAuthClient</span> <span class="o">=</span> <span class="n">GoogleOAuthClient</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">google_kwargs</span><span class="p">())</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="n">auth_service</span><span class="p">:</span> <span class="n">UserAuthService</span> <span class="o">=</span> <span class="n">UserAuthService</span><span class="p">(</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>    <span class="n">user_model</span><span class="o">=</span><span class="n">UserModel</span><span class="p">,</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="n">token_model</span><span class="o">=</span><span class="n">UserTokenModel</span><span class="p">,</span>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    <span class="n">auth_settings</span><span class="o">=</span><span class="n">settings</span><span class="p">,</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    <span class="n">jwt_settings</span><span class="o">=</span><span class="n">settings</span><span class="p">,</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    <span class="n">db</span><span class="o">=</span><span class="n">db</span><span class="p">,</span>
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>    <span class="n">refresh_token_model</span><span class="o">=</span><span class="n">UserRefreshTokenModel</span><span class="p">,</span>
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>    <span class="n">oauth_account_model</span><span class="o">=</span><span class="n">UserOAuthAccountModel</span><span class="p">,</span>
+</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="p">)</span>
+</span></code></pre></div>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># src/api/app.py</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_auth_router</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">auth_service</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">google</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">create_app</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">FastAPI</span><span class="p">:</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="sd">"""Build the application with social login mounted."""</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="n">make_auth_router</span><span class="p">(</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>            <span class="n">auth_service</span><span class="p">,</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>            <span class="n">session_factory</span><span class="o">=</span><span class="n">db</span><span class="o">.</span><span class="n">session_dependency</span><span class="p">,</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>            <span class="n">oauth_clients</span><span class="o">=</span><span class="p">{</span><span class="s2">"google"</span><span class="p">:</span> <span class="n">google</span><span class="p">},</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>        <span class="p">)</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="p">)</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>    <span class="k">return</span> <span class="n">app</span>
+</span></code></pre></div>
+<p>Flip the switch in the environment:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">AUTH_OAUTH_ENABLED</span><span class="o">=</span><span class="nb">true</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nv">OAUTH_REDIRECT_BASE_URL</span><span class="o">=</span>https://api.example.com
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nv">OAUTH_GOOGLE_CLIENT_ID</span><span class="o">=</span><span class="m">1234567890</span>-abc123.apps.googleusercontent.com
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nv">OAUTH_GOOGLE_CLIENT_SECRET</span><span class="o">=</span>GOCSPX-...
+</span></code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">The dictionary key is the URL key</p>
+<p><code>{"google": google}</code> serves <code>/auth/oauth/google/login</code>. That same string
+goes into the <code>provider</code> column of every linked identity, so renaming it
+once accounts exist orphans the links. Pick one and keep it.</p>
+</div>
+<div class="admonition check">
+<p class="admonition-title">Three things that fail at boot, not at the first request</p>
+<p><code>AUTH_OAUTH_ENABLED=true</code> requires (1) at least one client, (2) an
+<code>oauth_account_model</code> on the service and (3) a <code>name</code> column on the user
+model. Each missing piece raises <code>RuntimeError</code> at router construction,
+naming which one — the same idiom as <code>AUTH_MFA_ENABLED</code> without a
+<code>recovery_code_model</code>.</p>
+</div>
+<h2 id="4-the-five-routes">4. The five routes<a class="headerlink" href="#4-the-five-routes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/auth/oauth/{provider}/login</code></td>
+<td>Mints the <code>state</code>, writes it to an <code>HttpOnly</code> cookie and redirects <strong>302</strong> to the provider</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/auth/oauth/{provider}/callback</code></td>
+<td>Checks the <code>state</code>, trades the <code>code</code>, resolves the identity and returns the JWT pair — or the MFA challenge, when the account has TOTP <em>(v0.314.0+)</em></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/auth/oauth/{provider}/token</code></td>
+<td><em>(v0.278.0+)</em> Takes an access token the app already holds, checks which application it was issued to, and returns the same session</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/auth/oauth/accounts</code></td>
+<td>Authenticated. Lists the providers linked to the account</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/auth/oauth/accounts/unlink</code></td>
+<td>Authenticated. Detaches one provider</td>
+</tr>
+</tbody>
+</table>
+<p>The start route is a <strong>navigation</strong>, not an XHR: point a link or a button
+straight at it. A <code>fetch</code> gets a redirect to another origin and will either
+follow it opaquely or fail CORS.</p>
+<p>An unregistered <code>{provider}</code> answers <strong>404</strong> — it is part of the path, so an
+unknown provider is an unknown route.</p>
+<div class="admonition danger">
+<p class="admonition-title">The <code>state</code> is what stops a forged callback</p>
+<p>Without the comparison, an attacker can make the victim's browser call your
+<code>/callback</code> with a <code>code</code> obtained on <strong>their</strong> account — and the victim
+ends up logged into the attacker's account, handing over whatever they type
+there. The router compares with <code>hmac.compare_digest</code>, and the cookie
+carries the provider key alongside the random value, so a <code>state</code> minted for
+Google is not valid at GitHub's callback.</p>
+<p>The cookie is always <code>SameSite=Lax</code>, <strong>regardless of
+<code>AUTH_COOKIE_SAMESITE</code></strong>: the provider returns the user with a cross-site
+top-level navigation, and <code>Strict</code> would withhold the cookie exactly there —
+every login would fail the very check the cookie exists to pass.</p>
+</div>
+<h2 id="41-clients-with-no-browser-the-token-in-hand-flow-v02780">4.1. Clients with no browser: the token-in-hand flow <em>(v0.278.0+)</em><a class="headerlink" href="#41-clients-with-no-browser-the-token-in-hand-flow-v02780" title="Permanent link">&para;</a></h2>
+<p>A native app has no browser to redirect. It runs the provider's own SDK on the
+device — <code>GoogleSignIn</code>, Credential Manager, whatever it is — and ends up
+<strong>holding an access token</strong>. There is nowhere for <code>/login</code> → consent →
+<code>/callback</code> to happen.</p>
+<p><code>POST /auth/oauth/{provider}/token</code> is that half:</p>
+<div class="language-console highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="gp">$ </span>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>localhost:8000/auth/oauth/google/token<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>-d<span class="w"> </span><span class="s1">'{"access_token":"ya29.a0AfH6SM…"}'</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="go">{"user_id":"0e5cf2fc-…","access_token":"eyJ…","refresh_token":"eyJ…","mfa_required":false,"mfa_token":null}</span>
+</span></code></pre></div>
+<p>The session is the <strong>same</strong> one the callback returns: same claims, same <code>typ</code>,
+same rotation family, same <code>POST /auth/logout</code>. A client written against the
+password login gets no second path to handle.</p>
+<p>The token travels in the <strong>body</strong>, never in the path or the query. A URL
+crosses the access log, the browser history and every <code>Referer</code> header on the
+way — and this value is live at the provider.</p>
+<div class="admonition danger">
+<p class="admonition-title">Without the audience check, this endpoint hands over the victim's account</p>
+<p>The provider's <code>userinfo</code> answers <strong>whose</strong> token this is. It does not
+answer <strong>which application</strong> the token was issued for — and that is the
+question that matters here, because whoever presents the token is whoever
+is calling.</p>
+<p>The attack is three steps and no password:</p>
+<ol>
+<li>the attacker publishes any app and asks for <code>email profile</code> consent —
+   the most ordinary Google screen there is, the one nobody reads;</li>
+<li>the victim accepts, and the attacker now holds an access token that
+   describes the victim;</li>
+<li>the attacker posts that token to this endpoint. <code>userinfo</code> loyally
+   confirms the token is the victim's, and the session comes back in their
+   name.</li>
+</ol>
+<p>The route therefore <strong>asks the provider which <code>client_id</code> the token was
+issued to</strong> before it reads a single row. A token from another app is
+refused with <strong>401</strong> <code>OAUTH_TOKEN_AUDIENCE_MISMATCH</code>, touching no account.</p>
+<p>The redirect flow needs none of this: there, the token was exchanged by this
+service, from a <code>code</code> this service asked for.</p>
+</div>
+<p>The registered client is what answers the question, through
+<code>verify_token_audience(tokens)</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Client</th>
+<th>How it checks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GoogleOAuthClient</code></td>
+<td><code>GET https://oauth2.googleapis.com/tokeninfo</code>, comparing <code>aud</code> and <code>azp</code></td>
+</tr>
+<tr>
+<td><code>GitHubOAuthClient</code></td>
+<td><code>POST /applications/{client_id}/token</code> with <code>client_id:client_secret</code> as Basic auth — 200 only for a token this app issued, 404 for anybody else's</td>
+</tr>
+<tr>
+<td><code>OIDCProvider</code></td>
+<td>Offline, through the <code>OIDCTokenVerifier</code> you pass as <code>token_verifier=</code> (<a href="#verifying-the-realm-token-offline-oidctokenverifier-v02970">below</a>); or the introspection endpoint (RFC 7662) you pass as <code>introspection_url=</code>; or a Google-shaped tokeninfo in <code>tokeninfo_url=</code>; with none, the route refuses</td>
+</tr>
+<tr>
+<td>Your own client</td>
+<td>Implement <code>verify_token_audience</code>; without the method the route refuses</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">A mobile app has one <code>client_id</code> per platform</p>
+<p>Google issues one client id for the backend (web), another for Android,
+another for iOS. The token the Android app sends carries the <strong>Android</strong>
+id in <code>aud</code> — comparing only against the backend's would refuse every
+legitimate login. List the platform ids in <code>extra_audiences=</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">google</span> <span class="o">=</span> <span class="n">GoogleOAuthClient</span><span class="p">(</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">client_id</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">GOOGLE_CLIENT_ID</span><span class="p">,</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">client_secret</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">GOOGLE_CLIENT_SECRET</span><span class="p">,</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">redirect_uri</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">oauth_redirect_uri</span><span class="p">(</span><span class="s2">"google"</span><span class="p">),</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">extra_audiences</span><span class="o">=</span><span class="p">[</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>        <span class="n">settings</span><span class="o">.</span><span class="n">GOOGLE_ANDROID_CLIENT_ID</span><span class="p">,</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>        <span class="n">settings</span><span class="o">.</span><span class="n">GOOGLE_IOS_CLIENT_ID</span><span class="p">,</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="p">],</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Every value in that list is an application allowed to log people into this
+service. Put <strong>your</strong> project's ids there, and only those.</p>
+<p>Through <code>OAuthSettings</code> that is <code>OAUTH_GOOGLE_EXTRA_AUDIENCES</code> in the
+environment — and <code>google_kwargs()</code> already forwards it, so building the
+client stays a splat:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">google</span> <span class="o">=</span> <span class="n">GoogleOAuthClient</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">google_kwargs</span><span class="p">())</span>
+</span></code></pre></div>
+<p>A client with no id configured at all — the <code>GoogleOAuthClient(client_id="")</code>
+that exists only for <code>fetch_user</code> — makes the route answer <strong>501</strong>: there is
+nothing to compare against, and comparing with the empty string would either
+refuse everything or match a provider that echoes an empty claim.</p>
+</div>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># src/api/dependencies/resources.py</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">OIDCProvider</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">keycloak</span> <span class="o">=</span> <span class="n">OIDCProvider</span><span class="p">(</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">client_id</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">OIDC_CLIENT_ID</span><span class="p">,</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">client_secret</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">OIDC_CLIENT_SECRET</span><span class="p">,</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="n">redirect_uri</span><span class="o">=</span><span class="s2">"https://api.example.com/auth/oauth/keycloak/callback"</span><span class="p">,</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">authorize_url</span><span class="o">=</span><span class="s2">"https://id.example.com/realms/app/protocol/openid-connect/auth"</span><span class="p">,</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">token_url</span><span class="o">=</span><span class="s2">"https://id.example.com/realms/app/protocol/openid-connect/token"</span><span class="p">,</span>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">userinfo_url</span><span class="o">=</span><span class="s2">"https://id.example.com/realms/app/protocol/openid-connect/userinfo"</span><span class="p">,</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    <span class="n">introspection_url</span><span class="o">=</span><span class="s2">"https://id.example.com/realms/app/protocol/openid-connect/token/introspect"</span><span class="p">,</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    <span class="n">provider_name</span><span class="o">=</span><span class="s2">"keycloak"</span><span class="p">,</span>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="p">)</span>
+</span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title"><code>introspection_url</code>, not <code>tokeninfo_url</code></p>
+<p>Both ask the same question in different shapes. <code>tokeninfo_url</code> calls
+<code>GET &lt;url&gt;?access_token=&lt;token&gt;</code>, Google's shape. <code>introspection_url</code>
+does what RFC 7662 asks: <code>POST token=&lt;token&gt;</code> authenticating the client
+with <code>client_id</code> and <code>client_secret</code> in the body, the same
+<code>client_secret_post</code> the code exchange uses.</p>
+<p>Measured on Keycloak 26.3: the <code>/token/introspect</code> endpoint answers
+<strong>405</strong> to the <code>GET</code> — with <code>tokeninfo_url</code> pointing at it, <strong>every</strong>
+token is refused with 401. Passing both at once raises <code>ValueError</code>.</p>
+<table>
+<thead>
+<tr>
+<th>The endpoint answers</th>
+<th>The route answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>active: true</code> with <code>azp</code> of one of your client ids</td>
+<td>goes on to the login</td>
+</tr>
+<tr>
+<td><code>active</code> other than <code>true</code></td>
+<td><strong>401</strong> <code>OAUTH_TOKEN_REJECTED</code></td>
+</tr>
+<tr>
+<td><code>active: true</code> with another client's <code>azp</code></td>
+<td><strong>401</strong> <code>OAUTH_TOKEN_AUDIENCE_MISMATCH</code></td>
+</tr>
+<tr>
+<td>4xx (Keycloak answers <strong>401</strong> to a wrong <code>client_secret</code>)</td>
+<td><strong>502</strong> <code>OAUTH_ERROR</code>: the wrong credential is the service's, not the caller's</td>
+</tr>
+<tr>
+<td>Down, 5xx or a body that is not JSON</td>
+<td><strong>502</strong> <code>OAUTH_PROVIDER_UNAVAILABLE</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Refusing is the correct behavior, not a limitation</p>
+<p>A provider that cannot report a token's audience makes the route answer
+<strong>501</strong> <code>OAUTH_AUDIENCE_UNVERIFIABLE</code> — and the profile is never fetched.
+The alternative would be to accept the token, which is exactly the hole
+above. The redirect flow for that same provider keeps working.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">There is no <code>state</code> here, and none is missing</p>
+<p><code>state</code> protects a <strong>navigation</strong>: the victim's browser being sent to a
+forged callback. There is no navigation here — the caller sends the
+credential in the body of a POST.</p>
+</div>
+<p><strong>Recap.</strong> One POST with the token in the body, the audience checked before any
+read, and the same session as the rest of the flow. Nothing a native app needs
+is left outside the SDK.</p>
+<h2 id="5-create-accounts-or-only-authenticate-existing-ones">5. Create accounts, or only authenticate existing ones<a class="headerlink" href="#5-create-accounts-or-only-authenticate-existing-ones" title="Permanent link">&para;</a></h2>
+<p>The callback is a registration door too. The first time an unknown identity
+arrives, it either creates the row in <code>users</code> — with the provider's email, the
+provider's name and a generated password — or refuses.</p>
+<p><code>AUTH_OAUTH_ALLOW_ACCOUNT_CREATION</code> decides, and the default <strong>inherits
+<code>AUTH_SIGNUP_ENABLED</code></strong>: closing the front door closes this one with it, rather
+than leaving a second, quieter way in.</p>
+<table>
+<thead>
+<tr>
+<th><code>AUTH_SIGNUP_ENABLED</code></th>
+<th><code>AUTH_OAUTH_ALLOW_ACCOUNT_CREATION</code></th>
+<th>New identity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>true</code></td>
+<td>unset</td>
+<td>Creates the account</td>
+</tr>
+<tr>
+<td><code>false</code></td>
+<td>unset</td>
+<td><strong>403</strong> — only authenticates an already-linked identity</td>
+</tr>
+<tr>
+<td><code>false</code></td>
+<td><code>true</code></td>
+<td>Creates the account (closed system, onboarding via the provider)</td>
+</tr>
+<tr>
+<td><code>true</code></td>
+<td><code>false</code></td>
+<td><strong>403</strong> — form signup yes, provider signup no</td>
+</tr>
+</tbody>
+</table>
+<p>The callback creates an account <strong>only when the provider states it verified
+the address</strong> (<code>email_verified is True</code>). A <code>False</code> or <code>None</code> answers <strong>409</strong>
+with <code>code</code> <code>OAUTH_EMAIL_UNVERIFIED</code>, and nothing is written: the row would own
+that address from the first second, so creating it from an unverified claim
+would let whoever controls the provider identity hold an account under somebody
+else's email — and keep signing into it after the real owner recovered it by
+password reset.</p>
+<p>A created account is born <strong>active</strong> and with <code>email_verified_at</code> set: the
+provider already did the verification, as its <code>email_verified</code> flag states, and
+re-verifying by email would ask the user to prove again what Google just
+proved. <code>AUTH_AUTO_ACTIVATE</code> is not
+consulted here — a service that wants human approval before the first login
+turns creation off and has an administrator create and link the row.</p>
+<div class="admonition info">
+<p class="admonition-title">The generated password, and why it is not <code>secrets.token_urlsafe</code></p>
+<p><code>hashed_password</code> is <code>NOT NULL</code> and stays that way: no migration, no
+"user without a password" branch scattered through login. The callback
+generates a random password and stores it — nobody ever sees it, and anyone
+who wants a password of their own uses <code>POST /auth/password-reset/request</code>,
+which already exists and already works because the email is already on the
+row.</p>
+<p>Generation goes through
+<a href="../../../reference/#tempest_fastapi_sdk.utils.password.generate_password"><code>generate_password</code></a>,
+which guarantees the character classes <strong>by construction</strong>. Drawing from a
+flat alphabet and hoping is the defect that function exists to avoid:
+measured against the real policy with complexity on, 200 000 samples each,
+<code>secrets.token_urlsafe(32)</code> is rejected 26.54% of the time and
+<code>secrets.token_hex(32)</code> 100% of the time. A quarter of logins would fail
+intermittently, with a 422 coming out of the callback about a password the
+user never typed.</p>
+</div>
+<h2 id="6-linking-by-email-the-button-you-probably-do-not-want">6. Linking by email: the button you probably do not want<a class="headerlink" href="#6-linking-by-email-the-button-you-probably-do-not-want" title="Permanent link">&para;</a></h2>
+<p>The scenario: the person already has a password account at <code>ana@example.com</code> and
+clicks "sign in with Google" for the first time. The email matches; the identity
+does not. The default is to refuse with <strong>409</strong>.</p>
+<p><code>AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true</code> links automatically — but <strong>only</strong> when
+the provider explicitly states it verified the address
+(<code>email_verified is True</code>).</p>
+<div class="admonition danger">
+<p class="admonition-title"><code>None</code> is not a yes</p>
+<p><code>email_verified</code> has three values, and the difference is the vulnerability:
+<code>True</code> = the provider verified it, <code>False</code> = the provider says it did not,
+<code>None</code> = <strong>the provider said nothing</strong>. Treating silence as verification
+hands over any account whose email an attacker can guess: they just register
+that address at an IdP that does not require confirmation.</p>
+<p>That is GitHub's possible case — the <code>email</code> from <code>GET /user</code> is the public
+profile address, which GitHub does not require verifying, which is why
+<code>GitHubOAuthClient</code> reads the <code>verified</code> flag from <code>GET /user/emails</code>
+instead of inventing a value. Turn this knob on only for providers whose
+verification you trust.</p>
+</div>
+<p>The provider's word covers only its side. Linking also needs the <strong>local</strong>
+account to have proven the address: the <code>email_verified_at</code> column of
+<code>BaseUserModel</code> must be set. Without it the link is refused (<strong>409</strong>,
+<code>OAUTH_EMAIL_TAKEN</code>). <code>is_active</code> is not enough, because an account becomes
+active through paths that never touched the mailbox.</p>
+<p>The SDK sets the column only where it saw the proof itself:</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th><code>email_verified_at</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Activation link (<code>/auth/activate/{token}</code>) mailed and confirmed</td>
+<td>set</td>
+</tr>
+<tr>
+<td>Verification link (<code>/auth/email-verify/confirm</code>) mailed and confirmed</td>
+<td>set</td>
+</tr>
+<tr>
+<td>Email change confirmed through the link mailed to the <strong>new</strong> address</td>
+<td>set for the new address</td>
+</tr>
+<tr>
+<td>Account created by social login with <code>email_verified is True</code></td>
+<td>set</td>
+</tr>
+<tr>
+<td>Activation from the admin site or <code>tempest user activate</code></td>
+<td><strong>unchanged</strong></td>
+</tr>
+<tr>
+<td><code>AUTH_AUTO_ACTIVATE=true</code> (the row is active at signup)</td>
+<td><strong>unchanged</strong></td>
+</tr>
+<tr>
+<td><code>AUTH_RETURN_TOKEN_IN_RESPONSE=true</code> or <code>UserAuthService(email=None)</code> (the link comes back in the response)</td>
+<td><strong>unchanged</strong>; an email change confirmed that way <strong>clears</strong> it</td>
+</tr>
+<tr>
+<td>Any ORM flush that changes <code>email</code> without writing the column (admin, script)</td>
+<td><strong>cleared</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The activation and verification links remember the address they were mailed
+to, and only stamp the column if it is still the account's <code>email</code> at click
+time: a link returned in the response, or mailed before someone edited the
+address, activates the account without stamping anything.</p>
+<p>Without that rule, a stranger who registered <code>ana@example.com</code> first, with a
+password of their own, and got the account active without reading the email,
+would inherit Ana's first Google login — and keep the password. With linking
+refused, Ana takes the address back through password reset, which needs the
+mailbox.</p>
+<div class="admonition warning">
+<p class="admonition-title">Existing accounts start at <code>NULL</code></p>
+<p>The column is new, so every account created before it has an empty
+<code>email_verified_at</code> and stops being linked by email until it verifies the
+address (<code>POST /auth/email-verify/request</code>). If you <strong>know</strong> the active
+accounts in your database were activated through the mailed link, the
+<a href="../../migration/">migration guide</a> shows how to fill the column — that is
+your decision, not the SDK's.</p>
+</div>
+<p>The safe path, with the knob off: the person signs in with their password and
+links the provider from inside their account.</p>
+<h2 id="7-how-the-jwt-pair-comes-back">7. How the JWT pair comes back<a class="headerlink" href="#7-how-the-jwt-pair-comes-back" title="Permanent link">&para;</a></h2>
+<p>The callback honours <code>AUTH_TOKEN_DELIVERY</code> like every other login-equivalent
+step — with one difference:</p>
+<table>
+<thead>
+<tr>
+<th><code>AUTH_TOKEN_DELIVERY</code></th>
+<th>What the callback returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bearer</code> (default)</td>
+<td><code>access_token</code> and <code>refresh_token</code> in the body</td>
+</tr>
+<tr>
+<td><code>cookie</code></td>
+<td>Both as <code>HttpOnly</code> cookies; the body keeps them <code>null</code></td>
+</tr>
+<tr>
+<td><code>both</code></td>
+<td>Cookies <strong>and</strong> body, in the same response</td>
+</tr>
+</tbody>
+</table>
+<p>Under <code>both</code>, the rest of the router mounts parallel routes at <code>/auth/cookie/*</code>.
+The callback does not: its URL is <strong>registered at the provider</strong>, so a second
+route would force a second redirect URI into every console for one flow.</p>
+<p>The practical effect of answering JSON is that the flow serves SPAs and mobile
+without a redirect: the client calls the callback, gets the pair and moves on.</p>
+<p>And the pair is the usual pair. It is worth seeing what that means:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">ACCESS_TOKEN_TYPE</span><span class="p">,</span> <span class="n">JWTUtils</span><span class="p">,</span> <span class="n">token_type_allowed</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">jwt</span><span class="p">:</span> <span class="n">JWTUtils</span> <span class="o">=</span> <span class="n">JWTUtils</span><span class="p">(</span><span class="n">secret</span><span class="o">=</span><span class="s2">"a-32-character-secret-for-tests!"</span><span class="p">)</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">access_token</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"&lt;the access_token the callback returned&gt;"</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]</span> <span class="o">=</span> <span class="n">jwt</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">access_token</span><span class="p">)</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># ['amr', 'email', 'exp', 'iat', 'sub', 'typ']</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"amr"</span><span class="p">])</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># ['ext']</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">token_type_allowed</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="p">[</span><span class="n">ACCESS_TOKEN_TYPE</span><span class="p">],</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="c1"># True</span>
+</span></code></pre></div>
+<p>With <code>refresh_token_model</code> wired, the social login's refresh token is opaque,
+persisted, single-use, joins the same rotation family, is covered by reuse
+detection and dies on <code>POST /auth/logout</code> — none of which exists in a
+hand-signed token.</p>
+<h3 id="account-with-totp-social-login-asks-for-the-code-too-v03140">Account with TOTP: social login asks for the code too <em>(v0.314.0+)</em><a class="headerlink" href="#account-with-totp-social-login-asks-for-the-code-too-v03140" title="Permanent link">&para;</a></h3>
+<p>The provider proves <strong>who</strong> the person is, not the code on their phone. When
+the resolved account has TOTP enrolled (and <code>AUTH_MFA_ENABLED=True</code>), the
+callback and <code>POST /auth/oauth/{provider}/token</code> answer like <code>/auth/login</code>:
+<strong>no pair and no session cookie</strong>, with the challenge in the body — under any
+<code>AUTH_TOKEN_DELIVERY</code>, the same as <code>/auth/cookie/login</code>:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span><span class="nt">"user_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0e5cf2fc-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"access_token"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">"refresh_token"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">"mfa_required"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"mfa_token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"eyJ…"</span><span class="p">}</span>
+</span></code></pre></div>
+<p>The client asks for the code and finishes at <code>/auth/mfa/verify</code>, which issues
+the pair with <code>amr == ["ext", "otp"]</code> — the two methods that actually ran
+(RFC 8176 asks the claim to list the methods used; <code>pwd</code> would be false,
+nobody typed a password). That pair passes <code>make_mfa_required_dependency</code>, and
+<code>refresh</code> repeats the <code>amr</code>. An account <strong>without</strong> MFA does not change: the
+pair comes in the same response, with <code>amr == ["ext"]</code>, which
+<code>make_mfa_required_dependency</code> refuses.</p>
+<div class="admonition warning">
+<p class="admonition-title">Overriding <code>login_with_oauth</code></p>
+<p>The routes call <code>UserAuthService.authenticate_oauth</code> (resolves the
+account, issues nothing) and decide on MFA before issuing. An override of
+<code>login_with_oauth</code> is no longer called by them — the router logs a
+warning when it is built. Move the logic to <code>authenticate_oauth</code>.</p>
+</div>
+<h2 id="8-linked-accounts-list-and-unlink">8. Linked accounts: list and unlink<a class="headerlink" href="#8-linked-accounts-list-and-unlink" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$ACCESS_TOKEN</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">     </span>https://api.example.com/auth/oauth/accounts
+</span></code></pre></div>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">[</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="p">{</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">"provider"</span><span class="p">:</span><span class="w"> </span><span class="s2">"google"</span><span class="p">,</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">"subject"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101234567890123456789"</span><span class="p">,</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="nt">"email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ana@example.com"</span><span class="p">,</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">    </span><span class="nt">"email_verified"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Ana Souza"</span><span class="p">,</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">    </span><span class="nt">"picture"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://lh3.googleusercontent.com/a/..."</span><span class="p">,</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-08-30T12:00:00Z"</span><span class="p">,</span>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">    </span><span class="nt">"last_login_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-08-30T18:41:03Z"</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="p">]</span>
+</span></code></pre></div>
+<p>An account that only ever used a password answers <strong>200</strong> with <code>[]</code> — an empty
+collection is success, not a 404.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$ACCESS_TOKEN</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">     </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">     </span>-d<span class="w"> </span><span class="s1">'{"provider": "google"}'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">     </span>https://api.example.com/auth/oauth/accounts/unlink
+</span></code></pre></div>
+<p><strong>204</strong> on unlink; <strong>404</strong> when that provider is not linked to this account. The
+lookup is scoped to the caller, so a provider linked by somebody else answers
+404 exactly like one that never existed.</p>
+<p>Unlinking the only provider on an account created by a callback leaves
+<code>POST /auth/password-reset/request</code> as the way back in — the same door that flow
+always offered, since the email is already on the row.</p>
+<h2 id="oauthuser-the-normalized-identity"><code>OAuthUser</code>, the normalized identity<a class="headerlink" href="#oauthuser-the-normalized-identity" title="Permanent link">&para;</a></h2>
+<p>It is the same shape for every provider, and it is what <code>login_with_oauth</code>
+receives:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provider</code></td>
+<td><code>str</code></td>
+<td><code>"google"</code>, <code>"github"</code>, <code>"oidc:auth0"</code> — the provider key</td>
+</tr>
+<tr>
+<td><code>subject</code></td>
+<td><code>str</code></td>
+<td>Stable id <strong>inside</strong> that provider</td>
+</tr>
+<tr>
+<td><code>email</code></td>
+<td><code>str</code> or <code>None</code></td>
+<td>Email, when the provider returns one. <strong>Not necessarily verified</strong></td>
+</tr>
+<tr>
+<td><code>email_verified</code></td>
+<td><code>bool</code> or <code>None</code></td>
+<td>Does the provider claim it verified it? <code>None</code> = it said nothing</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td><code>str</code> or <code>None</code></td>
+<td>Display name</td>
+</tr>
+<tr>
+<td><code>picture</code></td>
+<td><code>str</code> or <code>None</code></td>
+<td>Avatar URL</td>
+</tr>
+<tr>
+<td><code>raw</code></td>
+<td><code>dict[str, Any]</code></td>
+<td>Raw provider payload, for custom claims</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">A provider with no email does not complete the login</p>
+<p><code>OAuthUser.email</code> is <code>str | None</code> and the column is <code>NOT NULL UNIQUE</code>, so a
+provider that returns no address gets a <strong>422</strong> instead of an invented one —
+an account with a fake email is an account nobody can recover. An email
+scope on the client covers most cases; the rest is an explicit refusal, not
+a silent fallback.</p>
+</div>
+<p>When the provider returns no <code>name</code>, the SDK stores a localized placeholder:
+<code>"Você"</code> in pt-BR, <code>"You"</code> in en-US, picked by the same <code>resolve_locale</code> the
+rest of the auth flow uses (the link's <code>?lang=</code> → <code>Accept-Language</code> →
+<code>AUTH_DEFAULT_LOCALE</code>).</p>
+<h2 id="github">GitHub<a class="headerlink" href="#github" title="Permanent link">&para;</a></h2>
+<p>Same surface, two different details:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">GitHubOAuthClient</span><span class="p">,</span> <span class="n">OAuthSettings</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">settings</span><span class="p">:</span> <span class="n">OAuthSettings</span> <span class="o">=</span> <span class="n">OAuthSettings</span><span class="p">()</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">github</span><span class="p">:</span> <span class="n">GitHubOAuthClient</span> <span class="o">=</span> <span class="n">GitHubOAuthClient</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">github_kwargs</span><span class="p">())</span>
+</span></code></pre></div>
+<p>Register it next to Google and both sets of routes exist:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_auth_router</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">auth_service</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">github</span><span class="p">,</span> <span class="n">google</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="n">make_auth_router</span><span class="p">(</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>        <span class="n">auth_service</span><span class="p">,</span>
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>        <span class="n">session_factory</span><span class="o">=</span><span class="n">db</span><span class="o">.</span><span class="n">session_dependency</span><span class="p">,</span>
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        <span class="n">oauth_clients</span><span class="o">=</span><span class="p">{</span><span class="s2">"google"</span><span class="p">:</span> <span class="n">google</span><span class="p">,</span> <span class="s2">"github"</span><span class="p">:</span> <span class="n">github</span><span class="p">},</span>
+</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    <span class="p">)</span>
+</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="p">)</span>
+</span></code></pre></div>
+<ul>
+<li><strong>It is not OIDC.</strong> There is no <code>id_token</code>; the profile comes from
+  <code>GET /user</code>, which is what <code>fetch_user</code> does.</li>
+<li><strong><code>email</code> can be <code>None</code>.</strong> Default scopes are <code>read:user</code> and <code>user:email</code>,
+  but someone who marks their email private on GitHub does not expose it on
+  <code>/user</code> — and then the callback answers 422.</li>
+<li><strong>The address comes from <code>GET /user/emails</code>.</strong> <code>GET /user</code> carries no
+  verification field, so <code>fetch_user</code> also reads the list (scope <code>user:email</code>,
+  in the defaults) and uses the <strong>primary verified</strong> address, with
+  <code>email_verified=True</code>. Without one, it keeps the profile address with the
+  flag GitHub reports for it; if the list cannot be read (scope not granted),
+  <code>email_verified</code> stays <code>None</code> — and the callback then refuses to create an
+  account from it.</li>
+</ul>
+<h2 id="any-other-idp-oidcprovider">Any other IdP: <code>OIDCProvider</code><a class="headerlink" href="#any-other-idp-oidcprovider" title="Permanent link">&para;</a></h2>
+<p>Auth0, Keycloak, Okta, Microsoft Entra, Cognito — they all speak OIDC. Pass the
+three endpoints from the <em>discovery document</em>
+(<code>${issuer}/.well-known/openid-configuration</code>):</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">OAuthSettings</span><span class="p">,</span> <span class="n">OIDCProvider</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">settings</span><span class="p">:</span> <span class="n">OAuthSettings</span> <span class="o">=</span> <span class="n">OAuthSettings</span><span class="p">(</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="n">OAUTH_REDIRECT_BASE_URL</span><span class="o">=</span><span class="s2">"https://api.example.com"</span><span class="p">,</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="p">)</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="n">keycloak</span><span class="p">:</span> <span class="n">OIDCProvider</span> <span class="o">=</span> <span class="n">OIDCProvider</span><span class="p">(</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="n">client_id</span><span class="o">=</span><span class="s2">"the-client-id"</span><span class="p">,</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="n">client_secret</span><span class="o">=</span><span class="s2">"the-client-secret"</span><span class="p">,</span>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>    <span class="n">redirect_uri</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">oauth_redirect_uri</span><span class="p">(</span><span class="s2">"keycloak"</span><span class="p">),</span>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>    <span class="n">authorize_url</span><span class="o">=</span><span class="s2">"https://id.example.com/realms/app/protocol/openid-connect/auth"</span><span class="p">,</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>    <span class="n">token_url</span><span class="o">=</span><span class="s2">"https://id.example.com/realms/app/protocol/openid-connect/token"</span><span class="p">,</span>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>    <span class="n">userinfo_url</span><span class="o">=</span><span class="s2">"https://id.example.com/realms/app/protocol/openid-connect/userinfo"</span><span class="p">,</span>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="n">provider_name</span><span class="o">=</span><span class="s2">"keycloak"</span><span class="p">,</span>
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Register it as <code>{"keycloak": keycloak}</code> and the routes become
+<code>/auth/oauth/keycloak/login</code>. Use the <strong>same string</strong> for <code>provider_name</code> and
+for the dictionary key: <code>provider_name</code> is what goes into the <code>provider</code> column
+and the key is what appears in the URL — letting them diverge creates links that
+unlink cannot find.</p>
+<p>Without <code>userinfo_url</code>, <code>fetch_user</code> raises <code>NotImplementedError</code>: the profile
+then has to come from the <code>id_token</code>, and you override <code>_parse_user</code> in a
+subclass.</p>
+<h3 id="verifying-the-realm-token-offline-oidctokenverifier-v02970">Verifying the realm token offline: <code>OIDCTokenVerifier</code> <em>(v0.297.0+)</em><a class="headerlink" href="#verifying-the-realm-token-offline-oidctokenverifier-v02970" title="Permanent link">&para;</a></h3>
+<p>A Keycloak realm (and Auth0, Okta, Entra …) <strong>signs</strong> its access tokens with a
+private key and publishes the public half as a JWK Set. Checking the token
+against that set answers "this realm minted it, for us, and it is still valid"
+with no request per login — neither <code>tokeninfo_url</code> nor <code>userinfo_url</code>.</p>
+<p>The cryptography is the easy part. What every service got wrong writing it by
+hand was the <strong>taxonomy</strong>: which failure is a bad credential (401, retrying is
+pointless) and which is the realm being down (502, retrying later makes sense).
+<code>OIDCTokenVerifier</code> pins that mapping, and <code>OIDCProvider</code> uses it when you pass
+<code>token_verifier=</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># src/api/dependencies/resources.py</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">HTTPClient</span><span class="p">,</span> <span class="n">OIDCProvider</span><span class="p">,</span> <span class="n">OIDCTokenVerifier</span>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="n">ISSUER</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"https://id.example.com/realms/app"</span>
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="n">http</span><span class="p">:</span> <span class="n">HTTPClient</span> <span class="o">=</span> <span class="n">HTTPClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
+</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>
+</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="n">verifier</span><span class="p">:</span> <span class="n">OIDCTokenVerifier</span> <span class="o">=</span> <span class="n">OIDCTokenVerifier</span><span class="p">(</span>
+</span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>    <span class="n">ISSUER</span><span class="p">,</span>
+</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ISSUER</span><span class="si">}</span><span class="s2">/protocol/openid-connect/certs"</span><span class="p">,</span>
+</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>    <span class="n">algorithms</span><span class="o">=</span><span class="p">(</span><span class="s2">"RS256"</span><span class="p">,),</span>
+</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a>    <span class="n">http_client</span><span class="o">=</span><span class="n">http</span><span class="p">,</span>
+</span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="p">)</span>
+</span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>
+</span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="n">keycloak</span><span class="p">:</span> <span class="n">OIDCProvider</span> <span class="o">=</span> <span class="n">OIDCProvider</span><span class="p">(</span>
+</span><span id="__span-18-17"><a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a>    <span class="n">client_id</span><span class="o">=</span><span class="s2">"mobile-app"</span><span class="p">,</span>
+</span><span id="__span-18-18"><a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a>    <span class="n">client_secret</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+</span><span id="__span-18-19"><a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a>    <span class="n">redirect_uri</span><span class="o">=</span><span class="s2">"https://api.example.com/auth/oauth/keycloak/callback"</span><span class="p">,</span>
+</span><span id="__span-18-20"><a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a>    <span class="n">authorize_url</span><span class="o">=</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ISSUER</span><span class="si">}</span><span class="s2">/protocol/openid-connect/auth"</span><span class="p">,</span>
+</span><span id="__span-18-21"><a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a>    <span class="n">token_url</span><span class="o">=</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ISSUER</span><span class="si">}</span><span class="s2">/protocol/openid-connect/token"</span><span class="p">,</span>
+</span><span id="__span-18-22"><a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a>    <span class="n">provider_name</span><span class="o">=</span><span class="s2">"keycloak"</span><span class="p">,</span>
+</span><span id="__span-18-23"><a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a>    <span class="n">http_client</span><span class="o">=</span><span class="n">http</span><span class="p">,</span>
+</span><span id="__span-18-24"><a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a>    <span class="n">token_verifier</span><span class="o">=</span><span class="n">verifier</span><span class="p">,</span>
+</span><span id="__span-18-25"><a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Install the extra: <code>pip install "tempest-fastapi-sdk[oidc]"</code>. <code>[oidc]</code>
+brings PyJWT <strong>with</strong> <code>cryptography</code>, which PyJWT needs for RS256 and EC keys;
+with <code>[auth]</code> alone the constructor raises <code>ImportError</code> naming <code>[oidc]</code>.</p>
+<p>Piece by piece:</p>
+<ul>
+<li><strong><code>issuer</code></strong> is compared with the <code>iss</code> claim, exactly as it appears in the
+  token (for Keycloak, <code>https://&lt;host&gt;/realms/&lt;realm&gt;</code>).</li>
+<li><strong>The second argument</strong> is the <code>jwks_uri</code> from the <em>discovery document</em>.
+  Keys with <code>use: "enc"</code> are dropped — Keycloak 26.3.5 publishes an
+  encryption <code>RSA-OAEP</code> key next to the <code>RS256</code> signing one, and it must never
+  verify a signature.</li>
+<li><strong><code>algorithms</code></strong> is a <strong>closed</strong> list. The token header belongs to the
+  attacker, so <code>alg</code> is never read from it: <code>none</code> and <code>HS256</code> (using the RSA
+  public key as an HMAC secret) are refused <strong>before</strong> any key lookup, and
+  <code>none</code> is dropped even if you list it.</li>
+<li><strong><code>exp</code>, <code>iss</code> and <code>sub</code> are always required</strong>, even when
+  <code>required_claims=</code> leaves them out. PyJWT only checks <code>exp</code> <strong>when it is
+  present</strong> — a token without <code>exp</code> would be an eternal session.</li>
+<li><strong>With <code>token_verifier=</code></strong>, <code>verify_token_audience</code> and <code>fetch_user</code> read the
+  verified claims: no call to <code>tokeninfo_url</code> or <code>userinfo_url</code>. <code>fetch_user</code>
+  verifies again instead of trusting the earlier call; the key is cached, so
+  that costs no request.</li>
+</ul>
+<div class="admonition info">
+<p class="admonition-title">Why the audience is not PyJWT's <code>verify_aud</code></p>
+<p>Keycloak puts the resource the token addresses in <code>aud</code> and names the
+client in <code>azp</code>. On a freshly created Keycloak 26.3.5 realm, the access
+token of a <code>mobile-app</code> client came out with <code>"aud": "account"</code> and
+<code>"azp": "mobile-app"</code> — <code>verify_aud</code> would refuse every legitimate token.
+The verifier turns <code>verify_aud</code> off and checks <code>aud</code>, <code>azp</code> and
+<code>client_id</code> <strong>together</strong> against <code>client_id</code> + <code>extra_audiences</code>, the same
+rule as the <code>tokeninfo_url</code> path. A token whose <code>azp</code> is another client
+answers <strong>401</strong> <code>OAUTH_TOKEN_AUDIENCE_MISMATCH</code>.</p>
+</div>
+<p>The error contract, situation by situation:</p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Exception</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JWK Set unreachable, non-2xx, non-JSON or without a signing key</td>
+<td><code>OAuthProviderUnavailableException</code></td>
+<td><strong>502</strong> <code>OAUTH_PROVIDER_UNAVAILABLE</code></td>
+</tr>
+<tr>
+<td><code>kid</code> absent from the JWK Set that was read</td>
+<td><code>OAuthTokenRejectedException</code></td>
+<td><strong>401</strong> <code>OAUTH_TOKEN_REJECTED</code></td>
+</tr>
+<tr>
+<td>Malformed token / not a JWT (<code>"x"</code>)</td>
+<td><code>OAuthTokenRejectedException</code></td>
+<td><strong>401</strong> <code>OAUTH_TOKEN_REJECTED</code></td>
+</tr>
+<tr>
+<td><code>alg</code> outside the list, <code>none</code> included</td>
+<td><code>OAuthTokenRejectedException</code></td>
+<td><strong>401</strong> <code>OAUTH_TOKEN_REJECTED</code></td>
+</tr>
+<tr>
+<td>Bad signature, <code>iss</code> or <code>exp</code>; required claim missing</td>
+<td><code>OAuthTokenRejectedException</code></td>
+<td><strong>401</strong> <code>OAUTH_TOKEN_REJECTED</code></td>
+</tr>
+<tr>
+<td><code>aud</code>/<code>azp</code> of another application</td>
+<td><code>OAuthTokenAudienceMismatchException</code></td>
+<td><strong>401</strong> <code>OAUTH_TOKEN_AUDIENCE_MISMATCH</code></td>
+</tr>
+</tbody>
+</table>
+<p>The 502 is the <strong>only</strong> case where the client should retry. A <code>kid</code> the realm
+never published is not an outage — the realm answered, the token names a key
+nobody published — and answering 502 there tells the client to retry forever
+a token that will never verify.</p>
+<div class="admonition tip">
+<p class="admonition-title">Cache and cooldown: a forged <code>kid</code> does not become IdP traffic</p>
+<p>The JWK Set is fetched once and trusted for <code>lifespan</code> (default <strong>300s</strong>).
+An unknown <code>kid</code> triggers at most <strong>one</strong> refresh per
+<code>min_refresh_interval</code> (default <strong>60s</strong>); inside that window the refusal
+comes straight from the cache, and concurrent requests wait on the same
+fetch instead of each starting their own. That is why the SDK does not use
+<code>PyJWKClient</code>: measured on PyJWT 2.13.0, five forged <code>kid</code>s
+cost five JWK Set fetches, one per <code>kid</code>. It also fetches with blocking
+I/O; here the fetch goes through the async <code>HTTPClient</code> you injected.</p>
+<p>While the realm is down, the failure is remembered during the cooldown too:
+retrying does not hammer the IdP, and keeps answering 502.</p>
+</div>
+<h2 id="reusing-your-httpclient">Reusing your <code>HTTPClient</code><a class="headerlink" href="#reusing-your-httpclient" title="Permanent link">&para;</a></h2>
+<p>Without <code>http_client=</code>, each client builds a dedicated one (10s timeout, breaker
+off). If the service already has a tuned <code>HTTPClient</code>, inject it: one connection
+pool, and the retry/breaker/<code>X-Request-ID</code> you already calibrated apply to the
+provider too.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="n">GoogleOAuthClient</span><span class="p">,</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="n">HTTPClient</span><span class="p">,</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="n">OAuthSettings</span><span class="p">,</span>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="n">RetryPolicy</span><span class="p">,</span>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="p">)</span>
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="n">settings</span><span class="p">:</span> <span class="n">OAuthSettings</span> <span class="o">=</span> <span class="n">OAuthSettings</span><span class="p">()</span>
+</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="n">http</span><span class="p">:</span> <span class="n">HTTPClient</span> <span class="o">=</span> <span class="n">HTTPClient</span><span class="p">(</span>
+</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    <span class="n">timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span>
+</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>    <span class="n">retry_policy</span><span class="o">=</span><span class="n">RetryPolicy</span><span class="p">(</span><span class="n">max_attempts</span><span class="o">=</span><span class="mi">2</span><span class="p">),</span>
+</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="p">)</span>
+</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="n">google</span><span class="p">:</span> <span class="n">GoogleOAuthClient</span> <span class="o">=</span> <span class="n">GoogleOAuthClient</span><span class="p">(</span>
+</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">google_kwargs</span><span class="p">(),</span>
+</span><span id="__span-19-15"><a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>    <span class="n">http_client</span><span class="o">=</span><span class="n">http</span><span class="p">,</span>
+</span><span id="__span-19-16"><a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>When the client owns the <code>HTTPClient</code> (no <code>http_client=</code>), close it on shutdown
+with <code>await google.aclose()</code> — it is a no-op if the client was injected.</p>
+<h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
+<p>A failure in the <code>code</code> exchange or in userinfo raises <strong><code>OAuthError</code></strong> — an
+<code>AppException</code> with <code>code="OAUTH_ERROR"</code> and status <strong>502</strong> (the problem is at
+the provider, not the client), carrying the provider's response body in
+<code>details</code>. With <code>register_exception_handlers</code> mounted it already comes out in
+the canonical <code>{detail, code, details}</code> envelope.</p>
+<p>What the callback answers, by cause:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th><code>code</code></th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>401</strong></td>
+<td><code>OAUTH_STATE_MISMATCH</code></td>
+<td><code>state</code> missing or not matching the cookie</td>
+</tr>
+<tr>
+<td><strong>401</strong></td>
+<td><code>OAUTH_PROVIDER_DENIED</code></td>
+<td>The provider returned <code>error=</code> (almost always, the user declined consent)</td>
+</tr>
+<tr>
+<td><strong>401</strong></td>
+<td><code>OAUTH_ACCOUNT_INACTIVE</code></td>
+<td>The identity resolves to a deactivated account</td>
+</tr>
+<tr>
+<td><strong>401</strong></td>
+<td><code>OAUTH_TOKEN_AUDIENCE_MISMATCH</code></td>
+<td><em>(token-in-hand)</em> The presented token was issued to another application</td>
+</tr>
+<tr>
+<td><strong>401</strong></td>
+<td><code>OAUTH_TOKEN_REJECTED</code></td>
+<td><em>(token-in-hand)</em> The provider refused the presented token</td>
+</tr>
+<tr>
+<td><strong>403</strong></td>
+<td><code>OAUTH_REGISTRATION_DISABLED</code></td>
+<td>New identity and account creation is off</td>
+</tr>
+<tr>
+<td><strong>404</strong></td>
+<td><code>OAUTH_PROVIDER_NOT_CONFIGURED</code></td>
+<td><code>{provider}</code> is not registered</td>
+</tr>
+<tr>
+<td><strong>404</strong></td>
+<td><code>OAUTH_ACCOUNT_NOT_LINKED</code></td>
+<td>Unlinking a provider this account never linked</td>
+</tr>
+<tr>
+<td><strong>409</strong></td>
+<td><code>OAUTH_EMAIL_TAKEN</code></td>
+<td>The email belongs to another account and automatic linking is not allowed</td>
+</tr>
+<tr>
+<td><strong>409</strong></td>
+<td><code>OAUTH_EMAIL_UNVERIFIED</code></td>
+<td>Linking allowed, but the provider did not state it verified the email</td>
+</tr>
+<tr>
+<td><strong>422</strong></td>
+<td><code>OAUTH_EMAIL_MISSING</code></td>
+<td>The provider returned no email</td>
+</tr>
+<tr>
+<td><strong>422</strong></td>
+<td><code>OAUTH_CODE_MISSING</code></td>
+<td>The callback carried neither a <code>code</code> nor an <code>error</code></td>
+</tr>
+<tr>
+<td><strong>501</strong></td>
+<td><code>OAUTH_AUDIENCE_UNVERIFIABLE</code></td>
+<td><em>(token-in-hand)</em> The registered client cannot check the token's audience</td>
+</tr>
+<tr>
+<td><strong>502</strong></td>
+<td><code>OAUTH_ERROR</code></td>
+<td>The provider refused the exchange, the userinfo call, or the client credential on introspection</td>
+</tr>
+<tr>
+<td><strong>502</strong></td>
+<td><code>OAUTH_PROVIDER_UNAVAILABLE</code></td>
+<td><em>(<code>token_verifier=</code> / <code>introspection_url=</code>)</em> The realm's JWK Set or introspection endpoint could not be read — the one 502 where retrying makes sense</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Branch on <code>code</code>, never on the message <em>(v0.274.0+)</em></p>
+<p>The two <strong>409</strong>s are the pair that matters most, and they arrived
+identical before v0.274.0. <code>OAUTH_EMAIL_TAKEN</code> <strong>has</strong> a next step for the
+person: sign in with the password they already have and link the provider
+from their settings. <code>OAUTH_EMAIL_UNVERIFIED</code> <strong>has none</strong> — it is the
+barrier that stops someone who registered an identity carrying the
+victim's email from taking the account over, and no user action clears it.
+An app showing "sign in and link it" for both would be telling half of
+those people to do something that cannot work.</p>
+<p>Each class subclasses the exception that site already raised
+(<code>OAuthEmailTakenException(ConflictException)</code> and the other eleven), so
+<code>except ConflictException</code> keeps catching what it caught. The only one
+that subclasses <code>AppException</code> directly is
+<code>OAuthAudienceUnverifiableException</code> (501), which replaced no exception.</p>
+</div>
+<h2 id="doing-it-by-hand">Doing it by hand<a class="headerlink" href="#doing-it-by-hand" title="Permanent link">&para;</a></h2>
+<p>The bundled router is the recommended path, but the clients stay public and work
+on their own — a service that does not mount <code>make_auth_router</code>, or that needs a
+step of its own in the middle (approval, invite, tenant), calls the three
+methods directly:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>    <span class="n">GoogleOAuthClient</span><span class="p">,</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>    <span class="n">OAuthTokens</span><span class="p">,</span>
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>    <span class="n">OAuthUser</span><span class="p">,</span>
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>    <span class="n">generate_oauth_state</span><span class="p">,</span>
+</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="p">)</span>
+</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
+</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="n">google</span><span class="p">:</span> <span class="n">GoogleOAuthClient</span> <span class="o">=</span> <span class="n">GoogleOAuthClient</span><span class="p">(</span>
+</span><span id="__span-20-9"><a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>    <span class="n">client_id</span><span class="o">=</span><span class="s2">"the-client-id"</span><span class="p">,</span>
+</span><span id="__span-20-10"><a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>    <span class="n">client_secret</span><span class="o">=</span><span class="s2">"the-client-secret"</span><span class="p">,</span>
+</span><span id="__span-20-11"><a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>    <span class="n">redirect_uri</span><span class="o">=</span><span class="s2">"https://api.example.com/callback"</span><span class="p">,</span>
+</span><span id="__span-20-12"><a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="p">)</span>
+</span><span id="__span-20-13"><a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>
+</span><span id="__span-20-14"><a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>
+</span><span id="__span-20-15"><a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a><span class="k">def</span><span class="w"> </span><span class="nf">start_login</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-20-16"><a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a><span class="w">    </span><span class="sd">"""Mint the state you must store, and the URL to redirect to."""</span>
+</span><span id="__span-20-17"><a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a>    <span class="n">state</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">generate_oauth_state</span><span class="p">()</span>
+</span><span id="__span-20-18"><a id="__codelineno-20-18" name="__codelineno-20-18" href="#__codelineno-20-18"></a>    <span class="k">return</span> <span class="n">google</span><span class="o">.</span><span class="n">build_authorize_url</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="n">state</span><span class="p">)</span>
+</span><span id="__span-20-19"><a id="__codelineno-20-19" name="__codelineno-20-19" href="#__codelineno-20-19"></a>
+</span><span id="__span-20-20"><a id="__codelineno-20-20" name="__codelineno-20-20" href="#__codelineno-20-20"></a>
+</span><span id="__span-20-21"><a id="__codelineno-20-21" name="__codelineno-20-21" href="#__codelineno-20-21"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">finish_login</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">OAuthUser</span><span class="p">:</span>
+</span><span id="__span-20-22"><a id="__codelineno-20-22" name="__codelineno-20-22" href="#__codelineno-20-22"></a><span class="w">    </span><span class="sd">"""Trade the callback's code for a normalized identity."""</span>
+</span><span id="__span-20-23"><a id="__codelineno-20-23" name="__codelineno-20-23" href="#__codelineno-20-23"></a>    <span class="n">tokens</span><span class="p">:</span> <span class="n">OAuthTokens</span> <span class="o">=</span> <span class="k">await</span> <span class="n">google</span><span class="o">.</span><span class="n">exchange_code</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+</span><span id="__span-20-24"><a id="__codelineno-20-24" name="__codelineno-20-24" href="#__codelineno-20-24"></a>    <span class="k">return</span> <span class="k">await</span> <span class="n">google</span><span class="o">.</span><span class="n">fetch_user</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+</span></code></pre></div>
+<p><code>build_authorize_url</code> takes <code>**extra</code> for any provider parameter:
+<code>build_authorize_url(state=state, access_type="offline", prompt="consent")</code> asks
+Google for a <code>refresh_token</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Going this way, the three security rules are yours</p>
+<p>Storing and comparing the <code>state</code>; requiring <code>email_verified is True</code> before
+creating an account or linking one by email; and keying on <code>(provider, subject)</code> with a
+composite unique index. The bundled router does all three and has a test for
+each; by hand, they go back to living only in your attention.</p>
+<p>If you go this way and the service already mounts <code>make_auth_router</code>,
+<strong>reuse <code>auth_service.jwt</code></strong> instead of building another <code>JWTUtils</code>. Two
+<code>JWTUtils</code> with different secrets is the classic footgun: login works and
+every protected route answers 401.</p>
+</div>
+<h2 id="recap">Recap<a class="headerlink" href="#recap" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>AUTH_OAUTH_ENABLED=true</code> + <code>oauth_clients={"google": ...}</code> mounts five routes
+  under <code>/auth/oauth/*</code>; any of the three missing prerequisites fails at boot.</li>
+<li><code>OAuthSettings</code> holds the credentials and <strong>derives</strong> the redirect URI with
+  <code>oauth_redirect_uri(provider)</code> — paste what it prints into the console.</li>
+<li>The database gains <code>NameMixin</code> on the user model and an identity table
+  (<code>make_user_oauth_account_model</code>), with <code>UNIQUE (provider, subject)</code>.</li>
+<li>The callback returns the <strong>same JWT pair</strong> as <code>POST /auth/login</code>: <code>typ</code>,
+  opaque refresh, rotation, reuse detection and <code>/auth/logout</code>.</li>
+<li>Account creation inherits <code>AUTH_SIGNUP_ENABLED</code> and requires
+  <code>email_verified is True</code>; linking by email requires it too, is off by
+  default, and is refused when the local account has no <code>email_verified_at</code>.</li>
+<li>A native client uses <code>POST /auth/oauth/{provider}/token</code> with the token in
+  the body — and the token's audience is checked <strong>before</strong> any read,
+  because <code>userinfo</code> says whose token it is, never who it was issued for.</li>
+<li>An OIDC realm that signs its tokens (Keycloak) verifies <strong>offline</strong> with
+  <code>OIDCProvider(token_verifier=OIDCTokenVerifier(...))</code>: closed <code>alg</code> list,
+  <code>exp</code> required, <code>aud</code>+<code>azp</code> read together, JWK Set cached with a cooldown —
+  and each failure with the right status (401 bad credential, 502 only when
+  the realm is down).</li>
+<li>A provider with no email gets a 422, not an invented address; a provider with
+  no name gets <code>"Você"</code> / <code>"You"</code> depending on the locale.</li>
+<li>The full local flow (signup, activation, reset) is in the
+  <a href="../auth-flow/">auth recipe</a>; cookie delivery and CSRF are in the
+  <a href="../http/">HTTP recipe</a>.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../slides/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Slides, answer keys and Markdown to PDF">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Slides, answer keys and Markdown to PDF
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../spreadsheets/" class="md-footer__link md-footer__link--next" aria-label="Next: Spreadsheets (.xlsx)">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Spreadsheets (.xlsx)
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Mauricio Benjamin — MIT License
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/tempest-fastapi-sdk/" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["announce.dismiss", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.path", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.share", "search.suggest", "toc.follow", "toc.integrate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

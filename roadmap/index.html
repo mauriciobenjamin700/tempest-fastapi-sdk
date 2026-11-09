@@ -1,0 +1,6586 @@
+
+<!doctype html>
+<html lang="pt" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Shared FastAPI/SQLAlchemy/Pydantic building blocks for Tempest projects — base schemas, async repository, exceptions, pagination, settings, admin, Web Push, Server-Sent Events, FastStream/TaskIQ brokers and Brazilian document/phone validation.">
+      
+      
+      
+        <link rel="canonical" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/roadmap/">
+      
+      
+        <link rel="prev" href="../learning/marketplace/api/">
+      
+      
+        <link rel="next" href="../migration/">
+      
+      
+        
+          <link rel="alternate" href="./" hreflang="pt">
+        
+          <link rel="alternate" href="../en/roadmap/" hreflang="en">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Roadmap - tempest-fastapi-sdk</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#roadmap" class="md-skip">
+          Ir para o conteúdo
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Cabeçalho">
+    <a href=".." title="tempest-fastapi-sdk" class="md-header__button md-logo" aria-label="tempest-fastapi-sdk" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tempest-fastapi-sdk
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Roadmap
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Selecione o idioma">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="pt" class="md-select__link">
+              Português (BR)
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../en/roadmap/" hreflang="en" class="md-select__link">
+              English (US)
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Buscar" placeholder="Buscar" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Pesquisar">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Compartilhar" aria-label="Compartilhar" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Limpar" aria-label="Limpar" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Inicializando a pesquisa
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk" title="Ir ao repositório" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mauriciobenjamin700/tempest-fastapi-sdk
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Abas" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Início
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Instalação
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Arquitetura
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../recipes/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Receitas
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../reference/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Referência
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../learning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Projetos de aprendizado
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../migration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Guia de migração
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contribuindo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navegação" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="tempest-fastapi-sdk" class="md-nav__button md-logo" aria-label="tempest-fastapi-sdk" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tempest-fastapi-sdk
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk" title="Ir ao repositório" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mauriciobenjamin700/tempest-fastapi-sdk
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Início
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instalação
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Instalação
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instalação
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/uv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instalar o uv
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/python-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Escolher a versão do Python
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/first-project/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Seu primeiro projeto
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentação oficial de referência
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitetura
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Arquitetura
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitetura
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recommended-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitetura recomendada
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../recipes/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Receitas
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Receitas
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/ssr-actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ações SSR (confirmação, flash, redirect-back)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA (arquitetura)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents-advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA (avançado)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents-db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA (banco de dados)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA (conceitos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA (ferramentas)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents-prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA (prompts)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/agents-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentes de IA (testes)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/stored-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquivo no serviço (mixin)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/artifact-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Artefatos versionados (modelos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/audit-trail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit trail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/firebase-auth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auth Firebase (ID token)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/auth-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auth flow (signup/reset)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/introspection-auth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auth por introspecção (resource server)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Banco de dados
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/text-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Busca textual (LIKE + full-text)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/http/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Camada HTTP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Camada UI (páginas e componentes)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Campos validados (tipos prontos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/wallet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Carteira e saque Pix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat (conversas + mensagens)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/openapi-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cliente de integração (OpenAPI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/asyncapi-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cliente de WebSocket (AsyncAPI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/enum-columns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Colunas de enum (seguras nos dois bancos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comentários + avaliações
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/admin-sql-console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Console SQL no admin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/hostbridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Controle do host (arquivos, comandos, energia)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/ui-css/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSS tipado (StyleSheet e tokens)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/deploy-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy seguro (migrations + shutdown)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Downloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/email/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Email transacional
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/app-errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Erros do app (relatados pelo cliente)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/openapi-errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Erros no OpenAPI (Swagger)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Escolhendo o modelo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_39" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_39" id="__nav_5_39_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Exemplos completos
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_39_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_39">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Exemplos completos
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin-showcase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Exemplo integrado (admin completo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrated/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Exemplo integrado (checkout Pix)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../marketplace-local/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Exemplo integrado (marketplace local)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../genai-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Exemplos de GenAI (fluxos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fullstack-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fullstack web (SSR, WASM, server)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/subject-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Exportação e exclusão de titular (LGPD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/fakes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fakes (sem provedor real)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/feature-flags/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/queue-tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fila e Tarefas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/file-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File store (unificado)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/ui-forms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formulários a partir de schemas Pydantic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/tempestweb-frontend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend tempestweb + SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/geo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Geolocalização (distância + tempo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/image-generation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Geração de imagem (local)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/permission-guards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guards de permissão (@requires)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/br-helpers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helpers brasileiros
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/http-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP client (saída)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/genai-hosted/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/genai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IA generativa self-hosted
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/idempotency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Idempotência
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/jobs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jobs (trabalho longo com status)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/kestra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kestra (orquestrador de workflows)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/auth-pages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Login e cadastro server-side
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/oauth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Login social (OAuth2/OIDC)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/management-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management commands (tempest <cmd>)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mercado-pago-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mercado Pago (contas e credenciais de teste)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mercado-pago/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mercado Pago (Pix, cartão, boleto)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mercado-pago-webhooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mercado Pago (testando webhooks)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/image-metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadados de imagem
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Métricas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mfa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MFA (TOTP / 2FA)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/modelops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modelops (export, bench, quantização)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/multi-tenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-tenant
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/n8n/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    n8n (automação de workflows)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observabilidade (tracing)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/openpix-subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenPix (assinaturas e planos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/openpix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenPix (Pix via Woovi)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/outbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Outbox transacional
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Painel admin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDFs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/authz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Permissões object-level
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/model-weights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pesos de modelos (ciclo no Hub)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/transcription-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline de transcrição (áudio → resumo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/spreadsheets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Planilhas (.xlsx)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/query-plans/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Planos de query (EXPLAIN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/pix-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocolo de Pix (um contrato, vários provedores)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/push/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Push (web + mobile)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/zap-inbound/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Receber mensagens do WhatsApp (zap-api)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/faces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconhecimento facial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/refresh-tokens/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Refresh tokens (rotação/revogação)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/revenuecat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RevenueCat (assinatura in-app)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Segurança
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/sse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server-Sent Events (SSE)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/sessions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sessões server-side
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/slides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slides, gabaritos e Markdown em PDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/react-spa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPA React no FastAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ssr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SSR (páginas tipadas)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage (MinIO/S3)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/local-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage em disco local
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/stripe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stripe (cartão + assinatura)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/offline-sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sync offline-first (delta)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/system-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System checks (check-config)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/realtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tempo real
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/typing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tipagem (estático + runtime)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/transactions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transações (commit e savepoint)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/uploads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uploads (backends)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilitários
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/vision/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visão computacional (ONNX)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/webpush/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Push
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/webauthn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAuthn / passkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket router
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp (zap-api)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referência
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../learning/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projetos de aprendizado
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Projetos de aprendizado
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../learning/marketplace/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Marketplace
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7_2" id="__nav_7_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Marketplace
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../learning/marketplace/business-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Regras de negócio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../learning/marketplace/domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modelo de domínio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../learning/marketplace/flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fluxos críticos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../learning/marketplace/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mapa de endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Índice">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Índice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tier-s-toda-api-seria-precisa" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier S — toda API séria precisa
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tier-a-comuns-em-backend-saas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier A — comuns em backend SaaS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tier-b-quando-o-servico-crescer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier B — quando o serviço crescer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#painel-admin-evolucao" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Painel admin — evolução
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tudo-que-ja-entregamos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tudo que já entregamos
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proximos-passos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Próximos passos
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Próximos passos">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hardening-genai-divida-transformers-5x-entregue-v01550" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✅ Hardening GenAI — dívida transformers 5.x (entregue v0.155.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observabilidade-de-filas-tracing-genai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observabilidade de filas + tracing genai
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#camada-de-performance-http" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camada de performance HTTP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auth-moderno-webauthn-passkeys-entregue-v02170" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✅ Auth moderno — WebAuthn / passkeys (entregue v0.217.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01730" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.173.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01680" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.168.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01670" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.167.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01660" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.166.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01630" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.163.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01610" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.161.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01600" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.160.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01290" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.129.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01280" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.128.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01270" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.127.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01260" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.126.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01250" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.125.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01240" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.124.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01230" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.123.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01220" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.122.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01210" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.121.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01200" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.120.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01190" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.119.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01180" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.118.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01170" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.117.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01160" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.116.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01150" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.115.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01140" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.114.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01130" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.113.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01120" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.112.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01110" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.111.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01100" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.110.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01090" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.109.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01070-v01080" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.107.0 / v0.108.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entregue-na-v01050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entregue na v0.105.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#como-pedir-uma-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Como pedir uma feature
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guia de migração
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contribuindo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/edit/main/docs/roadmap.md" title="Editar esta página" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75z"/></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/raw/main/docs/roadmap.md" title="Ver fonte desta página" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0 8a5 5 0 0 1-5-5 5 5 0 0 1 5-5 5 5 0 0 1 5 5 5 5 0 0 1-5 5m0-12.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5"/></svg>
+    </a>
+  
+
+
+<h1 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h1>
+<p>Esta página registra o backlog que guiou o SDK e o que dele já foi entregue — hoje, todo o Tier S abaixo está marcado ✅ com a versão que o trouxe. Ordenado por impacto, não por ordem de implementação — a release é puxada pela pressão de negócio, não pela posição na lista.</p>
+<div class="admonition tip">
+<p class="admonition-title">O que o SDK já cobre</p>
+<p>Auth completa (JWT/bearer/role/permission/X-Token + bundled signup/activate/login/reset via <code>UserAuthService</code> + <code>make_auth_router</code>), OAuth2/OIDC (Google/GitHub + genérico), verificação de ID token do Firebase (<code>FirebaseAuth</code> + <code>FirebaseIdentity</code> + <code>FirebaseUserResolver</code>, extra <code>[firebase]</code>), CSRF middleware, DB (<code>AsyncDatabaseManager</code> + <code>BaseRepository</code> + bulk ops + <code>AlembicHelper</code> + <code>BaseModel</code> + <code>BaseUserModel</code> + <code>BaseUserTokenModel</code> + mixins de auditoria/soft-delete + Alembic hook que reordena colunas base), exceções padronizadas, logging estruturado + arquivos por nível + endpoint <code>/logs</code>, métricas (CPU/RAM/GPU/Disco + Prometheus <code>/metrics</code> + <code>PrometheusMiddleware</code>), rate limiting, idempotência (<code>IdempotencyMiddleware</code> + memory/Redis stores), body-size limit, paginação (offset + cursor), settings por mixin com <code>title</code>/<code>description</code>/<code>examples</code>, SSE, throttle, upload/download local + storage pluggável (<code>LocalUploadStorage</code> + <code>MinIOUploadStorage</code>), MinIO/S3 (<code>AsyncMinIOClient</code>), WebPush + push unificado web/mobile (<code>DeviceService</code> + <code>WebPushTransport</code> + <code>FCMTransport</code>), assinatura de webhook, integrações de pagamento (OpenPix gerada da spec + Stripe com escrita form-encoded, idempotência e webhook verificado), validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX, paridade com Django admin — list view com busca/filtros/colunas ordenáveis, CRUD completo, ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens + métricas, MFA TOTP no login, trilha de auditoria <code>created_by</code>/<code>updated_by</code>), email (SMTP + Jinja2 templates), cache Redis, fila FastStream, tarefas TaskIQ, hardened static files, runner de servidor, health, tool-spec router, request-id middleware, CORS, HTTP client typed (<code>HTTPClient</code> httpx wrapper com retry/backoff/circuit-breaker), IA generativa self-hosted (<code>tempest_fastapi_sdk.genai</code> — hardware-check, LLM local <code>TextGenerator</code> + quantização, <code>Embedder</code>, RAG web+PDF+vector store, áudio STT/TTS PT-BR/EN-US), CLI completo (<code>tempest new</code>, <code>tempest generate --docker</code> — credenciais do compose resolvidas do <code>.env</code> via <code>${VAR:-default}</code>, não hardcoded —, <code>tempest db &lt;subcommand&gt;</code>, <code>tempest user &lt;subcommand&gt;</code>, quality gates).</p>
+</div>
+<h2 id="tier-s-toda-api-seria-precisa">Tier S — toda API séria precisa<a class="headerlink" href="#tier-s-toda-api-seria-precisa" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IdempotencyMiddleware</code> + tabela <code>idempotency_keys</code></td>
+<td>✅ v0.24.0</td>
+<td><code>tempest_fastapi_sdk.api.middlewares.idempotency</code></td>
+</tr>
+<tr>
+<td><code>UploadUtils</code> com backends pluggáveis (<code>LocalUploadStorage</code>, <code>MinIOUploadStorage</code>)</td>
+<td>✅ v0.24.0</td>
+<td><code>tempest_fastapi_sdk.utils.storage_backends</code></td>
+</tr>
+<tr>
+<td><code>HTTPClient</code> (wrapper typed do httpx) com retry/backoff/circuit-breaker</td>
+<td>✅ v0.28.0</td>
+<td><code>tempest_fastapi_sdk.utils.http_client</code></td>
+</tr>
+<tr>
+<td><strong>OpenTelemetry tracing</strong> — <code>setup_tracing(app, otlp_endpoint=…)</code></td>
+<td>✅ v0.43.0</td>
+<td><code>tempest_fastapi_sdk.api.tracing</code></td>
+</tr>
+<tr>
+<td><strong>Outbox pattern</strong> — <code>BaseRepository.save_with_outbox(model, event)</code></td>
+<td>✅ v0.44.0</td>
+<td><code>BaseRepository.save_with_outbox</code> + <code>tempest_fastapi_sdk.db.outbox</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="tier-a-comuns-em-backend-saas">Tier A — comuns em backend SaaS<a class="headerlink" href="#tier-a-comuns-em-backend-saas" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EmailUtils.render_template(path, ctx)</code> com Jinja2</td>
+<td>✅ v0.24.0</td>
+<td><code>EmailUtils.render_template</code> + templates bundled</td>
+</tr>
+<tr>
+<td>OAuth2 / OIDC providers (<code>GoogleOAuthClient</code>, <code>GitHubOAuthClient</code>, <code>OIDCProvider</code>)</td>
+<td>✅ v0.29.0</td>
+<td><code>tempest_fastapi_sdk.api.oauth</code></td>
+</tr>
+<tr>
+<td>Login social dentro do <code>make_auth_router</code> (<code>AUTH_OAUTH_ENABLED</code> + <code>oauth_clients=</code>, quatro rotas <code>/auth/oauth/*</code>, <code>OAuthSettings</code>, <code>make_user_oauth_account_model</code>, <code>NameMixin</code>)</td>
+<td>✅ v0.273.0</td>
+<td><code>tempest_fastapi_sdk.auth</code></td>
+</tr>
+<tr>
+<td><code>CSRFMiddleware</code> + <code>make_csrf_token_dependency</code></td>
+<td>✅ v0.29.0</td>
+<td><code>tempest_fastapi_sdk.api.middlewares.csrf</code></td>
+</tr>
+<tr>
+<td><code>BodySizeLimitMiddleware</code></td>
+<td>✅ v0.28.0</td>
+<td><code>tempest_fastapi_sdk.api.middlewares.body_size</code></td>
+</tr>
+<tr>
+<td><code>AccessLogMiddleware</code> — uma linha estruturada por request, com <code>redact</code> e <code>exempt_paths</code></td>
+<td>✅ v0.275.0</td>
+<td><code>tempest_fastapi_sdk.api.middlewares.access_log</code></td>
+</tr>
+<tr>
+<td><code>HoneypotBanMiddleware</code> + <code>DEFAULT_HONEYPOT_PATTERNS</code> — ban de scanner, fail-open, IP por header confiável</td>
+<td>✅ v0.275.0</td>
+<td><code>tempest_fastapi_sdk.api.middlewares.honeypot</code></td>
+</tr>
+<tr>
+<td><code>AlembicHelper.sync_schema</code> / <code>adopt</code> / <code>base_revision</code> — bootstrap de schema no primeiro boot</td>
+<td>✅ v0.275.0</td>
+<td><code>tempest_fastapi_sdk.db.migrations</code></td>
+</tr>
+<tr>
+<td><code>BaseRepository.bulk_create_values / bulk_upsert</code></td>
+<td>✅ v0.28.0</td>
+<td><code>BaseRepository</code></td>
+</tr>
+<tr>
+<td>Endpoint Prometheus <code>/metrics</code></td>
+<td>✅ v0.28.0</td>
+<td><code>tempest_fastapi_sdk.api.routers.metrics</code></td>
+</tr>
+<tr>
+<td>Bundled signup / activate / login / password-reset</td>
+<td>✅ v0.31.0</td>
+<td><code>tempest_fastapi_sdk.auth</code></td>
+</tr>
+<tr>
+<td>Modo backend-only (signup / activate / reset renderizado pelo backend)</td>
+<td>✅ v0.32.0</td>
+<td><code>tempest_fastapi_sdk.auth</code> + HTML templates</td>
+</tr>
+<tr>
+<td><code>make_websocket_router</code> — bearer auth, heartbeat, broadcast</td>
+<td>✅ v0.33.0</td>
+<td><code>tempest_fastapi_sdk.websockets</code></td>
+</tr>
+<tr>
+<td>Sessões server-side (alternativa ao JWT)</td>
+<td>✅ v0.34.0</td>
+<td><code>tempest_fastapi_sdk.sessions</code></td>
+</tr>
+<tr>
+<td>2FA / TOTP (<code>pyotp</code> wrapper + recovery codes)</td>
+<td>✅ v0.35.0</td>
+<td><code>TOTPHelper</code> + <code>UserAuthService.mfa_*</code> + <code>BaseUserRecoveryCodeModel</code></td>
+</tr>
+<tr>
+<td><code>tempest db</code> + <code>tempest user</code> CLI</td>
+<td>✅ v0.30.0</td>
+<td><code>tempest_fastapi_sdk.cli.db</code> / <code>cli.user</code></td>
+</tr>
+<tr>
+<td><code>BaseRepository.bulk_update</code> (filters + values)</td>
+<td>✅ pré-existente</td>
+<td><code>BaseRepository.bulk_update</code></td>
+</tr>
+<tr>
+<td><strong>Escopo multi-tenant</strong> — <code>TenantScopedRepository(tenant_id)</code> auto-injetando <code>WHERE tenant_id = …</code> em toda query do repository</td>
+<td>✅ v0.45.0</td>
+<td><code>tempest_fastapi_sdk.db.tenant</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="tier-b-quando-o-servico-crescer">Tier B — quando o serviço crescer<a class="headerlink" href="#tier-b-quando-o-servico-crescer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SlowQueryLogger</code> — evento SQLAlchemy logando query &gt; N ms com <code>EXPLAIN</code></td>
+<td>✅ v0.59.1</td>
+<td><code>tempest_fastapi_sdk.db.slow_query</code></td>
+</tr>
+<tr>
+<td><code>AlembicHelper.safe_upgrade()</code> — bloqueia migrations destrutivas sem <code>--force</code></td>
+<td>✅ v0.46.0</td>
+<td><code>AlembicHelper.safe_upgrade</code> (<code>tempest_fastapi_sdk.db.migrations</code>)</td>
+</tr>
+<tr>
+<td>Graceful shutdown — drenar requisições in-flight no <code>SIGTERM</code></td>
+<td>✅ v0.46.0</td>
+<td><code>GracefulShutdownMiddleware</code> (<code>tempest_fastapi_sdk.api.middlewares.graceful</code>)</td>
+</tr>
+<tr>
+<td><code>tempest db seed</code> — carregar fixtures JSON/Python</td>
+<td>✅ v0.47.0</td>
+<td><code>tempest_fastapi_sdk.cli.db</code></td>
+</tr>
+<tr>
+<td>CLI: <code>tempest secrets rotate</code></td>
+<td>✅ v0.47.0</td>
+<td><code>tempest_fastapi_sdk.cli.secrets</code></td>
+</tr>
+<tr>
+<td>F() / Q() expressions wrappers para SQLAlchemy</td>
+<td>✅ v0.111.0</td>
+<td><code>tempest_fastapi_sdk.db</code> (<code>F</code> / <code>Q</code>)</td>
+</tr>
+<tr>
+<td>eager-load helper (<code>BaseRepository.get_by_id(id, with_=...)</code>)</td>
+<td>✅ v0.109.0</td>
+<td><code>with_=</code> em <code>get</code>/<code>get_or_none</code>/<code>get_by_id</code>/<code>first</code>/<code>list</code></td>
+</tr>
+<tr>
+<td>Signals (<code>pre_save</code>/<code>post_save</code>/<code>pre_delete</code>/<code>post_delete</code>) no <code>BaseRepository</code></td>
+<td>✅ v0.109.0</td>
+<td><code>tempest_fastapi_sdk.db.signals</code> (<code>connect</code>/<code>on_signal</code>)</td>
+</tr>
+<tr>
+<td>Permissions framework granular com object-level (<code>user.has_perm("order.delete", obj=order)</code>)</td>
+<td>✅ v0.110.0</td>
+<td><code>tempest_fastapi_sdk.authz</code></td>
+</tr>
+<tr>
+<td>System checks no startup (<code>tempest check-config</code>)</td>
+<td>✅ v0.112.0</td>
+<td><code>tempest_fastapi_sdk.checks</code></td>
+</tr>
+<tr>
+<td>Management commands framework — projeto registra <code>tempest &lt;cmd&gt;</code> próprio</td>
+<td>✅ v0.113.0</td>
+<td><code>[tool.tempest] commands</code> + <code>src/commands.py</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="painel-admin-evolucao">Painel admin — evolução<a class="headerlink" href="#painel-admin-evolucao" title="Permanent link">&para;</a></h2>
+<p>O painel admin já existe (<code>AdminSite</code> / <code>AdminModel</code> / <code>make_admin_router</code>, Jinja + HTMX, CSRF token). Os itens abaixo elevam ele de "CRUD funcional" para "admin de produção", reaproveitando primitivos que o SDK já tem (<code>AuditMixin</code>, <code>MetricsUtils</code>, <code>TOTPHelper</code>, <code>UploadUtils</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Por que importa</th>
+<th>Reaproveita</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Filtros / busca / ordenação por coluna</strong> na listagem ✅ v0.36.0</td>
+<td><code>AdminModel(list_filter=…, search_fields=…, ordering=…)</code> mais ordenação clicável por <code>?sort=&lt;coluna&gt;&amp;dir=asc|desc</code>, validada contra as colunas exibidas.</td>
+<td><code>BaseRepository.list</code> + paginação</td>
+</tr>
+<tr>
+<td><strong>Bulk actions</strong> (deletar / ativar em massa) ✅ v0.36.0</td>
+<td><code>POST {prefix}/m/{slug}/bulk</code> aplica delete / activate / deactivate na seleção; <code>AdminModel(actions=[…])</code> acrescenta ação própria ao mesmo dropdown.</td>
+<td><code>@admin_action</code> + CSRF</td>
+</tr>
+<tr>
+<td><strong>Widgets de campo</strong> (FK select ✅, date picker, file upload) + <strong>FK autocomplete</strong> ✅ v0.115.0</td>
+<td>FK como <code>&lt;select&gt;</code>, data com picker, upload via <code>UploadUtils</code>; FKs grandes viram caixa de busca HTMX (<code>autocomplete_fields</code>).</td>
+<td><code>UploadUtils</code> + storage backends</td>
+</tr>
+<tr>
+<td><strong>Inline / related editing</strong> ✅ v0.116.0 (leitura + navegar) + edição in-place ✅ v0.127.0</td>
+<td>Filhos (1-N) listados no detail do pai, com link pro admin do filho e "Add" pré-preenchendo o FK (<code>inlines=[Inline(...)]</code>); <code>Inline(editable=True, can_delete=True)</code> edita, cria e remove filhos na mesma tela.</td>
+<td><code>BaseRepository</code> + relationships</td>
+</tr>
+<tr>
+<td><strong>Export CSV / JSON</strong> ✅ v0.36.0</td>
+<td><code>GET {prefix}/m/{slug}/export.csv</code> / <code>.json</code> respeita busca, filtros e ordenação ativos; <code>make_admin_router(export_max_rows=…)</code> limita o tamanho (default 5000).</td>
+<td>listagem + filtros</td>
+</tr>
+<tr>
+<td><strong>Audit log visível no admin</strong> ✅ v0.114.0</td>
+<td>Quem mudou o quê e quando, direto na UI — timeline por registro no detail.</td>
+<td><code>BaseAuditLogModel</code> + <code>diff_snapshots</code> (<code>AdminModel(audit_model=...)</code>)</td>
+</tr>
+<tr>
+<td><strong>Dashboard com métricas</strong> (sistema ✅) + <strong>cards de negócio</strong> ✅ v0.117.0</td>
+<td>CPU/RAM/contadores + cards value/trend/partition computados dos seus dados (<code>AdminSite(dashboard_cards=[...])</code>).</td>
+<td><code>MetricsUtils</code> + <code>MetricCard</code></td>
+</tr>
+<tr>
+<td><strong>MFA no login do admin</strong> ✅ v0.36.0</td>
+<td>Segundo fator no acesso mais sensível do sistema; encaixe natural agora que o TOTP existe.</td>
+<td><code>TOTPHelper</code> + <code>MFAMixin</code> + recovery codes</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tudo-que-ja-entregamos">Tudo que já entregamos<a class="headerlink" href="#tudo-que-ja-entregamos" title="Permanent link">&para;</a></h2>
+<p>O histórico completo de releases — cada versão com o que entrou em <strong>Added</strong> / <strong>Changed</strong> / <strong>Fixed</strong> — vive no <a href="../changelog/">changelog</a>, no formato <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>. Ele é a fonte da verdade; esta página só resume o backlog.</p>
+<h2 id="proximos-passos">Próximos passos<a class="headerlink" href="#proximos-passos" title="Permanent link">&para;</a></h2>
+<p>O backlog Tier S/A/B e a evolução do painel admin (Tiers 1–3 + refino)
+estão <strong>concluídos</strong>; o roadmap genai self-hosted (v0.139–0.154 — tools,
+structured output, VLM, reranker, hybrid search, ONNX embeddings, cache de
+geração, token/contexto, vision router, métricas, moderação + integração no
+pipeline) também. Os candidatos abaixo saíram da análise de visão geral de
+2026-07-24 e <strong>também estão todos entregues</strong> — os dois últimos, rate-limit
+avançado e WebAuthn, saíram nas v0.216.0 e v0.217.0.</p>
+<p><strong>A fila está vazia.</strong> O próximo tema vem de pressão de negócio, não desta
+página. Manter aqui um item aspiracional só porque a seção ficaria curta é
+exatamente o que a nota do rodapé proíbe.</p>
+<h3 id="hardening-genai-divida-transformers-5x-entregue-v01550">✅ Hardening GenAI — dívida transformers 5.x (entregue v0.155.0)<a class="headerlink" href="#hardening-genai-divida-transformers-5x-entregue-v01550" title="Permanent link">&para;</a></h3>
+<p>Structured output constrained agora funciona no transformers 5.x
+(<code>build_prefix_allowed_tokens_fn</code> reimplementado a partir do <strong>core</strong> do
+<code>lm-format-enforcer</code>, sem o módulo <code>integrations.transformers</code> quebrado); e o
+<code>VisionTextGenerator</code> carrega no tf5 (<code>AutoModelForImageTextToText</code> +
+<code>torchvision</code> no extra <code>[genai-vlm]</code>). Ambos validados no GPU (Qwen2.5-3B /
+Qwen2-VL-2B). Caveat remanescente: acurácia multimodal depende do wiring do
+processor por família (não-blocker) — ver <code>planning/genai/manual-validation.md</code>.</p>
+<h3 id="observabilidade-de-filas-tracing-genai">Observabilidade de filas + tracing genai<a class="headerlink" href="#observabilidade-de-filas-tracing-genai" title="Permanent link">&para;</a></h3>
+<p>Tema entregue em fatias, uma release por fatia:</p>
+<ul>
+<li>✅ <strong>Spans OTel nas chamadas genai</strong> (<code>generate</code>/<code>chat</code>/<code>embed</code>/<code>rag</code>) —
+  entregue na <strong>v0.156.0</strong>. <code>genai_span</code> ambiente reusa o <code>TracerProvider</code> do
+  <code>setup_tracing</code> (convenções semânticas GenAI); no-op sem o extra <code>[otel]</code>.
+  Ver a receita genai (<em>Tracing distribuído</em>).</li>
+<li>✅ <strong><code>TaskQueue</code>: retry + dead-letter + métricas por task</strong> — entregue na
+  <strong>v0.157.0</strong>. <code>RetryPolicy</code> + <code>enable_retries</code>, <code>DeadLetterSink</code> +
+  <code>dead_letter</code> (destino é seu, sem backend assumido), <code>TaskMetrics</code> no
+  <code>/metrics</code> compartilhado. Middleware opt-in, importa sem o extra <code>[tasks]</code>.
+  Ver a receita de filas (<em>Confiabilidade e observabilidade das tarefas</em>).</li>
+<li>✅ <strong>Painel de tasks no admin</strong> — entregue na <strong>v0.158.0</strong> como
+  dead-letter + inventário (não como clone do Flower). <code>BaseDeadLetterModel</code></li>
+<li><code>make_dead_letter_model</code>, <code>DbDeadLetterSink</code> (persiste falhas terminais),
+  <code>make_dead_letter_admin_model</code> (AdminModel read-mostly + ação <strong>requeue</strong>),
+  <code>task_inventory</code> (tasks registradas). Sem introspecção viva de fila —
+  o TaskIQ não expõe (o Flower é específico do Celery); mostra o que é real e
+  persistido. Ver a receita de filas (<em>Painel de dead-letter no admin</em>).</li>
+</ul>
+<h3 id="camada-de-performance-http">Camada de performance HTTP<a class="headerlink" href="#camada-de-performance-http" title="Permanent link">&para;</a></h3>
+<ul>
+<li>✅ <strong><code>ResponseCacheMiddleware</code></strong> — entregue na <strong>v0.159.0</strong>. ETag / GET
+  condicional (<code>304</code>) sempre ligado + cache server-side opt-in
+  (<code>ResponseCacheStore</code>/<code>Memory</code>/<code>Redis</code>), respeita <code>no-store</code>/<code>private</code>/
+  <code>Set-Cookie</code>, chave por <code>vary=</code>. Ver a receita HTTP (<em>Cache de resposta HTTP</em>).</li>
+<li>✅ <strong>Rate-limit avançado</strong> — entregue na <strong>v0.216.0</strong>. <code>RateLimitRule</code>
+  (janela deslizante, ou token bucket quando <code>burst</code> é definido),
+  <code>StaticRateLimitPolicy</code> / <code>PlanRateLimitPolicy</code> (+ <code>plan_by_jwt_claim</code> /
+  <code>plan_by_header</code> / <code>key_by_plan_principal</code>) e <code>MemoryQuotaStore</code> /
+  <code>RedisQuotaStore</code>, que decidem a lista inteira antes de escrever qualquer
+  regra — requisição barrada não gasta o orçamento das outras. Headers
+  <code>RateLimit-*</code> na resposta. Ver a receita HTTP (<em>Rajada tolerada: token
+  bucket</em>).</li>
+</ul>
+<h3 id="auth-moderno-webauthn-passkeys-entregue-v02170">✅ Auth moderno — WebAuthn / passkeys (entregue v0.217.0)<a class="headerlink" href="#auth-moderno-webauthn-passkeys-entregue-v02170" title="Permanent link">&para;</a></h3>
+<p><code>WebAuthnService</code> roda as duas cerimônias (registro e login) sobre o <code>fido2</code>,
+<code>BaseWebAuthnCredentialModel</code> + <code>make_web_authn_credential_model</code> guardam as
+chaves públicas, e <code>make_auth_router(webauthn=...)</code> monta as seis rotas quando
+<code>AUTH_WEBAUTHN_ENABLED</code> está ligado. Além do que a biblioteca verifica, o SDK
+recusa contador de assinatura que não avançou (sinal de autenticador clonado),
+gasta o desafio no uso, e nunca revela se uma conta existe no <code>begin</code>. Store de
+desafios em memória ou Redis (<code>GETDEL</code>). Extra <code>[webauthn]</code>.
+<a href="../recipes/webauthn/">Receita »</a></p>
+<p><strong>Fora de escopo por decisão:</strong> cliente OpenAI-compatible (foco self-hosted),
+GraphQL/gRPC (REST por decisão).</p>
+<div class="admonition note">
+<p class="admonition-title">O roadmap é honesto, não aspiracional</p>
+<p>Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.</p>
+</div>
+<h2 id="entregue-na-v01730">Entregue na v0.173.0<a class="headerlink" href="#entregue-na-v01730" title="Permanent link">&para;</a></h2>
+<p>Modelops — exportar, medir e quantizar os modelos que o serviço serve:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Benchmark de CPU/RAM/GPU/energia</strong></td>
+<td>✅ v0.173</td>
+<td><code>benchmark</code> cronometra qualquer callable; <code>benchmark_onnx</code>/<code>benchmark_torch</code>/<code>benchmark_models</code> são construídos em cima. Warm-up descartado + N repetições, mediana e IQR primeiro (latência tem cauda pesada), p95/p99, throughput, pico e delta de RSS, memória de GPU. <a href="../recipes/modelops/">Modelops »</a></td>
+</tr>
+<tr>
+<td><strong>Medição de energia com proveniência</strong></td>
+<td>✅ v0.173</td>
+<td><code>NvmlPowerSampler</code> (prefere o contador de energia total do driver, cai pra integração de potência), <code>NvidiaSmiPowerSampler</code>, <code>RaplEnergySampler</code> (energia do pacote de CPU via powercap, com wraparound) e <code>NullPowerSampler</code>. Todo número carrega um <code>EnergySourceEnum</code> — nenhum deles é wall-plug. Execução em CPU não resolve sampler de GPU.</td>
+</tr>
+<tr>
+<td><strong>Ranking: score composto + Pareto</strong></td>
+<td>✅ v0.173</td>
+<td><code>composite_scores</code> com pesos renormalizados sobre as dimensões efetivamente medidas, <code>pareto_points</code> pulando eixos não medidos em vez de assumir o melhor, <code>rank</code> → <code>BenchmarkReport</code> com pesos efetivos e descrição do host.</td>
+</tr>
+<tr>
+<td><strong><code>.onnx</code> → <code>.ort</code> e otimização de grafo</strong></td>
+<td>✅ v0.173</td>
+<td><code>export_onnx_to_ort</code> (arquivo ou diretório, estilo <code>FIXED</code>/<code>RUNTIME</code>, <code>target_platform</code>, type reduction, <code>.required_operators.config</code> pro build mínimo), <code>export_torch_to_onnx</code> e <code>optimize_onnx_graph</code>.</td>
+</tr>
+<tr>
+<td><strong>Quantização ONNX e HuggingFace</strong></td>
+<td>✅ v0.173</td>
+<td><code>quantize_onnx_dynamic</code>, <code>quantize_onnx_static</code> (reader de calibração a partir de qualquer iterável de feeds), e o caminho de export transformers sobre o ferramental do próprio ONNX Runtime: <code>optimize_hf_onnx</code> (<code>O1</code>–<code>O4</code>), <code>quantize_hf_onnx</code> (arm64/avx2/avx512/avx512_vnni) — mais <code>quantize_hf_bnb</code> (int4/int8 em PyTorch). Sem dependência de <code>optimum</code>, então nada aqui limita a sua versão de <code>transformers</code>.</td>
+</tr>
+<tr>
+<td><strong>CLI <code>tempest model</code></strong></td>
+<td>✅ v0.173</td>
+<td><code>analyze</code> / <code>bench</code> / <code>optimize</code> / <code>quantize</code> / <code>export-ort</code> / <code>hardware</code>, com <code>--json</code> nos comandos de relatório. Extra ausente sai com código 2 e a linha de instalação. <a href="../recipes/cli/">CLI »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01680">Entregue na v0.168.0<a class="headerlink" href="#entregue-na-v01680" title="Permanent link">&para;</a></h2>
+<p>Guards de permissão com metadata:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Segundo parâmetro <code>meta: dict[str, Any]</code></strong></td>
+<td>✅ v0.168</td>
+<td>Um guard pode declarar um segundo parâmetro e receber metadata, o que transforma um guard genérico em checagem específica por rota: escreve-se <code>has_role</code> uma vez e cada call site declara <code>meta={"role": "manager"}</code>. Guards de um parâmetro seguem intactos — o segundo argumento só vai para quem o declara. <a href="../recipes/permission-guards/">Referência »</a></td>
+</tr>
+<tr>
+<td><strong><code>include_args=True</code></strong></td>
+<td>✅ v0.168</td>
+<td>Mescla os argumentos da chamada (path params, body, outras dependências) no mesmo dicionário, então um guard de posse lê <code>meta["order_id"]</code> sem a rota repassar nada. Usuário fora, default de parâmetro omitido incluído, marcador <code>Depends(...)</code> descartado, literal de <code>meta=</code> ganhando de argumento homônimo.</td>
+</tr>
+<tr>
+<td><strong>Erro de uso ainda no import</strong></td>
+<td>✅ v0.168</td>
+<td><code>TempestPermissionError</code> quando <code>meta=</code> não é mapping, quando <code>meta=</code>/<code>include_args=</code> não têm nenhum guard que receba, e quando o guard pede 3+ parâmetros. <code>guard_metadata(fn)</code> expõe os literais declarados.</td>
+</tr>
+<tr>
+<td><strong>Checagem estática nova</strong></td>
+<td>✅ v0.168</td>
+<td><code>tempest permissions</code> ganhou <code>meta-unused</code> (erro), <code>guard-meta-missing</code>, <code>guard-meta-annotation</code> e <code>meta-key-collision</code> (warnings); <code>guard-arity</code> passou a aceitar 1 ou 2 parâmetros. O veredito <code>meta-unused</code> é retido quando algum guard da decoração não pôde ser resolvido.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01670">Entregue na v0.167.0<a class="headerlink" href="#entregue-na-v01670" title="Permanent link">&para;</a></h2>
+<p>Guards de permissão — decorator + linter em duas camadas:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>@requires(*guards, user_param=None)</code></strong></td>
+<td>✅ v0.167</td>
+<td>Roda guards que recebem o usuário e devolvem o usuário (ou <code>None</code>) antes do corpo, em rota, controller ou service, sync ou <code>async</code>. Guard nega levantando <code>AppException</code>; retorno não-<code>None</code> substitui o usuário visto pelo próximo guard e pelo corpo — é assim que <code>require_active</code> estreita <code>Optional[UserT]</code> para <code>UserT</code>. Param do usuário resolvido pela anotação (<code>BaseModel</code>/<code>BaseUserModel</code>), <code>user_param=</code> desempata. Assinatura preservada, então DI e schema OpenAPI ficam intactos. <a href="../recipes/permission-guards/">Referência »</a></td>
+</tr>
+<tr>
+<td><strong>Erro de uso em tempo de import</strong></td>
+<td>✅ v0.167</td>
+<td><code>TempestPermissionError</code> para <code>@requires()</code> sem guard, guard não-callable, aridade errada, guard <code>async</code> em função sync e param de usuário ausente ou ambíguo. A aplicação não sobe com uma checagem que nunca roda.</td>
+</tr>
+<tr>
+<td><strong>Aviso de contrato em tempo de chamada</strong></td>
+<td>✅ v0.167</td>
+<td><code>GuardContractWarning</code> quando o guard levanta fora da hierarquia <code>AppException</code> (a API responderia 500 sem <code>code</code>) ou devolve valor não-usuário como <code>False</code> (negação que seria ignorada). A exceção original continua propagando.</td>
+</tr>
+<tr>
+<td><strong><code>tempest permissions --check</code> / <code>--strict</code> / <code>--path</code></strong></td>
+<td>✅ v0.167</td>
+<td>Checagem estática (<code>ast</code>, sem importar a app) do que o runtime não vê: guard cujo <code>raise</code> nenhum teste exercita, guard nunca ligado. Erros <code>no-guards</code>/<code>user-param-missing</code>/<code>user-param-ambiguous</code>/<code>guard-arity</code>/<code>guard-async-in-sync</code>/<code>guard-returns-bool</code>/<code>guard-foreign-exception</code>; warnings <code>guard-never-denies</code>/<code>guard-missing-annotation</code>/<code>guard-return-type</code>/<code>guard-unresolved</code>. Guard ambíguo ou fora do escopo é reportado, nunca adivinhado.</td>
+</tr>
+<tr>
+<td><strong>Integração com os erros do OpenAPI</strong></td>
+<td>✅ v0.167</td>
+<td><code>tempest openapi-errors</code> segue os guards do <code>@requires</code>, então a exceção de um guard aparece como <code>undocumented</code> até a rota declarar — e <code>--fix</code> escreve. <code>declared_guards</code> / <code>guarded_user_param</code> expõem os guards de uma rota para auditoria.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01660">Entregue na v0.166.0<a class="headerlink" href="#entregue-na-v01660" title="Permanent link">&para;</a></h2>
+<p>Erros documentados no OpenAPI — correção automática:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>tempest openapi-errors --fix</code></strong></td>
+<td>✅ v0.166</td>
+<td>Escreve as declarações que o <code>--check</code> apontava: injeta <code>responses=error_responses(...)</code> na rota, estende a declaração que já existir (<code>error_responses</code> ou <code>@raises</code>) preservando a ordem, e adiciona os imports que faltam. Edições ancoradas em posições da AST, saída passada por <code>ruff check --select I --fix</code> + <code>ruff format</code>. <a href="../recipes/openapi-errors/#passo-5-fix-escreve-as-declaracoes-por-voce">Referência »</a></td>
+</tr>
+<tr>
+<td><strong>Só acrescenta, com árvore limpa</strong></td>
+<td>✅ v0.166</td>
+<td>Findings <code>unreachable</code> nunca são removidos — alcançabilidade não enxerga raise dinâmico, então apagar por conta dela removeria declaração correta. Exige árvore git limpa, para <code>git diff</code> ser a revisão e <code>git checkout</code> o desfazer; <code>--dry-run</code> mostra o diff formatado e roda em árvore suja.</td>
+</tr>
+<tr>
+<td><strong>Formatação com a config do projeto</strong></td>
+<td>✅ v0.166.1</td>
+<td>O arquivo temporário entregue ao ruff é criado ao lado do arquivo reescrito, então <code>line-length</code> e seções de <code>isort</code> do projeto valem — e o que é escrito passa no <code>ruff format --check</code> do CI dele. Não achando um ruff que rode (<code>PATH</code>, <code>python -m ruff</code>, <code>uv run ruff</code>, cada um testado com <code>--version</code>), o comando grava e avisa.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01630">Entregue na v0.163.0<a class="headerlink" href="#entregue-na-v01630" title="Permanent link">&para;</a></h2>
+<p>SPA React servida pelo próprio FastAPI:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>make_spa_router(dist_dir)</code></strong></td>
+<td>✅ v0.163</td>
+<td>Serve o <code>dist/</code> de um build Vite/React com history fallback, política de cache invertida (documento <code>no-store</code>, assets com hash <code>immutable</code>) e prefixos de API excluídos do fallback. <a href="../recipes/react-spa/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong><code>tempest generate --dockerfile</code> com estágio de SPA</strong></td>
+<td>✅ v0.163</td>
+<td>Detecta <code>web/</code>, <code>frontend/</code>, <code>client/</code> ou <code>ui/</code> e emite um estágio Node que roda <code>npm ci &amp;&amp; npm run build</code> antes do estágio Python, copiando só o <code>dist/</code> para a imagem final.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01610">Entregue na v0.161.0<a class="headerlink" href="#entregue-na-v01610" title="Permanent link">&para;</a></h2>
+<p>Geração de código a partir de uma especificação OpenAPI:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>tempest openapi-client &lt;spec&gt;</code></strong></td>
+<td>✅ v0.161</td>
+<td>Aponte para a spec (URL ou arquivo, JSON ou YAML) e receba <code>&lt;src|app&gt;/integrations/&lt;name&gt;/</code> com <code>schemas.py</code> + <code>client.py</code>. Fim da transcrição manual de documentação de terceiro. <code>--name</code>/<code>--out</code>/<code>--header</code>/<code>--schemas-only</code>/<code>--force</code>/<code>--no-format</code>. <a href="../recipes/openapi-client/">Referência »</a></td>
+</tr>
+<tr>
+<td><strong>Schemas com metadados</strong></td>
+<td>✅ v0.161</td>
+<td>Uma classe <code>BaseSchema</code> por componente, com <code>title</code>/<code>description</code>/<code>examples</code> <strong>da spec</strong> em todo <code>Field</code> — o módulo gerado é a documentação da integração. Nomes pythônicos + <code>alias</code> do nome de rede + <code>populate_by_name</code>; palavra reservada resolvida (<code>class</code> → <code>class_</code>); coleção opcional como lista vazia; enums em <code>BaseStrEnum</code>/<code>BaseIntEnum</code>; <code>allOf</code> achatado; recursão via <code>model_rebuild()</code>. Nada é inventado quando a spec não documenta. <a href="../recipes/openapi-client/#schemaspy">Referência »</a></td>
+</tr>
+<tr>
+<td><strong>Cliente HTTP tipado</strong></td>
+<td>✅ v0.161</td>
+<td>Um método <code>async</code> por operação, sobre um <code>HTTPClient</code> <strong>injetado</strong> — retry/backoff/circuit-breaker/credenciais continuam do chamador, e <code>httpx.MockTransport</code> testa a integração inteira sem rede. Params de path/query tipados, corpo e resposta validados, docstring Google completa. <a href="../recipes/openapi-client/#clientpy">Referência »</a></td>
+</tr>
+<tr>
+<td><strong>Saída que passa nos gates</strong></td>
+<td>✅ v0.161</td>
+<td>O código emitido passa <code>ruff check</code> + <code>ruff format --check</code> <strong>antes</strong> da passada de formatação (testado contra a saída crua), então <code>--no-format</code> ou uma máquina sem ruff ainda entregam pacote utilizável. Regenerar uma spec inalterada produz arquivo byte a byte idêntico, então o <code>git diff</code> de um <code>--force</code> é o changelog da integração.</td>
+</tr>
+<tr>
+<td><strong>Nunca chuta</strong></td>
+<td>✅ v0.161</td>
+<td>Construção não representável (<code>not</code>, <code>$ref</code> externo, Swagger 2.0, corpo não-JSON, param de header) vira <code>Any</code> + comentário <code># openapi: unsupported</code> + linha no resumo do comando. Um schema errado que parece certo é pior que uma lacuna documentada.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01600">Entregue na v0.160.0<a class="headerlink" href="#entregue-na-v01600" title="Permanent link">&para;</a></h2>
+<p>Erros documentados no OpenAPI:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>ErrorResponseSchema</code></strong></td>
+<td>✅ v0.160</td>
+<td>O envelope <code>{detail, code, details}</code> que os handlers já emitiam agora existe como schema exportado — antes não havia para onde apontar um <code>responses={409: ...}</code> escrito à mão. <a href="../recipes/openapi-errors/#errorresponseschema">Referência »</a></td>
+</tr>
+<tr>
+<td><strong><code>error_responses(*exceptions)</code></strong></td>
+<td>✅ v0.160</td>
+<td>Monta o <code>responses=</code> do FastAPI a partir das classes de exception. Agrupa por status (OpenAPI só aceita um response object por status) e distingue os <code>code</code> num mapa de <code>examples</code> — Swagger/ReDoc renderizam como seletor, então dois 404 com codes diferentes ficam visíveis. <code>summary</code> do <code>__doc__</code>, <code>detail</code> do <code>message</code> ou de um <code>MessageCatalog</code>. <a href="../recipes/openapi-errors/#passo-2-error_responsesexceptions">Referência »</a></td>
+</tr>
+<tr>
+<td><strong><code>@raises(...)</code> + <code>TempestAPIRouter</code></strong></td>
+<td>✅ v0.160</td>
+<td>Mesma declaração junto do handler; o router expande a tag em <code>responses=</code> antes de construir a rota (então o modelo chega em <code>components.schemas</code> como <code>$ref</code>). Um <code>responses=</code> explícito ganha por status. <a href="../recipes/openapi-errors/#passo-3-raises-tempestapirouter">Referência »</a></td>
+</tr>
+<tr>
+<td><strong><code>InheritedErrorCodeWarning</code></strong></td>
+<td>✅ v0.160</td>
+<td>Subclasse que não declara <code>code</code> próprio e herda um genérico do SDK avisa na criação da classe — defeito silencioso que fez uma subclasse emitir <code>code: "CONFLICT"</code> por meses em produção. Não dispara para <code>code</code> de domínio nem quando há <code>message_key</code>. <a href="../recipes/openapi-errors/#o-aviso-que-pega-o-defeito-silencioso">Referência »</a></td>
+</tr>
+<tr>
+<td><strong><code>tempest openapi-errors --check</code></strong></td>
+<td>✅ v0.160</td>
+<td>Compara, por rota, o declarado com o alcançável em <code>router -&gt; controller -&gt; service -&gt; repository</code>. Estático (<code>ast</code>, sem importar a app), lê <code>raise</code> <strong>e</strong> seções <code>Raises:</code>. Reporta <code>undocumented</code> + <code>unreachable</code>, sai não-zero como gate de CI. <a href="../recipes/openapi-errors/#passo-4-tempest-openapi-errors-check">Referência »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01290">Entregue na v0.129.0<a class="headerlink" href="#entregue-na-v01290" title="Permanent link">&para;</a></h2>
+<p>SSR — builders tipados de atributos:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>htmx()</code> / <code>aria()</code> / <code>data()</code></strong></td>
+<td>✅ v0.129</td>
+<td>Montam o <code>attrs: dict[str, str]</code> aberto do widget a partir de args tipados — <code>hx-*</code>/<code>aria-*</code>/<code>data-*</code> deixam de ser dict stringly-typed e viram call-site com autocomplete + checagem estática. Retornam exatamente o dict que você escreveria (mescláveis). Sem mágica, sem dep nova. <a href="../ssr/#atributos-tipados-htmx-aria-data">Referência »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01280">Entregue na v0.128.0<a class="headerlink" href="#entregue-na-v01280" title="Permanent link">&para;</a></h2>
+<p>SSR — servir um build compilado do tempestweb:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>make_web_app_router</code> + <code>build_web_app</code> + <code>detect_build_mode</code></strong></td>
+<td>✅ v0.128</td>
+<td>Hospeda um artefato <code>tempestweb build</code> direto no FastAPI: <code>make_web_app_router(dir)</code> serve o build <strong>wasm</strong> (SPA estática) como <code>APIRouter</code> com history fallback, MIME certo, cache do shell/SW, sem CSP imposto (Pyodide); <code>build_web_app(dir)</code> hospeda o build <strong>server</strong> (WebSocket/SSE) como sub-app. Só serve o <code>dist/</code> pronto — build fica no CLI do tempestweb. <code>[ssr]</code>. <a href="../ssr/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01270">Entregue na v0.127.0<a class="headerlink" href="#entregue-na-v01270" title="Permanent link">&para;</a></h2>
+<p>Admin — edição inline in-place:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>Inline(editable=True, can_delete=True)</code></strong></td>
+<td>✅ v0.127</td>
+<td>O detail do pai renderiza os filhos 1-N como um formset editável (uma linha de inputs por filho + uma linha em branco pra adicionar) que dá POST em <code>/inlines/&lt;filho&gt;</code> — editar, adicionar e excluir sem sair da tela. O FK do pai é implícito (forçado ao pai, nunca um input), as linhas são escopadas ao pai, colunas de upload/autocomplete ficam no form próprio do filho, e erros de validação re-renderizam in-place. Requer o admin registrado do filho + <code>can_edit</code>/<code>can_delete</code>. <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01260">Entregue na v0.126.0<a class="headerlink" href="#entregue-na-v01260" title="Permanent link">&para;</a></h2>
+<p>Utilitários de teste — factories de modelo:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>ModelFactory</code> + <code>seq</code></strong></td>
+<td>✅ v0.126</td>
+<td>Amarra modelo + defaults à sessão: <code>build</code> (solta), <code>create</code>/<code>create_many</code> (add+flush+refresh). Default/override <strong>callable</strong> recebe o índice da linha → campos únicos; <code>seq("u{n}@x")</code> é o atalho. Sem mágica: você declara os defaults. <code>from tempest_fastapi_sdk.testing import ModelFactory, seq</code>. <a href="../recipes/testing/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01250">Entregue na v0.125.0<a class="headerlink" href="#entregue-na-v01250" title="Permanent link">&para;</a></h2>
+<p>Webhooks de saída — assinar + entregar com retry:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>WebhookSender</code></strong></td>
+<td>✅ v0.125</td>
+<td>POST do evento JSON assinado com o mesmo <code>WebhookSignatureVerifier</code>; re-tenta transitórios (5xx/429/conexão) com backoff, 4xx não. <code>send</code>/<code>send_many</code> → <code>WebhookDelivery</code>. httpx injetado; casa com o outbox. <a href="../recipes/http/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01240">Entregue na v0.124.0<a class="headerlink" href="#entregue-na-v01240" title="Permanent link">&para;</a></h2>
+<p>Observabilidade — métricas de negócio custom no <code>/metrics</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>BusinessMetrics</code></strong></td>
+<td>✅ v0.124</td>
+<td>Fábrica tipada de <code>counter</code>/<code>gauge</code>/<code>histogram</code> no registry compartilhado (namespace opcional, dedup por nome); saem no mesmo <code>GET /metrics</code>. Objetos são os do <code>prometheus_client</code> — sem mágica. <a href="../recipes/metrics/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01230">Entregue na v0.123.0<a class="headerlink" href="#entregue-na-v01230" title="Permanent link">&para;</a></h2>
+<p>Mais operadores de filtro <code>campo__op</code> (no <code>Q</code> e no dict do repository):</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Operadores <code>in</code>/<code>notin</code>/<code>isnull</code>/<code>contains</code>/<code>startswith</code>/<code>endswith</code></strong></td>
+<td>✅ v0.123</td>
+<td>Somam-se a <code>gt</code>/<code>gte</code>/<code>lt</code>/<code>lte</code>/<code>ne</code>; <code>build_filter_condition</code> (base do <code>Q</code> + dict). <a href="../recipes/database/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01220">Entregue na v0.122.0<a class="headerlink" href="#entregue-na-v01220" title="Permanent link">&para;</a></h2>
+<p>Refino do admin — polish de consistência/UX:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Polish do admin</strong></td>
+<td>✅ v0.122</td>
+<td>Corrigido <code>--tempest-border</code> (não definido → bordas na cor do texto) + cards/autocomplete que usavam o bg escuro da sidebar; detail reordenado (inlines logo após os campos, audit/history por último) e colunas <code>JSON</code> pretty-print no detail.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01210">Entregue na v0.121.0<a class="headerlink" href="#entregue-na-v01210" title="Permanent link">&para;</a></h2>
+<p>Refino do admin — novos widgets de campo:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Widgets JSON + time</strong></td>
+<td>✅ v0.121</td>
+<td>Colunas <code>JSON</code> viram um editor JSON monoespaçado (pretty-print ao carregar, parse+validação no submit); colunas <code>Time</code> viram <code>&lt;input type=time&gt;</code>. <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01200">Entregue na v0.120.0<a class="headerlink" href="#entregue-na-v01200" title="Permanent link">&para;</a></h2>
+<p>Painel admin — lenses / visões salvas (Tier 3), fechando a evolução do admin:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Lenses</strong></td>
+<td>✅ v0.120</td>
+<td><code>AdminModel(lenses=[Lens("Abertos", filters={"status": "open"}, order_by="-created_at")])</code> → abas acima da lista; clicar aplica os filtros (ANDeados com busca/filtros do usuário) + ordenação via <code>?lens=&lt;slug&gt;</code>. Aba "All" volta ao padrão. <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01190">Entregue na v0.119.0<a class="headerlink" href="#entregue-na-v01190" title="Permanent link">&para;</a></h2>
+<p>Painel admin — RBAC granular (Tier 3):</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RBAC granular</strong></td>
+<td>✅ v0.119</td>
+<td><code>make_admin_router(access_policy=...)</code> — hook <code>(principal, admin, AdminPermissionEnum)</code> → bool consultado em toda ação (VIEW/CREATE/EDIT/DELETE). Nega → <code>403</code>, e some do dashboard/nav no VIEW. Compõe com os flags <code>can_*</code> (ambos precisam liberar). Restringe um admin não-super a subconjuntos de modelo/ação. <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01180">Entregue na v0.118.0<a class="headerlink" href="#entregue-na-v01180" title="Permanent link">&para;</a></h2>
+<p>Painel admin — import CSV (Tier 3), contraparte do export:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CSV import</strong></td>
+<td>✅ v0.118</td>
+<td><code>AdminModel(can_import=True)</code> expõe <code>GET/POST /m/{slug}/import</code>: sobe um CSV, cada linha é validada/coagida como no create e vira um registro. Relatório com total criado + erros por linha (best-effort: uma linha ruim não aborta as outras). Link "Import CSV" na list view. <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01170">Entregue na v0.117.0<a class="headerlink" href="#entregue-na-v01170" title="Permanent link">&para;</a></h2>
+<p>Painel admin — cards de métricas de negócio no dashboard (fecha o Tier 2
+da evolução do admin):</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Dashboard business metrics</strong></td>
+<td>✅ v0.117</td>
+<td><code>AdminSite(dashboard_cards=[MetricCard(label, compute)])</code> renderiza cards no topo do dashboard, computados dos seus dados: <code>MetricValue</code> (número), <code>MetricTrend</code> (vs período anterior, com delta/%/direção) e <code>MetricPartition</code> (breakdown com barras). Distinto do painel CPU/RAM. Card que falha é pulado (não quebra a página). <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01160">Entregue na v0.116.0<a class="headerlink" href="#entregue-na-v01160" title="Permanent link">&para;</a></h2>
+<p>Painel admin — inlines / relações aninhadas (Tier 2 da evolução do admin):</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Inlines (leitura + navegar)</strong></td>
+<td>✅ v0.116</td>
+<td><code>AdminModel(inlines=[Inline(Child, Child.parent_id)])</code> lista os filhos 1-N no detail do pai como tabela, com link pro admin do filho e "Add" pré-preenchendo o FK (via query param no create). Reaproveita o <code>list_display</code>/CRUD do admin filho. Edição in-place na mesma tela: <code>editable=True</code> (v0.127). <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01150">Entregue na v0.115.0<a class="headerlink" href="#entregue-na-v01150" title="Permanent link">&para;</a></h2>
+<p>Painel admin — campos FK com autocomplete (Tier 2 da evolução do admin):</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Autocomplete FK</strong></td>
+<td>✅ v0.115</td>
+<td><code>AdminModel(autocomplete_fields=[...])</code> troca o <code>&lt;select&gt;</code> de todas as linhas por uma caixa de busca HTMX — sem o cap de 1000 linhas nem o fallback de UUID cru. O endpoint <code>/m/{slug}/autocomplete/{field}</code> busca nos <code>search_fields</code> do admin alvo (ILIKE, OR), limita a 20; o edit pré-preenche o rótulo atual. <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01140">Entregue na v0.114.0<a class="headerlink" href="#entregue-na-v01140" title="Permanent link">&para;</a></h2>
+<p>Painel admin — visualizador de histórico de auditoria por registro
+(primeiro item do Tier 1 da evolução do admin):</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Audit history viewer</strong></td>
+<td>✅ v0.114</td>
+<td><code>AdminModel(audit_model=...)</code> renderiza no detail uma timeline das mudanças do registro, lida do <code>BaseAuditLogModel</code> (match <code>entity</code> + <code>entity_id</code>), com diff campo-a-campo (antes/depois) e ator/data por entrada. Pareie com <code>BaseRepository(audit_model=...)</code> + <code>add_audited</code>/<code>update_audited</code>/<code>delete_audited</code>. <a href="../recipes/admin/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01130">Entregue na v0.113.0<a class="headerlink" href="#entregue-na-v01130" title="Permanent link">&para;</a></h2>
+<p>Framework de management commands — o serviço pluga comandos próprios na
+CLI <code>tempest</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Management commands</strong></td>
+<td>✅ v0.113</td>
+<td>Exponha um <code>typer.Typer</code> chamado <code>commands</code> em <code>src/commands.py</code> (auto-detectado; ou <code>[tool.tempest] commands = "..."</code>) → vira <code>tempest &lt;cmd&gt;</code>, ao lado dos embutidos. Colisão com embutido → embutido vence (aviso). Typer puro (args/options/tipos/grupos). <a href="../recipes/management-commands/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01120">Entregue na v0.112.0<a class="headerlink" href="#entregue-na-v01120" title="Permanent link">&para;</a></h2>
+<p>Framework de system checks estilo Django + a CLI <code>tempest check-config</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>System checks</strong></td>
+<td>✅ v0.112</td>
+<td><code>tempest_fastapi_sdk.checks</code>: <code>@check</code> registra um validador <code>(settings) -&gt; [CheckMessage]</code>; embutidos p/ segredo vazio/fraco, CORS <code>*</code>+credenciais, SQLite-em-prod, DEBUG, bind <code>0.0.0.0</code>. <code>tempest check-config</code> roda tudo (auto-detecta as settings, <code>--tag</code>/<code>--fail-level</code>, sai ≠ 0 em ERROR); <code>run_system_checks(settings)</code> aborta boot mal-configurado no lifespan. <a href="../recipes/system-checks/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01110">Entregue na v0.111.0<a class="headerlink" href="#entregue-na-v01110" title="Permanent link">&para;</a></h2>
+<p>Wrappers <code>F</code> / <code>Q</code> estilo Django sobre o SQLAlchemy, plugados no
+<code>BaseRepository</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>F</code> (expressão de coluna)</strong></td>
+<td>✅ v0.111</td>
+<td><code>F("stock") - 1</code> computa no banco numa instrução — update atômico sem race. Aritmética dos dois lados e entre colunas; resolvido em <code>bulk_update</code>. <a href="../recipes/database/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong><code>Q</code> (condições compostas)</strong></td>
+<td>✅ v0.111</td>
+<td><code>Q(status="open") | Q(...)</code>, <code>&amp;</code>, <code>~</code> para <code>OR</code>/<code>NOT</code> que o dict de filtros não expressa; mesmas convenções (<code>campo__gte</code>, <code>name</code> ILIKE, iterável → <code>IN</code>). <code>where=</code> em <code>list</code>/<code>first</code>/<code>get</code>/<code>get_or_none</code>/<code>count</code>/<code>exists</code>/<code>paginate</code>/<code>delete_many</code>. <a href="../recipes/database/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01100">Entregue na v0.110.0<a class="headerlink" href="#entregue-na-v01100" title="Permanent link">&para;</a></h2>
+<p>Autorização object-level — a pergunta que o guard estático não responde:
+"esse usuário pode editar <strong>esse</strong> objeto?".</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Permissions object-level</strong></td>
+<td>✅ v0.110</td>
+<td><code>tempest_fastapi_sdk.authz</code>: registre uma regra <code>(user, obj) -&gt; bool</code> com <code>@permission("order.delete")</code>, cheque com <code>has_perm</code>/<code>check_permission</code>, proteja a rota com <code>make_permission_checker</code>. Bypass de superusuário + fallback estático injetáveis via <code>PermissionRegistry</code>; wildcards (<code>order.*</code>/<code>*</code>); handlers sync ou async; <code>PermissionMixin</code> dá <code>await user.has_perm(...)</code>. <a href="../recipes/authz/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01090">Entregue na v0.109.0<a class="headerlink" href="#entregue-na-v01090" title="Permanent link">&para;</a></h2>
+<p>Duas melhorias no <code>BaseRepository</code>, ambas puxadas do "Próximos passos"
+acima:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Eager-load (<code>with_=</code>)</strong></td>
+<td>✅ v0.109</td>
+<td><code>get</code>/<code>get_or_none</code>/<code>get_by_id</code>/<code>first</code>/<code>list</code> aceitam <code>with_=["autor", "livros.reviews"]</code> (paths pontilhados p/ nested); usa <code>selectinload</code>, então N relacionados custam 1 query extra, não N. Elimina o <code>MissingGreenlet</code> ao acessar relacionamento fora do contexto async. <a href="../recipes/database/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong>Signals de ciclo de vida</strong></td>
+<td>✅ v0.109</td>
+<td><code>tempest_fastapi_sdk.db.signals</code>: <code>connect</code>/<code>on_signal</code>/<code>disconnect</code> registram handlers (sync ou async) por modelo para <code>PRE_SAVE</code>/<code>POST_SAVE</code>/<code>PRE_DELETE</code>/<code>POST_DELETE</code>. Disparam no caminho unit-of-work (<code>add</code>/<code>update</code>/<code>delete</code>/…); os bulk set-based fazem bypass por design. Um handler de <code>PRE_SAVE</code> que levanta veta a escrita. <a href="../recipes/database/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01070-v01080">Entregue na v0.107.0 / v0.108.0<a class="headerlink" href="#entregue-na-v01070-v01080" title="Permanent link">&para;</a></h2>
+<p>Paridade GenAI self-hosted ponta a ponta — chat com IA rodando in-process,
+para que um microserviço de inferência vire escolha de organização, não
+necessidade:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Backend Ollama</strong> (<code>OllamaGenerator</code> / <code>OllamaEmbedder</code>)</td>
+<td>✅ v0.107</td>
+<td>HTTP puro (sem torch), drop-in no <code>make_genai_router</code> / <code>Retriever</code>. Extra <code>[genai-ollama]</code>. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong>Visão + tool-calling no Ollama</strong></td>
+<td>✅ v0.108</td>
+<td><code>generate(images=…)</code> + <code>images</code> por mensagem em <code>chat()</code> + <code>chat_with_tools()</code>. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong>STT paridade</strong></td>
+<td>✅ v0.108</td>
+<td><code>beam_size</code> / <code>vad_filter</code> (default + override por chamada) + <code>language_probability</code> em <code>Transcription</code>. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong><code>ChromaVectorStore</code></strong></td>
+<td>✅ v0.108</td>
+<td><code>VectorStore</code> sobre ChromaDB (efêmero / persistente / client injetado). Extra <code>[genai-chroma]</code>. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong><code>ChatMemory</code></strong></td>
+<td>✅ v0.108</td>
+<td>Memória long-term por usuário sobre Chroma: embed + upsert com eviction por cota, busca com filtro de similaridade + decay de recência. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong><code>AIChatPipeline</code></strong></td>
+<td>✅ v0.108</td>
+<td>Orquestrador: memória → web-search → gera (com loop de tool-calling) → TTS → index. <code>Tool</code> + <code>make_ai_chat_router</code> (<code>/chat</code> + <code>/chat/stream</code> SSE, stateless). <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="entregue-na-v01050">Entregue na v0.105.0<a class="headerlink" href="#entregue-na-v01050" title="Permanent link">&para;</a></h2>
+<p>O plano de ergonomia GenAI + os dois módulos de aplicação abaixo já
+<strong>entraram</strong> (antes eram "planejados" aqui):</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>GenerationConfig</code> tipado</strong></td>
+<td>✅ v0.105</td>
+<td>Params de geração validados no lugar de <code>**kwargs</code>. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong><code>make_genai_router</code></strong></td>
+<td>✅ v0.105</td>
+<td>Endpoints prontos (<code>/generate</code>+SSE, <code>/chat</code>, <code>/embed</code>, <code>/rag</code>, <code>/transcribe</code>, <code>/tts</code>), monta só o que você injeta. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong><code>RedisEmbeddingCache</code></strong></td>
+<td>✅ v0.105</td>
+<td>Cache de vetores async compartilhado entre workers; <code>Embedder</code> aceita cache sync ou async. <a href="../recipes/genai/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong>Chat (<code>tempest_fastapi_sdk.chat</code>)</strong></td>
+<td>✅ v0.105</td>
+<td><code>ChatService</code> + tabelas base + <code>make_chat_router</code> + tempo real via <code>SSEBroker</code>. <a href="../recipes/chat/">Receita »</a></td>
+</tr>
+<tr>
+<td><strong>Comentários + avaliações (<code>reviews</code>)</strong></td>
+<td>✅ v0.105</td>
+<td><code>ReviewService</code> (comentar, avaliar 0–5, agregar) + <code>make_reviews_router</code>; <code>RatingField</code>. <a href="../recipes/reviews/">Receita »</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="como-pedir-uma-feature">Como pedir uma feature<a class="headerlink" href="#como-pedir-uma-feature" title="Permanent link">&para;</a></h2>
+<p>Abra issue em <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues">https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues</a> descrevendo:</p>
+<ol>
+<li>O caso de uso real (não a solução).</li>
+<li>O que você faz hoje como workaround.</li>
+<li>Por que o workaround dói (perf, segurança, ergonomia, manutenção).</li>
+</ol>
+<p>Issues com caso de uso concreto sobem na fila — abstrações sem demanda não entram, mesmo quando "fariam sentido".</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Voltar ao topo
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Rodapé" >
+        
+          
+          <a href="../learning/marketplace/api/" class="md-footer__link md-footer__link--prev" aria-label="Anterior: Mapa de endpoints">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Anterior
+              </span>
+              <div class="md-ellipsis">
+                Mapa de endpoints
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../migration/" class="md-footer__link md-footer__link--next" aria-label="Próximo: Guia de migração">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Próximo
+              </span>
+              <div class="md-ellipsis">
+                Guia de migração
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Mauricio Benjamin — MIT License
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/tempest-fastapi-sdk/" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["announce.dismiss", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.path", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.share", "search.suggest", "toc.follow", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copiado para \u00e1rea de transfer\u00eancia", "clipboard.copy": "Copiar para \u00e1rea de transfer\u00eancia", "search.result.more.one": "Mais 1 nesta p\u00e1gina", "search.result.more.other": "Mais # nesta p\u00e1gina", "search.result.none": "Nenhum resultado encontrado", "search.result.one": "1 resultado encontrado", "search.result.other": "# resultados encontrados", "search.result.placeholder": "Digite para iniciar a busca", "search.result.term.missing": "Ausente", "select.version": "Selecione a vers\u00e3o"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
