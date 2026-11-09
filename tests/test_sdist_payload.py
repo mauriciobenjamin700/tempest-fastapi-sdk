@@ -41,7 +41,7 @@ import pytest
 ROOT: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parents[1]
 
 ALLOWED_DOT_ENTRIES: Final[dict[str, str]] = {
-    ".github": "CI workflows, useful to a downstream packager rebuilding",
+    ".github": "issue and PR templates; no workflows since 2026-11-09",
     ".gitignore": "one file, and it documents what the tree deliberately omits",
     ".python-version": "one file, and it pins the interpreter the lock targets",
 }

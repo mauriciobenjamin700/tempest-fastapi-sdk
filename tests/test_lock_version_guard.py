@@ -131,7 +131,7 @@ def test_the_committed_versions_agree() -> None:
         pytest.skip("not a git work tree")
     assert versions["pyproject"], "could not read the project version"
     assert disagreements(versions) == [], (
-        "run `uv lock` and stage uv.lock — the release workflow compares the "
+        "run `uv lock` and stage uv.lock — `make publish` compares the "
         "tag against all three"
     )
 

@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.12
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch zap-ws-regen zap-ws-fetch test test-cov test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
+.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch zap-regen zap-fetch zap-ws-regen zap-ws-fetch test test-cov test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release publish tag version docs docs-serve docs-build docs-deploy
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -25,8 +25,8 @@ sync: install ## Alias for `install`
 # The suite runs across every core (pytest-xdist, from the `[tests]` extra)
 # and without coverage. Measured on 2026-10-09, 12 cores: 12 262 tests in
 # 4m44s with `-n 12 --no-cov`, against ~36 min serial under coverage. The
-# coverage report lives in `test-cov`. Tests run only here: the repo's CI
-# publishes and nothing else.
+# coverage report lives in `test-cov`. Tests run only here: the repository
+# has no CI at all since 2026-11-09 (`make publish` uploads from this machine).
 #
 # One BLAS/OpenMP thread per worker: each of the N workers otherwise opens a
 # pool the size of the machine (numpy, scipy, sklearn, torch, onnxruntime),
@@ -45,7 +45,7 @@ test: ## Run pytest in parallel, without coverage
 test-cov: ## Run pytest in parallel with the coverage report
 	$(PYTEST_PARALLEL) --cov=$(PACKAGE) --cov-report=term-missing
 
-# The Python matrix CI used to run. Each version gets its own venv outside
+# The Python matrix the old CI used to run. Each version gets its own venv outside
 # the repository (an in-repo `.venv-3.x` would ship in the sdist), synced
 # from the committed lock with every extra.
 MATRIX_PYTHONS := 3.12 3.13 3.14
@@ -95,7 +95,7 @@ type: ## Run mypy in strict mode
 
 check: lint fmt-check type test ## Run every gate (lint + format check + mypy + tests)
 
-ci: check build smoke ## Full local mirror of the GitHub Actions pipeline
+ci: check build smoke ## Every local gate plus the packaging smoke (there is no remote CI)
 
 ## ---------- supply chain ----------
 
@@ -230,8 +230,9 @@ release: ## Bump versions, run every gate, commit and tag. Usage: make release V
 # it, so the guard could never fail. Measured by corrupting the lock and
 # watching a bare `uv run python -c pass` put it back.
 #
-# `make check` here is the only place the suite runs before a tag: the
-# release workflow publishes and does not test (tests/test_release_flow_guard.py).
+# `make check` here is the only place the suite runs before a tag: `make
+# publish` checks, builds and uploads, and does not test
+# (tests/test_release_flow_guard.py).
 	$(MAKE) check
 	$(MAKE) audit
 	$(MAKE) docs-build
@@ -248,6 +249,21 @@ release: ## Bump versions, run every gate, commit and tag. Usage: make release V
 	@echo "Ready to push. Review with \`git show v$(VERSION)\` then:"
 	@echo "    git push origin main"
 	@echo "    git push origin v$(VERSION)"
+	@echo "    make publish VERSION=$(VERSION)"
+	@echo "    make docs-deploy"
+
+# Publishes from this machine what the release workflow published until
+# 2026-11-09, when the account was locked for billing and v0.346.0 tagged
+# without reaching PyPI. Nothing here depends on GitHub Actions any more.
+# Run it from a clean checkout of the pushed tag; every check (HEAD == tag,
+# tag x pyproject x __version__ x uv.lock, `uv lock --check`, `make audit`)
+# runs before the build, and the upload and the GitHub Release run last.
+# `UV_PUBLISH_TOKEN` must hold a PyPI token scoped to this project; the
+# script refuses without it and never prints it. DRY_RUN=1 runs everything
+# except the upload and the GitHub Release, and needs no token.
+publish: ## Check, build, upload to PyPI and create the GitHub Release. Usage: make publish VERSION=0.2.0 [DRY_RUN=1]
+	@test -n "$(VERSION)" || (echo 'Usage: make publish VERSION=0.2.0 [DRY_RUN=1]'; exit 1)
+	uv run --no-project python scripts/publish.py --version $(VERSION) $(if $(DRY_RUN),--dry-run)
 
 ## ---------- docs ----------
 
@@ -258,6 +274,13 @@ docs-build: ## Build the static docs site into ./site/ (strict — fails on warn
 	uv run --group docs mkdocs build --strict
 
 docs: docs-build ## Alias for docs-build
+
+# Builds the site once with the `docs-build` build (strict, both locales) and
+# pushes that directory to `gh-pages`, which Pages serves as "Deploy from a
+# branch". Refuses a dirty tree or a HEAD other than origin/main.
+# DRY_RUN=1 builds and checks without pushing.
+docs-deploy: ## Build the docs (strict) and push the site to gh-pages. Usage: make docs-deploy [DRY_RUN=1]
+	uv run --no-project python scripts/deploy_docs.py $(if $(DRY_RUN),--dry-run)
 
 ## ---------- housekeeping ----------
 
