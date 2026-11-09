@@ -168,7 +168,9 @@ class PixChargeRequest(BaseSchema):
         reference (str): The identifier **the service** owns. It becomes
             OpenPix's ``correlationID`` and Mercado Pago's
             ``external_reference``, and it is what lets a webhook that
-            arrives before the HTTP response still be reconciled.
+            arrives before the HTTP response still be reconciled. It is
+            also the create's idempotency key: repeating a create with the
+            same ``reference`` answers the charge that already exists.
         description (str | None): Free text shown to the payer where the
             provider supports it.
         expires_in (timedelta | None): How long the charge stays payable.

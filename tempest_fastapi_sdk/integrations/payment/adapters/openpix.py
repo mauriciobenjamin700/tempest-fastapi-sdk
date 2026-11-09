@@ -239,6 +239,15 @@ class OpenPixPixProvider:
         with a 400; that floor is not re-checked here, because duplicating
         a provider's validation is how the copy drifts from the original.
 
+        The create is idempotent on ``reference``: it goes out with
+        ``?return_existing=true``, so a retry after a timeout — when the
+        first request may have landed — answers the charge that already
+        exists for that ``correlationID``, as Woovi's specification
+        describes the parameter (not measured against the sandbox). That
+        is the same guarantee the Mercado Pago adapter gives through
+        ``X-Idempotency-Key``, and the one the protocol documents for
+        :attr:`PixChargeRequest.reference`.
+
         Args:
             request (PixChargeRequest): What to charge, and for whom.
 
@@ -262,7 +271,7 @@ class OpenPixPixProvider:
             ),
             customer=self._customer(request),
         )
-        response = await self._client.create_charge(body=payload)
+        response = await self._client.create_charge(body=payload, return_existing=True)
         if response.charge is None:
             raise ValueError("OpenPix accepted the charge but returned no charge body.")
         charge = self._to_pix_charge(response.charge)
