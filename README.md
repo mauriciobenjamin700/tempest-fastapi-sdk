@@ -4899,8 +4899,10 @@ make lint        # ruff check .
 make fmt         # ruff format .
 make type        # mypy --strict
 make check       # lint + fmt-check + type + test (every gate)
-make ci          # check + build + smoke install in a clean venv (mirrors GitHub Actions)
+make ci          # check + build + smoke install in a clean venv
 make build       # uv build → dist/
+make publish     # check, build and upload a pushed tag to PyPI (VERSION=X.Y.Z, DRY_RUN=1)
+make docs-deploy # build the docs (strict) and push the site to gh-pages
 make clean       # remove caches and build artifacts
 ```
 
@@ -4914,67 +4916,49 @@ uv run mypy tempest_fastapi_sdk
 uv build
 ```
 
-CI runs no tests: `make check` locally is the gate, and `make test-matrix` runs the suite on 3.12, 3.13 and 3.14, one venv per version. `make smoke` installs the freshly built wheel into a clean 3.12 virtualenv (the floor) and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs; the tag workflow repeats that smoke before publishing.
+There is no CI: `make check` locally is the gate, and `make test-matrix` runs the suite on 3.12, 3.13 and 3.14, one venv per version. `make smoke` installs the freshly built wheel into a clean 3.12 virtualenv (the floor) and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs; `make publish` repeats a base-install smoke before uploading.
 
 ---
 
 ## Release
 
-Releases are published to [PyPI](https://pypi.org/project/tempest-fastapi-sdk/) automatically when a `v*.*.*` tag is pushed.
+Releases are published to [PyPI](https://pypi.org/project/tempest-fastapi-sdk/) **from the maintainer's machine**. Nothing in this repository runs on GitHub Actions: there are no workflows, and `tests/test_release_flow_guard.py` fails if one comes back.
 
-The pipeline (`.github/workflows/release-pypi.yml`) does three things:
-
-1. **Version sanity check.** The tag (`v0.1.0`), `pyproject.toml`'s `version` field and `tempest_fastapi_sdk.__version__` must all match. Mismatched releases abort before any artifact is built.
-2. **Build + verify.** Run the full validation suite (tests + lint + mypy), build sdist/wheel with `uv build`, check metadata with `twine check`, and verify the wheel actually contains the package files + the bundled `env.py.template` Alembic template.
-3. **Publish via Trusted Publishing.** Uses OIDC against PyPI — no long-lived API tokens stored in repo secrets.
-
-### Cutting a release
+The flow is four commands:
 
 ```bash
-make release VERSION=0.2.0 SUBJECT="assunto da release"
+make release VERSION=0.2.0 SUBJECT="assunto da release"   # gate, bump, commit, tag
+git push origin main && git push origin v0.2.0
+make publish VERSION=0.2.0                                 # check, build, upload, GitHub Release
+make docs-deploy                                           # build the site, push to gh-pages
 ```
 
-This single target:
+### `make release`
 
 1. Refuses to run if the working tree is dirty.
 2. Refuses to run if `CHANGELOG.md` has no `## [0.2.0]` entry — write it first.
 3. Bumps `pyproject.toml` and `tempest_fastapi_sdk/__init__.py` to the requested version.
-4. Runs the whole gate — `make check` (lint + format + mypy + tests), `make docs-build` (mkdocs `--strict`) and `make smoke` (imports the built wheel in a clean venv) — so a broken commit never gets tagged.
+4. Runs the whole gate — `make check` (lint + format + mypy + tests), `make audit`, `make docs-build` (mkdocs `--strict`) and `make smoke` (imports the built wheel in a clean venv) — so a broken commit never gets tagged.
 5. Commits the bump as `feat: v0.2.0 — assunto da release` and creates the `v0.2.0` tag locally. Without `SUBJECT` the message falls back to `chore: release v0.2.0`.
-6. Prints the two `git push` commands you still need to run — pushing is left manual on purpose so you can review the commit one last time.
+6. Prints the push, publish and docs-deploy commands — pushing is left manual on purpose so you can review the commit one last time.
 
-```bash
-# Review then push
-git show v0.2.0
-git push origin main
-git push origin v0.2.0
-```
+### `make publish`
 
-GitHub Actions picks up the tag, runs the release pipeline and publishes the artifacts to PyPI.
+Run from a clean checkout of the pushed tag, with a PyPI API token in `UV_PUBLISH_TOKEN`. `scripts/publish.py` runs, in order, and stops at the first refusal:
 
-Manual flow (no Makefile) — same result:
+1. **Preflight.** Refuses without `UV_PUBLISH_TOKEN` (the value is never printed) or without a logged-in `gh`.
+2. **Tag.** `HEAD` is exactly `v0.2.0`, the tree is clean, the tag is on `origin` and the commit is on `origin/main`.
+3. **Versions.** The tag, `pyproject.toml`, `tempest_fastapi_sdk.__version__` and this package's entry in `uv.lock` all match; the `CHANGELOG.md` section exists.
+4. **Lock and audit.** `uv lock --check` and `make audit`.
+5. **Build and verify.** `uv build` into an emptied `dist/`, `twine check --strict`, the wheel carries the package source and the bundled `env.py.template`, and a base install in a clean Python 3.12 venv imports the top-level surface.
+6. **Publish.** `uv publish` (with `--check-url`, so a re-run only uploads what is missing), then `gh release create` with the CHANGELOG section as notes.
 
-```bash
-$EDITOR pyproject.toml                              # version = "0.2.0"
-$EDITOR tempest_fastapi_sdk/__init__.py             # __version__ = "0.2.0"
-git commit -am "chore: release v0.2.0"
-git tag v0.2.0
-git push origin main v0.2.0
-```
+`make publish VERSION=0.2.0 DRY_RUN=1` runs every step except the upload and the GitHub Release, and needs no token.
 
-### One-time PyPI Trusted Publishing setup
+### One-time setup
 
-PyPI needs to know which workflow is allowed to publish on the project's behalf. Done once per project:
-
-1. Create the project on [PyPI](https://pypi.org) (name: `tempest-fastapi-sdk`). For brand-new projects, register a placeholder release manually first or use [`pending` publishers](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/) so the first OIDC-driven upload can create it.
-2. On the project's PyPI settings page, add a **Trusted Publisher** pointing to:
-   - **Owner**: `mauriciobenjamin700`
-   - **Repository**: `tempest-fastapi-sdk`
-   - **Workflow filename**: `release-pypi.yml`
-   - **Environment**: `pypi` (must match `release-pypi.yml`'s `environment.name`)
-3. In the GitHub repository, create an environment named `pypi` (Settings → Environments → New environment). Optionally restrict deployments to tags matching `v*.*.*` for an extra safety net.
-
-After this, every `v*.*.*` tag triggers a publish. No PYPI tokens are stored anywhere.
+1. **PyPI token.** On PyPI, *Account settings → API tokens → Add API token*, scoped to the `tempest-fastapi-sdk` project only. Keep it out of the repository and export it only for the publish: `UV_PUBLISH_TOKEN=pypi-… make publish VERSION=0.2.0`.
+2. **GitHub Pages.** *Settings → Pages → Build and deployment → Source: Deploy from a branch*, branch `gh-pages`, folder `/`. The branch is created by the first `make docs-deploy`.
 
 ---
 

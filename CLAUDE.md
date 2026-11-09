@@ -47,29 +47,52 @@ Duas consequências estruturais:
 
 ## Release
 
-`make release VERSION=X.Y.Z SUBJECT="<assunto>"` é a autoridade: recusa árvore
-suja e CHANGELOG sem entrada, bumpa os dois arquivos de versão, roda lint +
-format + mypy + a suíte em paralelo (`make check`, ~7 min), audit,
-`docs-build` e `smoke`, commita e cria a tag. **É o único lugar onde a suíte
-roda antes de uma tag**: desde 2026-10-09 a CI só publica — o workflow da tag
-confere versão e lock, audita, builda e sobe, em poucos minutos. Guard:
-`tests/test_release_flow_guard.py`. O push fica manual. A ordem em volta — CHANGELOG, docs, auditoria de prosa, confirmação
-antes do push — está na skill `/release`.
+**Nada aqui depende de GitHub Actions** (desde 2026-11-09: a conta travou por
+cobrança e a tag v0.346.0 subiu sem publicar —
+[`LESSONS.md`](LESSONS.md#a-trava-de-cobrança-parou-a-release-v03460)). Não
+há workflow nem Dependabot no repo, e `tests/test_release_flow_guard.py`
+falha se um voltar. O fluxo inteiro roda nesta máquina:
+
+1. `make release VERSION=X.Y.Z SUBJECT="<assunto>"` é a autoridade do gate:
+   recusa árvore suja e CHANGELOG sem entrada, bumpa os dois arquivos de
+   versão, roda lint + format + mypy + a suíte em paralelo (`make check`,
+   ~7 min), audit, `docs-build` e `smoke`, commita e cria a tag. **É o único
+   lugar onde a suíte roda antes de uma tag.**
+2. `git push origin main && git push origin vX.Y.Z` — manual, com
+   confirmação do usuário.
+3. `make publish VERSION=X.Y.Z` (num checkout limpo da tag, com
+   `UV_PUBLISH_TOKEN` no ambiente) confere `HEAD` = tag empurrada e na
+   `origin/main`, tag × `pyproject` × `__version__` × `uv.lock`, a seção do
+   CHANGELOG, `uv lock --check` e `make audit`; builda em `dist/` limpo,
+   `twine check`, confere a wheel e faz o smoke da instalação base; só então
+   `uv publish` e `gh release create` (API, não Actions). `DRY_RUN=1` faz tudo
+   menos os dois últimos, sem token. Guard: `tests/test_publish_guard.py`.
+4. `make docs-deploy` (num checkout limpo da `origin/main`) builda o site uma
+   vez com `mkdocs build --strict`, confere os dois locales e empurra aquele
+   diretório para a `gh-pages` (`ghp-import`). O Pages serve "Deploy from a
+   branch: `gh-pages` /".
+
+A ordem em volta — CHANGELOG, docs, auditoria de prosa, confirmação antes do
+push — está na skill `/release`. Mudança só de tooling (Makefile, `scripts/`,
+`tests/`, `.github/`), sem delta em `tempest_fastapi_sdk/**`, também não
+bumpa: commit `chore:`/`tests:` sem release.
 
 **Docs-only pula tudo isso.** Tocou só `docs/`, `README.md`, `SHIPPED.md` ou
 prosa de `CLAUDE.md`/`LESSONS.md` (zero delta em `tempest_fastapi_sdk/**`)? Sem
 bump, sem CHANGELOG, sem tag — commit `docs: <subject>` direto na `main`
-(rebase em `origin/main` primeiro se atrasado). Gate é `make docs-build` +
+(rebase em `origin/main` primeiro se atrasado), e `make docs-deploy` depois
+do push para o site sair. Gate é `make docs-build` +
 `pytest tests/test_docs_api_guard.py tests/test_docs_organization.py`; o
 `make check` completo é desnecessário porque nenhum Python mudou. Edição de
 docstring que muda assinatura ou comportamento **não** é docs-only.
 
 ## PR com `make check` local verde é mergeado
 
-**A CI não testa PR** (decisão de 2026-10-09: testes só na máquina local, CI
-só publica). **Não peça confirmação para mergear.** PR deste repo — aberto por
-você ou por agente — cujo `make check` passou **localmente, sobre o branch
-atualizado com a `main`**, e que está `mergeable` é mergeado na hora com
+**Não há CI** (desde 2026-10-09 os testes rodam só na máquina local; desde
+2026-11-09 nem a publicação passa pelo GitHub Actions). **Não peça
+confirmação para mergear.** PR deste repo — aberto por você ou por agente —
+cujo `make check` passou **localmente, sobre o branch atualizado com a
+`main`**, e que está `mergeable` é mergeado na hora com
 `gh pr merge <n> --merge` (merge commit, o padrão do histórico). Esta seção é a
 autorização durável; não a trate como algo que precisa ser renovado a cada PR.
 
@@ -78,7 +101,7 @@ autorização durável; não a trate como algo que precisa ser renovado a cada P
   o intermitente (foi assim com o `test_scheduler_lease` no #309 → #322).
 - **A matriz de Python é `make test-matrix`** (3.12, 3.13, 3.14, uma venv por
   versão fora do repo). Rode antes de release que mexa em dependência ou em
-  código sensível à versão — a CI não roda mais por você.
+  código sensível à versão — nenhuma CI roda por você.
 - **Vários PRs paralelos: um por vez.** Cada merge move o `main`; o próximo é
   atualizado com o `main` novo antes do merge. Conflito só em `CHANGELOG.md` /
   `SHIPPED.md` (entradas paralelas em `[Unreleased]`) se resolve concatenando;

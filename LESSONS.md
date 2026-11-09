@@ -5,6 +5,27 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## A trava de cobrança parou a release (v0.346.0)
+
+Em 2026-11-09 a conta do GitHub foi travada por cobrança. A tag v0.346.0
+(`e7f449d2`) chegou ao remoto e nada publicou: o `release-pypi.yml` era o
+único caminho até o PyPI, e um job que não começa não falha em lugar nenhum
+que alguém esteja olhando. A regra desde então é custo zero no GitHub fora da
+org `7rc`, e este repo deixou de depender de GitHub Actions em tudo.
+
+O que cada workflow fazia virou target local: a publicação é `make publish`
+(os mesmos passos, na mesma ordem, com `uv publish` e um token do PyPI no
+lugar do trusted publishing por OIDC, que só existe dentro do Actions), o
+site é `make docs-deploy` (empurra o build para a branch `gh-pages`), e o
+audit continua dentro do `make release` e do `make publish`. Os arquivos
+foram **apagados**, não desativados: workflow desativado no repo é um clique
+de voltar a rodar, e o guard (`tests/test_release_flow_guard.py`) recusa
+qualquer um que reapareça.
+
+**O que se perdeu, de propósito:** o audit diário. Advisory novo agora
+aparece no próximo `make release`/`make publish`, ou num `make audit` à mão
+— não na manhã seguinte.
+
 ## O timeout disparou, foi engolido, e nada rearmou (#337)
 
 Com load ~20, o gate do #336 ficou mais de 40 min parado no teardown do

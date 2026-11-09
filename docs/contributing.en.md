@@ -100,7 +100,7 @@ make docs-build              # build the static site into ./site/
 Every page lives in two languages (`docs/<page>.md` + `docs/<page>.en.md`) and the build runs with `--strict` — a warning is an error.
 
 !!! info "The docs stay organized by rule, not by review"
-    A new page needs: **both** files (PT + `.en.md`), an entry in **both** navs (the top-level `nav:` and the `en` locale's `nav:` — the i18n plugin translates labels but cannot reorder a shared nav), at its **alphabetical position** in each language, plus a row in the `docs/recipes/index.md`/`.en.md` table when it is a recipe, and a stub in `docs/reference.md` when it exposes a new symbol. `uv run pytest tests/test_docs_organization.py` fails when any of that is missing or out of order — and it runs inside `make check`. Top-level tabs, `learning/` pages, the `getting-started/` track and the landing's tour follow a reading order on purpose. Edits reach the Pages site on push to `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
+    A new page needs: **both** files (PT + `.en.md`), an entry in **both** navs (the top-level `nav:` and the `en` locale's `nav:` — the i18n plugin translates labels but cannot reorder a shared nav), at its **alphabetical position** in each language, plus a row in the `docs/recipes/index.md`/`.en.md` table when it is a recipe, and a stub in `docs/reference.md` when it exposes a new symbol. `uv run pytest tests/test_docs_organization.py` fails when any of that is missing or out of order — and it runs inside `make check`. Top-level tabs, `learning/` pages, the `getting-started/` track and the landing's tour follow a reading order on purpose. Edits reach the site when the maintainer runs `make docs-deploy` after the merge to `main`: the target builds with `--strict` and pushes the site to the `gh-pages` branch. Nothing runs on GitHub Actions.
 
 ## Commit message style
 
@@ -127,4 +127,4 @@ git push origin v0.20.0
 
 The target **refuses** to run on a dirty tree or without a `## [0.20.0]` entry in `CHANGELOG.md` — write the changelog first. Without `SUBJECT` the commit message falls back to the generic `chore: release v0.20.0` instead of the `feat: vX.Y.Z — subject` this project uses.
 
-The PyPI publish workflow fires on the `vX.Y.Z` tag push (trusted publishing — no API token in the repository).
+After `main` and the tag are pushed, publishing runs on the maintainer's machine: `make publish VERSION=X.Y.Z` checks the tag, the versions, the lock and the audit, builds, uploads to PyPI with a project-scoped token (`UV_PUBLISH_TOKEN`, never in the repository) and creates the GitHub Release; `make docs-deploy` updates the site. Nothing runs on GitHub Actions.
