@@ -15,6 +15,7 @@ Requires the ``[admin]`` optional extra (``jinja2`` +
 from tempest_fastapi_sdk.admin.actions import AdminAction as AdminAction
 from tempest_fastapi_sdk.admin.actions import AdminActionContext as AdminActionContext
 from tempest_fastapi_sdk.admin.actions import AdminActionResult as AdminActionResult
+from tempest_fastapi_sdk.admin.actions import AdminSecret as AdminSecret
 from tempest_fastapi_sdk.admin.actions import admin_action as admin_action
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend as AdminAuthBackend
 from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
@@ -123,6 +124,7 @@ __all__: list[str] = [
     "AdminLoginCSRF",
     "AdminModel",
     "AdminPermissionEnum",
+    "AdminSecret",
     "AdminSession",
     "AdminSessionRevocations",
     "AdminSite",

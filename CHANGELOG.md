@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Ação customizada do admin mostra um segredo uma vez (#718):
+  `AdminActionResult(secrets=[AdminSecret(label, value)])` faz o painel
+  responder o próprio `POST` com uma página que mostra a mensagem e cada
+  valor num campo só de leitura, sem redirect. O valor não vai para URL,
+  histórico, access log nem `Referer`. A resposta sai com
+  `Cache-Control: no-store`, `Pragma: no-cache` e
+  `Referrer-Policy: no-referrer`, e a sessão do request recebe `commit` antes
+  de a página renderizar: segredo na tela nunca é de linha desfeita.
+  `repr(AdminSecret)` omite o valor. Ação sem `secrets` não muda (flash por
+  redirect). Antes, uma ação que criava credencial (chave de API, token) não
+  tinha como mostrá-la sem vazar pelo `?flash=`.
+
 ## [0.346.0] — 2026-11-09
 
 ### Added

@@ -18,12 +18,14 @@ with :func:`admin_action` and registered on an
 The decorated function receives an :class:`AdminActionContext` (the
 selected row ids, a repository, the request and the admin session) and
 returns an optional :class:`AdminActionResult` whose message is flashed
-back on the list view.
+back on the list view. An action that creates a credential returns it in
+``AdminActionResult.secrets`` (:class:`AdminSecret`), and the panel shows
+it once on the action's own response instead of redirecting.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -59,17 +61,49 @@ class AdminActionContext:
 
 
 @dataclass(frozen=True)
+class AdminSecret:
+    """A value the operator must see exactly once, such as a new API key.
+
+    The ``value`` is left out of ``repr`` so a logged or printed result
+    does not carry it.
+
+    Attributes:
+        label (str): What the value is (``"API key for ana@example.com"``).
+        value (str): The secret itself, in plaintext.
+    """
+
+    label: str
+    value: str = field(repr=False)
+
+
+@dataclass(frozen=True)
 class AdminActionResult:
-    """The outcome of a custom action, flashed on the list view.
+    """The outcome of a custom action.
+
+    Without ``secrets`` the message is flashed on the list view, carried
+    by the redirect's query string. With ``secrets`` the panel answers the
+    action's own ``POST`` with a page that shows the message and each
+    secret once — no redirect, so no value reaches a URL, the browser
+    history, an access log or a ``Referer`` — sent with
+    ``Cache-Control: no-store`` and ``Referrer-Policy: no-referrer``. The
+    request's database session is committed before that page renders, so
+    a secret on screen is never one whose row was rolled back.
 
     Attributes:
         message (str): Human-readable result shown to the operator.
         category (str): Banner style — ``"success"`` (default),
             ``"error"`` or ``"warning"``.
+        secrets (Sequence[AdminSecret]): Values to reveal once. Any
+            sequence is accepted (a list included) and stored as a tuple.
     """
 
     message: str
     category: str = "success"
+    secrets: Sequence[AdminSecret] = ()
+
+    def __post_init__(self) -> None:
+        """Store ``secrets`` as a tuple, so the frozen result stays hashable."""
+        object.__setattr__(self, "secrets", tuple(self.secrets))
 
 
 ActionHandler = Callable[[AdminActionContext], Awaitable["AdminActionResult | None"]]
