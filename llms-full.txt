@@ -1194,6 +1194,7 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -6423,6 +6424,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.347.0] — 2026-11-09
+
+### Added
+
+- Ação customizada do admin mostra um segredo uma vez (#718):
+  `AdminActionResult(secrets=[AdminSecret(label, value)])` faz o painel
+  responder o próprio `POST` com uma página que mostra a mensagem e cada
+  valor num campo só de leitura, sem redirect. O valor não vai para URL,
+  histórico, access log nem `Referer`. A resposta sai com
+  `Cache-Control: no-store`, `Pragma: no-cache` e
+  `Referrer-Policy: no-referrer`, e a sessão do request recebe `commit` antes
+  de a página renderizar: segredo na tela nunca é de linha desfeita.
+  `repr(AdminSecret)` omite o valor. Ação sem `secrets` não muda (flash por
+  redirect). Antes, uma ação que criava credencial (chave de API, token) não
+  tinha como mostrá-la sem vazar pelo `?flash=`.
 
 ## [0.346.0] — 2026-11-09
 
@@ -32381,6 +32398,73 @@ pra exibir um banner na list view (ou `None` pra não mostrar nada). A
 função fica **diretamente chamável/testável** — o decorator só anexa
 metadados. Use `name=` pra fixar o identificador (default: nome da função)
 e `dangerous=True` pra marcar ação destrutiva.
+
+### Mostrar um segredo uma vez (`secrets=`)
+
+Algumas ações **criam uma credencial**: uma chave de API, um token de
+integração, uma senha temporária. O operador precisa ver o valor uma vez, e
+o flash não serve para isso, porque ele volta pelo redirect na query string
+(`?flash=...`). Ali o valor iria para o histórico do browser, para o access
+log e para o `Referer` da próxima página.
+
+Devolva o valor em `AdminActionResult(secrets=[...])`, como `AdminSecret`:
+
+```python
+from tempest_fastapi_sdk import (
+    AdminActionContext,
+    AdminActionResult,
+    AdminModel,
+    AdminSecret,
+    admin_action,
+    generate_opaque_token,
+)
+
+from src.admin import site
+from src.db.models import ApiKeyModel, UserModel
+
+
+@admin_action(label="Gerar chave de API")
+async def issue_api_key(ctx: AdminActionContext) -> AdminActionResult:
+    """Cria uma chave por usuário marcado e mostra cada uma uma vez."""
+    users = await ctx.repository.list(filters={"id": ctx.ids})
+    secrets: list[AdminSecret] = []
+    for user in users:
+        plaintext, digest = generate_opaque_token()
+        ctx.db_session.add(ApiKeyModel(user_id=user.id, key_hash=digest))
+        secrets.append(AdminSecret(f"Chave de {user.email}", plaintext))
+    return AdminActionResult(f"{len(secrets)} chave(s) criada(s).", secrets=secrets)
+
+
+site.register(AdminModel(model=UserModel, actions=[issue_api_key]))
+```
+
+Com `secrets`, o painel **não redireciona**. A resposta do próprio `POST`
+é uma página com a mensagem e cada valor num campo só de leitura (o foco já
+seleciona o texto para copiar), e com um botão de volta para a lista. O
+que muda em relação ao flash:
+
+- **Nada vai para URL nem header.** O valor só existe no corpo dessa
+  resposta.
+- **`Cache-Control: no-store`** e `Pragma: no-cache`: nem o browser nem um
+  proxy guardam cópia da página. Recarregar reenvia o `POST`, ou seja,
+  roda a ação de novo: medido no Chromium, o reload emitiu uma credencial
+  **nova**, com outro valor. O valor antigo não volta, e a credencial dele
+  continua válida até alguém revogá-la.
+- **`Referrer-Policy: no-referrer`**: o link de volta não carrega a URL da
+  ação.
+- **A sessão do request recebe `commit` antes de a página renderizar.** O
+  `ctx.db_session.add(...)` acima não precisa de commit próprio, e um
+  segredo na tela nunca é de uma linha que voltou atrás.
+- **`repr(AdminSecret)` omite o valor**, então logar o resultado não vaza
+  o segredo.
+
+!!! warning "Guarde só o digest"
+    O painel mostra o texto puro uma vez, mas guardá-lo é decisão sua.
+    Persista o `digest` do `generate_opaque_token()` (SHA-256) e confira
+    a chave recebida com `verify_opaque_token`. A coluna do digest vai em
+    `__secret_columns__`, para nenhuma tela do painel exibi-la.
+
+Ação sem `secrets` continua igual: flash na list view, por redirect.
 
 ## Campo de upload de arquivo / imagem
 
