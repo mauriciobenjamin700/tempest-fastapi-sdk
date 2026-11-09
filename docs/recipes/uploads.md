@@ -439,6 +439,11 @@ corpo da função: `422` da validação.
     HEIC. Passe pelo menos os primeiros 32 bytes para as marcas compatíveis
     caberem.
 
+!!! tip "Foto de usuário: limpe os metadados antes de gravar"
+    `content_type.matches(data)` confere o tipo, mas a foto continua com o
+    EXIF dentro (GPS, aparelho). Para gravar ou repassar sem isso, veja
+    [Metadados de imagem](image-metadata.md).
+
 ## Alternar por settings
 
 Escolha o argumento do construtor conforme uma flag do seu `Settings` — não

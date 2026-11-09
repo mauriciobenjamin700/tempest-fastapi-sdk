@@ -442,6 +442,11 @@ reaches the function body: `422` from validation.
     the same container and often declares `mif1`, does **not** pass as HEIC.
     Pass at least the first 32 bytes so the compatible brands fit.
 
+!!! tip "User photos: strip the metadata before storing"
+    `content_type.matches(data)` checks the type, but the photo still carries
+    its EXIF (GPS, device). To store or forward it without that, see
+    [Image metadata](image-metadata.md).
+
 ## Switching via settings
 
 Choose the constructor argument from a flag on your `Settings` — no manual

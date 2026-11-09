@@ -571,6 +571,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooLargeException
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooSmallException
 ::: tempest_fastapi_sdk.exceptions.upload.InvalidFileTypeException
+::: tempest_fastapi_sdk.exceptions.image.ImageDecodeException
+::: tempest_fastapi_sdk.exceptions.image.ImageTypeMismatchException
+::: tempest_fastapi_sdk.exceptions.image.ImageFormatUnsupportedException
+::: tempest_fastapi_sdk.exceptions.image.ImageTooLargeException
 ::: tempest_fastapi_sdk.exceptions.wallet.InsufficientBalanceException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutRejectedException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutUncertainException
@@ -1511,6 +1515,10 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.media_types.XLSX_MEDIA_TYPE
 ::: tempest_fastapi_sdk.utils.media_types.DOCX_MEDIA_TYPE
 ::: tempest_fastapi_sdk.utils.media_types.PPTX_MEDIA_TYPE
+::: tempest_fastapi_sdk.utils.images.strip_image_metadata
+::: tempest_fastapi_sdk.utils.images.DEFAULT_MAX_IMAGE_PIXELS
+::: tempest_fastapi_sdk.utils.images.DEFAULT_JPEG_QUALITY
+::: tempest_fastapi_sdk.utils.images.DEFAULT_WEBP_QUALITY
 ::: tempest_fastapi_sdk.utils.file_store.FileStoreUtils
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils
 ::: tempest_fastapi_sdk.utils.log.LogUtils

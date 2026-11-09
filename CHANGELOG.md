@@ -14,6 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recentes), e **Read at** mostra quando os arquivos foram lidos. Antes,
   ver registro novo exigia sair e voltar da aba. É um link, sem JavaScript,
   e aparece também no estado vazio (#711).
+- `strip_image_metadata(data, media_type, *, max_pixels=..., jpeg_quality=...,
+  webp_quality=...)` em `tempest_fastapi_sdk.utils` (e no topo): recodifica a
+  foto do usuário pelo Pillow no mesmo formato (JPEG, PNG, WEBP, GIF, BMP) sem
+  EXIF (GPS, aparelho, miniatura), XMP, IPTC, perfil ICC, comentários e chunks
+  de texto do PNG. A orientação do EXIF é aplicada aos pixels antes
+  (`ImageOps.exif_transpose`), e modo e transparência ficam. WEBP sem perda
+  continua sem perda; GIF e WEBP animados voltam só com o primeiro quadro;
+  `image/heic` é recusado (o Pillow não traz codec HEIC). O tamanho é
+  conferido pelo cabeçalho contra `max_pixels` (`DEFAULT_MAX_IMAGE_PIXELS`,
+  50 milhões) antes de decodificar, sem mexer no `PIL.Image.MAX_IMAGE_PIXELS`
+  global. Defaults: `DEFAULT_JPEG_QUALITY` e `DEFAULT_WEBP_QUALITY` (90).
+  Erros tipados, nunca os bytes originais de volta:
+  `ImageDecodeException` (`422 IMAGE_DECODE_FAILED`),
+  `ImageTypeMismatchException` (`415 IMAGE_TYPE_MISMATCH`),
+  `ImageFormatUnsupportedException` (`415 IMAGE_FORMAT_UNSUPPORTED`) e
+  `ImageTooLargeException` (`413 IMAGE_TOO_LARGE`), com mensagem nas duas
+  línguas do catálogo. Extra novo `[image]` (`pillow>=13.0.0`), também no
+  `[all]`. Receita: `docs/recipes/image-metadata.md` (#713).
 
 ## [0.345.0] — 2026-11-04
 
