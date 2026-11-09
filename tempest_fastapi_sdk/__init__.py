@@ -2358,7 +2358,7 @@ if TYPE_CHECKING:
         make_websocket_router as make_websocket_router,
     )
 
-__version__: str = "0.345.0"
+__version__: str = "0.346.0"
 
 _LAZY_ATTRIBUTES: dict[str, str] = {
     "AllowedImageMediaTypes": "tempest_fastapi_sdk.utils",
