@@ -4,13 +4,15 @@
 <section class="tempest-admin-logs">
   <div class="tempest-admin-list__header">
     <h1>Application logs</h1>
-    {% if available %}
     <div class="tempest-admin-logs__actions">
+      <a class="tempest-admin-logs__export tempest-admin-logs__refresh" href="{{ refresh_url }}" title="Reload the newest records with the current filter">Refresh</a>
+      {% if available %}
       <a class="tempest-admin-logs__export" href="{{ export_md_url }}" download>Export .md</a>
       <a class="tempest-admin-logs__export" href="{{ export_json_url }}" download>Export .json</a>
+      {% endif %}
     </div>
-    {% endif %}
   </div>
+  <p class="tempest-admin-logs__read-at">Read at <time>{{ read_at }}</time></p>
 
   {% if not available %}
   <p class="tempest-admin-logs__empty">
