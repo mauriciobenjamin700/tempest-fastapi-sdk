@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ver registro novo exigia sair e voltar da aba. É um link, sem JavaScript,
   e aparece também no estado vazio (#711).
 
+### Fixed
+
+- `OpenPixPixProvider.create_pix_charge` passa a criar com
+  `?return_existing=true`: repetir a criação com o mesmo `reference` (depois
+  de um timeout, por exemplo) pede a cobrança que já existe, como a spec da
+  Woovi descreve o parâmetro, em vez de uma criação nova. É a garantia que o
+  adapter do Mercado Pago já dava pelo `X-Idempotency-Key`, agora escrita no
+  contrato de `PixChargeRequest.reference`. Testado no request que sai; a
+  resposta a uma repetição ainda não foi medida contra o sandbox.
+
 ## [0.345.0] — 2026-11-04
 
 ### Added

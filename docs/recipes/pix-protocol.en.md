@@ -98,6 +98,16 @@ nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
     sending: the dot is not escaped, and up to v0.334.1 `..` climbed one
     level up the path.
 
+!!! check "Repeating a create answers the same charge"
+    `reference` is also the create's idempotency key. When the response is
+    lost (timeout, dropped connection) and you repeat `create_pix_charge`
+    with the same `reference`, you get the charge that already exists, not
+    a second one. On OpenPix that is `?return_existing=true`, which the
+    adapter sends since v0.346.0 (Woovi's spec describes it as "make the
+    endpoint idempotent"); on Mercado Pago, the `X-Idempotency-Key`. The SDK
+    tests the request that leaves, not the provider's answer: a repeat
+    against the sandbox has not been measured yet.
+
 ### What comes out: `PixCharge`
 
 | field | type | for |
