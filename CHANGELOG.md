@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Página de logs do admin ganha o botão **Refresh**: recarrega com a mesma
+  fonte e a mesma busca, voltando à primeira página (a dos registros mais
+  recentes), e **Read at** mostra quando os arquivos foram lidos. Antes,
+  ver registro novo exigia sair e voltar da aba. É um link, sem JavaScript,
+  e aparece também no estado vazio (#711).
+
 ## [0.345.0] — 2026-11-04
 
 ### Added

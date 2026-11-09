@@ -329,6 +329,14 @@ site.register(AdminModel(
     tracebacks e metadados de request — só habilite atrás do login do
     admin. Sem arquivos no `log_dir`, a página mostra um estado vazio.
 
+    O botão **Refresh** recarrega a página com a mesma fonte e a mesma busca,
+    voltando à primeira página, que é a dos registros mais recentes. A página
+    lê os arquivos a cada request, então recarregar é o que basta; o admin
+    não carrega JavaScript, e o botão é um link. Abaixo do título, **Read at**
+    mostra quando os arquivos foram lidos (UTC), para ficar visível que a
+    leitura rodou mesmo quando nada novo chegou. O botão aparece também no
+    estado vazio, que é justamente quando se espera o primeiro registro.
+
 !!! tip "Traceback de erros 500 e export para issue"
     Cada registro que carrega um traceback (os handlers do SDK logam com
     `exc_info=True`) vira um item clicável: **a própria mensagem é o

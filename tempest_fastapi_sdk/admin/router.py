@@ -1639,6 +1639,14 @@ def make_admin_router(
                 db_session (AsyncSession): The DB session.
                 session (AdminSession): The validated session.
 
+            The page carries a refresh link (``refresh_url``): the same
+            ``source`` and ``q`` without ``page``, so it reloads the newest
+            records under the current filter. Records are read from disk on
+            every request, so reloading is all a refresh takes; the admin
+            ships no JavaScript, and a link keeps it that way. ``read_at``
+            shows when this read happened, so a reload that brings nothing
+            new still visibly ran.
+
             Returns:
                 HTMLResponse: The logs template (empty state when no log
                 files exist on disk).
@@ -1702,6 +1710,12 @@ def make_admin_router(
                         f"{export_base}?{export_query}{separator}format=json"
                     ),
                     "export_max": _logs_export_max,
+                    "refresh_url": (
+                        f"{prefix}/logs?{export_query}"
+                        if export_query
+                        else f"{prefix}/logs"
+                    ),
+                    "read_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "context_keys": ("path", "method", "status_code", "request_id"),
                 },
             )

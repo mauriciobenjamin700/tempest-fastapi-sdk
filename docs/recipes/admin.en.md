@@ -347,6 +347,14 @@ site.register(AdminModel(
     exposes tracebacks and request metadata — only enable it behind the
     admin login. With no files in `log_dir`, the page shows an empty state.
 
+    The **Refresh** button reloads the page with the same source and the
+    same search, back on the first page, which holds the newest records.
+    The page reads the files on every request, so reloading is all it
+    takes; the admin ships no JavaScript, and the button is a link. Below
+    the title, **Read at** shows when the files were read (UTC), so the read
+    visibly ran even when nothing new arrived. The button also shows in the
+    empty state, which is exactly when you wait for the first record.
+
 !!! tip "500 tracebacks and export-to-issue"
     Every record carrying a traceback (the SDK's handlers log with
     `exc_info=True`) becomes a clickable item: **the message itself is the
