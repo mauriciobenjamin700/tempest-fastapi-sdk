@@ -4211,3 +4211,15 @@ Medido no Pillow 13.0.0, JPEG de 8000 x 6000: pico de memória +186 MB em pé,
 +368 MB com rotação de 90°. Erros em `exceptions/image.py`. Testes:
 `tests/utils/test_images.py` (imagens geradas no teste, sem binário). Receita:
 `docs/recipes/image-metadata.md`.
+
+## Segredo revelado uma vez no admin (#718)
+
+`AdminSecret(label, value)` em `admin/actions.py` (valor fora do `repr`) e
+`AdminActionResult.secrets` (tupla; lista aceita). Com segredo, o
+`POST /admin/m/{slug}/bulk` de ação customizada faz `commit` da sessão e
+renderiza `action_secrets.html` com status `200` em vez do redirect com
+`?flash=`, com `Cache-Control: no-store`, `Pragma: no-cache` e
+`Referrer-Policy: no-referrer`. Recarregar reenvia o `POST` e roda a ação de
+novo. Testes: `TestActionSecrets` em `tests/admin/test_actions.py` (o do commit
+falha sem o commit). Receita: "Mostrar um segredo uma vez" em
+`docs/recipes/admin.md`.

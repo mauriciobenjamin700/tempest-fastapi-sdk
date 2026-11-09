@@ -2546,3 +2546,25 @@ input[type="file"] {
     width: 6.5rem;
   }
 }
+
+/* ---- One-time secrets (AdminActionResult.secrets) ---- */
+.tempest-admin-secrets__list {
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tempest-admin-secrets__label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.tempest-admin-secrets__value {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 0.5rem 0.75rem;
+}

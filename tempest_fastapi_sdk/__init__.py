@@ -46,6 +46,9 @@ if TYPE_CHECKING:
         AdminPermissionEnum as AdminPermissionEnum,
     )
     from tempest_fastapi_sdk.admin import (
+        AdminSecret as AdminSecret,
+    )
+    from tempest_fastapi_sdk.admin import (
         AdminSite as AdminSite,
     )
     from tempest_fastapi_sdk.admin import (
@@ -2367,6 +2370,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "AdminAction": "tempest_fastapi_sdk.admin",
     "AdminActionContext": "tempest_fastapi_sdk.admin",
     "AdminActionResult": "tempest_fastapi_sdk.admin",
+    "AdminSecret": "tempest_fastapi_sdk.admin",
     "AdminAuthBackend": "tempest_fastapi_sdk.admin",
     "AdminAuthError": "tempest_fastapi_sdk.admin",
     "AdminModel": "tempest_fastapi_sdk.admin",
@@ -3303,6 +3307,7 @@ __all__: list[str] = [
     "AdminAuthError",
     "AdminModel",
     "AdminPermissionEnum",
+    "AdminSecret",
     "AdminSite",
     "AdminSurfaceEnum",
     "AdminSurfacePolicy",

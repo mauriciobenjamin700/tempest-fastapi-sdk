@@ -35,7 +35,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import NoInspectionAvailable
 from starlette.concurrency import run_in_threadpool
 
-from tempest_fastapi_sdk.admin.actions import AdminActionContext
+from tempest_fastapi_sdk.admin.actions import AdminActionContext, AdminActionResult
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel, Inline
 from tempest_fastapi_sdk.admin.dashboard import (
@@ -763,6 +763,49 @@ def make_admin_router(
             context,
             status_code=status_code,
         )
+
+    def _secrets_response(
+        request: Request,
+        admin: AdminModel[Any],
+        session: AdminSession,
+        principal: Any,
+        result: AdminActionResult,
+    ) -> HTMLResponse:
+        """Render a custom action's secrets on the action's own response.
+
+        The values never travel in a redirect: a flash rides the query
+        string, which lands in the browser history, the access log and
+        the next ``Referer``. The page is marked ``no-store`` so neither
+        the browser nor a proxy keeps a copy, and ``no-referrer`` so the
+        link back to the list does not leak the action URL either.
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The model the action ran on.
+            session (AdminSession): The validated session.
+            principal (Any): The admin who ran the action; renders the
+                panel chrome (header and sidebar) like every other page.
+            result (AdminActionResult): The action's result.
+
+        Returns:
+            HTMLResponse: The page, status ``200``.
+        """
+        response = _render(
+            request,
+            "action_secrets.html",
+            {
+                "admin": admin,
+                "session": session,
+                "user": principal,
+                "user_display": auth_backend.display_name(principal),
+                "result": result,
+                "back_url": f"{prefix}/m/{admin.get_slug()}/",
+            },
+        )
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
 
     def _require_admin(
         slug: str,
@@ -2260,6 +2303,9 @@ def make_admin_router(
                     principal=principal,
                 )
             )
+            if result is not None and result.secrets:
+                await db_session.commit()
+                return _secrets_response(request, admin, session, principal, result)
             if result is not None:
                 redirect_url += "?" + urlencode(
                     {"flash": result.message, "flash_cat": result.category}

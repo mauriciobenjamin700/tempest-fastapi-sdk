@@ -290,6 +290,74 @@ function stays **directly callable/testable** — the decorator only
 attaches metadata. Use `name=` to pin the identifier (default: the
 function name) and `dangerous=True` to mark a destructive action.
 
+### Show a secret once (`secrets=`)
+
+Some actions **create a credential**: an API key, an integration token, a
+temporary password. The operator has to see the value once, and the flash
+cannot carry it: it comes back through the redirect's query string
+(`?flash=...`), which puts the value in the browser history, the access
+log and the next page's `Referer`.
+
+Return it in `AdminActionResult(secrets=[...])`, as an `AdminSecret`:
+
+```python
+from tempest_fastapi_sdk import (
+    AdminActionContext,
+    AdminActionResult,
+    AdminModel,
+    AdminSecret,
+    admin_action,
+    generate_opaque_token,
+)
+
+from src.admin import site
+from src.db.models import ApiKeyModel, UserModel
+
+
+@admin_action(label="Issue API key")
+async def issue_api_key(ctx: AdminActionContext) -> AdminActionResult:
+    """Create one key per selected user and show each one once."""
+    users = await ctx.repository.list(filters={"id": ctx.ids})
+    secrets: list[AdminSecret] = []
+    for user in users:
+        plaintext, digest = generate_opaque_token()
+        ctx.db_session.add(ApiKeyModel(user_id=user.id, key_hash=digest))
+        secrets.append(AdminSecret(f"Key for {user.email}", plaintext))
+    return AdminActionResult(f"{len(secrets)} key(s) issued.", secrets=secrets)
+
+
+site.register(AdminModel(model=UserModel, actions=[issue_api_key]))
+```
+
+With `secrets`, the panel **does not redirect**. The `POST`'s own response
+is a page with the message and each value in a read-only field (focusing it
+selects the text for copying), plus a button back to the list. What changes
+compared to the flash:
+
+- **Nothing reaches a URL or a header.** The value only exists in that
+  response body.
+- **`Cache-Control: no-store`** and `Pragma: no-cache`: neither the browser
+  nor a proxy keeps a copy of the page. Reloading resubmits the `POST`,
+  which runs the action again: measured on Chromium, the reload issued a
+  **new** credential with a different value. The old value does not come
+  back, and its credential stays valid until someone revokes it.
+- **`Referrer-Policy: no-referrer`**: the link back does not carry the
+  action URL.
+- **The request's session is committed before the page renders.** The
+  `ctx.db_session.add(...)` above needs no commit of its own, and a secret
+  on screen is never one whose row was rolled back.
+- **`repr(AdminSecret)` leaves the value out**, so logging the result does
+  not leak the secret.
+
+!!! warning "Store only the digest"
+    The panel shows the plaintext once, but storing it is your call.
+    Persist the `digest` from `generate_opaque_token()` (SHA-256) and check
+    an incoming key with `verify_opaque_token`. Put the digest column in
+    `__secret_columns__`, so no panel screen displays it.
+
+An action without `secrets` is unchanged: flashed on the list view, through
+a redirect.
+
 ## File / image upload field
 
 A `String` column that stores a file's path/key can render as a **file
