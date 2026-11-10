@@ -793,6 +793,8 @@
       
         
       
+        
+      
     
     
     
@@ -883,6 +885,34 @@
     
   
     Recommended architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service standard
   
 
     
@@ -5543,7 +5573,10 @@ what the bytes <strong>are</strong> and compares it with the member:</p>
 <p>With a HEIC photo declared as <code>" Image/HEIC "</code>, the route answers <code>200</code> with
 the key <code>photos/&lt;uuid&gt;.heic</code>. The same JPEG declared as <code>image/jpg</code> passes; as
 <code>image/png</code>, it is refused with <code>415 INVALID_FILE_TYPE</code>. <code>image/avif</code> never
-reaches the function body: <code>422</code> from validation.</p>
+reaches the function body: <code>422</code> from validation.
+A photo above <code>MAX_PHOTO_BYTES</code> stops being read at the chunk that crosses
+the ceiling and comes back as <code>413</code>, with <code>code</code> <code>UPLOAD_TOO_LARGE</code> and the
+ceiling in <code>details.max_bytes</code> (up to 0.348.0 it was <code>422 VALIDATION_ERROR</code>).</p>
 <div class="admonition info">
 <p class="admonition-title">HEIC from the bytes</p>
 <p>A HEIC file is an ISO-BMFF <code>ftyp</code> box: <code>ftyp</code> at bytes 4 to 8 and the

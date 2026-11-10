@@ -720,6 +720,62 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Extras opcionais">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gpu-com-genai-audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPU com [genai-audio]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GPU com [genai-audio]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#passo-1-o-torch-do-indice-cu126" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passo 1: o torch do índice cu126
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passo-2-o-ld_library_path-do-ctranslate2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passo 2: o LD_LIBRARY_PATH do CTranslate2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passo-3-confira" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passo 3: confira
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -896,6 +952,8 @@
       
         
       
+        
+      
     
     
     
@@ -986,6 +1044,34 @@
     
   
     Arquitetura recomendada
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Padrão de serviço
   
 
     
@@ -5146,8 +5232,13 @@
 </tr>
 <tr>
 <td><code>[genai-audio]</code></td>
-<td><code>faster-whisper</code>, <code>coqui-tts</code>, <code>torch</code>, <code>torchaudio</code>, <code>torchcodec</code>, <code>six</code></td>
-<td>STT (Whisper) + TTS (Coqui) — o runtime do Coqui vem junto desde a v0.252.0; desde a 0.342.0 sem o teto <code>transformers&lt;5</code> (<a href="#genai-audio-transformers-bound">detalhes</a>)</td>
+<td><code>faster-whisper</code>, <code>torch</code></td>
+<td>STT (Whisper). Desde a 0.349.0 não traz mais o Coqui: o <code>torchaudio</code> dele derrubava o Bark na GPU (<a href="#genai-audio-coqui-split">detalhes</a>)</td>
+</tr>
+<tr>
+<td><code>[genai-tts-coqui]</code></td>
+<td><code>coqui-tts</code>, <code>torch</code>, <code>torchaudio</code>, <code>torchcodec</code>, <code>six</code></td>
+<td>TTS (Coqui XTTS v2) — o runtime do Coqui vem junto; sem o teto <code>transformers&lt;5</code> desde a 0.342.0 (<a href="#genai-audio-transformers-bound">detalhes</a>)</td>
 </tr>
 <tr>
 <td><code>[genai-chroma]</code></td>
@@ -5336,8 +5427,8 @@
 </tr>
 <tr>
 <td><code>[all]</code></td>
-<td>tudo acima <strong>exceto</strong> os 17 extras de stack pesado ou binário nativo: <code>[genai]</code>, <code>[genai-audio]</code>, <code>[genai-diarization]</code>, <code>[genai-hub]</code>, <code>[genai-image]</code>, <code>[genai-onnx]</code>, <code>[genai-sound]</code>, <code>[genai-quant]</code>, <code>[genai-rag]</code>, <code>[genai-structured]</code>, <code>[genai-vlm]</code>, <code>[faces]</code>, <code>[modelops-onnx]</code>, <code>[modelops-sklearn]</code>, <code>[admin-sql]</code>, <code>[firebase]</code>, <code>[slides-mermaid]</code></td>
-<td>os helpers de aplicação — instale os 17 acima à parte (e o <code>[tests]</code>, que é ferramenta de teste, no grupo de dev)</td>
+<td>tudo acima <strong>exceto</strong> os 18 extras de stack pesado ou binário nativo: <code>[genai]</code>, <code>[genai-audio]</code>, <code>[genai-tts-coqui]</code>, <code>[genai-diarization]</code>, <code>[genai-hub]</code>, <code>[genai-image]</code>, <code>[genai-onnx]</code>, <code>[genai-sound]</code>, <code>[genai-quant]</code>, <code>[genai-rag]</code>, <code>[genai-structured]</code>, <code>[genai-vlm]</code>, <code>[faces]</code>, <code>[modelops-onnx]</code>, <code>[modelops-sklearn]</code>, <code>[admin-sql]</code>, <code>[firebase]</code>, <code>[slides-mermaid]</code></td>
+<td>os helpers de aplicação — instale os 18 acima à parte (e o <code>[tests]</code>, que é ferramenta de teste, no grupo de dev)</td>
 </tr>
 </tbody>
 </table>
@@ -5363,17 +5454,54 @@
 </div>
 </div>
 </div>
+<p><a id="genai-audio-coqui-split"></a></p>
+<div class="admonition warning">
+<p class="admonition-title">Desde a 0.349.0 o Coqui (XTTS) está no <code>[genai-tts-coqui]</code></p>
+<p>O <code>[genai-audio]</code> trazia o <code>coqui-tts</code> e, com ele, o <code>torchaudio</code>. O Bark
+não usa <code>torchaudio</code>, mas o <code>transformers</code> o importa quando ele está
+instalado, ao montar o <code>AutoProcessor</code>. Na GPU, o <code>torchaudio</code> 2.11.1 do
+PyPI é build CUDA 13 e não carrega ao lado de um <code>torch</code> CUDA 12, então
+<code>POST /audio/speech</code> respondia 500 (medido no tempest-ai, RTX 4070 Ti
+SUPER, SDK 0.348.0 — issue <a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/723" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #723">#723</a>).</p>
+<p>Agora <code>[genai-audio]</code> é só o STT (<code>faster-whisper</code> + <code>torch</code>) e o Coqui
+tem extra próprio. Resolvido com <code>uv pip compile</code> (Python 3.12) em
+2026-11-10:</p>
+<table>
+<thead>
+<tr>
+<th>Extra</th>
+<th>traz</th>
+<th>não traz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[genai-audio]</code></td>
+<td>faster-whisper 1.2.1, ctranslate2 4.8.5, torch 2.15.0</td>
+<td><code>torchaudio</code>, <code>transformers</code>, <code>coqui-tts</code></td>
+</tr>
+<tr>
+<td><code>[genai-tts-coqui]</code></td>
+<td>coqui-tts 0.28.0, torchaudio 2.11.1, transformers 5.22.2, torch 2.15.0</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Quem usa <code>TextToSpeech</code> (XTTS)</strong> troca <code>[genai-audio]</code> por
+<code>[genai-audio,genai-tts-coqui]</code> (ou só <code>[genai-tts-coqui]</code>, sem STT).</p>
+</div>
 <p><a id="genai-audio-transformers-bound"></a></p>
 <div class="admonition check">
-<p class="admonition-title">Desde a 0.342.0 o <code>[genai-audio]</code> não fixa mais <code>transformers&lt;5</code></p>
+<p class="admonition-title">Desde a 0.342.0 o extra do Coqui não fixa mais <code>transformers&lt;5</code></p>
 <p>Até a 0.341.0 o extra tinha o teto <code>transformers&lt;5</code>: o <code>coqui-tts</code> 0.27.5
 importava <code>isin_mps_friendly</code>, símbolo que a transformers 5.1 removeu. Isso
 prendia quem instalava o extra na transformers 4.57.6, e com ela o
 <code>huggingface-hub</code>, o <code>tokenizers</code> e, ao lado do <code>[genai-image]</code>, o
 <code>diffusers</code>. O <code>coqui-tts</code> 0.28.0 não importa mais o símbolo, e o extra passou
 a exigir essa versão.</p>
-<p>Resolvido com <code>uv pip compile</code> (Python 3.12) em 2026-11-01, o extra não
-rebaixa mais nada:</p>
+<p>Resolvido com <code>uv pip compile</code> (Python 3.12) em 2026-11-01, quando o Coqui
+ainda estava no <code>[genai-audio]</code> (hoje está no <code>[genai-tts-coqui]</code>, ver
+acima), o extra não rebaixava mais nada:</p>
 <table>
 <thead>
 <tr>
@@ -5426,26 +5554,215 @@ criados com <code>tempest new</code> já pinam <code>aiosqlite</code> e <code>as
 <p class="admonition-title">Imports preguiçosos</p>
 <p>Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então <code>import tempest_fastapi_sdk</code> funciona mesmo quando só um subconjunto de extras está instalado. Instanciar um helper cujo extra está faltando levanta <code>ImportError</code> com uma dica clara apontando para o extra certo. Desde a 0.326.0 os módulos do próprio SDK também carregam sob demanda: <code>import tempest_fastapi_sdk</code> carrega um módulo em vez de 269 mais SQLAlchemy, FastAPI, Alembic, Jinja2 e bcrypt, e o <code>tempest --help</code> caiu de 0,94 s para 0,14 s (melhor de 5, medido neste repositório). <code>from tempest_fastapi_sdk import X</code> e a checagem de tipos strict funcionam como antes.</p>
 </div>
+<p><a id="genai-audio-gpu"></a></p>
+<h3 id="gpu-com-genai-audio">GPU com <code>[genai-audio]</code><a class="headerlink" href="#gpu-com-genai-audio" title="Permanent link">&para;</a></h3>
+<p>O <code>[genai-audio]</code> transcreve com o <strong>faster-whisper</strong>, que roda sobre o
+<strong>CTranslate2</strong>. As wheels do <code>ctranslate2</code> 4.x são linkadas contra o <strong>CUDA
+12</strong> e, na primeira transcrição em <code>device="cuda"</code>, procuram a
+<code>libcublas.so.12</code>. O <code>torch</code> que o PyPI entrega desde a 2.14 é build <strong>CUDA
+13</strong>: ele instala as bibliotecas <code>.so.13</code>, e não as <code>.so.12</code>. Com a resolução
+padrão, então, a primeira transcrição na GPU morre assim:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+</span></code></pre></div>
+<p>A saída é instalar o <code>torch</code> do índice <strong>CUDA 12</strong> do PyTorch, que traz o
+cuBLAS e o cuDNN de CUDA 12 em pacotes <code>nvidia-*-cu12</code>.</p>
+<h4 id="passo-1-o-torch-do-indice-cu126">Passo 1: o <code>torch</code> do índice cu126<a class="headerlink" href="#passo-1-o-torch-do-indice-cu126" title="Permanent link">&para;</a></h4>
+<p>No <code>pyproject.toml</code> do seu serviço, declare o índice como <code>explicit</code> (só os
+pacotes que você apontar vêm dele) e aponte o <code>torch</code> para lá:</p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">[project]</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"meu-servico"</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"0.1.0"</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">requires-python</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&gt;=3.12"</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">dependencies</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="s2">"tempest-fastapi-sdk[genai-audio]&gt;=0.349.0"</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="s2">"torch&gt;=2.14.0"</span><span class="p">,</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">]</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="k">[[tool.uv.index]]</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"pytorch-cu126"</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="n">url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"https://download.pytorch.org/whl/cu126"</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="n">explicit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="k">[tool.uv.sources]</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="n">torch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"pytorch-cu126"</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+<p>O <code>torch</code> aparece em <code>dependencies</code> mesmo já vindo pelo extra: o
+<code>[tool.uv.sources]</code> só vale para dependência <strong>direta</strong>. Depois, <code>uv sync</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Usa também o Coqui (<code>[genai-tts-coqui]</code>)?</p>
+<p>O <code>torchaudio</code> do PyPI também é build CUDA 13 e não carrega ao lado de um
+<code>torch</code> CUDA 12 (<code>libcudart.so.13: cannot open shared object file</code>).
+Aponte ele para o mesmo índice — e, de novo, como dependência direta:</p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[project]</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"meu-servico"</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"0.1.0"</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">requires-python</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&gt;=3.12"</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">dependencies</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="s2">"tempest-fastapi-sdk[genai-audio,genai-tts-coqui]&gt;=0.349.0"</span><span class="p">,</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="s2">"torch&gt;=2.14.0"</span><span class="p">,</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">    </span><span class="s2">"torchaudio&gt;=2.11.0"</span><span class="p">,</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="p">]</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="k">[[tool.uv.index]]</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"pytorch-cu126"</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="n">url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"https://download.pytorch.org/whl/cu126"</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">explicit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="k">[tool.uv.sources]</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="n">torch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"pytorch-cu126"</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="n">torchaudio</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"pytorch-cu126"</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+<p>Quem usa só o STT não precisa dessas linhas: desde a 0.349.0 o
+<code>[genai-audio]</code> não traz <code>torchaudio</code> (<a href="#genai-audio-coqui-split">por quê</a>).
+Até a 0.348.0 ele trazia, então nessas versões declare o <code>torchaudio</code> como
+acima mesmo sem usar o Coqui.</p>
+</div>
+<h4 id="passo-2-o-ld_library_path-do-ctranslate2">Passo 2: o <code>LD_LIBRARY_PATH</code> do CTranslate2<a class="headerlink" href="#passo-2-o-ld_library_path-do-ctranslate2" title="Permanent link">&para;</a></h4>
+<p>Os pacotes <code>nvidia-cublas-cu12</code> e <code>nvidia-cudnn-cu12</code> ficam dentro do
+<code>site-packages</code>, fora do caminho que o carregador dinâmico procura. O <code>torch</code>
+os acha sozinho; o CTranslate2 não. Aponte o <code>LD_LIBRARY_PATH</code> para eles antes
+de subir o processo:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">SITE_PACKAGES</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>python<span class="w"> </span>-c<span class="w"> </span><span class="s1">'import sysconfig; print(sysconfig.get_paths()["purelib"])'</span><span class="k">)</span><span class="s2">"</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$SITE_PACKAGES</span><span class="s2">/nvidia/cublas/lib:</span><span class="nv">$SITE_PACKAGES</span><span class="s2">/nvidia/cudnn/lib:</span><span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="k">:-</span><span class="si">}</span><span class="s2">"</span>
+</span></code></pre></div>
+<p>Num <code>Dockerfile</code>, escreva o caminho do venv da imagem, por exemplo
+<code>ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib</code>.</p>
+<div class="admonition info">
+<p class="admonition-title">Por que às vezes funciona sem o <code>LD_LIBRARY_PATH</code></p>
+<p>Quando o processo importa o <code>torch</code> antes de carregar o Whisper, o
+<code>torch</code> já deixa o cuBLAS e o cuDNN de CUDA 12 carregados, e o
+CTranslate2 os reaproveita. É o que acontece com
+<code>SpeechToText(device="auto")</code>, que importa o <code>torch</code> para detectar a GPU,
+ou depois de um <code>probe_hardware()</code>. Com <code>device="cuda"</code> explícito, nada
+importa o <code>torch</code> antes, e sem a variável a transcrição falha. Exporte a
+variável de qualquer forma: depender da ordem de import é frágil.</p>
+<p>Num host com o CUDA 12 instalado no sistema (a <code>libcublas.so.12</code> no
+<code>ldconfig</code>), as duas falhas desta seção não aparecem — o carregador acha
+a biblioteca do sistema. Container <code>python:3.12-slim</code> não tem isso.</p>
+</div>
+<h4 id="passo-3-confira">Passo 3: confira<a class="headerlink" href="#passo-3-confira" title="Permanent link">&para;</a></h4>
+<p>Gere um WAV curto (aqui com o <code>espeak-ng</code>) e transcreva na GPU:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>espeak-ng<span class="w"> </span>-v<span class="w"> </span>en<span class="w"> </span>-w<span class="w"> </span>hello.wav<span class="w"> </span><span class="s2">"The quick brown fox jumps over the lazy dog."</span>
+</span></code></pre></div>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai.audio</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpeechToText</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="sd">"""Transcribe a short WAV on the GPU."""</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">stt</span> <span class="o">=</span> <span class="n">SpeechToText</span><span class="p">(</span><span class="s2">"small"</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">"cuda"</span><span class="p">)</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"hello.wav"</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">handle</span><span class="p">:</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">stt</span><span class="o">.</span><span class="n">transcribe</span><span class="p">(</span><span class="n">handle</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">stt</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>cuda The quick brown fox jumps over the lazy dog.
+</span></code></pre></div>
+<p>O <code>probe_hardware()</code> também avisa do par errado antes da primeira transcrição:
+com um <code>torch</code> CUDA 13 e o <code>ctranslate2</code> instalados, o <code>HardwareInfo.warnings</code>
+diz o que vai falhar e manda para esta seção (veja
+<a href="../recipes/genai/#sondando-o-hardware">Sondando o hardware</a>).</p>
+<div class="admonition check">
+<p class="admonition-title">O que foi medido</p>
+<p><strong>Neste repositório</strong>, em 2026-11-10, num container <code>python:3.12-slim</code>
+com <code>--gpus all</code> numa RTX 4070 Ti SUPER (WSL2, driver do Windows 591.86), Python
+3.12, <code>faster-whisper</code> 1.2.1 e <code>ctranslate2</code> 4.8.5, modelo <code>small</code> em
+<code>float16</code>, transcrevendo o WAV acima:</p>
+<table>
+<thead>
+<tr>
+<th><code>torch</code></th>
+<th><code>LD_LIBRARY_PATH</code></th>
+<th><code>torch</code> importado antes</th>
+<th>resultado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.15.0+cu132 (PyPI)</td>
+<td>não</td>
+<td>não</td>
+<td><code>libcublas.so.12 is not found</code></td>
+</tr>
+<tr>
+<td>2.15.0+cu132 (PyPI)</td>
+<td>não</td>
+<td>sim</td>
+<td><code>libcublas.so.12 is not found</code></td>
+</tr>
+<tr>
+<td>2.15.0+cu132 (PyPI)</td>
+<td><code>nvidia/{cublas,cudnn}/lib</code></td>
+<td>não</td>
+<td><code>libcublas.so.12 is not found</code></td>
+</tr>
+<tr>
+<td>2.14.1+cu126 (índice cu126)</td>
+<td>não</td>
+<td>não</td>
+<td><code>libcublas.so.12 is not found</code></td>
+</tr>
+<tr>
+<td>2.14.1+cu126 (índice cu126)</td>
+<td>não</td>
+<td>sim</td>
+<td>transcreve</td>
+</tr>
+<tr>
+<td>2.14.1+cu126 (índice cu126)</td>
+<td><code>nvidia/{cublas,cudnn}/lib</code></td>
+<td>não</td>
+<td>transcreve</td>
+</tr>
+</tbody>
+</table>
+<p>As linhas de cima foram medidas chamando o <code>WhisperModel</code> direto; com o
+SDK instalado por cima, <code>SpeechToText(device="cuda")</code> deu o mesmo par
+(falha sem a variável, transcreve com ela) e <code>SpeechToText(device="auto")</code>
+transcreveu sem a variável. A venv foi montada com o <code>pyproject.toml</code> do
+passo 1 trocando o <code>tempest-fastapi-sdk[genai-audio]</code> pelo
+<code>faster-whisper</code>, que é o que o extra traz, e o SDK do branch instalado
+por cima. O áudio foi o WAV acima convertido para 16 kHz com o <code>ffmpeg</code>;
+o WAV original (22 050 Hz) deu o mesmo texto pelo <code>SpeechToText</code> na CPU.
+No host WSL2 fora do container, que tem a <code>libcublas.so.12</code> do sistema no
+<code>ldconfig</code>, a venv cu126 transcreveu sem a variável e sem importar o
+<code>torch</code> — por isso a tabela é do container.</p>
+<p><strong>No tempest-ai</strong> (issue <a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/723" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #723">#723</a>; <code>python:3.12-slim</code>, RTX 4070 Ti SUPER, SDK
+0.348.0) a mesma correção foi aplicada no serviço, com <code>torch==2.14.1+cu126</code>
+e <code>torchaudio==2.11.0+cu126</code> do índice cu126: o <code>BarkSpeech</code>
+(<code>suno/bark-small</code>) sintetizou em português — 5,95 s de áudio em 9,6 s e
+16,76 s em 23,6 s, com o modelo já carregado.</p>
+<p><strong>Não medido:</strong> o Coqui (<code>[genai-tts-coqui]</code>) na GPU com o <code>torchaudio</code>
+do índice cu126 deste repositório, e outras GPUs, drivers ou CUDA 12.x
+além do 12.6.</p>
+</div>
+<p><strong>Recap:</strong> o faster-whisper precisa de CUDA 12; o <code>torch</code> do PyPI é CUDA 13.
+Tire o <code>torch</code> (e o <code>torchaudio</code>, se usar o Coqui) do índice cu126, como
+dependência direta, e exporte o <code>LD_LIBRARY_PATH</code> para
+<code>nvidia/{cublas,cudnn}/lib</code>.</p>
 <h2 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h2>
 <p>A CLI <code>tempest</code> vem na instalação base (sem extra):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tempest<span class="w"> </span>--version<span class="w">              </span><span class="c1"># mostra a versão instalada do SDK</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>tempest<span class="w"> </span>new<span class="w">                    </span><span class="c1"># gera um serviço em camadas no diretório atual</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>tempest<span class="w"> </span>new<span class="w"> </span>myproject<span class="w">          </span><span class="c1"># gera dentro de ./myproject</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>tempest<span class="w"> </span>generate<span class="w"> </span>--docker<span class="w">      </span><span class="c1"># regenera docker-compose.yaml a partir dos extras já escolhidos</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>tempest<span class="w"> </span>db<span class="w"> </span>init<span class="w">                </span><span class="c1"># bootstrapa diretório alembic (alembic.ini sem credenciais)</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>tempest<span class="w"> </span>db<span class="w"> </span>revision<span class="w"> </span>-m<span class="w"> </span><span class="s2">"msg"</span><span class="w">   </span><span class="c1"># autogenerate revision aplicando o reorder hook</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>tempest<span class="w"> </span>db<span class="w"> </span>upgrade<span class="w">             </span><span class="c1"># roda upgrade até head (lê DATABASE_URL do .env)</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>tempest<span class="w"> </span>db<span class="w"> </span>downgrade<span class="w"> </span>-1<span class="w">        </span><span class="c1"># volta uma revisão</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>tempest<span class="w"> </span>db<span class="w"> </span>current<span class="w">             </span><span class="c1"># mostra revisão atual</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>tempest<span class="w"> </span>db<span class="w"> </span><span class="nb">history</span><span class="w">             </span><span class="c1"># log de revisões</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>tempest<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>--email<span class="w"> </span>admin@local<span class="w"> </span>--admin<span class="w">   </span><span class="c1"># `--email` obrigatório; senha pedida interativamente</span>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>tempest<span class="w"> </span>user<span class="w"> </span>list<span class="w"> </span>--admin<span class="w">      </span><span class="c1"># lista somente os admins (omita `--admin` pra listar todos)</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>tempest<span class="w"> </span>fix<span class="w">                    </span><span class="c1"># ruff check --fix-only . + ruff format . + ruff check .</span>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>tempest<span class="w"> </span>check<span class="w">                  </span><span class="c1"># lint + fmt-check + mypy + pytest</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>tempest<span class="w"> </span>--version<span class="w">              </span><span class="c1"># mostra a versão instalada do SDK</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>tempest<span class="w"> </span>new<span class="w">                    </span><span class="c1"># gera um serviço em camadas no diretório atual</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>tempest<span class="w"> </span>new<span class="w"> </span>myproject<span class="w">          </span><span class="c1"># gera dentro de ./myproject</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>tempest<span class="w"> </span>generate<span class="w"> </span>--docker<span class="w">      </span><span class="c1"># regenera docker-compose.yaml a partir dos extras já escolhidos</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>tempest<span class="w"> </span>db<span class="w"> </span>init<span class="w">                </span><span class="c1"># bootstrapa diretório alembic (alembic.ini sem credenciais)</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>tempest<span class="w"> </span>db<span class="w"> </span>revision<span class="w"> </span>-m<span class="w"> </span><span class="s2">"msg"</span><span class="w">   </span><span class="c1"># autogenerate revision aplicando o reorder hook</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>tempest<span class="w"> </span>db<span class="w"> </span>upgrade<span class="w">             </span><span class="c1"># roda upgrade até head (lê DATABASE_URL do .env)</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>tempest<span class="w"> </span>db<span class="w"> </span>downgrade<span class="w"> </span>-1<span class="w">        </span><span class="c1"># volta uma revisão</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>tempest<span class="w"> </span>db<span class="w"> </span>current<span class="w">             </span><span class="c1"># mostra revisão atual</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>tempest<span class="w"> </span>db<span class="w"> </span><span class="nb">history</span><span class="w">             </span><span class="c1"># log de revisões</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>tempest<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>--email<span class="w"> </span>admin@local<span class="w"> </span>--admin<span class="w">   </span><span class="c1"># `--email` obrigatório; senha pedida interativamente</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>tempest<span class="w"> </span>user<span class="w"> </span>list<span class="w"> </span>--admin<span class="w">      </span><span class="c1"># lista somente os admins (omita `--admin` pra listar todos)</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>tempest<span class="w"> </span>fix<span class="w">                    </span><span class="c1"># ruff check --fix-only . + ruff format . + ruff check .</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>tempest<span class="w"> </span>check<span class="w">                  </span><span class="c1"># lint + fmt-check + mypy + pytest</span>
 </span></code></pre></div>
 <p>Veja <strong><a href="../recipes/cli/">Receitas → CLI »</a></strong> para o detalhamento completo.</p>
 <h2 id="verifique-a-instalacao">Verifique a instalação<a class="headerlink" href="#verifique-a-instalacao" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import tempest_fastapi_sdk; print(tempest_fastapi_sdk.__version__)"</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import tempest_fastapi_sdk; print(tempest_fastapi_sdk.__version__)"</span>
 </span></code></pre></div>
 <h2 id="politica-de-versoes-do-python">Política de versões do Python<a class="headerlink" href="#politica-de-versoes-do-python" title="Permanent link">&para;</a></h2>
 <table>

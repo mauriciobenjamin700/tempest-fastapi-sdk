@@ -791,6 +791,8 @@
       
         
       
+        
+      
     
     
     
@@ -881,6 +883,34 @@
     
   
     Arquitetura recomendada
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Padrão de serviço
   
 
     
@@ -5537,7 +5567,10 @@ os bytes <strong>são</strong> e compara com o membro:</p>
 <p>Com uma foto HEIC declarada como <code>" Image/HEIC "</code>, a rota responde <code>200</code> com a
 key <code>photos/&lt;uuid&gt;.heic</code>. O mesmo JPEG declarado como <code>image/jpg</code> passa; como
 <code>image/png</code>, é recusado com <code>415 INVALID_FILE_TYPE</code>. <code>image/avif</code> nem chega ao
-corpo da função: <code>422</code> da validação.</p>
+corpo da função: <code>422</code> da validação.
+Uma foto acima de <code>MAX_PHOTO_BYTES</code> para de ser lida no bloco que cruza o
+teto e volta <code>413</code>, com <code>code</code> <code>UPLOAD_TOO_LARGE</code> e o teto em
+<code>details.max_bytes</code> (até a 0.348.0 era <code>422 VALIDATION_ERROR</code>).</p>
 <div class="admonition info">
 <p class="admonition-title">HEIC pelos bytes</p>
 <p>Um HEIC é uma caixa <code>ftyp</code> do ISO-BMFF: <code>ftyp</code> nos bytes 4 a 8 e a marca

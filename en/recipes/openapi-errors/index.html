@@ -793,6 +793,8 @@
       
         
       
+        
+      
     
     
     
@@ -883,6 +885,34 @@
     
   
     Recommended architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service standard
   
 
     
@@ -2314,6 +2344,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Step 4 — tempest openapi-errors --check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dependencies-raise-too" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies raise too
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -5707,11 +5754,130 @@ what each route declared:</p>
 <li><strong>unreachable</strong> — declared on the route, never found in the flow. An inflated
   list documenting an error that cannot happen.</li>
 </ul>
-<p>It exits zero when things are in sync, so it doubles as a CI step:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1"># .github/workflows/ci.yml</span>
-</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Errors documented in OpenAPI</span>
-</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uv run tempest openapi-errors --check</span>
+<h3 id="dependencies-raise-too">Dependencies raise too<a class="headerlink" href="#dependencies-raise-too" title="Permanent link">&para;</a></h3>
+<p>FastAPI runs dependencies <strong>before</strong> the handler, and what they raise reaches
+the client exactly like a <code>raise</code> in the body. The analyzer follows them as
+calls:</p>
+<ul>
+<li><code>Depends(...)</code> / <code>Security(...)</code> in the handler's parameters — as a default
+  (<code>x: T = Depends(f)</code>), inside <code>Annotated[T, Depends(f)]</code> or through a
+  module-level alias (<code>XDep = Annotated[T, Depends(f)]</code>), and <strong>their</strong>
+  dependencies;</li>
+<li>the route decorator's <code>dependencies=[...]</code>;</li>
+<li>the <code>dependencies=[...]</code> of the <code>APIRouter(...)</code> the route hangs on;</li>
+<li>the <code>dependencies=[...]</code> of every <code>include_router(...)</code> that mounts that
+  router, transitively — by imported name, relative import
+  (<code>from .items import router as items_router</code>, the <code>tempest new</code> shape) or a
+  package <code>__init__</code> re-export.</li>
+</ul>
+<p>A router behind the scaffold's token, and a route behind a capability gate:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1"># src/api/routers/items.py</span>
+</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>
+</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">Depends</span>
+</span><span id="__span-26-5"><a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>
+</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_token</span>
+</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_items_enabled</span>
+</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.schemas</span><span class="w"> </span><span class="kn">import</span> <span class="n">ServiceInfoSchema</span>
+</span><span id="__span-26-9"><a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a>
+</span><span id="__span-26-10"><a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span>
+</span><span id="__span-26-11"><a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a>    <span class="n">prefix</span><span class="o">=</span><span class="s2">"/items"</span><span class="p">,</span>
+</span><span id="__span-26-12"><a id="__codelineno-26-12" name="__codelineno-26-12" href="#__codelineno-26-12"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"items"</span><span class="p">],</span>
+</span><span id="__span-26-13"><a id="__codelineno-26-13" name="__codelineno-26-13" href="#__codelineno-26-13"></a>    <span class="n">dependencies</span><span class="o">=</span><span class="p">[</span><span class="n">Depends</span><span class="p">(</span><span class="n">require_token</span><span class="p">)],</span>
+</span><span id="__span-26-14"><a id="__codelineno-26-14" name="__codelineno-26-14" href="#__codelineno-26-14"></a><span class="p">)</span>
+</span><span id="__span-26-15"><a id="__codelineno-26-15" name="__codelineno-26-15" href="#__codelineno-26-15"></a>
+</span><span id="__span-26-16"><a id="__codelineno-26-16" name="__codelineno-26-16" href="#__codelineno-26-16"></a>
+</span><span id="__span-26-17"><a id="__codelineno-26-17" name="__codelineno-26-17" href="#__codelineno-26-17"></a><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/"</span><span class="p">,</span> <span class="n">dependencies</span><span class="o">=</span><span class="p">[</span><span class="n">Depends</span><span class="p">(</span><span class="n">require_items_enabled</span><span class="p">)])</span>
+</span><span id="__span-26-18"><a id="__codelineno-26-18" name="__codelineno-26-18" href="#__codelineno-26-18"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">list_items</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">ServiceInfoSchema</span><span class="p">:</span>
+</span><span id="__span-26-19"><a id="__codelineno-26-19" name="__codelineno-26-19" href="#__codelineno-26-19"></a><span class="w">    </span><span class="sd">"""List items."""</span>
+</span><span id="__span-26-20"><a id="__codelineno-26-20" name="__codelineno-26-20" href="#__codelineno-26-20"></a>    <span class="k">return</span> <span class="n">ServiceInfoSchema</span><span class="p">(</span><span class="n">service</span><span class="o">=</span><span class="s2">"items"</span><span class="p">)</span>
 </span></code></pre></div>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="c1"># src/api/dependencies/capabilities.py</span>
+</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>
+</span><span id="__span-27-4"><a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ItemNotFoundException</span>
+</span><span id="__span-27-5"><a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>
+</span><span id="__span-27-6"><a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>
+</span><span id="__span-27-7"><a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">require_items_enabled</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-27-8"><a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="w">    </span><span class="sd">"""Answer 404 while the items capability is off.</span>
+</span><span id="__span-27-9"><a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>
+</span><span id="__span-27-10"><a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a><span class="sd">    Raises:</span>
+</span><span id="__span-27-11"><a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a><span class="sd">        ItemNotFoundException: Always, the capability is off.</span>
+</span><span id="__span-27-12"><a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a><span class="sd">    """</span>
+</span><span id="__span-27-13"><a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>    <span class="k">raise</span> <span class="n">ItemNotFoundException</span><span class="p">(</span><span class="s2">"items"</span><span class="p">)</span>
+</span></code></pre></div>
+<p>No <code>raise</code> in the body, and still the route answers 401 and 404:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>$ tempest openapi-errors --check --path src
+</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>src/api/routers/items.py:19  GET /
+</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>  undocumented: ItemNotFoundException, UnauthorizedException
+</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>1 route(s) with drift, 2 undocumented exception(s).
+</span></code></pre></div>
+<p>The <code>UnauthorizedException</code> comes from inside the SDK: the scaffold's
+<code>require_token</code> is <code>make_token_dependency(...)</code>, and the analyzer knows what the
+SDK's auth factories raise (<code>make_token_dependency</code>,
+<code>make_bearer_token_dependency</code>, <code>make_jwt_user_dependency</code>,
+<code>make_mfa_required_dependency</code>, <code>make_role_dependency</code>).</p>
+<p>Declare wherever you prefer. <code>responses=error_responses(...)</code> on the
+<code>APIRouter(...)</code> or on the <code>include_router(...)</code> <strong>counts as a declaration</strong> for
+every route under it — it is the same <code>responses=</code> FastAPI applies to them in
+the OpenAPI:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1"># src/api/routers/items.py</span>
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
+</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">Depends</span>
+</span><span id="__span-29-5"><a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnauthorizedException</span><span class="p">,</span> <span class="n">error_responses</span>
+</span><span id="__span-29-6"><a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>
+</span><span id="__span-29-7"><a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_token</span>
+</span><span id="__span-29-8"><a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_items_enabled</span>
+</span><span id="__span-29-9"><a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ItemNotFoundException</span>
+</span><span id="__span-29-10"><a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.schemas</span><span class="w"> </span><span class="kn">import</span> <span class="n">ServiceInfoSchema</span>
+</span><span id="__span-29-11"><a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a>
+</span><span id="__span-29-12"><a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span>
+</span><span id="__span-29-13"><a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a>    <span class="n">prefix</span><span class="o">=</span><span class="s2">"/items"</span><span class="p">,</span>
+</span><span id="__span-29-14"><a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"items"</span><span class="p">],</span>
+</span><span id="__span-29-15"><a id="__codelineno-29-15" name="__codelineno-29-15" href="#__codelineno-29-15"></a>    <span class="n">dependencies</span><span class="o">=</span><span class="p">[</span><span class="n">Depends</span><span class="p">(</span><span class="n">require_token</span><span class="p">)],</span>
+</span><span id="__span-29-16"><a id="__codelineno-29-16" name="__codelineno-29-16" href="#__codelineno-29-16"></a>    <span class="n">responses</span><span class="o">=</span><span class="n">error_responses</span><span class="p">(</span><span class="n">UnauthorizedException</span><span class="p">),</span>
+</span><span id="__span-29-17"><a id="__codelineno-29-17" name="__codelineno-29-17" href="#__codelineno-29-17"></a><span class="p">)</span>
+</span><span id="__span-29-18"><a id="__codelineno-29-18" name="__codelineno-29-18" href="#__codelineno-29-18"></a>
+</span><span id="__span-29-19"><a id="__codelineno-29-19" name="__codelineno-29-19" href="#__codelineno-29-19"></a>
+</span><span id="__span-29-20"><a id="__codelineno-29-20" name="__codelineno-29-20" href="#__codelineno-29-20"></a><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+</span><span id="__span-29-21"><a id="__codelineno-29-21" name="__codelineno-29-21" href="#__codelineno-29-21"></a>    <span class="s2">"/"</span><span class="p">,</span>
+</span><span id="__span-29-22"><a id="__codelineno-29-22" name="__codelineno-29-22" href="#__codelineno-29-22"></a>    <span class="n">dependencies</span><span class="o">=</span><span class="p">[</span><span class="n">Depends</span><span class="p">(</span><span class="n">require_items_enabled</span><span class="p">)],</span>
+</span><span id="__span-29-23"><a id="__codelineno-29-23" name="__codelineno-29-23" href="#__codelineno-29-23"></a>    <span class="n">responses</span><span class="o">=</span><span class="n">error_responses</span><span class="p">(</span><span class="n">ItemNotFoundException</span><span class="p">),</span>
+</span><span id="__span-29-24"><a id="__codelineno-29-24" name="__codelineno-29-24" href="#__codelineno-29-24"></a><span class="p">)</span>
+</span><span id="__span-29-25"><a id="__codelineno-29-25" name="__codelineno-29-25" href="#__codelineno-29-25"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">list_items</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">ServiceInfoSchema</span><span class="p">:</span>
+</span><span id="__span-29-26"><a id="__codelineno-29-26" name="__codelineno-29-26" href="#__codelineno-29-26"></a><span class="w">    </span><span class="sd">"""List items."""</span>
+</span><span id="__span-29-27"><a id="__codelineno-29-27" name="__codelineno-29-27" href="#__codelineno-29-27"></a>    <span class="k">return</span> <span class="n">ServiceInfoSchema</span><span class="p">(</span><span class="n">service</span><span class="o">=</span><span class="s2">"items"</span><span class="p">)</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>$ tempest openapi-errors --check --path src
+</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>Every route's declared errors match its flow (src).
+</span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">A router declaration is never <code>unreachable</code></p>
+<p>A route of the same router that does not reach the 401 is not blamed for
+declaring it: the declaration belongs to the router, and trimming it is not
+one route's call.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Fixed in 0.349.0</p>
+<p>Before, only the handler body was walked. The router above came out as
+<code>Every route's declared errors match its flow</code> — with the 401 and the 404
+missing from the OpenAPI.</p>
+</div>
+<p>It exits zero when things are in sync, so it doubles as a CI step:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="c1"># .github/workflows/ci.yml</span>
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Errors documented in OpenAPI</span>
+</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uv run tempest openapi-errors --check</span>
+</span></code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title"><code>tempest check</code> already runs this step</p>
+<p>Since 0.349.0 <code>tempest check</code> runs the equivalent of
+<code>openapi-errors --check</code> between <code>mypy</code> and <code>pytest</code> (the <code>openapi-errors</code>
+step), over <code>src/</code> or <code>app/</code>. A project with neither skips the step with a
+notice; to switch it off, <code>check_openapi_errors = false</code> under
+<code>[tool.tempest]</code>. Details in the
+<a href="../cli/#the-sdks-steps-in-tempest-check">CLI recipe</a>.</p>
+</div>
 <p>Options:</p>
 <table>
 <thead>
@@ -5813,28 +5979,28 @@ exits non-zero.</p>
 <p>On an existing project step 4 usually points at dozens of routes. Retyping by
 hand what the analyzer already knows is mechanical work — <code>--fix</code> does the
 Exception → route mapping and writes the result:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>tempest<span class="w"> </span>openapi-errors<span class="w"> </span>--fix<span class="w"> </span>--dry-run<span class="w">   </span><span class="c1"># look at the diff first</span>
-</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>tempest<span class="w"> </span>openapi-errors<span class="w"> </span>--fix<span class="w">             </span><span class="c1"># write</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>tempest<span class="w"> </span>openapi-errors<span class="w"> </span>--fix<span class="w"> </span>--dry-run<span class="w">   </span><span class="c1"># look at the diff first</span>
+</span><span id="__span-32-2"><a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>tempest<span class="w"> </span>openapi-errors<span class="w"> </span>--fix<span class="w">             </span><span class="c1"># write</span>
 </span></code></pre></div>
 <p>On a route that declares nothing yet it injects the parameter and the imports:</p>
-<div class="language-diff highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="gi">+from tempest_fastapi_sdk import error_responses</span>
-</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="gi">+</span>
-</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="gi">+from src.core.exceptions import CandidateAlreadyExistsException, ServiceFullException</span>
-</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>
-</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="gd">-@router.post("/{service_id}/candidates", status_code=201)</span>
-</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="gi">+@router.post(</span>
-</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="gi">+    "/{service_id}/candidates",</span>
-</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="gi">+    status_code=201,</span>
-</span><span id="__span-28-9"><a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a><span class="gi">+    responses=error_responses(</span>
-</span><span id="__span-28-10"><a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a><span class="gi">+        CandidateAlreadyExistsException, ServiceFullException</span>
-</span><span id="__span-28-11"><a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a><span class="gi">+    ),</span>
-</span><span id="__span-28-12"><a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a><span class="gi">+)</span>
-</span><span id="__span-28-13"><a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="w"> </span>async def apply_to_service(service_id: str) -&gt; CandidateResponseSchema:
+<div class="language-diff highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="gi">+from tempest_fastapi_sdk import error_responses</span>
+</span><span id="__span-33-2"><a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="gi">+</span>
+</span><span id="__span-33-3"><a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="gi">+from src.core.exceptions import CandidateAlreadyExistsException, ServiceFullException</span>
+</span><span id="__span-33-4"><a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>
+</span><span id="__span-33-5"><a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a><span class="gd">-@router.post("/{service_id}/candidates", status_code=201)</span>
+</span><span id="__span-33-6"><a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a><span class="gi">+@router.post(</span>
+</span><span id="__span-33-7"><a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a><span class="gi">+    "/{service_id}/candidates",</span>
+</span><span id="__span-33-8"><a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a><span class="gi">+    status_code=201,</span>
+</span><span id="__span-33-9"><a id="__codelineno-33-9" name="__codelineno-33-9" href="#__codelineno-33-9"></a><span class="gi">+    responses=error_responses(</span>
+</span><span id="__span-33-10"><a id="__codelineno-33-10" name="__codelineno-33-10" href="#__codelineno-33-10"></a><span class="gi">+        CandidateAlreadyExistsException, ServiceFullException</span>
+</span><span id="__span-33-11"><a id="__codelineno-33-11" name="__codelineno-33-11" href="#__codelineno-33-11"></a><span class="gi">+    ),</span>
+</span><span id="__span-33-12"><a id="__codelineno-33-12" name="__codelineno-33-12" href="#__codelineno-33-12"></a><span class="gi">+)</span>
+</span><span id="__span-33-13"><a id="__codelineno-33-13" name="__codelineno-33-13" href="#__codelineno-33-13"></a><span class="w"> </span>async def apply_to_service(service_id: str) -&gt; CandidateResponseSchema:
 </span></code></pre></div>
 <p>On a route that already declares some of them it <strong>appends</strong> to what is there —
 the original order is preserved:</p>
-<div class="language-diff highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="gd">-    responses=error_responses(ServiceNotFoundException),</span>
-</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="gi">+    responses=error_responses(ServiceNotFoundException, ServiceFullException),</span>
+<div class="language-diff highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="gd">-    responses=error_responses(ServiceNotFoundException),</span>
+</span><span id="__span-34-2"><a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="gi">+    responses=error_responses(ServiceNotFoundException, ServiceFullException),</span>
 </span></code></pre></div>
 <p>An existing <code>@raises(...)</code> is extended in place too. A route that declares
 nothing, though, always gets <code>error_responses</code>, never <code>@raises</code>: <code>@raises</code> is
@@ -5843,6 +6009,18 @@ only read by <code>TempestAPIRouter</code>, so injecting it into a project on a 
 possible outcome for a tool that exists to close a documentation gap. An
 existing <code>@raises</code> proves the project opted into that style, so there it is
 honored.</p>
+<div class="admonition check">
+<p class="admonition-title">The import comes from the package, into the block already there</p>
+<p>An exception defined in <code>src/core/exceptions/bad_request.py</code> and
+re-exported by <code>src/core/exceptions/__init__.py</code> is imported from
+<code>src.core.exceptions</code> — the shallowest package whose <code>__init__</code> imports
+it or lists it in <code>__all__</code> — never from the submodule, which the
+<code>lint-layers</code> <code>IMP002</code> check would report. When the file already has
+<code>from src.core.exceptions import (...)</code>, the name joins that block
+instead of opening another <code>from</code>. An exception no <code>__init__</code>
+re-exports still comes from the module that defines it. Fixed in
+0.349.0.</p>
+</div>
 <h3 id="the-three-guarantees">The three guarantees<a class="headerlink" href="#the-three-guarantees" title="Permanent link">&para;</a></h3>
 <div class="admonition check">
 <p class="admonition-title">It only ever adds</p>
@@ -5877,9 +6055,9 @@ current interpreter (<code>python -m ruff</code>), or through <code>uv run ruff<
 candidate is probed with <code>--version</code> before being used. When none works the
 write still happens (the splice is already valid Python) and the command
 tells you what it skipped:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>note: no working ruff found, so the new import stays where it was spliced
-</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>and a long decorator is not wrapped. Run `tempest fix` afterwards to sort
-</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>and format.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>note: no working ruff found, so the new import stays where it was spliced
+</span><span id="__span-35-2"><a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>and a long decorator is not wrapped. Run `tempest fix` afterwards to sort
+</span><span id="__span-35-3"><a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>and format.
 </span></code></pre></div>
 <p>Without that line you would find out from your CI's <code>ruff check</code> failing on
 a file this very command just wrote.</p>
@@ -5889,9 +6067,9 @@ a file this very command just wrote.</p>
 <p>With a clean tree, <code>git diff</code> is the review and <code>git checkout</code> is the undo —
 the real safety net for a tool that edits code you wrote. With pending
 changes the command exits 1:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>error: the working tree has uncommitted changes. Commit or stash them
-</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>first — with a clean tree, `git diff` reviews what this wrote and
-</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>`git checkout` undoes it.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>error: the working tree has uncommitted changes. Commit or stash them
+</span><span id="__span-36-2"><a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>first — with a clean tree, `git diff` reviews what this wrote and
+</span><span id="__span-36-3"><a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>`git checkout` undoes it.
 </span></code></pre></div>
 <p><code>--dry-run</code> is read-only, so it runs on a dirty tree without complaining.</p>
 </div>

@@ -791,6 +791,8 @@
       
         
       
+        
+      
     
     
     
@@ -881,6 +883,34 @@
     
   
     Arquitetura recomendada
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Padrão de serviço
   
 
     
@@ -4826,6 +4856,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#03490-coqui-no-proprio-extra-upload-grande-em-413-e-tempest-check-mais-rigoroso" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.349.0 — Coqui no próprio extra, upload grande em 413 e tempest check mais rigoroso
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#03440-token-de-conta-apagada" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7341,6 +7382,33 @@
 
 <h1 id="guia-de-migracao">Guia de migração<a class="headerlink" href="#guia-de-migracao" title="Permanent link">&para;</a></h1>
 <p>Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela <strong>de onde</strong> você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.</p>
+<h2 id="03490-coqui-no-proprio-extra-upload-grande-em-413-e-tempest-check-mais-rigoroso">0.349.0 — Coqui no próprio extra, upload grande em 413 e <code>tempest check</code> mais rigoroso<a class="headerlink" href="#03490-coqui-no-proprio-extra-upload-grande-em-413-e-tempest-check-mais-rigoroso" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Onde</th>
+<th>O que muda</th>
+<th>O que fazer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[genai-audio]</code></td>
+<td>Não traz mais <code>coqui-tts</code>, <code>torchaudio</code>, <code>torchcodec</code> nem <code>six</code>: o <code>TextToSpeech</code> (XTTS) passa para o extra novo <code>[genai-tts-coqui]</code>. <code>SpeechToText</code> não muda</td>
+<td>Quem usa <code>TextToSpeech</code> instala <code>[genai-audio,genai-tts-coqui]</code> (ou só <code>[genai-tts-coqui]</code>, sem STT). Sem isso, a primeira síntese levanta <code>ImportError</code> citando <code>[genai-tts-coqui]</code></td>
+</tr>
+<tr>
+<td><code>read_upload_capped</code> e as rotas que o usam (<code>/transcribe</code> do <code>make_genai_router</code>, <code>make_voice_router</code>, <code>make_vision_router</code>)</td>
+<td>Upload acima do teto levanta <code>UploadTooLargeException</code> (<code>413</code>, <code>code</code> <code>UPLOAD_TOO_LARGE</code>) em vez de <code>ValidationException</code> (<code>422</code>, <code>VALIDATION_ERROR</code>). <code>detail</code> e <code>details.max_bytes</code> não mudam</td>
+<td>Cliente que tratava o <code>422</code> do tamanho passa a tratar <code>413</code>. Quem capturava <code>ValidationException</code> para relançar com <code>413</code> pode apagar o wrapper; <code>except FileTooLargeException</code> também pega a exceção nova</td>
+</tr>
+<tr>
+<td><code>tempest check</code></td>
+<td>Roda dois passos novos entre o <code>mypy</code> e o <code>pytest</code>: <code>openapi-errors</code> (o mesmo <code>--check</code>, que também falha em exceção declarada e inalcançável) e <code>lint-schemas</code>. E o <code>openapi-errors</code> passa a seguir as dependências do FastAPI, então rota cujo router exige <code>require_token</code> ou cujo provider responde 404 acusa o que não declarou</td>
+<td>Rode <code>tempest openapi-errors --check</code> e <code>tempest lint-schemas</code> e corrija; <code>tempest openapi-errors --fix</code> escreve as declarações que faltam. Para migrar aos poucos, <code>check_openapi_errors = false</code> / <code>check_lint_schemas = false</code> em <code>[tool.tempest]</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="03440-token-de-conta-apagada">0.344.0 — token de conta apagada<a class="headerlink" href="#03440-token-de-conta-apagada" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

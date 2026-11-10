@@ -1,6 +1,6 @@
 # tempest-fastapi-sdk
 
-> tempest-fastapi-sdk holds the shared FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 building blocks used across Tempest services. Core: BaseAppSettings (+ composable settings mixins), BaseModel, BaseRepository[Model], BaseService, BaseController, base/pagination schemas, the AppException hierarchy + handlers (with an i18n message catalog and OpenAPI error documentation), AsyncDatabaseManager and AlembicHelper. Batteries: JWT/OAuth2 auth with a bundled signup/login/reset flow and TOTP MFA, a Django-style admin site, typed SSR pages, Server-Sent Events and WebSockets, Redis cache, FastStream queues and TaskIQ tasks (retries + dead letters), MinIO/S3 storage and uploads, Web Push, feature flags, audit trail, rate limiting and idempotency middleware, Prometheus metrics and OpenTelemetry tracing, self-hosted generative AI (local LLM, embeddings, RAG, speech), geolocation, Brazilian document/phone/PIX validation, and a `tempest` CLI that scaffolds services and generates typed clients from an OpenAPI spec. Python >= 3.12. Optional features ship as extras: [cli-ops], [cli], [auth], [email], [upload], [cache], [websocket], [webpush], [metrics], [queue], [tasks], [tasks-redis], [admin], [admin-sql], [minio], [storage-encryption], [http], [oidc], [openapi], [prometheus], [mfa], [webauthn], [firebase], [pdf], [pdf-read], [pdf-layout], [slides], [slides-mermaid], [spreadsheet], [image], [vision], [genai], [genai-quant], [genai-rag], [genai-audio], [genai-diarization], [faces], [genai-ollama], [genai-hosted], [genai-chroma], [genai-structured], [genai-onnx], [genai-vlm], [genai-hub], [genai-image], [genai-sound], [modelops], [modelops-compose], [modelops-onnx], [modelops-sklearn], [geo], [ssr], [sqlite], [postgres], [otel], [tests], [all].
+> tempest-fastapi-sdk holds the shared FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 building blocks used across Tempest services. Core: BaseAppSettings (+ composable settings mixins), BaseModel, BaseRepository[Model], BaseService, BaseController, base/pagination schemas, the AppException hierarchy + handlers (with an i18n message catalog and OpenAPI error documentation), AsyncDatabaseManager and AlembicHelper. Batteries: JWT/OAuth2 auth with a bundled signup/login/reset flow and TOTP MFA, a Django-style admin site, typed SSR pages, Server-Sent Events and WebSockets, Redis cache, FastStream queues and TaskIQ tasks (retries + dead letters), MinIO/S3 storage and uploads, Web Push, feature flags, audit trail, rate limiting and idempotency middleware, Prometheus metrics and OpenTelemetry tracing, self-hosted generative AI (local LLM, embeddings, RAG, speech), geolocation, Brazilian document/phone/PIX validation, and a `tempest` CLI that scaffolds services and generates typed clients from an OpenAPI spec. Python >= 3.12. Optional features ship as extras: [cli-ops], [cli], [auth], [email], [upload], [cache], [websocket], [webpush], [metrics], [queue], [tasks], [tasks-redis], [admin], [admin-sql], [minio], [storage-encryption], [http], [oidc], [openapi], [prometheus], [mfa], [webauthn], [firebase], [pdf], [pdf-read], [pdf-layout], [slides], [slides-mermaid], [spreadsheet], [image], [vision], [genai], [genai-quant], [genai-rag], [genai-audio], [genai-tts-coqui], [genai-diarization], [faces], [genai-ollama], [genai-hosted], [genai-chroma], [genai-structured], [genai-onnx], [genai-vlm], [genai-hub], [genai-image], [genai-sound], [modelops], [modelops-compose], [modelops-onnx], [modelops-sklearn], [geo], [ssr], [sqlite], [postgres], [otel], [tests], [all].
 
 
 ---
@@ -61,7 +61,7 @@ uv run pytest
     O passo 1 instala o **CLI** `tempest` num ambiente próprio (via `uv tool`). O `tempest new` gera um projeto com o **seu próprio `pyproject.toml`**; do passo 3 em diante é o `uv` desse projeto que resolve e roda tudo (`uv sync` cria o `.venv` local a partir das deps geradas). Prefira `uv` de ponta a ponta — misturar `pip install` global com o `uv sync` do projeto resolve dois ambientes diferentes.
 
 !!! note "Sobre o `[all]`"
-    O extra `[all]` traz os helpers de aplicação, e deixa de fora os **15** extras que puxam stack pesado ou binário nativo: os de modelo local (`[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`), os de ONNX/visão (`[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`), mais `[admin-sql]` e `[firebase]`. Instale esses à parte quando precisar. Os clients leves de GenAI (Ollama, Chroma) já vêm no `[all]`. Veja **[Instalação »](installation.md)** para a tabela completa de extras.
+    O extra `[all]` traz os helpers de aplicação, e deixa de fora os **18** extras que puxam stack pesado ou binário nativo: os de modelo local (`[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`), os de ONNX/visão (`[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`), mais `[admin-sql]`, `[firebase]` e `[slides-mermaid]`. Instale esses à parte quando precisar. Os clients leves de GenAI (Ollama, Chroma) já vêm no `[all]`. Veja **[Instalação »](installation.md)** para a tabela completa de extras.
 
 !!! example "O que o `tempest new` produz"
     ```text
@@ -182,7 +182,7 @@ my-service/
     ├── core/
     │   ├── __init__.py
     │   ├── settings.py           # Settings(mixins..., BaseAppSettings)
-    │   └── exceptions.py         # exceções de domínio (UserNotFoundError, ...)
+    │   └── exceptions/           # um módulo por status: not_found.py, conflict.py, ...
     ├── db/
     │   ├── __init__.py           # re-exporta BaseModel + todo modelo
     │   ├── models/
@@ -581,8 +581,8 @@ __all__: list[str] = [
 O SDK entrega `NotFoundException`, `ConflictException`, etc. genéricos. Subclasse-os por domínio para que o matching `isinstance` / `except DomainError` fique explícito. `message` / `code` / `status_code` a nível de classe são defaults aos quais o construtor recorre — você também pode sobrescrever qualquer um deles no ponto do raise sem subclassear:
 
 ```python
-# src/core/exceptions.py
-from tempest_fastapi_sdk import ConflictException, NotFoundException
+# src/core/exceptions/not_found.py
+from tempest_fastapi_sdk import NotFoundException
 
 
 class UserNotFoundError(NotFoundException):
@@ -590,11 +590,28 @@ class UserNotFoundError(NotFoundException):
 
     message: str = "Usuário não encontrado"
     code: str = "USER_NOT_FOUND"
+```
+
+```python
+# src/core/exceptions/conflict.py
+from tempest_fastapi_sdk import ConflictException
 
 
 class UserEmailAlreadyTakenError(ConflictException):
+    """Raised when the e-mail is already taken by another user."""
+
     message: str = "Já existe um usuário com esse e-mail"
     code: str = "USER_EMAIL_TAKEN"
+```
+
+Um módulo por status: quem procura "o que devolve 409" abre `conflict.py`. O `__init__.py` reexporta, então o import continua `from src.core.exceptions import ...` (o padrão completo está em [Padrão de serviço](service-standard.md)):
+
+```python
+# src/core/exceptions/__init__.py
+from .conflict import UserEmailAlreadyTakenError as UserEmailAlreadyTakenError
+from .not_found import UserNotFoundError as UserNotFoundError
+
+__all__: list[str] = ["UserEmailAlreadyTakenError", "UserNotFoundError"]
 ```
 
 Para códigos pontuais você não precisa de uma subclasse — passe-os ao construtor:
@@ -1195,6 +1212,10 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -1661,6 +1682,7 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.exceptions`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -2693,6 +2715,7 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ## Web Push
 
@@ -3184,6 +3207,14 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/
 # Guia de migração
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
+
+## 0.349.0 — Coqui no próprio extra, upload grande em 413 e `tempest check` mais rigoroso
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `[genai-audio]` | Não traz mais `coqui-tts`, `torchaudio`, `torchcodec` nem `six`: o `TextToSpeech` (XTTS) passa para o extra novo `[genai-tts-coqui]`. `SpeechToText` não muda | Quem usa `TextToSpeech` instala `[genai-audio,genai-tts-coqui]` (ou só `[genai-tts-coqui]`, sem STT). Sem isso, a primeira síntese levanta `ImportError` citando `[genai-tts-coqui]` |
+| `read_upload_capped` e as rotas que o usam (`/transcribe` do `make_genai_router`, `make_voice_router`, `make_vision_router`) | Upload acima do teto levanta `UploadTooLargeException` (`413`, `code` `UPLOAD_TOO_LARGE`) em vez de `ValidationException` (`422`, `VALIDATION_ERROR`). `detail` e `details.max_bytes` não mudam | Cliente que tratava o `422` do tamanho passa a tratar `413`. Quem capturava `ValidationException` para relançar com `413` pode apagar o wrapper; `except FileTooLargeException` também pega a exceção nova |
+| `tempest check` | Roda dois passos novos entre o `mypy` e o `pytest`: `openapi-errors` (o mesmo `--check`, que também falha em exceção declarada e inalcançável) e `lint-schemas`. E o `openapi-errors` passa a seguir as dependências do FastAPI, então rota cujo router exige `require_token` ou cujo provider responde 404 acusa o que não declarou | Rode `tempest openapi-errors --check` e `tempest lint-schemas` e corrija; `tempest openapi-errors --fix` escreve as declarações que faltam. Para migrar aos poucos, `check_openapi_errors = false` / `check_lint_schemas = false` em `[tool.tempest]` |
 
 ## 0.344.0 — token de conta apagada
 
@@ -6424,6 +6455,162 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.349.0] — 2026-11-10
+
+### Added
+
+- Áreas de indicadores no admin: `AdminSite(metrics_areas=[MetricsArea(title,
+  schema, provider=, method=)])` gera uma página com um card por campo do
+  schema, a partir de um service cujo método não recebe argumento, listada em
+  **Metrics** na sidebar (`/admin/metrics/<slug>`). `Threshold(green=,
+  yellow=, lower_is_better=)` pinta o card de verde, amarelo ou vermelho com
+  os tokens do tema; nome de campo inexistente em `thresholds`/`units` e
+  limites invertidos levantam `ValueError` na construção. Service que falha
+  rende `200` com aviso e traceback no log. Nova superfície
+  `AdminSurfaceEnum.METRICS` para o `surface_policy` (#732).
+
+- `tempest generate --standard`: traz um projeto anterior ao padrão de
+  serviço para ele. Escreve o que falta e não colide (`core/constants/`,
+  `core/enums/`, `core/types/`, os guards de `tests/unit/`), converte um
+  `core/exceptions.py` plano no pacote `core/exceptions/` com um módulo por
+  status (lido importando o módulo, não pela base) e reexporta tudo do
+  `__init__`, e congela o contrato das exceções em
+  `tests/unit/core/test_exceptions_contract.py`. Pacote que esconderia um
+  módulo plano existente não é escrito; a migração recusa, sem escrever
+  nada, quando o módulo tem algo além de import, classe e `__all__` ou
+  quando separar por status criaria ciclo de import (#718).
+- `RawTextField` (`tempest_fastapi_sdk.utils`): `str` que mantém espaço nas
+  pontas mesmo dentro de um `BaseSchema`, que liga `str_strip_whitespace=True`
+  no modelo inteiro. Delta de streaming (`" mundo"`) e prompt passam como o
+  cliente mandou, na construção e na atribuição (#718).
+- `HardwareInfo.warnings` (`list[str]`): o `probe_hardware()` avisa, antes da
+  primeira transcrição falhar, quando há CUDA, o `torch` é build CUDA 13
+  (`torch.version.cuda` começando em `13.`) e o `ctranslate2` do
+  faster-whisper está instalado — as wheels dele procuram a
+  `libcublas.so.12`, que o `torch` do PyPI (CUDA 13 desde a 2.14) não instala.
+  O `ctranslate2` é procurado com `find_spec`, sem importar. Medido num
+  container `python:3.12-slim` com RTX 4070 Ti SUPER: com `torch`
+  2.15.0+cu132 o aviso aparece e o `WhisperModel(device="cuda")` falha com
+  `Library libcublas.so.12 is not found`; com 2.14.1+cu126 a lista vem vazia
+  (#723).
+- Seção "GPU com `[genai-audio]`" na instalação: `torch` (e, para o Coqui,
+  `torchaudio`) do índice `pytorch-cu126` como dependência direta e o
+  `LD_LIBRARY_PATH` para `site-packages/nvidia/{cublas,cudnn}/lib`, com a
+  tabela do que transcreve e do que falha medida no container acima (#723).
+
+### Changed
+
+- **Quebra:** o Coqui (`TextToSpeech`, XTTS v2) sai do extra `[genai-audio]`
+  e vai para o novo `[genai-tts-coqui]` (`coqui-tts`, `torch`, `torchaudio`,
+  `torchcodec`, `six`). O `[genai-audio]` fica com o STT (`faster-whisper` +
+  `torch`). Com o `torchaudio` instalado, o `transformers` o importa ao montar
+  o `AutoProcessor` do Bark, e na GPU o `torchaudio` 2.11.1 do PyPI é build
+  CUDA 13, que não carrega ao lado de um `torch` CUDA 12: o
+  `POST /audio/speech` respondia 500 com um modelo que nem usa `torchaudio`
+  (#723). Resolvido com `uv pip compile` em 2026-11-10, o `[genai-audio]`
+  sai sem `torchaudio` e sem `transformers`. Quem usa `TextToSpeech` instala
+  `[genai-audio,genai-tts-coqui]`.
+- **Quebra:** `read_upload_capped` recusa o upload acima do teto com a nova
+  `UploadTooLargeException` (`413`, `code="UPLOAD_TOO_LARGE"`, subclasse de
+  `FileTooLargeException`) em vez de `ValidationException` (`422`). Tamanho
+  é `413` para cliente HTTP e para o wire da OpenAI, e o serviço precisava
+  capturar e relançar. Muda junto o status do `/transcribe` do
+  `make_genai_router`, do `make_voice_router` e do `make_vision_router`;
+  `detail` e `details.max_bytes` continuam iguais. Medido:
+  `{"detail": "image is larger than 16 bytes", "code": "UPLOAD_TOO_LARGE",
+  "details": {"max_bytes": 16}}` com `413`, contra o mesmo corpo com
+  `VALIDATION_ERROR` e `422` antes. Nota em `docs/migration.md` (#718).
+- **Quebra:** o `tempest check` roda dois passos novos entre o `mypy` e o
+  `pytest`: `openapi-errors` (o mesmo que `tempest openapi-errors --check`) e
+  `lint-schemas` (o mesmo que `tempest lint-schemas`, importando o pacote num
+  processo filho, com `ENV=test` quando o shell não define `ENV`). Projeto sem
+  `src/`/`app/` ou sem pacote `schemas` pula o passo com aviso; cada um
+  desliga com `check_openapi_errors = false` / `check_lint_schemas = false` em
+  `[tool.tempest]`. Medido num projeto `tempest new`: passa limpo, e falha
+  (exit `1`) com rota levantando exceção não declarada (#718).
+- O `tempest new` gera o padrão de serviço do `transport-backend`. Projeto
+  já gerado **não muda** (o comando só escreve projeto novo, e nada do SDK
+  passou a exigir a forma nova); a receita para migrar um serviço antigo
+  está na página nova "Padrão de serviço". O que muda no projeto gerado
+  (#718):
+  - `core/exceptions.py` vira o pacote `core/exceptions/`, um módulo por
+    status (`bad_request`, `unauthorized`, `forbidden`, `not_found`,
+    `conflict`). A classe de exemplo (`ItemNotFoundException`) declara
+    `code`, `message` e `field` no corpo, **sem `__init__`**; o dado de cada
+    raise vai em `details=`. O template antigo ensinava o inverso, com um
+    `__init__` montando `message`.
+  - `core/constants/messages/{errors,successes}.py` guardam o texto do
+    cliente; `core/enums/` e `core/types/` nascem como pacote.
+  - `db/configs/connection.py` (`make_db_manager`, com
+    `hide_parameters=True`) e `db/configs/migrations.py` (`run_migrations`).
+    O lifespan chama `run_migrations` sob o mesmo
+    `DATABASE_MIGRATE_ON_STARTUP` de antes, em vez de montar o
+    `AlembicHelper` ele mesmo; o `resources.py` constrói o `db` pelo
+    `make_db_manager`.
+  - `api/docs/` com `EndpointDoc` (um `TypedDict` no template, não no SDK)
+    espalhado no decorator da rota raiz: o `summary`/`description` da
+    operação saem de lá.
+  - `[tool.tempest] layers_strict = true`: os avisos do `lint-layers`
+    falham o `tempest check` desde o primeiro commit.
+  - `tests/test_smoke.py` e `tests/test_schemas.py` dão lugar a
+    `tests/integration/system/test_service_info.py`,
+    `tests/unit/architecture/` (`lint_layers`, `analyze_paths`,
+    `assert_schema_metadata`) e `tests/unit/core/test_exceptions_contract.py`
+    (status, `code`, mensagem e `field` congelados; falha para exceção
+    reexportada sem entrada). Medido: `tempest check` limpo com
+    `--extras sqlite` e com `auth,queue,tasks,ssr,admin,email,minio,cache`,
+    9 testes passando.
+  - O `CLAUDE.md` gerado manda começar pelo `tempest new`, ensina a receita
+    com as exceções por status, `EndpointDoc` e `error_responses` no router,
+    e diz que o `tempest check` já roda `openapi-errors` e `lint-schemas`.
+
+### Fixed
+
+- `strip_image_metadata` levanta `ImageDecodeException` (`422`) também para
+  imagem truncada ou corrompida que o Pillow recusa já no `Image.open`: um
+  JPEG cortado no meio dos dados e um PNG ou WEBP cortado no cabeçalho
+  escapavam como `OSError` ("Truncated File Read", "could not create decoder
+  object"), e `OSError` é a classe que os serviços tratam como storage
+  indisponível — a foto corrompida voltava para a fila para sempre. A
+  gravação também traduz o erro. Medido no Pillow 13.0.0 (#720).
+- `tempest openapi-errors --fix` importa a exception do pacote mais raso que
+  a re-exporta (`from src.core.exceptions import X`), não do submódulo que a
+  define (`src.core.exceptions.bad_request`), que o `IMP002` do
+  `lint-layers` acusava. Quando o arquivo já importa desse pacote, o nome
+  entra no bloco existente em vez de abrir outro `from`. Exception que
+  nenhum `__init__` re-exporta continua vindo do módulo que a define (#722).
+- `tempest user create` não imprime mais o hash da senha. Num banco ainda não
+  migrado o insert caía com `OperationalError`, e a mensagem que o CLI ecoa
+  trazia `[parameters: ('a@b.dev', '$2b$12$…', …)]` — o hash bcrypt da senha
+  recém-digitada, no terminal e em todo log de CI que capture a saída; o
+  `IntegrityError` de email duplicado vazava igual. Todo
+  `AsyncDatabaseManager` que o CLI abre (`user`, `db seed`, `shell`,
+  `doctor`) sai de `cli_database_manager`, com `hide_parameters=True`, e o
+  erro passa a dizer `[SQL parameters hidden due to hide_parameters=True]`.
+  O `create` confere as tabelas antes do insert e, sem elas, sai com código 1
+  e `error: table(s) users not found in the database. Run `tempest db upgrade`
+  first; nothing was written.` Guard: `tests/test_cli_hide_parameters_guard.py`
+  (#718).
+- `EnvironmentSettings` não lê o `.env` quando `ENV=test` vem do ambiente do
+  processo ou do construtor (`Settings(ENV="test")`). A suíte que fixava
+  `ENV=test` no `conftest.py` herdava todo valor do `.env` de quem rodava
+  (`DATABASE_URL`, host de SMTP, chave de API) que ela mesma não fixasse, e
+  cada serviço repetia `Settings(_env_file=None)` à mão. Variável exportada e
+  argumento do construtor continuam valendo, e o conflito de nome
+  depreciado continua recusado. `ENV=test` escrito **só** no `.env` não
+  descarta o arquivo: a decisão não lê a própria fonte que descartaria
+  (#718).
+- `tempest openapi-errors` segue as dependências do FastAPI: `Depends` /
+  `Security` nos parâmetros (default, `Annotated` e alias
+  `XDep = Annotated[T, Depends(f)]`), o `dependencies=` da rota, do
+  `APIRouter(...)` e de todo `include_router(...)` acima dele, e o que as
+  factories de auth do SDK (`make_token_dependency` e afins) levantam. Antes,
+  um `require_api_key` no router ou um provider respondendo 404 ficavam fora,
+  e o relatório dizia `Every route's declared errors match its flow` com o 401
+  e o 404 não documentados. O `responses=error_responses(...)` do
+  `APIRouter`/`include_router` conta como declaração para as rotas abaixo
+  dele, e um parâmetro `Annotated[T, ...]` passa a ser tipado como `T` (#718).
 
 ## [0.348.0] — 2026-11-09
 
@@ -28966,7 +29153,8 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | reconhecimento facial em ONNX Runtime, sem opencv e sem torch: `FaceRecognizer` (detectar/embutir/comparar), `compare_faces`. Modelos de 16 MB baixados por `ensure_models()`. **Nenhuma biblioteca de sistema** |
 | `[firebase]` | `firebase-admin` | verificação de ID token do Firebase: `FirebaseAuth` (init idempotente, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Pesado — 33 pacotes, 52 MB medidos com `firebase-admin` 7.5.0 — e por isso **fora do `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | GenAI local (pesado): `TextGenerator`, `Embedder`, `MusicGenerator`, `BarkSpeech`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
-| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | STT (Whisper) + TTS (Coqui) — o runtime do Coqui vem junto desde a v0.252.0; desde a 0.342.0 sem o teto `transformers<5` ([detalhes](#genai-audio-transformers-bound)) |
+| `[genai-audio]` | `faster-whisper`, `torch` | STT (Whisper). Desde a 0.349.0 não traz mais o Coqui: o `torchaudio` dele derrubava o Bark na GPU ([detalhes](#genai-audio-coqui-split)) |
+| `[genai-tts-coqui]` | `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | TTS (Coqui XTTS v2) — o runtime do Coqui vem junto; sem o teto `transformers<5` desde a 0.342.0 ([detalhes](#genai-audio-transformers-bound)) |
 | `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |
 | `[genai-diarization]` | `sherpa-onnx` | diarização (quem falou quando) via `sherpa-onnx` em ONNX Runtime, sem PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Modelos (46 MB) baixados por `ensure_models()` |
 | `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. Nenhum SDK de fornecedor |
@@ -29004,7 +29192,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | tudo acima **exceto** os 17 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 17 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev) |
+| `[all]` | tudo acima **exceto** os 18 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 18 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev) |
 
 === "Subconjunto (recomendado)"
 
@@ -29032,9 +29220,31 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
     ]
     ```
 
+<a id="genai-audio-coqui-split"></a>
+
+!!! warning "Desde a 0.349.0 o Coqui (XTTS) está no `[genai-tts-coqui]`"
+    O `[genai-audio]` trazia o `coqui-tts` e, com ele, o `torchaudio`. O Bark
+    não usa `torchaudio`, mas o `transformers` o importa quando ele está
+    instalado, ao montar o `AutoProcessor`. Na GPU, o `torchaudio` 2.11.1 do
+    PyPI é build CUDA 13 e não carrega ao lado de um `torch` CUDA 12, então
+    `POST /audio/speech` respondia 500 (medido no tempest-ai, RTX 4070 Ti
+    SUPER, SDK 0.348.0 — issue #723).
+
+    Agora `[genai-audio]` é só o STT (`faster-whisper` + `torch`) e o Coqui
+    tem extra próprio. Resolvido com `uv pip compile` (Python 3.12) em
+    2026-11-10:
+
+    | Extra | traz | não traz |
+    | --- | --- | --- |
+    | `[genai-audio]` | faster-whisper 1.2.1, ctranslate2 4.8.5, torch 2.15.0 | `torchaudio`, `transformers`, `coqui-tts` |
+    | `[genai-tts-coqui]` | coqui-tts 0.28.0, torchaudio 2.11.1, transformers 5.22.2, torch 2.15.0 | — |
+
+    **Quem usa `TextToSpeech` (XTTS)** troca `[genai-audio]` por
+    `[genai-audio,genai-tts-coqui]` (ou só `[genai-tts-coqui]`, sem STT).
+
 <a id="genai-audio-transformers-bound"></a>
 
-!!! check "Desde a 0.342.0 o `[genai-audio]` não fixa mais `transformers<5`"
+!!! check "Desde a 0.342.0 o extra do Coqui não fixa mais `transformers<5`"
     Até a 0.341.0 o extra tinha o teto `transformers<5`: o `coqui-tts` 0.27.5
     importava `isin_mps_friendly`, símbolo que a transformers 5.1 removeu. Isso
     prendia quem instalava o extra na transformers 4.57.6, e com ela o
@@ -29042,8 +29252,9 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
     `diffusers`. O `coqui-tts` 0.28.0 não importa mais o símbolo, e o extra passou
     a exigir essa versão.
 
-    Resolvido com `uv pip compile` (Python 3.12) em 2026-11-01, o extra não
-    rebaixa mais nada:
+    Resolvido com `uv pip compile` (Python 3.12) em 2026-11-01, quando o Coqui
+    ainda estava no `[genai-audio]` (hoje está no `[genai-tts-coqui]`, ver
+    acima), o extra não rebaixava mais nada:
 
     | Extras | `transformers` | `huggingface-hub` | `tokenizers` | `diffusers` |
     | --- | --- | --- | --- | --- |
@@ -29066,6 +29277,186 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 
 !!! info "Imports preguiçosos"
     Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então `import tempest_fastapi_sdk` funciona mesmo quando só um subconjunto de extras está instalado. Instanciar um helper cujo extra está faltando levanta `ImportError` com uma dica clara apontando para o extra certo. Desde a 0.326.0 os módulos do próprio SDK também carregam sob demanda: `import tempest_fastapi_sdk` carrega um módulo em vez de 269 mais SQLAlchemy, FastAPI, Alembic, Jinja2 e bcrypt, e o `tempest --help` caiu de 0,94 s para 0,14 s (melhor de 5, medido neste repositório). `from tempest_fastapi_sdk import X` e a checagem de tipos strict funcionam como antes.
+
+<a id="genai-audio-gpu"></a>
+
+### GPU com `[genai-audio]`
+
+O `[genai-audio]` transcreve com o **faster-whisper**, que roda sobre o
+**CTranslate2**. As wheels do `ctranslate2` 4.x são linkadas contra o **CUDA
+12** e, na primeira transcrição em `device="cuda"`, procuram a
+`libcublas.so.12`. O `torch` que o PyPI entrega desde a 2.14 é build **CUDA
+13**: ele instala as bibliotecas `.so.13`, e não as `.so.12`. Com a resolução
+padrão, então, a primeira transcrição na GPU morre assim:
+
+```text
+RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+```
+
+A saída é instalar o `torch` do índice **CUDA 12** do PyTorch, que traz o
+cuBLAS e o cuDNN de CUDA 12 em pacotes `nvidia-*-cu12`.
+
+#### Passo 1: o `torch` do índice cu126
+
+No `pyproject.toml` do seu serviço, declare o índice como `explicit` (só os
+pacotes que você apontar vêm dele) e aponte o `torch` para lá:
+
+```toml
+[project]
+name = "meu-servico"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "tempest-fastapi-sdk[genai-audio]>=0.349.0",
+    "torch>=2.14.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+```
+
+O `torch` aparece em `dependencies` mesmo já vindo pelo extra: o
+`[tool.uv.sources]` só vale para dependência **direta**. Depois, `uv sync`.
+
+!!! note "Usa também o Coqui (`[genai-tts-coqui]`)?"
+    O `torchaudio` do PyPI também é build CUDA 13 e não carrega ao lado de um
+    `torch` CUDA 12 (`libcudart.so.13: cannot open shared object file`).
+    Aponte ele para o mesmo índice — e, de novo, como dependência direta:
+
+    ```toml
+    [project]
+    name = "meu-servico"
+    version = "0.1.0"
+    requires-python = ">=3.12"
+    dependencies = [
+        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.349.0",
+        "torch>=2.14.0",
+        "torchaudio>=2.11.0",
+    ]
+
+    [[tool.uv.index]]
+    name = "pytorch-cu126"
+    url = "https://download.pytorch.org/whl/cu126"
+    explicit = true
+
+    [tool.uv.sources]
+    torch = { index = "pytorch-cu126" }
+    torchaudio = { index = "pytorch-cu126" }
+    ```
+
+    Quem usa só o STT não precisa dessas linhas: desde a 0.349.0 o
+    `[genai-audio]` não traz `torchaudio` ([por quê](#genai-audio-coqui-split)).
+    Até a 0.348.0 ele trazia, então nessas versões declare o `torchaudio` como
+    acima mesmo sem usar o Coqui.
+
+#### Passo 2: o `LD_LIBRARY_PATH` do CTranslate2
+
+Os pacotes `nvidia-cublas-cu12` e `nvidia-cudnn-cu12` ficam dentro do
+`site-packages`, fora do caminho que o carregador dinâmico procura. O `torch`
+os acha sozinho; o CTranslate2 não. Aponte o `LD_LIBRARY_PATH` para eles antes
+de subir o processo:
+
+```bash
+SITE_PACKAGES="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+export LD_LIBRARY_PATH="$SITE_PACKAGES/nvidia/cublas/lib:$SITE_PACKAGES/nvidia/cudnn/lib:${LD_LIBRARY_PATH:-}"
+```
+
+Num `Dockerfile`, escreva o caminho do venv da imagem, por exemplo
+`ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib`.
+
+!!! info "Por que às vezes funciona sem o `LD_LIBRARY_PATH`"
+    Quando o processo importa o `torch` antes de carregar o Whisper, o
+    `torch` já deixa o cuBLAS e o cuDNN de CUDA 12 carregados, e o
+    CTranslate2 os reaproveita. É o que acontece com
+    `SpeechToText(device="auto")`, que importa o `torch` para detectar a GPU,
+    ou depois de um `probe_hardware()`. Com `device="cuda"` explícito, nada
+    importa o `torch` antes, e sem a variável a transcrição falha. Exporte a
+    variável de qualquer forma: depender da ordem de import é frágil.
+
+    Num host com o CUDA 12 instalado no sistema (a `libcublas.so.12` no
+    `ldconfig`), as duas falhas desta seção não aparecem — o carregador acha
+    a biblioteca do sistema. Container `python:3.12-slim` não tem isso.
+
+#### Passo 3: confira
+
+Gere um WAV curto (aqui com o `espeak-ng`) e transcreva na GPU:
+
+```bash
+espeak-ng -v en -w hello.wav "The quick brown fox jumps over the lazy dog."
+```
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import SpeechToText
+
+
+async def main() -> None:
+    """Transcribe a short WAV on the GPU."""
+    stt = SpeechToText("small", device="cuda")
+    with open("hello.wav", "rb") as handle:
+        result = await stt.transcribe(handle.read())
+    print(stt.device, result.text)
+
+
+asyncio.run(main())
+```
+
+```text
+cuda The quick brown fox jumps over the lazy dog.
+```
+
+O `probe_hardware()` também avisa do par errado antes da primeira transcrição:
+com um `torch` CUDA 13 e o `ctranslate2` instalados, o `HardwareInfo.warnings`
+diz o que vai falhar e manda para esta seção (veja
+[Sondando o hardware](recipes/genai.md#sondando-o-hardware)).
+
+!!! check "O que foi medido"
+    **Neste repositório**, em 2026-11-10, num container `python:3.12-slim`
+    com `--gpus all` numa RTX 4070 Ti SUPER (WSL2, driver do Windows 591.86), Python
+    3.12, `faster-whisper` 1.2.1 e `ctranslate2` 4.8.5, modelo `small` em
+    `float16`, transcrevendo o WAV acima:
+
+    | `torch` | `LD_LIBRARY_PATH` | `torch` importado antes | resultado |
+    | --- | --- | --- | --- |
+    | 2.15.0+cu132 (PyPI) | não | não | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | não | sim | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | `nvidia/{cublas,cudnn}/lib` | não | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (índice cu126) | não | não | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (índice cu126) | não | sim | transcreve |
+    | 2.14.1+cu126 (índice cu126) | `nvidia/{cublas,cudnn}/lib` | não | transcreve |
+
+    As linhas de cima foram medidas chamando o `WhisperModel` direto; com o
+    SDK instalado por cima, `SpeechToText(device="cuda")` deu o mesmo par
+    (falha sem a variável, transcreve com ela) e `SpeechToText(device="auto")`
+    transcreveu sem a variável. A venv foi montada com o `pyproject.toml` do
+    passo 1 trocando o `tempest-fastapi-sdk[genai-audio]` pelo
+    `faster-whisper`, que é o que o extra traz, e o SDK do branch instalado
+    por cima. O áudio foi o WAV acima convertido para 16 kHz com o `ffmpeg`;
+    o WAV original (22 050 Hz) deu o mesmo texto pelo `SpeechToText` na CPU.
+    No host WSL2 fora do container, que tem a `libcublas.so.12` do sistema no
+    `ldconfig`, a venv cu126 transcreveu sem a variável e sem importar o
+    `torch` — por isso a tabela é do container.
+
+    **No tempest-ai** (issue #723; `python:3.12-slim`, RTX 4070 Ti SUPER, SDK
+    0.348.0) a mesma correção foi aplicada no serviço, com `torch==2.14.1+cu126`
+    e `torchaudio==2.11.0+cu126` do índice cu126: o `BarkSpeech`
+    (`suno/bark-small`) sintetizou em português — 5,95 s de áudio em 9,6 s e
+    16,76 s em 23,6 s, com o modelo já carregado.
+
+    **Não medido:** o Coqui (`[genai-tts-coqui]`) na GPU com o `torchaudio`
+    do índice cu126 deste repositório, e outras GPUs, drivers ou CUDA 12.x
+    além do 12.6.
+
+**Recap:** o faster-whisper precisa de CUDA 12; o `torch` do PyPI é CUDA 13.
+Tire o `torch` (e o `torchaudio`, se usar o Coqui) do índice cu126, como
+dependência direta, e exporte o `LD_LIBRARY_PATH` para
+`nvidia/{cublas,cudnn}/lib`.
 
 ## CLI
 
@@ -29922,9 +30313,9 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     ├── services/<contexto>/         # camada de lógica de negócio
     ├── schemas/                     # DTOs de request/response Pydantic v2
     ├── scripts/                     # composition.py (build_*) + o trabalho que as tasks rodam
-    ├── core/                        # settings.py + enums.py + types.py + exceptions.py
+    ├── core/                        # settings.py + pacotes constants/, enums/, types/, exceptions/ (um módulo por status)
     ├── db/ (opcional)
-    │   ├── configs/names.py         # nomes das tabelas, fonte única
+    │   ├── configs/                 # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
     │   ├── models/<contexto>/       # modelos ORM SQLAlchemy
     │   └── repositories/<contexto>/ # camada de acesso a dados
     ├── ui/ (opcional)               # camada de interface — só com o extra [ssr]
@@ -30330,7 +30721,7 @@ de permissão roda, e o que o router devolve.
 
 Tudo num exemplo só, completo — copie para um arquivo e rode com
 `uv run python app.py`. Num projeto, cada classe mora na sua camada
-(`db/models/`, `schemas/`, `core/exceptions.py`, `db/repositories/`,
+(`db/models/`, `schemas/`, `core/exceptions/`, `db/repositories/`,
 `services/`, `controllers/`, `api/dependencies/controllers.py`,
 `api/routers/`); aqui estão juntas para o exemplo rodar sozinho.
 
@@ -30777,7 +31168,7 @@ três classes, e cada endpoint que usa o controller repete a montagem.
     `src/api/dependencies/resources.py` traz `db`, `get_db` e `get_session`
     sempre, `get_mailer` só com `[email]` e `get_storage` só com `[minio]`
     — e, com eles, o `EmailSettings` / `StorageSettings` no `Settings`. O
-    `tests/test_smoke.py` gerado troca o `TITLE` por
+    `tests/integration/system/test_service_info.py` gerado troca o `TITLE` por
     `dependency_overrides[get_settings]` e confere que o `GET /api/`
     responde o valor novo.
 
@@ -31012,7 +31403,9 @@ lugares quando o primeiro guard foi escrito. Prosa não é gate.
 
 !!! tip "O `tempest new` já sai assim"
     O projeto que o `tempest new` gera passa em todas as regras desta
-    página, erros e avisos. Se você está começando, esta página explica o
+    página, erros e avisos, e já liga o `layers_strict = true`. O porquê de
+    cada pasta que ele gera, e o gate de cada item, está no
+    [Padrão de serviço](service-standard.md). Se você está começando, esta página explica o
     que já está no seu disco. Se tem um serviço antigo, vá para
     [Migrando um serviço existente](#migrando-um-servico-existente).
 
@@ -31520,6 +31913,469 @@ aviso que voltar derruba o `tempest check`.
   específica e `parametrize` determinístico.
 - Tudo isso é **aviso** até você ligar o `layers_strict`; o que você assume
   de propósito vai em `tests/architecture_exceptions.py`, com motivo.
+
+
+---
+
+# Padrão de serviço
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/service-standard/
+
+# Padrão de serviço
+
+Esta página é a **referência citável** de como um serviço Tempest é
+organizado: cada item do padrão, o porquê dele, e **o que o cobra hoje** —
+um código do `tempest lint-layers`, um passo do `tempest check` ou um teste
+que o `tempest new` já escreve no seu projeto. Quando o item não tem gate,
+a página diz isso também.
+
+O padrão é o do `transport-backend`, o serviço em que essas regras foram
+medidas. A [#718](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/718)
+registra por que ele virou referência: um serviço novo foi escrito por IA
+**sem partir do `tempest new`**, e só a revisão contra o transport o trouxe
+de volta para `lint-layers --strict`, `lint-schemas` e `openapi-errors`
+limpos.
+
+!!! tip "Comece pelo `tempest new`"
+    Tudo o que esta página descreve já sai do `tempest new`. Escrever o
+    serviço à mão, ou copiar outro, é exatamente o erro da #718. Para um
+    domínio novo dentro de um projeto que já existe, siga a receita do
+    `CLAUDE.md` que o scaffold escreve; para as regras de forma de arquivo,
+    veja a [Arquitetura recomendada](recommended-architecture.md).
+
+## O que o `tempest new` gera
+
+```bash
+tempest new demo --extras sqlite
+```
+
+A árvore de diretórios do projeto (`tree -d`, medida na branch desta
+página):
+
+```text
+.
+├── alembic
+│   └── versions
+├── src
+│   ├── api
+│   │   ├── dependencies
+│   │   ├── docs
+│   │   └── routers
+│   ├── controllers
+│   │   └── system
+│   ├── core
+│   │   ├── constants
+│   │   │   └── messages
+│   │   ├── enums
+│   │   ├── exceptions
+│   │   └── types
+│   ├── db
+│   │   ├── configs
+│   │   ├── models
+│   │   └── repositories
+│   ├── schemas
+│   ├── scripts
+│   ├── services
+│   └── utils
+└── tests
+    ├── integration
+    │   └── system
+    └── unit
+        ├── architecture
+        └── core
+```
+
+E o `tempest check` sobre ele, sem tocar em nada (`ENV=test`, que o
+`conftest.py` gerado também fixa):
+
+```text
+$ ruff check --extend-select ANN001,ANN201,ANN202,ANN205,ANN206 .
+All checks passed!
+$ ruff format --check .
+61 files already formatted
+$ mypy --disallow-untyped-defs --disallow-incomplete-defs .
+Success: no issues found in 59 source files
+$ lint-layers
+Layer rules: no findings.
+$ openapi-errors
+Every route's declared errors match its flow (src).
+$ lint-schemas
+Schema metadata: src.schemas is fully documented.
+$ pytest -n auto -p no:cacheprovider
+...
+9 passed
+```
+
+Os nove testes são os que o scaffold escreve: três de integração da rota
+raiz e do health, três guards de arquitetura e três do contrato de
+exceções.
+
+## O padrão, item a item
+
+| Regra | Como fica | Quem cobra hoje |
+| --- | --- | --- |
+| Uma classe de camada por arquivo, por contexto | `src/<camada>/<contexto>/<arquivo>.py`, só a classe + `logger` + `__all__` | `LAY001`, `LAY002` |
+| Sem `def` aninhado nem `_x` de módulo, em `src` e `tests` | callback com estado vira objeto chamável | `STR001`, `STR002` |
+| `__init__` com import relativo; fora dele, import do pacote | `from .x import Y` / `from src.services import X` | `IMP001`, `IMP002` |
+| Recurso é singleton de processo num lugar só | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (convenção do scaffold) |
+| Providers por camada; router nunca vê `AsyncSession` | `api/dependencies/controllers.py` chama os `build_*` | `RTR001`, `DI001`–`DI003` |
+| `/api` posto num lugar só | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
+| Texto do OpenAPI fora do router | `api/docs/<router>.py`, um `EndpointDoc` por handler | — (convenção do scaffold) |
+| Exceções: um módulo por status, contrato no corpo da classe | `core/exceptions/{bad_request,unauthorized,forbidden,not_found,conflict}.py` | `tests/unit/core/test_exceptions_contract.py` |
+| Contrato de exceção congelado | status, `code`, mensagem e `field` de cada classe | `tests/unit/core/test_exceptions_contract.py` |
+| Prosa e constante fora do módulo que usa | `core/constants/` + `core/constants/messages/{errors,successes}.py` | — (convenção do scaffold) |
+| `Protocol`, alias, `NamedTuple`, enum | `core/types/<domínio>.py`, `core/enums/<domínio>.py` | `LAY001` (fora da camada); `ENUM001` (sufixo) |
+| Banco | `db/configs/{connection,migrations,names}.py` | — (convenção do scaffold) |
+| Mapeamento no repository | `map_to_response` | `REPO001` (parcial) |
+| Grafo montado fora do request | `scripts/composition.py` (`build_*`) | `DI003` (`from_session`) |
+| Todo campo de schema documentado | `Field(title=..., description=..., examples=...)` | `lint-schemas` + `tests/unit/architecture/test_schemas.py` |
+| Toda rota declara o que levanta | `responses=error_responses(...)` | `openapi-errors` + `tests/unit/architecture/test_openapi_errors.py` |
+| Testes | `Cenário:`/`Esperado:`, que conferem algo; `tests/{unit,integration}/<área>/` | `TST001`–`TST004` |
+| Guards na própria suíte | `tests/unit/architecture/` | `test_layers.py`, `test_openapi_errors.py`, `test_schemas.py` |
+| Avisos falham desde o primeiro commit | `layers_strict = true` em `[tool.tempest]` | `tempest check` |
+
+Os códigos `LAY`, `STR`, `IMP`, `DI`, `RTR003`/`RTR004` e `TST` são
+**avisos**: só derrubam o `tempest check` com `layers_strict = true`, que o
+`pyproject.toml` gerado já liga. A tabela de todos os códigos, com a saída
+real de cada um, está em
+[CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
+
+!!! note "O que não tem gate"
+    Singleton de recurso, `api/docs`, `core/constants` e `db/configs` são
+    convenção: o scaffold nasce assim e a receita do `CLAUDE.md` ensina
+    assim, mas nenhuma regra falha se você desviar. Ficaram de fora porque
+    a checagem precisaria julgar intenção (o que é "prosa", o que é
+    "recurso de processo"), e regra larga demais acusa código correto.
+
+## Exceções: um módulo por status, contrato no corpo
+
+**Por quê:** o par status + `code` é o que o cliente lê para decidir o que
+mostrar, e a mensagem é o que o usuário vê. Quando a classe declara os
+três no corpo, quem lê a classe **sem instanciar** — o `error_responses`
+que documenta o OpenAPI, o `BaseRepository` que levanta o 404, o
+`tempest openapi-errors` — vê o mesmo contrato que o cliente recebe. Um
+`__init__` que monta a mensagem esconde isso, e obriga cada `raise` a
+lembrar dos argumentos.
+
+O módulo diz o status, então quem procura "o que devolve 409" abre
+`conflict.py`:
+
+```python
+# src/core/exceptions/not_found.py
+from typing import Any, ClassVar
+
+from tempest_fastapi_sdk import NotFoundException
+
+from src.core.constants.messages import errors
+
+
+class ItemNotFoundException(NotFoundException):
+    """Raised when an item id matches no stored record."""
+
+    code = "ITEM_NOT_FOUND"
+    message = errors.ITEM_NOT_FOUND
+    field = "item_id"
+    details_example: ClassVar[dict[str, Any]] = {"item_id": "3f2b8c1e"}
+```
+
+- `code` é o identificador estável. Sem ele a classe herda o genérico do
+  SDK (`"NOT_FOUND"`), e o SDK avisa com `InheritedErrorCodeWarning`.
+- `message` vem de uma constante, nunca de f-string.
+- `field` nomeia o input culpado. Em credencial inválida, deixe sem: dizer
+  qual metade do par errou ajuda quem está tentando.
+- O dado que muda a cada `raise` vai em `details=`:
+
+```python
+from src.core.exceptions import ItemNotFoundException
+
+
+def require_item(item_id: str, found: bool) -> None:
+    """Refuse a lookup that missed.
+
+    Args:
+        item_id (str): The id that was looked up.
+        found (bool): Whether the lookup matched a row.
+
+    Raises:
+        ItemNotFoundException: When ``found`` is false.
+    """
+    if not found:
+        raise ItemNotFoundException(details={"item_id": item_id})
+```
+
+### O contrato congelado
+
+O `tests/unit/core/test_exceptions_contract.py` gerado guarda, em
+literais, o status, o `code`, a mensagem e o `field` de cada classe que
+`src.core.exceptions` reexporta — e falha quando uma classe nova entra sem
+entrada. Medido: com uma `OrderAlreadyPaidException` reexportada e sem
+linha no contrato, o teste falha assim:
+
+```text
+E       AssertionError: assert {'ItemNotFoun...aidException'} == {'ItemNotFoundException'}
+E         Extra items in the left set:
+E         'OrderAlreadyPaidException'
+1 failed, 2 passed
+```
+
+Renomear, mover ou reescrever uma exceção passa a ser uma mudança visível
+no diff desse arquivo — que é uma mudança de API.
+
+## Mensagens e constantes fora do módulo que usa
+
+**Por quê:** string de mensagem espalhada por service e exceção é o
+primeiro lugar onde a IA (e a gente) duplica texto. Com uma constante por
+`code`, mudar a redação é uma linha, e o leitor vê de onde o texto veio:
+
+```python
+# src/core/constants/messages/errors.py
+ITEM_NOT_FOUND: str = "Item not found."
+"""Message of ``ItemNotFoundException``."""
+
+__all__: list[str] = ["ITEM_NOT_FOUND"]
+```
+
+Importe o **módulo**, não a constante —
+`from src.core.constants.messages import errors` — para o uso ler
+`errors.ITEM_NOT_FOUND`. Constante que não é texto de cliente vai em
+`core/constants/<domínio>.py`, reexportada pelo pacote. Enum vai em
+`core/enums/<domínio>.py`; `Protocol`, alias e `NamedTuple` de resultado,
+em `core/types/<domínio>.py` — nunca ao lado da classe num módulo de
+camada, que guarda só ela (`LAY001`).
+
+## Banco: `db/configs`
+
+**Por quê:** a configuração do engine e a migração de boot são decisões
+que valem para o processo inteiro, e cada uma tem **um** lugar:
+
+```python
+# src/db/configs/connection.py
+from tempest_fastapi_sdk import AsyncDatabaseManager, DatabaseSettings
+
+
+def make_db_manager(settings: DatabaseSettings) -> AsyncDatabaseManager:
+    """Build the database manager for the given settings.
+
+    Args:
+        settings (DatabaseSettings): The project's settings.
+
+    Returns:
+        AsyncDatabaseManager: A manager with the bind parameters out of
+        the error messages.
+    """
+    return AsyncDatabaseManager(**settings.database_kwargs(), hide_parameters=True)
+```
+
+`hide_parameters=True` tira os bind parameters do texto de toda exceção do
+SQLAlchemy. Sem ele, um `IntegrityError` logado escreve
+`[parameters: (...)]` com o e-mail, o documento ou o hash da senha da
+linha — o mesmo defeito que a #718 achou no `tempest user create`.
+
+O `db/configs/migrations.py` tem o `run_migrations`, que o lifespan chama
+enquanto `DATABASE_MIGRATE_ON_STARTUP` está ligado (o default). Ele usa o
+`AlembicHelper.sync_schema_async`, que cobre banco vazio, banco criado
+antes do Alembic e banco já migrado, e recusa migration pendente que
+apaga tabela, coluna ou constraint. Desligue quando várias réplicas sobem
+juntas e um job roda `tempest db upgrade`.
+
+!!! info "Nenhum dos dois importa o projeto"
+    `src.db.models` importa `src.db.configs` pelos nomes de tabela. Se o
+    `connection.py` importasse `src.core`, carregar os models (o que o
+    Alembic faz em toda revisão) construiria as settings. Por isso
+    `make_db_manager` recebe as settings por parâmetro, tipado com o mixin
+    `DatabaseSettings` do SDK, e `run_migrations` recebe a URL.
+
+## Texto do OpenAPI fora do router
+
+**Por quê:** o router é fiação — método, caminho, `Depends`, `responses=`.
+A prosa que o Swagger mostra muda por outros motivos, e misturada no
+decorator ela some no diff da fiação. O `api/docs/<router>.py` guarda um
+`EndpointDoc` por handler, em `UPPER_SNAKE`:
+
+```python
+# src/api/docs/base.py
+from typing import TypedDict
+
+
+class EndpointDoc(TypedDict):
+    """Summary and description of one endpoint in the OpenAPI document."""
+
+    summary: str
+    description: str
+```
+
+```python
+# src/api/docs/service_info.py
+from .base import EndpointDoc
+
+INDEX: EndpointDoc = {
+    "summary": "Describe the service",
+    "description": (
+        "Returns the name the service runs under, read from the TITLE "
+        "setting. Public, no authentication."
+    ),
+}
+```
+
+E o router espalha o dicionário no decorator:
+
+```python
+# src/api/routers/service_info.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.api.docs import service_info
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(tags=["root"])
+
+
+@router.get("/", **service_info.INDEX)
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
+    """Placeholder root endpoint returning the service name.
+
+    Args:
+        controller (ServiceInfoController): The injected controller.
+
+    Returns:
+        ServiceInfoSchema: The service title.
+    """
+    return await controller.describe()
+```
+
+As duas chaves são os parâmetros `summary` e `description` de
+`APIRouter.get`/`post`, então o mypy confere o espalhamento.
+
+??? info "Por que `EndpointDoc` mora no template e não no SDK"
+    O SDK já tem o `RouteDoc` (em `tempest_fastapi_sdk.api.route_docs`),
+    mas ele é o catálogo bilíngue das rotas **do próprio SDK**: aceita
+    `None` para cair no nome da função, e é lido por chave. O
+    `EndpointDoc` do serviço é um `TypedDict` de dois campos obrigatórios,
+    espalhado direto no decorator. Publicá-lo no SDK seria superfície
+    pública para um tipo de duas linhas que cada serviço lê do próprio
+    `api/docs` — o tipo de wrapper que a gente prefere não depender.
+
+## Guards na própria suíte
+
+**Por quê:** o `tempest check` já roda `lint-layers`, `openapi-errors` e
+`lint-schemas`, mas nem todo mundo roda o `tempest check` — o editor roda
+`pytest`, um hook de pre-commit roda `pytest`. O scaffold escreve os três
+gates também como teste, em `tests/unit/architecture/`:
+
+```python
+# tests/unit/architecture/test_layers.py
+from pathlib import Path
+
+from tempest_fastapi_sdk.cli.layer_lint import lint_layers
+
+PROJECT_ROOT: Path = Path(__file__).resolve().parents[3]
+
+
+def test_the_layer_rules_report_nothing() -> None:
+    """Cenário: as regras de camada sobre o projeto inteiro.
+
+    Esperado: nenhum achado, nem erro nem aviso.
+    """
+    findings = [finding.render(PROJECT_ROOT) for finding in lint_layers(PROJECT_ROOT)]
+    assert findings == []
+```
+
+O `test_openapi_errors.py` faz o mesmo com `analyze_paths` sobre `src`, e
+o `test_schemas.py` com `assert_schema_metadata(src.schemas)`. O teste de
+camadas falha também em **aviso** — o mesmo critério do `layers_strict`.
+
+A suíte é separada por tipo e área: `tests/unit/<área>/` para uma classe
+isolada, `tests/integration/<área>/` para uma requisição pelo app, cada
+pasta com `__init__.py`.
+
+## Projeto existente: `tempest generate --standard`
+
+O `tempest new` só escreve projeto novo. Um serviço gerado antes desta
+versão continua com `core/exceptions.py`, `tests/test_smoke.py` e o
+`AlembicHelper` no lifespan — e continua funcionando. Para trazer as
+peças do padrão que não colidem com nada, rode na raiz do projeto:
+
+```bash
+tempest generate --standard
+```
+
+Num serviço com `src/core/exceptions.py` contendo `UserNotFoundError`
+(`NotFoundException`) e `UserEmailAlreadyTakenError` (`ConflictException`),
+a saída é:
+
+```text
+  + src/core/constants/__init__.py
+  + src/core/constants/messages/__init__.py
+  + src/core/constants/messages/errors.py
+  + src/core/constants/messages/successes.py
+  + src/core/enums/__init__.py
+  + src/core/types/__init__.py
+  + tests/unit/__init__.py
+  + tests/unit/architecture/__init__.py
+  + tests/unit/architecture/test_layers.py
+  + tests/unit/architecture/test_openapi_errors.py
+  + tests/unit/architecture/test_schemas.py
+  + tests/unit/core/__init__.py
+  + src/core/exceptions/conflict.py
+  + src/core/exceptions/not_found.py
+  + src/core/exceptions/__init__.py
+  + tests/unit/core/test_exceptions_contract.py
+  - src/core/exceptions.py
+  > UserEmailAlreadyTakenError -> core/exceptions/conflict.py
+  > UserNotFoundError -> core/exceptions/not_found.py
+Standard: 16 written, 0 skipped, 2 exception(s) moved.
+```
+
+O que acontece:
+
+- **Pacotes e guards que faltam** (`core/constants/`, `core/enums/`,
+  `core/types/`, `tests/unit/architecture/`) saem dos mesmos templates do
+  `tempest new`. Arquivo que já existe fica como está, a menos que você
+  passe `--force`; e um pacote cujo módulo plano já existe
+  (`core/constants.py`) **não** é escrito, porque o pacote novo
+  esconderia o módulo em silêncio — o relatório diz o motivo.
+- **`core/exceptions.py` vira o pacote `core/exceptions/`**, um módulo por
+  status. O status de cada classe é lido **importando** o módulo, não
+  adivinhado pela base: uma classe que herda de uma base 500 e declara
+  `status_code = 409` vai para `conflict.py`. O `__init__.py` reexporta
+  tudo, então `from src.core.exceptions import UserNotFoundError` continua
+  funcionando, e o arquivo plano é apagado.
+- **O contrato é congelado** em `tests/unit/core/test_exceptions_contract.py`
+  com o status, o `code`, a mensagem e o `field` que cada classe tem
+  hoje. Uma classe que monta a mensagem no `__init__` gera um aviso
+  nomeando-a: o contrato falha para ela até o dado ir para o corpo da
+  classe e o que muda a cada `raise` ir em `details=`.
+
+!!! warning "A migração recusa antes de escrever"
+    Se o `core/exceptions.py` tem algo além de import, classe e `__all__`
+    (uma constante ou função de módulo não tem status para onde ir), se
+    separar por status faria os módulos importarem uns aos outros, ou se
+    o módulo não importa, o comando sai com código 1, a mensagem diz o
+    arquivo e a linha, e **nada** é escrito.
+
+Rodar de novo não muda nada: tudo que já existe é pulado. O resto do
+padrão (`db/configs`, `scripts/composition.py`, `api/docs/`) mexe na
+fiação do app e continua manual — um item por PR, na ordem da
+[migração da arquitetura recomendada](recommended-architecture.md#migrando-um-servico-existente).
+Ligue o `layers_strict = true` quando os avisos zerarem.
+
+## Recap
+
+- **Comece pelo `tempest new`**; um domínio novo segue a receita do
+  `CLAUDE.md` gerado.
+- **Exceção:** um módulo por status, `code`/`message`/`field` no corpo,
+  sem `__init__`, dado do `raise` em `details=` — e uma linha no contrato
+  congelado.
+- **Texto de cliente em `core/constants/messages`**; enum, tipo e
+  constante em pacotes por domínio.
+- **`db/configs`** guarda o `make_db_manager` (`hide_parameters=True`) e o
+  `run_migrations` do boot.
+- **`api/docs`** guarda o `EndpointDoc` de cada handler.
+- **`layers_strict = true`** e os guards em `tests/unit/architecture/`
+  fazem o `tempest check` e o `pytest` falharem no primeiro desvio.
 
 
 ---
@@ -32848,6 +33704,122 @@ card cujo `compute` levanta é **pulado** — uma métrica quebrada nunca
 zera a página — e a falha vai para o log com traceback
 (`logger.exception` no logger `tempest_fastapi_sdk.admin.router`, nomeando
 o `label` do card), então o card que sumiu da tela aparece no log.
+
+## Áreas de indicadores: schema + service (`metrics_areas=`)
+
+O `MetricCard` recebe a sessão e consulta o banco direto, card por card.
+Quando o seu service **já sabe** coletar os indicadores, repetir a
+consulta no admin é trabalho dobrado — e pula a camada de service. A
+`MetricsArea` é a outra forma: você entrega **um schema com um campo por
+indicador** e **um service cujo método não recebe argumento**, e o admin
+gera uma página com um card por campo, listada em **Metrics** na sidebar.
+
+```python
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AdminSite, BaseUserModel, MetricsArea, Threshold
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+class RideMetricsSchema(BaseModel):
+    messages_to_route: float = Field(
+        title="Mensagens até achar a rota",
+        description="Média de mensagens antes do usuário chegar à rota que queria.",
+    )
+    accesses: int = Field(title="Acessos")
+    accounts_created: int = Field(title="Contas criadas")
+    rides_created: int = Field(title="Caronas criadas")
+
+
+class RideMetricsService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def collect(self) -> RideMetricsSchema:
+        accounts = await self.session.scalar(select(func.count()).select_from(UserModel))
+        return RideMetricsSchema(
+            messages_to_route=4.2,
+            accesses=1200,
+            accounts_created=accounts or 0,
+            rides_created=87,
+        )
+
+
+site = AdminSite(
+    title="Transporte",
+    metrics_areas=[
+        MetricsArea(
+            "Caronas",
+            RideMetricsSchema,
+            provider=RideMetricsService,
+            method="collect",
+            thresholds={
+                "messages_to_route": Threshold(green=3, yellow=6, lower_is_better=True),
+                "accounts_created": Threshold(green=100, yellow=40),
+                "rides_created": Threshold(green=100, yellow=40),
+            },
+            units={"rides_created": "caronas"},
+        )
+    ],
+)
+```
+
+A página fica em `/admin/metrics/caronas` (o slug sai do título). Peça por
+peça:
+
+- **`provider`** constrói o service a partir da sessão do admin. A própria
+  classe serve quando o `__init__` recebe a sessão; uma função de
+  composição (`build_ride_metrics_service`) também. Pode ser sync ou
+  `async`.
+- **`method`** é chamado **sem argumento** e devolve uma instância do
+  `schema`. Outra coisa vira erro na página.
+- **Cada campo vira um card**: `title` é o rótulo (o nome do campo quando
+  falta), `description` a linha embaixo do valor. Número vira um card de
+  valor; um campo tipado `MetricValue`, `MetricTrend` ou `MetricPartition`
+  renderiza como esse card.
+- **`units`** põe a unidade depois do número.
+
+### Thresholds: verde, amarelo, vermelho
+
+`Threshold(green=, yellow=)` pinta o card de um campo numérico (ou o valor
+atual de um `MetricTrend`) com uma borda e um selo — **OK**, **Attention**
+ou **Critical**:
+
+| `Threshold(green=100, yellow=40)` (maior é melhor) | Faixa |
+| --- | --- |
+| `>= 100` | verde |
+| `>= 40` e `< 100` | amarelo |
+| `< 40` | vermelho |
+
+Com `lower_is_better=True` a comparação inverte — `Threshold(green=3,
+yellow=6, lower_is_better=True)` é verde até 3, amarelo até 6 e vermelho
+acima. O limite exato cai sempre na faixa melhor. A cor vem dos tokens do
+tema (`--tempest-success`, `--tempest-warning`, `--tempest-danger`), então
+light e dark seguem consistentes.
+
+!!! tip "Erro cedo, não card sem cor"
+    `thresholds` ou `units` com um nome que o schema não tem levanta
+    `ValueError` na construção da `MetricsArea`, e limites na ordem errada
+    para a direção (`green < yellow` com maior-é-melhor) levantam na
+    construção do `Threshold`. Um typo nunca vira um card que simplesmente
+    não pinta.
+
+### Quando o service falha
+
+Se o `provider` ou o método levantam, a página responde `200` com um
+aviso no lugar dos cards, e o traceback vai para o log
+(`logger.exception` em `tempest_fastapi_sdk.admin.router`, nomeando a
+área). Um service quebrado nunca vira `500` no painel.
+
+### Quem vê
+
+A área é a superfície `AdminSurfaceEnum.METRICS`: com `surface_policy`,
+quem a política nega recebe `403` na página e não vê os links na sidebar.
 
 ## Import CSV (`can_import=True`)
 
@@ -34655,7 +35627,8 @@ def build_multimodal_agent() -> Agent:
 
 !!! warning "Cada ferramenta puxa o seu extra"
     `[genai]` (texto), `[genai-image]` (imagem), `[genai-vlm]` (visão),
-    `[genai-audio]` (STT/TTS) e `[genai-rag]` (retriever + busca web).
+    `[genai-audio]` (STT), `[genai-tts-coqui]` (TTS do Coqui) e `[genai-rag]`
+    (retriever + busca web).
     Instale só as que você vai usar — os pesos só são baixados na primeira
     chamada de cada modelo, não na instanciação acima.
 
@@ -45943,14 +46916,20 @@ my_service/
 │   ├── api/
 │   │   ├── app.py           # create_app() conecta middleware, handlers e build_api_router()
 │   │   ├── routers/         # api.py (build_api_router, o único /api) + service_info.py (GET /api/)
+│   │   ├── docs/            # base.py (EndpointDoc) + service_info.py — texto do OpenAPI fora do router
 │   │   └── dependencies/    # auth.py + resources.py (db, get_session, get_mailer/get_storage por extra) + controllers.py (providers)
 │   ├── controllers/system/  # ServiceInfoController — um pacote por contexto, uma classe por módulo
 │   ├── services/            # lógica de negócio, em services/<contexto>/
 │   ├── schemas/             # DTOs Pydantic
 │   ├── scripts/             # composition.py — o composition root (build_*)
-│   ├── core/                # settings.py + enums.py + types.py + exceptions.py
+│   ├── core/
+│   │   ├── settings.py
+│   │   ├── constants/       # constantes por domínio + messages/{errors,successes}.py
+│   │   ├── enums/           # um módulo por domínio
+│   │   ├── types/           # Protocol, alias, NamedTuple — um módulo por domínio
+│   │   └── exceptions/      # um módulo por status: bad_request, unauthorized, forbidden, not_found, conflict
 │   ├── db/
-│   │   ├── configs/names.py # nomes de tabela num símbolo só
+│   │   ├── configs/         # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
 │   │   ├── models/users/    # UserModel — só com [auth] (ou [admin])
 │   │   └── repositories/
 │   ├── queue/               # só com o extra [queue] — broker + handlers
@@ -45959,9 +46938,14 @@ my_service/
 │   └── utils/
 └── tests/
     ├── conftest.py          # um SQLite por worker do pytest-xdist
-    ├── test_smoke.py        # garante que /api/ e /health/liveness sobem
-    └── test_schemas.py      # todo campo de schema exportado documentado (assert_schema_metadata)
+    ├── integration/system/  # test_service_info.py: /api/, override de settings, /health/liveness
+    └── unit/
+        ├── architecture/    # lint_layers, analyze_paths, assert_schema_metadata
+        └── core/            # test_exceptions_contract.py: status, code, mensagem e field congelados
 ```
+
+O porquê de cada pasta, e o que cobra cada uma, está em
+[Padrão de serviço](../service-standard.md).
 
 !!! tip "O `CLAUDE.md` gerado é o contrato do projeto"
     Todo projeto novo nasce com um `CLAUDE.md` que fixa as regras que
@@ -46415,6 +47399,14 @@ uv run python main.py                           # serve no HOST:PORT configurado
 uv run pytest                                   # o smoke test embutido
 ```
 
+### Trazer um projeto antigo ao padrão — `tempest generate --standard`
+
+Escreve as peças do [padrão de serviço](../service-standard.md) que um projeto anterior a ele não tem — `core/constants/`, `core/enums/`, `core/types/`, os guards de `tests/unit/` —, converte um `core/exceptions.py` plano no pacote `core/exceptions/` com um módulo por status e congela o contrato das exceções em `tests/unit/core/test_exceptions_contract.py`. Arquivo existente é pulado sem `--force`; a migração recusa, sem escrever nada, quando o módulo tem algo além de import, classe e `__all__`. O passo a passo está em [Projeto existente](../service-standard.md#projeto-existente-tempest-generate-standard).
+
+```bash
+tempest generate --standard
+```
+
 ### Subir o serviço — `tempest serve`
 
 ```bash
@@ -46809,7 +47801,22 @@ tempest user list --admin                        # só admins
 
     Insert recusado pelo banco (email duplicado, quase sempre) sai com
     código 1 e a mensagem do banco — `error: could not insert user: …` —
-    em vez de traceback.
+    em vez de traceback. Os valores do insert **não** aparecem nela: todo
+    banco que o CLI abre usa `hide_parameters=True`, então o hash da senha
+    que você acabou de digitar não vai parar no terminal nem no log da CI:
+
+    ```text
+    error: could not insert user: (sqlite3.IntegrityError) UNIQUE constraint failed: users.email
+    [SQL: INSERT INTO users (email, hashed_password, ...) VALUES (?, ?, ...)]
+    [SQL parameters hidden due to hide_parameters=True]
+    ```
+
+    Banco que ainda não foi migrado é detectado antes do insert, com
+    código 1 e nenhuma linha escrita:
+
+    ```text
+    error: table(s) users not found in the database. Run `tempest db upgrade` first; nothing was written.
+    ```
 
 !!! tip "Sem `--admin`/`--no-admin`, o create pergunta"
     Quando você **não** passa nem `--admin` nem `--no-admin` num
@@ -47454,11 +48461,12 @@ embaixo.
 
 Num domínio de verdade o pacote cresce do jeito que você espera: com o
 domínio `products` que o `CLAUDE.md` gerado ensina a escrever,
-`tempest bundle-route "GET /api/products"` deu **11 arquivos, 399 linhas** —
+`tempest bundle-route "GET /api/products"` deu **15 arquivos, 635 linhas** —
 router, `api/dependencies/controllers.py` e `resources.py`, controller,
-service, repository, model, schema, `core/exceptions.py`,
-`db/configs/names.py` e `scripts/composition.py`. Nenhum arquivo do
-`service_info`.
+service, repository, model, schema, `core/constants/messages/errors.py`,
+`core/exceptions/conflict.py` e `not_found.py`, `core/settings.py`,
+`db/configs/connection.py` e `names.py` e `scripts/composition.py`.
+Nenhum arquivo do `service_info`.
 
 O resumo sai em `stderr`, então o `stdout` é só o markdown:
 
@@ -47910,7 +48918,7 @@ tempest test                                    # pytest -n auto -p no:cacheprov
 tempest test tests/api/                         # com filtro de caminho
 tempest test -w 4                               # quatro workers
 tempest test --serial                           # em série (--lf / --ff, depurador)
-tempest check                                   # lint + fmt-check + type + lint-layers + test, para no primeiro erro
+tempest check                                   # lint + fmt-check + type + lint-layers + openapi-errors + lint-schemas + test, para no primeiro erro
 tempest check --rule IMP002 --strict            # o mesmo gate, com o lint-layers só nessa regra e aviso derrubando
 ```
 
@@ -47986,6 +48994,72 @@ Todo comando retorna o exit code da ferramenta subjacente, então `tempest check
 ```text
 error: 'ruff' was not found in this project's environment, on PATH, and 'uv' is unavailable to run it. Install it with 'uv add --dev ruff' — or the whole set with 'uv add --dev "tempest-cli[tools]"' — and retry.
 ```
+
+### Os passos do SDK no `tempest check`
+
+O `tempest check` vem do `tempest-cli`, que não sabe nada de FastAPI. O SDK
+entrega a ele três passos próprios, que rodam **depois do `mypy` e antes do
+`pytest`**, nesta ordem, com o mesmo contrato dos outros: o primeiro exit code
+diferente de zero para o gate.
+
+| Passo | O que roda | Como acha o projeto |
+| --- | --- | --- |
+| `lint-layers` | as [regras de camada](#regras-de-camada-tempest-lint-layers) | lê `src/` ou `app/` com `ast` |
+| `openapi-errors` | o mesmo que `tempest openapi-errors --check` ([receita](openapi-errors.md#passo-4-tempest-openapi-errors-check)) | lê `src/` ou `app/` com `ast`, sem importar nada |
+| `lint-schemas` | o mesmo que `tempest lint-schemas` | importa `src.schemas` (ou `app.schemas`) num **processo filho** |
+
+A raiz do projeto é o alvo do `check` (`.` por padrão), ou o pai dele quando o
+alvo é o próprio `src`/`app` (`tempest check src`). O `lint-schemas` importa o
+pacote num processo separado, rodado da raiz do projeto, para os módulos do
+projeto não ficarem carregados no processo que roda o `pytest` em seguida. O
+import de `src.schemas` passa pelo `src/__init__.py`, que monta os settings, e
+um settings com `EnvironmentSettings` não sobe sem `ENV`: quando o shell não
+define `ENV`, o filho recebe `ENV=test` — o mesmo valor que o `conftest.py` do
+`tempest new` fixa. Um `ENV` exportado no shell vence.
+
+Num projeto recém-criado pelo `tempest new`, os três passam (trecho da saída,
+exit code `0`):
+
+```text
+$ lint-layers
+Layer rules: no findings.
+$ openapi-errors
+Every route's declared errors match its flow (src).
+$ lint-schemas
+Schema metadata: src.schemas is fully documented.
+$ pytest -n auto -p no:cacheprovider
+```
+
+Com um router cujas dependências levantam 401 e 404 não declarados, o gate
+para no `openapi-errors` e o `pytest` nem roda (exit code `1`):
+
+```text
+$ lint-layers
+Layer rules: no findings.
+$ openapi-errors
+src/api/routers/items.py:19  GET /
+  undocumented: ItemNotFoundException, UnauthorizedException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+Projeto sem `src/` nem `app/` não falha: o passo diz que pulou e passa. O
+mesmo vale para o `lint-schemas` sem pacote `schemas`. Já um `src.schemas` que
+não importa **falha** (exit `2`, com o traceback): o pacote existe e está
+quebrado.
+
+Para migrar um projeto existente um gate de cada vez, desligue o passo em
+`[tool.tempest]`:
+
+```toml
+[tool.tempest]
+check_openapi_errors = false
+check_lint_schemas = false
+```
+
+Com a chave em `false`, o passo imprime `skipped: [tool.tempest]
+check_openapi_errors = false.` e passa. Valor que não é booleano sai com
+exit `2`. Os comandos avulsos (`tempest openapi-errors`,
+`tempest lint-schemas`) não leem essas chaves.
 
 ### Regras de camada — `tempest lint-layers`
 
@@ -48567,7 +49641,7 @@ O mesmo check roda **dentro da suíte**, que é como o projeto do
 teste:
 
 ```python
-# tests/test_schemas.py
+# tests/unit/architecture/test_schemas.py
 import src.schemas
 from tempest_fastapi_sdk.testing import assert_schema_metadata
 
@@ -49247,7 +50321,7 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/genai-examples
 A [receita de IA generativa](recipes/genai.md) documenta cada peça; aqui
 elas se combinam em **fluxos reais**, self-hosted de ponta a ponta.
 Instale os extras conforme o exemplo:
-`uv add "tempest-fastapi-sdk[genai,genai-rag,genai-audio]"`.
+`uv add "tempest-fastapi-sdk[genai,genai-rag,genai-audio,genai-tts-coqui]"`.
 
 ## 1. Carregar o modelo só se couber
 
@@ -51305,7 +52379,7 @@ A resposta aninha o segundo estágio dentro de cada detecção:
 `async_predict` aceita os mesmos inputs do `ort-vision-sdk`: caminho,
 `bytes`, `numpy.ndarray` ou imagem PIL — então os bytes do upload entram
 direto. Leia com `read_upload_capped(file, max_bytes=...)` em vez de
-`await file.read()`: ele lê em blocos e recusa com `422` assim que passa do
+`await file.read()`: ele lê em blocos e recusa com `413` assim que passa do
 teto, antes de o upload inteiro ocupar a memória que o teto devia negar.
 
 | Método | Quando usar |
@@ -51343,7 +52417,8 @@ Cada endpoint lê o `UploadFile`, chama `async_predict` e mapeia via
 ### Limites de upload e de pixels
 
 Toda rota do `make_vision_router` confere três coisas **antes** de rodar o
-modelo, e responde `422` quando alguma falha:
+modelo, e recusa quando alguma falha — `413 UPLOAD_TOO_LARGE` para o
+tamanho do upload, `422` para o resto:
 
 | Parâmetro | Default | O que barra |
 | --- | --- | --- |
@@ -56600,6 +57675,127 @@ src/api/routers/jobs.py:25  GET /{service_id}
 - **unreachable** — declarada na rota, nunca encontrada no fluxo. Lista inflada,
   documentando erro que não pode acontecer.
 
+### Dependências também levantam
+
+O FastAPI roda as dependências **antes** do handler, e o que elas levantam
+chega ao cliente igual a um `raise` no corpo. O analisador as segue como
+chamadas:
+
+- `Depends(...)` / `Security(...)` nos parâmetros do handler — como default
+  (`x: T = Depends(f)`), dentro de `Annotated[T, Depends(f)]` ou por um alias de
+  módulo (`XDep = Annotated[T, Depends(f)]`), e as dependências **delas**;
+- o `dependencies=[...]` do decorator da rota;
+- o `dependencies=[...]` do `APIRouter(...)` em que a rota está pendurada;
+- o `dependencies=[...]` de todo `include_router(...)` que monta esse router,
+  transitivamente — por nome importado, import relativo
+  (`from .items import router as items_router`, o formato do `tempest new`) ou
+  re-export do `__init__` do pacote.
+
+Um router com o token do scaffold e uma rota atrás de um gate de capacidade:
+
+```python
+# src/api/routers/items.py
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import require_token
+from src.api.dependencies.capabilities import require_items_enabled
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    dependencies=[Depends(require_token)],
+)
+
+
+@router.get("/", dependencies=[Depends(require_items_enabled)])
+async def list_items() -> ServiceInfoSchema:
+    """List items."""
+    return ServiceInfoSchema(service="items")
+```
+
+```python
+# src/api/dependencies/capabilities.py
+from __future__ import annotations
+
+from src.core.exceptions import ItemNotFoundException
+
+
+def require_items_enabled() -> None:
+    """Answer 404 while the items capability is off.
+
+    Raises:
+        ItemNotFoundException: Always, the capability is off.
+    """
+    raise ItemNotFoundException("items")
+```
+
+Nenhum `raise` no corpo, e mesmo assim a rota responde 401 e 404:
+
+```text
+$ tempest openapi-errors --check --path src
+src/api/routers/items.py:19  GET /
+  undocumented: ItemNotFoundException, UnauthorizedException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+O `UnauthorizedException` vem de dentro do SDK: o `require_token` do scaffold é
+`make_token_dependency(...)`, e o analisador conhece o que as factories de auth
+do SDK levantam (`make_token_dependency`, `make_bearer_token_dependency`,
+`make_jwt_user_dependency`, `make_mfa_required_dependency`,
+`make_role_dependency`).
+
+Declare no lugar que você preferir. `responses=error_responses(...)` no
+`APIRouter(...)` ou no `include_router(...)` **conta como declaração** para
+toda rota abaixo dele — é o mesmo `responses=` que o FastAPI aplica a elas no
+OpenAPI:
+
+```python
+# src/api/routers/items.py
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from tempest_fastapi_sdk import UnauthorizedException, error_responses
+
+from src.api.dependencies import require_token
+from src.api.dependencies.capabilities import require_items_enabled
+from src.core.exceptions import ItemNotFoundException
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    dependencies=[Depends(require_token)],
+    responses=error_responses(UnauthorizedException),
+)
+
+
+@router.get(
+    "/",
+    dependencies=[Depends(require_items_enabled)],
+    responses=error_responses(ItemNotFoundException),
+)
+async def list_items() -> ServiceInfoSchema:
+    """List items."""
+    return ServiceInfoSchema(service="items")
+```
+
+```text
+$ tempest openapi-errors --check --path src
+Every route's declared errors match its flow (src).
+```
+
+!!! note "Declaração do router nunca é `unreachable`"
+    Uma rota do mesmo router que não alcança o 401 não é acusada de declará-lo
+    à toa: a declaração é do router, e enxugá-la não é decisão de uma rota só.
+
+!!! info "Corrigido na 0.349.0"
+    Antes, só o corpo do handler era percorrido. O router acima saía com
+    `Every route's declared errors match its flow` — com o 401 e o 404 fora do
+    OpenAPI.
+
 Sai zero quando está em sincronia, então serve de step de CI:
 
 ```yaml
@@ -56607,6 +57803,14 @@ Sai zero quando está em sincronia, então serve de step de CI:
 - name: Erros documentados no OpenAPI
   run: uv run tempest openapi-errors --check
 ```
+
+!!! tip "O `tempest check` já roda este passo"
+    Desde a 0.349.0 o `tempest check` roda o equivalente a
+    `openapi-errors --check` entre o `mypy` e o `pytest` (passo
+    `openapi-errors`), sobre `src/` ou `app/`. Projeto sem nenhum dos dois pula
+    o passo com aviso; para desligá-lo, `check_openapi_errors = false` em
+    `[tool.tempest]`. Detalhes na
+    [receita da CLI](cli.md#os-passos-do-sdk-no-tempest-check).
 
 Opções:
 
@@ -56722,6 +57926,16 @@ lido pelo `TempestAPIRouter`, então injetá-lo num projeto de `APIRouter` puro
 produziria um decorator que não faz nada — o pior resultado possível para uma
 ferramenta que existe para fechar um buraco de documentação. Um `@raises` já
 presente prova que o projeto optou por esse estilo; aí ele é respeitado.
+
+!!! check "O import sai do pacote, e entra no bloco que já existe"
+    Uma exception definida em `src/core/exceptions/bad_request.py` e
+    re-exportada por `src/core/exceptions/__init__.py` é importada de
+    `src.core.exceptions` — o pacote mais raso cujo `__init__` a importa ou
+    lista no `__all__` —, nunca do submódulo, que o `IMP002` do
+    `lint-layers` acusaria. Se o arquivo já tem
+    `from src.core.exceptions import (...)`, o nome entra nesse bloco em vez
+    de abrir outro `from`. Uma exception que nenhum `__init__` re-exporta
+    continua vindo do módulo que a define. Corrigido na 0.349.0.
 
 ### As três garantias
 
@@ -85503,6 +86717,38 @@ eles não quebra — mas confira a flag antes de ler `0` como "nada livre".
 Snapshot montado à mão (`HardwareInfo(...)`) tem as duas flags `True` por
 padrão.
 
+### Avisos do ambiente
+
+O `HardwareInfo.warnings` lista o problema de ambiente que a sonda consegue
+ver **antes** de um load falhar — cada item é uma frase com a causa e a
+correção. Lista vazia quer dizer que nada foi detectado, não que todo load vai
+dar certo. Hoje há um aviso: `torch` build CUDA 13 (`torch.version.cuda`
+começando em `13.`) com CUDA disponível e o `ctranslate2` do faster-whisper
+instalado. As wheels do `ctranslate2` procuram a `libcublas.so.12`, e a
+primeira transcrição em `device="cuda"` falharia
+([GPU com `[genai-audio]`](../installation.md#genai-audio-gpu)). O
+`ctranslate2` é procurado com `importlib.util.find_spec`, sem importar: a sonda
+não carrega biblioteca CUDA nenhuma por isso.
+
+```python
+from tempest_fastapi_sdk.genai import probe_hardware
+
+for warning in probe_hardware().warnings:
+    print(warning)
+```
+
+Num container `python:3.12-slim` com RTX 4070 Ti SUPER, `torch` 2.15.0+cu132
+do PyPI e `ctranslate2` 4.8.5:
+
+```text
+torch is a CUDA 13.2 build, but ctranslate2 (faster-whisper) links against CUDA 12 and looks for libcublas.so.12, which this torch does not install: transcribing on device='cuda' raises 'Library libcublas.so.12 is not found or cannot be loaded' unless the system provides CUDA 12 libraries. Install torch from the CUDA 12 index (https://download.pytorch.org/whl/cu126) instead; see 'GPU with [genai-audio]' in the installation docs.
+```
+
+Com o `torch` 2.14.1+cu126 do índice cu126, na mesma máquina, a lista veio
+vazia. O aviso não enxerga o CUDA 12 instalado no sistema — que faz o par
+funcionar —, por isso o texto diz "unless the system provides CUDA 12
+libraries".
+
 ### Sem `psutil`
 
 O `psutil` vem no extra `[metrics]`, **não** no `[genai]`. O que acontece
@@ -87126,8 +88372,10 @@ ler NVML.
 ## Áudio (voz)
 
 Interpretar e gerar voz no seu hardware — sem API externa. Requer o extra
-`[genai-audio]` (faster-whisper + Coqui TTS); as engines importam
-preguiçosamente.
+`[genai-audio]` (faster-whisper) para transcrever e, para o TTS do Coqui
+(XTTS v2), o `[genai-tts-coqui]` — separado do `[genai-audio]` desde a
+0.349.0 ([por quê](../installation.md#genai-audio-coqui-split)); as engines
+importam preguiçosamente.
 
 !!! warning "Na v0.252.0 o extra passou a trazer o runtime do Coqui"
     O `coqui-tts` deixa torch, torchaudio e torchcodec atrás dos extras dele
@@ -87148,11 +88396,12 @@ preguiçosamente.
 
     Por isso, da v0.252.0 até a 0.341.0, o extra fixou `transformers<5`. O
     `coqui-tts` 0.28.0 não importa mais esse símbolo, e desde a 0.342.0
-    `[genai-audio]` exige essa versão e não tem mais o teto. Medido em
+    o extra do Coqui (hoje `[genai-tts-coqui]`) exige essa versão e não tem
+    mais o teto. Medido em
     2026-11-01 com coqui-tts 0.28.0, transformers 5.22.1 e torch 2.14: XTTS v2
     com voz pronta e com clonagem, e Bark, sintetizaram uma frase em
     português que o Whisper transcreveu de volta com as mesmas palavras.
-    `[genai-audio]` declara `torch>=2.14`, `torchaudio>=2.11`,
+    `[genai-tts-coqui]` declara `torch>=2.14`, `torchaudio>=2.11`,
     `torchcodec>=0.16` e `six` (o coqui-tts 0.28.0 o importa sem declarar).
     Quem fixava esses pins à mão pode removê-los.
 
@@ -87435,8 +88684,8 @@ Licença de peso muda; confira o model card antes de shippar.
     "MIT, uso comercial liberado" em listas de recomendação. Uso comercial
     de pesos NC exige outro acordo com o autor.
 
-O que já está no ambiente do extra, sem dependência nova: no venv que o
-lock resolve (`diffusers` 0.39.0, `transformers` 4.57.6), o `diffusers`
+O que já está no ambiente do extra, sem dependência nova: no venv em que
+isto foi medido (`diffusers` 0.39.0, `transformers` 4.57.6), o `diffusers`
 exporta `AudioLDM2Pipeline`, `StableAudioPipeline`, `MusicLDMPipeline` e
 `AutoPipelineForText2Audio`, e o mapeamento text-to-waveform do
 `transformers` cobre `bark`, `csm`, `musicgen`, `musicgen_melody`, `vits`,
@@ -87739,7 +88988,7 @@ O pico de VRAM ficou abaixo de 1,1 GiB nos dois.
 
     | Ambiente | AudioLDM | MusicLDM | AudioLDM2 |
     | --- | --- | --- | --- |
-    | `transformers` 4.57.6 + `diffusers` 0.39.0 (o lock, com `[genai-audio]`) | gera | gera | recusado |
+    | `transformers` 4.57.6 + `diffusers` 0.39.0 (com `transformers<5` fixado) | gera | gera | recusado |
     | `transformers` 5.22.1 + `diffusers` 0.42.1 (`[genai,genai-sound]` sozinho) | gera | recusado | recusado |
 
     "Recusado" quer dizer que `load()` levanta `ValueError` com o motivo,
@@ -89166,7 +90415,7 @@ quando algum teto estoura:
 | `max_tts_chars` | `5_000` | texto do `/tts` |
 | `max_image_side` | `2048` | `config.width` / `config.height` do `/image` |
 | `max_image_steps` | `100` | `config.steps` do `/image` |
-| `max_upload_bytes` | 25 MiB | upload do `/transcribe`, lido em blocos |
+| `max_upload_bytes` | 25 MiB | upload do `/transcribe`, lido em blocos; este responde `413 UPLOAD_TOO_LARGE`, não `422` |
 
 Os defaults servem um deploy self-hosted pequeno. Para mudar, passe a sua
 instância:
@@ -98279,7 +99528,7 @@ campos de uma vez — pelo nome, nunca pelo valor:
 - JWT_SECRET: still the public placeholder declared by JWTSettings [type=value_error]
 ```
 
-Com `ENV=development` ou `ENV=test`, nada muda.
+Com `ENV=development` ou `ENV=test`, o guard não roda.
 
 `ENV` **não tem default**. Esquecer a variável derruba o boot, em vez de
 subir como desenvolvimento:
@@ -98294,6 +99543,51 @@ Até a 0.341.0 o default era `development`, e um host de produção sem `ENV`
 subia com SQLite, o `JWT_SECRET` placeholder e `TOKEN_SECRET` vazio sem que
 o guard rodasse. Teste fixa o próprio valor (`os.environ["ENV"] = "test"` no
 `conftest.py`, antes de importar o app).
+
+### `ENV=test` não lê o `.env`
+
+A suíte fixa `ENV=test` justamente para não herdar o ambiente de quem
+roda. Por isso, quando `ENV=test` vem **do ambiente do processo** ou do
+construtor (`Settings(ENV="test")`), o `EnvironmentSettings` tira o `.env`
+das fontes: só valem o que o teste passou, as variáveis exportadas e os
+defaults.
+
+```python
+import os
+from pathlib import Path
+
+from tempest_fastapi_sdk import BaseAppSettings, EnvironmentSettings
+
+
+class Settings(EnvironmentSettings, BaseAppSettings):
+    SMTP_HOST: str = "localhost"
+
+
+Path(".env").write_text("ENV=development\nSMTP_HOST=smtp.dev.example.com\n")
+
+print(Settings().SMTP_HOST)
+os.environ["ENV"] = "test"
+print(Settings().SMTP_HOST)
+```
+
+```text
+smtp.dev.example.com
+localhost
+```
+
+O primeiro `Settings()` lê o `ENV` e o `SMTP_HOST` do `.env`; o segundo, com
+`ENV=test` exportado, nem abre o arquivo.
+
+!!! note "`ENV=test` escrito só no `.env` não descarta o `.env`"
+    A decisão olha só o construtor e o ambiente do processo. Um `ENV=test`
+    que mora **dentro** do `.env` é lido como qualquer outro valor e o resto
+    do arquivo vale junto: o arquivo não pode ser o motivo de ser ignorado.
+    Quem quer a suíte isolada exporta `ENV=test` no `conftest.py`, antes de
+    importar o app.
+
+!!! tip "Sobrescreveu `settings_customise_sources`?"
+    O descarte mora nesse hook. Um `Settings` que o sobrescreve chama
+    `super().settings_customise_sources(...)` para manter o comportamento.
 
 ### O que cada mixin recusa
 
@@ -103026,6 +104320,9 @@ Com uma foto HEIC declarada como `" Image/HEIC "`, a rota responde `200` com a
 key `photos/<uuid>.heic`. O mesmo JPEG declarado como `image/jpg` passa; como
 `image/png`, é recusado com `415 INVALID_FILE_TYPE`. `image/avif` nem chega ao
 corpo da função: `422` da validação.
+Uma foto acima de `MAX_PHOTO_BYTES` para de ser lida no bloco que cruza o
+teto e volta `413`, com `code` `UPLOAD_TOO_LARGE` e o teto em
+`details.max_bytes` (até a 0.348.0 era `422 VALIDATION_ERROR`).
 
 !!! info "HEIC pelos bytes"
     Um HEIC é uma caixa `ftyp` do ISO-BMFF: `ftyp` nos bytes 4 a 8 e a marca
@@ -103713,6 +105010,7 @@ class QuoteSchema(BaseSchema):
 | --- | --- |
 | `NonEmptyStrField` | apara espaços e rejeita vazio (só-espaço também) |
 | `SlugField` | kebab-case minúsculo (`meu-post-1`) |
+| `RawTextField` | guarda o texto **exatamente** como veio, sem aparar espaço |
 | `HexColorField` | cor hex CSS (`#fff` ou `#abc123`) |
 
 ```python
@@ -103725,6 +105023,38 @@ class CategorySchema(BaseSchema):
     slug: SlugField
     color: HexColorField
 ```
+
+### Texto livre: `RawTextField`
+
+O `BaseSchema` liga `str_strip_whitespace=True`: todo `str` chega aparado.
+Para nome e e-mail é o certo; para **conteúdo** corrompe o dado. Um delta de
+streaming `" mundo"` vira `"mundo"`, e o prompt chega ao modelo diferente do
+que o cliente mandou. Anote o campo de conteúdo com `RawTextField`:
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import RawTextField
+
+
+class ChatDeltaSchema(BaseSchema):
+    """A streamed chunk of a model answer."""
+
+    role: str
+    content: RawTextField
+
+
+chunk = ChatDeltaSchema(role=" assistant ", content=" mundo\n")
+print(repr(chunk.role), repr(chunk.content))
+```
+
+Saída (medida, pydantic 2.13.5):
+
+```text
+'assistant' ' mundo\n'
+```
+
+O `role` continua aparado; só o campo anotado escapa. Vale também na
+atribuição (`validate_assignment`): `chunk.content = "  x "` guarda `"  x "`.
 
 ## Locale
 

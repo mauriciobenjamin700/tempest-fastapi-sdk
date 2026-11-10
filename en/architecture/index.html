@@ -795,6 +795,8 @@
       
         
       
+        
+      
     
     
     
@@ -1149,6 +1151,34 @@
     
   
     Recommended architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service standard
   
 
     
@@ -5273,9 +5303,9 @@
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    ├── services/&lt;context&gt;/          # Business logic layer
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    ├── schemas/                     # Pydantic v2 request/response DTOs
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    ├── scripts/                     # composition.py (build_*) + the work tasks run
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    ├── core/                        # settings.py + enums.py + types.py + exceptions.py
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    ├── core/                        # settings.py + packages constants/, enums/, types/, exceptions/ (one module per status)
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    ├── db/ (optional)
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    │   ├── configs/names.py         # table names, single source
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    │   ├── configs/                 # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
 </span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    │   ├── models/&lt;context&gt;/        # SQLAlchemy ORM models
 </span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    │   └── repositories/&lt;context&gt;/  # Data access layer
 </span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    ├── ui/ (optional)               # interface layer — only with the [ssr] extra
@@ -5777,7 +5807,7 @@ and the mailer reach the controller, where the permission check runs, and
 what the router returns.</p>
 <p>All of it in one complete example — copy it into a file and run
 <code>uv run python app.py</code>. In a project each class lives in its own layer
-(<code>db/models/</code>, <code>schemas/</code>, <code>core/exceptions.py</code>, <code>db/repositories/</code>,
+(<code>db/models/</code>, <code>schemas/</code>, <code>core/exceptions/</code>, <code>db/repositories/</code>,
 <code>services/</code>, <code>controllers/</code>, <code>api/dependencies/controllers.py</code>,
 <code>api/routers/</code>); here they sit together so the example runs on its own.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncIterator</span>
@@ -6245,8 +6275,8 @@ outside a request (resources, logging, the lifespan, <code>server.py</code>,
 Alembic). <code>src/api/dependencies/resources.py</code> always holds <code>db</code>,
 <code>get_db</code> and <code>get_session</code>, <code>get_mailer</code> only with <code>[email]</code> and
 <code>get_storage</code> only with <code>[minio]</code> — along with <code>EmailSettings</code> /
-<code>StorageSettings</code> on <code>Settings</code>. The generated <code>tests/test_smoke.py</code>
-swaps <code>TITLE</code> through <code>dependency_overrides[get_settings]</code> and checks
+<code>StorageSettings</code> on <code>Settings</code>. The generated
+<code>tests/integration/system/test_service_info.py</code> swaps <code>TITLE</code> through <code>dependency_overrides[get_settings]</code> and checks
 that <code>GET /api/</code> answers the new value.</p>
 </div>
 <h3 id="guards-route-dependency-or-requires-on-the-method">Guards: route dependency or <code>@requires</code> on the method<a class="headerlink" href="#guards-route-dependency-or-requires-on-the-method" title="Permanent link">&para;</a></h3>

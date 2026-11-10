@@ -793,6 +793,8 @@
       
         
       
+        
+      
     
     
     
@@ -1147,6 +1149,34 @@
     
   
     Arquitetura recomendada
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Padrão de serviço
   
 
     
@@ -5271,9 +5301,9 @@
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    ├── services/&lt;contexto&gt;/         # camada de lógica de negócio
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    ├── schemas/                     # DTOs de request/response Pydantic v2
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    ├── scripts/                     # composition.py (build_*) + o trabalho que as tasks rodam
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    ├── core/                        # settings.py + enums.py + types.py + exceptions.py
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    ├── core/                        # settings.py + pacotes constants/, enums/, types/, exceptions/ (um módulo por status)
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    ├── db/ (opcional)
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    │   ├── configs/names.py         # nomes das tabelas, fonte única
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    │   ├── configs/                 # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
 </span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    │   ├── models/&lt;contexto&gt;/       # modelos ORM SQLAlchemy
 </span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    │   └── repositories/&lt;contexto&gt;/ # camada de acesso a dados
 </span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    ├── ui/ (opcional)               # camada de interface — só com o extra [ssr]
@@ -5775,7 +5805,7 @@ o que fazer quando o service precisa de <strong>dois</strong> repositories, como
 de permissão roda, e o que o router devolve.</p>
 <p>Tudo num exemplo só, completo — copie para um arquivo e rode com
 <code>uv run python app.py</code>. Num projeto, cada classe mora na sua camada
-(<code>db/models/</code>, <code>schemas/</code>, <code>core/exceptions.py</code>, <code>db/repositories/</code>,
+(<code>db/models/</code>, <code>schemas/</code>, <code>core/exceptions/</code>, <code>db/repositories/</code>,
 <code>services/</code>, <code>controllers/</code>, <code>api/dependencies/controllers.py</code>,
 <code>api/routers/</code>); aqui estão juntas para o exemplo rodar sozinho.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncIterator</span>
@@ -6241,7 +6271,7 @@ fora de requisição (recursos, logging, lifespan, <code>server.py</code>, Alemb
 <code>src/api/dependencies/resources.py</code> traz <code>db</code>, <code>get_db</code> e <code>get_session</code>
 sempre, <code>get_mailer</code> só com <code>[email]</code> e <code>get_storage</code> só com <code>[minio]</code>
 — e, com eles, o <code>EmailSettings</code> / <code>StorageSettings</code> no <code>Settings</code>. O
-<code>tests/test_smoke.py</code> gerado troca o <code>TITLE</code> por
+<code>tests/integration/system/test_service_info.py</code> gerado troca o <code>TITLE</code> por
 <code>dependency_overrides[get_settings]</code> e confere que o <code>GET /api/</code>
 responde o valor novo.</p>
 </div>

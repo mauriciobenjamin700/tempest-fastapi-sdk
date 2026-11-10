@@ -793,6 +793,8 @@
       
         
       
+        
+      
     
     
     
@@ -883,6 +885,34 @@
     
   
     Recommended architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service standard
   
 
     
@@ -4828,6 +4858,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#03490-coqui-in-its-own-extra-oversized-upload-as-413-and-a-stricter-tempest-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.349.0 — Coqui in its own extra, oversized upload as 413 and a stricter tempest check
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#03440-token-of-a-deleted-account" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7343,6 +7384,33 @@
 
 <h1 id="migration-guide">Migration guide<a class="headerlink" href="#migration-guide" title="Permanent link">&para;</a></h1>
 <p>Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading <strong>from</strong>. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.</p>
+<h2 id="03490-coqui-in-its-own-extra-oversized-upload-as-413-and-a-stricter-tempest-check">0.349.0 — Coqui in its own extra, oversized upload as 413 and a stricter <code>tempest check</code><a class="headerlink" href="#03490-coqui-in-its-own-extra-oversized-upload-as-413-and-a-stricter-tempest-check" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What changes</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[genai-audio]</code></td>
+<td>No longer brings <code>coqui-tts</code>, <code>torchaudio</code>, <code>torchcodec</code> or <code>six</code>: <code>TextToSpeech</code> (XTTS) moves to the new <code>[genai-tts-coqui]</code> extra. <code>SpeechToText</code> is unchanged</td>
+<td>If you use <code>TextToSpeech</code>, install <code>[genai-audio,genai-tts-coqui]</code> (or just <code>[genai-tts-coqui]</code>, without STT). Otherwise the first synthesis raises <code>ImportError</code> naming <code>[genai-tts-coqui]</code></td>
+</tr>
+<tr>
+<td><code>read_upload_capped</code> and the routes that use it (<code>make_genai_router</code>'s <code>/transcribe</code>, <code>make_voice_router</code>, <code>make_vision_router</code>)</td>
+<td>An upload over the ceiling raises <code>UploadTooLargeException</code> (<code>413</code>, <code>code</code> <code>UPLOAD_TOO_LARGE</code>) instead of <code>ValidationException</code> (<code>422</code>, <code>VALIDATION_ERROR</code>). <code>detail</code> and <code>details.max_bytes</code> are unchanged</td>
+<td>A client that handled the size <code>422</code> handles <code>413</code> instead. A service that caught <code>ValidationException</code> to re-raise as <code>413</code> can drop the wrapper; <code>except FileTooLargeException</code> also catches the new exception</td>
+</tr>
+<tr>
+<td><code>tempest check</code></td>
+<td>Runs two new steps between <code>mypy</code> and <code>pytest</code>: <code>openapi-errors</code> (the same <code>--check</code>, which also fails on a declared but unreachable exception) and <code>lint-schemas</code>. And <code>openapi-errors</code> now follows FastAPI dependencies, so a route whose router requires <code>require_token</code> or whose provider answers 404 reports what it did not declare</td>
+<td>Run <code>tempest openapi-errors --check</code> and <code>tempest lint-schemas</code> and fix; <code>tempest openapi-errors --fix</code> writes the missing declarations. To migrate gradually, <code>check_openapi_errors = false</code> / <code>check_lint_schemas = false</code> under <code>[tool.tempest]</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="03440-token-of-a-deleted-account">0.344.0 — token of a deleted account<a class="headerlink" href="#03440-token-of-a-deleted-account" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

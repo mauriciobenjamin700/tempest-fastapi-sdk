@@ -791,6 +791,8 @@
       
         
       
+        
+      
     
     
     
@@ -881,6 +883,34 @@
     
   
     Arquitetura recomendada
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../service-standard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Padrão de serviço
   
 
     
@@ -5245,7 +5275,7 @@ arquivo é <code>fuse_detect_classify</code>, na receita
 <p><code>async_predict</code> aceita os mesmos inputs do <code>ort-vision-sdk</code>: caminho,
 <code>bytes</code>, <code>numpy.ndarray</code> ou imagem PIL — então os bytes do upload entram
 direto. Leia com <code>read_upload_capped(file, max_bytes=...)</code> em vez de
-<code>await file.read()</code>: ele lê em blocos e recusa com <code>422</code> assim que passa do
+<code>await file.read()</code>: ele lê em blocos e recusa com <code>413</code> assim que passa do
 teto, antes de o upload inteiro ocupar a memória que o teto devia negar.</p>
 <table>
 <thead>
@@ -5293,7 +5323,8 @@ Cada endpoint lê o <code>UploadFile</code>, chama <code>async_predict</code> e 
 <code>to_*_schemas</code>.</p>
 <h3 id="limites-de-upload-e-de-pixels">Limites de upload e de pixels<a class="headerlink" href="#limites-de-upload-e-de-pixels" title="Permanent link">&para;</a></h3>
 <p>Toda rota do <code>make_vision_router</code> confere três coisas <strong>antes</strong> de rodar o
-modelo, e responde <code>422</code> quando alguma falha:</p>
+modelo, e recusa quando alguma falha — <code>413 UPLOAD_TOO_LARGE</code> para o
+tamanho do upload, <code>422</code> para o resto:</p>
 <table>
 <thead>
 <tr>

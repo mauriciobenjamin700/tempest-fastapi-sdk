@@ -99,6 +99,13 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/roadmap/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/service-standard/</loc>
+        <lastmod>2026-11-10</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/service-standard/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/service-standard/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/ssr/</loc>
         <lastmod>2026-11-10</lastmod>
         <changefreq>daily</changefreq>
@@ -1028,6 +1035,13 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/roadmap/"/>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/roadmap/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/service-standard/</loc>
+        <lastmod>2026-11-10</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/service-standard/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/service-standard/"/>
     </url>
     <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/ssr/</loc>
