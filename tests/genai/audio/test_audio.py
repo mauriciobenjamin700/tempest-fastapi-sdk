@@ -284,6 +284,7 @@ class TestSpeechToText:
             raise _StopError
 
         fake_av = SimpleNamespace(
+            __version__="19.0.2",
             error=SimpleNamespace(FFmpegError=_StopError, InvalidDataError=_StopError),
             audio=SimpleNamespace(
                 resampler=SimpleNamespace(AudioResampler=lambda **_: object()),

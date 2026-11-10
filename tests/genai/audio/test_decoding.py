@@ -408,3 +408,47 @@ class TestRouters:
         assert response.status_code == 422
         assert engine.sizes == []
         assert model.inputs == []
+
+
+def _wav_with_invalid_utf8_tag(rate: int) -> bytes:
+    """Build a mono 16-bit WAV whose ``INFO/INAM`` tag is invalid UTF-8.
+
+    Args:
+        rate (int): Sample rate; anything but the target sends it to PyAV.
+
+    Returns:
+        bytes: The WAV file.
+    """
+    samples = b"\x00\x00" * (rate // 10)
+    fmt = struct.pack("<HHIIHH", 1, 1, rate, rate * 2, 2, 16)
+    tag = b"\xff\xfe\xfa invalid!\x00"
+    padding = b"\x00" if len(tag) % 2 else b""
+    inam = b"INAM" + struct.pack("<I", len(tag)) + tag + padding
+    info = b"LIST" + struct.pack("<I", 4 + len(inam)) + b"INFO" + inam
+    data = b"data" + struct.pack("<I", len(samples)) + samples
+    body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + info + data
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+class TestPyAVMetadata:
+    """``metadata_errors`` exists up to PyAV 18 and is refused from 19 on."""
+
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [
+            ("17.0.0", {"metadata_errors": "ignore"}),
+            ("18.1.0", {"metadata_errors": "ignore"}),
+            ("19.0.2", {}),
+            ("20.0.0", {}),
+        ],
+    )
+    def test_open_kwargs_follow_the_major(
+        self, version: str, expected: dict[str, str]
+    ) -> None:
+        assert decoding_module._pyav_open_kwargs(version) == expected
+
+    def test_invalid_utf8_tag_decodes_with_the_installed_pyav(self) -> None:
+        av = pytest.importorskip("av")
+        samples = load_audio(_wav_with_invalid_utf8_tag(8000), target_rate=16000)
+        assert samples.shape[0] > 0
+        assert av.__version__
