@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.348.0] — 2026-11-09
+
 ### Fixed
 
 - Com PyAV 19, todo áudio que `load_audio` decodifica pelo PyAV (qualquer
