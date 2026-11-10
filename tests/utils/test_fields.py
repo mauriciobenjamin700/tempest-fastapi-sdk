@@ -230,3 +230,43 @@ class TestDecimalRatioFields:
                 percent=Decimal("0"),
                 signed=Decimal("1.5"),
             )
+
+
+class TestRawTextField:
+    """Content fields keep whitespace that ``BaseSchema`` would strip (#718).
+
+    ``str_strip_whitespace=True`` turned a streaming delta ``" mundo"`` into
+    ``"mundo"``, so the text a model received differed from what was sent.
+    """
+
+    def test_construction_keeps_surrounding_whitespace(self) -> None:
+        from tempest_fastapi_sdk import BaseSchema
+        from tempest_fastapi_sdk.utils import RawTextField
+
+        class ChunkSchema(BaseSchema):
+            name: str
+            delta: RawTextField
+
+        chunk = ChunkSchema(name="  Ana ", delta=" mundo\n")
+
+        assert chunk.delta == " mundo\n"
+        assert chunk.name == "Ana"
+
+    def test_assignment_keeps_surrounding_whitespace(self) -> None:
+        from tempest_fastapi_sdk import BaseSchema
+        from tempest_fastapi_sdk.utils import RawTextField
+
+        class ChunkSchema(BaseSchema):
+            delta: RawTextField
+
+        chunk = ChunkSchema(delta="x")
+        chunk.delta = "  y "
+
+        assert chunk.delta == "  y "
+
+    def test_is_exported_at_the_top_level(self) -> None:
+        import tempest_fastapi_sdk
+        from tempest_fastapi_sdk.utils import RawTextField
+
+        assert tempest_fastapi_sdk.RawTextField is RawTextField
+        assert "RawTextField" in tempest_fastapi_sdk.__all__

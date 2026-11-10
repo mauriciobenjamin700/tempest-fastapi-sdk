@@ -100,6 +100,7 @@ class QuoteSchema(BaseSchema):
 | --- | --- |
 | `NonEmptyStrField` | trims whitespace and rejects empty (whitespace-only too) |
 | `SlugField` | lowercase kebab-case (`my-post-1`) |
+| `RawTextField` | keeps the text **exactly** as sent, without trimming whitespace |
 | `HexColorField` | CSS hex color (`#fff` or `#abc123`) |
 
 ```python
@@ -112,6 +113,40 @@ class CategorySchema(BaseSchema):
     slug: SlugField
     color: HexColorField
 ```
+
+### Free text: `RawTextField`
+
+`BaseSchema` turns on `str_strip_whitespace=True`: every `str` arrives
+trimmed. That is right for names and e-mails; for **content** it corrupts the
+data. A streaming delta `" mundo"` becomes `"mundo"`, and the prompt reaches
+the model different from what the client sent. Annotate the content field
+with `RawTextField`:
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import RawTextField
+
+
+class ChatDeltaSchema(BaseSchema):
+    """A streamed chunk of a model answer."""
+
+    role: str
+    content: RawTextField
+
+
+chunk = ChatDeltaSchema(role=" assistant ", content=" mundo\n")
+print(repr(chunk.role), repr(chunk.content))
+```
+
+Output (measured, pydantic 2.13.5):
+
+```text
+'assistant' ' mundo\n'
+```
+
+`role` is still trimmed; only the annotated field escapes. It holds on
+assignment too (`validate_assignment`): `chunk.content = "  x "` stores
+`"  x "`.
 
 ## Locale
 

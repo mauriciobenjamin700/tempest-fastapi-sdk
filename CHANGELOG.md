@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   módulo plano existente não é escrito; a migração recusa, sem escrever
   nada, quando o módulo tem algo além de import, classe e `__all__` ou
   quando separar por status criaria ciclo de import (#718).
+- `RawTextField` (`tempest_fastapi_sdk.utils`): `str` que mantém espaço nas
+  pontas mesmo dentro de um `BaseSchema`, que liga `str_strip_whitespace=True`
+  no modelo inteiro. Delta de streaming (`" mundo"`) e prompt passam como o
+  cliente mandou, na construção e na atribuição (#718).
 - `HardwareInfo.warnings` (`list[str]`): o `probe_hardware()` avisa, antes da
   primeira transcrição falhar, quando há CUDA, o `torch` é build CUDA 13
   (`torch.version.cuda` começando em `13.`) e o `ctranslate2` do

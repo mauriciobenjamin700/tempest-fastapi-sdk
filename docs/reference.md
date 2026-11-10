@@ -1516,6 +1516,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.media_types.ImageMediaTypeEnum
 ::: tempest_fastapi_sdk.utils.fields.image_media_type_field
 ::: tempest_fastapi_sdk.utils.fields.AllowedImageMediaTypes
+::: tempest_fastapi_sdk.utils.fields.RawTextField
 ::: tempest_fastapi_sdk.utils.media_types.XLSX_MEDIA_TYPE
 ::: tempest_fastapi_sdk.utils.media_types.DOCX_MEDIA_TYPE
 ::: tempest_fastapi_sdk.utils.media_types.PPTX_MEDIA_TYPE
