@@ -196,7 +196,7 @@ name = "my-service"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "tempest-fastapi-sdk[genai-audio]>=0.348.0",
+    "tempest-fastapi-sdk[genai-audio]>=0.349.0",
     "torch>=2.14.0",
 ]
 
@@ -223,7 +223,7 @@ torch = { index = "pytorch-cu126" }
     version = "0.1.0"
     requires-python = ">=3.12"
     dependencies = [
-        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.348.0",
+        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.349.0",
         "torch>=2.14.0",
         "torchaudio>=2.11.0",
     ]

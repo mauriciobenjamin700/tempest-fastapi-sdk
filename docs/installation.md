@@ -195,7 +195,7 @@ name = "meu-servico"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "tempest-fastapi-sdk[genai-audio]>=0.348.0",
+    "tempest-fastapi-sdk[genai-audio]>=0.349.0",
     "torch>=2.14.0",
 ]
 
@@ -222,7 +222,7 @@ O `torch` aparece em `dependencies` mesmo já vindo pelo extra: o
     version = "0.1.0"
     requires-python = ">=3.12"
     dependencies = [
-        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.348.0",
+        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.349.0",
         "torch>=2.14.0",
         "torchaudio>=2.11.0",
     ]

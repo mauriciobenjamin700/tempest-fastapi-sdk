@@ -168,7 +168,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | A service's suite, which `tempest test` / `tempest check` run in parallel with pytest-xdist by default (since `tempest-cli` 0.6.0). No bound of its own; inherits `pytest<10` from `pytest-asyncio` 1.4.0 and `pluggy<2` from `pytest`. Test tooling, so it stays out of `[all]` — add it to the dev group: `uv add --dev "tempest-fastapi-sdk[tests]"` |
-| `[all]` | everything above **except** the 18 heavy-stack or native-binary extras (`[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]`) and `[tests]` | the application helpers — install those 17 separately (and `[tests]`, a test tool, in the dev group) |
+| `[all]` | everything above **except** the 18 heavy-stack or native-binary extras (`[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]`) and `[tests]` | the application helpers — install those 18 separately (and `[tests]`, a test tool, in the dev group) |
 
 ```bash
 pip install "tempest-fastapi-sdk[auth,upload]"   # only what the service uses
@@ -294,7 +294,7 @@ my-service/
     ├── core/
     │   ├── __init__.py
     │   ├── settings.py           # Settings(mixins..., BaseAppSettings)
-    │   └── exceptions.py         # domain exceptions (UserNotFoundError, ...)
+    │   └── exceptions/           # one module per status: not_found.py, conflict.py, ...
     ├── db/
     │   ├── __init__.py           # re-exports BaseModel + every model
     │   ├── models/
@@ -654,8 +654,8 @@ __all__: list[str] = [
 The SDK ships generic `NotFoundException`, `ConflictException`, etc. Subclass them per domain so the `isinstance` / `except DomainError` matching stays explicit. Class-level `message` / `code` / `status_code` are defaults the constructor falls back to — you can also override any of them at the raise site without subclassing:
 
 ```python
-# src/core/exceptions.py
-from tempest_fastapi_sdk import ConflictException, NotFoundException
+# src/core/exceptions/not_found.py
+from tempest_fastapi_sdk import NotFoundException
 
 
 class UserNotFoundError(NotFoundException):
@@ -663,11 +663,28 @@ class UserNotFoundError(NotFoundException):
 
     message: str = "Usuário não encontrado"
     code: str = "USER_NOT_FOUND"
+```
+
+```python
+# src/core/exceptions/conflict.py
+from tempest_fastapi_sdk import ConflictException
 
 
 class UserEmailAlreadyTakenError(ConflictException):
+    """Raised when the e-mail is already taken by another user."""
+
     message: str = "Já existe um usuário com esse e-mail"
     code: str = "USER_EMAIL_TAKEN"
+```
+
+One module per status: whoever looks for "what returns 409" opens `conflict.py`. The `__init__.py` re-exports, so the import stays `from src.core.exceptions import ...`:
+
+```python
+# src/core/exceptions/__init__.py
+from .conflict import UserEmailAlreadyTakenError as UserEmailAlreadyTakenError
+from .not_found import UserNotFoundError as UserNotFoundError
+
+__all__: list[str] = ["UserEmailAlreadyTakenError", "UserNotFoundError"]
 ```
 
 For one-off codes you don't need a subclass — pass them to the constructor:
@@ -4021,7 +4038,7 @@ my_service/
 │   ├── controllers/         # orchestration between services
 │   ├── services/            # business logic
 │   ├── schemas/             # Pydantic DTOs
-│   ├── core/                # settings.py + exceptions.py
+│   ├── core/                # settings.py + exceptions/ (one module per status)
 │   ├── db/
 │   │   ├── models/
 │   │   └── repositories/

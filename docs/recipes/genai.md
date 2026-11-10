@@ -2117,8 +2117,8 @@ Licença de peso muda; confira o model card antes de shippar.
     "MIT, uso comercial liberado" em listas de recomendação. Uso comercial
     de pesos NC exige outro acordo com o autor.
 
-O que já está no ambiente do extra, sem dependência nova: no venv que o
-lock resolve (`diffusers` 0.39.0, `transformers` 4.57.6), o `diffusers`
+O que já está no ambiente do extra, sem dependência nova: no venv em que
+isto foi medido (`diffusers` 0.39.0, `transformers` 4.57.6), o `diffusers`
 exporta `AudioLDM2Pipeline`, `StableAudioPipeline`, `MusicLDMPipeline` e
 `AutoPipelineForText2Audio`, e o mapeamento text-to-waveform do
 `transformers` cobre `bark`, `csm`, `musicgen`, `musicgen_melody`, `vits`,
@@ -2421,7 +2421,7 @@ O pico de VRAM ficou abaixo de 1,1 GiB nos dois.
 
     | Ambiente | AudioLDM | MusicLDM | AudioLDM2 |
     | --- | --- | --- | --- |
-    | `transformers` 4.57.6 + `diffusers` 0.39.0 (o lock, com `[genai-audio]`) | gera | gera | recusado |
+    | `transformers` 4.57.6 + `diffusers` 0.39.0 (com `transformers<5` fixado) | gera | gera | recusado |
     | `transformers` 5.22.1 + `diffusers` 0.42.1 (`[genai,genai-sound]` sozinho) | gera | recusado | recusado |
 
     "Recusado" quer dizer que `load()` levanta `ValueError` com o motivo,

@@ -31,8 +31,9 @@ failing mid-call:
   ``ClapModel.get_text_features`` returns a ``BaseModelOutputWithPooling``
   where the pipeline expects a tensor, and the call fails with
   ``'BaseModelOutputWithPooling' object has no attribute 'to'``. It works on
-  transformers 4.57.6, the version the ``[genai-audio]`` extra holds the
-  lock at. The load probes the text encoder once to tell the two apart.
+  transformers 4.57.6; no SDK extra holds ``transformers`` below 5, so
+  using it means pinning ``transformers<5`` in the service. The load
+  probes the text encoder once to tell the two apart.
 * ``StableAudioPipeline`` takes ``audio_end_in_s`` instead.
 
 Every model above publishes non-commercial weights (``cc-by-nc-sa-4.0``);
@@ -212,7 +213,7 @@ def text_features_problem(pipeline: Any, torch: Any) -> str | None:
         f"{transformers.__version__}: {type(encoder).__name__}."
         f"get_text_features returns {type(features).__name__}, not a "
         "tensor, so the first call fails. It works with transformers "
-        "4.57.6 (installing [genai-audio] holds transformers below 5); "
+        "4.57.6 (pin transformers<5 to use it); "
         "cvssp/audioldm-s-full-v2 works on both"
     )
 

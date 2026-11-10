@@ -2127,7 +2127,7 @@ Weight licences change; check the model card before shipping.
     weights needs a separate agreement with the author.
 
 What the extra's environment already has, with no new dependency: in the
-venv the lock resolves (`diffusers` 0.39.0, `transformers` 4.57.6),
+venv this was measured in (`diffusers` 0.39.0, `transformers` 4.57.6),
 `diffusers` exports `AudioLDM2Pipeline`, `StableAudioPipeline`,
 `MusicLDMPipeline` and `AutoPipelineForText2Audio`, and the `transformers`
 text-to-waveform mapping covers `bark`, `csm`, `musicgen`,
@@ -2431,7 +2431,7 @@ Peak VRAM stayed under 1.1 GiB for both.
 
     | Environment | AudioLDM | MusicLDM | AudioLDM2 |
     | --- | --- | --- | --- |
-    | `transformers` 4.57.6 + `diffusers` 0.39.0 (the lock, with `[genai-audio]`) | generates | generates | refused |
+    | `transformers` 4.57.6 + `diffusers` 0.39.0 (with `transformers<5` pinned) | generates | generates | refused |
     | `transformers` 5.22.1 + `diffusers` 0.42.1 (`[genai,genai-sound]` alone) | generates | refused | refused |
 
     "Refused" means `load()` raises `ValueError` with the reason, instead of

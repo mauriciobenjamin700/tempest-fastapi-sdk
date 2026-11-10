@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.349.0] — 2026-11-10
+
 ### Added
 
 - Áreas de indicadores no admin: `AdminSite(metrics_areas=[MetricsArea(title,
