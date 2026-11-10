@@ -150,6 +150,38 @@ eles não quebra — mas confira a flag antes de ler `0` como "nada livre".
 Snapshot montado à mão (`HardwareInfo(...)`) tem as duas flags `True` por
 padrão.
 
+### Avisos do ambiente
+
+O `HardwareInfo.warnings` lista o problema de ambiente que a sonda consegue
+ver **antes** de um load falhar — cada item é uma frase com a causa e a
+correção. Lista vazia quer dizer que nada foi detectado, não que todo load vai
+dar certo. Hoje há um aviso: `torch` build CUDA 13 (`torch.version.cuda`
+começando em `13.`) com CUDA disponível e o `ctranslate2` do faster-whisper
+instalado. As wheels do `ctranslate2` procuram a `libcublas.so.12`, e a
+primeira transcrição em `device="cuda"` falharia
+([GPU com `[genai-audio]`](../installation.md#genai-audio-gpu)). O
+`ctranslate2` é procurado com `importlib.util.find_spec`, sem importar: a sonda
+não carrega biblioteca CUDA nenhuma por isso.
+
+```python
+from tempest_fastapi_sdk.genai import probe_hardware
+
+for warning in probe_hardware().warnings:
+    print(warning)
+```
+
+Num container `python:3.12-slim` com RTX 4070 Ti SUPER, `torch` 2.15.0+cu132
+do PyPI e `ctranslate2` 4.8.5:
+
+```text
+torch is a CUDA 13.2 build, but ctranslate2 (faster-whisper) links against CUDA 12 and looks for libcublas.so.12, which this torch does not install: transcribing on device='cuda' raises 'Library libcublas.so.12 is not found or cannot be loaded' unless the system provides CUDA 12 libraries. Install torch from the CUDA 12 index (https://download.pytorch.org/whl/cu126) instead; see 'GPU with [genai-audio]' in the installation docs.
+```
+
+Com o `torch` 2.14.1+cu126 do índice cu126, na mesma máquina, a lista veio
+vazia. O aviso não enxerga o CUDA 12 instalado no sistema — que faz o par
+funcionar —, por isso o texto diz "unless the system provides CUDA 12
+libraries".
+
 ### Sem `psutil`
 
 O `psutil` vem no extra `[metrics]`, **não** no `[genai]`. O que acontece
