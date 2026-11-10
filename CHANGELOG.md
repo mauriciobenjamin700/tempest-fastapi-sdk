@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limites invertidos levantam `ValueError` na construção. Service que falha
   rende `200` com aviso e traceback no log. Nova superfície
   `AdminSurfaceEnum.METRICS` para o `surface_policy` (#732).
+
+- `tempest generate --standard`: traz um projeto anterior ao padrão de
+  serviço para ele. Escreve o que falta e não colide (`core/constants/`,
+  `core/enums/`, `core/types/`, os guards de `tests/unit/`), converte um
+  `core/exceptions.py` plano no pacote `core/exceptions/` com um módulo por
+  status (lido importando o módulo, não pela base) e reexporta tudo do
+  `__init__`, e congela o contrato das exceções em
+  `tests/unit/core/test_exceptions_contract.py`. Pacote que esconderia um
+  módulo plano existente não é escrito; a migração recusa, sem escrever
+  nada, quando o módulo tem algo além de import, classe e `__all__` ou
+  quando separar por status criaria ciclo de import (#718).
 - `RawTextField` (`tempest_fastapi_sdk.utils`): `str` que mantém espaço nas
   pontas mesmo dentro de um `BaseSchema`, que liga `str_strip_whitespace=True`
   no modelo inteiro. Delta de streaming (`" mundo"`) e prompt passam como o

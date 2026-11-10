@@ -4262,3 +4262,16 @@ para a macro `metric_card` (`_macros.html`) e o descritor para
 derivada de dois campos, cache. Testes: `tests/admin/test_metrics_area.py`.
 Receita: "Áreas de indicadores" em `docs/recipes/admin.md`.
 
+## `tempest generate --standard` (#718)
+
+`cli/standard.py` (`apply_standard`), ligado em `tempest generate --standard`
+por `generate.regenerate_standard`. Peças aditivas saem dos templates do
+`tempest new` (`ADDITIVE_TEMPLATES`), puladas quando existem ou quando o
+módulo plano irmão existe (`core/constants.py`). `core/exceptions.py` vira
+pacote por status: o status vem de importar o módulo num subprocesso
+(`introspect_exceptions`), as classes são copiadas verbatim com só os imports
+que usam (relativo ganha um nível), base local em outro módulo vira import
+irmão, ciclo recusa. Contrato congelado gerado da mesma introspecção.
+`ruff` no `PATH` ordena e formata o que foi escrito. Testes:
+`tests/cli/test_standard.py` (rodam o pytest gerado dentro do projeto).
+Receita: "Projeto existente" em `docs/service-standard.md`.

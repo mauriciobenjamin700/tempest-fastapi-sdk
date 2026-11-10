@@ -494,6 +494,19 @@ def generate_cmd(
             ),
         ),
     ] = False,
+    standard: Annotated[
+        bool,
+        typer.Option(
+            "--standard",
+            help=(
+                "Bring the project to the service standard: write the "
+                "missing core/constants, core/enums, core/types packages "
+                "and tests/unit guards, migrate a flat core/exceptions.py "
+                "into one module per HTTP status, and freeze the "
+                "exception contract in tests/unit/core."
+            ),
+        ),
+    ] = False,
     target: Annotated[
         str,
         typer.Option(
@@ -571,9 +584,9 @@ def generate_cmd(
     directory with ``--spa-dir``, or force a backend-only image with
     ``--no-spa``.
     """
-    if not docker and not dockerfile and not src:
+    if not docker and not dockerfile and not src and not standard:
         typer.echo(
-            "error: pass --docker, --dockerfile and/or --src to select "
+            "error: pass --docker, --dockerfile, --src and/or --standard to select "
             "what to regenerate.",
             err=True,
         )
@@ -602,6 +615,8 @@ def generate_cmd(
             extras=extras,
             force=force,
         )
+    if standard:
+        generate_module.regenerate_standard(resolved_target, force=force)
 
 
 _SETTINGS_CANDIDATES: tuple[str, ...] = (
