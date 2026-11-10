@@ -153,6 +153,52 @@ def card_kind(data: CardData) -> str:
     return "value"
 
 
+def card_entry(label: str, help_text: str | None, data: CardData) -> dict[str, Any]:
+    """Return the template descriptor of one computed card.
+
+    Shared by the dashboard cards and the indicator areas, so both render
+    through the same ``metric_card`` macro.
+
+    Args:
+        label (str): The card heading.
+        help_text (str | None): The line under the value.
+        data (CardData): The computed card data.
+
+    Returns:
+        dict[str, Any]: ``label``, ``help``, ``kind`` and the fields the
+        kind needs (``value``/``unit``; ``previous``/``delta``/``pct``/
+        ``direction``; ``total``/``segments``).
+    """
+    entry: dict[str, Any] = {"label": label, "help": help_text}
+    if isinstance(data, MetricTrend):
+        entry.update(
+            kind="trend",
+            value=data.value,
+            previous=data.previous,
+            unit=data.unit,
+            delta=data.delta,
+            pct=data.pct,
+            direction=data.direction,
+        )
+    elif isinstance(data, MetricPartition):
+        total = data.total
+        entry.update(
+            kind="partition",
+            total=total,
+            segments=[
+                {
+                    "label": label,
+                    "value": value,
+                    "pct": (value / total * 100.0) if total else 0.0,
+                }
+                for label, value in data.segments
+            ],
+        )
+    else:
+        entry.update(kind="value", value=data.value, unit=data.unit)
+    return entry
+
+
 __all__: list[str] = [
     "CardCompute",
     "CardData",
@@ -160,5 +206,6 @@ __all__: list[str] = [
     "MetricPartition",
     "MetricTrend",
     "MetricValue",
+    "card_entry",
     "card_kind",
 ]

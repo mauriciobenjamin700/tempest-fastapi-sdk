@@ -21,6 +21,7 @@
   --tempest-success: #15803d;
   --tempest-success-soft: color-mix(in srgb, var(--tempest-success) 12%, transparent);
   --tempest-warning: #b45309;
+  --tempest-warning-soft: color-mix(in srgb, var(--tempest-warning) 12%, transparent);
   --tempest-surface: #ffffff;
   --tempest-surface-muted: #f8fafc;
   --tempest-border: #e5e7eb;
@@ -1218,13 +1219,48 @@ input[type="file"] {
 }
 
 .tempest-admin-card__trend--down {
-  color: var(--tempest-danger);
+  color: var(--tempest-danger-text, var(--tempest-danger));
   background: var(--tempest-danger-soft);
 }
 
 .tempest-admin-card__trend--flat {
   color: var(--tempest-fg-soft);
   background: var(--tempest-surface-muted);
+}
+
+.tempest-admin-card--level-green {
+  border-left: 4px solid var(--tempest-success);
+}
+
+.tempest-admin-card--level-yellow {
+  border-left: 4px solid var(--tempest-warning);
+}
+
+.tempest-admin-card--level-red {
+  border-left: 4px solid var(--tempest-danger);
+}
+
+.tempest-admin-card__level {
+  align-self: flex-start;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tempest-admin-card--level-green .tempest-admin-card__level {
+  color: var(--tempest-success);
+  background: var(--tempest-success-soft);
+}
+
+.tempest-admin-card--level-yellow .tempest-admin-card__level {
+  color: var(--tempest-warning);
+  background: var(--tempest-warning-soft);
+}
+
+.tempest-admin-card--level-red .tempest-admin-card__level {
+  color: var(--tempest-danger-text, var(--tempest-danger));
+  background: var(--tempest-danger-soft);
 }
 
 .tempest-admin-card__parts {

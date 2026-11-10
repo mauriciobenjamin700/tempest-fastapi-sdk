@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Áreas de indicadores no admin: `AdminSite(metrics_areas=[MetricsArea(title,
+  schema, provider=, method=)])` gera uma página com um card por campo do
+  schema, a partir de um service cujo método não recebe argumento, listada em
+  **Metrics** na sidebar (`/admin/metrics/<slug>`). `Threshold(green=,
+  yellow=, lower_is_better=)` pinta o card de verde, amarelo ou vermelho com
+  os tokens do tema; nome de campo inexistente em `thresholds`/`units` e
+  limites invertidos levantam `ValueError` na construção. Service que falha
+  rende `200` com aviso e traceback no log. Nova superfície
+  `AdminSurfaceEnum.METRICS` para o `surface_policy` (#732).
 - `RawTextField` (`tempest_fastapi_sdk.utils`): `str` que mantém espaço nas
   pontas mesmo dentro de um `BaseSchema`, que liga `str_strip_whitespace=True`
   no modelo inteiro. Delta de streaming (`" mundo"`) e prompt passam como o

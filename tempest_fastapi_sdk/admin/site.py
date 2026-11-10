@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from tempest_fastapi_sdk.admin.config import AdminModel
 from tempest_fastapi_sdk.admin.dashboard import MetricCard
+from tempest_fastapi_sdk.admin.metrics import MetricsArea
 from tempest_fastapi_sdk.admin.theme import AdminTheme
 
 if TYPE_CHECKING:
@@ -52,6 +53,8 @@ class AdminSite:
             (value / trend / partition) rendered at the top of the
             dashboard, each computed from the DB on load. Distinct from
             the system CPU/RAM/disk panel.
+        metrics_areas (list[MetricsArea]): Indicator pages generated from
+            a schema and a service, one card per field.
     """
 
     def __init__(
@@ -64,6 +67,7 @@ class AdminSite:
         theme: AdminTheme | None = None,
         dashboard_cards: Sequence[MetricCard] = (),
         display_timezone: str | None = None,
+        metrics_areas: Sequence[MetricsArea] = (),
     ) -> None:
         """Initialize the site.
 
@@ -90,10 +94,15 @@ class AdminSite:
                 UTC. The zone belongs to the panel rather than to any
                 one table, which is why it is settable here instead of
                 being repeated on every :class:`AdminModel`.
+            metrics_areas (Sequence[MetricsArea]): Indicator pages, each
+                generated from a schema and a service method with no
+                arguments, listed under "Metrics" in the sidebar. Gated by
+                the ``METRICS`` surface.
 
         Raises:
             ValueError: When ``display_timezone`` is not a zone the
-                host's tz database knows.
+                host's tz database knows, or two ``metrics_areas`` share
+                a URL slug.
         """
         self.title: str = title
         self.brand: str | None = brand
@@ -102,6 +111,14 @@ class AdminSite:
         self.theme: AdminTheme = theme or AdminTheme()
         self.dashboard_cards: list[MetricCard] = list(dashboard_cards)
         self.display_timezone: str | None = display_timezone
+        self.metrics_areas: list[MetricsArea] = list(metrics_areas)
+        slugs = [area.slug for area in self.metrics_areas]
+        duplicated = sorted({slug for slug in slugs if slugs.count(slug) > 1})
+        if duplicated:
+            raise ValueError(
+                f"AdminSite metrics_areas share the URL slug {duplicated}; "
+                "give them distinct titles"
+            )
         self.display_tzinfo: ZoneInfo | None = None
         if display_timezone is not None:
             try:

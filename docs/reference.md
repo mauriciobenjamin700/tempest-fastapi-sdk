@@ -56,6 +56,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.dashboard.MetricValue
 ::: tempest_fastapi_sdk.admin.dashboard.MetricTrend
 ::: tempest_fastapi_sdk.admin.dashboard.MetricPartition
+::: tempest_fastapi_sdk.admin.metrics.MetricsArea
+::: tempest_fastapi_sdk.admin.metrics.MetricsProvider
+::: tempest_fastapi_sdk.admin.metrics.Threshold
+::: tempest_fastapi_sdk.admin.metrics.MetricLevelEnum
 ::: tempest_fastapi_sdk.admin.actions.admin_action
 ::: tempest_fastapi_sdk.admin.actions.AdminActionContext
 ::: tempest_fastapi_sdk.admin.actions.AdminActionResult

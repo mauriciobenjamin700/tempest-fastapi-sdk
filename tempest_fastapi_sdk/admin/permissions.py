@@ -88,6 +88,7 @@ class AdminSurfaceEnum(BaseStrEnum):
     TASKS = "tasks"
     LOGS = "logs"
     STORAGE = "storage"
+    METRICS = "metrics"
 
 
 #: A policy deciding whether ``principal`` may perform ``action`` on the

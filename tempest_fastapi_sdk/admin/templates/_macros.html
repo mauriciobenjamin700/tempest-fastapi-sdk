@@ -9,3 +9,31 @@
 {%- else -%}{{ view.text }}
 {%- endif -%}
 {%- endmacro %}
+
+{% macro metric_card(card) %}
+  <article class="tempest-admin-card tempest-admin-card--{{ card.kind }}{% if card.level %} tempest-admin-card--level-{{ card.level }}{% endif %}"{% if card.level %} data-level="{{ card.level }}"{% endif %}>
+    <span class="tempest-admin-card__label">{{ card.label }}</span>
+    {% if card.level %}<span class="tempest-admin-card__level">{{ {"green": "OK", "yellow": "Attention", "red": "Critical"}[card.level] }}</span>{% endif %}
+    {% if card.kind == 'value' %}
+    <span class="tempest-admin-card__value">{{ card.value | number }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
+    {% elif card.kind == 'trend' %}
+    <span class="tempest-admin-card__value">{{ card.value | number }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
+    <span class="tempest-admin-card__trend tempest-admin-card__trend--{{ card.direction }}">
+      {% if card.direction == 'up' %}↑{% elif card.direction == 'down' %}↓{% else %}→{% endif %}
+      {% if card.pct is not none %}{{ '%+.1f' | format(card.pct) }}%{% else %}—{% endif %}
+      <small>vs {{ (card.previous | number) if card.previous is defined else '' }} before</small>
+    </span>
+    {% else %}
+    <ul class="tempest-admin-card__parts">
+      {% for seg in card.segments %}
+      <li>
+        <span class="tempest-admin-card__part-label">{{ seg.label }}</span>
+        <span class="tempest-admin-card__part-bar"><span style="width: {{ '%.0f' | format(seg.pct) }}%"></span></span>
+        <span class="tempest-admin-card__part-value">{{ seg.value | number }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if card.help %}<span class="tempest-admin-card__help">{{ card.help }}</span>{% endif %}
+  </article>
+{% endmacro %}

@@ -38,10 +38,7 @@ from starlette.concurrency import run_in_threadpool
 from tempest_fastapi_sdk.admin.actions import AdminActionContext, AdminActionResult
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel, Inline
-from tempest_fastapi_sdk.admin.dashboard import (
-    MetricPartition,
-    MetricTrend,
-)
+from tempest_fastapi_sdk.admin.dashboard import card_entry
 from tempest_fastapi_sdk.admin.display import (
     cell_view,
     format_number,
@@ -452,6 +449,7 @@ def make_admin_router(
             (AdminSurfaceEnum.SQL, sql_shell is not None),
             (AdminSurfaceEnum.TASKS, tasks is not None),
             (AdminSurfaceEnum.STORAGE, storage is not None),
+            (AdminSurfaceEnum.METRICS, bool(site.metrics_areas)),
         )
         if mounted
     )
@@ -752,6 +750,15 @@ def make_admin_router(
         context.setdefault(
             "nav_tasks_url",
             f"{prefix}/tasks" if AdminSurfaceEnum.TASKS in allowed else None,
+        )
+        context.setdefault(
+            "nav_metrics_areas",
+            [
+                {"title": area.title, "url": f"{prefix}/metrics/{area.slug}"}
+                for area in site.metrics_areas
+            ]
+            if AdminSurfaceEnum.METRICS in allowed
+            else [],
         )
         context.setdefault(
             "nav_storage_url",
@@ -1517,35 +1524,70 @@ def make_admin_router(
                     card.label,
                 )
                 continue
-            entry: dict[str, Any] = {"label": card.label, "help": card.help_text}
-            if isinstance(data, MetricTrend):
-                entry.update(
-                    kind="trend",
-                    value=data.value,
-                    previous=data.previous,
-                    unit=data.unit,
-                    delta=data.delta,
-                    pct=data.pct,
-                    direction=data.direction,
-                )
-            elif isinstance(data, MetricPartition):
-                total = data.total
-                entry.update(
-                    kind="partition",
-                    total=total,
-                    segments=[
-                        {
-                            "label": label,
-                            "value": value,
-                            "pct": (value / total * 100.0) if total else 0.0,
-                        }
-                        for label, value in data.segments
-                    ],
-                )
-            else:
-                entry.update(kind="value", value=data.value, unit=data.unit)
-            cards.append(entry)
+            cards.append(card_entry(card.label, card.help_text, data))
         return cards
+
+    @router.get("/metrics/{slug}", name="admin_metrics_area")
+    async def metrics_area(
+        request: Request,
+        slug: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Render one indicator area: one card per field of its schema.
+
+        The page is the ``METRICS`` surface, so a ``surface_policy`` decides
+        who opens it. When the provider or the method raises, or the method
+        returns the wrong type, the page still renders, with an error in
+        place of the cards and the traceback in the module logger — one
+        broken service never turns the panel into a 500.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The area's URL segment.
+            db_session (AsyncSession): The DB session handed to the provider.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The ``metrics_area.html`` page.
+
+        Raises:
+            HTTPException: ``404`` for an unknown slug; ``403`` when the
+                surface policy denies ``METRICS``.
+        """
+        area = next((item for item in site.metrics_areas if item.slug == slug), None)
+        if area is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "metrics area not found")
+        principal = await _resolve_principal(
+            request, db_session, session, surface=AdminSurfaceEnum.METRICS
+        )
+        cards: list[dict[str, Any]] = []
+        failed = False
+        try:
+            result = await area.collect(db_session)
+        except Exception:
+            logger.exception(
+                "Admin metrics area %r failed to collect; rendering the error",
+                area.title,
+            )
+            failed = True
+        else:
+            for label, help_text, data, level in area.cards(result):
+                entry = card_entry(label, help_text, data)
+                entry["level"] = None if level is None else level.value
+                cards.append(entry)
+        return _render(
+            request,
+            "metrics_area.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "area": area,
+                "cards": cards,
+                "failed": failed,
+            },
+        )
 
     if show_logs:
         _log_base = Path(log_dir)
