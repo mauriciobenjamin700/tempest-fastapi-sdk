@@ -3848,7 +3848,7 @@ quando algum teto estoura:
 | `max_tts_chars` | `5_000` | texto do `/tts` |
 | `max_image_side` | `2048` | `config.width` / `config.height` do `/image` |
 | `max_image_steps` | `100` | `config.steps` do `/image` |
-| `max_upload_bytes` | 25 MiB | upload do `/transcribe`, lido em blocos |
+| `max_upload_bytes` | 25 MiB | upload do `/transcribe`, lido em blocos; este responde `413 UPLOAD_TOO_LARGE`, não `422` |
 
 Os defaults servem um deploy self-hosted pequeno. Para mudar, passe a sua
 instância:

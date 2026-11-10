@@ -427,6 +427,9 @@ Com uma foto HEIC declarada como `" Image/HEIC "`, a rota responde `200` com a
 key `photos/<uuid>.heic`. O mesmo JPEG declarado como `image/jpg` passa; como
 `image/png`, é recusado com `415 INVALID_FILE_TYPE`. `image/avif` nem chega ao
 corpo da função: `422` da validação.
+Uma foto acima de `MAX_PHOTO_BYTES` para de ser lida no bloco que cruza o
+teto e volta `413`, com `code` `UPLOAD_TOO_LARGE` e o teto em
+`details.max_bytes` (até a 0.348.0 era `422 VALIDATION_ERROR`).
 
 !!! info "HEIC pelos bytes"
     Um HEIC é uma caixa `ftyp` do ISO-BMFF: `ftyp` nos bytes 4 a 8 e a marca

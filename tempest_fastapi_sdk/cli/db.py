@@ -259,9 +259,9 @@ async def _run_seed(database_url: str, seed: Callable[[AsyncSession], Any]) -> A
         Any: Whatever the seed callable returns (e.g. a row count), or
         ``None``.
     """
-    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    manager = AsyncDatabaseManager(database_url)
+    manager = cli_database_manager(database_url)
     await manager.connect()
     try:
         async with manager.get_session_context() as session:

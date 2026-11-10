@@ -431,6 +431,9 @@ With a HEIC photo declared as `" Image/HEIC "`, the route answers `200` with
 the key `photos/<uuid>.heic`. The same JPEG declared as `image/jpg` passes; as
 `image/png`, it is refused with `415 INVALID_FILE_TYPE`. `image/avif` never
 reaches the function body: `422` from validation.
+A photo above `MAX_PHOTO_BYTES` stops being read at the chunk that crosses
+the ceiling and comes back as `413`, with `code` `UPLOAD_TOO_LARGE` and the
+ceiling in `details.max_bytes` (up to 0.348.0 it was `422 VALIDATION_ERROR`).
 
 !!! info "HEIC from the bytes"
     A HEIC file is an ISO-BMFF `ftyp` box: `ftyp` at bytes 4 to 8 and the
