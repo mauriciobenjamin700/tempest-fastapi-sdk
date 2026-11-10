@@ -1,9 +1,11 @@
 """``tempest generate`` — regenerate scaffolded artifacts in place.
 
-Today the only target is ``--docker`` (regenerates
-``docker-compose.yaml`` + the matching ``.env.example`` block from
-the project's installed extras). New targets land here as the SDK
-grows.
+The targets: ``--docker`` (``docker-compose.yaml`` + the matching
+``.env.example`` block from the project's installed extras),
+``--dockerfile`` (``Dockerfile`` + ``.dockerignore``), ``--src`` (the
+source layers the pinned extras trigger) and ``--standard`` (the pieces
+of the service standard an older project lacks, see
+:mod:`tempest_fastapi_sdk.cli.standard`).
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from tempest_fastapi_sdk.cli.docker_compose import (
     generate,
 )
 from tempest_fastapi_sdk.cli.src_layers import add_src_layers, layers_for_extras
+from tempest_fastapi_sdk.cli.standard import StandardRefusedError, apply_standard
 
 _SDK_NAME_RE = re.compile(
     r'^\s*"tempest-fastapi-sdk(?:\[([^\]]+)\])?[><=!~].*?",?\s*$',
@@ -464,8 +467,45 @@ def regenerate_src(
     )
 
 
+def regenerate_standard(target: Path, *, force: bool) -> None:
+    """Bring the project to the service standard and print what changed.
+
+    See :func:`tempest_fastapi_sdk.cli.standard.apply_standard` for what is
+    written, migrated and refused.
+
+    Args:
+        target (Path): Project root directory.
+        force (bool): Overwrite additive files and the contract test.
+
+    Raises:
+        typer.Exit: When ``pyproject.toml`` is missing (exit 2) or the
+            exception migration refuses (exit 1, nothing written).
+    """
+    _read_pyproject(target)
+    try:
+        report = apply_standard(target, force=force)
+    except StandardRefusedError as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(1) from error
+    for path in report.written:
+        typer.echo(f"  + {path.relative_to(target)}")
+    for path in report.removed:
+        typer.echo(f"  - {path.relative_to(target)}")
+    for path, reason in report.skipped:
+        typer.echo(f"  = {path.relative_to(target)} ({reason})")
+    for name, module in sorted(report.moved.items()):
+        typer.echo(f"  > {name} -> core/exceptions/{module}.py")
+    for warning in report.warnings:
+        typer.echo(f"warning: {warning}", err=True)
+    typer.echo(
+        f"Standard: {len(report.written)} written, {len(report.skipped)} "
+        f"skipped, {len(report.moved)} exception(s) moved."
+    )
+
+
 __all__: list[str] = [
     "regenerate_docker_compose",
     "regenerate_dockerfile",
     "regenerate_src",
+    "regenerate_standard",
 ]

@@ -371,14 +371,78 @@ The suite is split by kind and area: `tests/unit/<area>/` for one class in
 isolation, `tests/integration/<area>/` for a request through the app, each
 directory with an `__init__.py`.
 
-## An existing project does not change
+## An existing project: `tempest generate --standard`
 
 `tempest new` only writes new projects. A service generated before this
 version keeps its `core/exceptions.py`, `tests/test_smoke.py` and the
-`AlembicHelper` in the lifespan — and keeps working. To bring it to the
-standard, take one item per PR, in the order of the
-[recommended architecture's migration](recommended-architecture.md#migrating-an-existing-service),
-and turn `layers_strict = true` on once the warnings reach zero.
+`AlembicHelper` in the lifespan — and keeps working. To bring in the
+pieces of the standard that collide with nothing, run at the project
+root:
+
+```bash
+tempest generate --standard
+```
+
+On a service whose `src/core/exceptions.py` holds `UserNotFoundError`
+(`NotFoundException`) and `UserEmailAlreadyTakenError`
+(`ConflictException`), the output is:
+
+```text
+  + src/core/constants/__init__.py
+  + src/core/constants/messages/__init__.py
+  + src/core/constants/messages/errors.py
+  + src/core/constants/messages/successes.py
+  + src/core/enums/__init__.py
+  + src/core/types/__init__.py
+  + tests/unit/__init__.py
+  + tests/unit/architecture/__init__.py
+  + tests/unit/architecture/test_layers.py
+  + tests/unit/architecture/test_openapi_errors.py
+  + tests/unit/architecture/test_schemas.py
+  + tests/unit/core/__init__.py
+  + src/core/exceptions/conflict.py
+  + src/core/exceptions/not_found.py
+  + src/core/exceptions/__init__.py
+  + tests/unit/core/test_exceptions_contract.py
+  - src/core/exceptions.py
+  > UserEmailAlreadyTakenError -> core/exceptions/conflict.py
+  > UserNotFoundError -> core/exceptions/not_found.py
+Standard: 16 written, 0 skipped, 2 exception(s) moved.
+```
+
+What happens:
+
+- **Missing packages and guards** (`core/constants/`, `core/enums/`,
+  `core/types/`, `tests/unit/architecture/`) come from the same templates
+  as `tempest new`. A file that already exists is left alone unless you
+  pass `--force`; and a package whose flat module already exists
+  (`core/constants.py`) is **not** written, because the new package would
+  shadow the module silently — the report says why.
+- **`core/exceptions.py` becomes the `core/exceptions/` package**, one
+  module per status. Each class's status is read by **importing** the
+  module, not guessed from its base: a class that inherits a 500 base and
+  declares `status_code = 409` goes to `conflict.py`. The `__init__.py`
+  re-exports everything, so `from src.core.exceptions import
+  UserNotFoundError` keeps working, and the flat file is deleted.
+- **The contract is frozen** in `tests/unit/core/test_exceptions_contract.py`
+  with the status, `code`, message and `field` each class has today. A
+  class that builds its message in `__init__` gets a warning naming it:
+  the contract fails for it until the data moves into the class body and
+  what changes per `raise` goes in `details=`.
+
+!!! warning "The migration refuses before writing"
+    If `core/exceptions.py` holds anything besides imports, classes and
+    `__all__` (a module-level constant or function has no status to go
+    to), if splitting by status would make the modules import each other,
+    or if the module does not import, the command exits with code 1, the
+    message names the file and the line, and **nothing** is written.
+
+Running it again changes nothing: everything that exists is skipped. The
+rest of the standard (`db/configs`, `scripts/composition.py`,
+`api/docs/`) touches the app's wiring and stays manual — one item per PR,
+in the order of the
+[recommended architecture's migration](recommended-architecture.md#migrating-an-existing-service).
+Turn `layers_strict = true` on once the warnings reach zero.
 
 ## Recap
 
