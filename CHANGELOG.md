@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.350.0] — 2026-11-10
+
 ### Added
 
 - `[tool.tempest] lint_schemas_env = { NAME = "value" }`: variáveis que só o
