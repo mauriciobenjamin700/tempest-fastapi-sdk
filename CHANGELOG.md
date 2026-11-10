@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `strip_image_metadata` levanta `ImageDecodeException` (`422`) também para
+  imagem truncada ou corrompida que o Pillow recusa já no `Image.open`: um
+  JPEG cortado no meio dos dados e um PNG ou WEBP cortado no cabeçalho
+  escapavam como `OSError` ("Truncated File Read", "could not create decoder
+  object"), e `OSError` é a classe que os serviços tratam como storage
+  indisponível — a foto corrompida voltava para a fila para sempre. A
+  gravação também traduz o erro. Medido no Pillow 13.0.0 (#720).
+
 ## [0.348.0] — 2026-11-09
 
 ### Fixed
