@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   e `error: table(s) users not found in the database. Run `tempest db upgrade`
   first; nothing was written.` Guard: `tests/test_cli_hide_parameters_guard.py`
   (#718).
+- `EnvironmentSettings` não lê o `.env` quando `ENV=test` vem do ambiente do
+  processo ou do construtor (`Settings(ENV="test")`). A suíte que fixava
+  `ENV=test` no `conftest.py` herdava todo valor do `.env` de quem rodava
+  (`DATABASE_URL`, host de SMTP, chave de API) que ela mesma não fixasse, e
+  cada serviço repetia `Settings(_env_file=None)` à mão. Variável exportada e
+  argumento do construtor continuam valendo, e o conflito de nome
+  depreciado continua recusado. `ENV=test` escrito **só** no `.env` não
+  descarta o arquivo: a decisão não lê a própria fonte que descartaria
+  (#718).
 
 ## [0.348.0] — 2026-11-09
 

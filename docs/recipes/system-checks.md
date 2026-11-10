@@ -200,7 +200,7 @@ campos de uma vez — pelo nome, nunca pelo valor:
 - JWT_SECRET: still the public placeholder declared by JWTSettings [type=value_error]
 ```
 
-Com `ENV=development` ou `ENV=test`, nada muda.
+Com `ENV=development` ou `ENV=test`, o guard não roda.
 
 `ENV` **não tem default**. Esquecer a variável derruba o boot, em vez de
 subir como desenvolvimento:
@@ -215,6 +215,51 @@ Até a 0.341.0 o default era `development`, e um host de produção sem `ENV`
 subia com SQLite, o `JWT_SECRET` placeholder e `TOKEN_SECRET` vazio sem que
 o guard rodasse. Teste fixa o próprio valor (`os.environ["ENV"] = "test"` no
 `conftest.py`, antes de importar o app).
+
+### `ENV=test` não lê o `.env`
+
+A suíte fixa `ENV=test` justamente para não herdar o ambiente de quem
+roda. Por isso, quando `ENV=test` vem **do ambiente do processo** ou do
+construtor (`Settings(ENV="test")`), o `EnvironmentSettings` tira o `.env`
+das fontes: só valem o que o teste passou, as variáveis exportadas e os
+defaults.
+
+```python
+import os
+from pathlib import Path
+
+from tempest_fastapi_sdk import BaseAppSettings, EnvironmentSettings
+
+
+class Settings(EnvironmentSettings, BaseAppSettings):
+    SMTP_HOST: str = "localhost"
+
+
+Path(".env").write_text("ENV=development\nSMTP_HOST=smtp.dev.example.com\n")
+
+print(Settings().SMTP_HOST)
+os.environ["ENV"] = "test"
+print(Settings().SMTP_HOST)
+```
+
+```text
+smtp.dev.example.com
+localhost
+```
+
+O primeiro `Settings()` lê o `ENV` e o `SMTP_HOST` do `.env`; o segundo, com
+`ENV=test` exportado, nem abre o arquivo.
+
+!!! note "`ENV=test` escrito só no `.env` não descarta o `.env`"
+    A decisão olha só o construtor e o ambiente do processo. Um `ENV=test`
+    que mora **dentro** do `.env` é lido como qualquer outro valor e o resto
+    do arquivo vale junto: o arquivo não pode ser o motivo de ser ignorado.
+    Quem quer a suíte isolada exporta `ENV=test` no `conftest.py`, antes de
+    importar o app.
+
+!!! tip "Sobrescreveu `settings_customise_sources`?"
+    O descarte mora nesse hook. Um `Settings` que o sobrescreve chama
+    `super().settings_customise_sources(...)` para manter o comportamento.
 
 ### O que cada mixin recusa
 
