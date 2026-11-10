@@ -223,6 +223,8 @@ class AdminTheme:
                 "  --tempest-fg: #e2e8f0;\n"
                 "  --tempest-fg-soft: #94a3b8;\n"
                 "  --tempest-success: #4ade80;\n"
+                "  --tempest-warning: #fbbf24;\n"
+                "  --tempest-danger-text: #f87171;\n"
                 "  --tempest-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);\n"
                 "  --tempest-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);\n"
                 "  color-scheme: dark;\n"

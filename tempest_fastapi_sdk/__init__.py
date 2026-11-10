@@ -73,7 +73,16 @@ if TYPE_CHECKING:
         MetricCard as MetricCard,
     )
     from tempest_fastapi_sdk.admin import (
+        MetricLevelEnum as MetricLevelEnum,
+    )
+    from tempest_fastapi_sdk.admin import (
         MetricPartition as MetricPartition,
+    )
+    from tempest_fastapi_sdk.admin import (
+        MetricsArea as MetricsArea,
+    )
+    from tempest_fastapi_sdk.admin import (
+        MetricsProvider as MetricsProvider,
     )
     from tempest_fastapi_sdk.admin import (
         MetricTrend as MetricTrend,
@@ -83,6 +92,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.admin import (
         OrderRef as OrderRef,
+    )
+    from tempest_fastapi_sdk.admin import (
+        Threshold as Threshold,
     )
     from tempest_fastapi_sdk.admin import (
         UserModelAuthBackend as UserModelAuthBackend,
@@ -2392,6 +2404,10 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "MetricPartition": "tempest_fastapi_sdk.admin",
     "MetricTrend": "tempest_fastapi_sdk.admin",
     "MetricValue": "tempest_fastapi_sdk.admin",
+    "MetricLevelEnum": "tempest_fastapi_sdk.admin",
+    "MetricsArea": "tempest_fastapi_sdk.admin",
+    "MetricsProvider": "tempest_fastapi_sdk.admin",
+    "Threshold": "tempest_fastapi_sdk.admin",
     "OrderRef": "tempest_fastapi_sdk.admin",
     "UserModelAuthBackend": "tempest_fastapi_sdk.admin",
     "admin_action": "tempest_fastapi_sdk.admin",
@@ -3530,9 +3546,12 @@ __all__: list[str] = [
     "MercadoPagoSettings",
     "MessageCatalog",
     "MetricCard",
+    "MetricLevelEnum",
     "MetricPartition",
     "MetricTrend",
     "MetricValue",
+    "MetricsArea",
+    "MetricsProvider",
     "MetricsUtils",
     "MfaThrottledException",
     "MinIOSettings",
@@ -3707,6 +3726,7 @@ __all__: list[str] = [
     "TenantScopedRepository",
     "TextSearchLanguageEnum",
     "TextSearchWeightEnum",
+    "Threshold",
     "ThrottleBackend",
     "ThrottleStatus",
     "TokenDelivery",

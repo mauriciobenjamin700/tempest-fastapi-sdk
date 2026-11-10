@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Áreas de indicadores no admin: `AdminSite(metrics_areas=[MetricsArea(title,
+  schema, provider=, method=)])` gera uma página com um card por campo do
+  schema, a partir de um service cujo método não recebe argumento, listada em
+  **Metrics** na sidebar (`/admin/metrics/<slug>`). `Threshold(green=,
+  yellow=, lower_is_better=)` pinta o card de verde, amarelo ou vermelho com
+  os tokens do tema; nome de campo inexistente em `thresholds`/`units` e
+  limites invertidos levantam `ValueError` na construção. Service que falha
+  rende `200` com aviso e traceback no log. Nova superfície
+  `AdminSurfaceEnum.METRICS` para o `surface_policy` (#732).
+
 - `tempest generate --standard`: traz um projeto anterior ao padrão de
   serviço para ele. Escreve o que falta e não colide (`core/constants/`,
   `core/enums/`, `core/types/`, os guards de `tests/unit/`), converte um

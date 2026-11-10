@@ -706,6 +706,122 @@ zera a página — e a falha vai para o log com traceback
 (`logger.exception` no logger `tempest_fastapi_sdk.admin.router`, nomeando
 o `label` do card), então o card que sumiu da tela aparece no log.
 
+## Áreas de indicadores: schema + service (`metrics_areas=`)
+
+O `MetricCard` recebe a sessão e consulta o banco direto, card por card.
+Quando o seu service **já sabe** coletar os indicadores, repetir a
+consulta no admin é trabalho dobrado — e pula a camada de service. A
+`MetricsArea` é a outra forma: você entrega **um schema com um campo por
+indicador** e **um service cujo método não recebe argumento**, e o admin
+gera uma página com um card por campo, listada em **Metrics** na sidebar.
+
+```python
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AdminSite, BaseUserModel, MetricsArea, Threshold
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+class RideMetricsSchema(BaseModel):
+    messages_to_route: float = Field(
+        title="Mensagens até achar a rota",
+        description="Média de mensagens antes do usuário chegar à rota que queria.",
+    )
+    accesses: int = Field(title="Acessos")
+    accounts_created: int = Field(title="Contas criadas")
+    rides_created: int = Field(title="Caronas criadas")
+
+
+class RideMetricsService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def collect(self) -> RideMetricsSchema:
+        accounts = await self.session.scalar(select(func.count()).select_from(UserModel))
+        return RideMetricsSchema(
+            messages_to_route=4.2,
+            accesses=1200,
+            accounts_created=accounts or 0,
+            rides_created=87,
+        )
+
+
+site = AdminSite(
+    title="Transporte",
+    metrics_areas=[
+        MetricsArea(
+            "Caronas",
+            RideMetricsSchema,
+            provider=RideMetricsService,
+            method="collect",
+            thresholds={
+                "messages_to_route": Threshold(green=3, yellow=6, lower_is_better=True),
+                "accounts_created": Threshold(green=100, yellow=40),
+                "rides_created": Threshold(green=100, yellow=40),
+            },
+            units={"rides_created": "caronas"},
+        )
+    ],
+)
+```
+
+A página fica em `/admin/metrics/caronas` (o slug sai do título). Peça por
+peça:
+
+- **`provider`** constrói o service a partir da sessão do admin. A própria
+  classe serve quando o `__init__` recebe a sessão; uma função de
+  composição (`build_ride_metrics_service`) também. Pode ser sync ou
+  `async`.
+- **`method`** é chamado **sem argumento** e devolve uma instância do
+  `schema`. Outra coisa vira erro na página.
+- **Cada campo vira um card**: `title` é o rótulo (o nome do campo quando
+  falta), `description` a linha embaixo do valor. Número vira um card de
+  valor; um campo tipado `MetricValue`, `MetricTrend` ou `MetricPartition`
+  renderiza como esse card.
+- **`units`** põe a unidade depois do número.
+
+### Thresholds: verde, amarelo, vermelho
+
+`Threshold(green=, yellow=)` pinta o card de um campo numérico (ou o valor
+atual de um `MetricTrend`) com uma borda e um selo — **OK**, **Attention**
+ou **Critical**:
+
+| `Threshold(green=100, yellow=40)` (maior é melhor) | Faixa |
+| --- | --- |
+| `>= 100` | verde |
+| `>= 40` e `< 100` | amarelo |
+| `< 40` | vermelho |
+
+Com `lower_is_better=True` a comparação inverte — `Threshold(green=3,
+yellow=6, lower_is_better=True)` é verde até 3, amarelo até 6 e vermelho
+acima. O limite exato cai sempre na faixa melhor. A cor vem dos tokens do
+tema (`--tempest-success`, `--tempest-warning`, `--tempest-danger`), então
+light e dark seguem consistentes.
+
+!!! tip "Erro cedo, não card sem cor"
+    `thresholds` ou `units` com um nome que o schema não tem levanta
+    `ValueError` na construção da `MetricsArea`, e limites na ordem errada
+    para a direção (`green < yellow` com maior-é-melhor) levantam na
+    construção do `Threshold`. Um typo nunca vira um card que simplesmente
+    não pinta.
+
+### Quando o service falha
+
+Se o `provider` ou o método levantam, a página responde `200` com um
+aviso no lugar dos cards, e o traceback vai para o log
+(`logger.exception` em `tempest_fastapi_sdk.admin.router`, nomeando a
+área). Um service quebrado nunca vira `500` no painel.
+
+### Quem vê
+
+A área é a superfície `AdminSurfaceEnum.METRICS`: com `surface_policy`,
+quem a política nega recebe `403` na página e não vê os links na sidebar.
+
 ## Import CSV (`can_import=True`)
 
 O admin já exporta a listagem (CSV/JSON). A contraparte: subir um CSV

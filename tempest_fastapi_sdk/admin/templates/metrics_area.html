@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import metric_card %}
+{% block title %}{{ area.title }} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-dashboard">
+  <header class="tempest-admin-dashboard__header">
+    <h1>{{ area.title }}</h1>
+  </header>
+  {% if failed %}
+  <div class="tempest-admin-flash tempest-admin-flash--error" role="alert">
+    These indicators could not be collected. The error is in the server log.
+  </div>
+  {% elif cards %}
+  <div class="tempest-admin-cards" aria-label="{{ area.title }}">
+    {% for card in cards %}
+    {{ metric_card(card) }}
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

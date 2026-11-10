@@ -70,6 +70,15 @@
         </a>
         {% endfor %}
         {% endif %}
+        {% if nav_metrics_areas %}
+        <span class="tempest-admin-sidebar__heading">Metrics</span>
+        {% for entry in nav_metrics_areas %}
+        <a href="{{ entry.url }}"
+           class="tempest-admin-sidebar__link{% if path == entry.url %} tempest-admin-sidebar__link--active{% endif %}">
+          {{ entry.title }}
+        </a>
+        {% endfor %}
+        {% endif %}
         {% if nav_logs_url or nav_sql_url or nav_tasks_url or nav_storage_url %}
         <span class="tempest-admin-sidebar__heading">System</span>
         {% endif %}

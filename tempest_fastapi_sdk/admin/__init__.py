@@ -30,6 +30,10 @@ from tempest_fastapi_sdk.admin.dashboard import MetricPartition as MetricPartiti
 from tempest_fastapi_sdk.admin.dashboard import MetricTrend as MetricTrend
 from tempest_fastapi_sdk.admin.dashboard import MetricValue as MetricValue
 from tempest_fastapi_sdk.admin.discovery import discover_models as discover_models
+from tempest_fastapi_sdk.admin.metrics import MetricLevelEnum as MetricLevelEnum
+from tempest_fastapi_sdk.admin.metrics import MetricsArea as MetricsArea
+from tempest_fastapi_sdk.admin.metrics import MetricsProvider as MetricsProvider
+from tempest_fastapi_sdk.admin.metrics import Threshold as Threshold
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy as AdminAccessPolicy,
 )
@@ -136,9 +140,12 @@ __all__: list[str] = [
     "Inline",
     "Lens",
     "MetricCard",
+    "MetricLevelEnum",
     "MetricPartition",
     "MetricTrend",
     "MetricValue",
+    "MetricsArea",
+    "MetricsProvider",
     "OrderRef",
     "ScheduledTask",
     "SessionStore",
@@ -162,6 +169,7 @@ __all__: list[str] = [
     "StoragePreviewEnum",
     "TaskPanelService",
     "TaskTrigger",
+    "Threshold",
     "UserModelAuthBackend",
     "admin_action",
     "admin_credential_digest",

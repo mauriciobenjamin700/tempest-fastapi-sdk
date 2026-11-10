@@ -4248,6 +4248,20 @@ novo. Testes: `TestActionSecrets` em `tests/admin/test_actions.py` (o do commit
 falha sem o commit). Receita: "Mostrar um segredo uma vez" em
 `docs/recipes/admin.md`.
 
+## Áreas de indicadores no admin (#732)
+
+`admin/metrics.py`: `MetricsArea` (schema + `provider(session)` + `method`
+sem argumento, `thresholds`, `units`, `slug` do título), `Threshold`
+(`level()` inclusivo na faixa melhor, `lower_is_better`), `MetricLevelEnum`.
+Rota `GET /admin/metrics/{slug}` em `admin/router.py`, superfície
+`AdminSurfaceEnum.METRICS`, links na sidebar (`base.html`), card extraído
+para a macro `metric_card` (`_macros.html`) e o descritor para
+`dashboard.card_entry`, compartilhados com `dashboard_cards`. Cores por
+`--tempest-success`/`--tempest-warning`/`--tempest-danger` (warning ganhou
+`-soft` e valor no dark). Decidido fora da v1: seletor de período, tendência
+derivada de dois campos, cache. Testes: `tests/admin/test_metrics_area.py`.
+Receita: "Áreas de indicadores" em `docs/recipes/admin.md`.
+
 ## `tempest generate --standard` (#718)
 
 `cli/standard.py` (`apply_standard`), ligado em `tempest generate --standard`
