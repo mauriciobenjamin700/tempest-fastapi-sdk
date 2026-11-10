@@ -218,7 +218,8 @@ class TestTranscribeUpload:
             "/api/genai/transcribe",
             files={"file": ("clip.wav", b"x" * 17, "audio/wav")},
         )
-        assert response.status_code == 422
+        assert response.status_code == 413
+        assert response.json()["code"] == "UPLOAD_TOO_LARGE"
         assert "larger than" in response.json()["detail"]
         assert stt.calls == 0
 

@@ -200,7 +200,7 @@ The response nests the second stage inside each detection:
 `async_predict` accepts the same inputs as `ort-vision-sdk`: a path,
 `bytes`, a `numpy.ndarray` or a PIL image — so the upload's bytes go
 straight in. Read them with `read_upload_capped(file, max_bytes=...)` rather
-than `await file.read()`: it reads in chunks and answers `422` as soon as the
+than `await file.read()`: it reads in chunks and answers `413` as soon as the
 ceiling is crossed, before the whole upload occupies the memory the ceiling
 was meant to deny.
 
@@ -239,7 +239,8 @@ endpoint reads the `UploadFile`, calls `async_predict` and maps via
 ### Upload and pixel limits
 
 Every `make_vision_router` route checks three things **before** it runs the
-model, and answers `422` when any of them fails:
+model, and refuses when any of them fails — `413 UPLOAD_TOO_LARGE` for
+the upload size, `422` for the rest:
 
 | Parameter | Default | What it stops |
 | --- | --- | --- |

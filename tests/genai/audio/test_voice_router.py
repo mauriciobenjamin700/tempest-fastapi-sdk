@@ -292,7 +292,8 @@ class TestTranscription:
                 "/voice/transcribe",
                 files={"audio": ("a.wav", b"x" * 64, "audio/wav")},
             )
-        assert response.status_code == 422
+        assert response.status_code == 413
+        assert response.json()["code"] == "UPLOAD_TOO_LARGE"
         assert "larger than" in response.json()["detail"]
 
 

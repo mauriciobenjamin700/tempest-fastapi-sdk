@@ -147,6 +147,38 @@ does not break — but check the flag before reading `0` as "nothing free".
 A snapshot built by hand (`HardwareInfo(...)`) has both flags `True` by
 default.
 
+### Environment warnings
+
+`HardwareInfo.warnings` lists the environment problem the probe can see
+**before** a load fails — each item is a sentence with the cause and the fix.
+An empty list means nothing was detected, not that every load will succeed.
+Today there is one warning: a CUDA 13 `torch` build (`torch.version.cuda`
+starting with `13.`) with CUDA available and faster-whisper's `ctranslate2`
+installed. The `ctranslate2` wheels look up `libcublas.so.12`, and the first
+transcription with `device="cuda"` would fail
+([GPU with `[genai-audio]`](../installation.md#genai-audio-gpu)). `ctranslate2`
+is looked up with `importlib.util.find_spec`, not imported, so the probe loads
+no CUDA library for it.
+
+```python
+from tempest_fastapi_sdk.genai import probe_hardware
+
+for warning in probe_hardware().warnings:
+    print(warning)
+```
+
+In a `python:3.12-slim` container with an RTX 4070 Ti SUPER, PyPI's `torch`
+2.15.0+cu132 and `ctranslate2` 4.8.5:
+
+```text
+torch is a CUDA 13.2 build, but ctranslate2 (faster-whisper) links against CUDA 12 and looks for libcublas.so.12, which this torch does not install: transcribing on device='cuda' raises 'Library libcublas.so.12 is not found or cannot be loaded' unless the system provides CUDA 12 libraries. Install torch from the CUDA 12 index (https://download.pytorch.org/whl/cu126) instead; see 'GPU with [genai-audio]' in the installation docs.
+```
+
+With `torch` 2.14.1+cu126 from the cu126 index, on the same machine, the list
+came back empty. The warning cannot see a system-wide CUDA 12 install — which
+makes the pair work —, which is why the text says "unless the system provides
+CUDA 12 libraries".
+
 ### Without `psutil`
 
 `psutil` ships in the `[metrics]` extra, **not** in `[genai]`. What happens
@@ -3825,7 +3857,7 @@ model, and answers `422` when a ceiling is crossed:
 | `max_tts_chars` | `5_000` | the `/tts` text |
 | `max_image_side` | `2048` | the `/image` `config.width` / `config.height` |
 | `max_image_steps` | `100` | the `/image` `config.steps` |
-| `max_upload_bytes` | 25 MiB | the `/transcribe` upload, read in chunks |
+| `max_upload_bytes` | 25 MiB | the `/transcribe` upload, read in chunks; this one answers `413 UPLOAD_TOO_LARGE`, not `422` |
 
 The defaults suit a small self-hosted deployment. To change them, pass your
 own instance:

@@ -128,8 +128,9 @@ def make_vision_router(
     Every route reads the upload with
     :func:`~tempest_fastapi_sdk.utils.upload.read_upload_capped`, checks the
     declared pixel count from the image header, and only then runs the
-    model. An oversized upload, a canvas over ``max_image_pixels``, or bytes
-    that are not an image answer ``422``; so does an ``ImageLoadError``
+    model. An oversized upload answers ``413`` (``UPLOAD_TOO_LARGE``); a
+    canvas over ``max_image_pixels``, or bytes that are not an image, answer
+    ``422``, and so does an ``ImageLoadError``
     raised by ``ort-vision-sdk`` while decoding, which used to escape as a
     ``500``.
 
@@ -191,8 +192,9 @@ def make_vision_router(
             Any: The first ``Results`` of ``task.async_predict``.
 
         Raises:
-            ValidationException: When the upload is too large, declares too
-                many pixels, or fails to decode (``422``).
+            UploadTooLargeException: When the upload is too large (``413``).
+            ValidationException: When the image declares too many pixels or
+                fails to decode (``422``).
         """
         data = await read_upload_capped(
             file,

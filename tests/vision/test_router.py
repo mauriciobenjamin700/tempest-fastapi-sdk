@@ -100,7 +100,7 @@ class TestVisionLimits:
         detector = _RecordingDetector()
         client = _client(detector=detector, max_upload_bytes=64)
         response = client.post("/api/vision/detect", files=_upload(b"x" * 65))
-        assert response.status_code == 422
+        assert response.status_code == 413
         assert "larger than" in response.json()["detail"]
         assert detector.calls == 0
 

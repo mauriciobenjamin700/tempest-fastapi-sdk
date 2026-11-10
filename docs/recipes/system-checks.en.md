@@ -198,7 +198,7 @@ lists **every** field at once — by name, never by value:
 - JWT_SECRET: still the public placeholder declared by JWTSettings [type=value_error]
 ```
 
-With `ENV=development` or `ENV=test`, nothing changes.
+With `ENV=development` or `ENV=test`, the guard does not run.
 
 `ENV` **has no default**. Forgetting the variable fails the boot instead of
 starting as development:
@@ -214,6 +214,51 @@ Up to 0.341.0 the default was `development`, and a production host without
 `TOKEN_SECRET` without the guard ever running. A test suite pins its own
 value (`os.environ["ENV"] = "test"` in `conftest.py`, before importing the
 app).
+
+### `ENV=test` does not read the `.env`
+
+A suite pins `ENV=test` precisely so it does not inherit the environment of
+whoever runs it. So when `ENV=test` comes **from the process environment**
+or from the constructor (`Settings(ENV="test")`), `EnvironmentSettings`
+removes the `.env` from the sources: only what the test passed, the
+exported variables and the defaults apply.
+
+```python
+import os
+from pathlib import Path
+
+from tempest_fastapi_sdk import BaseAppSettings, EnvironmentSettings
+
+
+class Settings(EnvironmentSettings, BaseAppSettings):
+    SMTP_HOST: str = "localhost"
+
+
+Path(".env").write_text("ENV=development\nSMTP_HOST=smtp.dev.example.com\n")
+
+print(Settings().SMTP_HOST)
+os.environ["ENV"] = "test"
+print(Settings().SMTP_HOST)
+```
+
+```text
+smtp.dev.example.com
+localhost
+```
+
+The first `Settings()` reads `ENV` and `SMTP_HOST` from the `.env`; the
+second, with `ENV=test` exported, does not open the file.
+
+!!! note "`ENV=test` written only in the `.env` does not discard the `.env`"
+    The decision looks only at the constructor and the process environment.
+    An `ENV=test` that lives **inside** the `.env` is read like any other
+    value, and the rest of the file applies with it: the file cannot be the
+    reason it is ignored. For an isolated suite, export `ENV=test` in
+    `conftest.py`, before importing the app.
+
+!!! tip "Overrode `settings_customise_sources`?"
+    The discard lives in that hook. A `Settings` that overrides it calls
+    `super().settings_customise_sources(...)` to keep the behaviour.
 
 ### What each mixin refuses
 

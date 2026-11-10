@@ -27,8 +27,10 @@ except ImportError:  # pragma: no cover - guarded by extras
 
 from fastapi import UploadFile
 
-from tempest_fastapi_sdk.exceptions.upload import InvalidFileTypeException
-from tempest_fastapi_sdk.exceptions.validation import ValidationException
+from tempest_fastapi_sdk.exceptions.upload import (
+    InvalidFileTypeException,
+    UploadTooLargeException,
+)
 
 # Magic-byte signatures, compared against the first bytes of an upload.
 # Used by :func:`sniff_mime` to detect what a file ACTUALLY is, so a
@@ -704,16 +706,17 @@ async def read_upload_capped(
         bytes: The whole upload.
 
     Raises:
-        ValidationException: When the upload exceeds ``max_bytes``; the
-            ``details`` carry ``max_bytes``. The status is ``422``, the
-            same one ``make_voice_router`` has always answered with.
+        UploadTooLargeException: When the upload exceeds ``max_bytes``
+            (``413``, ``code="UPLOAD_TOO_LARGE"``); the ``details`` carry
+            ``max_bytes``. Up to 0.348.0 this was a ``ValidationException``
+            (``422``).
     """
     chunks: list[bytes] = []
     total = 0
     while chunk := await upload.read(UPLOAD_READ_CHUNK_BYTES):
         total += len(chunk)
         if total > max_bytes:
-            raise ValidationException(
+            raise UploadTooLargeException(
                 message=f"{label} is larger than {max_bytes} bytes",
                 details={"max_bytes": max_bytes},
             )

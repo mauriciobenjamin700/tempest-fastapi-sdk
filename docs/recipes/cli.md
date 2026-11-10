@@ -1045,7 +1045,22 @@ tempest user list --admin                        # só admins
 
     Insert recusado pelo banco (email duplicado, quase sempre) sai com
     código 1 e a mensagem do banco — `error: could not insert user: …` —
-    em vez de traceback.
+    em vez de traceback. Os valores do insert **não** aparecem nela: todo
+    banco que o CLI abre usa `hide_parameters=True`, então o hash da senha
+    que você acabou de digitar não vai parar no terminal nem no log da CI:
+
+    ```text
+    error: could not insert user: (sqlite3.IntegrityError) UNIQUE constraint failed: users.email
+    [SQL: INSERT INTO users (email, hashed_password, ...) VALUES (?, ?, ...)]
+    [SQL parameters hidden due to hide_parameters=True]
+    ```
+
+    Banco que ainda não foi migrado é detectado antes do insert, com
+    código 1 e nenhuma linha escrita:
+
+    ```text
+    error: table(s) users not found in the database. Run `tempest db upgrade` first; nothing was written.
+    ```
 
 !!! tip "Sem `--admin`/`--no-admin`, o create pergunta"
     Quando você **não** passa nem `--admin` nem `--no-admin` num

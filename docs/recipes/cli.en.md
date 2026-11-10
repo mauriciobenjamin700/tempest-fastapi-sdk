@@ -1051,6 +1051,22 @@ tempest user list --admin                        # admins only
     An insert the database refuses (a duplicate email, most often) exits
     with code 1 and the database's own message —
     `error: could not insert user: …` — instead of a traceback.
+    The insert's values do **not** show up in it: every database the CLI
+    opens uses `hide_parameters=True`, so the hash of the password you just
+    typed never reaches the terminal or a CI log:
+
+    ```text
+    error: could not insert user: (sqlite3.IntegrityError) UNIQUE constraint failed: users.email
+    [SQL: INSERT INTO users (email, hashed_password, ...) VALUES (?, ?, ...)]
+    [SQL parameters hidden due to hide_parameters=True]
+    ```
+
+    A database that was never migrated is caught before the insert, with
+    code 1 and nothing written:
+
+    ```text
+    error: table(s) users not found in the database. Run `tempest db upgrade` first; nothing was written.
+    ```
 
 !!! tip "Without `--admin`/`--no-admin`, create asks"
     When you pass **neither** `--admin` nor `--no-admin` in an

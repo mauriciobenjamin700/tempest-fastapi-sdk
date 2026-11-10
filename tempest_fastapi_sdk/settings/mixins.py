@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from tempest_fastapi_sdk.core.docs_locale import (
     DEFAULT_DOCS_LOCALE,
@@ -56,7 +57,10 @@ from tempest_fastapi_sdk.core.logging import (
     DEFAULT_LOG_MAX_BYTES,
     validate_rotate_when,
 )
-from tempest_fastapi_sdk.settings.base import BaseAppSettings
+from tempest_fastapi_sdk.settings.base import (
+    BaseAppSettings,
+    reject_conflicting_env_aliases,
+)
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.storage import (
@@ -300,6 +304,69 @@ class EnvironmentSettings(BaseAppSettings):
         ),
         examples=["development", "test", "production"],
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Drop the ``.env`` source when ``ENV=test`` comes from outside it.
+
+        A test suite pins ``ENV=test`` in the process environment (or
+        passes ``ENV="test"`` to the constructor) so it never inherits the
+        developer's configuration. Without this hook the ``.env`` in the
+        working directory was still read, and every value the suite did
+        not pin itself -- a real ``DATABASE_URL``, an SMTP host, an API
+        key -- leaked into the tests.
+
+        The decision reads only the constructor keyword arguments and the
+        process environment, never the ``.env`` itself: ``ENV=test``
+        written **in** the ``.env`` sets the field like any other value
+        and the file is read as usual, because a source cannot be the
+        reason it is discarded. With ``ENV`` resolving to anything else,
+        or absent from both, the sources are the ones
+        :meth:`BaseAppSettings.settings_customise_sources` returns,
+        including the deprecated-alias check.
+
+        A ``Settings`` class that overrides this hook itself replaces the
+        behaviour; call ``super().settings_customise_sources(...)`` from
+        the override to keep it.
+
+        Args:
+            settings_cls (type[BaseSettings]): The class being built.
+            init_settings (PydanticBaseSettingsSource): Keyword
+                arguments passed to the constructor.
+            env_settings (PydanticBaseSettingsSource): The process
+                environment.
+            dotenv_settings (PydanticBaseSettingsSource): The ``.env``
+                file.
+            file_secret_settings (PydanticBaseSettingsSource): The
+                secrets directory.
+
+        Returns:
+            tuple[PydanticBaseSettingsSource, ...]: The sources in
+            priority order, without ``dotenv_settings`` when the suite
+            pinned ``ENV=test``.
+
+        Raises:
+            SettingsError: When a deprecated environment variable and
+                its replacement are both set to different values.
+        """
+        explicit: Any = init_settings().get("ENV", env_settings().get("ENV"))
+        if isinstance(explicit, str) and explicit.strip() == "test":
+            reject_conflicting_env_aliases(settings_cls, (env_settings,))
+            return init_settings, env_settings, file_secret_settings
+        return super().settings_customise_sources(
+            settings_cls,
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     @model_validator(mode="after")
     def _refuse_development_values_in_production(self) -> Self:

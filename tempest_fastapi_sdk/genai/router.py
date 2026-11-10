@@ -241,9 +241,10 @@ def make_genai_router(
     ``top_k``, ``/tts`` text length, image size and steps, and the
     ``/transcribe`` upload size (read in chunks, so an oversized upload is
     refused before it is held in memory). A request over any of them gets
-    ``422``; with ``register_exception_handlers`` installed the body also
-    carries ``details={"field": ..., "limit": ...}`` (or
-    ``{"max_bytes": ...}`` for the upload). ``/image`` answers with one
+    ``422`` -- except the upload, which gets ``413`` (``UPLOAD_TOO_LARGE``);
+    with ``register_exception_handlers`` installed the body also carries
+    ``details={"field": ..., "limit": ...}`` (or ``{"max_bytes": ...}`` for
+    the upload). ``/image`` answers with one
     image, so it refuses ``config.num_images`` above ``1`` instead of
     rendering a batch and dropping all but the first.
 
