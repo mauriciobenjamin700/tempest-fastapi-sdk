@@ -14,8 +14,8 @@ from tempest_fastapi_sdk import (
     UPLOAD_READ_CHUNK_BYTES,
     FileTooLargeException,
     InvalidFileTypeException,
+    UploadTooLargeException,
     UploadUtils,
-    ValidationException,
     read_upload_capped,
     sniff_mime,
 )
@@ -468,13 +468,15 @@ class TestReadUploadCapped:
 
     async def test_refuses_one_byte_over_with_the_label(self) -> None:
         upload = _make_upload(b"x" * 33)
-        with pytest.raises(ValidationException) as info:
+        with pytest.raises(UploadTooLargeException) as info:
             await read_upload_capped(upload, max_bytes=32, label="image")
-        assert info.value.status_code == 422
+        assert info.value.status_code == 413
+        assert info.value.code == "UPLOAD_TOO_LARGE"
+        assert info.value.details == {"max_bytes": 32}
         assert "image is larger than 32 bytes" in str(info.value.detail)
 
     async def test_stops_reading_after_the_chunk_that_crosses(self) -> None:
         upload = _make_upload(b"x" * (UPLOAD_READ_CHUNK_BYTES * 4))
-        with pytest.raises(ValidationException, match="larger than"):
+        with pytest.raises(UploadTooLargeException, match="larger than"):
             await read_upload_capped(upload, max_bytes=10)
         assert upload.file.tell() == UPLOAD_READ_CHUNK_BYTES

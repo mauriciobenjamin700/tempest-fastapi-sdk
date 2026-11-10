@@ -3825,7 +3825,7 @@ model, and answers `422` when a ceiling is crossed:
 | `max_tts_chars` | `5_000` | the `/tts` text |
 | `max_image_side` | `2048` | the `/image` `config.width` / `config.height` |
 | `max_image_steps` | `100` | the `/image` `config.steps` |
-| `max_upload_bytes` | 25 MiB | the `/transcribe` upload, read in chunks |
+| `max_upload_bytes` | 25 MiB | the `/transcribe` upload, read in chunks; this one answers `413 UPLOAD_TOO_LARGE`, not `422` |
 
 The defaults suit a small self-hosted deployment. To change them, pass your
 own instance:

@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#723). Resolvido com `uv pip compile` em 2026-11-10, o `[genai-audio]`
   sai sem `torchaudio` e sem `transformers`. Quem usa `TextToSpeech` instala
   `[genai-audio,genai-tts-coqui]`.
+- **Quebra:** `read_upload_capped` recusa o upload acima do teto com a nova
+  `UploadTooLargeException` (`413`, `code="UPLOAD_TOO_LARGE"`, subclasse de
+  `FileTooLargeException`) em vez de `ValidationException` (`422`). Tamanho
+  é `413` para cliente HTTP e para o wire da OpenAI, e o serviço precisava
+  capturar e relançar. Muda junto o status do `/transcribe` do
+  `make_genai_router`, do `make_voice_router` e do `make_vision_router`;
+  `detail` e `details.max_bytes` continuam iguais. Medido:
+  `{"detail": "image is larger than 16 bytes", "code": "UPLOAD_TOO_LARGE",
+  "details": {"max_bytes": 16}}` com `413`, contra o mesmo corpo com
+  `VALIDATION_ERROR` e `422` antes. Nota em `docs/migration.md` (#718).
 
 ### Fixed
 

@@ -138,6 +138,9 @@ from tempest_fastapi_sdk.exceptions.upload import (
 from tempest_fastapi_sdk.exceptions.upload import (
     InvalidFileTypeException as InvalidFileTypeException,
 )
+from tempest_fastapi_sdk.exceptions.upload import (
+    UploadTooLargeException as UploadTooLargeException,
+)
 from tempest_fastapi_sdk.exceptions.validation import (
     InvalidFilterValueException as InvalidFilterValueException,
 )
@@ -219,6 +222,7 @@ __all__: list[str] = [
     "TooManyRequestsException",
     "UnauthorizedException",
     "UnknownFilterKeyException",
+    "UploadTooLargeException",
     "ValidationException",
     "ValidationValueError",
     "ZapSendFailedException",

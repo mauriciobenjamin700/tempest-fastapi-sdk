@@ -7,6 +7,7 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 | Onde | O que muda | O que fazer |
 | --- | --- | --- |
 | `[genai-audio]` | Não traz mais `coqui-tts`, `torchaudio`, `torchcodec` nem `six`: o `TextToSpeech` (XTTS) passa para o extra novo `[genai-tts-coqui]`. `SpeechToText` não muda | Quem usa `TextToSpeech` instala `[genai-audio,genai-tts-coqui]` (ou só `[genai-tts-coqui]`, sem STT). Sem isso, a primeira síntese levanta `ImportError` citando `[genai-tts-coqui]` |
+| `read_upload_capped` e as rotas que o usam (`/transcribe` do `make_genai_router`, `make_voice_router`, `make_vision_router`) | Upload acima do teto levanta `UploadTooLargeException` (`413`, `code` `UPLOAD_TOO_LARGE`) em vez de `ValidationException` (`422`, `VALIDATION_ERROR`). `detail` e `details.max_bytes` não mudam | Cliente que tratava o `422` do tamanho passa a tratar `413`. Quem capturava `ValidationException` para relançar com `413` pode apagar o wrapper; `except FileTooLargeException` também pega a exceção nova |
 
 ## 0.344.0 — token de conta apagada
 

@@ -573,6 +573,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooLargeException
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooSmallException
 ::: tempest_fastapi_sdk.exceptions.upload.InvalidFileTypeException
+::: tempest_fastapi_sdk.exceptions.upload.UploadTooLargeException
 ::: tempest_fastapi_sdk.exceptions.image.ImageDecodeException
 ::: tempest_fastapi_sdk.exceptions.image.ImageTypeMismatchException
 ::: tempest_fastapi_sdk.exceptions.image.ImageFormatUnsupportedException

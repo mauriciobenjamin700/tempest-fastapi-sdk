@@ -1437,6 +1437,9 @@ if TYPE_CHECKING:
         UnknownFilterKeyException as UnknownFilterKeyException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        UploadTooLargeException as UploadTooLargeException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         ValidationException as ValidationException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -2812,6 +2815,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "TooManyRequestsException": "tempest_fastapi_sdk.exceptions",
     "UnauthorizedException": "tempest_fastapi_sdk.exceptions",
     "UnknownFilterKeyException": "tempest_fastapi_sdk.exceptions",
+    "UploadTooLargeException": "tempest_fastapi_sdk.exceptions",
     "ValidationException": "tempest_fastapi_sdk.exceptions",
     "ValidationValueError": "tempest_fastapi_sdk.exceptions",
     "ZapSendFailedException": "tempest_fastapi_sdk.exceptions",
@@ -3712,6 +3716,7 @@ __all__: list[str] = [
     "UploadResult",
     "UploadSettings",
     "UploadStorage",
+    "UploadTooLargeException",
     "UploadUtils",
     "UserAuthService",
     "UserModelAuthBackend",
