@@ -225,6 +225,105 @@ def _module_path(file: Path, root: Path) -> str | None:
     return ".".join(parts) if parts else None
 
 
+def _reexports(init: Path, name: str) -> bool:
+    """Tell whether a package's ``__init__.py`` re-exports ``name``.
+
+    Args:
+        init (Path): The ``__init__.py`` to read.
+        name (str): The exported name.
+
+    Returns:
+        bool: ``True`` when the file imports ``name`` (``from .x import
+        Name``, with or without ``as Name``) or lists it in ``__all__``. A
+        wildcard import does not count: it cannot be checked by reading.
+    """
+    try:
+        tree = ast.parse(init.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return False
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and any(
+            (alias.asname or alias.name) == name for alias in node.names
+        ):
+            return True
+        targets: list[ast.expr] = []
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets, value = [node.target], node.value
+        if any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets) and (
+            isinstance(value, ast.List | ast.Tuple)
+            and any(
+                isinstance(item, ast.Constant) and item.value == name
+                for item in value.elts
+            )
+        ):
+            return True
+    return False
+
+
+def _import_module_for(defining: Path, name: str, root: Path) -> str | None:
+    """Return the shallowest package ``name`` can be imported from.
+
+    The project rule is to import from the package, never from the module
+    that defines the class: ``from src.core.exceptions import X``, not
+    ``from src.core.exceptions.bad_request import X``, with every
+    ``__init__.py`` re-exporting. The ``lint-layers`` ``IMP002`` check
+    reports the submodule form, so writing it here made ``--fix`` produce
+    code the next gate flags (#722).
+
+    Starting from the defining module, this climbs while the enclosing
+    package's ``__init__.py`` re-exports the name and stays under ``root``,
+    and keeps the shallowest one reached.
+
+    Args:
+        defining (Path): The file that defines ``name``.
+        name (str): The exception class name.
+        root (Path): The project root.
+
+    Returns:
+        str | None: The dotted import path, or ``None`` when the defining
+        file lies outside ``root``.
+    """
+    best = defining
+    current = (
+        defining.parent.parent if defining.name == "__init__.py" else defining.parent
+    )
+    resolved_root = root.resolve()
+    while True:
+        init = current / "__init__.py"
+        if not init.is_file() or not current.resolve().is_relative_to(resolved_root):
+            break
+        if not _reexports(init, name):
+            break
+        best = init
+        current = current.parent
+    return _module_path(best, root)
+
+
+def _import_blocks(tree: ast.Module) -> dict[str, ast.ImportFrom]:
+    """Return the first absolute ``from <module> import ...`` per module.
+
+    Args:
+        tree (ast.Module): The parsed module.
+
+    Returns:
+        dict[str, ast.ImportFrom]: Module path to its top-level import node,
+        so a new name can join the block instead of opening a second one.
+    """
+    blocks: dict[str, ast.ImportFrom] = {}
+    for node in tree.body:
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 0
+            and node.module
+            and not any(alias.name == "*" for alias in node.names)
+        ):
+            blocks.setdefault(node.module, node)
+    return blocks
+
+
 def _existing_names(tree: ast.Module) -> set[str]:
     """Return every name already imported or defined at module level.
 
@@ -293,6 +392,12 @@ def plan_file(
         locations (dict[str, Path]): Exception class name to defining file.
         root (Path): Project root, used to derive import paths.
 
+    Each route position recorded by the analyzer is the closing parenthesis
+    of a call, and the new argument is inserted just before it. A missing
+    exception is imported from the shallowest package that re-exports it
+    (:func:`_import_module_for`); when the file already imports from that
+    package, the name joins that block instead of a second ``from`` line.
+
     Returns:
         FilePlan: The queued insertions, imports and labels. A route whose
         decorator position is unknown is skipped rather than guessed at.
@@ -320,7 +425,6 @@ def plan_file(
             addition = f"responses={DECLARATION_HELPER}({joined})"
         else:
             continue
-        # The recorded position is the closing parenthesis; insert before it.
         offset = _offset_of(source, anchor[0], anchor[1]) - 1
         text = f"{_separator_before(source, offset)}{addition}"
         plan.insertions.append((offset, text))
@@ -333,19 +437,36 @@ def plan_file(
             if name in known:
                 continue
             defining = locations.get(name)
-            module = _module_path(defining, root) if defining else None
+            module = _import_module_for(defining, name, root) if defining else None
             if module is None:
                 plan.unresolved.append(name)
                 continue
             wanted[name] = f"from {module} import {name}"
 
+    blocks = _import_blocks(tree)
     by_module: dict[str, list[str]] = {}
+    joining: dict[str, list[str]] = {}
     for name, statement in wanted.items():
         if statement == HELPER_IMPORT:
             by_module.setdefault(HELPER_IMPORT, [])
             continue
         module = statement.split(" import ")[0]
+        if module.removeprefix("from ") in blocks:
+            joining.setdefault(module.removeprefix("from "), []).append(name)
+            continue
         by_module.setdefault(module, []).append(name)
+    for module, names in joining.items():
+        node = blocks[module]
+        end = _offset_of(
+            source, node.end_lineno or node.lineno, node.end_col_offset or 0
+        )
+        added = ", ".join(sorted(names))
+        if source[end - 1] == ")":
+            plan.insertions.append(
+                (end - 1, f"{_separator_before(source, end - 1)}{added}")
+            )
+        else:
+            plan.insertions.append((end, f", {added}"))
     for module, names in sorted(by_module.items()):
         if module == HELPER_IMPORT:
             plan.imports.append(HELPER_IMPORT)
