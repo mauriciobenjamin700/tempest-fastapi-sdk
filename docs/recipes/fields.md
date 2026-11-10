@@ -100,6 +100,7 @@ class QuoteSchema(BaseSchema):
 | --- | --- |
 | `NonEmptyStrField` | apara espaços e rejeita vazio (só-espaço também) |
 | `SlugField` | kebab-case minúsculo (`meu-post-1`) |
+| `RawTextField` | guarda o texto **exatamente** como veio, sem aparar espaço |
 | `HexColorField` | cor hex CSS (`#fff` ou `#abc123`) |
 
 ```python
@@ -112,6 +113,38 @@ class CategorySchema(BaseSchema):
     slug: SlugField
     color: HexColorField
 ```
+
+### Texto livre: `RawTextField`
+
+O `BaseSchema` liga `str_strip_whitespace=True`: todo `str` chega aparado.
+Para nome e e-mail é o certo; para **conteúdo** corrompe o dado. Um delta de
+streaming `" mundo"` vira `"mundo"`, e o prompt chega ao modelo diferente do
+que o cliente mandou. Anote o campo de conteúdo com `RawTextField`:
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import RawTextField
+
+
+class ChatDeltaSchema(BaseSchema):
+    """A streamed chunk of a model answer."""
+
+    role: str
+    content: RawTextField
+
+
+chunk = ChatDeltaSchema(role=" assistant ", content=" mundo\n")
+print(repr(chunk.role), repr(chunk.content))
+```
+
+Saída (medida, pydantic 2.13.5):
+
+```text
+'assistant' ' mundo\n'
+```
+
+O `role` continua aparado; só o campo anotado escapa. Vale também na
+atribuição (`validate_assignment`): `chunk.content = "  x "` guarda `"  x "`.
 
 ## Locale
 

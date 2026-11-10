@@ -139,6 +139,17 @@ SlugField = Annotated[
 ]
 """URL-safe slug: lowercase alphanumerics in kebab-case (``my-post-1``)."""
 
+RawTextField = Annotated[str, StringConstraints(strip_whitespace=False)]
+"""String kept exactly as sent, leading and trailing whitespace included.
+
+:class:`~tempest_fastapi_sdk.BaseSchema` sets ``str_strip_whitespace=True``,
+which is right for names and e-mails and wrong for content: a streaming
+delta ``" mundo"`` became ``"mundo"`` and a prompt reached the model
+different from what the client sent (#718). Annotating the field with this
+type overrides the model-wide setting for that field only, on construction
+and on assignment (``validate_assignment``). Measured on pydantic 2.13.5.
+"""
+
 HexColorField = Annotated[
     str,
     StringConstraints(pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"),
