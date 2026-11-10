@@ -54,6 +54,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   desliga com `check_openapi_errors = false` / `check_lint_schemas = false` em
   `[tool.tempest]`. Medido num projeto `tempest new`: passa limpo, e falha
   (exit `1`) com rota levantando exceção não declarada (#718).
+- O `tempest new` gera o padrão de serviço do `transport-backend`. Projeto
+  já gerado **não muda** (o comando só escreve projeto novo, e nada do SDK
+  passou a exigir a forma nova); a receita para migrar um serviço antigo
+  está na página nova "Padrão de serviço". O que muda no projeto gerado
+  (#718):
+  - `core/exceptions.py` vira o pacote `core/exceptions/`, um módulo por
+    status (`bad_request`, `unauthorized`, `forbidden`, `not_found`,
+    `conflict`). A classe de exemplo (`ItemNotFoundException`) declara
+    `code`, `message` e `field` no corpo, **sem `__init__`**; o dado de cada
+    raise vai em `details=`. O template antigo ensinava o inverso, com um
+    `__init__` montando `message`.
+  - `core/constants/messages/{errors,successes}.py` guardam o texto do
+    cliente; `core/enums/` e `core/types/` nascem como pacote.
+  - `db/configs/connection.py` (`make_db_manager`, com
+    `hide_parameters=True`) e `db/configs/migrations.py` (`run_migrations`).
+    O lifespan chama `run_migrations` sob o mesmo
+    `DATABASE_MIGRATE_ON_STARTUP` de antes, em vez de montar o
+    `AlembicHelper` ele mesmo; o `resources.py` constrói o `db` pelo
+    `make_db_manager`.
+  - `api/docs/` com `EndpointDoc` (um `TypedDict` no template, não no SDK)
+    espalhado no decorator da rota raiz: o `summary`/`description` da
+    operação saem de lá.
+  - `[tool.tempest] layers_strict = true`: os avisos do `lint-layers`
+    falham o `tempest check` desde o primeiro commit.
+  - `tests/test_smoke.py` e `tests/test_schemas.py` dão lugar a
+    `tests/integration/system/test_service_info.py`,
+    `tests/unit/architecture/` (`lint_layers`, `analyze_paths`,
+    `assert_schema_metadata`) e `tests/unit/core/test_exceptions_contract.py`
+    (status, `code`, mensagem e `field` congelados; falha para exceção
+    reexportada sem entrada). Medido: `tempest check` limpo com
+    `--extras sqlite` e com `auth,queue,tasks,ssr,admin,email,minio,cache`,
+    9 testes passando.
+  - O `CLAUDE.md` gerado manda começar pelo `tempest new`, ensina a receita
+    com as exceções por status, `EndpointDoc` e `error_responses` no router,
+    e diz que o `tempest check` já roda `openapi-errors` e `lint-schemas`.
 
 ### Fixed
 
