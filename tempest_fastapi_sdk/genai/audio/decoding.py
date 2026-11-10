@@ -243,6 +243,37 @@ def _pyav() -> Any | None:
     return av
 
 
+PYAV_METADATA_ERRORS_LAST_MAJOR: int = 18
+"""Last PyAV major whose ``av.open`` takes ``metadata_errors``.
+
+Measured on PyAV 18.1.0 and 19.0.2 with a WAV whose ``INFO/INAM`` tag holds
+invalid UTF-8: 18.1.0 raises ``UnicodeDecodeError`` without
+``metadata_errors="ignore"`` and opens the file with it; 19.0.2 refuses the
+keyword with ``TypeError`` and opens the same file without it, decoding the
+tag with ``surrogateescape``.
+"""
+
+
+def _pyav_open_kwargs(version: str) -> dict[str, str]:
+    """Return the ``av.open`` keywords that tolerate broken metadata.
+
+    PyAV up to :data:`PYAV_METADATA_ERRORS_LAST_MAJOR` needs
+    ``metadata_errors="ignore"`` or a file with an invalid UTF-8 tag fails to
+    open; later majors removed the keyword and tolerate the tag on their own.
+
+    Args:
+        version (str): ``av.__version__``.
+
+    Returns:
+        dict[str, str]: ``{"metadata_errors": "ignore"}`` for PyAV 18 and
+        older, ``{}`` from 19 on.
+    """
+    major = int(version.split(".", 1)[0])
+    if major <= PYAV_METADATA_ERRORS_LAST_MAJOR:
+        return {"metadata_errors": "ignore"}
+    return {}
+
+
 def _decode_with_pyav(
     audio: str | Path | bytes,
     *,
@@ -315,7 +346,7 @@ def _decode_with_pyav(
     try:
         with (
             _open_source(audio) as source,
-            av.open(source, mode="r", metadata_errors="ignore") as container,
+            av.open(source, mode="r", **_pyav_open_kwargs(av.__version__)) as container,
         ):
             if not container.streams.audio:
                 raise ValueError("the input holds no audio stream")
