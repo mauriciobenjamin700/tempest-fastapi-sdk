@@ -85,7 +85,8 @@ _DECODE_ERRORS: tuple[type[BaseException], ...] = (
 )
 """What Pillow raises for truncated or corrupt content.
 
-``OSError`` for a truncated stream, ``SyntaxError`` from several plugin
+``OSError`` for a truncated stream (``UnidentifiedImageError``, for bytes
+that are no image at all, is one of its subclasses), ``SyntaxError`` from several plugin
 parsers, ``ValueError``/``EOFError``/``struct.error`` from a malformed EXIF
 block read during the orientation step.
 """
@@ -281,7 +282,7 @@ def strip_image_metadata(
             raise ValueError(f"{name} must be between 1 and 100")
     declared = _resolve_media_type(media_type)
     try:
-        from PIL import Image, ImageOps, UnidentifiedImageError
+        from PIL import Image, ImageOps
     except ImportError as exc:
         raise ImportError(
             "strip_image_metadata requires the [image] extra (pillow). "
@@ -292,7 +293,7 @@ def strip_image_metadata(
         source = Image.open(io.BytesIO(data), formats=list(_PILLOW_FORMATS.values()))
     except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
         raise ImageTooLargeException(details={"max_pixels": max_pixels}) from exc
-    except (UnidentifiedImageError, *_DECODE_ERRORS) as exc:
+    except _DECODE_ERRORS as exc:
         raise ImageDecodeException(details={"declared": declared.value}) from exc
     with source:
         if source.format != pillow_format:
