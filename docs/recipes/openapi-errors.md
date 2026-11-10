@@ -724,6 +724,16 @@ produziria um decorator que não faz nada — o pior resultado possível para um
 ferramenta que existe para fechar um buraco de documentação. Um `@raises` já
 presente prova que o projeto optou por esse estilo; aí ele é respeitado.
 
+!!! check "O import sai do pacote, e entra no bloco que já existe"
+    Uma exception definida em `src/core/exceptions/bad_request.py` e
+    re-exportada por `src/core/exceptions/__init__.py` é importada de
+    `src.core.exceptions` — o pacote mais raso cujo `__init__` a importa ou
+    lista no `__all__` —, nunca do submódulo, que o `IMP002` do
+    `lint-layers` acusaria. Se o arquivo já tem
+    `from src.core.exceptions import (...)`, o nome entra nesse bloco em vez
+    de abrir outro `from`. Uma exception que nenhum `__init__` re-exporta
+    continua vindo do módulo que a define. Corrigido na 0.349.0.
+
 ### As três garantias
 
 !!! check "Só acrescenta, nunca remove"

@@ -728,6 +728,17 @@ possible outcome for a tool that exists to close a documentation gap. An
 existing `@raises` proves the project opted into that style, so there it is
 honored.
 
+!!! check "The import comes from the package, into the block already there"
+    An exception defined in `src/core/exceptions/bad_request.py` and
+    re-exported by `src/core/exceptions/__init__.py` is imported from
+    `src.core.exceptions` — the shallowest package whose `__init__` imports
+    it or lists it in `__all__` — never from the submodule, which the
+    `lint-layers` `IMP002` check would report. When the file already has
+    `from src.core.exceptions import (...)`, the name joins that block
+    instead of opening another `from`. An exception no `__init__`
+    re-exports still comes from the module that defines it. Fixed in
+    0.349.0.
+
 ### The three guarantees
 
 !!! check "It only ever adds"

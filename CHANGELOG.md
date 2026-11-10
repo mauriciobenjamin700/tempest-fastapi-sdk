@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `tempest openapi-errors --fix` importa a exception do pacote mais raso que
+  a re-exporta (`from src.core.exceptions import X`), não do submódulo que a
+  define (`src.core.exceptions.bad_request`), que o `IMP002` do
+  `lint-layers` acusava. Quando o arquivo já importa desse pacote, o nome
+  entra no bloco existente em vez de abrir outro `from`. Exception que
+  nenhum `__init__` re-exporta continua vindo do módulo que a define (#722).
+
 ## [0.348.0] — 2026-11-09
 
 ### Fixed
