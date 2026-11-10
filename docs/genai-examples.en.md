@@ -3,7 +3,7 @@
 The [generative-AI recipe](recipes/genai.md) documents each piece; here
 they combine into **real flows**, self-hosted end to end. Install the
 extras per example:
-`uv add "tempest-fastapi-sdk[genai,genai-rag,genai-audio]"`.
+`uv add "tempest-fastapi-sdk[genai,genai-rag,genai-audio,genai-tts-coqui]"`.
 
 ## 1. Load the model only if it fits
 

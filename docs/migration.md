@@ -2,6 +2,12 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.349.0 — o Coqui (XTTS) sai do `[genai-audio]`
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `[genai-audio]` | Não traz mais `coqui-tts`, `torchaudio`, `torchcodec` nem `six`: o `TextToSpeech` (XTTS) passa para o extra novo `[genai-tts-coqui]`. `SpeechToText` não muda | Quem usa `TextToSpeech` instala `[genai-audio,genai-tts-coqui]` (ou só `[genai-tts-coqui]`, sem STT). Sem isso, a primeira síntese levanta `ImportError` citando `[genai-tts-coqui]` |
+
 ## 0.344.0 — token de conta apagada
 
 | Onde | O que muda | O que fazer |

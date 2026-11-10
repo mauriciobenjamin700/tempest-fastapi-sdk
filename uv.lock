@@ -6373,12 +6373,8 @@ genai = [
     { name = "transformers" },
 ]
 genai-audio = [
-    { name = "coqui-tts" },
     { name = "faster-whisper" },
-    { name = "six" },
     { name = "torch" },
-    { name = "torchaudio" },
-    { name = "torchcodec" },
 ]
 genai-chroma = [
     { name = "chromadb" },
@@ -6420,6 +6416,13 @@ genai-sound = [
 ]
 genai-structured = [
     { name = "lm-format-enforcer" },
+]
+genai-tts-coqui = [
+    { name = "coqui-tts" },
+    { name = "six" },
+    { name = "torch" },
+    { name = "torchaudio" },
+    { name = "torchcodec" },
 ]
 genai-vlm = [
     { name = "pillow" },
@@ -6637,7 +6640,7 @@ requires-dist = [
     { name = "click", marker = "extra == 'all'", specifier = ">=8.5.0" },
     { name = "click", marker = "extra == 'cli'", specifier = ">=8.5.0" },
     { name = "click", marker = "extra == 'cli-ops'", specifier = ">=8.5.0" },
-    { name = "coqui-tts", marker = "extra == 'genai-audio'", specifier = ">=0.28.0" },
+    { name = "coqui-tts", marker = "extra == 'genai-tts-coqui'", specifier = ">=0.28.0" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'oidc'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'storage-encryption'", specifier = ">=50.0.1" },
@@ -6748,7 +6751,7 @@ requires-dist = [
     { name = "segno", marker = "extra == 'pdf'", specifier = ">=1.6.6" },
     { name = "sherpa-onnx", marker = "extra == 'genai-diarization'", specifier = ">=1.13.7" },
     { name = "sherpa-onnx-core", marker = "extra == 'genai-diarization'" },
-    { name = "six", marker = "extra == 'genai-audio'", specifier = ">=1.17.0" },
+    { name = "six", marker = "extra == 'genai-tts-coqui'", specifier = ">=1.17.0" },
     { name = "skl2onnx", marker = "extra == 'modelops-sklearn'", specifier = ">=1.20.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
     { name = "sqlglot", marker = "extra == 'admin-sql'", specifier = ">=30.17.0" },
@@ -6766,8 +6769,9 @@ requires-dist = [
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.22.2" },
     { name = "torch", marker = "extra == 'genai'", specifier = ">=2.14.0" },
     { name = "torch", marker = "extra == 'genai-audio'", specifier = ">=2.14.0" },
-    { name = "torchaudio", marker = "extra == 'genai-audio'", specifier = ">=2.11.0" },
-    { name = "torchcodec", marker = "extra == 'genai-audio'", specifier = ">=0.16.0" },
+    { name = "torch", marker = "extra == 'genai-tts-coqui'", specifier = ">=2.14.0" },
+    { name = "torchaudio", marker = "extra == 'genai-tts-coqui'", specifier = ">=2.11.0" },
+    { name = "torchcodec", marker = "extra == 'genai-tts-coqui'", specifier = ">=0.16.0" },
     { name = "torchvision", marker = "extra == 'genai-vlm'", specifier = ">=0.29.0" },
     { name = "trafilatura", marker = "extra == 'genai-rag'", specifier = ">=2.2.0" },
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.57.6" },
@@ -6780,7 +6784,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'all'", specifier = ">=17.1" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=17.1" },
 ]
-provides-extras = ["cli-ops", "cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "storage-encryption", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "slides", "slides-mermaid", "spreadsheet", "image", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "genai-sound", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
+provides-extras = ["cli-ops", "cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "storage-encryption", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "pdf", "pdf-read", "pdf-layout", "slides", "slides-mermaid", "spreadsheet", "image", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-tts-coqui", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "genai-sound", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "tests", "all"]
 
 [package.metadata.requires-dev]
 dev = [

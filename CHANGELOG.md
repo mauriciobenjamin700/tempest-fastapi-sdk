@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Quebra:** o Coqui (`TextToSpeech`, XTTS v2) sai do extra `[genai-audio]`
+  e vai para o novo `[genai-tts-coqui]` (`coqui-tts`, `torch`, `torchaudio`,
+  `torchcodec`, `six`). O `[genai-audio]` fica com o STT (`faster-whisper` +
+  `torch`). Com o `torchaudio` instalado, o `transformers` o importa ao montar
+  o `AutoProcessor` do Bark, e na GPU o `torchaudio` 2.11.1 do PyPI é build
+  CUDA 13, que não carrega ao lado de um `torch` CUDA 12: o
+  `POST /audio/speech` respondia 500 com um modelo que nem usa `torchaudio`
+  (#723). Resolvido com `uv pip compile` em 2026-11-10, o `[genai-audio]`
+  sai sem `torchaudio` e sem `transformers`. Quem usa `TextToSpeech` instala
+  `[genai-audio,genai-tts-coqui]`.
+
 ### Fixed
 
 - `strip_image_metadata` levanta `ImageDecodeException` (`422`) também para

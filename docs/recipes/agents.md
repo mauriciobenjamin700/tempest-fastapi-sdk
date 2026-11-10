@@ -421,7 +421,8 @@ def build_multimodal_agent() -> Agent:
 
 !!! warning "Cada ferramenta puxa o seu extra"
     `[genai]` (texto), `[genai-image]` (imagem), `[genai-vlm]` (visão),
-    `[genai-audio]` (STT/TTS) e `[genai-rag]` (retriever + busca web).
+    `[genai-audio]` (STT), `[genai-tts-coqui]` (TTS do Coqui) e `[genai-rag]`
+    (retriever + busca web).
     Instale só as que você vai usar — os pesos só são baixados na primeira
     chamada de cada modelo, não na instanciação acima.
 

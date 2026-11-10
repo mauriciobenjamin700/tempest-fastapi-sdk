@@ -3,7 +3,7 @@
 A [receita de IA generativa](recipes/genai.md) documenta cada peça; aqui
 elas se combinam em **fluxos reais**, self-hosted de ponta a ponta.
 Instale os extras conforme o exemplo:
-`uv add "tempest-fastapi-sdk[genai,genai-rag,genai-audio]"`.
+`uv add "tempest-fastapi-sdk[genai,genai-rag,genai-audio,genai-tts-coqui]"`.
 
 ## 1. Carregar o modelo só se couber
 

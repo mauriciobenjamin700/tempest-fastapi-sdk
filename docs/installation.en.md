@@ -41,7 +41,8 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face recognition on ONNX Runtime, no opencv and no torch: `FaceRecognizer` (detect/embed/compare), `compare_faces`. 16 MB models fetched by `ensure_models()`. **No system libraries** |
 | `[firebase]` | `firebase-admin` | Firebase ID token verification: `FirebaseAuth` (idempotent init, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Heavy — 33 packages, 52 MB measured on `firebase-admin` 7.5.0 — and therefore **out of `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `MusicGenerator`, `BarkSpeech`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
-| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | STT (Whisper) + TTS (Coqui) — the Coqui runtime ships with it since v0.252.0; since 0.342.0 without the `transformers<5` cap ([details](#genai-audio-transformers-bound)) |
+| `[genai-audio]` | `faster-whisper`, `torch` | STT (Whisper). Since 0.349.0 it no longer brings Coqui: its `torchaudio` broke Bark on a GPU ([details](#genai-audio-coqui-split)) |
+| `[genai-tts-coqui]` | `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | TTS (Coqui XTTS v2) — the Coqui runtime ships with it; no `transformers<5` cap since 0.342.0 ([details](#genai-audio-transformers-bound)) |
 | `[genai-chroma]` | `chromadb` | Chroma vector store for RAG |
 | `[genai-diarization]` | `sherpa-onnx` | Speaker diarization (who spoke when) via `sherpa-onnx` on ONNX Runtime, no PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Models (46 MB) fetched by `ensure_models()` |
 | `[genai-hosted]` | `httpx` (already in the base package) | hosted providers: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. No vendor SDK |
@@ -79,7 +80,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | Passkeys / security keys: `WebAuthnService`, `make_web_authn_credential_model`, the `/auth/webauthn/*` routes — passwordless, phishing-resistant login |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the 17 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 17 above separately (and `[tests]`, which is test tooling, in the dev group) |
+| `[all]` | everything above **except** the 18 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 18 above separately (and `[tests]`, which is test tooling, in the dev group) |
 
 === "Subset (recommended)"
 
@@ -107,9 +108,32 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
     ]
     ```
 
+<a id="genai-audio-coqui-split"></a>
+
+!!! warning "Since 0.349.0 Coqui (XTTS) lives in `[genai-tts-coqui]`"
+    `[genai-audio]` used to bring `coqui-tts` and, with it, `torchaudio`.
+    Bark does not use `torchaudio`, but `transformers` imports it when it is
+    installed, while building the `AutoProcessor`. On a GPU the PyPI
+    `torchaudio` 2.11.1 is a CUDA 13 build that does not load next to a
+    CUDA 12 `torch`, so `POST /audio/speech` answered 500 (measured on
+    tempest-ai, RTX 4070 Ti SUPER, SDK 0.348.0 — issue #723).
+
+    Now `[genai-audio]` is speech-to-text only (`faster-whisper` + `torch`)
+    and Coqui has an extra of its own. Resolved with `uv pip compile`
+    (Python 3.12) on 2026-11-10:
+
+    | Extra | brings | does not bring |
+    | --- | --- | --- |
+    | `[genai-audio]` | faster-whisper 1.2.1, ctranslate2 4.8.5, torch 2.15.0 | `torchaudio`, `transformers`, `coqui-tts` |
+    | `[genai-tts-coqui]` | coqui-tts 0.28.0, torchaudio 2.11.1, transformers 5.22.2, torch 2.15.0 | — |
+
+    **If you use `TextToSpeech` (XTTS)**, replace `[genai-audio]` with
+    `[genai-audio,genai-tts-coqui]` (or just `[genai-tts-coqui]`, without
+    STT).
+
 <a id="genai-audio-transformers-bound"></a>
 
-!!! check "Since 0.342.0 `[genai-audio]` no longer caps `transformers<5`"
+!!! check "Since 0.342.0 the Coqui extra no longer caps `transformers<5`"
     Up to 0.341.0 the extra carried `transformers<5`: `coqui-tts` 0.27.5
     imported `isin_mps_friendly`, a symbol transformers 5.1 removed. That held
     anyone installing the extra on transformers 4.57.6, and with it
@@ -117,8 +141,9 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
     `coqui-tts` 0.28.0 no longer imports the symbol, and the extra now requires
     that version.
 
-    Resolved with `uv pip compile` (Python 3.12) on 2026-11-01, the extra holds
-    nothing back any more:
+    Resolved with `uv pip compile` (Python 3.12) on 2026-11-01, while Coqui
+    was still in `[genai-audio]` (it is in `[genai-tts-coqui]` today, see
+    above), the extra held nothing back any more:
 
     | Extras | `transformers` | `huggingface-hub` | `tokenizers` | `diffusers` |
     | --- | --- | --- | --- | --- |
