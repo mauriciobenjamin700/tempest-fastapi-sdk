@@ -2151,7 +2151,7 @@ tempest test                                    # pytest -n auto -p no:cacheprov
 tempest test tests/api/                         # with a path filter
 tempest test -w 4                               # four workers
 tempest test --serial                           # serially (--lf / --ff, a debugger)
-tempest check                                   # lint + fmt-check + type + lint-layers + test, stops at first failure
+tempest check                                   # lint + fmt-check + type + lint-layers + openapi-errors + lint-schemas + test, stops at first failure
 tempest check --rule IMP002 --strict            # the same gate, lint-layers on that rule only and warnings failing
 ```
 
@@ -2229,6 +2229,72 @@ Every command returns the underlying tool's exit code, so `tempest check` is saf
 ```text
 error: 'ruff' was not found in this project's environment, on PATH, and 'uv' is unavailable to run it. Install it with 'uv add --dev ruff' — or the whole set with 'uv add --dev "tempest-cli[tools]"' — and retry.
 ```
+
+### The SDK's steps in `tempest check`
+
+`tempest check` comes from `tempest-cli`, which knows nothing about FastAPI.
+The SDK hands it three steps of its own, which run **after `mypy` and before
+`pytest`**, in this order, with the same contract as the others: the first
+non-zero exit code stops the gate.
+
+| Step | What it runs | How it finds the project |
+| --- | --- | --- |
+| `lint-layers` | the [layer rules](#layer-rules-tempest-lint-layers) | reads `src/` or `app/` with `ast` |
+| `openapi-errors` | the same as `tempest openapi-errors --check` ([recipe](openapi-errors.md#step-4-tempest-openapi-errors-check)) | reads `src/` or `app/` with `ast`, importing nothing |
+| `lint-schemas` | the same as `tempest lint-schemas` | imports `src.schemas` (or `app.schemas`) in a **child process** |
+
+The project root is the `check` target (`.` by default), or its parent when
+the target is `src`/`app` itself (`tempest check src`). `lint-schemas` imports
+the package in a separate process, run from the project root, so the project's
+modules are not left loaded in the process that runs `pytest` next. Importing
+`src.schemas` goes through `src/__init__.py`, which builds the settings, and a
+settings class with `EnvironmentSettings` does not start without `ENV`: when
+the shell does not set `ENV`, the child gets `ENV=test` — the same value the
+`tempest new` `conftest.py` pins. An `ENV` exported in the shell wins.
+
+On a project fresh from `tempest new`, all three pass (excerpt, exit code
+`0`):
+
+```text
+$ lint-layers
+Layer rules: no findings.
+$ openapi-errors
+Every route's declared errors match its flow (src).
+$ lint-schemas
+Schema metadata: src.schemas is fully documented.
+$ pytest -n auto -p no:cacheprovider
+```
+
+With a router whose dependencies raise an undeclared 401 and 404, the gate
+stops at `openapi-errors` and `pytest` never runs (exit code `1`):
+
+```text
+$ lint-layers
+Layer rules: no findings.
+$ openapi-errors
+src/api/routers/items.py:19  GET /
+  undocumented: ItemNotFoundException, UnauthorizedException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+A project with neither `src/` nor `app/` does not fail: the step says it
+skipped and passes. Same for `lint-schemas` without a `schemas` package. A
+`src.schemas` that does not import, though, **fails** (exit `2`, with the
+traceback): the package exists and is broken.
+
+To migrate an existing project one gate at a time, switch the step off under
+`[tool.tempest]`:
+
+```toml
+[tool.tempest]
+check_openapi_errors = false
+check_lint_schemas = false
+```
+
+With the key set to `false`, the step prints `skipped: [tool.tempest]
+check_openapi_errors = false.` and passes. A non-boolean value exits `2`. The
+standalone commands (`tempest openapi-errors`, `tempest lint-schemas`) do not
+read these keys.
 
 ### Layer rules — `tempest lint-layers`
 

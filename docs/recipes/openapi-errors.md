@@ -601,6 +601,127 @@ src/api/routers/jobs.py:25  GET /{service_id}
 - **unreachable** — declarada na rota, nunca encontrada no fluxo. Lista inflada,
   documentando erro que não pode acontecer.
 
+### Dependências também levantam
+
+O FastAPI roda as dependências **antes** do handler, e o que elas levantam
+chega ao cliente igual a um `raise` no corpo. O analisador as segue como
+chamadas:
+
+- `Depends(...)` / `Security(...)` nos parâmetros do handler — como default
+  (`x: T = Depends(f)`), dentro de `Annotated[T, Depends(f)]` ou por um alias de
+  módulo (`XDep = Annotated[T, Depends(f)]`), e as dependências **delas**;
+- o `dependencies=[...]` do decorator da rota;
+- o `dependencies=[...]` do `APIRouter(...)` em que a rota está pendurada;
+- o `dependencies=[...]` de todo `include_router(...)` que monta esse router,
+  transitivamente — por nome importado, import relativo
+  (`from .items import router as items_router`, o formato do `tempest new`) ou
+  re-export do `__init__` do pacote.
+
+Um router com o token do scaffold e uma rota atrás de um gate de capacidade:
+
+```python
+# src/api/routers/items.py
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import require_token
+from src.api.dependencies.capabilities import require_items_enabled
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    dependencies=[Depends(require_token)],
+)
+
+
+@router.get("/", dependencies=[Depends(require_items_enabled)])
+async def list_items() -> ServiceInfoSchema:
+    """List items."""
+    return ServiceInfoSchema(service="items")
+```
+
+```python
+# src/api/dependencies/capabilities.py
+from __future__ import annotations
+
+from src.core.exceptions import ItemNotFoundException
+
+
+def require_items_enabled() -> None:
+    """Answer 404 while the items capability is off.
+
+    Raises:
+        ItemNotFoundException: Always, the capability is off.
+    """
+    raise ItemNotFoundException("items")
+```
+
+Nenhum `raise` no corpo, e mesmo assim a rota responde 401 e 404:
+
+```text
+$ tempest openapi-errors --check --path src
+src/api/routers/items.py:19  GET /
+  undocumented: ItemNotFoundException, UnauthorizedException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+O `UnauthorizedException` vem de dentro do SDK: o `require_token` do scaffold é
+`make_token_dependency(...)`, e o analisador conhece o que as factories de auth
+do SDK levantam (`make_token_dependency`, `make_bearer_token_dependency`,
+`make_jwt_user_dependency`, `make_mfa_required_dependency`,
+`make_role_dependency`).
+
+Declare no lugar que você preferir. `responses=error_responses(...)` no
+`APIRouter(...)` ou no `include_router(...)` **conta como declaração** para
+toda rota abaixo dele — é o mesmo `responses=` que o FastAPI aplica a elas no
+OpenAPI:
+
+```python
+# src/api/routers/items.py
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from tempest_fastapi_sdk import UnauthorizedException, error_responses
+
+from src.api.dependencies import require_token
+from src.api.dependencies.capabilities import require_items_enabled
+from src.core.exceptions import ItemNotFoundException
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    dependencies=[Depends(require_token)],
+    responses=error_responses(UnauthorizedException),
+)
+
+
+@router.get(
+    "/",
+    dependencies=[Depends(require_items_enabled)],
+    responses=error_responses(ItemNotFoundException),
+)
+async def list_items() -> ServiceInfoSchema:
+    """List items."""
+    return ServiceInfoSchema(service="items")
+```
+
+```text
+$ tempest openapi-errors --check --path src
+Every route's declared errors match its flow (src).
+```
+
+!!! note "Declaração do router nunca é `unreachable`"
+    Uma rota do mesmo router que não alcança o 401 não é acusada de declará-lo
+    à toa: a declaração é do router, e enxugá-la não é decisão de uma rota só.
+
+!!! info "Corrigido na 0.349.0"
+    Antes, só o corpo do handler era percorrido. O router acima saía com
+    `Every route's declared errors match its flow` — com o 401 e o 404 fora do
+    OpenAPI.
+
 Sai zero quando está em sincronia, então serve de step de CI:
 
 ```yaml
@@ -608,6 +729,14 @@ Sai zero quando está em sincronia, então serve de step de CI:
 - name: Erros documentados no OpenAPI
   run: uv run tempest openapi-errors --check
 ```
+
+!!! tip "O `tempest check` já roda este passo"
+    Desde a 0.349.0 o `tempest check` roda o equivalente a
+    `openapi-errors --check` entre o `mypy` e o `pytest` (passo
+    `openapi-errors`), sobre `src/` ou `app/`. Projeto sem nenhum dos dois pula
+    o passo com aviso; para desligá-lo, `check_openapi_errors = false` em
+    `[tool.tempest]`. Detalhes na
+    [receita da CLI](cli.md#os-passos-do-sdk-no-tempest-check).
 
 Opções:
 

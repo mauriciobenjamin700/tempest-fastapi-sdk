@@ -7,6 +7,7 @@ Breaking-change walkthroughs grouped by minor release. Stick to the version that
 | Where | What changes | What to do |
 | --- | --- | --- |
 | `[genai-audio]` | No longer brings `coqui-tts`, `torchaudio`, `torchcodec` or `six`: `TextToSpeech` (XTTS) moves to the new `[genai-tts-coqui]` extra. `SpeechToText` is unchanged | If you use `TextToSpeech`, install `[genai-audio,genai-tts-coqui]` (or just `[genai-tts-coqui]`, without STT). Otherwise the first synthesis raises `ImportError` naming `[genai-tts-coqui]` |
+| `tempest check` | Runs two new steps between `mypy` and `pytest`: `openapi-errors` (the same `--check`, which also fails on a declared but unreachable exception) and `lint-schemas`. And `openapi-errors` now follows FastAPI dependencies, so a route whose router requires `require_token` or whose provider answers 404 reports what it did not declare | Run `tempest openapi-errors --check` and `tempest lint-schemas` and fix; `tempest openapi-errors --fix` writes the missing declarations. To migrate gradually, `check_openapi_errors = false` / `check_lint_schemas = false` under `[tool.tempest]` |
 
 ## 0.344.0 — token of a deleted account
 
