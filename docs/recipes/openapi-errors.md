@@ -717,6 +717,14 @@ Every route's declared errors match its flow (src).
     Uma rota do mesmo router que não alcança o 401 não é acusada de declará-lo
     à toa: a declaração é do router, e enxugá-la não é decisão de uma rota só.
 
+!!! tip "`TempestAPIRouter` e subclasses contam como router"
+    O `dependencies=` e o `responses=` de um `TempestAPIRouter(...)` valem como
+    os de um `APIRouter(...)`, assim como os de uma classe do projeto que
+    derive de qualquer um dos dois (`class AppRouter(TempestAPIRouter)`), mesmo
+    em outro módulo. Até a 0.349.0 só o nome `APIRouter` contava: a
+    declaração do `TempestAPIRouter` não cobria as rotas e a exceção da
+    dependência dele nunca era acusada (#735).
+
 !!! info "Corrigido na 0.349.0"
     Antes, só o corpo do handler era percorrido. O router acima saía com
     `Every route's declared errors match its flow` — com o 401 e o 404 fora do

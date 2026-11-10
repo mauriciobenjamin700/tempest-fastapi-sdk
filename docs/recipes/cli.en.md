@@ -2333,6 +2333,30 @@ check_openapi_errors = false.` and passes. A non-boolean value exits `2`. The
 standalone commands (`tempest openapi-errors`, `tempest lint-schemas`) do not
 read these keys.
 
+
+#### A required setting in `lint-schemas`
+
+`lint-schemas` imports `src.schemas` in a child process with `ENV=test` when
+the shell sets no `ENV` — and under `ENV=test`, `EnvironmentSettings` discards
+the `.env`. A `Settings` with a required field and no default (a secret such as
+`ADMIN_SECRET_KEY`, which must not carry a placeholder) does not import, and the
+step exits `2`. The reason follows the traceback:
+
+```text
+hint: src.schemas was imported in a child process with ENV=test (ENV=test discards the .env, so a required setting without a default is missing). Give the child the settings it needs under [tool.tempest] lint_schemas_env = { NAME = "value" }, or drop the step with check_lint_schemas = false.
+```
+
+Give the child what it needs, for this step only:
+
+```toml
+[tool.tempest]
+lint_schemas_env = { ADMIN_SECRET_KEY = "lint-only" }
+```
+
+Precedence is: the `ENV=test` default, then the table, then the shell — a value
+the shell exports is never replaced by the placeholder. A non-string value
+exits `2`.
+
 ### Layer rules — `tempest lint-layers`
 
 The `CLAUDE.md` that `tempest new` writes says how a service and a

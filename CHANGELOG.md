@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `[tool.tempest] lint_schemas_env = { NAME = "value" }`: variáveis que só o
+  processo filho do `lint-schemas` do `tempest check` recebe, acima do default
+  `ENV=test` e abaixo do shell. Um `src.schemas` que não importa ganha, depois
+  do traceback, um hint com o `ENV` usado e as duas saídas (#736).
+
+### Fixed
+
+- `tempest openapi-errors` (e o passo do `tempest check`) reconhece
+  `TempestAPIRouter` e qualquer subclasse de router definida no projeto, não
+  só `APIRouter`: o `responses=` deles cobre as rotas e a exceção do
+  `dependencies=` é acusada quando não declarada (#735).
+- `lint-schemas` no `tempest check` não derruba mais o gate com
+  `Field required` para um `Settings` com segredo obrigatório: configure-o em
+  `lint_schemas_env` (#736).
+
+### Changed
+
+- `tempest_fastapi_sdk.cli.openapi_depends.ROUTER_CLASS_NAME` (`str`) virou
+  `ROUTER_CLASS_NAMES` (`frozenset[str]`), mais `router_classes()` (#735).
+
 ## [0.349.0] — 2026-11-10
 
 ### Added

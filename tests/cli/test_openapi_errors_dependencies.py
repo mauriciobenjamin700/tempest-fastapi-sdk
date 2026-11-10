@@ -534,3 +534,88 @@ async def list_items() -> list[str]:
                         if isinstance(exc, ast.Name):
                             raised.add(exc.id)
             assert raised == SDK_DEPENDENCY_FACTORIES[name], name
+
+
+class TestRouterSubclasses:
+    """#735: ``TempestAPIRouter`` and project subclasses are routers too."""
+
+    TEMPEST_ROUTER: str = '''"""Items."""
+
+from fastapi import Depends
+from tempest_fastapi_sdk import TempestAPIRouter, error_responses
+
+from src.api.dependencies.gates import require_api_key, require_items_enabled
+from src.core.exceptions import ApiKeyMissingException, ItemsDisabledException
+
+router: TempestAPIRouter = TempestAPIRouter(
+    dependencies=[Depends(require_api_key)],
+    responses=error_responses(RESPONSES),
+)
+
+
+@router.get("/items", dependencies=[Depends(require_items_enabled)])
+async def list_items() -> list[str]:
+    """List items."""
+    return []
+'''
+
+    def test_tempest_router_responses_count_as_declared(self, tmp_path: Path) -> None:
+        """Cenário: ``TempestAPIRouter(responses=...)`` cobre o 401 do router e
+        o 404 que a dependency da rota levanta.
+
+        Esperado: nenhuma deriva — o falso positivo do tempest-ai.
+        """
+        router = self.TEMPEST_ROUTER.replace(
+            "RESPONSES", "ApiKeyMissingException, ItemsDisabledException"
+        )
+        assert _analyze(tmp_path, {"api/routers/items.py": router}) == []
+
+    def test_tempest_router_dependency_is_reported_when_undeclared(
+        self, tmp_path: Path
+    ) -> None:
+        """Cenário: o 401 sai do ``responses=`` do ``TempestAPIRouter``.
+
+        Esperado: o ``require_api_key`` do ``dependencies=`` entra no grafo e o
+        401 aparece como não documentado — o falso negativo da 0.349.0.
+        """
+        router = self.TEMPEST_ROUTER.replace("RESPONSES", "ItemsDisabledException")
+        findings = _analyze(tmp_path, {"api/routers/items.py": router})
+        assert _undocumented(findings) == {"GET /items": ["ApiKeyMissingException"]}
+
+    def test_a_project_subclass_of_a_subclass_is_a_router(self, tmp_path: Path) -> None:
+        """Cenário: ``class AppRouter(TempestAPIRouter)`` e
+        ``class AdminRouter(AppRouter)``, definidos em outro módulo.
+
+        Esperado: o ``dependencies=`` de um ``AdminRouter(...)`` alcança a rota.
+        """
+        base = '''"""Routers."""
+
+from tempest_fastapi_sdk import TempestAPIRouter
+
+
+class AdminRouter(AppRouter):
+    """Admin routes."""
+
+
+class AppRouter(TempestAPIRouter):
+    """The project's router."""
+'''
+        router = '''"""Admin."""
+
+from fastapi import Depends
+
+from src.api.routers.base import AdminRouter
+from src.api.dependencies.gates import require_api_key
+
+router = AdminRouter(dependencies=[Depends(require_api_key)])
+
+
+@router.get("/admin")
+async def admin() -> None:
+    """Admin."""
+'''
+        findings = _analyze(
+            tmp_path,
+            {"api/routers/base.py": base, "api/routers/admin.py": router},
+        )
+        assert _undocumented(findings) == {"GET /admin": ["ApiKeyMissingException"]}

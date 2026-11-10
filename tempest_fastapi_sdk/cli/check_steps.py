@@ -64,6 +64,23 @@ to build without ``ENV``. ``test`` is what the generated ``conftest.py``
 pins for the suite that runs right after this step.
 """
 
+LINT_SCHEMAS_ENV_CONFIG_KEY: str = "lint_schemas_env"
+"""``[tool.tempest]`` table of variables the ``lint-schemas`` child gets.
+
+Importing the schemas builds the settings, and under ``ENV=test``
+``EnvironmentSettings`` discards the ``.env`` — so a ``Settings`` with a
+required field and no default (a secret such as ``ADMIN_SECRET_KEY``, which
+must not carry a placeholder) refused to import, and ``tempest check`` exited
+2 while ``tempest lint-schemas`` alone passed (#736). The suite solves the same
+thing in ``conftest.py``, which the child never runs. Values here apply only
+to the child: they override :data:`CHILD_ENVIRONMENT_DEFAULTS` and lose to a
+variable the shell exports, so a real value is never replaced by a lint
+placeholder::
+
+    [tool.tempest]
+    lint_schemas_env = { ADMIN_SECRET_KEY = "lint-only" }
+"""
+
 _LINT_SCHEMAS_CHILD: str = (
     "import sys\n"
     "from tempest_fastapi_sdk.cli.schema_lint import run_lint_schemas\n"
@@ -198,12 +215,66 @@ def run_openapi_errors_step(target: str, *, stream: TextIO | None = None) -> int
     return 1
 
 
+def lint_schemas_environment(root: Path) -> dict[str, str]:
+    """Read the variables ``[tool.tempest] lint_schemas_env`` sets.
+
+    Args:
+        root (Path): The project root; the nearest ``pyproject.toml`` from
+            it is read.
+
+    Returns:
+        dict[str, str]: Variable name to value; empty when the key is absent.
+
+    Raises:
+        ValueError: When the key is not a table of strings.
+        tomllib.TOMLDecodeError: When the ``pyproject.toml`` is not TOML.
+    """
+    pyproject, table = load_tempest_table(root)
+    value = table.get(LINT_SCHEMAS_ENV_CONFIG_KEY, {})
+    if not isinstance(value, dict) or not all(
+        isinstance(item, str) for item in value.values()
+    ):
+        raise ValueError(
+            f"{pyproject}: [tool.tempest] {LINT_SCHEMAS_ENV_CONFIG_KEY} must be a "
+            f"table of strings, got {value!r}."
+        )
+    return {str(name): item for name, item in value.items()}
+
+
+def _import_hint(module: str, environment: dict[str, str]) -> str:
+    """Explain the environment a failed ``lint-schemas`` import ran with.
+
+    Args:
+        module (str): The schemas module that did not import.
+        environment (dict[str, str]): The child's environment.
+
+    Returns:
+        str: The hint printed after the traceback.
+    """
+    env = environment.get("ENV", "<unset>")
+    discarded = (
+        " (ENV=test discards the .env, so a required setting without a "
+        "default is missing)"
+        if env == "test"
+        else ""
+    )
+    return (
+        f"\nhint: {module} was imported in a child process with ENV={env}"
+        f"{discarded}. Give the child the settings it needs under "
+        f'[tool.tempest] {LINT_SCHEMAS_ENV_CONFIG_KEY} = {{ NAME = "value" }}, '
+        f"or drop the step with {LINT_SCHEMAS_CONFIG_KEY} = false.\n"
+    )
+
+
 def run_lint_schemas_step(target: str, *, stream: TextIO | None = None) -> int:
     """Run ``lint-schemas`` as a step of ``tempest check``.
 
     The import happens in a child process of the current interpreter, run
-    from the project root, with :data:`CHILD_ENVIRONMENT_DEFAULTS` filling
-    what the shell left unset. Its output is relayed to ``stream``.
+    from the project root. Its environment is, lowest precedence first,
+    :data:`CHILD_ENVIRONMENT_DEFAULTS`, the
+    :data:`LINT_SCHEMAS_ENV_CONFIG_KEY` table, then the shell. Its output is
+    relayed to ``stream``; a failed import is followed by a hint naming the
+    ``ENV`` it ran with and the two ways out.
 
     Args:
         target (str): The ``check`` target.
@@ -213,7 +284,7 @@ def run_lint_schemas_step(target: str, *, stream: TextIO | None = None) -> int:
     Returns:
         int: ``0`` when every field is documented, when the project has no
         schemas package, or when the step is switched off; ``1`` for an
-        undocumented field; ``2`` when the package does not import or the
+        undocumented field; ``2`` when the package does not import or a
         ``[tool.tempest]`` value is invalid.
     """
     output = stream or sys.stdout
@@ -226,7 +297,12 @@ def run_lint_schemas_step(target: str, *, stream: TextIO | None = None) -> int:
     if not (package.is_dir() or package.with_suffix(".py").is_file()):
         output.write(f"skipped: no {module} package under {root}.\n")
         return 0
-    environment = {**CHILD_ENVIRONMENT_DEFAULTS, **os.environ}
+    try:
+        configured = lint_schemas_environment(root)
+    except (ValueError, tomllib.TOMLDecodeError) as exc:
+        output.write(f"{exc}\n")
+        return 2
+    environment = {**CHILD_ENVIRONMENT_DEFAULTS, **configured, **os.environ}
     completed = subprocess.run(
         [sys.executable, "-c", _LINT_SCHEMAS_CHILD, module, str(root)],
         cwd=root,
@@ -237,6 +313,8 @@ def run_lint_schemas_step(target: str, *, stream: TextIO | None = None) -> int:
     )
     output.write(completed.stdout)
     output.write(completed.stderr)
+    if completed.returncode == 2 and f"cannot import {module}" in completed.stdout:
+        output.write(_import_hint(module, environment))
     output.flush()
     return completed.returncode
 
@@ -244,9 +322,11 @@ def run_lint_schemas_step(target: str, *, stream: TextIO | None = None) -> int:
 __all__: list[str] = [
     "CHILD_ENVIRONMENT_DEFAULTS",
     "LINT_SCHEMAS_CONFIG_KEY",
+    "LINT_SCHEMAS_ENV_CONFIG_KEY",
     "OPENAPI_ERRORS_CONFIG_KEY",
     "SOURCE_ROOT_NAMES",
     "check_project_root",
+    "lint_schemas_environment",
     "render_findings",
     "run_lint_schemas_step",
     "run_openapi_errors_step",
