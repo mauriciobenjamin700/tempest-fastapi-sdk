@@ -484,6 +484,63 @@ class TestRefusals:
             strip_image_metadata(source, "image/jpeg", **options)
 
 
+FORMATS: list[tuple[str, str]] = [
+    ("JPEG", "image/jpeg"),
+    ("PNG", "image/png"),
+    ("WEBP", "image/webp"),
+]
+"""Each accepted format as ``(pillow format, media type)``."""
+
+SIGNATURE_BYTES: int = 12
+"""Long enough to carry every accepted format's magic number."""
+
+
+def corrupt(source: bytes, mode: str) -> bytes:
+    """Damage an encoded image the way an interrupted upload does.
+
+    Args:
+        source (bytes): The encoded image.
+        mode (str): ``"header"`` keeps the first 20 bytes, ``"middle"``
+            keeps half the file, ``"garbage"`` keeps the signature and
+            replaces the rest with junk.
+
+    Returns:
+        bytes: The damaged content.
+    """
+    if mode == "header":
+        return source[:20]
+    if mode == "middle":
+        return source[: len(source) // 2]
+    return source[:SIGNATURE_BYTES] + b"\xff\x00garbage" * 20
+
+
+class TestCorruptContent:
+    """Truncated or corrupt content is ``ImageDecodeException``, never Pillow's (#720).
+
+    ``Image.open`` raised ``OSError`` ("Truncated File Read", "could not
+    create decoder object") for a JPEG cut short and for a PNG or WEBP cut
+    in the header. ``OSError`` is what services read as "storage is down",
+    so a corrupt upload was retried forever instead of answered ``422``.
+    """
+
+    @pytest.mark.parametrize(("fmt", "media_type"), FORMATS)
+    @pytest.mark.parametrize("mode", ["header", "middle", "garbage"])
+    def test_is_a_decode_error(self, fmt: str, media_type: str, mode: str) -> None:
+        source = encode(split_red_blue(64, 64), fmt)
+
+        with pytest.raises(ImageDecodeException) as caught:
+            strip_image_metadata(corrupt(source, mode), media_type)
+
+        assert caught.value.status_code == 422
+
+    def test_the_reproduction_from_the_issue(self) -> None:
+        """A 64x64 JPEG cut at 200 bytes, as reported."""
+        source = encode(Image.new("RGB", (64, 64), "red"), "JPEG")
+
+        with pytest.raises(ImageDecodeException):
+            strip_image_metadata(source[:200], "image/jpeg")
+
+
 class TestSurface:
     def test_missing_pillow_names_the_extra(
         self, monkeypatch: pytest.MonkeyPatch
