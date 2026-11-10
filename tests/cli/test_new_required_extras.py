@@ -158,7 +158,7 @@ _BOOT_SCRIPT = textwrap.dedent(
     from alembic.script import ScriptDirectory
     from fastapi.testclient import TestClient
 
-    from src.api.app import ALEMBIC_INI
+    from src.db.configs import ALEMBIC_INI_PATH as ALEMBIC_INI
     from src.server import app
     from tempest_fastapi_sdk import AlembicHelper
     from tempest_fastapi_sdk.testing import admin_login_sync

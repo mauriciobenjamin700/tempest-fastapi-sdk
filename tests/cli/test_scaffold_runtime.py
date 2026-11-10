@@ -244,7 +244,9 @@ def _write_domain_from_claude_md(project: Path) -> None:
 
     Every recipe block is written to the path its own first line names
     (``# src/db/models/product.py``), plus the re-exports the document
-    demands and the domain exceptions from its error section. Nothing is
+    demands. The error section's blocks (messages, ``not_found.py``,
+    ``conflict.py``) are appended to the modules the scaffold already
+    holds, as the recipe tells the reader to do. Nothing is
     edited on the way in — an example that no longer works fails the
     test that follows.
 
@@ -319,16 +321,19 @@ def _write_domain_from_claude_md(project: Path) -> None:
             "from .names import USER_TABLE_NAME as USER_TABLE_NAME",
         )
         .replace(
-            '__all__: list[str] = [\n    "USER_TABLE_NAME",\n]',
-            "__all__: list[str] = [\n"
-            '    "PRODUCT_TABLE_NAME",\n'
-            '    "USER_TABLE_NAME",\n'
-            "]",
+            '    "USER_TABLE_NAME",\n',
+            '    "PRODUCT_TABLE_NAME",\n    "USER_TABLE_NAME",\n',
         ),
         encoding="utf-8",
     )
 
-    appended = {"src/api/dependencies/controllers.py", "src/scripts/composition.py"}
+    appended = {
+        "src/api/dependencies/controllers.py",
+        "src/scripts/composition.py",
+        "src/core/constants/messages/errors.py",
+        "src/core/exceptions/not_found.py",
+        "src/core/exceptions/conflict.py",
+    }
     written = {
         path: code
         for path, code in by_path.items()
@@ -380,29 +385,28 @@ def _write_domain_from_claude_md(project: Path) -> None:
             "from .products import ProductModel as ProductModel\n\n"
             '__all__ = [*__all__, "ProductModel"]\n'
         ),
+        "src/core/exceptions/__init__.py": (
+            "from .conflict import (\n"
+            "    ProductNameTakenException as ProductNameTakenException,\n"
+            ")\n"
+            "from .not_found import (\n"
+            "    ProductNotFoundException as ProductNotFoundException,\n"
+            ")\n\n"
+            "__all__ = [\n"
+            "    *__all__,\n"
+            '    "ProductNameTakenException",\n'
+            '    "ProductNotFoundException",\n'
+            "]\n"
+        ),
+        "src/api/docs/__init__.py": (
+            'from . import product as product\n\n__all__ = [*__all__, "product"]\n'
+        ),
     }.items():
         destination = project.joinpath(*relative.split("/"))
         destination.write_text(
             destination.read_text(encoding="utf-8") + "\n" + addition,
             encoding="utf-8",
         )
-
-    exceptions = project / "src" / "core" / "exceptions.py"
-    exceptions.write_text(
-        exceptions.read_text(encoding="utf-8").replace(
-            "from tempest_fastapi_sdk import AppException, NotFoundException",
-            "from tempest_fastapi_sdk import (\n"
-            "    AppException,\n"
-            "    ConflictException,\n"
-            "    NotFoundException,\n"
-            ")",
-        )
-        + by_path["src/core/exceptions.py"].replace(
-            "from tempest_fastapi_sdk import ConflictException, NotFoundException\n",
-            "",
-        ),
-        encoding="utf-8",
-    )
 
 
 def test_claude_md_recipe_produces_a_working_domain(scaffolded: Path) -> None:
@@ -580,7 +584,8 @@ def test_generated_pytest_config_imports_src_from_a_nested_test_dir(
 
     Pytest's default ``prepend`` import mode puts the first directory
     **without** an ``__init__.py`` on ``sys.path``, so the scaffold's own
-    ``tests/test_smoke.py`` imports ``src`` only because ``tests/`` is a
+    ``tests/integration/system/test_service_info.py`` imports ``src`` only
+    because every directory up to ``tests/`` is a
     package. A test in a subdirectory without one — or a run pointed
     straight at it — puts that subdirectory on the path instead, and the
     import fails at collection. ``pythonpath = ["."]`` puts the project
@@ -597,6 +602,10 @@ def test_generated_pytest_config_imports_src_from_a_nested_test_dir(
         "\n"
         "\n"
         "def test_settings_import() -> None:\n"
+        '    """Cenário: um teste numa pasta sem ``__init__.py``.\n'
+        "\n"
+        "    Esperado: ``src`` importa.\n"
+        '    """\n'
         "    assert Settings is not None\n",
         encoding="utf-8",
     )
@@ -631,8 +640,8 @@ def test_generated_suite_runs_in_parallel(scaffolded: Path) -> None:
             "no:cacheprovider",
             "-n",
             "2",
-            "tests/test_smoke.py",
-            "tests/test_schemas.py",
+            "tests/integration",
+            "tests/unit/architecture",
         ],
         cwd=scaffolded,
         capture_output=True,
@@ -645,7 +654,7 @@ def test_generated_suite_runs_in_parallel(scaffolded: Path) -> None:
         },
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "4 passed" in completed.stdout
+    assert "6 passed" in completed.stdout
     assert not (scaffolded / "app.db").exists()
 
 
@@ -681,7 +690,7 @@ def test_bundle_route_follows_the_recipe_domain_layer_by_layer(
         assert expected in paths, paths
     assert not any("service_info" in path for path in paths), paths
     assert not any(path.startswith(".venv") or path == ".env" for path in paths)
-    assert "11 file(s), 399 line(s)" in result.stderr
+    assert "15 file(s), 635 line(s)" in result.stderr
     ambiguous = runner.invoke(cli_app, ["bundle-route", "/api/products"])
     assert ambiguous.exit_code == 2
     assert (

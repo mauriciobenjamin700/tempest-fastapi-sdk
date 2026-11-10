@@ -1201,6 +1201,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `@lru_cache` em `src/core/settings.py` (sobrescrevível por
   `dependency_overrides`) e `get_mailer` / `get_storage` só com
   `[email]` / `[minio]`. Testes: `tests/cli/test_scaffold_dependencies.py`.
+- **Scaffold no padrão de serviço (0.349.0, #718)** — o `tempest new`
+  gera `core/exceptions/` por status (`bad_request`, `unauthorized`,
+  `forbidden`, `not_found`, `conflict`; `code`/`message`/`field` no corpo,
+  sem `__init__`), `core/constants/messages/{errors,successes}.py`,
+  `core/enums/` e `core/types/` como pacote, `db/configs/connection.py`
+  (`make_db_manager`, `hide_parameters=True`) e `migrations.py`
+  (`run_migrations`, chamado pelo lifespan), `api/docs/` com `EndpointDoc`
+  (só no template), `layers_strict = true`, e a suíte em
+  `tests/{unit,integration}/<área>/` com `tests/unit/architecture`
+  (`lint_layers`, `analyze_paths`, `assert_schema_metadata`) e o contrato
+  de exceções. Página "Padrão de serviço" (`docs/service-standard.md`) com
+  o gate de cada item. Testes: `tests/cli/test_scaffold_service_standard.py`.
 - **Dependency de sessão com fábrica (0.303.0, #381)** —
   `make_session_dependency(session_auth=...)` aceita `SessionAuthFactory`
   (`(request) -> SessionAuth`), resolvido por request; overloads tipam

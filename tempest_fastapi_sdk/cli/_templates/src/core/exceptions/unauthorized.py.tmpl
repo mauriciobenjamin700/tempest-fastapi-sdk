@@ -1,0 +1,10 @@
+"""401 refusals — the caller did not prove who they are.
+
+Subclass ``UnauthorizedException`` here, one class per refusal, with
+``code`` and ``message`` in the class body and no ``__init__`` —
+``ItemNotFoundException`` in :mod:`src.core.exceptions.not_found` is the
+shape. Leave ``field`` unset on invalid credentials: naming the input
+that was wrong tells an attacker which half of the pair to keep.
+"""
+
+__all__: list[str] = []

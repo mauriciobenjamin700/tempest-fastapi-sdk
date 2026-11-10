@@ -1,0 +1,40 @@
+"""404 refusals — the requested resource does not exist.
+
+404 is for looking up **one** record. An empty collection is a success:
+a listing answers ``200`` with ``[]``, which is what tells "the query
+matched nothing" apart from "this endpoint does not exist". So there is
+no plural class here (``ItemsNotFoundException``), and there should never
+be one.
+
+``ItemNotFoundException`` is the shape to copy: a docstring, then
+``code``, ``message`` and ``field`` in the class body, and no
+``__init__``. Delete it — together with its constant in
+:mod:`src.core.constants.messages.errors` and its entry in
+``tests/unit/core/test_exceptions_contract.py`` — once your own
+exceptions land.
+"""
+
+from __future__ import annotations
+
+from typing import Any, ClassVar
+
+from tempest_fastapi_sdk import NotFoundException
+
+from src.core.constants.messages import errors
+
+
+class ItemNotFoundException(NotFoundException):
+    """Raised when an item id matches no stored record.
+
+    The id that missed travels in ``details``, not in the message, so the
+    message stays one constant a client can match on:
+    ``raise ItemNotFoundException(details={"item_id": item_id})``.
+    """
+
+    code = "ITEM_NOT_FOUND"
+    message = errors.ITEM_NOT_FOUND
+    field = "item_id"
+    details_example: ClassVar[dict[str, Any]] = {"item_id": "3f2b8c1e"}
+
+
+__all__: list[str] = ["ItemNotFoundException"]

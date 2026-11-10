@@ -1,0 +1,58 @@
+"""Alembic migrations applied when the API boots.
+
+The app lifespan calls :func:`run_migrations` while
+``DATABASE_MIGRATE_ON_STARTUP`` is on (the default), so the schema of
+every environment follows the revisions in ``alembic/versions`` without
+someone remembering to run ``tempest db upgrade``. Turn it off when
+several replicas start together and a one-off job migrates instead.
+
+This module imports nothing from the project, on purpose: ``src.db.models``
+imports this package for the table names, and a project import here
+would build the settings every time Alembic loads the models.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
+"""Absolute path of the project's ``alembic.ini``.
+
+Absolute so the lifespan finds it whatever directory the process was
+started from; the ini anchors its own paths on ``%(here)s``.
+"""
+
+logger: logging.Logger = logging.getLogger(__name__)
+
+
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head.
+
+    ``sync_schema_async`` handles the three states a database can be in:
+    empty (runs every revision), created before Alembic (stamps the
+    baseline, then upgrades) and already migrated (upgrades). It runs in
+    a worker thread, because ``env.py`` opens its own ``asyncio.run``,
+    which does not nest in the lifespan's loop.
+
+    Args:
+        database_url (str): The async SQLAlchemy URL to migrate.
+
+    Returns:
+        SchemaSyncOutcomeEnum: Which of the three paths ran.
+
+    Raises:
+        DestructiveMigrationError: When a pending migration drops a
+            table, a column or a constraint; nothing is applied.
+    """
+    outcome = await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
+    logger.info("Alembic migrations applied: %s", outcome.value)
+    return outcome
+
+
+__all__: list[str] = ["ALEMBIC_INI_PATH", "run_migrations"]

@@ -26,9 +26,14 @@ from tempest_fastapi_sdk import (
 )
 
 from src.core import settings
+from src.db.configs import make_db_manager
 
-db: AsyncDatabaseManager = AsyncDatabaseManager(**settings.database_kwargs())
-"""One database manager per process, connected during the app lifespan."""
+db: AsyncDatabaseManager = make_db_manager(settings)
+"""One database manager per process, connected during the app lifespan.
+
+Built by :func:`~src.db.configs.make_db_manager`, which keeps the bind
+parameters out of every SQLAlchemy error message.
+"""
 
 get_session = db.session_dependency
 """Request-scoped ``AsyncSession`` dependency.

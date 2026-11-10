@@ -5,13 +5,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies import get_service_info_controller
+from src.api.docs import service_info
 from src.controllers import ServiceInfoController
 from src.schemas import ServiceInfoSchema
 
 router: APIRouter = APIRouter(tags=["root"])
 
 
-@router.get("/")
+@router.get("/", **service_info.INDEX)
 async def index(
     controller: ServiceInfoController = Depends(get_service_info_controller),
 ) -> ServiceInfoSchema:

@@ -63,9 +63,9 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     ├── services/<contexto>/         # camada de lógica de negócio
     ├── schemas/                     # DTOs de request/response Pydantic v2
     ├── scripts/                     # composition.py (build_*) + o trabalho que as tasks rodam
-    ├── core/                        # settings.py + enums.py + types.py + exceptions.py
+    ├── core/                        # settings.py + pacotes constants/, enums/, types/, exceptions/ (um módulo por status)
     ├── db/ (opcional)
-    │   ├── configs/names.py         # nomes das tabelas, fonte única
+    │   ├── configs/                 # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
     │   ├── models/<contexto>/       # modelos ORM SQLAlchemy
     │   └── repositories/<contexto>/ # camada de acesso a dados
     ├── ui/ (opcional)               # camada de interface — só com o extra [ssr]
@@ -471,7 +471,7 @@ de permissão roda, e o que o router devolve.
 
 Tudo num exemplo só, completo — copie para um arquivo e rode com
 `uv run python app.py`. Num projeto, cada classe mora na sua camada
-(`db/models/`, `schemas/`, `core/exceptions.py`, `db/repositories/`,
+(`db/models/`, `schemas/`, `core/exceptions/`, `db/repositories/`,
 `services/`, `controllers/`, `api/dependencies/controllers.py`,
 `api/routers/`); aqui estão juntas para o exemplo rodar sozinho.
 
@@ -918,7 +918,7 @@ três classes, e cada endpoint que usa o controller repete a montagem.
     `src/api/dependencies/resources.py` traz `db`, `get_db` e `get_session`
     sempre, `get_mailer` só com `[email]` e `get_storage` só com `[minio]`
     — e, com eles, o `EmailSettings` / `StorageSettings` no `Settings`. O
-    `tests/test_smoke.py` gerado troca o `TITLE` por
+    `tests/integration/system/test_service_info.py` gerado troca o `TITLE` por
     `dependency_overrides[get_settings]` e confere que o `GET /api/`
     responde o valor novo.
 

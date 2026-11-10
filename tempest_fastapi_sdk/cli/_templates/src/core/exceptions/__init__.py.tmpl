@@ -1,0 +1,30 @@
+"""The service's exception family, one module per HTTP status.
+
+| Module | Status | The question the refusal answers |
+| --- | --- | --- |
+| ``bad_request`` | 400 | the current state does not allow it |
+| ``unauthorized`` | 401 | who are you? |
+| ``forbidden`` | 403 | you are, and you still may not |
+| ``not_found`` | 404 | this does not exist |
+| ``conflict`` | 409 | this collides with what is already stored |
+
+Every class subclasses the SDK exception of its status, so
+``register_exception_handlers`` renders the envelope and
+``error_responses(...)`` documents it in OpenAPI. Each one declares
+``code``, ``message`` (a constant from
+:mod:`src.core.constants.messages.errors`) and, when one input is the
+culprit, ``field`` — **in the class body, with no ``__init__``**: what the
+SDK reads without instantiating (``error_responses``, the
+``BaseRepository``, ``tempest openapi-errors``) is then visible on the
+class. Data that changes per raise goes in ``details=`` at the raise site:
+``raise ItemNotFoundException(details={"item_id": item_id})``.
+
+Import from this package, never from the status module:
+``from src.core.exceptions import ItemNotFoundException``.
+``tests/unit/core/test_exceptions_contract.py`` freezes the status,
+``code``, message and ``field`` of every class re-exported here.
+"""
+
+from .not_found import ItemNotFoundException as ItemNotFoundException
+
+__all__: list[str] = ["ItemNotFoundException"]

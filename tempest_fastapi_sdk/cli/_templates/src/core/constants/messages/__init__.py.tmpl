@@ -1,0 +1,13 @@
+"""The text a client reads, in one place instead of spread over the code.
+
+``errors`` holds the ``message`` of every exception in
+:mod:`src.core.exceptions`; ``successes`` holds the confirmation text an
+endpoint returns. Import the module, not the constant
+(``from src.core.constants.messages import errors``), so the use site
+reads ``errors.ITEM_NOT_FOUND``.
+"""
+
+from . import errors as errors
+from . import successes as successes
+
+__all__: list[str] = ["errors", "successes"]

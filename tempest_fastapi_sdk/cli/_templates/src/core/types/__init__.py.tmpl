@@ -1,0 +1,11 @@
+"""Types shared across layers, one module per domain.
+
+A ``Protocol``, a type alias (an ``Annotated`` field type, a ``NewType``
+id) or the ``NamedTuple`` a method returns lives in
+``core/types/<domain>.py`` and is re-exported here — never next to the
+class in a layer module, which holds that class alone (``LAY001``). A
+schema, a service and a repository then agree on one definition:
+``from src.core.types import OrderId``.
+"""
+
+__all__: list[str] = []

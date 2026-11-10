@@ -976,10 +976,10 @@ class TestScaffold:
             "src/db/models/products/product.py",
             "src/controllers/products/product.py",
             "src/scripts/composition.py",
-            "src/core/enums.py",
+            "src/core/enums/products.py",
             "src/api/routers/product.py",
             "src/api/routers/api.py",
-            "tests/test_products.py",
+            "tests/integration/products/test_products.py",
         ):
             assert project / relative in written
         assert lint_layers(project) == []

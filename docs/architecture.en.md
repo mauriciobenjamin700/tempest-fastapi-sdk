@@ -63,9 +63,9 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     ├── services/<context>/          # Business logic layer
     ├── schemas/                     # Pydantic v2 request/response DTOs
     ├── scripts/                     # composition.py (build_*) + the work tasks run
-    ├── core/                        # settings.py + enums.py + types.py + exceptions.py
+    ├── core/                        # settings.py + packages constants/, enums/, types/, exceptions/ (one module per status)
     ├── db/ (optional)
-    │   ├── configs/names.py         # table names, single source
+    │   ├── configs/                 # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
     │   ├── models/<context>/        # SQLAlchemy ORM models
     │   └── repositories/<context>/  # Data access layer
     ├── ui/ (optional)               # interface layer — only with the [ssr] extra
@@ -471,7 +471,7 @@ what the router returns.
 
 All of it in one complete example — copy it into a file and run
 `uv run python app.py`. In a project each class lives in its own layer
-(`db/models/`, `schemas/`, `core/exceptions.py`, `db/repositories/`,
+(`db/models/`, `schemas/`, `core/exceptions/`, `db/repositories/`,
 `services/`, `controllers/`, `api/dependencies/controllers.py`,
 `api/routers/`); here they sit together so the example runs on its own.
 
@@ -920,8 +920,8 @@ wiring.
     Alembic). `src/api/dependencies/resources.py` always holds `db`,
     `get_db` and `get_session`, `get_mailer` only with `[email]` and
     `get_storage` only with `[minio]` — along with `EmailSettings` /
-    `StorageSettings` on `Settings`. The generated `tests/test_smoke.py`
-    swaps `TITLE` through `dependency_overrides[get_settings]` and checks
+    `StorageSettings` on `Settings`. The generated
+    `tests/integration/system/test_service_info.py` swaps `TITLE` through `dependency_overrides[get_settings]` and checks
     that `GET /api/` answers the new value.
 
 ### Guards: route dependency or `@requires` on the method

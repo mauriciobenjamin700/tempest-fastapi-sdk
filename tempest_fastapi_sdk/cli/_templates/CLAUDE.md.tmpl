@@ -11,6 +11,11 @@ Extras enabled in this project: `__SDK_EXTRAS__`
 
 ## Before you write anything
 
+0. **A new service starts from `tempest new`** — never by hand, and never
+   by copying another service. This project already did; a new **domain**
+   inside it starts from [the recipe below](#adding-a-feature-the-exact-order),
+   and the [service standard](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/service-standard/)
+   says why each piece of the layout exists and which gate holds it.
 1. **Check the SDK first.** Most of what a service needs already exists
    there — repositories, pagination, auth, exceptions, cache, queues,
    uploads, admin, HTML pages. Reimplementing it is the single most
@@ -29,14 +34,16 @@ Extras enabled in this project: `__SDK_EXTRAS__`
 ```text
 src/
 ├── api/routers/            # one router per module; /api set once in routers/api.py
+├── api/docs/               # OpenAPI text of each router: one EndpointDoc per handler
 ├── api/dependencies/       # request providers (get_<x>_controller) + infra singletons
 ├── controllers/<context>/  # orchestration across services. No DB access.
 ├── services/<context>/     # business rules. Calls repositories.
 ├── db/repositories/<context>/  # SQLAlchemy async queries. No business rules.
 ├── db/models/<context>/    # ORM models
+├── db/configs/             # table names, make_db_manager, run_migrations
 ├── schemas/                # Pydantic DTOs (request/response)
 ├── scripts/                # composition root (build_*) + work tasks run
-├── core/                   # settings, enums, types, exceptions
+├── core/                   # settings + constants/, enums/, types/, exceptions/
 ├── tasks/ (with [tasks])   # task registration, names, dispatcher, worker
 └── ui/ (with [ssr])        # pages, layout, components, styles — HTML only
 ```
@@ -105,7 +112,8 @@ produces a service that looks unlike every other Tempest service.
 
 Every field carries `title`, `description` and `examples` — they are what
 the OpenAPI document shows the client. A field holding another schema needs
-only `title` and `description`. `tests/test_schemas.py` enforces it with
+only `title` and `description`. `tests/unit/architecture/test_schemas.py`
+enforces it with
 `assert_schema_metadata(src.schemas)`, and `tempest lint-schemas` lists
 what is missing:
 
@@ -145,10 +153,12 @@ class ProductResponseSchema(BaseResponseSchema):
     )
 ```
 
-A domain enum subclasses `BaseStrEnum` and its name **ends in `Enum`**:
+A domain enum subclasses `BaseStrEnum`, its name **ends in `Enum`**, and it
+lives in `src/core/enums/<domain>.py`, re-exported from
+`src/core/enums/__init__.py`:
 
 ```python
-# src/core/enums.py
+# src/core/enums/products.py
 from tempest_fastapi_sdk import BaseStrEnum
 
 
@@ -219,8 +229,10 @@ Then write the migration — the schema only changes through one:
 tempest db revision -m "add products"
 ```
 
-The app applies pending revisions on startup (`sync_schema_async` in the
-lifespan of `src/api/app.py`), so the next boot creates the table. Never
+The app applies pending revisions on startup (`run_migrations`, from
+`src/db/configs/migrations.py`, called by the lifespan of `src/api/app.py`
+while `DATABASE_MIGRATE_ON_STARTUP` is on), so the next boot creates the
+table. Never
 call `create_all` to get there: it adds no column to a table that already
 exists, and the next migration then runs against a schema it does not
 expect.
@@ -232,7 +244,8 @@ expect.
 from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import BaseRepository
 
-from src.core.exceptions import ProductNotFoundError
+from src.core.constants.messages import errors
+from src.core.exceptions import ProductNotFoundException
 from src.db.models import ProductModel
 from src.schemas import ProductResponseSchema
 
@@ -249,8 +262,8 @@ class ProductRepository(BaseRepository[ProductModel]):
         super().__init__(
             session,
             model=ProductModel,
-            not_found_exception=ProductNotFoundError,
-            not_found_message="Produto não encontrado",
+            not_found_exception=ProductNotFoundException,
+            not_found_message=errors.PRODUCT_NOT_FOUND,
         )
 
     def map_to_response(self, instance: ProductModel) -> ProductResponseSchema:
@@ -290,7 +303,7 @@ repositories is a service's job.
 # src/services/products/product.py
 from tempest_fastapi_sdk import BaseService
 
-from src.core.exceptions import ProductNameTakenError
+from src.core.exceptions import ProductNameTakenException
 from src.db.repositories import ProductRepository
 from src.schemas import ProductCreateSchema, ProductResponseSchema
 
@@ -308,10 +321,10 @@ class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
             ProductResponseSchema: The created product.
 
         Raises:
-            ProductNameTakenError: When the name is already registered.
+            ProductNameTakenException: When the name is already registered.
         """
         if await self.repository.exists({"name": data.name}):
-            raise ProductNameTakenError()
+            raise ProductNameTakenException()
         instance = self.repository.map_to_model(data.model_dump())
         instance = await self.repository.add(instance)
         return self.repository.map_to_response(instance)
@@ -452,18 +465,47 @@ builder from `src/scripts/__init__.py` and the provider from
 
 One router per module, declaring only its own prefix:
 
+The text Swagger shows lives in `src/api/docs/product.py`, one
+`EndpointDoc` per handler, re-exported as a module from
+`src/api/docs/__init__.py` (`from . import product as product`):
+
+```python
+# src/api/docs/product.py
+from .base import EndpointDoc
+
+CREATE_PRODUCT: EndpointDoc = {
+    "summary": "Create a product",
+    "description": (
+        "Registers a product and returns it. Responds 409 "
+        "(PRODUCT_NAME_TAKEN) when the name is already in use."
+    ),
+}
+```
+
+The router spreads it into the decorator and declares, in `responses=`,
+every exception its flow raises — `tempest check` fails on one it can
+reach but does not declare (`openapi-errors`):
+
 ```python
 # src/api/routers/product.py
 from fastapi import APIRouter, Depends, status
+from tempest_fastapi_sdk import error_responses
 
 from src.api.dependencies import get_product_controller
+from src.api.docs import product as product_docs
 from src.controllers import ProductController
+from src.core.exceptions import ProductNameTakenException
 from src.schemas import ProductCreateSchema, ProductResponseSchema
 
 router: APIRouter = APIRouter(prefix="/products", tags=["products"])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    responses=error_responses(ProductNameTakenException),
+    **product_docs.CREATE_PRODUCT,
+)
 async def create_product(
     data: ProductCreateSchema,
     controller: ProductController = Depends(get_product_controller),
@@ -510,11 +552,14 @@ __all__: list[str] = ["API_PREFIX", "build_api_router"]
 
 ### 8. Tests (`tests/`)
 
-Every test says, in its docstring, the situation it builds and what it
-proves, and checks something:
+Tests live by kind and area — `tests/unit/<area>/` for one class in
+isolation, `tests/integration/<area>/` for a request through the app —
+each directory with an empty `__init__.py`. Every test says, in its
+docstring, the situation it builds and what it proves, and checks
+something:
 
 ```python
-# tests/test_products.py
+# tests/integration/products/test_products.py
 from fastapi.testclient import TestClient
 
 from src.api.app import create_app
@@ -533,18 +578,24 @@ def test_a_duplicate_name_is_refused() -> None:
     assert duplicate.json()["code"] == "PRODUCT_NAME_TAKEN"
 ```
 
-Name the exception a test expects (`pytest.raises(ProductNotFoundError)`,
+Name the exception a test expects (`pytest.raises(ProductNotFoundException)`,
 never `Exception`), and keep `parametrize` values literal: a `uuid4()`
 turned into text in an id makes each `pytest -n` worker collect different
 tests.
 
 ## What `tempest check` enforces
 
-`tempest check` runs `tempest lint-layers` between `mypy` and `pytest`;
-run it alone while you work. Each violation prints as
-`path:line: CODE message`, and the message says what to change. An
-**error** fails the gate; a **warning** prints `(warning)` and fails only
-with `--strict` or `layers_strict = true` under `[tool.tempest]`.
+`tempest check` runs three project gates between `mypy` and `pytest`:
+`lint-layers` (the table below), `openapi-errors` (every route declares
+in `responses=` the exceptions its flow raises, and nothing more) and
+`lint-schemas` (every schema field has `title`, `description` and
+`examples`). Run any of them alone while you work. Each layer violation
+prints as `path:line: CODE message`, and the message says what to change.
+An **error** fails the gate; a **warning** prints `(warning)` and fails
+only with `--strict` or `layers_strict = true` under `[tool.tempest]` —
+which this project's `pyproject.toml` turns on, so here every row below
+fails the gate. The suite runs the same checks too, in
+`tests/unit/architecture/`, so a plain `pytest` catches them.
 
 | Code | Severity | Reports |
 | --- | --- | --- |
@@ -641,32 +692,71 @@ The SDK's exception hierarchy is registered on the app by
 `register_exception_handlers(app)`. Raise a domain exception and the
 envelope, the status code and the OpenAPI entry come for free.
 
+Exceptions live in `src/core/exceptions/`, **one module per HTTP status**
+(`bad_request.py`, `unauthorized.py`, `forbidden.py`, `not_found.py`,
+`conflict.py`), re-exported from `src/core/exceptions/__init__.py`. The
+message a client reads is a constant in
+`src/core/constants/messages/errors.py`, named after the `code`:
+
 ```python
-# src/core/exceptions.py
-from tempest_fastapi_sdk import ConflictException, NotFoundException
+# src/core/constants/messages/errors.py
+PRODUCT_NAME_TAKEN: str = "A product with this name already exists."
+PRODUCT_NOT_FOUND: str = "Product not found."
+```
+
+```python
+# src/core/exceptions/not_found.py
+from tempest_fastapi_sdk import NotFoundException
+
+from src.core.constants.messages import errors
 
 
-class ProductNotFoundError(NotFoundException):
+class ProductNotFoundException(NotFoundException):
     """Raised when a product id matches no stored record."""
 
     code = "PRODUCT_NOT_FOUND"
+    message = errors.PRODUCT_NOT_FOUND
+    field = "product_id"
+```
+
+```python
+# src/core/exceptions/conflict.py
+from tempest_fastapi_sdk import ConflictException
+
+from src.core.constants.messages import errors
 
 
-class ProductNameTakenError(ConflictException):
+class ProductNameTakenException(ConflictException):
     """Raised when a product name is already registered."""
 
     code = "PRODUCT_NAME_TAKEN"
+    message = errors.PRODUCT_NAME_TAKEN
+    field = "name"
 ```
 
+Then freeze each one in `FROZEN_CONTRACT` of
+`tests/unit/core/test_exceptions_contract.py` — status, `code`, message
+and `field`, written as literals. The test fails for an exception
+re-exported without an entry, so a change to what a client receives is
+always a change in that file too.
+
+- **`code`, `message` and `field` go in the class body, with no
+  `__init__`.** What the SDK reads without raising (`error_responses`,
+  the `BaseRepository`, `tempest openapi-errors`) is then on the class.
+  Data that changes per raise goes in `details=` at the raise site:
+  `raise ProductNotFoundException(details={"product_id": product_id})`.
+- **`field` names the input to blame** (`"name"` for a duplicate name).
+  Leave it unset on invalid credentials — naming the wrong half of the
+  pair helps an attacker.
 - **Always declare `code` in the class body.** Without it the exception
   inherits the SDK's generic identifier (`"NOT_FOUND"`, `"CONFLICT"`),
   which no client can tell apart from any other failure with the same
   status — the SDK raises `InheritedErrorCodeWarning` when you forget.
 - **Never** raise `HTTPException` from a service or controller.
 - **Never** return `{"error": ...}` by hand.
-- A single-resource lookup that misses raises the `*NotFoundError`.
+- A single-resource lookup that misses raises the `*NotFoundException`.
   A collection that matches nothing returns `[]` — an empty list is a
-  successful result, not a 404. Do not define plural `*sNotFoundError`.
+  successful result, not a 404. Do not define plural `*sNotFoundException`.
 
 ## Pagination
 
@@ -856,11 +946,12 @@ uv sync                     # install dependencies
 cp .env.example .env        # first run only
 uv run python main.py       # start the service on __HOST__:__PORT__
 
-tempest check               # lint + format check + mypy + layer rules + pytest
+tempest check               # ruff + format + mypy + lint-layers + openapi-errors + lint-schemas + pytest
 tempest lint-layers         # only the layer rules, errors and warnings
 tempest lint-layers --rule IMP002   # one rule, while migrating
 tempest check --rule IMP002 --strict  # the gate, failing on that rule's warnings
 tempest lint-schemas        # schema fields without title/description/examples
+tempest openapi-errors --check  # routes whose responses= drifted from what they raise
 tempest lint                # ruff check
 tempest fmt                 # ruff format
 tempest type                # mypy
@@ -872,8 +963,10 @@ tempest generate --src                  # add layers for newly pinned extras
 tempest generate --docker               # regenerate docker-compose.yaml
 ```
 
-**Run `tempest check` before declaring any task finished.** A change that
-does not pass it is not done.
+**Run `tempest check` before declaring any task finished** — it already
+runs `openapi-errors` and `lint-schemas` next to the layer rules, so there
+is no separate gate to remember. A change that does not pass it is not
+done.
 
 ## Definition of done
 

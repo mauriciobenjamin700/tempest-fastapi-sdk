@@ -1,0 +1,15 @@
+"""OpenAPI text of every route, one module per router.
+
+``src/api/docs/<router>.py`` holds one :class:`EndpointDoc` per handler,
+named after it in ``UPPER_SNAKE`` (``CREATE_PRODUCT``), and the router
+spreads it into the decorator:
+``@router.post("", **product.CREATE_PRODUCT)``. The router keeps the
+wiring; the prose a client reads in Swagger changes here, without
+touching it. Import the module from this package:
+``from src.api.docs import service_info``.
+"""
+
+from . import service_info as service_info
+from .base import EndpointDoc as EndpointDoc
+
+__all__: list[str] = ["EndpointDoc", "service_info"]

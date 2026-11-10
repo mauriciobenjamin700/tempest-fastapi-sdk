@@ -181,14 +181,20 @@ my_service/
 │   ├── api/
 │   │   ├── app.py           # create_app() wires middleware, handlers and build_api_router()
 │   │   ├── routers/         # api.py (build_api_router, the only /api) + service_info.py (GET /api/)
+│   │   ├── docs/            # base.py (EndpointDoc) + service_info.py — OpenAPI text out of the router
 │   │   └── dependencies/    # auth.py + resources.py (db, get_session, get_mailer/get_storage per extra) + controllers.py (providers)
 │   ├── controllers/system/  # ServiceInfoController — one package per context, one class per module
 │   ├── services/            # business logic, in services/<context>/
 │   ├── schemas/             # Pydantic DTOs
 │   ├── scripts/             # composition.py — the composition root (build_*)
-│   ├── core/                # settings.py + enums.py + types.py + exceptions.py
+│   ├── core/
+│   │   ├── settings.py
+│   │   ├── constants/       # per-domain constants + messages/{errors,successes}.py
+│   │   ├── enums/           # one module per domain
+│   │   ├── types/           # Protocol, alias, NamedTuple — one module per domain
+│   │   └── exceptions/      # one module per status: bad_request, unauthorized, forbidden, not_found, conflict
 │   ├── db/
-│   │   ├── configs/names.py # table names behind one symbol
+│   │   ├── configs/         # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
 │   │   ├── models/users/    # UserModel — only with [auth] (or [admin])
 │   │   └── repositories/
 │   ├── queue/               # only with the [queue] extra — broker + handlers
@@ -197,9 +203,14 @@ my_service/
 │   └── utils/
 └── tests/
     ├── conftest.py          # one SQLite per pytest-xdist worker
-    ├── test_smoke.py        # asserts /api/ and /health/liveness boot
-    └── test_schemas.py      # every exported schema field documented (assert_schema_metadata)
+    ├── integration/system/  # test_service_info.py: /api/, settings override, /health/liveness
+    └── unit/
+        ├── architecture/    # lint_layers, analyze_paths, assert_schema_metadata
+        └── core/            # test_exceptions_contract.py: status, code, message and field frozen
 ```
+
+Why each directory exists, and what enforces each one, is in
+[Service standard](../service-standard.md).
 
 !!! tip "The generated `CLAUDE.md` is the project's contract"
     Every new project ships with a `CLAUDE.md` pinning the rules that
@@ -1712,10 +1723,12 @@ question underneath.
 
 On a real domain the bundle grows the way you would expect: with the
 `products` domain the generated `CLAUDE.md` teaches you to write,
-`tempest bundle-route "GET /api/products"` gave **11 files, 399 lines** —
+`tempest bundle-route "GET /api/products"` gave **15 files, 635 lines** —
 router, `api/dependencies/controllers.py` and `resources.py`, controller,
-service, repository, model, schema, `core/exceptions.py`,
-`db/configs/names.py` and `scripts/composition.py`. No `service_info` file.
+service, repository, model, schema, `core/constants/messages/errors.py`,
+`core/exceptions/conflict.py` and `not_found.py`, `core/settings.py`,
+`db/configs/connection.py` and `names.py` and `scripts/composition.py`.
+No `service_info` file.
 
 The summary goes to `stderr`, so `stdout` carries only the markdown:
 
@@ -2894,7 +2907,7 @@ project enforces it on every `tempest check` — the scaffold already ships
 this test:
 
 ```python
-# tests/test_schemas.py
+# tests/unit/architecture/test_schemas.py
 import src.schemas
 from tempest_fastapi_sdk.testing import assert_schema_metadata
 

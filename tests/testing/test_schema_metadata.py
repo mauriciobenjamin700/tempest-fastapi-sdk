@@ -179,7 +179,9 @@ class TestCommand:
         result = runner.invoke(cli_app, ["new", "demo", "--path", str(tmp_path)])
         assert result.exit_code == 0, result.stdout
         project = tmp_path / "demo"
-        assert (project / "tests" / "test_schemas.py").is_file()
+        assert (
+            project / "tests" / "unit" / "architecture" / "test_schemas.py"
+        ).is_file()
         try:
             checked = runner.invoke(cli_app, ["lint-schemas", "--root", str(project)])
         finally:

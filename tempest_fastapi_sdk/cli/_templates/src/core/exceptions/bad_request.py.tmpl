@@ -1,0 +1,10 @@
+"""400 refusals — the request is well formed, but the current state refuses it.
+
+Subclass ``BadRequestException`` here, one class per refusal, with
+``code``, ``message`` and (when one input is the culprit) ``field`` in
+the class body and no ``__init__`` — ``ItemNotFoundException`` in
+:mod:`src.core.exceptions.not_found` is the shape. A payload that fails
+validation is a 422 the SDK already raises; it does not belong here.
+"""
+
+__all__: list[str] = []
