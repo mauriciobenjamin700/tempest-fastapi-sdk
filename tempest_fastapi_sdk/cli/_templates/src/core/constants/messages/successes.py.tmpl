@@ -1,0 +1,11 @@
+"""Confirmation messages an endpoint returns, one constant per outcome.
+
+An endpoint that answers with a sentence (``{"message": ...}`` after a
+removal, say) reads it from here, so the text lives next to the error
+messages instead of inside a router or a service.
+"""
+
+ITEM_REMOVED: str = "Item removed."
+"""Answer of a successful item removal."""
+
+__all__: list[str] = ["ITEM_REMOVED"]

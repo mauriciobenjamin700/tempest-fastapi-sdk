@@ -114,7 +114,9 @@ class TestNew:
         assert (target / "src" / "api" / "app.py").is_file()
         assert (target / "src" / "core" / "settings.py").is_file()
         assert (target / "src" / "db" / "repositories" / "__init__.py").is_file()
-        assert (target / "tests" / "test_smoke.py").is_file()
+        assert (
+            target / "tests" / "integration" / "system" / "test_service_info.py"
+        ).is_file()
         assert (target / ".gitignore").is_file()
         assert (target / ".env.example").is_file()
         assert (target / "docker-compose.yaml").is_file()

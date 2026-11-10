@@ -1,0 +1,16 @@
+"""OpenAPI text of ``src/api/routers/service_info.py``, one constant per handler."""
+
+from __future__ import annotations
+
+from .base import EndpointDoc
+
+INDEX: EndpointDoc = {
+    "summary": "Describe the service",
+    "description": (
+        "Returns the name the service runs under, read from the TITLE "
+        "setting. Public, no authentication."
+    ),
+}
+"""Doc of ``GET /api/``."""
+
+__all__: list[str] = ["INDEX"]

@@ -1,0 +1,11 @@
+"""Error messages, one constant per exception in :mod:`src.core.exceptions`.
+
+The exception reads its ``message`` from here, in the class body, so the
+text a client sees is written once and a wording change is one line.
+Name each constant after the ``code`` of the exception that uses it.
+"""
+
+ITEM_NOT_FOUND: str = "Item not found."
+"""Message of ``ItemNotFoundException``."""
+
+__all__: list[str] = ["ITEM_NOT_FOUND"]

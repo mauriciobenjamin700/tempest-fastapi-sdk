@@ -1,11 +1,13 @@
-"""Domain enums of this service.
+"""Domain enums of this service, one module per domain.
+
+An enum lives in ``core/enums/<domain>.py`` (``core/enums/orders.py``)
+and is re-exported here, so the rest of the project imports it from the
+package: ``from src.core.enums import OrderStatusEnum``.
 
 Every enum subclasses ``BaseStrEnum`` and its name ends in ``Enum``
 (``OrderStatusEnum``); ``tempest check`` reports one without the suffix
 (``ENUM001``). The database type drops one trailing ``Enum``, so the
 suffix never changes a migration.
 """
-
-from __future__ import annotations
 
 __all__: list[str] = []

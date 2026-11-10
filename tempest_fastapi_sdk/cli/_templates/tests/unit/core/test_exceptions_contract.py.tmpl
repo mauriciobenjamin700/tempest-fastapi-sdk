@@ -1,0 +1,76 @@
+"""Freezes the HTTP contract of every exception the service raises.
+
+The status and the ``code`` are what a client branches on, the message is
+what the user reads, and ``field`` names the input to highlight. Renaming,
+moving or rewording an exception must not change any of the four without
+this test saying so: a change here is a change to the API.
+
+A new exception in :mod:`src.core.exceptions` fails
+``test_every_exported_exception_has_a_frozen_contract`` until its entry
+lands in :data:`FROZEN_CONTRACT`.
+"""
+
+from __future__ import annotations
+
+import pytest
+from tempest_fastapi_sdk import AppException
+
+from src.core import exceptions
+
+FROZEN_CONTRACT: dict[str, tuple[int, str, str, str | None]] = {
+    "ItemNotFoundException": (404, "ITEM_NOT_FOUND", "Item not found.", "item_id"),
+}
+"""Exception name → ``(status, code, message, field)``, written as literals."""
+
+
+def test_every_exported_exception_has_a_frozen_contract() -> None:
+    """Cenário: as exceções que ``src.core.exceptions`` re-exporta.
+
+    Esperado: cada uma tem entrada em ``FROZEN_CONTRACT``, e nenhuma
+    entrada sobra para uma classe que saiu do pacote.
+    """
+    exported = {
+        name
+        for name in exceptions.__all__
+        if issubclass(getattr(exceptions, name), AppException)
+    }
+    assert exported == set(FROZEN_CONTRACT)
+
+
+@pytest.mark.parametrize("name", sorted(FROZEN_CONTRACT))
+def test_the_class_body_carries_the_contract(name: str) -> None:
+    """Cenário: a classe lida sem instanciar, como o SDK a lê.
+
+    Esperado: status, ``code``, mensagem e ``field`` batem com o contrato
+    congelado, e a classe não define ``__init__`` — o dado de cada raise
+    vai em ``details=``.
+    """
+    exception_class = getattr(exceptions, name)
+    contract = (
+        exception_class.status_code,
+        exception_class.code,
+        exception_class.message,
+        exception_class.field,
+    )
+    assert contract == FROZEN_CONTRACT[name]
+    assert "__init__" not in vars(exception_class)
+
+
+@pytest.mark.parametrize("name", sorted(FROZEN_CONTRACT))
+def test_a_raise_answers_with_the_contract(name: str) -> None:
+    """Cenário: a exceção levantada sem argumento, com ``details=``.
+
+    Esperado: a instância carrega o mesmo contrato da classe e guarda o
+    ``details`` do raise.
+    """
+    details = {"probe": "value"}
+    with pytest.raises(getattr(exceptions, name)) as raised:
+        raise getattr(exceptions, name)(details=details)
+    contract = (
+        raised.value.status_code,
+        raised.value.code,
+        raised.value.message,
+        raised.value.field,
+    )
+    assert contract == FROZEN_CONTRACT[name]
+    assert raised.value.details == details

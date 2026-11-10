@@ -1,0 +1,32 @@
+"""Every route declares, in ``responses=``, the errors its flow can raise.
+
+The same static analysis ``tempest openapi-errors --check`` and the
+``openapi-errors`` step of ``tempest check`` run: from each handler it
+follows the calls (and the ``Depends`` of the route and of its router)
+to every ``raise``, and compares what it found with
+``responses=error_responses(...)``. Both directions fail — an exception
+the client can get but the document hides, and one the document promises
+but no path raises.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from tempest_fastapi_sdk.cli.openapi_errors import analyze_paths
+
+SOURCE_ROOT: Path = Path(__file__).resolve().parents[3] / "src"
+"""The source tree the analysis walks."""
+
+
+def test_every_route_declares_the_errors_it_raises() -> None:
+    """Cenário: a análise estática de ``openapi-errors`` sobre ``src``.
+
+    Esperado: nenhuma rota com exceção alcançável e não declarada, nem
+    declarada e inalcançável.
+    """
+    drift = [
+        (finding.location, finding.undocumented, finding.unreachable)
+        for finding in analyze_paths([SOURCE_ROOT])
+    ]
+    assert drift == []

@@ -1,0 +1,11 @@
+"""Constants of this service, one module per domain.
+
+A literal that more than one module reads, or that a reader would want to
+change without hunting for it, lives here: ``core/constants/<domain>.py``,
+re-exported from this package. The text a client reads is the exception
+to that: it lives in :mod:`.messages`, imported as a module
+(``from src.core.constants.messages import errors``), so every use reads
+``errors.ITEM_NOT_FOUND`` and says where the text came from.
+"""
+
+__all__: list[str] = []

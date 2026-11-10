@@ -1,7 +1,9 @@
-"""Settings, enums, types, exceptions and logging.
+"""Settings, constants, enums, types and exceptions.
 
-The settings are re-exported here (``from src.core import settings``);
-``enums``, ``types`` and ``exceptions`` are imported by module.
+The settings are re-exported here (``from src.core import settings``).
+``constants``, ``enums``, ``types`` and ``exceptions`` are packages with
+one module per domain (per HTTP status, for ``exceptions``); import from
+the package: ``from src.core.exceptions import ItemNotFoundException``.
 """
 
 from .settings import Settings as Settings

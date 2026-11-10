@@ -1,0 +1,29 @@
+"""The layer rules of ``tempest lint-layers``, run by the suite itself.
+
+``tempest check`` runs the same rules as a step; running them here too
+makes a plain ``pytest`` (an editor, a pre-commit hook, a CI job that only
+runs the suite) fail on a layer violation. Warnings fail as well — the
+project starts with no debt, and ``layers_strict = true`` in
+``[tool.tempest]`` holds ``tempest check`` to the same bar. A deviation
+kept on purpose is declared, with its reason, in
+``tests/architecture_exceptions.py``.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from tempest_fastapi_sdk.cli.layer_lint import lint_layers
+
+PROJECT_ROOT: Path = Path(__file__).resolve().parents[3]
+"""The project root, three levels above ``tests/unit/architecture``."""
+
+
+def test_the_layer_rules_report_nothing() -> None:
+    """Cenário: as regras de camada sobre o projeto inteiro (``src`` e ``tests``).
+
+    Esperado: nenhum achado, nem erro nem aviso; a mensagem lista cada um
+    como ``path:line: CODE mensagem``.
+    """
+    findings = [finding.render(PROJECT_ROOT) for finding in lint_layers(PROJECT_ROOT)]
+    assert findings == []

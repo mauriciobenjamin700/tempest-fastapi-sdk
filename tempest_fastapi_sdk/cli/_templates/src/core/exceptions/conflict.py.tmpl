@@ -1,0 +1,10 @@
+"""409 refusals — the request collides with what is already stored.
+
+Subclass ``ConflictException`` here, one class per refusal, with
+``code``, ``message`` and (when one input is the culprit) ``field`` in
+the class body and no ``__init__`` — ``ItemNotFoundException`` in
+:mod:`src.core.exceptions.not_found` is the shape. A duplicate e-mail is
+``field = "email"``.
+"""
+
+__all__: list[str] = []

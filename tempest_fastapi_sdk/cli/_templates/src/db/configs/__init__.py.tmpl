@@ -1,17 +1,29 @@
-"""Database configuration shared by the models — table names.
+"""Database configuration — table names, the manager factory, migrations.
 
-Re-exports the names so a model imports from the package
-(``from src.db.configs import USER_TABLE_NAME``) instead of reaching
-into the module, keeping imports at package level like the rest of the
-project.
+* ``names`` — every table name, read by ``__tablename__`` and every
+  ``ForeignKey``.
+* ``connection`` — :func:`make_db_manager`, the one place the engine
+  options live (``hide_parameters=True``).
+* ``migrations`` — :func:`run_migrations`, which the app lifespan calls
+  while ``DATABASE_MIGRATE_ON_STARTUP`` is on.
+
+Import from the package (``from src.db.configs import make_db_manager``)
+instead of reaching into the module. None of the three imports the
+project, so the models can import this package without a cycle.
 """
 
+from .connection import make_db_manager as make_db_manager
+from .migrations import ALEMBIC_INI_PATH as ALEMBIC_INI_PATH
+from .migrations import run_migrations as run_migrations
 @@if auth@@
 from .names import USER_TABLE_NAME as USER_TABLE_NAME
+@@endif@@
 
 __all__: list[str] = [
+    "ALEMBIC_INI_PATH",
+@@if auth@@
     "USER_TABLE_NAME",
-]
-@@else@@
-__all__: list[str] = []
 @@endif@@
+    "make_db_manager",
+    "run_migrations",
+]

@@ -1,0 +1,29 @@
+"""``EndpointDoc`` — the OpenAPI text of one route, kept out of the router."""
+
+from __future__ import annotations
+
+from typing import TypedDict
+
+
+class EndpointDoc(TypedDict):
+    """Summary and description of one endpoint in the OpenAPI document.
+
+    It is the dictionary spread into the route decorator, so the text
+    Swagger shows lives in ``src/api/docs/<router>.py`` and the router
+    keeps only the wiring: ``@router.get("/", **service_info.INDEX)``.
+    Both keys are the parameters of the same name of
+    ``APIRouter.get`` / ``post`` / etc., so mypy checks the spread.
+
+    Attributes:
+        summary (str): A short imperative phrase, no final period — the
+            operation's title in Swagger.
+        description (str): One to four sentences on what the endpoint
+            does, who may call it, its side effects and its main
+            refusals with their status.
+    """
+
+    summary: str
+    description: str
+
+
+__all__: list[str] = ["EndpointDoc"]

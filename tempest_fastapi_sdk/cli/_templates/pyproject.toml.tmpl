@@ -92,6 +92,11 @@ disallow_untyped_defs = false
 # ANN401 (Any) is never enabled at any level. Override per run with
 # `tempest check --strictness strict`.
 typing_strictness = "standard"
+# A new project has no layer debt, so the warnings of `tempest lint-layers`
+# (LAY, IMP, STR, TST, DI, RTR003/RTR004) fail `tempest check` from the
+# first commit instead of piling up. A deviation kept on purpose is
+# declared, with its reason, in `tests/architecture_exceptions.py`.
+layers_strict = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
