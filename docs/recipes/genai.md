@@ -1773,8 +1773,10 @@ ler NVML.
 ## Áudio (voz)
 
 Interpretar e gerar voz no seu hardware — sem API externa. Requer o extra
-`[genai-audio]` (faster-whisper + Coqui TTS); as engines importam
-preguiçosamente.
+`[genai-audio]` (faster-whisper) para transcrever e, para o TTS do Coqui
+(XTTS v2), o `[genai-tts-coqui]` — separado do `[genai-audio]` desde a
+0.349.0 ([por quê](../installation.md#genai-audio-coqui-split)); as engines
+importam preguiçosamente.
 
 !!! warning "Na v0.252.0 o extra passou a trazer o runtime do Coqui"
     O `coqui-tts` deixa torch, torchaudio e torchcodec atrás dos extras dele
@@ -1795,11 +1797,12 @@ preguiçosamente.
 
     Por isso, da v0.252.0 até a 0.341.0, o extra fixou `transformers<5`. O
     `coqui-tts` 0.28.0 não importa mais esse símbolo, e desde a 0.342.0
-    `[genai-audio]` exige essa versão e não tem mais o teto. Medido em
+    o extra do Coqui (hoje `[genai-tts-coqui]`) exige essa versão e não tem
+    mais o teto. Medido em
     2026-11-01 com coqui-tts 0.28.0, transformers 5.22.1 e torch 2.14: XTTS v2
     com voz pronta e com clonagem, e Bark, sintetizaram uma frase em
     português que o Whisper transcreveu de volta com as mesmas palavras.
-    `[genai-audio]` declara `torch>=2.14`, `torchaudio>=2.11`,
+    `[genai-tts-coqui]` declara `torch>=2.14`, `torchaudio>=2.11`,
     `torchcodec>=0.16` e `six` (o coqui-tts 0.28.0 o importa sem declarar).
     Quem fixava esses pins à mão pode removê-los.
 

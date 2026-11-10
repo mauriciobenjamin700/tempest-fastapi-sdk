@@ -1781,7 +1781,9 @@ read NVML.
 ## Audio (voice)
 
 Interpret and generate voice on your hardware — no external API. Needs the
-`[genai-audio]` extra (faster-whisper + Coqui TTS); the engines import
+`[genai-audio]` extra (faster-whisper) to transcribe and, for Coqui TTS
+(XTTS v2), `[genai-tts-coqui]` — split from `[genai-audio]` since 0.349.0
+([why](../installation.md#genai-audio-coqui-split)); the engines import
 lazily.
 
 !!! warning "In v0.252.0 the extra started shipping the Coqui runtime"
@@ -1803,11 +1805,12 @@ lazily.
 
     That is why, from v0.252.0 to 0.341.0, the extra pinned
     `transformers<5`. `coqui-tts` 0.28.0 no longer imports that symbol, and
-    since 0.342.0 `[genai-audio]` requires that version and drops the cap.
+    since 0.342.0 the Coqui extra (today `[genai-tts-coqui]`) requires that
+    version and drops the cap.
     Measured on 2026-11-01 with coqui-tts 0.28.0, transformers 5.22.1 and
     torch 2.14: XTTS v2 with a built-in voice and with cloning, and Bark,
     synthesized a Portuguese sentence that Whisper transcribed back
-    word for word. `[genai-audio]` declares `torch>=2.14`,
+    word for word. `[genai-tts-coqui]` declares `torch>=2.14`,
     `torchaudio>=2.11`, `torchcodec>=0.16` and `six` (coqui-tts 0.28.0 imports
     it without declaring it). If you pinned those by hand, you can drop them.
 

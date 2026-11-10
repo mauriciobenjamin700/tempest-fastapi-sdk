@@ -1,4 +1,8 @@
-"""Guards for what the ``[genai-audio]`` extra promises and what it says.
+"""Guards for what the audio extras promise and what they say.
+
+Since v0.349.0 Coqui lives in ``[genai-tts-coqui]`` and ``[genai-audio]``
+keeps speech-to-text (#723): the ``torchaudio`` Coqui needs broke Bark on a
+GPU once installed next to it, so ``[genai-audio]`` must not bring it back.
 
 Two failures shipped together in v0.245.0 and are both covered here: the
 extra installed ``coqui-tts`` without the runtime that ``import TTS.api``
@@ -27,28 +31,68 @@ from tempest_fastapi_sdk.genai.audio.tts import _require_tts
 PYPROJECT = Path(__file__).resolve().parents[3] / "pyproject.toml"
 
 
-def _audio_extra() -> list[str]:
-    """Read the requirement strings declared by ``[genai-audio]``.
+def _extra(name: str) -> list[str]:
+    """Read the requirement strings an extra declares.
+
+    Args:
+        name (str): The extra's name.
 
     Returns:
         list[str]: The requirements, verbatim.
     """
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     extras: dict[str, list[str]] = data["project"]["optional-dependencies"]
-    return extras["genai-audio"]
+    return extras[name]
+
+
+def _names(requirements: list[str]) -> set[str]:
+    """Return the distribution names in a requirement list.
+
+    Args:
+        requirements (list[str]): Requirement strings.
+
+    Returns:
+        set[str]: The names, without specifiers or markers.
+    """
+    return {Requirement(requirement).name for requirement in requirements}
+
+
+def _audio_extra() -> list[str]:
+    """Read the requirement strings declared by ``[genai-tts-coqui]``.
+
+    Returns:
+        list[str]: The requirements, verbatim.
+    """
+    return _extra("genai-tts-coqui")
+
+
+class TestSpeechToTextExtra:
+    def test_it_keeps_faster_whisper_and_torch(self) -> None:
+        """torch detects the GPU and installs the CUDA libraries CTranslate2 loads."""
+        assert {"faster-whisper", "torch"} <= _names(_extra("genai-audio"))
+
+    @pytest.mark.parametrize("package", ["torchaudio", "coqui-tts", "torchcodec"])
+    def test_it_does_not_bring_coqui_back(self, package: str) -> None:
+        """With torchaudio installed, transformers imports it for Bark.
+
+        On a GPU the PyPI torchaudio 2.11.1 is a CUDA 13 build that fails to
+        load next to a CUDA 12 torch, and ``POST /audio/speech`` answered 500
+        for a model that never uses torchaudio (#723).
+        """
+        assert package not in _names(_extra("genai-audio"))
 
 
 class TestAudioExtraDeclaresItsRuntime:
     @pytest.mark.parametrize(
         "package",
-        ["torch", "torchaudio", "torchcodec", "coqui-tts", "faster-whisper", "six"],
+        ["torch", "torchaudio", "torchcodec", "coqui-tts", "six"],
     )
     def test_the_runtime_the_code_imports_is_declared(self, package: str) -> None:
         """coqui-tts hides its runtime behind its own extras.
 
         Measured with coqui-tts 0.27.5: installing it alone leaves
         ``import TTS.api`` dying on ``No module named 'torchaudio'``, so a
-        consumer of ``[genai-audio]`` had to name torch, torchaudio and
+        consumer of the Coqui extra had to name torch, torchaudio and
         torchcodec by hand to get a working synthesis. ``six`` joined the
         list with coqui-tts 0.28.0, which imports it without declaring it:
         measured in a clean venv, ``import TTS.api`` dies on
@@ -94,7 +138,7 @@ wheel) and ``import TTS.api`` succeeds on transformers 5.22.1 (#683).
 
 
 def _transformers_pairing_problem(requirements: list[str]) -> str | None:
-    """Explain why a ``[genai-audio]`` requirement list is unsafe, if it is.
+    """Explain why a Coqui requirement list is unsafe, if it is.
 
     Args:
         requirements (list[str]): The extra's requirement strings.

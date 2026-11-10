@@ -6,7 +6,9 @@ once and is reused; each synthesis runs in a worker thread
 semaphore. Mirrors the leviathan TTS service.
 
 ``TTS`` / ``torch`` import lazily, so the module and its device helper
-import without the ``[genai-audio]`` extra.
+import without the ``[genai-tts-coqui]`` extra. Coqui lives in that extra and
+not in ``[genai-audio]`` since v0.349.0 (#723): the ``torchaudio`` it needs
+broke Bark on a GPU once installed next to speech-to-text.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ def _require_tts() -> Any:
     ``except ImportError`` catches far more than a missing extra: a missing
     torchaudio, a missing torchcodec and an incompatible transformers all
     arrive here carrying the sentence that says what to install. Replacing
-    it with "install [genai-audio]" answered every one of them with the one
+    it with "install the extra" answered every one of them with the one
     instruction that cannot help — the extra is already installed. That cost
     a consumer a diagnosis, so the original message is quoted instead.
     """
@@ -48,10 +50,10 @@ def _require_tts() -> Any:
     except ImportError as exc:
         raise ImportError(
             f"Text-to-speech could not import Coqui TTS: {exc}. "
-            "The [genai-audio] extra installs coqui-tts together with torch, "
-            "torchaudio, torchcodec and transformers<5; if any of those is "
+            "The [genai-tts-coqui] extra installs coqui-tts together with "
+            "torch, torchaudio, torchcodec and six; if any of those is "
             "missing or mismatched in this environment, reinstall the extra: "
-            "pip install 'tempest-fastapi-sdk[genai-audio]'",
+            "pip install 'tempest-fastapi-sdk[genai-tts-coqui]'",
         ) from exc
     return TTS
 
@@ -165,7 +167,7 @@ class TextToSpeech:
         voice.
 
         Raises:
-            ImportError: When the ``[genai-audio]`` extra is missing.
+            ImportError: When the ``[genai-tts-coqui]`` extra is missing.
         """
         self._lifecycle.load()
 
@@ -173,7 +175,7 @@ class TextToSpeech:
         """Construct the voice; called once, under the load lock.
 
         Raises:
-            ImportError: When the ``[genai-audio]`` extra is missing.
+            ImportError: When the ``[genai-tts-coqui]`` extra is missing.
         """
         tts_cls = _require_tts()
         self._tts = tts_cls(model_name=self.model_name).to(self.device)

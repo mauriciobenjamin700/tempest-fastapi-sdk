@@ -206,6 +206,18 @@ genai-rag = [
 ]
 genai-audio = [
     "faster-whisper>=1.2.1",
+    # torch stays: SpeechToText(device="auto") detects the GPU through it, and
+    # a CUDA torch is what installs the nvidia-*-cu* libraries CTranslate2
+    # loads (see the GPU section of the installation page).
+    #
+    # No torchaudio here any more (#723). Only coqui-tts needs it, and with it
+    # installed `transformers` imports it while building Bark's AutoProcessor:
+    # on a GPU the PyPI torchaudio 2.11.1 is a CUDA 13 build that does not
+    # load next to a CUDA 12 torch, so `POST /audio/speech` answered 500 for a
+    # model that never uses torchaudio. Coqui moved to [genai-tts-coqui].
+    "torch>=2.14.0",
+]
+genai-tts-coqui = [
     "coqui-tts>=0.28.0",
     # coqui-tts keeps its own runtime behind its extras ([cpu]/[cuda]/[codec]),
     # so installing it alone gives a TTS that refuses to import. Measured with
@@ -220,10 +232,9 @@ genai-audio = [
     # with `ModuleNotFoundError: No module named 'six'`. Drop this once
     # coqui-tts declares it.
     #
-    # No `transformers` bound any more: coqui-tts 0.28.0 no longer imports
+    # No `transformers` bound: coqui-tts 0.28.0 no longer imports
     # `isin_mps_friendly`, the symbol transformers 5.1 removed, which is what
-    # held this extra at `transformers<5` (and with it hub, tokenizers and
-    # diffusers) from v0.252.0 to v0.341.0.
+    # held the audio extra at `transformers<5` from v0.252.0 to v0.341.0.
     "six>=1.17.0",
 ]
 genai-diarization = [

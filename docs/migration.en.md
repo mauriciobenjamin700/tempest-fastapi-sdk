@@ -2,6 +2,12 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.349.0 — Coqui (XTTS) leaves `[genai-audio]`
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `[genai-audio]` | No longer brings `coqui-tts`, `torchaudio`, `torchcodec` or `six`: `TextToSpeech` (XTTS) moves to the new `[genai-tts-coqui]` extra. `SpeechToText` is unchanged | If you use `TextToSpeech`, install `[genai-audio,genai-tts-coqui]` (or just `[genai-tts-coqui]`, without STT). Otherwise the first synthesis raises `ImportError` naming `[genai-tts-coqui]` |
+
 ## 0.344.0 — token of a deleted account
 
 | Where | What changes | What to do |
