@@ -35,6 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `lint-layers` acusava. Quando o arquivo já importa desse pacote, o nome
   entra no bloco existente em vez de abrir outro `from`. Exception que
   nenhum `__init__` re-exporta continua vindo do módulo que a define (#722).
+- `tempest user create` não imprime mais o hash da senha. Num banco ainda não
+  migrado o insert caía com `OperationalError`, e a mensagem que o CLI ecoa
+  trazia `[parameters: ('a@b.dev', '$2b$12$…', …)]` — o hash bcrypt da senha
+  recém-digitada, no terminal e em todo log de CI que capture a saída; o
+  `IntegrityError` de email duplicado vazava igual. Todo
+  `AsyncDatabaseManager` que o CLI abre (`user`, `db seed`, `shell`,
+  `doctor`) sai de `cli_database_manager`, com `hide_parameters=True`, e o
+  erro passa a dizer `[SQL parameters hidden due to hide_parameters=True]`.
+  O `create` confere as tabelas antes do insert e, sem elas, sai com código 1
+  e `error: table(s) users not found in the database. Run `tempest db upgrade`
+  first; nothing was written.` Guard: `tests/test_cli_hide_parameters_guard.py`
+  (#718).
 
 ## [0.348.0] — 2026-11-09
 

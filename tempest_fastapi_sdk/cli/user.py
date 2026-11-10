@@ -696,19 +696,43 @@ async def _create_user(
 
     Raises:
         ConflictException: When the insert is rejected by the database.
-        typer.Exit: With code 1 when no valid MFA code was typed; nothing
-            is written.
+        typer.Exit: With code 1 when no valid MFA code was typed, or when
+            a table the command writes to does not exist yet (a database
+            never migrated with ``tempest db upgrade``); nothing is written.
     """
-    from tempest_fastapi_sdk import AsyncDatabaseManager, BaseRepository
+    from sqlalchemy import Table
+
+    from tempest_fastapi_sdk import BaseRepository
+    from tempest_fastapi_sdk.cli._database import (
+        cli_database_manager,
+        missing_tables,
+    )
     from tempest_fastapi_sdk.exceptions import (
         ConflictException,
         UnauthorizedException,
     )
     from tempest_fastapi_sdk.utils.totp import provisioning_qr_terminal
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
+        touched: list[type[Any]] = [user_model]
+        if recovery_code_model is not None:
+            touched.append(recovery_code_model)
+        if audit_model is not None:
+            touched.append(audit_model)
+        absent = await missing_tables(
+            db,
+            [cast(Table, model.__table__) for model in touched],
+        )
+        if absent:
+            typer.echo(
+                f"error: table(s) {', '.join(absent)} not found in the "
+                "database. Run `tempest db upgrade` first; nothing was "
+                "written.",
+                err=True,
+            )
+            raise typer.Exit(1)
         async with db.get_session_context() as session:
             user = user_model(
                 email=email.lower(),
@@ -819,9 +843,9 @@ async def _set_user_admin(
     """
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -907,14 +931,14 @@ async def _set_user_password(
     """
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
     from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
     from tempest_fastapi_sdk.exceptions import (
         UnauthorizedException,
         ValidationException,
     )
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -1060,10 +1084,11 @@ async def _reset_user_mfa(
     """
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager, BaseRepository
+    from tempest_fastapi_sdk import BaseRepository
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
     from tempest_fastapi_sdk.exceptions import ValidationException
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -1124,9 +1149,9 @@ async def _list_users(
     """Return ``(id, email, is_admin, is_active)`` rows."""
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -1165,9 +1190,9 @@ async def _fetch_user(
     """
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -1212,10 +1237,10 @@ async def _set_user_active(
     """
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
     from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -1269,9 +1294,9 @@ async def _delete_user(
     """
     from sqlalchemy import delete, select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -1317,10 +1342,10 @@ async def _revoke_sessions(
     """
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
     from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:
@@ -1364,9 +1389,9 @@ async def _list_user_sessions(
     """
     from sqlalchemy import select
 
-    from tempest_fastapi_sdk import AsyncDatabaseManager
+    from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-    db = AsyncDatabaseManager(database_url)
+    db = cli_database_manager(database_url)
     await db.connect()
     try:
         async with db.get_session_context() as session:

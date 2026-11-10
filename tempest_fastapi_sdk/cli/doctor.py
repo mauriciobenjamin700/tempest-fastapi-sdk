@@ -156,9 +156,9 @@ def _database_check(settings: Any) -> CheckOutcome:
         return CheckOutcome("database", _SKIP, "no DATABASE_URL")
 
     async def _probe() -> tuple[bool, str]:
-        from tempest_fastapi_sdk import AsyncDatabaseManager
+        from tempest_fastapi_sdk.cli._database import cli_database_manager
 
-        manager = AsyncDatabaseManager(url)
+        manager = cli_database_manager(url)
         await manager.connect()
         try:
             return (await manager.health_check(), manager.db_url_safe)
