@@ -46,6 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{"detail": "image is larger than 16 bytes", "code": "UPLOAD_TOO_LARGE",
   "details": {"max_bytes": 16}}` com `413`, contra o mesmo corpo com
   `VALIDATION_ERROR` e `422` antes. Nota em `docs/migration.md` (#718).
+- **Quebra:** o `tempest check` roda dois passos novos entre o `mypy` e o
+  `pytest`: `openapi-errors` (o mesmo que `tempest openapi-errors --check`) e
+  `lint-schemas` (o mesmo que `tempest lint-schemas`, importando o pacote num
+  processo filho, com `ENV=test` quando o shell não define `ENV`). Projeto sem
+  `src/`/`app/` ou sem pacote `schemas` pula o passo com aviso; cada um
+  desliga com `check_openapi_errors = false` / `check_lint_schemas = false` em
+  `[tool.tempest]`. Medido num projeto `tempest new`: passa limpo, e falha
+  (exit `1`) com rota levantando exceção não declarada (#718).
 
 ### Fixed
 
@@ -83,6 +91,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   depreciado continua recusado. `ENV=test` escrito **só** no `.env` não
   descarta o arquivo: a decisão não lê a própria fonte que descartaria
   (#718).
+- `tempest openapi-errors` segue as dependências do FastAPI: `Depends` /
+  `Security` nos parâmetros (default, `Annotated` e alias
+  `XDep = Annotated[T, Depends(f)]`), o `dependencies=` da rota, do
+  `APIRouter(...)` e de todo `include_router(...)` acima dele, e o que as
+  factories de auth do SDK (`make_token_dependency` e afins) levantam. Antes,
+  um `require_api_key` no router ou um provider respondendo 404 ficavam fora,
+  e o relatório dizia `Every route's declared errors match its flow` com o 401
+  e o 404 não documentados. O `responses=error_responses(...)` do
+  `APIRouter`/`include_router` conta como declaração para as rotas abaixo
+  dele, e um parâmetro `Annotated[T, ...]` passa a ser tipado como `T` (#718).
 
 ## [0.348.0] — 2026-11-09
 

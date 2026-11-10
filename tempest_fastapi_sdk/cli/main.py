@@ -263,8 +263,9 @@ def register_quality_gate(target: typer.Typer) -> CheckStep | None:
 
     With ``tempest-cli`` installed (the ``[cli]`` extra), its
     ``register_commands`` adds every :data:`QUALITY_GATE_COMMANDS` entry and
-    ``tempest check`` runs the SDK's layer rules as an extra step between
-    ``mypy`` and ``pytest``. With only ``[cli-ops]``, each name is
+    ``tempest check`` runs the SDK's steps (:func:`build_check_steps`:
+    ``lint-layers``, ``openapi-errors``, ``lint-schemas``) between ``mypy``
+    and ``pytest``. With only ``[cli-ops]``, each name is
     registered as :func:`_gate_placeholder`, and the operation commands
     are untouched.
 
@@ -281,7 +282,6 @@ def register_quality_gate(target: typer.Typer) -> CheckStep | None:
             hint would not fix.
     """
     try:
-        from tempest_cli import CheckStep
         from tempest_cli.main import register_commands
     except ModuleNotFoundError as exc:
         if (exc.name or "").partition(".")[0] not in CLI_GATE_MODULES:
@@ -296,13 +296,41 @@ def register_quality_gate(target: typer.Typer) -> CheckStep | None:
                 },
             )(_gate_placeholder)
         return None
-    step = CheckStep(
-        name="lint-layers",
-        run=run_lint_layers,
-        run_with_options=run_lint_layers_with_options,
+    steps = build_check_steps()
+    register_commands(target, extra_steps=steps)
+    return steps[0]
+
+
+def build_check_steps() -> tuple[CheckStep, ...]:
+    """Build the steps the SDK adds to ``tempest check``, in run order.
+
+    ``lint-layers`` first (static, cheapest), then ``openapi-errors``
+    (static), then ``lint-schemas`` (imports the project in a child
+    process). All three run after ``mypy`` and before ``pytest``. Only
+    ``lint-layers`` reads ``--rule`` / ``--strict``.
+
+    Returns:
+        tuple[CheckStep, ...]: The steps, ``lint-layers`` first.
+
+    Raises:
+        ModuleNotFoundError: When ``tempest_cli`` is not installed.
+    """
+    from tempest_cli import CheckStep
+
+    from tempest_fastapi_sdk.cli.check_steps import (
+        run_lint_schemas_step,
+        run_openapi_errors_step,
     )
-    register_commands(target, extra_steps=(step,))
-    return step
+
+    return (
+        CheckStep(
+            name="lint-layers",
+            run=run_lint_layers,
+            run_with_options=run_lint_layers_with_options,
+        ),
+        CheckStep(name="openapi-errors", run=run_openapi_errors_step),
+        CheckStep(name="lint-schemas", run=run_lint_schemas_step),
+    )
 
 
 LINT_LAYERS_STEP: CheckStep | None = register_quality_gate(app)

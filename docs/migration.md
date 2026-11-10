@@ -2,12 +2,13 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## 0.349.0 — o Coqui (XTTS) sai do `[genai-audio]`
+## 0.349.0 — Coqui no próprio extra, upload grande em 413 e `tempest check` mais rigoroso
 
 | Onde | O que muda | O que fazer |
 | --- | --- | --- |
 | `[genai-audio]` | Não traz mais `coqui-tts`, `torchaudio`, `torchcodec` nem `six`: o `TextToSpeech` (XTTS) passa para o extra novo `[genai-tts-coqui]`. `SpeechToText` não muda | Quem usa `TextToSpeech` instala `[genai-audio,genai-tts-coqui]` (ou só `[genai-tts-coqui]`, sem STT). Sem isso, a primeira síntese levanta `ImportError` citando `[genai-tts-coqui]` |
 | `read_upload_capped` e as rotas que o usam (`/transcribe` do `make_genai_router`, `make_voice_router`, `make_vision_router`) | Upload acima do teto levanta `UploadTooLargeException` (`413`, `code` `UPLOAD_TOO_LARGE`) em vez de `ValidationException` (`422`, `VALIDATION_ERROR`). `detail` e `details.max_bytes` não mudam | Cliente que tratava o `422` do tamanho passa a tratar `413`. Quem capturava `ValidationException` para relançar com `413` pode apagar o wrapper; `except FileTooLargeException` também pega a exceção nova |
+| `tempest check` | Roda dois passos novos entre o `mypy` e o `pytest`: `openapi-errors` (o mesmo `--check`, que também falha em exceção declarada e inalcançável) e `lint-schemas`. E o `openapi-errors` passa a seguir as dependências do FastAPI, então rota cujo router exige `require_token` ou cujo provider responde 404 acusa o que não declarou | Rode `tempest openapi-errors --check` e `tempest lint-schemas` e corrija; `tempest openapi-errors --fix` escreve as declarações que faltam. Para migrar aos poucos, `check_openapi_errors = false` / `check_lint_schemas = false` em `[tool.tempest]` |
 
 ## 0.344.0 — token de conta apagada
 

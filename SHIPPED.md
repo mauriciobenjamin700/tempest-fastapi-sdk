@@ -3588,6 +3588,18 @@ primeiros, achado na classe declarante (MRO). `tempest lint-schemas` importa o
 pacote (o único check que importa o projeto). O scaffold gera
 `tests/test_schemas.py`. Teste: `tests/testing/test_schema_metadata.py`.
 
+## `openapi-errors` e `lint-schemas` no `tempest check` (#718)
+
+`tempest check` roda `lint-layers`, `openapi-errors` e `lint-schemas` como
+passos do SDK entre o `mypy` e o `pytest` (`cli/check_steps.py`,
+`build_check_steps`); projeto sem `src/`/`app/` ou sem `schemas` pula com
+aviso, opt-out por `check_openapi_errors` / `check_lint_schemas` em
+`[tool.tempest]`. O `openapi-errors` segue as dependências do FastAPI
+(`cli/openapi_depends.py`: parâmetros, `Annotated`, alias, `dependencies=` da
+rota, do `APIRouter` e de `include_router` transitivo, factories de auth do
+SDK) e lê `responses=` do router como declaração. Testes:
+`tests/cli/test_check_steps.py`, `tests/cli/test_openapi_errors_dependencies.py`.
+
 ## Scaffold na arquitetura da #616
 
 `tempest new` gera pacotes de contexto (`controllers/system/`,

@@ -42,6 +42,15 @@ hole:
 * **Dynamic raises are invisible.** ``raise EXCEPTION_MAP[key]`` cannot
   be resolved. Documenting the exception in the ``Raises:`` section
   covers it, which the project convention already requires.
+
+FastAPI dependencies are followed like calls: the ``Depends`` /
+``Security`` of a handler's parameters (plain, ``Annotated`` or through a
+module-level alias), the route's ``dependencies=``, and the
+``dependencies=`` of the ``APIRouter(...)`` and of every
+``include_router(...)`` above it. A ``responses=error_responses(...)`` on
+those router sites counts as declared for every route under them. What
+:mod:`tempest_fastapi_sdk.cli.openapi_depends` finds and what it cannot
+see is described there.
 """
 
 from __future__ import annotations
@@ -51,6 +60,16 @@ import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from tempest_fastapi_sdk.cli.openapi_depends import (
+    SDK_DEPENDENCY_FACTORIES,
+    RouterIndex,
+    build_router_index,
+    dependency_aliases,
+    dependency_targets,
+    sdk_dependency_instances,
+    unwrap_annotated,
+)
 
 HTTP_METHODS: frozenset[str] = frozenset(
     {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
@@ -180,6 +199,14 @@ class RouteInfo:
             derives the separator it needs from the source itself
             (``openapi_fix._separator_before``), since this flag cannot see
             the trailing comma a multi-line call carries.
+        router (ast.expr | None): The decorator's receiver — ``router`` in
+            ``@router.get(...)`` — used to find the router-level
+            dependencies and responses.
+        router_declared (set[str]): Exception names declared by
+            ``responses=error_responses(...)`` on the route's
+            ``APIRouter(...)`` or on an ``include_router(...)`` above it.
+            They cover the route, but are never reported as unreachable
+            from it: a router-wide declaration is not the route's to trim.
     """
 
     method: str
@@ -190,6 +217,8 @@ class RouteInfo:
     error_responses_end: tuple[int, int] | None = None
     raises_end: tuple[int, int] | None = None
     declares_empty_call: bool = False
+    router: ast.expr | None = None
+    router_declared: set[str] = field(default_factory=set)
 
 
 @dataclass(slots=True)
@@ -282,10 +311,12 @@ def _annotation_name(node: ast.expr | None) -> str | None:
         node (ast.expr | None): The annotation expression.
 
     Returns:
-        str | None: ``T`` for ``T``, ``pkg.T`` and ``T[X]`` (a generic's
-        own name is what carries the methods). ``None`` for anything
-        else — a union, a string forward reference, a literal.
+        str | None: ``T`` for ``T``, ``pkg.T``, ``T[X]`` (a generic's own
+        name is what carries the methods) and ``Annotated[T, ...]``.
+        ``None`` for anything else — a union, a string forward reference,
+        a literal.
     """
+    node, _ = unwrap_annotated(node)
     if isinstance(node, ast.Subscript):
         node = node.value
     if isinstance(node, ast.Name):
@@ -765,6 +796,7 @@ def _route_of(
                     decorator.end_lineno or 0,
                     decorator.end_col_offset or 0,
                 ),
+                router=decorator.func.value,
             )
         names, found = _declared_in(decorator)
         declared |= names
@@ -842,15 +874,86 @@ def _exception_class_names(trees: Iterable[ast.Module]) -> set[str]:
     return known
 
 
+def _add_dependency_edges(
+    info: FunctionInfo,
+    node: ast.AST | None,
+    annotated_type: str | None = None,
+) -> None:
+    """Turn the ``Depends`` / ``Security`` inside ``node`` into call edges.
+
+    FastAPI calls each dependency before the handler, so whatever it
+    raises reaches the client exactly as a raise in the body does.
+
+    * ``Depends(get_x)`` — a bare edge to ``get_x`` (providers are
+      module-level functions) and a typed edge to ``get_x.__init__``, which
+      is the constructor when the dependency is a class.
+    * ``Depends(deps.get_x)`` — an attribute edge, resolved by name.
+    * ``Depends(make_x(...))`` — the factory's body, nested dependency
+      included, is the edge; an SDK factory listed in
+      :data:`~tempest_fastapi_sdk.cli.openapi_depends.SDK_DEPENDENCY_FACTORIES`
+      contributes its exceptions directly, its body being outside the tree.
+      A class called here contributes its ``__call__``.
+    * ``Depends()`` — the annotated type's constructor.
+
+    Args:
+        info (FunctionInfo): The function the dependencies run for.
+        node (ast.AST | None): A default value, ``Annotated`` metadata or a
+            ``dependencies=`` list.
+        annotated_type (str | None): The parameter's type, the callable of
+            a bare ``Depends()``.
+    """
+    for target in dependency_targets(node):
+        if target is None:
+            if annotated_type is not None:
+                info.typed_calls.add((annotated_type, "__init__"))
+            continue
+        if isinstance(target, ast.Call):
+            factory = _called_name(target)
+            if factory in SDK_DEPENDENCY_FACTORIES:
+                info.raised |= SDK_DEPENDENCY_FACTORIES[factory]
+                continue
+            if isinstance(target.func, ast.Name):
+                info.typed_calls.add((target.func.id, "__call__"))
+            target = target.func
+        if isinstance(target, ast.Name):
+            info.calls.add(target.id)
+            info.typed_calls.add((target.id, "__init__"))
+        elif isinstance(target, ast.Attribute):
+            info.attr_calls.add(target.attr)
+
+
+def _parameter_defaults(
+    args: ast.arguments,
+) -> Iterator[tuple[ast.arg, ast.expr | None]]:
+    """Pair every parameter with its default value.
+
+    Args:
+        args (ast.arguments): A function's parameters.
+
+    Yields:
+        tuple[ast.arg, ast.expr | None]: Each parameter and its default,
+        ``None`` when it has none.
+    """
+    positional = [*args.posonlyargs, *args.args]
+    padding: list[ast.expr | None] = [None] * (len(positional) - len(args.defaults))
+    yield from zip(positional, [*padding, *args.defaults], strict=True)
+    yield from zip(args.kwonlyargs, args.kw_defaults, strict=True)
+
+
 def _iter_functions(
     tree: ast.Module,
     path: Path,
+    aliases: dict[str, ast.expr] | None = None,
 ) -> Iterator[FunctionInfo]:
     """Yield a :class:`FunctionInfo` for every function in a module.
 
     Args:
         tree (ast.Module): The parsed module.
         path (Path): The file the module came from, for reporting.
+        aliases (dict[str, ast.expr] | None): Module-level
+            ``XDep = Annotated[T, Depends(f)]`` aliases of the whole
+            project, so a parameter annotated ``XDep`` resolves to ``T``
+            and depends on ``f``.
 
     Yields:
         FunctionInfo: One entry per (possibly nested) function
@@ -877,6 +980,7 @@ def _iter_functions(
     """
     from tempest_fastapi_sdk.cli.permissions import guard_names
 
+    known_aliases = aliases or {}
     owners = _method_owners(tree)
     attrs_by_class = {info.name: info.attr_types for info in _iter_classes(tree)}
 
@@ -886,11 +990,16 @@ def _iter_functions(
         owner = owners.get(id(node))
         attr_types = attrs_by_class.get(owner or "", {})
         local_types: dict[str, str] = {}
-        args = node.args
-        for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]:
-            annotated = _annotation_name(arg.annotation)
+        dependencies: list[tuple[ast.expr | None, list[ast.expr], str | None]] = []
+        for arg, default in _parameter_defaults(node.args):
+            annotation = arg.annotation
+            if isinstance(annotation, ast.Name) and annotation.id in known_aliases:
+                annotation = known_aliases[annotation.id]
+            annotated = _annotation_name(annotation)
             if annotated is not None:
                 local_types[arg.arg] = annotated
+            _, metadata = unwrap_annotated(annotation)
+            dependencies.append((default, metadata, annotated))
         info = FunctionInfo(
             name=node.name,
             file=path,
@@ -900,6 +1009,15 @@ def _iter_functions(
             calls=set(guard_names(node)),
             owner=owner,
         )
+        for default, metadata, annotated in dependencies:
+            _add_dependency_edges(info, default, annotated)
+            for item in metadata:
+                _add_dependency_edges(info, item, annotated)
+        for decorator in node.decorator_list:
+            if isinstance(decorator, ast.Call):
+                for keyword in decorator.keywords:
+                    if keyword.arg == "dependencies":
+                        _add_dependency_edges(info, keyword.value)
         for statement in node.body:
             for child in ast.walk(statement):
                 if isinstance(child, ast.Raise):
@@ -952,6 +1070,13 @@ def build_call_graph(parsed: Iterable[tuple[Path, ast.Module]]) -> CallGraph:
     resolve a call the same way — a guard's reachable exceptions are
     computed with the same edges as a route's.
 
+    Besides the functions it defines, a module contributes one synthetic
+    module-level function per name bound to an SDK dependency factory
+    (``require_token = make_token_dependency(...)``), raising what that
+    factory's dependency raises, so ``Depends(require_token)`` has a target.
+    Every route then receives the dependencies and router-level
+    ``responses=`` of the router it hangs on (:func:`_attach_router_sites`).
+
     Args:
         parsed (Iterable[tuple[Path, ast.Module]]): The parsed modules,
             paired with the file each came from.
@@ -959,9 +1084,20 @@ def build_call_graph(parsed: Iterable[tuple[Path, ast.Module]]) -> CallGraph:
     Returns:
         CallGraph: The populated indexes.
     """
+    modules = list(parsed)
+    aliases = dependency_aliases(tree for _, tree in modules)
     graph = CallGraph()
-    for file, tree in parsed:
-        graph.functions.extend(_iter_functions(tree, file))
+    for file, tree in modules:
+        graph.functions.extend(_iter_functions(tree, file, aliases))
+        for name, lineno, factory in sdk_dependency_instances(tree):
+            graph.functions.append(
+                FunctionInfo(
+                    name=name,
+                    file=file,
+                    lineno=lineno,
+                    raised=set(SDK_DEPENDENCY_FACTORIES[factory]),
+                )
+            )
         for class_info in _iter_classes(tree):
             graph.bases.setdefault(class_info.name, class_info.bases)
             graph.classes.setdefault(class_info.name, class_info)
@@ -969,7 +1105,30 @@ def build_call_graph(parsed: Iterable[tuple[Path, ast.Module]]) -> CallGraph:
         graph.by_name.setdefault(info.name, []).append(info)
         if info.owner is not None:
             graph.by_qualname.setdefault((info.owner, info.name), []).append(info)
+    _attach_router_sites(graph.functions, build_router_index(modules))
     return graph
+
+
+def _attach_router_sites(functions: Iterable[FunctionInfo], index: RouterIndex) -> None:
+    """Give each route the dependencies and responses of its router.
+
+    Args:
+        functions (Iterable[FunctionInfo]): The analyzed functions; only
+            route handlers whose decorator receiver resolves to a router
+            variable are touched.
+        index (RouterIndex): The router constructions and include edges.
+    """
+    for info in functions:
+        route = info.route
+        if route is None or route.router is None:
+            continue
+        key = index.resolve(info.file, route.router)
+        if key is None:
+            continue
+        for site in index.sites_for(key):
+            _add_dependency_edges(info, site.dependencies)
+            if site.responses is not None:
+                route.router_declared |= _declared_in(site.responses)[0]
 
 
 def _typed_targets(
@@ -1216,6 +1375,7 @@ def analyze_paths(paths: Iterable[Path]) -> list[RouteFinding]:
             continue
 
     known = _exception_class_names(tree for _, tree in parsed)
+    known |= set().union(*SDK_DEPENDENCY_FACTORIES.values())
     graph = build_call_graph(parsed)
 
     findings: list[RouteFinding] = []
@@ -1224,7 +1384,8 @@ def analyze_paths(paths: Iterable[Path]) -> list[RouteFinding]:
             continue
         reachable = _reachable_exceptions(info, graph, known)
         declared = info.route.declared & known
-        undocumented = sorted(reachable - declared)
+        covered = declared | (info.route.router_declared & known)
+        undocumented = sorted(reachable - covered)
         unreachable = sorted(declared - reachable)
         if undocumented or unreachable:
             findings.append(

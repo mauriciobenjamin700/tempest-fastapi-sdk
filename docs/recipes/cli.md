@@ -2161,7 +2161,7 @@ tempest test                                    # pytest -n auto -p no:cacheprov
 tempest test tests/api/                         # com filtro de caminho
 tempest test -w 4                               # quatro workers
 tempest test --serial                           # em série (--lf / --ff, depurador)
-tempest check                                   # lint + fmt-check + type + lint-layers + test, para no primeiro erro
+tempest check                                   # lint + fmt-check + type + lint-layers + openapi-errors + lint-schemas + test, para no primeiro erro
 tempest check --rule IMP002 --strict            # o mesmo gate, com o lint-layers só nessa regra e aviso derrubando
 ```
 
@@ -2237,6 +2237,72 @@ Todo comando retorna o exit code da ferramenta subjacente, então `tempest check
 ```text
 error: 'ruff' was not found in this project's environment, on PATH, and 'uv' is unavailable to run it. Install it with 'uv add --dev ruff' — or the whole set with 'uv add --dev "tempest-cli[tools]"' — and retry.
 ```
+
+### Os passos do SDK no `tempest check`
+
+O `tempest check` vem do `tempest-cli`, que não sabe nada de FastAPI. O SDK
+entrega a ele três passos próprios, que rodam **depois do `mypy` e antes do
+`pytest`**, nesta ordem, com o mesmo contrato dos outros: o primeiro exit code
+diferente de zero para o gate.
+
+| Passo | O que roda | Como acha o projeto |
+| --- | --- | --- |
+| `lint-layers` | as [regras de camada](#regras-de-camada-tempest-lint-layers) | lê `src/` ou `app/` com `ast` |
+| `openapi-errors` | o mesmo que `tempest openapi-errors --check` ([receita](openapi-errors.md#passo-4-tempest-openapi-errors-check)) | lê `src/` ou `app/` com `ast`, sem importar nada |
+| `lint-schemas` | o mesmo que `tempest lint-schemas` | importa `src.schemas` (ou `app.schemas`) num **processo filho** |
+
+A raiz do projeto é o alvo do `check` (`.` por padrão), ou o pai dele quando o
+alvo é o próprio `src`/`app` (`tempest check src`). O `lint-schemas` importa o
+pacote num processo separado, rodado da raiz do projeto, para os módulos do
+projeto não ficarem carregados no processo que roda o `pytest` em seguida. O
+import de `src.schemas` passa pelo `src/__init__.py`, que monta os settings, e
+um settings com `EnvironmentSettings` não sobe sem `ENV`: quando o shell não
+define `ENV`, o filho recebe `ENV=test` — o mesmo valor que o `conftest.py` do
+`tempest new` fixa. Um `ENV` exportado no shell vence.
+
+Num projeto recém-criado pelo `tempest new`, os três passam (trecho da saída,
+exit code `0`):
+
+```text
+$ lint-layers
+Layer rules: no findings.
+$ openapi-errors
+Every route's declared errors match its flow (src).
+$ lint-schemas
+Schema metadata: src.schemas is fully documented.
+$ pytest -n auto -p no:cacheprovider
+```
+
+Com um router cujas dependências levantam 401 e 404 não declarados, o gate
+para no `openapi-errors` e o `pytest` nem roda (exit code `1`):
+
+```text
+$ lint-layers
+Layer rules: no findings.
+$ openapi-errors
+src/api/routers/items.py:19  GET /
+  undocumented: ItemNotFoundException, UnauthorizedException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+Projeto sem `src/` nem `app/` não falha: o passo diz que pulou e passa. O
+mesmo vale para o `lint-schemas` sem pacote `schemas`. Já um `src.schemas` que
+não importa **falha** (exit `2`, com o traceback): o pacote existe e está
+quebrado.
+
+Para migrar um projeto existente um gate de cada vez, desligue o passo em
+`[tool.tempest]`:
+
+```toml
+[tool.tempest]
+check_openapi_errors = false
+check_lint_schemas = false
+```
+
+Com a chave em `false`, o passo imprime `skipped: [tool.tempest]
+check_openapi_errors = false.` e passa. Valor que não é booleano sai com
+exit `2`. Os comandos avulsos (`tempest openapi-errors`,
+`tempest lint-schemas`) não leem essas chaves.
 
 ### Regras de camada — `tempest lint-layers`
 

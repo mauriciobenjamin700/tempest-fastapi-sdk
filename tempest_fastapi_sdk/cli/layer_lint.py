@@ -2715,6 +2715,10 @@ def run_lint_layers_with_options(target: str, options: StepOptions) -> int:
     they do from ``tempest lint-layers``. With no option typed, the rules
     are all reported and strictness comes from ``[tool.tempest]``.
 
+    Standard output is flushed before returning: ``check`` echoes the next
+    step's ``$ <name>`` on standard error, and a piped (block-buffered)
+    report would otherwise print after it, under the wrong step.
+
     Args:
         target (str): The ``check`` target.
         options (StepOptions): ``--rule`` codes (empty for all) and the
@@ -2723,7 +2727,9 @@ def run_lint_layers_with_options(target: str, options: StepOptions) -> int:
     Returns:
         int: The exit code of :func:`run_lint_layers`.
     """
-    return run_lint_layers(target, rules=options.rules or None, strict=options.strict)
+    code = run_lint_layers(target, rules=options.rules or None, strict=options.strict)
+    sys.stdout.flush()
+    return code
 
 
 __all__: list[str] = [
