@@ -33,7 +33,7 @@ my-service/
     ├── core/
     │   ├── __init__.py
     │   ├── settings.py           # Settings(mixins..., BaseAppSettings)
-    │   └── exceptions.py         # domain exceptions (UserNotFoundError, ...)
+    │   └── exceptions/           # one module per status: not_found.py, conflict.py, ...
     ├── db/
     │   ├── __init__.py           # re-exports BaseModel + every model
     │   ├── models/
@@ -433,8 +433,8 @@ __all__: list[str] = [
 The SDK ships generic `NotFoundException`, `ConflictException`, etc. Subclass them per domain so the `isinstance` / `except DomainError` matching stays explicit. Class-level `message` / `code` / `status_code` are defaults the constructor falls back to — you can also override any of them at the raise site without subclassing:
 
 ```python
-# src/core/exceptions.py
-from tempest_fastapi_sdk import ConflictException, NotFoundException
+# src/core/exceptions/not_found.py
+from tempest_fastapi_sdk import NotFoundException
 
 
 class UserNotFoundError(NotFoundException):
@@ -442,11 +442,28 @@ class UserNotFoundError(NotFoundException):
 
     message: str = "Usuário não encontrado"
     code: str = "USER_NOT_FOUND"
+```
+
+```python
+# src/core/exceptions/conflict.py
+from tempest_fastapi_sdk import ConflictException
 
 
 class UserEmailAlreadyTakenError(ConflictException):
+    """Raised when the e-mail is already taken by another user."""
+
     message: str = "Já existe um usuário com esse e-mail"
     code: str = "USER_EMAIL_TAKEN"
+```
+
+One module per status: whoever looks for "what returns 409" opens `conflict.py`. The `__init__.py` re-exports, so the import stays `from src.core.exceptions import ...` (the full standard lives in [Service standard](service-standard.md)):
+
+```python
+# src/core/exceptions/__init__.py
+from .conflict import UserEmailAlreadyTakenError as UserEmailAlreadyTakenError
+from .not_found import UserNotFoundError as UserNotFoundError
+
+__all__: list[str] = ["UserEmailAlreadyTakenError", "UserNotFoundError"]
 ```
 
 For one-off codes you don't need a subclass — pass them to the constructor:

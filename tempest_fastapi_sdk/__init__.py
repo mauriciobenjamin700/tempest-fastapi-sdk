@@ -2091,6 +2091,9 @@ if TYPE_CHECKING:
         RatioField as RatioField,
     )
     from tempest_fastapi_sdk.utils import (
+        RawTextField as RawTextField,
+    )
+    from tempest_fastapi_sdk.utils import (
         RegionEnum as RegionEnum,
     )
     from tempest_fastapi_sdk.utils import (
@@ -3034,6 +3037,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "RetryLogger": "tempest_fastapi_sdk.utils",
     "RetryPolicy": "tempest_fastapi_sdk.utils",
     "SignedDecimalRatioField": "tempest_fastapi_sdk.utils",
+    "RawTextField": "tempest_fastapi_sdk.utils",
     "SlugField": "tempest_fastapi_sdk.utils",
     "StateBR": "tempest_fastapi_sdk.utils",
     "SystemMetrics": "tempest_fastapi_sdk.utils",
@@ -3630,6 +3634,7 @@ __all__: list[str] = [
     "RateLimitStore",
     "RatingField",
     "RatioField",
+    "RawTextField",
     "RedactedError",
     "RedactionFilter",
     "RedactionPolicy",

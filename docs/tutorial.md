@@ -33,7 +33,7 @@ my-service/
     ├── core/
     │   ├── __init__.py
     │   ├── settings.py           # Settings(mixins..., BaseAppSettings)
-    │   └── exceptions.py         # exceções de domínio (UserNotFoundError, ...)
+    │   └── exceptions/           # um módulo por status: not_found.py, conflict.py, ...
     ├── db/
     │   ├── __init__.py           # re-exporta BaseModel + todo modelo
     │   ├── models/
@@ -432,8 +432,8 @@ __all__: list[str] = [
 O SDK entrega `NotFoundException`, `ConflictException`, etc. genéricos. Subclasse-os por domínio para que o matching `isinstance` / `except DomainError` fique explícito. `message` / `code` / `status_code` a nível de classe são defaults aos quais o construtor recorre — você também pode sobrescrever qualquer um deles no ponto do raise sem subclassear:
 
 ```python
-# src/core/exceptions.py
-from tempest_fastapi_sdk import ConflictException, NotFoundException
+# src/core/exceptions/not_found.py
+from tempest_fastapi_sdk import NotFoundException
 
 
 class UserNotFoundError(NotFoundException):
@@ -441,11 +441,28 @@ class UserNotFoundError(NotFoundException):
 
     message: str = "Usuário não encontrado"
     code: str = "USER_NOT_FOUND"
+```
+
+```python
+# src/core/exceptions/conflict.py
+from tempest_fastapi_sdk import ConflictException
 
 
 class UserEmailAlreadyTakenError(ConflictException):
+    """Raised when the e-mail is already taken by another user."""
+
     message: str = "Já existe um usuário com esse e-mail"
     code: str = "USER_EMAIL_TAKEN"
+```
+
+Um módulo por status: quem procura "o que devolve 409" abre `conflict.py`. O `__init__.py` reexporta, então o import continua `from src.core.exceptions import ...` (o padrão completo está em [Padrão de serviço](service-standard.md)):
+
+```python
+# src/core/exceptions/__init__.py
+from .conflict import UserEmailAlreadyTakenError as UserEmailAlreadyTakenError
+from .not_found import UserNotFoundError as UserNotFoundError
+
+__all__: list[str] = ["UserEmailAlreadyTakenError", "UserNotFoundError"]
 ```
 
 Para códigos pontuais você não precisa de uma subclasse — passe-os ao construtor:

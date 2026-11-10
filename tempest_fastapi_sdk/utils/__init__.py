@@ -122,6 +122,9 @@ if TYPE_CHECKING:
         RatioField as RatioField,
     )
     from tempest_fastapi_sdk.utils.fields import (
+        RawTextField as RawTextField,
+    )
+    from tempest_fastapi_sdk.utils.fields import (
         SignedDecimalRatioField as SignedDecimalRatioField,
     )
     from tempest_fastapi_sdk.utils.fields import (
@@ -552,6 +555,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "RatingField": "tempest_fastapi_sdk.utils.fields",
     "RatioField": "tempest_fastapi_sdk.utils.fields",
     "SignedDecimalRatioField": "tempest_fastapi_sdk.utils.fields",
+    "RawTextField": "tempest_fastapi_sdk.utils.fields",
     "SlugField": "tempest_fastapi_sdk.utils.fields",
     "FileStoreUtils": "tempest_fastapi_sdk.utils.file_store",
     "form_encode": "tempest_fastapi_sdk.utils.forms",
@@ -833,6 +837,7 @@ __all__: list[str] = [
     "ProvisioningQrKind",
     "RatingField",
     "RatioField",
+    "RawTextField",
     "RegionEnum",
     "RetryLogger",
     "RetryPolicy",

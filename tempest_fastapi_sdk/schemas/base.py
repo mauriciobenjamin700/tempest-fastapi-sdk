@@ -40,6 +40,13 @@ class BaseSchema(BaseModel):
         ``is``. ``tests/test_enum_schema_guard.py`` fails when a schema
         in this package annotates a field with a non-``str`` enum.
 
+    Strings:
+        ``str_strip_whitespace=True`` trims every ``str`` field, which is
+        right for names and e-mails and corrupts content: a streaming delta
+        ``" mundo"`` arrives as ``"mundo"``. Annotate a content field with
+        :data:`~tempest_fastapi_sdk.RawTextField` to keep it exactly as
+        sent; it overrides the setting for that field only.
+
     Attributes:
         model_config (ConfigDict): The Pydantic configuration.
     """
