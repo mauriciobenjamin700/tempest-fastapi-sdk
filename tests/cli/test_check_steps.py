@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 from tempest_fastapi_sdk.cli import check_steps
 from tempest_fastapi_sdk.cli.check_steps import (
     LINT_SCHEMAS_CONFIG_KEY,
+    LINT_SCHEMAS_ENV_CONFIG_KEY,
     OPENAPI_ERRORS_CONFIG_KEY,
     check_project_root,
     run_lint_schemas_step,
@@ -395,3 +396,117 @@ class TestLintSchemasStep:
         code, report = _run(run_lint_schemas_step, project)
         assert code == 0
         assert f"[tool.tempest] {LINT_SCHEMAS_CONFIG_KEY} = false" in report
+
+
+REQUIRED_SETTINGS: str = '''"""Settings with a required secret (#736)."""
+
+import os
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Reads a ``.env`` unless ``ENV=test``, like ``EnvironmentSettings``."""
+
+    model_config = SettingsConfigDict(
+        env_file=None if os.environ.get("ENV") == "test" else ".env",
+    )
+
+    ADMIN_SECRET_KEY: str
+
+
+settings: Settings = Settings()
+'''
+
+
+class TestLintSchemasEnvironment:
+    """#736: a required setting no longer breaks the step under ``ENV=test``."""
+
+    def _project(self, root: Path, tempest: str = "") -> Path:
+        """Build a project whose ``src`` builds settings with a required secret.
+
+        Args:
+            root (Path): Where to build it.
+            tempest (str): Extra ``[tool.tempest]`` lines.
+
+        Returns:
+            Path: ``root``.
+        """
+        project = _schemas_project(root, DOCUMENTED_SCHEMA)
+        _write(project, "src/__init__.py", "from src.core.settings import settings\n")
+        _write(project, "src/core/__init__.py", "")
+        _write(project, "src/core/settings.py", REQUIRED_SETTINGS)
+        _write(project, ".env", "ADMIN_SECRET_KEY=from-dotenv\n")
+        _write(
+            project,
+            "pyproject.toml",
+            f'[project]\nname = "demo"\n\n[tool.tempest]\n{tempest}',
+        )
+        return project
+
+    def test_a_missing_required_setting_explains_the_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cenário: o shell sem ``ENV`` nem o segredo; o ``.env`` tem o segredo.
+
+        Esperado: exit 2 e, depois do traceback, o hint dizendo que rodou com
+        ``ENV=test``, que o ``.env`` foi descartado e as duas saídas.
+        """
+        monkeypatch.delenv("ENV", raising=False)
+        monkeypatch.delenv("ADMIN_SECRET_KEY", raising=False)
+        code, report = _run(run_lint_schemas_step, self._project(tmp_path))
+        assert code == 2
+        assert "ADMIN_SECRET_KEY" in report
+        assert "with ENV=test (ENV=test discards the .env" in report
+        assert f"[tool.tempest] {LINT_SCHEMAS_ENV_CONFIG_KEY} = " in report
+        assert f"{LINT_SCHEMAS_CONFIG_KEY} = false" in report
+
+    def test_the_configured_environment_reaches_the_child(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cenário: ``lint_schemas_env = { ADMIN_SECRET_KEY = "lint-only" }``.
+
+        Esperado: o import passa e o step dá 0.
+        """
+        monkeypatch.delenv("ENV", raising=False)
+        monkeypatch.delenv("ADMIN_SECRET_KEY", raising=False)
+        project = self._project(
+            tmp_path,
+            f'{LINT_SCHEMAS_ENV_CONFIG_KEY} = {{ ADMIN_SECRET_KEY = "lint-only" }}\n',
+        )
+        code, report = _run(run_lint_schemas_step, project)
+        assert code == 0, report
+
+    def test_the_shell_wins_over_the_configured_value(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cenário: o shell exporta o segredo e o ``pyproject`` também o define.
+
+        Esperado: o filho vê o valor do shell.
+        """
+        monkeypatch.delenv("ENV", raising=False)
+        monkeypatch.setenv("ADMIN_SECRET_KEY", "from-shell")
+        project = self._project(
+            tmp_path,
+            f'{LINT_SCHEMAS_ENV_CONFIG_KEY} = {{ ADMIN_SECRET_KEY = "lint-only" }}\n',
+        )
+        _write(
+            project,
+            "src/schemas/__init__.py",
+            'import os\nassert os.environ["ADMIN_SECRET_KEY"] == "from-shell"\n'
+            + DOCUMENTED_SCHEMA,
+        )
+        code, report = _run(run_lint_schemas_step, project)
+        assert code == 0, report
+
+    def test_a_non_string_value_is_an_error(self, tmp_path: Path) -> None:
+        """Cenário: ``lint_schemas_env = { PORT = 8000 }``.
+
+        Esperado: exit 2 nomeando a chave, sem rodar o filho.
+        """
+        project = self._project(
+            tmp_path, f"{LINT_SCHEMAS_ENV_CONFIG_KEY} = {{ PORT = 8000 }}\n"
+        )
+        code, report = _run(run_lint_schemas_step, project)
+        assert code == 2
+        assert f"{LINT_SCHEMAS_ENV_CONFIG_KEY} must be a table of strings" in report

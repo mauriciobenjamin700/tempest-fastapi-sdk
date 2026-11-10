@@ -2324,6 +2324,30 @@ check_openapi_errors = false.` e passa. Valor que não é booleano sai com
 exit `2`. Os comandos avulsos (`tempest openapi-errors`,
 `tempest lint-schemas`) não leem essas chaves.
 
+
+#### Settings obrigatório no `lint-schemas`
+
+O `lint-schemas` importa o `src.schemas` num processo filho com `ENV=test`
+quando o shell não define `ENV` — e, com `ENV=test`, o `EnvironmentSettings`
+descarta o `.env`. Um `Settings` com campo obrigatório sem default (um segredo
+como `ADMIN_SECRET_KEY`, que não deve ter placeholder) não importa, e o passo
+sai com `2`. Depois do traceback vem o motivo:
+
+```text
+hint: src.schemas was imported in a child process with ENV=test (ENV=test discards the .env, so a required setting without a default is missing). Give the child the settings it needs under [tool.tempest] lint_schemas_env = { NAME = "value" }, or drop the step with check_lint_schemas = false.
+```
+
+Dê ao filho o que ele precisa, só para este passo:
+
+```toml
+[tool.tempest]
+lint_schemas_env = { ADMIN_SECRET_KEY = "lint-only" }
+```
+
+A precedência é: o default `ENV=test`, depois a tabela, depois o shell — um
+valor que o shell exporta nunca é trocado pelo placeholder. Valor que não é
+string sai com `2`.
+
 ### Regras de camada — `tempest lint-layers`
 
 O `CLAUDE.md` que o `tempest new` escreve diz como um service e um

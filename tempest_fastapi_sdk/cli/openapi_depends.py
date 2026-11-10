@@ -45,8 +45,16 @@ from pathlib import Path
 DEPENDENCY_MARKERS: frozenset[str] = frozenset({"Depends", "Security"})
 """Callee names that wrap a FastAPI dependency."""
 
-ROUTER_CLASS_NAME: str = "APIRouter"
-"""The class whose construction declares router-level dependencies."""
+ROUTER_CLASS_NAMES: frozenset[str] = frozenset({"APIRouter", "TempestAPIRouter"})
+"""Router classes whose construction declares router-level dependencies.
+
+FastAPI's ``APIRouter`` and the SDK's ``TempestAPIRouter``, which subclasses
+it. A subclass the analyzed project defines is recognised too, by
+:func:`router_classes`. Before #735 only ``APIRouter`` counted, so a
+``TempestAPIRouter(dependencies=..., responses=...)`` was invisible in both
+directions: its ``responses=`` did not cover the routes, and the exception
+its dependency raises was never reported.
+"""
 
 INCLUDE_ROUTER: str = "include_router"
 """The method that mounts a router under another, with its own dependencies."""
@@ -368,6 +376,41 @@ def _bindings(file: Path, tree: ast.Module, modules: set[Path]) -> dict[str, _Bi
     return bindings
 
 
+def router_classes(trees: Iterable[ast.Module]) -> frozenset[str]:
+    """Return the router class names: the known ones plus local subclasses.
+
+    A class counts when one of its bases is a router class, by bare name or
+    attribute (``fastapi.APIRouter``), followed transitively so a subclass of
+    a subclass is caught whatever the file order.
+
+    Args:
+        trees (Iterable[ast.Module]): The parsed project modules.
+
+    Returns:
+        frozenset[str]: :data:`ROUTER_CLASS_NAMES` plus every class the
+        project derives from them.
+    """
+    bases: dict[str, set[str]] = {}
+    for tree in trees:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                names = bases.setdefault(node.name, set())
+                for base in node.bases:
+                    if isinstance(base, ast.Name):
+                        names.add(base.id)
+                    elif isinstance(base, ast.Attribute):
+                        names.add(base.attr)
+    known = set(ROUTER_CLASS_NAMES)
+    changed = True
+    while changed:
+        changed = False
+        for name, parents in bases.items():
+            if name not in known and parents & known:
+                known.add(name)
+                changed = True
+    return frozenset(known)
+
+
 def build_router_index(parsed: Iterable[tuple[Path, ast.Module]]) -> RouterIndex:
     """Index the router constructions and ``include_router`` calls.
 
@@ -383,6 +426,7 @@ def build_router_index(parsed: Iterable[tuple[Path, ast.Module]]) -> RouterIndex
     index = RouterIndex(modules={file for file, _ in modules})
     for file, tree in modules:
         index.bindings[file] = _bindings(file, tree, index.modules)
+    routers = router_classes(tree for _, tree in modules)
     for file, tree in modules:
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign | ast.AnnAssign):
@@ -392,7 +436,7 @@ def build_router_index(parsed: Iterable[tuple[Path, ast.Module]]) -> RouterIndex
                 )
                 if not isinstance(value, ast.Call):
                     continue
-                if called_name(value) != ROUTER_CLASS_NAME:
+                if called_name(value) not in routers:
                     continue
                 site = RouterSite(
                     dependencies=_keyword(value, "dependencies"),
@@ -449,7 +493,7 @@ __all__: list[str] = [
     "ANNOTATED_NAME",
     "DEPENDENCY_MARKERS",
     "INCLUDE_ROUTER",
-    "ROUTER_CLASS_NAME",
+    "ROUTER_CLASS_NAMES",
     "SDK_DEPENDENCY_FACTORIES",
     "RouterIndex",
     "RouterKey",
@@ -458,6 +502,7 @@ __all__: list[str] = [
     "called_name",
     "dependency_aliases",
     "dependency_targets",
+    "router_classes",
     "sdk_dependency_instances",
     "unwrap_annotated",
 ]

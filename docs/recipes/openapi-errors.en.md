@@ -722,6 +722,14 @@ Every route's declared errors match its flow (src).
     declaring it: the declaration belongs to the router, and trimming it is not
     one route's call.
 
+!!! tip "`TempestAPIRouter` and subclasses count as routers"
+    The `dependencies=` and `responses=` of a `TempestAPIRouter(...)` count
+    like those of an `APIRouter(...)`, and so do those of a project class
+    deriving from either (`class AppRouter(TempestAPIRouter)`), even in another
+    module. Up to 0.349.0 only the `APIRouter` name counted: the
+    `TempestAPIRouter` declaration did not cover the routes and its
+    dependency's exception was never reported (#735).
+
 !!! info "Fixed in 0.349.0"
     Before, only the handler body was walked. The router above came out as
     `Every route's declared errors match its flow` — with the 401 and the 404
