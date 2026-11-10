@@ -662,6 +662,14 @@ uv run python main.py                           # serve no HOST:PORT configurado
 uv run pytest                                   # o smoke test embutido
 ```
 
+### Trazer um projeto antigo ao padrão — `tempest generate --standard`
+
+Escreve as peças do [padrão de serviço](../service-standard.md) que um projeto anterior a ele não tem — `core/constants/`, `core/enums/`, `core/types/`, os guards de `tests/unit/` —, converte um `core/exceptions.py` plano no pacote `core/exceptions/` com um módulo por status e congela o contrato das exceções em `tests/unit/core/test_exceptions_contract.py`. Arquivo existente é pulado sem `--force`; a migração recusa, sem escrever nada, quando o módulo tem algo além de import, classe e `__all__`. O passo a passo está em [Projeto existente](../service-standard.md#projeto-existente-tempest-generate-standard).
+
+```bash
+tempest generate --standard
+```
+
 ### Subir o serviço — `tempest serve`
 
 ```bash

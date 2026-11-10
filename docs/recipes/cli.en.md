@@ -668,6 +668,14 @@ uv run python main.py                           # serves on the configured HOST:
 uv run pytest                                   # the bundled smoke test
 ```
 
+### Bring an older project to the standard — `tempest generate --standard`
+
+Writes the pieces of the [service standard](../service-standard.md) a project older than it lacks — `core/constants/`, `core/enums/`, `core/types/`, the `tests/unit/` guards —, turns a flat `core/exceptions.py` into the `core/exceptions/` package with one module per status, and freezes the exception contract in `tests/unit/core/test_exceptions_contract.py`. An existing file is skipped without `--force`; the migration refuses, writing nothing, when the module holds anything besides imports, classes and `__all__`. The walkthrough is in [An existing project](../service-standard.md#an-existing-project-tempest-generate-standard).
+
+```bash
+tempest generate --standard
+```
+
 ### Run the service — `tempest serve`
 
 ```bash
