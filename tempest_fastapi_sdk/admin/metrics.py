@@ -178,8 +178,9 @@ def _is_number(value: object) -> TypeGuard[int | float | Decimal]:
         value (object): A field value.
 
     Returns:
-        TypeGuard[int | float | Decimal]: True for ``int``, ``float`` and ``Decimal``; False for
-        ``bool``, which is an ``int`` but not a quantity.
+        TypeGuard[int | float | Decimal]: True for ``int``, ``float``
+        and ``Decimal``; False for ``bool``, which is an ``int`` but not
+        a quantity.
     """
     return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool)
 
