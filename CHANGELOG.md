@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `strip_image_metadata` levanta `ImageDecodeException` (`422`) também para
+  imagem truncada ou corrompida que o Pillow recusa já no `Image.open`: um
+  JPEG cortado no meio dos dados e um PNG ou WEBP cortado no cabeçalho
+  escapavam como `OSError` ("Truncated File Read", "could not create decoder
+  object"), e `OSError` é a classe que os serviços tratam como storage
+  indisponível — a foto corrompida voltava para a fila para sempre. A
+  gravação também traduz o erro. Medido no Pillow 13.0.0 (#720).
 - `tempest openapi-errors --fix` importa a exception do pacote mais raso que
   a re-exporta (`from src.core.exceptions import X`), não do submódulo que a
   define (`src.core.exceptions.bad_request`), que o `IMP002` do
