@@ -6425,6 +6425,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.348.0] — 2026-11-09
+
+### Fixed
+
+- Com PyAV 19, todo áudio que `load_audio` decodifica pelo PyAV (qualquer
+  formato além de WAV PCM já na taxa-alvo) falhava no `SpeechToText`, no
+  `SpeakerDiarizer` e no `VoiceEmbedder`: `load_audio` chamava `av.open(...,
+  metadata_errors="ignore")`, e o PyAV 19 removeu o argumento. O `TypeError`
+  sai da chamada, antes de o arquivo ser lido (visto com FLAC num serviço
+  consumidor, que respondia `500`). O lock do SDK resolvia o PyAV 18.1.0, onde
+  o argumento existe, e a suíte não via o defeito; um consumidor que resolve
+  hoje recebe o 19.0.2. O argumento agora só vai para o PyAV 18 ou anterior,
+  onde ele é o que deixa abrir um arquivo com tag de metadado em UTF-8
+  inválido (medido: o 18.1.0 levanta `UnicodeDecodeError` sem ele; o 19.0.2
+  abre o mesmo arquivo sem ele, decodificando a tag com `surrogateescape`). O
+  lock passa para o PyAV 19.0.2.
+
 ## [0.347.0] — 2026-11-09
 
 ### Added
