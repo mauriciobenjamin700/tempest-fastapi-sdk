@@ -179,14 +179,20 @@ my_service/
 │   ├── api/
 │   │   ├── app.py           # create_app() conecta middleware, handlers e build_api_router()
 │   │   ├── routers/         # api.py (build_api_router, o único /api) + service_info.py (GET /api/)
+│   │   ├── docs/            # base.py (EndpointDoc) + service_info.py — texto do OpenAPI fora do router
 │   │   └── dependencies/    # auth.py + resources.py (db, get_session, get_mailer/get_storage por extra) + controllers.py (providers)
 │   ├── controllers/system/  # ServiceInfoController — um pacote por contexto, uma classe por módulo
 │   ├── services/            # lógica de negócio, em services/<contexto>/
 │   ├── schemas/             # DTOs Pydantic
 │   ├── scripts/             # composition.py — o composition root (build_*)
-│   ├── core/                # settings.py + enums.py + types.py + exceptions.py
+│   ├── core/
+│   │   ├── settings.py
+│   │   ├── constants/       # constantes por domínio + messages/{errors,successes}.py
+│   │   ├── enums/           # um módulo por domínio
+│   │   ├── types/           # Protocol, alias, NamedTuple — um módulo por domínio
+│   │   └── exceptions/      # um módulo por status: bad_request, unauthorized, forbidden, not_found, conflict
 │   ├── db/
-│   │   ├── configs/names.py # nomes de tabela num símbolo só
+│   │   ├── configs/         # names.py + connection.py (make_db_manager) + migrations.py (run_migrations)
 │   │   ├── models/users/    # UserModel — só com [auth] (ou [admin])
 │   │   └── repositories/
 │   ├── queue/               # só com o extra [queue] — broker + handlers
@@ -195,9 +201,14 @@ my_service/
 │   └── utils/
 └── tests/
     ├── conftest.py          # um SQLite por worker do pytest-xdist
-    ├── test_smoke.py        # garante que /api/ e /health/liveness sobem
-    └── test_schemas.py      # todo campo de schema exportado documentado (assert_schema_metadata)
+    ├── integration/system/  # test_service_info.py: /api/, override de settings, /health/liveness
+    └── unit/
+        ├── architecture/    # lint_layers, analyze_paths, assert_schema_metadata
+        └── core/            # test_exceptions_contract.py: status, code, mensagem e field congelados
 ```
+
+O porquê de cada pasta, e o que cobra cada uma, está em
+[Padrão de serviço](../service-standard.md).
 
 !!! tip "O `CLAUDE.md` gerado é o contrato do projeto"
     Todo projeto novo nasce com um `CLAUDE.md` que fixa as regras que
@@ -1705,11 +1716,12 @@ embaixo.
 
 Num domínio de verdade o pacote cresce do jeito que você espera: com o
 domínio `products` que o `CLAUDE.md` gerado ensina a escrever,
-`tempest bundle-route "GET /api/products"` deu **11 arquivos, 399 linhas** —
+`tempest bundle-route "GET /api/products"` deu **15 arquivos, 635 linhas** —
 router, `api/dependencies/controllers.py` e `resources.py`, controller,
-service, repository, model, schema, `core/exceptions.py`,
-`db/configs/names.py` e `scripts/composition.py`. Nenhum arquivo do
-`service_info`.
+service, repository, model, schema, `core/constants/messages/errors.py`,
+`core/exceptions/conflict.py` e `not_found.py`, `core/settings.py`,
+`db/configs/connection.py` e `names.py` e `scripts/composition.py`.
+Nenhum arquivo do `service_info`.
 
 O resumo sai em `stderr`, então o `stdout` é só o markdown:
 
@@ -2884,7 +2896,7 @@ O mesmo check roda **dentro da suíte**, que é como o projeto do
 teste:
 
 ```python
-# tests/test_schemas.py
+# tests/unit/architecture/test_schemas.py
 import src.schemas
 from tempest_fastapi_sdk.testing import assert_schema_metadata
 

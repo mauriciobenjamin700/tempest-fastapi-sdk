@@ -14,7 +14,9 @@ when the first guard was written. Prose is not a gate.
 
 !!! tip "`tempest new` already ships this way"
     The project `tempest new` writes passes every rule on this page, errors
-    and warnings. If you are starting out, this page explains what is
+    and warnings, and turns `layers_strict = true` on. Why each directory
+    it generates exists, and the gate of each item, is in the
+    [Service standard](service-standard.md). If you are starting out, this page explains what is
     already on your disk. If you have an older service, jump to
     [Migrating an existing service](#migrating-an-existing-service).
 

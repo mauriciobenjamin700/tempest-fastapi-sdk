@@ -103,6 +103,7 @@ plugins:
             - Architecture:
               - architecture.md
               - Recommended architecture: recommended-architecture.md
+              - Service standard: service-standard.md
             - Tutorial: tutorial.md
             - Recipes:
               - recipes/index.md
@@ -237,6 +238,7 @@ plugins:
             Instalação: Installation
             Arquitetura: Architecture
             "Arquitetura recomendada": "Recommended architecture"
+            "Padrão de serviço": "Service standard"
             Tutorial: Tutorial
             Exemplos: Examples
             "Fullstack web (SSR, WASM, server)": "Fullstack web (SSR, WASM, server)"
@@ -412,6 +414,7 @@ nav:
   - Arquitetura:
       - architecture.md
       - "Arquitetura recomendada": recommended-architecture.md
+      - "Padrão de serviço": service-standard.md
   - Tutorial: tutorial.md
   - Receitas:
       - recipes/index.md

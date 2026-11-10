@@ -14,7 +14,9 @@ lugares quando o primeiro guard foi escrito. Prosa não é gate.
 
 !!! tip "O `tempest new` já sai assim"
     O projeto que o `tempest new` gera passa em todas as regras desta
-    página, erros e avisos. Se você está começando, esta página explica o
+    página, erros e avisos, e já liga o `layers_strict = true`. O porquê de
+    cada pasta que ele gera, e o gate de cada item, está no
+    [Padrão de serviço](service-standard.md). Se você está começando, esta página explica o
     que já está no seu disco. Se tem um serviço antigo, vá para
     [Migrando um serviço existente](#migrando-um-servico-existente).
 
