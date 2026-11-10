@@ -81,6 +81,12 @@ class HardwareInfo(BaseSchema):
         disk_measured (bool): Whether ``disk_free_bytes`` was read.
             ``False`` when the filesystem query raised ``OSError`` (e.g.
             the directory does not exist).
+        warnings (list[str]): Environment problems the probe detected that
+            will make a later model load fail, each a sentence that names
+            the cause and the fix. Empty when nothing was detected, which is
+            not a guarantee that every load succeeds. Today the only one is
+            a CUDA 13 ``torch`` next to ``ctranslate2`` (faster-whisper),
+            whose wheels link against CUDA 12.
     """
 
     cpu_cores: int
@@ -93,6 +99,7 @@ class HardwareInfo(BaseSchema):
     has_mps: bool = False
     disk_free_bytes: int = 0
     disk_measured: bool = True
+    warnings: list[str] = Field(default_factory=list)
 
 
 class CapacityReport(BaseSchema):

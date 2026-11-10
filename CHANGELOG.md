@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `HardwareInfo.warnings` (`list[str]`): o `probe_hardware()` avisa, antes da
+  primeira transcrição falhar, quando há CUDA, o `torch` é build CUDA 13
+  (`torch.version.cuda` começando em `13.`) e o `ctranslate2` do
+  faster-whisper está instalado — as wheels dele procuram a
+  `libcublas.so.12`, que o `torch` do PyPI (CUDA 13 desde a 2.14) não instala.
+  O `ctranslate2` é procurado com `find_spec`, sem importar. Medido num
+  container `python:3.12-slim` com RTX 4070 Ti SUPER: com `torch`
+  2.15.0+cu132 o aviso aparece e o `WhisperModel(device="cuda")` falha com
+  `Library libcublas.so.12 is not found`; com 2.14.1+cu126 a lista vem vazia
+  (#723).
+- Seção "GPU com `[genai-audio]`" na instalação: `torch` (e, para o Coqui,
+  `torchaudio`) do índice `pytorch-cu126` como dependência direta e o
+  `LD_LIBRARY_PATH` para `site-packages/nvidia/{cublas,cudnn}/lib`, com a
+  tabela do que transcreve e do que falha medida no container acima (#723).
+
 ### Changed
 
 - **Quebra:** o Coqui (`TextToSpeech`, XTTS v2) sai do extra `[genai-audio]`

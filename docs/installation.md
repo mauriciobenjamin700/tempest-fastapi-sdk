@@ -166,6 +166,186 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 !!! info "Imports preguiçosos"
     Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então `import tempest_fastapi_sdk` funciona mesmo quando só um subconjunto de extras está instalado. Instanciar um helper cujo extra está faltando levanta `ImportError` com uma dica clara apontando para o extra certo. Desde a 0.326.0 os módulos do próprio SDK também carregam sob demanda: `import tempest_fastapi_sdk` carrega um módulo em vez de 269 mais SQLAlchemy, FastAPI, Alembic, Jinja2 e bcrypt, e o `tempest --help` caiu de 0,94 s para 0,14 s (melhor de 5, medido neste repositório). `from tempest_fastapi_sdk import X` e a checagem de tipos strict funcionam como antes.
 
+<a id="genai-audio-gpu"></a>
+
+### GPU com `[genai-audio]`
+
+O `[genai-audio]` transcreve com o **faster-whisper**, que roda sobre o
+**CTranslate2**. As wheels do `ctranslate2` 4.x são linkadas contra o **CUDA
+12** e, na primeira transcrição em `device="cuda"`, procuram a
+`libcublas.so.12`. O `torch` que o PyPI entrega desde a 2.14 é build **CUDA
+13**: ele instala as bibliotecas `.so.13`, e não as `.so.12`. Com a resolução
+padrão, então, a primeira transcrição na GPU morre assim:
+
+```text
+RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+```
+
+A saída é instalar o `torch` do índice **CUDA 12** do PyTorch, que traz o
+cuBLAS e o cuDNN de CUDA 12 em pacotes `nvidia-*-cu12`.
+
+#### Passo 1: o `torch` do índice cu126
+
+No `pyproject.toml` do seu serviço, declare o índice como `explicit` (só os
+pacotes que você apontar vêm dele) e aponte o `torch` para lá:
+
+```toml
+[project]
+name = "meu-servico"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "tempest-fastapi-sdk[genai-audio]>=0.348.0",
+    "torch>=2.14.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+```
+
+O `torch` aparece em `dependencies` mesmo já vindo pelo extra: o
+`[tool.uv.sources]` só vale para dependência **direta**. Depois, `uv sync`.
+
+!!! note "Usa também o Coqui (`[genai-tts-coqui]`)?"
+    O `torchaudio` do PyPI também é build CUDA 13 e não carrega ao lado de um
+    `torch` CUDA 12 (`libcudart.so.13: cannot open shared object file`).
+    Aponte ele para o mesmo índice — e, de novo, como dependência direta:
+
+    ```toml
+    [project]
+    name = "meu-servico"
+    version = "0.1.0"
+    requires-python = ">=3.12"
+    dependencies = [
+        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.348.0",
+        "torch>=2.14.0",
+        "torchaudio>=2.11.0",
+    ]
+
+    [[tool.uv.index]]
+    name = "pytorch-cu126"
+    url = "https://download.pytorch.org/whl/cu126"
+    explicit = true
+
+    [tool.uv.sources]
+    torch = { index = "pytorch-cu126" }
+    torchaudio = { index = "pytorch-cu126" }
+    ```
+
+    Quem usa só o STT não precisa dessas linhas: desde a 0.349.0 o
+    `[genai-audio]` não traz `torchaudio` ([por quê](#genai-audio-coqui-split)).
+    Até a 0.348.0 ele trazia, então nessas versões declare o `torchaudio` como
+    acima mesmo sem usar o Coqui.
+
+#### Passo 2: o `LD_LIBRARY_PATH` do CTranslate2
+
+Os pacotes `nvidia-cublas-cu12` e `nvidia-cudnn-cu12` ficam dentro do
+`site-packages`, fora do caminho que o carregador dinâmico procura. O `torch`
+os acha sozinho; o CTranslate2 não. Aponte o `LD_LIBRARY_PATH` para eles antes
+de subir o processo:
+
+```bash
+SITE_PACKAGES="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+export LD_LIBRARY_PATH="$SITE_PACKAGES/nvidia/cublas/lib:$SITE_PACKAGES/nvidia/cudnn/lib:${LD_LIBRARY_PATH:-}"
+```
+
+Num `Dockerfile`, escreva o caminho do venv da imagem, por exemplo
+`ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib`.
+
+!!! info "Por que às vezes funciona sem o `LD_LIBRARY_PATH`"
+    Quando o processo importa o `torch` antes de carregar o Whisper, o
+    `torch` já deixa o cuBLAS e o cuDNN de CUDA 12 carregados, e o
+    CTranslate2 os reaproveita. É o que acontece com
+    `SpeechToText(device="auto")`, que importa o `torch` para detectar a GPU,
+    ou depois de um `probe_hardware()`. Com `device="cuda"` explícito, nada
+    importa o `torch` antes, e sem a variável a transcrição falha. Exporte a
+    variável de qualquer forma: depender da ordem de import é frágil.
+
+    Num host com o CUDA 12 instalado no sistema (a `libcublas.so.12` no
+    `ldconfig`), as duas falhas desta seção não aparecem — o carregador acha
+    a biblioteca do sistema. Container `python:3.12-slim` não tem isso.
+
+#### Passo 3: confira
+
+Gere um WAV curto (aqui com o `espeak-ng`) e transcreva na GPU:
+
+```bash
+espeak-ng -v en -w hello.wav "The quick brown fox jumps over the lazy dog."
+```
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import SpeechToText
+
+
+async def main() -> None:
+    """Transcribe a short WAV on the GPU."""
+    stt = SpeechToText("small", device="cuda")
+    with open("hello.wav", "rb") as handle:
+        result = await stt.transcribe(handle.read())
+    print(stt.device, result.text)
+
+
+asyncio.run(main())
+```
+
+```text
+cuda The quick brown fox jumps over the lazy dog.
+```
+
+O `probe_hardware()` também avisa do par errado antes da primeira transcrição:
+com um `torch` CUDA 13 e o `ctranslate2` instalados, o `HardwareInfo.warnings`
+diz o que vai falhar e manda para esta seção (veja
+[Sondando o hardware](recipes/genai.md#sondando-o-hardware)).
+
+!!! check "O que foi medido"
+    **Neste repositório**, em 2026-11-10, num container `python:3.12-slim`
+    com `--gpus all` numa RTX 4070 Ti SUPER (WSL2, driver do Windows 591.86), Python
+    3.12, `faster-whisper` 1.2.1 e `ctranslate2` 4.8.5, modelo `small` em
+    `float16`, transcrevendo o WAV acima:
+
+    | `torch` | `LD_LIBRARY_PATH` | `torch` importado antes | resultado |
+    | --- | --- | --- | --- |
+    | 2.15.0+cu132 (PyPI) | não | não | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | não | sim | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | `nvidia/{cublas,cudnn}/lib` | não | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (índice cu126) | não | não | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (índice cu126) | não | sim | transcreve |
+    | 2.14.1+cu126 (índice cu126) | `nvidia/{cublas,cudnn}/lib` | não | transcreve |
+
+    As linhas de cima foram medidas chamando o `WhisperModel` direto; com o
+    SDK instalado por cima, `SpeechToText(device="cuda")` deu o mesmo par
+    (falha sem a variável, transcreve com ela) e `SpeechToText(device="auto")`
+    transcreveu sem a variável. A venv foi montada com o `pyproject.toml` do
+    passo 1 trocando o `tempest-fastapi-sdk[genai-audio]` pelo
+    `faster-whisper`, que é o que o extra traz, e o SDK do branch instalado
+    por cima. O áudio foi o WAV acima convertido para 16 kHz com o `ffmpeg`;
+    o WAV original (22 050 Hz) deu o mesmo texto pelo `SpeechToText` na CPU.
+    No host WSL2 fora do container, que tem a `libcublas.so.12` do sistema no
+    `ldconfig`, a venv cu126 transcreveu sem a variável e sem importar o
+    `torch` — por isso a tabela é do container.
+
+    **No tempest-ai** (issue #723; `python:3.12-slim`, RTX 4070 Ti SUPER, SDK
+    0.348.0) a mesma correção foi aplicada no serviço, com `torch==2.14.1+cu126`
+    e `torchaudio==2.11.0+cu126` do índice cu126: o `BarkSpeech`
+    (`suno/bark-small`) sintetizou em português — 5,95 s de áudio em 9,6 s e
+    16,76 s em 23,6 s, com o modelo já carregado.
+
+    **Não medido:** o Coqui (`[genai-tts-coqui]`) na GPU com o `torchaudio`
+    do índice cu126 deste repositório, e outras GPUs, drivers ou CUDA 12.x
+    além do 12.6.
+
+**Recap:** o faster-whisper precisa de CUDA 12; o `torch` do PyPI é CUDA 13.
+Tire o `torch` (e o `torchaudio`, se usar o Coqui) do índice cu126, como
+dependência direta, e exporte o `LD_LIBRARY_PATH` para
+`nvidia/{cublas,cudnn}/lib`.
+
 ## CLI
 
 A CLI `tempest` vem na instalação base (sem extra):

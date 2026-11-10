@@ -30,9 +30,11 @@ when it is below the host's RAM, reports the limit instead and sets
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import os
 import shutil
 import sys
+from typing import Any
 
 from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport,
@@ -617,6 +619,67 @@ def _nvml_gpus(expected_count: int) -> list[GPUInfo] | None:
             pynvml.nvmlShutdown()
 
 
+_CTRANSLATE2_MODULE: str = "ctranslate2"
+"""Import name of CTranslate2, the runtime faster-whisper transcribes with."""
+
+_TORCH_CUDA_13_PREFIX: str = "13"
+"""``torch.version.cuda`` prefix of builds whose libraries CTranslate2 cannot use.
+
+``ctranslate2`` 4.x wheels link against CUDA 12 and look up
+``libcublas.so.12``; a CUDA 13 ``torch`` (the PyPI default since 2.14, e.g.
+``2.15.0+cu132`` reports ``"13.2"``) installs only the ``.so.13`` libraries.
+"""
+
+_CUDA_13_CTRANSLATE2_WARNING: str = (
+    "torch is a CUDA {torch_cuda} build, but ctranslate2 (faster-whisper)"
+    " links against CUDA 12 and looks for libcublas.so.12, which this torch"
+    " does not install: transcribing on device='cuda' raises 'Library"
+    " libcublas.so.12 is not found or cannot be loaded' unless the system"
+    " provides CUDA 12 libraries. Install torch from the CUDA 12 index"
+    " (https://download.pytorch.org/whl/cu126) instead; see 'GPU with"
+    " [genai-audio]' in the installation docs."
+)
+"""What :func:`probe_hardware` reports for CUDA 13 ``torch`` plus ``ctranslate2``.
+
+Formatted with ``torch_cuda`` (``torch.version.cuda``). Measured in
+``python:3.12-slim`` with an RTX 4070 Ti SUPER (WSL2): ``torch`` 2.15.0+cu132
+from PyPI with ``ctranslate2`` 4.8.5 raised that error on
+``WhisperModel(..., device="cuda")``, with and without ``torch`` imported
+first and with ``LD_LIBRARY_PATH`` on the installed ``nvidia`` libraries.
+A host whose loader already finds a CUDA 12 cuBLAS (a system CUDA 12
+toolkit) transcribes anyway, which is why the text says "unless".
+"""
+
+
+def _cuda_runtime_warnings(torch_module: Any) -> list[str]:
+    """Detect a CUDA 13 ``torch`` installed next to the CUDA 12 ``ctranslate2``.
+
+    Checks for ``ctranslate2`` with :func:`importlib.util.find_spec` instead
+    of importing it, so probing loads no CUDA library and stays cheap
+    enough for a health check. Only the installed builds are compared: a
+    system CUDA 12 toolkit on the loader path makes the pair work, and that
+    is not detected, so the warning says what fails and under which
+    condition rather than claiming the load will fail.
+
+    Args:
+        torch_module (Any): The imported ``torch`` module.
+
+    Returns:
+        list[str]: :data:`_CUDA_13_CTRANSLATE2_WARNING` filled in, or an
+        empty list when ``torch`` is not a CUDA 13 build or ``ctranslate2``
+        is not installed.
+    """
+    version = getattr(torch_module, "version", None)
+    torch_cuda = getattr(version, "cuda", None)
+    if not isinstance(torch_cuda, str):
+        return []
+    if not torch_cuda.startswith(_TORCH_CUDA_13_PREFIX + "."):
+        return []
+    if importlib.util.find_spec(_CTRANSLATE2_MODULE) is None:
+        return []
+    return [_CUDA_13_CTRANSLATE2_WARNING.format(torch_cuda=torch_cuda)]
+
+
 def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
     """Snapshot the host's CPU, RAM, GPU and disk.
 
@@ -644,7 +707,11 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
         ``ram_cgroup_limited`` says so.
         When the disk query raises ``OSError``, ``disk_measured`` is
         ``False``. Without ``torch`` no GPU is reported
-        (``has_cuda=False``, ``gpus=[]``).
+        (``has_cuda=False``, ``gpus=[]``). When CUDA is available and
+        ``torch`` is a CUDA 13 build while ``ctranslate2`` (faster-whisper)
+        is installed, ``warnings`` says that transcribing on the GPU will
+        look for ``libcublas.so.12`` and how to install a CUDA 12 ``torch``,
+        before the first transcription fails.
     """
     cpu_cores = os.cpu_count() or 1
     ram = _read_ram()
@@ -658,6 +725,7 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
     has_cuda = False
     gpus: list[GPUInfo] = []
     has_mps = False
+    warnings: list[str] = []
     try:
         import torch
 
@@ -678,6 +746,7 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
                             vram_free_bytes=int(free),
                         ),
                     )
+            warnings = _cuda_runtime_warnings(torch)
         has_mps = bool(
             getattr(torch.backends, "mps", None) and torch.backends.mps.is_available(),
         )
@@ -701,6 +770,7 @@ def probe_hardware(*, cache_dir: str | None = None) -> HardwareInfo:
         has_mps=has_mps,
         disk_free_bytes=disk_free,
         disk_measured=disk_measured,
+        warnings=warnings,
     )
 
 

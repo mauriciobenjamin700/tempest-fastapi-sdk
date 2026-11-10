@@ -167,6 +167,187 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 !!! info "Lazy imports"
     Since 0.7.1 every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works even when only a subset of extras is installed. Instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right extra. Since 0.326.0 the SDK's own modules load on demand too: `import tempest_fastapi_sdk` loads one module instead of 269 plus SQLAlchemy, FastAPI, Alembic, Jinja2 and bcrypt, and `tempest --help` went from 0.94 s to 0.14 s (best of 5, measured on this repository). `from tempest_fastapi_sdk import X` and strict type checking work as before.
 
+<a id="genai-audio-gpu"></a>
+
+### GPU with `[genai-audio]`
+
+`[genai-audio]` transcribes with **faster-whisper**, which runs on
+**CTranslate2**. The `ctranslate2` 4.x wheels are linked against **CUDA 12**
+and, on the first transcription with `device="cuda"`, look up
+`libcublas.so.12`. The `torch` PyPI ships since 2.14 is a **CUDA 13** build:
+it installs the `.so.13` libraries, not the `.so.12` ones. With the default
+resolution, then, the first GPU transcription dies like this:
+
+```text
+RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+```
+
+The way out is to install `torch` from PyTorch's **CUDA 12** index, which
+brings CUDA 12 cuBLAS and cuDNN as `nvidia-*-cu12` packages.
+
+#### Step 1: `torch` from the cu126 index
+
+In your service's `pyproject.toml`, declare the index as `explicit` (only the
+packages you point at it come from it) and point `torch` there:
+
+```toml
+[project]
+name = "my-service"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "tempest-fastapi-sdk[genai-audio]>=0.348.0",
+    "torch>=2.14.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+```
+
+`torch` is listed in `dependencies` even though the extra already brings it:
+`[tool.uv.sources]` only applies to a **direct** dependency. Then `uv sync`.
+
+!!! note "Also using Coqui (`[genai-tts-coqui]`)?"
+    PyPI's `torchaudio` is a CUDA 13 build too, and it does not load next to a
+    CUDA 12 `torch` (`libcudart.so.13: cannot open shared object file`).
+    Point it at the same index — and, again, as a direct dependency:
+
+    ```toml
+    [project]
+    name = "my-service"
+    version = "0.1.0"
+    requires-python = ">=3.12"
+    dependencies = [
+        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.348.0",
+        "torch>=2.14.0",
+        "torchaudio>=2.11.0",
+    ]
+
+    [[tool.uv.index]]
+    name = "pytorch-cu126"
+    url = "https://download.pytorch.org/whl/cu126"
+    explicit = true
+
+    [tool.uv.sources]
+    torch = { index = "pytorch-cu126" }
+    torchaudio = { index = "pytorch-cu126" }
+    ```
+
+    STT-only users do not need these lines: since 0.349.0 `[genai-audio]`
+    brings no `torchaudio` ([why](#genai-audio-coqui-split)). Up to 0.348.0
+    it did, so on those versions declare `torchaudio` as above even without
+    Coqui.
+
+#### Step 2: CTranslate2's `LD_LIBRARY_PATH`
+
+The `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` packages live inside
+`site-packages`, outside the dynamic loader's search path. `torch` finds them
+on its own; CTranslate2 does not. Point `LD_LIBRARY_PATH` at them before
+starting the process:
+
+```bash
+SITE_PACKAGES="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+export LD_LIBRARY_PATH="$SITE_PACKAGES/nvidia/cublas/lib:$SITE_PACKAGES/nvidia/cudnn/lib:${LD_LIBRARY_PATH:-}"
+```
+
+In a `Dockerfile`, write the image's venv path, for example
+`ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib`.
+
+!!! info "Why it sometimes works without `LD_LIBRARY_PATH`"
+    When the process imports `torch` before loading Whisper, `torch` leaves
+    CUDA 12 cuBLAS and cuDNN loaded, and CTranslate2 reuses them. That is
+    what happens with `SpeechToText(device="auto")`, which imports `torch` to
+    detect the GPU, or after a `probe_hardware()`. With an explicit
+    `device="cuda"`, nothing imports `torch` first, and without the variable
+    the transcription fails. Export the variable anyway: relying on import
+    order is fragile.
+
+    On a host with CUDA 12 installed system-wide (`libcublas.so.12` in
+    `ldconfig`), neither failure in this section shows up — the loader finds
+    the system library. A `python:3.12-slim` container has none.
+
+#### Step 3: check it
+
+Generate a short WAV (here with `espeak-ng`) and transcribe it on the GPU:
+
+```bash
+espeak-ng -v en -w hello.wav "The quick brown fox jumps over the lazy dog."
+```
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import SpeechToText
+
+
+async def main() -> None:
+    """Transcribe a short WAV on the GPU."""
+    stt = SpeechToText("small", device="cuda")
+    with open("hello.wav", "rb") as handle:
+        result = await stt.transcribe(handle.read())
+    print(stt.device, result.text)
+
+
+asyncio.run(main())
+```
+
+```text
+cuda The quick brown fox jumps over the lazy dog.
+```
+
+`probe_hardware()` also flags the wrong pair before the first transcription:
+with a CUDA 13 `torch` and `ctranslate2` installed, `HardwareInfo.warnings`
+says what will fail and points to this section (see
+[Probing the hardware](recipes/genai.md#probing-the-hardware)).
+
+!!! check "What was measured"
+    **In this repository**, on 2026-11-10, in a `python:3.12-slim`
+    container with `--gpus all` on an RTX 4070 Ti SUPER (WSL2, Windows driver
+    591.86), Python 3.12, `faster-whisper` 1.2.1 and `ctranslate2` 4.8.5,
+    model `small` in `float16`, transcribing the WAV above:
+
+    | `torch` | `LD_LIBRARY_PATH` | `torch` imported first | result |
+    | --- | --- | --- | --- |
+    | 2.15.0+cu132 (PyPI) | no | no | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | no | yes | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | `nvidia/{cublas,cudnn}/lib` | no | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (cu126 index) | no | no | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (cu126 index) | no | yes | transcribes |
+    | 2.14.1+cu126 (cu126 index) | `nvidia/{cublas,cudnn}/lib` | no | transcribes |
+
+    The rows above call `WhisperModel` directly; with the SDK installed on
+    top, `SpeechToText(device="cuda")` gave the same pair (fails without the
+    variable, transcribes with it) and `SpeechToText(device="auto")`
+    transcribed without it. The venv was built from the step 1
+    `pyproject.toml` with `tempest-fastapi-sdk[genai-audio]` swapped for
+    `faster-whisper`, which is what the extra brings, and the branch's SDK
+    installed on top. The audio was the WAV above converted to 16 kHz with
+    `ffmpeg`; the original WAV (22,050 Hz) gave the same text through
+    `SpeechToText` on the CPU. On the WSL2 host outside the container, which
+    has the system `libcublas.so.12` in `ldconfig`, the cu126 venv
+    transcribed without the variable and without importing `torch` — which
+    is why the table comes from the container.
+
+    **In tempest-ai** (issue #723; `python:3.12-slim`, RTX 4070 Ti SUPER, SDK
+    0.348.0) the same fix was applied to the service, with
+    `torch==2.14.1+cu126` and `torchaudio==2.11.0+cu126` from the cu126
+    index: `BarkSpeech` (`suno/bark-small`) synthesized Portuguese — 5.95 s
+    of audio in 9.6 s and 16.76 s in 23.6 s, with the model already loaded.
+
+    **Not measured:** Coqui (`[genai-tts-coqui]`) on the GPU with the cu126
+    `torchaudio` in this repository, and other GPUs, drivers or CUDA 12.x
+    besides 12.6.
+
+**Recap:** faster-whisper needs CUDA 12; PyPI's `torch` is CUDA 13. Take
+`torch` (and `torchaudio`, if you use Coqui) from the cu126 index, as a
+direct dependency, and export `LD_LIBRARY_PATH` to
+`nvidia/{cublas,cudnn}/lib`.
+
 ## CLI
 
 The `tempest` CLI ships in the base install (no extra needed):
