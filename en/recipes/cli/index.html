@@ -2363,6 +2363,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The SDK&#39;s steps in tempest check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-required-setting-in-lint-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A required setting in lint-schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -7895,6 +7912,21 @@ traceback): the package exists and is broken.</p>
 check_openapi_errors = false.</code> and passes. A non-boolean value exits <code>2</code>. The
 standalone commands (<code>tempest openapi-errors</code>, <code>tempest lint-schemas</code>) do not
 read these keys.</p>
+<h4 id="a-required-setting-in-lint-schemas">A required setting in <code>lint-schemas</code><a class="headerlink" href="#a-required-setting-in-lint-schemas" title="Permanent link">&para;</a></h4>
+<p><code>lint-schemas</code> imports <code>src.schemas</code> in a child process with <code>ENV=test</code> when
+the shell sets no <code>ENV</code> — and under <code>ENV=test</code>, <code>EnvironmentSettings</code> discards
+the <code>.env</code>. A <code>Settings</code> with a required field and no default (a secret such as
+<code>ADMIN_SECRET_KEY</code>, which must not carry a placeholder) does not import, and the
+step exits <code>2</code>. The reason follows the traceback:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-110-1"><a id="__codelineno-110-1" name="__codelineno-110-1" href="#__codelineno-110-1"></a>hint: src.schemas was imported in a child process with ENV=test (ENV=test discards the .env, so a required setting without a default is missing). Give the child the settings it needs under [tool.tempest] lint_schemas_env = { NAME = "value" }, or drop the step with check_lint_schemas = false.
+</span></code></pre></div>
+<p>Give the child what it needs, for this step only:</p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-111-1"><a id="__codelineno-111-1" name="__codelineno-111-1" href="#__codelineno-111-1"></a><span class="k">[tool.tempest]</span>
+</span><span id="__span-111-2"><a id="__codelineno-111-2" name="__codelineno-111-2" href="#__codelineno-111-2"></a><span class="n">lint_schemas_env</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">ADMIN_SECRET_KEY</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"lint-only"</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+<p>Precedence is: the <code>ENV=test</code> default, then the table, then the shell — a value
+the shell exports is never replaced by the placeholder. A non-string value
+exits <code>2</code>.</p>
 <h3 id="layer-rules-tempest-lint-layers">Layer rules — <code>tempest lint-layers</code><a class="headerlink" href="#layer-rules-tempest-lint-layers" title="Permanent link">&para;</a></h3>
 <p>The <code>CLAUDE.md</code> that <code>tempest new</code> writes says how a service and a
 repository are shaped. Prose is not a gate: a service with ten services
@@ -7903,8 +7935,8 @@ functions in a <code>services/feeds.py</code> passed <code>ruff</code>, <code>my
 clean (<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/520" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #520">#520</a>). <code>tempest lint-layers</code> is the gate for those rules (and for the enum naming convention) — and
 <code>tempest check</code> runs it as a step of its own, after <code>mypy</code> and before
 <code>pytest</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-110-1"><a id="__codelineno-110-1" name="__codelineno-110-1" href="#__codelineno-110-1"></a>tempest<span class="w"> </span>lint-layers<span class="w">            </span><span class="c1"># the project in the current directory (reads src/ or app/)</span>
-</span><span id="__span-110-2"><a id="__codelineno-110-2" name="__codelineno-110-2" href="#__codelineno-110-2"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>src<span class="w">        </span><span class="c1"># the source directory itself</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-112-1"><a id="__codelineno-112-1" name="__codelineno-112-1" href="#__codelineno-112-1"></a>tempest<span class="w"> </span>lint-layers<span class="w">            </span><span class="c1"># the project in the current directory (reads src/ or app/)</span>
+</span><span id="__span-112-2"><a id="__codelineno-112-2" name="__codelineno-112-2" href="#__codelineno-112-2"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>src<span class="w">        </span><span class="c1"># the source directory itself</span>
 </span></code></pre></div>
 <p>It reads the code with <code>ast</code> and <strong>never imports the project</strong>, so it runs
 even with a broken import. Each violation is one <code>path:line: CODE message</code>
@@ -7958,15 +7990,15 @@ line, and the message says what to change:</p>
 <p>The three cases of <a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/520" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #520">#520</a>, in a project generated by <code>tempest new</code>, come out
 of <code>tempest check</code> like this (an excerpt of the real output; exit code
 <code>1</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-111-1"><a id="__codelineno-111-1" name="__codelineno-111-1" href="#__codelineno-111-1"></a>$ mypy --disallow-untyped-defs --disallow-incomplete-defs .
-</span><span id="__span-111-2"><a id="__codelineno-111-2" name="__codelineno-111-2" href="#__codelineno-111-2"></a>Success: no issues found in 29 source files
-</span><span id="__span-111-3"><a id="__codelineno-111-3" name="__codelineno-111-3" href="#__codelineno-111-3"></a>$ lint-layers
-</span><span id="__span-111-4"><a id="__codelineno-111-4" name="__codelineno-111-4" href="#__codelineno-111-4"></a>src/db/repositories/news.py:18: REPO001 `NewsRepository.list_all` only forwards to BaseRepository.list; delete it and call `repository.list(...)` with those arguments at the call site.
-</span><span id="__span-111-5"><a id="__codelineno-111-5" name="__codelineno-111-5" href="#__codelineno-111-5"></a>src/services/feeds.py:9: SVC002 module-level function `page_envelope` in services/; move it to utils/, or make it a method of the service that uses it.
-</span><span id="__span-111-6"><a id="__codelineno-111-6" name="__codelineno-111-6" href="#__codelineno-111-6"></a>src/services/feeds.py:24: SVC001 `NewsService` does not inherit BaseService; subclass `BaseService[Repository, ResponseSchema]` and drop what it reimplements. A service with no repository opts out with `# tempest: no-base-service` on the class line; a type that is not a service belongs in schemas/ or core/.
-</span><span id="__span-111-7"><a id="__codelineno-111-7" name="__codelineno-111-7" href="#__codelineno-111-7"></a>src/services/feeds.py:27: SVC003 `NewsService.__init__` only stores the repository, which BaseService already does; delete it.
-</span><span id="__span-111-8"><a id="__codelineno-111-8" name="__codelineno-111-8" href="#__codelineno-111-8"></a>src/services/feeds.py:37: SVC002 `TrendService` shares this module with `NewsService`; one public class per module in services/ — move it to its own file.
-</span><span id="__span-111-9"><a id="__codelineno-111-9" name="__codelineno-111-9" href="#__codelineno-111-9"></a>14 layer finding(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-113-1"><a id="__codelineno-113-1" name="__codelineno-113-1" href="#__codelineno-113-1"></a>$ mypy --disallow-untyped-defs --disallow-incomplete-defs .
+</span><span id="__span-113-2"><a id="__codelineno-113-2" name="__codelineno-113-2" href="#__codelineno-113-2"></a>Success: no issues found in 29 source files
+</span><span id="__span-113-3"><a id="__codelineno-113-3" name="__codelineno-113-3" href="#__codelineno-113-3"></a>$ lint-layers
+</span><span id="__span-113-4"><a id="__codelineno-113-4" name="__codelineno-113-4" href="#__codelineno-113-4"></a>src/db/repositories/news.py:18: REPO001 `NewsRepository.list_all` only forwards to BaseRepository.list; delete it and call `repository.list(...)` with those arguments at the call site.
+</span><span id="__span-113-5"><a id="__codelineno-113-5" name="__codelineno-113-5" href="#__codelineno-113-5"></a>src/services/feeds.py:9: SVC002 module-level function `page_envelope` in services/; move it to utils/, or make it a method of the service that uses it.
+</span><span id="__span-113-6"><a id="__codelineno-113-6" name="__codelineno-113-6" href="#__codelineno-113-6"></a>src/services/feeds.py:24: SVC001 `NewsService` does not inherit BaseService; subclass `BaseService[Repository, ResponseSchema]` and drop what it reimplements. A service with no repository opts out with `# tempest: no-base-service` on the class line; a type that is not a service belongs in schemas/ or core/.
+</span><span id="__span-113-7"><a id="__codelineno-113-7" name="__codelineno-113-7" href="#__codelineno-113-7"></a>src/services/feeds.py:27: SVC003 `NewsService.__init__` only stores the repository, which BaseService already does; delete it.
+</span><span id="__span-113-8"><a id="__codelineno-113-8" name="__codelineno-113-8" href="#__codelineno-113-8"></a>src/services/feeds.py:37: SVC002 `TrendService` shares this module with `NewsService`; one public class per module in services/ — move it to its own file.
+</span><span id="__span-113-9"><a id="__codelineno-113-9" name="__codelineno-113-9" href="#__codelineno-113-9"></a>14 layer finding(s).
 </span></code></pre></div>
 <p>The project as <code>tempest new</code> generates it passes clean, and stays clean
 with the <code>CLAUDE.md</code> <code>ProductService</code> / <code>ProductRepository</code> / product
@@ -7977,16 +8009,16 @@ router examples copied into it — the suite's test does exactly that.</p>
 catalogue read from a file, a facade over an external API) marks its
 <code>class</code> line with <code># tempest: no-base-service</code>. The marker takes the
 class out of <code>SVC001</code> and <code>SVC003</code>; <code>SVC002</code> still applies.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-112-1"><a id="__codelineno-112-1" name="__codelineno-112-1" href="#__codelineno-112-1"></a><span class="c1"># src/services/catalogue.py</span>
-</span><span id="__span-112-2"><a id="__codelineno-112-2" name="__codelineno-112-2" href="#__codelineno-112-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
-</span><span id="__span-112-3"><a id="__codelineno-112-3" name="__codelineno-112-3" href="#__codelineno-112-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-</span><span id="__span-112-4"><a id="__codelineno-112-4" name="__codelineno-112-4" href="#__codelineno-112-4"></a>
-</span><span id="__span-112-5"><a id="__codelineno-112-5" name="__codelineno-112-5" href="#__codelineno-112-5"></a>
-</span><span id="__span-112-6"><a id="__codelineno-112-6" name="__codelineno-112-6" href="#__codelineno-112-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">CatalogueService</span><span class="p">:</span>  <span class="c1"># tempest: no-base-service</span>
-</span><span id="__span-112-7"><a id="__codelineno-112-7" name="__codelineno-112-7" href="#__codelineno-112-7"></a><span class="w">    </span><span class="sd">"""Static catalogue read from a JSON file — there is no repository."""</span>
-</span><span id="__span-112-8"><a id="__codelineno-112-8" name="__codelineno-112-8" href="#__codelineno-112-8"></a>
-</span><span id="__span-112-9"><a id="__codelineno-112-9" name="__codelineno-112-9" href="#__codelineno-112-9"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-112-10"><a id="__codelineno-112-10" name="__codelineno-112-10" href="#__codelineno-112-10"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">items</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-114-1"><a id="__codelineno-114-1" name="__codelineno-114-1" href="#__codelineno-114-1"></a><span class="c1"># src/services/catalogue.py</span>
+</span><span id="__span-114-2"><a id="__codelineno-114-2" name="__codelineno-114-2" href="#__codelineno-114-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+</span><span id="__span-114-3"><a id="__codelineno-114-3" name="__codelineno-114-3" href="#__codelineno-114-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span id="__span-114-4"><a id="__codelineno-114-4" name="__codelineno-114-4" href="#__codelineno-114-4"></a>
+</span><span id="__span-114-5"><a id="__codelineno-114-5" name="__codelineno-114-5" href="#__codelineno-114-5"></a>
+</span><span id="__span-114-6"><a id="__codelineno-114-6" name="__codelineno-114-6" href="#__codelineno-114-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">CatalogueService</span><span class="p">:</span>  <span class="c1"># tempest: no-base-service</span>
+</span><span id="__span-114-7"><a id="__codelineno-114-7" name="__codelineno-114-7" href="#__codelineno-114-7"></a><span class="w">    </span><span class="sd">"""Static catalogue read from a JSON file — there is no repository."""</span>
+</span><span id="__span-114-8"><a id="__codelineno-114-8" name="__codelineno-114-8" href="#__codelineno-114-8"></a>
+</span><span id="__span-114-9"><a id="__codelineno-114-9" name="__codelineno-114-9" href="#__codelineno-114-9"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-114-10"><a id="__codelineno-114-10" name="__codelineno-114-10" href="#__codelineno-114-10"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">items</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
 </span></code></pre></div>
 <p>It is a comment, not a class attribute, because it is an instruction
 to the checker and nothing at runtime reads it — the same reason
@@ -8003,33 +8035,33 @@ another method defined on the same class is not a wrapper of the SDK.</p>
 <p>The two <code>routers/</code> rules cover the deviations a router shows most:
 building the controller by hand inside the route, and returning the ORM
 row. This router, written into a <code>tempest new</code> project, does both:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-113-1"><a id="__codelineno-113-1" name="__codelineno-113-1" href="#__codelineno-113-1"></a><span class="c1"># src/api/routers/product.py</span>
-</span><span id="__span-113-2"><a id="__codelineno-113-2" name="__codelineno-113-2" href="#__codelineno-113-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">Depends</span>
-</span><span id="__span-113-3"><a id="__codelineno-113-3" name="__codelineno-113-3" href="#__codelineno-113-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy.ext.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncSession</span>
-</span><span id="__span-113-4"><a id="__codelineno-113-4" name="__codelineno-113-4" href="#__codelineno-113-4"></a>
-</span><span id="__span-113-5"><a id="__codelineno-113-5" name="__codelineno-113-5" href="#__codelineno-113-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_session</span>
-</span><span id="__span-113-6"><a id="__codelineno-113-6" name="__codelineno-113-6" href="#__codelineno-113-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.controllers</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductController</span>
-</span><span id="__span-113-7"><a id="__codelineno-113-7" name="__codelineno-113-7" href="#__codelineno-113-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductModel</span>
-</span><span id="__span-113-8"><a id="__codelineno-113-8" name="__codelineno-113-8" href="#__codelineno-113-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.repositories</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductRepository</span>
-</span><span id="__span-113-9"><a id="__codelineno-113-9" name="__codelineno-113-9" href="#__codelineno-113-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductService</span>
-</span><span id="__span-113-10"><a id="__codelineno-113-10" name="__codelineno-113-10" href="#__codelineno-113-10"></a>
-</span><span id="__span-113-11"><a id="__codelineno-113-11" name="__codelineno-113-11" href="#__codelineno-113-11"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/products"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"products"</span><span class="p">])</span>
-</span><span id="__span-113-12"><a id="__codelineno-113-12" name="__codelineno-113-12" href="#__codelineno-113-12"></a>
-</span><span id="__span-113-13"><a id="__codelineno-113-13" name="__codelineno-113-13" href="#__codelineno-113-13"></a>
-</span><span id="__span-113-14"><a id="__codelineno-113-14" name="__codelineno-113-14" href="#__codelineno-113-14"></a><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/</span><span class="si">{product_id}</span><span class="s2">"</span><span class="p">)</span>
-</span><span id="__span-113-15"><a id="__codelineno-113-15" name="__codelineno-113-15" href="#__codelineno-113-15"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_product</span><span class="p">(</span>
-</span><span id="__span-113-16"><a id="__codelineno-113-16" name="__codelineno-113-16" href="#__codelineno-113-16"></a>    <span class="n">product_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-</span><span id="__span-113-17"><a id="__codelineno-113-17" name="__codelineno-113-17" href="#__codelineno-113-17"></a>    <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span> <span class="o">=</span> <span class="n">Depends</span><span class="p">(</span><span class="n">get_session</span><span class="p">),</span>
-</span><span id="__span-113-18"><a id="__codelineno-113-18" name="__codelineno-113-18" href="#__codelineno-113-18"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProductModel</span><span class="p">:</span>
-</span><span id="__span-113-19"><a id="__codelineno-113-19" name="__codelineno-113-19" href="#__codelineno-113-19"></a><span class="w">    </span><span class="sd">"""Read a product."""</span>
-</span><span id="__span-113-20"><a id="__codelineno-113-20" name="__codelineno-113-20" href="#__codelineno-113-20"></a>    <span class="n">controller</span> <span class="o">=</span> <span class="n">ProductController</span><span class="p">(</span><span class="n">ProductService</span><span class="p">(</span><span class="n">ProductRepository</span><span class="p">(</span><span class="n">session</span><span class="p">)))</span>
-</span><span id="__span-113-21"><a id="__codelineno-113-21" name="__codelineno-113-21" href="#__codelineno-113-21"></a>    <span class="k">return</span> <span class="k">await</span> <span class="n">controller</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">product_id</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-115-1"><a id="__codelineno-115-1" name="__codelineno-115-1" href="#__codelineno-115-1"></a><span class="c1"># src/api/routers/product.py</span>
+</span><span id="__span-115-2"><a id="__codelineno-115-2" name="__codelineno-115-2" href="#__codelineno-115-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">Depends</span>
+</span><span id="__span-115-3"><a id="__codelineno-115-3" name="__codelineno-115-3" href="#__codelineno-115-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy.ext.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncSession</span>
+</span><span id="__span-115-4"><a id="__codelineno-115-4" name="__codelineno-115-4" href="#__codelineno-115-4"></a>
+</span><span id="__span-115-5"><a id="__codelineno-115-5" name="__codelineno-115-5" href="#__codelineno-115-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_session</span>
+</span><span id="__span-115-6"><a id="__codelineno-115-6" name="__codelineno-115-6" href="#__codelineno-115-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.controllers</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductController</span>
+</span><span id="__span-115-7"><a id="__codelineno-115-7" name="__codelineno-115-7" href="#__codelineno-115-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductModel</span>
+</span><span id="__span-115-8"><a id="__codelineno-115-8" name="__codelineno-115-8" href="#__codelineno-115-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.repositories</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductRepository</span>
+</span><span id="__span-115-9"><a id="__codelineno-115-9" name="__codelineno-115-9" href="#__codelineno-115-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProductService</span>
+</span><span id="__span-115-10"><a id="__codelineno-115-10" name="__codelineno-115-10" href="#__codelineno-115-10"></a>
+</span><span id="__span-115-11"><a id="__codelineno-115-11" name="__codelineno-115-11" href="#__codelineno-115-11"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/products"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"products"</span><span class="p">])</span>
+</span><span id="__span-115-12"><a id="__codelineno-115-12" name="__codelineno-115-12" href="#__codelineno-115-12"></a>
+</span><span id="__span-115-13"><a id="__codelineno-115-13" name="__codelineno-115-13" href="#__codelineno-115-13"></a>
+</span><span id="__span-115-14"><a id="__codelineno-115-14" name="__codelineno-115-14" href="#__codelineno-115-14"></a><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/</span><span class="si">{product_id}</span><span class="s2">"</span><span class="p">)</span>
+</span><span id="__span-115-15"><a id="__codelineno-115-15" name="__codelineno-115-15" href="#__codelineno-115-15"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_product</span><span class="p">(</span>
+</span><span id="__span-115-16"><a id="__codelineno-115-16" name="__codelineno-115-16" href="#__codelineno-115-16"></a>    <span class="n">product_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+</span><span id="__span-115-17"><a id="__codelineno-115-17" name="__codelineno-115-17" href="#__codelineno-115-17"></a>    <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span> <span class="o">=</span> <span class="n">Depends</span><span class="p">(</span><span class="n">get_session</span><span class="p">),</span>
+</span><span id="__span-115-18"><a id="__codelineno-115-18" name="__codelineno-115-18" href="#__codelineno-115-18"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProductModel</span><span class="p">:</span>
+</span><span id="__span-115-19"><a id="__codelineno-115-19" name="__codelineno-115-19" href="#__codelineno-115-19"></a><span class="w">    </span><span class="sd">"""Read a product."""</span>
+</span><span id="__span-115-20"><a id="__codelineno-115-20" name="__codelineno-115-20" href="#__codelineno-115-20"></a>    <span class="n">controller</span> <span class="o">=</span> <span class="n">ProductController</span><span class="p">(</span><span class="n">ProductService</span><span class="p">(</span><span class="n">ProductRepository</span><span class="p">(</span><span class="n">session</span><span class="p">)))</span>
+</span><span id="__span-115-21"><a id="__codelineno-115-21" name="__codelineno-115-21" href="#__codelineno-115-21"></a>    <span class="k">return</span> <span class="k">await</span> <span class="n">controller</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">product_id</span><span class="p">)</span>
 </span></code></pre></div>
 <p><code>tempest lint-layers</code> exits with code <code>1</code> and three lines (real output):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-114-1"><a id="__codelineno-114-1" name="__codelineno-114-1" href="#__codelineno-114-1"></a>src/api/routers/product.py:15: RTR002 route `get_product` returns the ORM model `ProductModel` (return annotation); return the response schema the repository maps it to (`map_to_response`) and annotate the route with that schema.
-</span><span id="__span-114-2"><a id="__codelineno-114-2" name="__codelineno-114-2" href="#__codelineno-114-2"></a>src/api/routers/product.py:20: RTR001 `ProductController(...)` is built inside a router; move the construction to a provider in api/dependencies/controllers.py and receive it in the route as `Depends(get_...)`. A call that has to stay opts out with `# tempest: router-builds` on its line.
-</span><span id="__span-114-3"><a id="__codelineno-114-3" name="__codelineno-114-3" href="#__codelineno-114-3"></a>src/api/routers/product.py:20: RTR001 `ProductService(...)` is built inside a router; move the construction to a provider in api/dependencies/services.py and receive it in the route as `Depends(get_...)`. A call that has to stay opts out with `# tempest: router-builds` on its line.
-</span><span id="__span-114-4"><a id="__codelineno-114-4" name="__codelineno-114-4" href="#__codelineno-114-4"></a>3 layer finding(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-116-1"><a id="__codelineno-116-1" name="__codelineno-116-1" href="#__codelineno-116-1"></a>src/api/routers/product.py:15: RTR002 route `get_product` returns the ORM model `ProductModel` (return annotation); return the response schema the repository maps it to (`map_to_response`) and annotate the route with that schema.
+</span><span id="__span-116-2"><a id="__codelineno-116-2" name="__codelineno-116-2" href="#__codelineno-116-2"></a>src/api/routers/product.py:20: RTR001 `ProductController(...)` is built inside a router; move the construction to a provider in api/dependencies/controllers.py and receive it in the route as `Depends(get_...)`. A call that has to stay opts out with `# tempest: router-builds` on its line.
+</span><span id="__span-116-3"><a id="__codelineno-116-3" name="__codelineno-116-3" href="#__codelineno-116-3"></a>src/api/routers/product.py:20: RTR001 `ProductService(...)` is built inside a router; move the construction to a provider in api/dependencies/services.py and receive it in the route as `Depends(get_...)`. A call that has to stay opts out with `# tempest: router-builds` on its line.
+</span><span id="__span-116-4"><a id="__codelineno-116-4" name="__codelineno-116-4" href="#__codelineno-116-4"></a>3 layer finding(s).
 </span></code></pre></div>
 <p>The fix is the shape the project's <code>CLAUDE.md</code> teaches: the
 <code>get_product_controller</code> provider in <code>src/api/dependencies/controllers.py</code>
@@ -8045,13 +8077,13 @@ happens to share a model's name stays clean.</p>
 <p class="admonition-title">A construction that has to stay in the router: <code># tempest: router-builds</code></p>
 <p>The marker is the exception you own in writing, so review reads the
 reason. It covers the calls on that line, not the whole module:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-115-1"><a id="__codelineno-115-1" name="__codelineno-115-1" href="#__codelineno-115-1"></a><span class="c1"># src/api/routers/reports.py</span>
-</span><span id="__span-115-2"><a id="__codelineno-115-2" name="__codelineno-115-2" href="#__codelineno-115-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
-</span><span id="__span-115-3"><a id="__codelineno-115-3" name="__codelineno-115-3" href="#__codelineno-115-3"></a>
-</span><span id="__span-115-4"><a id="__codelineno-115-4" name="__codelineno-115-4" href="#__codelineno-115-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReportService</span>
-</span><span id="__span-115-5"><a id="__codelineno-115-5" name="__codelineno-115-5" href="#__codelineno-115-5"></a>
-</span><span id="__span-115-6"><a id="__codelineno-115-6" name="__codelineno-115-6" href="#__codelineno-115-6"></a><span class="n">report_service</span><span class="p">:</span> <span class="n">ReportService</span> <span class="o">=</span> <span class="n">ReportService</span><span class="p">()</span>  <span class="c1"># tempest: router-builds</span>
-</span><span id="__span-115-7"><a id="__codelineno-115-7" name="__codelineno-115-7" href="#__codelineno-115-7"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/reports"</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-117-1"><a id="__codelineno-117-1" name="__codelineno-117-1" href="#__codelineno-117-1"></a><span class="c1"># src/api/routers/reports.py</span>
+</span><span id="__span-117-2"><a id="__codelineno-117-2" name="__codelineno-117-2" href="#__codelineno-117-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
+</span><span id="__span-117-3"><a id="__codelineno-117-3" name="__codelineno-117-3" href="#__codelineno-117-3"></a>
+</span><span id="__span-117-4"><a id="__codelineno-117-4" name="__codelineno-117-4" href="#__codelineno-117-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReportService</span>
+</span><span id="__span-117-5"><a id="__codelineno-117-5" name="__codelineno-117-5" href="#__codelineno-117-5"></a>
+</span><span id="__span-117-6"><a id="__codelineno-117-6" name="__codelineno-117-6" href="#__codelineno-117-6"></a><span class="n">report_service</span><span class="p">:</span> <span class="n">ReportService</span> <span class="o">=</span> <span class="n">ReportService</span><span class="p">()</span>  <span class="c1"># tempest: router-builds</span>
+</span><span id="__span-117-7"><a id="__codelineno-117-7" name="__codelineno-117-7" href="#__codelineno-117-7"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/reports"</span><span class="p">)</span>
 </span></code></pre></div>
 <p><code>RTR002</code> has no opt-out: the fix has one shape — return the schema the
 repository's <code>map_to_response</code> produces.</p>
@@ -8113,10 +8145,10 @@ they belong to the SDK, and there <code>--rule</code> exits <code>2</code>.</p>
 </table>
 <p>A <code>models/route.py</code> with two models and a repository importing another
 print (real output, exit code <code>0</code>, since they are only warnings):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-116-1"><a id="__codelineno-116-1" name="__codelineno-116-1" href="#__codelineno-116-1"></a>src/db/models/route.py:1: LAY002 (warning) models/route.py sits at the root of the layer; move it to models/&lt;context&gt;/route.py (a subpackage per domain context, re-exported by models/__init__.py).
-</span><span id="__span-116-2"><a id="__codelineno-116-2" name="__codelineno-116-2" href="#__codelineno-116-2"></a>src/db/models/route.py:5: LAY001 (warning) `StopModel` shares this module with `RouteModel`; one class per module in models/ — move it to its own file in the same context package.
-</span><span id="__span-116-3"><a id="__codelineno-116-3" name="__codelineno-116-3" href="#__codelineno-116-3"></a>src/db/repositories/orders/order.py:1: REPO002 (warning) imports `CustomerRepository` from another repository; a repository reads its own tables (join in the query) and a service combines two repositories.
-</span><span id="__span-116-4"><a id="__codelineno-116-4" name="__codelineno-116-4" href="#__codelineno-116-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-118-1"><a id="__codelineno-118-1" name="__codelineno-118-1" href="#__codelineno-118-1"></a>src/db/models/route.py:1: LAY002 (warning) models/route.py sits at the root of the layer; move it to models/&lt;context&gt;/route.py (a subpackage per domain context, re-exported by models/__init__.py).
+</span><span id="__span-118-2"><a id="__codelineno-118-2" name="__codelineno-118-2" href="#__codelineno-118-2"></a>src/db/models/route.py:5: LAY001 (warning) `StopModel` shares this module with `RouteModel`; one class per module in models/ — move it to its own file in the same context package.
+</span><span id="__span-118-3"><a id="__codelineno-118-3" name="__codelineno-118-3" href="#__codelineno-118-3"></a>src/db/repositories/orders/order.py:1: REPO002 (warning) imports `CustomerRepository` from another repository; a repository reads its own tables (join in the query) and a service combines two repositories.
+</span><span id="__span-118-4"><a id="__codelineno-118-4" name="__codelineno-118-4" href="#__codelineno-118-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
 </span></code></pre></div>
 <div class="admonition check">
 <p class="admonition-title">The <code>tempest new</code> project passes all of them</p>
@@ -8157,29 +8189,29 @@ pins all three).</p>
 </table>
 <p>This service has all three shapes (<code>tempest lint-layers --rule DI001 --rule
 DI002 --rule DI003</code>, real output):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-117-1"><a id="__codelineno-117-1" name="__codelineno-117-1" href="#__codelineno-117-1"></a><span class="c1"># src/services/wallet/settlement.py</span>
-</span><span id="__span-117-2"><a id="__codelineno-117-2" name="__codelineno-117-2" href="#__codelineno-117-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy.ext.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncSession</span>
-</span><span id="__span-117-3"><a id="__codelineno-117-3" name="__codelineno-117-3" href="#__codelineno-117-3"></a>
-</span><span id="__span-117-4"><a id="__codelineno-117-4" name="__codelineno-117-4" href="#__codelineno-117-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.wallet.wallet</span><span class="w"> </span><span class="kn">import</span> <span class="n">WalletService</span>
-</span><span id="__span-117-5"><a id="__codelineno-117-5" name="__codelineno-117-5" href="#__codelineno-117-5"></a>
-</span><span id="__span-117-6"><a id="__codelineno-117-6" name="__codelineno-117-6" href="#__codelineno-117-6"></a>
-</span><span id="__span-117-7"><a id="__codelineno-117-7" name="__codelineno-117-7" href="#__codelineno-117-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">SettlementService</span><span class="p">:</span>
-</span><span id="__span-117-8"><a id="__codelineno-117-8" name="__codelineno-117-8" href="#__codelineno-117-8"></a><span class="w">    </span><span class="sd">"""Liquida o saldo retido."""</span>
-</span><span id="__span-117-9"><a id="__codelineno-117-9" name="__codelineno-117-9" href="#__codelineno-117-9"></a>
-</span><span id="__span-117-10"><a id="__codelineno-117-10" name="__codelineno-117-10" href="#__codelineno-117-10"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">,</span> <span class="n">wallet_service</span><span class="p">:</span> <span class="n">WalletService</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-117-11"><a id="__codelineno-117-11" name="__codelineno-117-11" href="#__codelineno-117-11"></a><span class="w">        </span><span class="sd">"""Guarda a sessão e o service da carteira."""</span>
-</span><span id="__span-117-12"><a id="__codelineno-117-12" name="__codelineno-117-12" href="#__codelineno-117-12"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">session</span>
-</span><span id="__span-117-13"><a id="__codelineno-117-13" name="__codelineno-117-13" href="#__codelineno-117-13"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">wallet_service</span> <span class="o">=</span> <span class="n">wallet_service</span>
-</span><span id="__span-117-14"><a id="__codelineno-117-14" name="__codelineno-117-14" href="#__codelineno-117-14"></a>
-</span><span id="__span-117-15"><a id="__codelineno-117-15" name="__codelineno-117-15" href="#__codelineno-117-15"></a>    <span class="nd">@classmethod</span>
-</span><span id="__span-117-16"><a id="__codelineno-117-16" name="__codelineno-117-16" href="#__codelineno-117-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">from_session</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SettlementService"</span><span class="p">:</span>
-</span><span id="__span-117-17"><a id="__codelineno-117-17" name="__codelineno-117-17" href="#__codelineno-117-17"></a><span class="w">        </span><span class="sd">"""Monta o service sobre uma sessão."""</span>
-</span><span id="__span-117-18"><a id="__codelineno-117-18" name="__codelineno-117-18" href="#__codelineno-117-18"></a>        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">WalletService</span><span class="p">(</span><span class="n">session</span><span class="p">))</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-119-1"><a id="__codelineno-119-1" name="__codelineno-119-1" href="#__codelineno-119-1"></a><span class="c1"># src/services/wallet/settlement.py</span>
+</span><span id="__span-119-2"><a id="__codelineno-119-2" name="__codelineno-119-2" href="#__codelineno-119-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy.ext.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncSession</span>
+</span><span id="__span-119-3"><a id="__codelineno-119-3" name="__codelineno-119-3" href="#__codelineno-119-3"></a>
+</span><span id="__span-119-4"><a id="__codelineno-119-4" name="__codelineno-119-4" href="#__codelineno-119-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.wallet.wallet</span><span class="w"> </span><span class="kn">import</span> <span class="n">WalletService</span>
+</span><span id="__span-119-5"><a id="__codelineno-119-5" name="__codelineno-119-5" href="#__codelineno-119-5"></a>
+</span><span id="__span-119-6"><a id="__codelineno-119-6" name="__codelineno-119-6" href="#__codelineno-119-6"></a>
+</span><span id="__span-119-7"><a id="__codelineno-119-7" name="__codelineno-119-7" href="#__codelineno-119-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">SettlementService</span><span class="p">:</span>
+</span><span id="__span-119-8"><a id="__codelineno-119-8" name="__codelineno-119-8" href="#__codelineno-119-8"></a><span class="w">    </span><span class="sd">"""Liquida o saldo retido."""</span>
+</span><span id="__span-119-9"><a id="__codelineno-119-9" name="__codelineno-119-9" href="#__codelineno-119-9"></a>
+</span><span id="__span-119-10"><a id="__codelineno-119-10" name="__codelineno-119-10" href="#__codelineno-119-10"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">,</span> <span class="n">wallet_service</span><span class="p">:</span> <span class="n">WalletService</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-119-11"><a id="__codelineno-119-11" name="__codelineno-119-11" href="#__codelineno-119-11"></a><span class="w">        </span><span class="sd">"""Guarda a sessão e o service da carteira."""</span>
+</span><span id="__span-119-12"><a id="__codelineno-119-12" name="__codelineno-119-12" href="#__codelineno-119-12"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">session</span>
+</span><span id="__span-119-13"><a id="__codelineno-119-13" name="__codelineno-119-13" href="#__codelineno-119-13"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">wallet_service</span> <span class="o">=</span> <span class="n">wallet_service</span>
+</span><span id="__span-119-14"><a id="__codelineno-119-14" name="__codelineno-119-14" href="#__codelineno-119-14"></a>
+</span><span id="__span-119-15"><a id="__codelineno-119-15" name="__codelineno-119-15" href="#__codelineno-119-15"></a>    <span class="nd">@classmethod</span>
+</span><span id="__span-119-16"><a id="__codelineno-119-16" name="__codelineno-119-16" href="#__codelineno-119-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">from_session</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SettlementService"</span><span class="p">:</span>
+</span><span id="__span-119-17"><a id="__codelineno-119-17" name="__codelineno-119-17" href="#__codelineno-119-17"></a><span class="w">        </span><span class="sd">"""Monta o service sobre uma sessão."""</span>
+</span><span id="__span-119-18"><a id="__codelineno-119-18" name="__codelineno-119-18" href="#__codelineno-119-18"></a>        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">WalletService</span><span class="p">(</span><span class="n">session</span><span class="p">))</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-118-1"><a id="__codelineno-118-1" name="__codelineno-118-1" href="#__codelineno-118-1"></a>src/services/wallet/settlement.py:9: DI001 (warning) `SettlementService.__init__` takes the session (`session`); take the repository instead and let the provider in api/dependencies/ build it from the session.
-</span><span id="__span-118-2"><a id="__codelineno-118-2" name="__codelineno-118-2" href="#__codelineno-118-2"></a>src/services/wallet/settlement.py:9: DI002 (warning) `SettlementService.__init__` takes `WalletService` (`wallet_service`), a service of the same layer; combine the two one layer up, or declare the exception with its reason.
-</span><span id="__span-118-3"><a id="__codelineno-118-3" name="__codelineno-118-3" href="#__codelineno-118-3"></a>src/services/wallet/settlement.py:15: DI003 (warning) `from_session` assembles the graph inside the class; build it in a provider of api/dependencies/ for a request, or in a `build_*` function of the composition root outside one.
-</span><span id="__span-118-4"><a id="__codelineno-118-4" name="__codelineno-118-4" href="#__codelineno-118-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-120-1"><a id="__codelineno-120-1" name="__codelineno-120-1" href="#__codelineno-120-1"></a>src/services/wallet/settlement.py:9: DI001 (warning) `SettlementService.__init__` takes the session (`session`); take the repository instead and let the provider in api/dependencies/ build it from the session.
+</span><span id="__span-120-2"><a id="__codelineno-120-2" name="__codelineno-120-2" href="#__codelineno-120-2"></a>src/services/wallet/settlement.py:9: DI002 (warning) `SettlementService.__init__` takes `WalletService` (`wallet_service`), a service of the same layer; combine the two one layer up, or declare the exception with its reason.
+</span><span id="__span-120-3"><a id="__codelineno-120-3" name="__codelineno-120-3" href="#__codelineno-120-3"></a>src/services/wallet/settlement.py:15: DI003 (warning) `from_session` assembles the graph inside the class; build it in a provider of api/dependencies/ for a request, or in a `build_*` function of the composition root outside one.
+</span><span id="__span-120-4"><a id="__codelineno-120-4" name="__codelineno-120-4" href="#__codelineno-120-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
 </span></code></pre></div>
 <p>When two services really must go together — in the transport service, the
 settlement and the wallet credit had to land in the same transaction —, the
@@ -8187,11 +8219,11 @@ way out is a declared exception, aimed at that one parameter (for the
 SDK's wallet, since v0.330.0 the service receives the
 <a href="../wallet/#the-ledger-not-the-service-walletledger"><code>WalletLedger</code></a> and the
 exception is no longer needed):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-119-1"><a id="__codelineno-119-1" name="__codelineno-119-1" href="#__codelineno-119-1"></a><span class="n">ARCHITECTURE_EXCEPTIONS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-119-2"><a id="__codelineno-119-2" name="__codelineno-119-2" href="#__codelineno-119-2"></a>    <span class="s2">"DI002 src/services/wallet/settlement.py::SettlementService.wallet_service"</span><span class="p">:</span> <span class="p">(</span>
-</span><span id="__span-119-3"><a id="__codelineno-119-3" name="__codelineno-119-3" href="#__codelineno-119-3"></a>        <span class="s2">"settlement and credit land in the same transaction"</span>
-</span><span id="__span-119-4"><a id="__codelineno-119-4" name="__codelineno-119-4" href="#__codelineno-119-4"></a>    <span class="p">),</span>
-</span><span id="__span-119-5"><a id="__codelineno-119-5" name="__codelineno-119-5" href="#__codelineno-119-5"></a><span class="p">}</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-121-1"><a id="__codelineno-121-1" name="__codelineno-121-1" href="#__codelineno-121-1"></a><span class="n">ARCHITECTURE_EXCEPTIONS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-121-2"><a id="__codelineno-121-2" name="__codelineno-121-2" href="#__codelineno-121-2"></a>    <span class="s2">"DI002 src/services/wallet/settlement.py::SettlementService.wallet_service"</span><span class="p">:</span> <span class="p">(</span>
+</span><span id="__span-121-3"><a id="__codelineno-121-3" name="__codelineno-121-3" href="#__codelineno-121-3"></a>        <span class="s2">"settlement and credit land in the same transaction"</span>
+</span><span id="__span-121-4"><a id="__codelineno-121-4" name="__codelineno-121-4" href="#__codelineno-121-4"></a>    <span class="p">),</span>
+</span><span id="__span-121-5"><a id="__codelineno-121-5" name="__codelineno-121-5" href="#__codelineno-121-5"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Assembly outside a request</p>
@@ -8222,26 +8254,26 @@ suite. The <a href="../agents-db/">agents with a database</a> recipe shows the s
 </tbody>
 </table>
 <p>With these two files (real output):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-120-1"><a id="__codelineno-120-1" name="__codelineno-120-1" href="#__codelineno-120-1"></a><span class="c1"># src/utils/retry.py</span>
-</span><span id="__span-120-2"><a id="__codelineno-120-2" name="__codelineno-120-2" href="#__codelineno-120-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Awaitable</span><span class="p">,</span> <span class="n">Callable</span>
-</span><span id="__span-120-3"><a id="__codelineno-120-3" name="__codelineno-120-3" href="#__codelineno-120-3"></a>
-</span><span id="__span-120-4"><a id="__codelineno-120-4" name="__codelineno-120-4" href="#__codelineno-120-4"></a>
-</span><span id="__span-120-5"><a id="__codelineno-120-5" name="__codelineno-120-5" href="#__codelineno-120-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">with_retry</span><span class="p">(</span><span class="n">attempts</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]]:</span>
-</span><span id="__span-120-6"><a id="__codelineno-120-6" name="__codelineno-120-6" href="#__codelineno-120-6"></a><span class="w">    </span><span class="sd">"""Repeat the call until it succeeds."""</span>
-</span><span id="__span-120-7"><a id="__codelineno-120-7" name="__codelineno-120-7" href="#__codelineno-120-7"></a>
-</span><span id="__span-120-8"><a id="__codelineno-120-8" name="__codelineno-120-8" href="#__codelineno-120-8"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-120-9"><a id="__codelineno-120-9" name="__codelineno-120-9" href="#__codelineno-120-9"></a><span class="w">        </span><span class="sd">"""Try again."""</span>
-</span><span id="__span-120-10"><a id="__codelineno-120-10" name="__codelineno-120-10" href="#__codelineno-120-10"></a>
-</span><span id="__span-120-11"><a id="__codelineno-120-11" name="__codelineno-120-11" href="#__codelineno-120-11"></a>    <span class="k">return</span> <span class="n">wrapper</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-122-1"><a id="__codelineno-122-1" name="__codelineno-122-1" href="#__codelineno-122-1"></a><span class="c1"># src/utils/retry.py</span>
+</span><span id="__span-122-2"><a id="__codelineno-122-2" name="__codelineno-122-2" href="#__codelineno-122-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Awaitable</span><span class="p">,</span> <span class="n">Callable</span>
+</span><span id="__span-122-3"><a id="__codelineno-122-3" name="__codelineno-122-3" href="#__codelineno-122-3"></a>
+</span><span id="__span-122-4"><a id="__codelineno-122-4" name="__codelineno-122-4" href="#__codelineno-122-4"></a>
+</span><span id="__span-122-5"><a id="__codelineno-122-5" name="__codelineno-122-5" href="#__codelineno-122-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">with_retry</span><span class="p">(</span><span class="n">attempts</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]]:</span>
+</span><span id="__span-122-6"><a id="__codelineno-122-6" name="__codelineno-122-6" href="#__codelineno-122-6"></a><span class="w">    </span><span class="sd">"""Repeat the call until it succeeds."""</span>
+</span><span id="__span-122-7"><a id="__codelineno-122-7" name="__codelineno-122-7" href="#__codelineno-122-7"></a>
+</span><span id="__span-122-8"><a id="__codelineno-122-8" name="__codelineno-122-8" href="#__codelineno-122-8"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-122-9"><a id="__codelineno-122-9" name="__codelineno-122-9" href="#__codelineno-122-9"></a><span class="w">        </span><span class="sd">"""Try again."""</span>
+</span><span id="__span-122-10"><a id="__codelineno-122-10" name="__codelineno-122-10" href="#__codelineno-122-10"></a>
+</span><span id="__span-122-11"><a id="__codelineno-122-11" name="__codelineno-122-11" href="#__codelineno-122-11"></a>    <span class="k">return</span> <span class="n">wrapper</span>
 </span></code></pre></div>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-121-1"><a id="__codelineno-121-1" name="__codelineno-121-1" href="#__codelineno-121-1"></a><span class="c1"># tests/test_app.py</span>
-</span><span id="__span-121-2"><a id="__codelineno-121-2" name="__codelineno-121-2" href="#__codelineno-121-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">_make_payload</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-</span><span id="__span-121-3"><a id="__codelineno-121-3" name="__codelineno-121-3" href="#__codelineno-121-3"></a><span class="w">    </span><span class="sd">"""Build the request body."""</span>
-</span><span id="__span-121-4"><a id="__codelineno-121-4" name="__codelineno-121-4" href="#__codelineno-121-4"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Picos"</span><span class="p">}</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-123-1"><a id="__codelineno-123-1" name="__codelineno-123-1" href="#__codelineno-123-1"></a><span class="c1"># tests/test_app.py</span>
+</span><span id="__span-123-2"><a id="__codelineno-123-2" name="__codelineno-123-2" href="#__codelineno-123-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">_make_payload</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+</span><span id="__span-123-3"><a id="__codelineno-123-3" name="__codelineno-123-3" href="#__codelineno-123-3"></a><span class="w">    </span><span class="sd">"""Build the request body."""</span>
+</span><span id="__span-123-4"><a id="__codelineno-123-4" name="__codelineno-123-4" href="#__codelineno-123-4"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Picos"</span><span class="p">}</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-122-1"><a id="__codelineno-122-1" name="__codelineno-122-1" href="#__codelineno-122-1"></a>src/utils/retry.py:7: STR001 (warning) `with_retry.wrapper` is defined inside a function; a callback that keeps state becomes a class with `__call__`, and one that binds an argument goes through functools.partial over a module-level function.
-</span><span id="__span-122-2"><a id="__codelineno-122-2" name="__codelineno-122-2" href="#__codelineno-122-2"></a>tests/test_app.py:1: STR002 (warning) module-level `_make_payload` is a helper with no home; make it a method of the class that uses it or a public function in utils/ (in tests: a fixture or a public helper module).
-</span><span id="__span-122-3"><a id="__codelineno-122-3" name="__codelineno-122-3" href="#__codelineno-122-3"></a>2 layer finding(s): 0 error(s), 2 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-124-1"><a id="__codelineno-124-1" name="__codelineno-124-1" href="#__codelineno-124-1"></a>src/utils/retry.py:7: STR001 (warning) `with_retry.wrapper` is defined inside a function; a callback that keeps state becomes a class with `__call__`, and one that binds an argument goes through functools.partial over a module-level function.
+</span><span id="__span-124-2"><a id="__codelineno-124-2" name="__codelineno-124-2" href="#__codelineno-124-2"></a>tests/test_app.py:1: STR002 (warning) module-level `_make_payload` is a helper with no home; make it a method of the class that uses it or a public function in utils/ (in tests: a fixture or a public helper module).
+</span><span id="__span-124-3"><a id="__codelineno-124-3" name="__codelineno-124-3" href="#__codelineno-124-3"></a>2 layer finding(s): 0 error(s), 2 warning(s).
 </span></code></pre></div>
 <h4 id="imports-between-project-packages-warning">Imports between project packages (warning)<a class="headerlink" href="#imports-between-project-packages-warning" title="Permanent link">&para;</a></h4>
 <table>
@@ -8264,34 +8296,34 @@ suite. The <a href="../agents-db/">agents with a database</a> recipe shows the s
 </table>
 <p>Both read the source and the suite. With these four files
 (<code>tempest lint-layers --rule IMP001 --rule IMP002</code>, real output):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-123-1"><a id="__codelineno-123-1" name="__codelineno-123-1" href="#__codelineno-123-1"></a><span class="c1"># src/services/__init__.py</span>
-</span><span id="__span-123-2"><a id="__codelineno-123-2" name="__codelineno-123-2" href="#__codelineno-123-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderService</span> <span class="k">as</span> <span class="n">OrderService</span>
-</span><span id="__span-123-3"><a id="__codelineno-123-3" name="__codelineno-123-3" href="#__codelineno-123-3"></a>
-</span><span id="__span-123-4"><a id="__codelineno-123-4" name="__codelineno-123-4" href="#__codelineno-123-4"></a><span class="n">__all__</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"OrderService"</span><span class="p">]</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-125-1"><a id="__codelineno-125-1" name="__codelineno-125-1" href="#__codelineno-125-1"></a><span class="c1"># src/services/__init__.py</span>
+</span><span id="__span-125-2"><a id="__codelineno-125-2" name="__codelineno-125-2" href="#__codelineno-125-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderService</span> <span class="k">as</span> <span class="n">OrderService</span>
+</span><span id="__span-125-3"><a id="__codelineno-125-3" name="__codelineno-125-3" href="#__codelineno-125-3"></a>
+</span><span id="__span-125-4"><a id="__codelineno-125-4" name="__codelineno-125-4" href="#__codelineno-125-4"></a><span class="n">__all__</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"OrderService"</span><span class="p">]</span>
 </span></code></pre></div>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-124-1"><a id="__codelineno-124-1" name="__codelineno-124-1" href="#__codelineno-124-1"></a><span class="c1"># src/services/orders/__init__.py</span>
-</span><span id="__span-124-2"><a id="__codelineno-124-2" name="__codelineno-124-2" href="#__codelineno-124-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">.order</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderService</span> <span class="k">as</span> <span class="n">OrderService</span>
-</span><span id="__span-124-3"><a id="__codelineno-124-3" name="__codelineno-124-3" href="#__codelineno-124-3"></a>
-</span><span id="__span-124-4"><a id="__codelineno-124-4" name="__codelineno-124-4" href="#__codelineno-124-4"></a><span class="n">__all__</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"OrderService"</span><span class="p">]</span>
-</span></code></pre></div>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-125-1"><a id="__codelineno-125-1" name="__codelineno-125-1" href="#__codelineno-125-1"></a><span class="c1"># src/services/orders/order.py</span>
-</span><span id="__span-125-2"><a id="__codelineno-125-2" name="__codelineno-125-2" href="#__codelineno-125-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderService</span><span class="p">:</span>
-</span><span id="__span-125-3"><a id="__codelineno-125-3" name="__codelineno-125-3" href="#__codelineno-125-3"></a><span class="w">    </span><span class="sd">"""Orders."""</span>
-</span></code></pre></div>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-126-1"><a id="__codelineno-126-1" name="__codelineno-126-1" href="#__codelineno-126-1"></a><span class="c1"># src/controllers/orders/order.py</span>
-</span><span id="__span-126-2"><a id="__codelineno-126-2" name="__codelineno-126-2" href="#__codelineno-126-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.orders.order</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderService</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-126-1"><a id="__codelineno-126-1" name="__codelineno-126-1" href="#__codelineno-126-1"></a><span class="c1"># src/services/orders/__init__.py</span>
+</span><span id="__span-126-2"><a id="__codelineno-126-2" name="__codelineno-126-2" href="#__codelineno-126-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">.order</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderService</span> <span class="k">as</span> <span class="n">OrderService</span>
 </span><span id="__span-126-3"><a id="__codelineno-126-3" name="__codelineno-126-3" href="#__codelineno-126-3"></a>
-</span><span id="__span-126-4"><a id="__codelineno-126-4" name="__codelineno-126-4" href="#__codelineno-126-4"></a>
-</span><span id="__span-126-5"><a id="__codelineno-126-5" name="__codelineno-126-5" href="#__codelineno-126-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderController</span><span class="p">:</span>
-</span><span id="__span-126-6"><a id="__codelineno-126-6" name="__codelineno-126-6" href="#__codelineno-126-6"></a><span class="w">    </span><span class="sd">"""Orchestrates orders."""</span>
-</span><span id="__span-126-7"><a id="__codelineno-126-7" name="__codelineno-126-7" href="#__codelineno-126-7"></a>
-</span><span id="__span-126-8"><a id="__codelineno-126-8" name="__codelineno-126-8" href="#__codelineno-126-8"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">service</span><span class="p">:</span> <span class="n">OrderService</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-126-9"><a id="__codelineno-126-9" name="__codelineno-126-9" href="#__codelineno-126-9"></a><span class="w">        </span><span class="sd">"""Keep the service."""</span>
-</span><span id="__span-126-10"><a id="__codelineno-126-10" name="__codelineno-126-10" href="#__codelineno-126-10"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">service</span> <span class="o">=</span> <span class="n">service</span>
+</span><span id="__span-126-4"><a id="__codelineno-126-4" name="__codelineno-126-4" href="#__codelineno-126-4"></a><span class="n">__all__</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"OrderService"</span><span class="p">]</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-127-1"><a id="__codelineno-127-1" name="__codelineno-127-1" href="#__codelineno-127-1"></a>src/controllers/orders/order.py:1: IMP002 (warning) `OrderService` is re-exported by `src.services`; import it from there: `from src.services import OrderService`.
-</span><span id="__span-127-2"><a id="__codelineno-127-2" name="__codelineno-127-2" href="#__codelineno-127-2"></a>src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module of this package; import it relatively in __init__.py: `from .orders import ...`.
-</span><span id="__span-127-3"><a id="__codelineno-127-3" name="__codelineno-127-3" href="#__codelineno-127-3"></a>2 layer finding(s): 0 error(s), 2 warning(s).
+<div class="language-python highlight"><pre><span></span><code><span id="__span-127-1"><a id="__codelineno-127-1" name="__codelineno-127-1" href="#__codelineno-127-1"></a><span class="c1"># src/services/orders/order.py</span>
+</span><span id="__span-127-2"><a id="__codelineno-127-2" name="__codelineno-127-2" href="#__codelineno-127-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderService</span><span class="p">:</span>
+</span><span id="__span-127-3"><a id="__codelineno-127-3" name="__codelineno-127-3" href="#__codelineno-127-3"></a><span class="w">    </span><span class="sd">"""Orders."""</span>
+</span></code></pre></div>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-128-1"><a id="__codelineno-128-1" name="__codelineno-128-1" href="#__codelineno-128-1"></a><span class="c1"># src/controllers/orders/order.py</span>
+</span><span id="__span-128-2"><a id="__codelineno-128-2" name="__codelineno-128-2" href="#__codelineno-128-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.orders.order</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderService</span>
+</span><span id="__span-128-3"><a id="__codelineno-128-3" name="__codelineno-128-3" href="#__codelineno-128-3"></a>
+</span><span id="__span-128-4"><a id="__codelineno-128-4" name="__codelineno-128-4" href="#__codelineno-128-4"></a>
+</span><span id="__span-128-5"><a id="__codelineno-128-5" name="__codelineno-128-5" href="#__codelineno-128-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderController</span><span class="p">:</span>
+</span><span id="__span-128-6"><a id="__codelineno-128-6" name="__codelineno-128-6" href="#__codelineno-128-6"></a><span class="w">    </span><span class="sd">"""Orchestrates orders."""</span>
+</span><span id="__span-128-7"><a id="__codelineno-128-7" name="__codelineno-128-7" href="#__codelineno-128-7"></a>
+</span><span id="__span-128-8"><a id="__codelineno-128-8" name="__codelineno-128-8" href="#__codelineno-128-8"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">service</span><span class="p">:</span> <span class="n">OrderService</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-128-9"><a id="__codelineno-128-9" name="__codelineno-128-9" href="#__codelineno-128-9"></a><span class="w">        </span><span class="sd">"""Keep the service."""</span>
+</span><span id="__span-128-10"><a id="__codelineno-128-10" name="__codelineno-128-10" href="#__codelineno-128-10"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">service</span> <span class="o">=</span> <span class="n">service</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-129-1"><a id="__codelineno-129-1" name="__codelineno-129-1" href="#__codelineno-129-1"></a>src/controllers/orders/order.py:1: IMP002 (warning) `OrderService` is re-exported by `src.services`; import it from there: `from src.services import OrderService`.
+</span><span id="__span-129-2"><a id="__codelineno-129-2" name="__codelineno-129-2" href="#__codelineno-129-2"></a>src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module of this package; import it relatively in __init__.py: `from .orders import ...`.
+</span><span id="__span-129-3"><a id="__codelineno-129-3" name="__codelineno-129-3" href="#__codelineno-129-3"></a>2 layer finding(s): 0 error(s), 2 warning(s).
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">When the package would close a cycle</p>
@@ -8326,32 +8358,32 @@ That is a case for a declared exception
 </table>
 <p>In the transport service, <code>/api</code> was repeated in 22 <code>include_router</code> calls.
 An orders module with two routers and <code>/api</code> baked in prints (real output):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-128-1"><a id="__codelineno-128-1" name="__codelineno-128-1" href="#__codelineno-128-1"></a><span class="c1"># src/api/routers/orders.py</span>
-</span><span id="__span-128-2"><a id="__codelineno-128-2" name="__codelineno-128-2" href="#__codelineno-128-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
-</span><span id="__span-128-3"><a id="__codelineno-128-3" name="__codelineno-128-3" href="#__codelineno-128-3"></a>
-</span><span id="__span-128-4"><a id="__codelineno-128-4" name="__codelineno-128-4" href="#__codelineno-128-4"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"orders"</span><span class="p">])</span>
-</span><span id="__span-128-5"><a id="__codelineno-128-5" name="__codelineno-128-5" href="#__codelineno-128-5"></a><span class="n">admin_router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/admin/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"admin"</span><span class="p">])</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-130-1"><a id="__codelineno-130-1" name="__codelineno-130-1" href="#__codelineno-130-1"></a><span class="c1"># src/api/routers/orders.py</span>
+</span><span id="__span-130-2"><a id="__codelineno-130-2" name="__codelineno-130-2" href="#__codelineno-130-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
+</span><span id="__span-130-3"><a id="__codelineno-130-3" name="__codelineno-130-3" href="#__codelineno-130-3"></a>
+</span><span id="__span-130-4"><a id="__codelineno-130-4" name="__codelineno-130-4" href="#__codelineno-130-4"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"orders"</span><span class="p">])</span>
+</span><span id="__span-130-5"><a id="__codelineno-130-5" name="__codelineno-130-5" href="#__codelineno-130-5"></a><span class="n">admin_router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/admin/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"admin"</span><span class="p">])</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-129-1"><a id="__codelineno-129-1" name="__codelineno-129-1" href="#__codelineno-129-1"></a>src/api/routers/orders.py:3: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
-</span><span id="__span-129-2"><a id="__codelineno-129-2" name="__codelineno-129-2" href="#__codelineno-129-2"></a>src/api/routers/orders.py:4: RTR003 (warning) a second APIRouter in this module (`admin_router`); one router per file in routers/ — move it to its own module.
-</span><span id="__span-129-3"><a id="__codelineno-129-3" name="__codelineno-129-3" href="#__codelineno-129-3"></a>src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
-</span><span id="__span-129-4"><a id="__codelineno-129-4" name="__codelineno-129-4" href="#__codelineno-129-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-131-1"><a id="__codelineno-131-1" name="__codelineno-131-1" href="#__codelineno-131-1"></a>src/api/routers/orders.py:3: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+</span><span id="__span-131-2"><a id="__codelineno-131-2" name="__codelineno-131-2" href="#__codelineno-131-2"></a>src/api/routers/orders.py:4: RTR003 (warning) a second APIRouter in this module (`admin_router`); one router per file in routers/ — move it to its own module.
+</span><span id="__span-131-3"><a id="__codelineno-131-3" name="__codelineno-131-3" href="#__codelineno-131-3"></a>src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+</span><span id="__span-131-4"><a id="__codelineno-131-4" name="__codelineno-131-4" href="#__codelineno-131-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
 </span></code></pre></div>
 <p>The shape both rules ask for: each domain in its own file, with only its own
 prefix (<code>/orders</code>, <code>/admin/orders</code>), and <code>/api</code> set once:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-130-1"><a id="__codelineno-130-1" name="__codelineno-130-1" href="#__codelineno-130-1"></a><span class="c1"># src/api/routers/api.py</span>
-</span><span id="__span-130-2"><a id="__codelineno-130-2" name="__codelineno-130-2" href="#__codelineno-130-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
-</span><span id="__span-130-3"><a id="__codelineno-130-3" name="__codelineno-130-3" href="#__codelineno-130-3"></a>
-</span><span id="__span-130-4"><a id="__codelineno-130-4" name="__codelineno-130-4" href="#__codelineno-130-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.admin_orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">admin_orders_router</span>
-</span><span id="__span-130-5"><a id="__codelineno-130-5" name="__codelineno-130-5" href="#__codelineno-130-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">orders_router</span>
-</span><span id="__span-130-6"><a id="__codelineno-130-6" name="__codelineno-130-6" href="#__codelineno-130-6"></a>
-</span><span id="__span-130-7"><a id="__codelineno-130-7" name="__codelineno-130-7" href="#__codelineno-130-7"></a>
-</span><span id="__span-130-8"><a id="__codelineno-130-8" name="__codelineno-130-8" href="#__codelineno-130-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_api_router</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">APIRouter</span><span class="p">:</span>
-</span><span id="__span-130-9"><a id="__codelineno-130-9" name="__codelineno-130-9" href="#__codelineno-130-9"></a><span class="w">    </span><span class="sd">"""Build the API router: every domain sits under ``/api``."""</span>
-</span><span id="__span-130-10"><a id="__codelineno-130-10" name="__codelineno-130-10" href="#__codelineno-130-10"></a>    <span class="n">api</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api"</span><span class="p">)</span>
-</span><span id="__span-130-11"><a id="__codelineno-130-11" name="__codelineno-130-11" href="#__codelineno-130-11"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">orders_router</span><span class="p">)</span>
-</span><span id="__span-130-12"><a id="__codelineno-130-12" name="__codelineno-130-12" href="#__codelineno-130-12"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">admin_orders_router</span><span class="p">)</span>
-</span><span id="__span-130-13"><a id="__codelineno-130-13" name="__codelineno-130-13" href="#__codelineno-130-13"></a>    <span class="k">return</span> <span class="n">api</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-132-1"><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a><span class="c1"># src/api/routers/api.py</span>
+</span><span id="__span-132-2"><a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
+</span><span id="__span-132-3"><a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>
+</span><span id="__span-132-4"><a id="__codelineno-132-4" name="__codelineno-132-4" href="#__codelineno-132-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.admin_orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">admin_orders_router</span>
+</span><span id="__span-132-5"><a id="__codelineno-132-5" name="__codelineno-132-5" href="#__codelineno-132-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">orders_router</span>
+</span><span id="__span-132-6"><a id="__codelineno-132-6" name="__codelineno-132-6" href="#__codelineno-132-6"></a>
+</span><span id="__span-132-7"><a id="__codelineno-132-7" name="__codelineno-132-7" href="#__codelineno-132-7"></a>
+</span><span id="__span-132-8"><a id="__codelineno-132-8" name="__codelineno-132-8" href="#__codelineno-132-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_api_router</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">APIRouter</span><span class="p">:</span>
+</span><span id="__span-132-9"><a id="__codelineno-132-9" name="__codelineno-132-9" href="#__codelineno-132-9"></a><span class="w">    </span><span class="sd">"""Build the API router: every domain sits under ``/api``."""</span>
+</span><span id="__span-132-10"><a id="__codelineno-132-10" name="__codelineno-132-10" href="#__codelineno-132-10"></a>    <span class="n">api</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api"</span><span class="p">)</span>
+</span><span id="__span-132-11"><a id="__codelineno-132-11" name="__codelineno-132-11" href="#__codelineno-132-11"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">orders_router</span><span class="p">)</span>
+</span><span id="__span-132-12"><a id="__codelineno-132-12" name="__codelineno-132-12" href="#__codelineno-132-12"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">admin_orders_router</span><span class="p">)</span>
+</span><span id="__span-132-13"><a id="__codelineno-132-13" name="__codelineno-132-13" href="#__codelineno-132-13"></a>    <span class="k">return</span> <span class="n">api</span>
 </span></code></pre></div>
 <h4 id="the-shape-of-the-suite-warning">The shape of the suite (warning)<a class="headerlink" href="#the-shape-of-the-suite-warning" title="Permanent link">&para;</a></h4>
 <p>The four <code>TST</code> rules read the files pytest collects in the project's
@@ -8383,31 +8415,31 @@ prefix (<code>/orders</code>, <code>/admin/orders</code>), and <code>/api</code>
 </tbody>
 </table>
 <p>This file has all four (real output):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-131-1"><a id="__codelineno-131-1" name="__codelineno-131-1" href="#__codelineno-131-1"></a><span class="c1"># tests/test_orders.py</span>
-</span><span id="__span-131-2"><a id="__codelineno-131-2" name="__codelineno-131-2" href="#__codelineno-131-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">uuid4</span>
-</span><span id="__span-131-3"><a id="__codelineno-131-3" name="__codelineno-131-3" href="#__codelineno-131-3"></a>
-</span><span id="__span-131-4"><a id="__codelineno-131-4" name="__codelineno-131-4" href="#__codelineno-131-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
-</span><span id="__span-131-5"><a id="__codelineno-131-5" name="__codelineno-131-5" href="#__codelineno-131-5"></a>
-</span><span id="__span-131-6"><a id="__codelineno-131-6" name="__codelineno-131-6" href="#__codelineno-131-6"></a>
-</span><span id="__span-131-7"><a id="__codelineno-131-7" name="__codelineno-131-7" href="#__codelineno-131-7"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span><span class="s2">"order_id"</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())])</span>
-</span><span id="__span-131-8"><a id="__codelineno-131-8" name="__codelineno-131-8" href="#__codelineno-131-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_order_is_created</span><span class="p">(</span><span class="n">order_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-131-9"><a id="__codelineno-131-9" name="__codelineno-131-9" href="#__codelineno-131-9"></a><span class="w">    </span><span class="sd">"""The order is created."""</span>
-</span><span id="__span-131-10"><a id="__codelineno-131-10" name="__codelineno-131-10" href="#__codelineno-131-10"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-</span><span id="__span-131-11"><a id="__codelineno-131-11" name="__codelineno-131-11" href="#__codelineno-131-11"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">order_id</span><span class="p">)</span>
-</span><span id="__span-131-12"><a id="__codelineno-131-12" name="__codelineno-131-12" href="#__codelineno-131-12"></a>
-</span><span id="__span-131-13"><a id="__codelineno-131-13" name="__codelineno-131-13" href="#__codelineno-131-13"></a>
-</span><span id="__span-131-14"><a id="__codelineno-131-14" name="__codelineno-131-14" href="#__codelineno-131-14"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_receipt_is_sent</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-131-15"><a id="__codelineno-131-15" name="__codelineno-131-15" href="#__codelineno-131-15"></a><span class="w">    </span><span class="sd">"""Cenário: um pedido pago.</span>
-</span><span id="__span-131-16"><a id="__codelineno-131-16" name="__codelineno-131-16" href="#__codelineno-131-16"></a>
-</span><span id="__span-131-17"><a id="__codelineno-131-17" name="__codelineno-131-17" href="#__codelineno-131-17"></a><span class="sd">    Esperado: o recibo sai sem erro.</span>
-</span><span id="__span-131-18"><a id="__codelineno-131-18" name="__codelineno-131-18" href="#__codelineno-131-18"></a><span class="sd">    """</span>
-</span><span id="__span-131-19"><a id="__codelineno-131-19" name="__codelineno-131-19" href="#__codelineno-131-19"></a>    <span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-133-1"><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a><span class="c1"># tests/test_orders.py</span>
+</span><span id="__span-133-2"><a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">uuid4</span>
+</span><span id="__span-133-3"><a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>
+</span><span id="__span-133-4"><a id="__codelineno-133-4" name="__codelineno-133-4" href="#__codelineno-133-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+</span><span id="__span-133-5"><a id="__codelineno-133-5" name="__codelineno-133-5" href="#__codelineno-133-5"></a>
+</span><span id="__span-133-6"><a id="__codelineno-133-6" name="__codelineno-133-6" href="#__codelineno-133-6"></a>
+</span><span id="__span-133-7"><a id="__codelineno-133-7" name="__codelineno-133-7" href="#__codelineno-133-7"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span><span class="s2">"order_id"</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())])</span>
+</span><span id="__span-133-8"><a id="__codelineno-133-8" name="__codelineno-133-8" href="#__codelineno-133-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_order_is_created</span><span class="p">(</span><span class="n">order_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-133-9"><a id="__codelineno-133-9" name="__codelineno-133-9" href="#__codelineno-133-9"></a><span class="w">    </span><span class="sd">"""The order is created."""</span>
+</span><span id="__span-133-10"><a id="__codelineno-133-10" name="__codelineno-133-10" href="#__codelineno-133-10"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+</span><span id="__span-133-11"><a id="__codelineno-133-11" name="__codelineno-133-11" href="#__codelineno-133-11"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">order_id</span><span class="p">)</span>
+</span><span id="__span-133-12"><a id="__codelineno-133-12" name="__codelineno-133-12" href="#__codelineno-133-12"></a>
+</span><span id="__span-133-13"><a id="__codelineno-133-13" name="__codelineno-133-13" href="#__codelineno-133-13"></a>
+</span><span id="__span-133-14"><a id="__codelineno-133-14" name="__codelineno-133-14" href="#__codelineno-133-14"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_receipt_is_sent</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-133-15"><a id="__codelineno-133-15" name="__codelineno-133-15" href="#__codelineno-133-15"></a><span class="w">    </span><span class="sd">"""Cenário: um pedido pago.</span>
+</span><span id="__span-133-16"><a id="__codelineno-133-16" name="__codelineno-133-16" href="#__codelineno-133-16"></a>
+</span><span id="__span-133-17"><a id="__codelineno-133-17" name="__codelineno-133-17" href="#__codelineno-133-17"></a><span class="sd">    Esperado: o recibo sai sem erro.</span>
+</span><span id="__span-133-18"><a id="__codelineno-133-18" name="__codelineno-133-18" href="#__codelineno-133-18"></a><span class="sd">    """</span>
+</span><span id="__span-133-19"><a id="__codelineno-133-19" name="__codelineno-133-19" href="#__codelineno-133-19"></a>    <span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-132-1"><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a>tests/test_orders.py:6: TST004 (warning) parametrize puts a `uuid4()` drawn at import into the test id; each pytest-xdist worker collects different ids and the run aborts — use fixed literals.
-</span><span id="__span-132-2"><a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a>tests/test_orders.py:7: TST001 (warning) `test_order_is_created` docstring lacks Cenário:, Esperado:; say the situation the test builds (Cenário:) and what it proves (Esperado:).
-</span><span id="__span-132-3"><a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>tests/test_orders.py:9: TST003 (warning) pytest.raises(Exception) passes for any bug; name the exception the code raises (and `match=` its message when it matters).
-</span><span id="__span-132-4"><a id="__codelineno-132-4" name="__codelineno-132-4" href="#__codelineno-132-4"></a>tests/test_orders.py:13: TST002 (warning) `test_receipt_is_sent` checks nothing (no assert, no pytest.raises, no assert_* call); a test that cannot fail proves nothing.
-</span><span id="__span-132-5"><a id="__codelineno-132-5" name="__codelineno-132-5" href="#__codelineno-132-5"></a>4 layer finding(s): 0 error(s), 4 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-134-1"><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a>tests/test_orders.py:6: TST004 (warning) parametrize puts a `uuid4()` drawn at import into the test id; each pytest-xdist worker collects different ids and the run aborts — use fixed literals.
+</span><span id="__span-134-2"><a id="__codelineno-134-2" name="__codelineno-134-2" href="#__codelineno-134-2"></a>tests/test_orders.py:7: TST001 (warning) `test_order_is_created` docstring lacks Cenário:, Esperado:; say the situation the test builds (Cenário:) and what it proves (Esperado:).
+</span><span id="__span-134-3"><a id="__codelineno-134-3" name="__codelineno-134-3" href="#__codelineno-134-3"></a>tests/test_orders.py:9: TST003 (warning) pytest.raises(Exception) passes for any bug; name the exception the code raises (and `match=` its message when it matters).
+</span><span id="__span-134-4"><a id="__codelineno-134-4" name="__codelineno-134-4" href="#__codelineno-134-4"></a>tests/test_orders.py:13: TST002 (warning) `test_receipt_is_sent` checks nothing (no assert, no pytest.raises, no assert_* call); a test that cannot fail proves nothing.
+</span><span id="__span-134-5"><a id="__codelineno-134-5" name="__codelineno-134-5" href="#__codelineno-134-5"></a>4 layer finding(s): 0 error(s), 4 warning(s).
 </span></code></pre></div>
 <div class="admonition info">
 <p class="admonition-title">When a drawn value breaks <code>pytest -n</code></p>
@@ -8427,15 +8459,15 @@ they become text or sit in <code>ids=</code> / <code>id=</code>.</p>
 enters as a warning in one release and becomes an error in the next — so
 an existing service has a whole release to migrate. To migrate one rule at
 a time, select it with <code>--rule</code> (repeatable, lower case accepted):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-133-1"><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w">              </span><span class="c1"># one rule only</span>
-</span><span id="__span-133-2"><a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w"> </span>--rule<span class="w"> </span>RTR001
-</span><span id="__span-133-3"><a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--strict<span class="w">                   </span><span class="c1"># warnings fail too</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-135-1"><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w">              </span><span class="c1"># one rule only</span>
+</span><span id="__span-135-2"><a id="__codelineno-135-2" name="__codelineno-135-2" href="#__codelineno-135-2"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w"> </span>--rule<span class="w"> </span>RTR001
+</span><span id="__span-135-3"><a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--strict<span class="w">                   </span><span class="c1"># warnings fail too</span>
 </span></code></pre></div>
 <p><code>tempest check</code> runs the step without <code>--rule</code>. For the gate to fail on
 warnings too, turn it on in <code>pyproject.toml</code> — the command line's
 <code>--strict</code>/<code>--no-strict</code> wins over the config:</p>
-<div class="language-toml highlight"><pre><span></span><code><span id="__span-134-1"><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a><span class="k">[tool.tempest]</span>
-</span><span id="__span-134-2"><a id="__codelineno-134-2" name="__codelineno-134-2" href="#__codelineno-134-2"></a><span class="n">layers_strict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-136-1"><a id="__codelineno-136-1" name="__codelineno-136-1" href="#__codelineno-136-1"></a><span class="k">[tool.tempest]</span>
+</span><span id="__span-136-2"><a id="__codelineno-136-2" name="__codelineno-136-2" href="#__codelineno-136-2"></a><span class="n">layers_strict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 </span></code></pre></div>
 <p><strong>An exception the project keeps lives in one place</strong>, with a reason,
 reviewed in the diff like code: the <code>ARCHITECTURE_EXCEPTIONS</code> dict in
@@ -8444,22 +8476,22 @@ finding of that code in the file) or <code>"&lt;CODE&gt; &lt;path&gt;::&lt;subje
 one about that name — the class, <code>Class.method</code> or the function). The path
 is relative to the project root. The file is read with <code>ast</code> too, never
 imported:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-135-1"><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a><span class="sd">"""Architecture exceptions the project keeps, each with its reason."""</span>
-</span><span id="__span-135-2"><a id="__codelineno-135-2" name="__codelineno-135-2" href="#__codelineno-135-2"></a>
-</span><span id="__span-135-3"><a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a><span class="n">ARCHITECTURE_EXCEPTIONS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-135-4"><a id="__codelineno-135-4" name="__codelineno-135-4" href="#__codelineno-135-4"></a>    <span class="s2">"SVC001 src/services/catalogue/catalogue.py::CatalogueService"</span><span class="p">:</span> <span class="p">(</span>
-</span><span id="__span-135-5"><a id="__codelineno-135-5" name="__codelineno-135-5" href="#__codelineno-135-5"></a>        <span class="s2">"static catalogue, no repository to hand to BaseService"</span>
-</span><span id="__span-135-6"><a id="__codelineno-135-6" name="__codelineno-135-6" href="#__codelineno-135-6"></a>    <span class="p">),</span>
-</span><span id="__span-135-7"><a id="__codelineno-135-7" name="__codelineno-135-7" href="#__codelineno-135-7"></a>    <span class="s2">"REPO001 src/db/repositories/legacy/legacy.py"</span><span class="p">:</span> <span class="s2">"wrapper kept until 2.0"</span><span class="p">,</span>
-</span><span id="__span-135-8"><a id="__codelineno-135-8" name="__codelineno-135-8" href="#__codelineno-135-8"></a><span class="p">}</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-137-1"><a id="__codelineno-137-1" name="__codelineno-137-1" href="#__codelineno-137-1"></a><span class="sd">"""Architecture exceptions the project keeps, each with its reason."""</span>
+</span><span id="__span-137-2"><a id="__codelineno-137-2" name="__codelineno-137-2" href="#__codelineno-137-2"></a>
+</span><span id="__span-137-3"><a id="__codelineno-137-3" name="__codelineno-137-3" href="#__codelineno-137-3"></a><span class="n">ARCHITECTURE_EXCEPTIONS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-137-4"><a id="__codelineno-137-4" name="__codelineno-137-4" href="#__codelineno-137-4"></a>    <span class="s2">"SVC001 src/services/catalogue/catalogue.py::CatalogueService"</span><span class="p">:</span> <span class="p">(</span>
+</span><span id="__span-137-5"><a id="__codelineno-137-5" name="__codelineno-137-5" href="#__codelineno-137-5"></a>        <span class="s2">"static catalogue, no repository to hand to BaseService"</span>
+</span><span id="__span-137-6"><a id="__codelineno-137-6" name="__codelineno-137-6" href="#__codelineno-137-6"></a>    <span class="p">),</span>
+</span><span id="__span-137-7"><a id="__codelineno-137-7" name="__codelineno-137-7" href="#__codelineno-137-7"></a>    <span class="s2">"REPO001 src/db/repositories/legacy/legacy.py"</span><span class="p">:</span> <span class="s2">"wrapper kept until 2.0"</span><span class="p">,</span>
+</span><span id="__span-137-8"><a id="__codelineno-137-8" name="__codelineno-137-8" href="#__codelineno-137-8"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>With that file, a <code>src/services/catalogue/catalogue.py</code> defining <code>CatalogueService</code>
 (no <code>BaseService</code>) and a module-level function <code>load_items</code>, and no
 <code>legacy.py</code>, <code>tempest lint-layers</code> prints (real output, exit code <code>1</code>
 because of the <code>SVC002</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-136-1"><a id="__codelineno-136-1" name="__codelineno-136-1" href="#__codelineno-136-1"></a>src/services/catalogue/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
-</span><span id="__span-136-2"><a id="__codelineno-136-2" name="__codelineno-136-2" href="#__codelineno-136-2"></a>tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
-</span><span id="__span-136-3"><a id="__codelineno-136-3" name="__codelineno-136-3" href="#__codelineno-136-3"></a>2 layer finding(s): 1 error(s), 1 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-138-1"><a id="__codelineno-138-1" name="__codelineno-138-1" href="#__codelineno-138-1"></a>src/services/catalogue/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
+</span><span id="__span-138-2"><a id="__codelineno-138-2" name="__codelineno-138-2" href="#__codelineno-138-2"></a>tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
+</span><span id="__span-138-3"><a id="__codelineno-138-3" name="__codelineno-138-3" href="#__codelineno-138-3"></a>2 layer finding(s): 1 error(s), 1 warning(s).
 </span></code></pre></div>
 <p><code>CatalogueService</code>'s <code>SVC001</code> is gone, because the exception covers it. The
 <code>REPO001</code> entry matches nothing and becomes the <code>EXC002</code> warning: an
@@ -8503,28 +8535,28 @@ review reads every reason at once.</p>
 rule cannot come from <code>ast</code>: the metadata only exists once Pydantic built
 the model. So it <strong>imports</strong> the schemas package (<code>src.schemas</code>, or
 <code>app.schemas</code>) instead of reading the source like <code>lint-layers</code>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-137-1"><a id="__codelineno-137-1" name="__codelineno-137-1" href="#__codelineno-137-1"></a><span class="c1"># src/schemas/order.py</span>
-</span><span id="__span-137-2"><a id="__codelineno-137-2" name="__codelineno-137-2" href="#__codelineno-137-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
-</span><span id="__span-137-3"><a id="__codelineno-137-3" name="__codelineno-137-3" href="#__codelineno-137-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSchema</span>
-</span><span id="__span-137-4"><a id="__codelineno-137-4" name="__codelineno-137-4" href="#__codelineno-137-4"></a>
-</span><span id="__span-137-5"><a id="__codelineno-137-5" name="__codelineno-137-5" href="#__codelineno-137-5"></a>
-</span><span id="__span-137-6"><a id="__codelineno-137-6" name="__codelineno-137-6" href="#__codelineno-137-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">AddressSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
-</span><span id="__span-137-7"><a id="__codelineno-137-7" name="__codelineno-137-7" href="#__codelineno-137-7"></a><span class="w">    </span><span class="sd">"""Delivery address."""</span>
-</span><span id="__span-137-8"><a id="__codelineno-137-8" name="__codelineno-137-8" href="#__codelineno-137-8"></a>
-</span><span id="__span-137-9"><a id="__codelineno-137-9" name="__codelineno-137-9" href="#__codelineno-137-9"></a>    <span class="n">city</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"City"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Delivery city."</span><span class="p">)</span>
-</span><span id="__span-137-10"><a id="__codelineno-137-10" name="__codelineno-137-10" href="#__codelineno-137-10"></a>
-</span><span id="__span-137-11"><a id="__codelineno-137-11" name="__codelineno-137-11" href="#__codelineno-137-11"></a>
-</span><span id="__span-137-12"><a id="__codelineno-137-12" name="__codelineno-137-12" href="#__codelineno-137-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderCreateSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
-</span><span id="__span-137-13"><a id="__codelineno-137-13" name="__codelineno-137-13" href="#__codelineno-137-13"></a><span class="w">    </span><span class="sd">"""A new order."""</span>
-</span><span id="__span-137-14"><a id="__codelineno-137-14" name="__codelineno-137-14" href="#__codelineno-137-14"></a>
-</span><span id="__span-137-15"><a id="__codelineno-137-15" name="__codelineno-137-15" href="#__codelineno-137-15"></a>    <span class="n">total_cents</span><span class="p">:</span> <span class="nb">int</span>
-</span><span id="__span-137-16"><a id="__codelineno-137-16" name="__codelineno-137-16" href="#__codelineno-137-16"></a>    <span class="n">address</span><span class="p">:</span> <span class="n">AddressSchema</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Address"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Where to deliver."</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-139-1"><a id="__codelineno-139-1" name="__codelineno-139-1" href="#__codelineno-139-1"></a><span class="c1"># src/schemas/order.py</span>
+</span><span id="__span-139-2"><a id="__codelineno-139-2" name="__codelineno-139-2" href="#__codelineno-139-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
+</span><span id="__span-139-3"><a id="__codelineno-139-3" name="__codelineno-139-3" href="#__codelineno-139-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSchema</span>
+</span><span id="__span-139-4"><a id="__codelineno-139-4" name="__codelineno-139-4" href="#__codelineno-139-4"></a>
+</span><span id="__span-139-5"><a id="__codelineno-139-5" name="__codelineno-139-5" href="#__codelineno-139-5"></a>
+</span><span id="__span-139-6"><a id="__codelineno-139-6" name="__codelineno-139-6" href="#__codelineno-139-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">AddressSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
+</span><span id="__span-139-7"><a id="__codelineno-139-7" name="__codelineno-139-7" href="#__codelineno-139-7"></a><span class="w">    </span><span class="sd">"""Delivery address."""</span>
+</span><span id="__span-139-8"><a id="__codelineno-139-8" name="__codelineno-139-8" href="#__codelineno-139-8"></a>
+</span><span id="__span-139-9"><a id="__codelineno-139-9" name="__codelineno-139-9" href="#__codelineno-139-9"></a>    <span class="n">city</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"City"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Delivery city."</span><span class="p">)</span>
+</span><span id="__span-139-10"><a id="__codelineno-139-10" name="__codelineno-139-10" href="#__codelineno-139-10"></a>
+</span><span id="__span-139-11"><a id="__codelineno-139-11" name="__codelineno-139-11" href="#__codelineno-139-11"></a>
+</span><span id="__span-139-12"><a id="__codelineno-139-12" name="__codelineno-139-12" href="#__codelineno-139-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderCreateSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
+</span><span id="__span-139-13"><a id="__codelineno-139-13" name="__codelineno-139-13" href="#__codelineno-139-13"></a><span class="w">    </span><span class="sd">"""A new order."""</span>
+</span><span id="__span-139-14"><a id="__codelineno-139-14" name="__codelineno-139-14" href="#__codelineno-139-14"></a>
+</span><span id="__span-139-15"><a id="__codelineno-139-15" name="__codelineno-139-15" href="#__codelineno-139-15"></a>    <span class="n">total_cents</span><span class="p">:</span> <span class="nb">int</span>
+</span><span id="__span-139-16"><a id="__codelineno-139-16" name="__codelineno-139-16" href="#__codelineno-139-16"></a>    <span class="n">address</span><span class="p">:</span> <span class="n">AddressSchema</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Address"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Where to deliver."</span><span class="p">)</span>
 </span></code></pre></div>
 <p><code>tempest lint-schemas</code> (with <code>src/schemas/__init__.py</code> exporting both; real
 output, exit code <code>1</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-138-1"><a id="__codelineno-138-1" name="__codelineno-138-1" href="#__codelineno-138-1"></a>src.schemas.order.AddressSchema.city: missing examples
-</span><span id="__span-138-2"><a id="__codelineno-138-2" name="__codelineno-138-2" href="#__codelineno-138-2"></a>src.schemas.order.OrderCreateSchema.total_cents: missing title, description, examples
-</span><span id="__span-138-3"><a id="__codelineno-138-3" name="__codelineno-138-3" href="#__codelineno-138-3"></a>2 schema field(s) without documentation.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-140-1"><a id="__codelineno-140-1" name="__codelineno-140-1" href="#__codelineno-140-1"></a>src.schemas.order.AddressSchema.city: missing examples
+</span><span id="__span-140-2"><a id="__codelineno-140-2" name="__codelineno-140-2" href="#__codelineno-140-2"></a>src.schemas.order.OrderCreateSchema.total_cents: missing title, description, examples
+</span><span id="__span-140-3"><a id="__codelineno-140-3" name="__codelineno-140-3" href="#__codelineno-140-3"></a>2 schema field(s) without documentation.
 </span></code></pre></div>
 <ul>
 <li>A <strong>leaf</strong> field (a value: <code>str</code>, <code>int</code>, an enum, <code>list[str]</code>) needs all
@@ -8541,17 +8573,17 @@ output, exit code <code>1</code>):</p>
 <p>The same check runs <strong>inside the suite</strong>, which is how the <code>tempest new</code>
 project enforces it on every <code>tempest check</code> — the scaffold already ships
 this test:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-139-1"><a id="__codelineno-139-1" name="__codelineno-139-1" href="#__codelineno-139-1"></a><span class="c1"># tests/unit/architecture/test_schemas.py</span>
-</span><span id="__span-139-2"><a id="__codelineno-139-2" name="__codelineno-139-2" href="#__codelineno-139-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">src.schemas</span>
-</span><span id="__span-139-3"><a id="__codelineno-139-3" name="__codelineno-139-3" href="#__codelineno-139-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">assert_schema_metadata</span>
-</span><span id="__span-139-4"><a id="__codelineno-139-4" name="__codelineno-139-4" href="#__codelineno-139-4"></a>
-</span><span id="__span-139-5"><a id="__codelineno-139-5" name="__codelineno-139-5" href="#__codelineno-139-5"></a>
-</span><span id="__span-139-6"><a id="__codelineno-139-6" name="__codelineno-139-6" href="#__codelineno-139-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_exported_schemas_carry_metadata</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-139-7"><a id="__codelineno-139-7" name="__codelineno-139-7" href="#__codelineno-139-7"></a><span class="w">    </span><span class="sd">"""Cenário: the schemas ``src.schemas`` exports.</span>
-</span><span id="__span-139-8"><a id="__codelineno-139-8" name="__codelineno-139-8" href="#__codelineno-139-8"></a>
-</span><span id="__span-139-9"><a id="__codelineno-139-9" name="__codelineno-139-9" href="#__codelineno-139-9"></a><span class="sd">    Esperado: every field carries ``title``, ``description`` and ``examples``.</span>
-</span><span id="__span-139-10"><a id="__codelineno-139-10" name="__codelineno-139-10" href="#__codelineno-139-10"></a><span class="sd">    """</span>
-</span><span id="__span-139-11"><a id="__codelineno-139-11" name="__codelineno-139-11" href="#__codelineno-139-11"></a>    <span class="n">assert_schema_metadata</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">schemas</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-141-1"><a id="__codelineno-141-1" name="__codelineno-141-1" href="#__codelineno-141-1"></a><span class="c1"># tests/unit/architecture/test_schemas.py</span>
+</span><span id="__span-141-2"><a id="__codelineno-141-2" name="__codelineno-141-2" href="#__codelineno-141-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">src.schemas</span>
+</span><span id="__span-141-3"><a id="__codelineno-141-3" name="__codelineno-141-3" href="#__codelineno-141-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">assert_schema_metadata</span>
+</span><span id="__span-141-4"><a id="__codelineno-141-4" name="__codelineno-141-4" href="#__codelineno-141-4"></a>
+</span><span id="__span-141-5"><a id="__codelineno-141-5" name="__codelineno-141-5" href="#__codelineno-141-5"></a>
+</span><span id="__span-141-6"><a id="__codelineno-141-6" name="__codelineno-141-6" href="#__codelineno-141-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_exported_schemas_carry_metadata</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-141-7"><a id="__codelineno-141-7" name="__codelineno-141-7" href="#__codelineno-141-7"></a><span class="w">    </span><span class="sd">"""Cenário: the schemas ``src.schemas`` exports.</span>
+</span><span id="__span-141-8"><a id="__codelineno-141-8" name="__codelineno-141-8" href="#__codelineno-141-8"></a>
+</span><span id="__span-141-9"><a id="__codelineno-141-9" name="__codelineno-141-9" href="#__codelineno-141-9"></a><span class="sd">    Esperado: every field carries ``title``, ``description`` and ``examples``.</span>
+</span><span id="__span-141-10"><a id="__codelineno-141-10" name="__codelineno-141-10" href="#__codelineno-141-10"></a><span class="sd">    """</span>
+</span><span id="__span-141-11"><a id="__codelineno-141-11" name="__codelineno-141-11" href="#__codelineno-141-11"></a>    <span class="n">assert_schema_metadata</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">schemas</span><span class="p">)</span>
 </span></code></pre></div>
 <hr />
 <h2 id="recap_2">Recap<a class="headerlink" href="#recap_2" title="Permanent link">&para;</a></h2>

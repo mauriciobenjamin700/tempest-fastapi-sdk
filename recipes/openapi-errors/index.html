@@ -5851,6 +5851,15 @@ OpenAPI:</p>
 <p>Uma rota do mesmo router que não alcança o 401 não é acusada de declará-lo
 à toa: a declaração é do router, e enxugá-la não é decisão de uma rota só.</p>
 </div>
+<div class="admonition tip">
+<p class="admonition-title"><code>TempestAPIRouter</code> e subclasses contam como router</p>
+<p>O <code>dependencies=</code> e o <code>responses=</code> de um <code>TempestAPIRouter(...)</code> valem como
+os de um <code>APIRouter(...)</code>, assim como os de uma classe do projeto que
+derive de qualquer um dos dois (<code>class AppRouter(TempestAPIRouter)</code>), mesmo
+em outro módulo. Até a 0.349.0 só o nome <code>APIRouter</code> contava: a
+declaração do <code>TempestAPIRouter</code> não cobria as rotas e a exceção da
+dependência dele nunca era acusada (<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/735" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #735">#735</a>).</p>
+</div>
 <div class="admonition info">
 <p class="admonition-title">Corrigido na 0.349.0</p>
 <p>Antes, só o corpo do handler era percorrido. O router acima saía com

@@ -6456,6 +6456,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.350.0] — 2026-11-10
+
+### Added
+
+- `[tool.tempest] lint_schemas_env = { NAME = "value" }`: variáveis que só o
+  processo filho do `lint-schemas` do `tempest check` recebe, acima do default
+  `ENV=test` e abaixo do shell. Um `src.schemas` que não importa ganha, depois
+  do traceback, um hint com o `ENV` usado e as duas saídas (#736).
+
+### Fixed
+
+- `tempest openapi-errors` (e o passo do `tempest check`) reconhece
+  `TempestAPIRouter` e qualquer subclasse de router definida no projeto, não
+  só `APIRouter`: o `responses=` deles cobre as rotas e a exceção do
+  `dependencies=` é acusada quando não declarada (#735).
+- `lint-schemas` no `tempest check` não derruba mais o gate com
+  `Field required` para um `Settings` com segredo obrigatório: configure-o em
+  `lint_schemas_env` (#736).
+
+### Changed
+
+- `tempest_fastapi_sdk.cli.openapi_depends.ROUTER_CLASS_NAME` (`str`) virou
+  `ROUTER_CLASS_NAMES` (`frozenset[str]`), mais `router_classes()` (#735).
+
 ## [0.349.0] — 2026-11-10
 
 ### Added
@@ -49061,6 +49085,30 @@ check_openapi_errors = false.` e passa. Valor que não é booleano sai com
 exit `2`. Os comandos avulsos (`tempest openapi-errors`,
 `tempest lint-schemas`) não leem essas chaves.
 
+
+#### Settings obrigatório no `lint-schemas`
+
+O `lint-schemas` importa o `src.schemas` num processo filho com `ENV=test`
+quando o shell não define `ENV` — e, com `ENV=test`, o `EnvironmentSettings`
+descarta o `.env`. Um `Settings` com campo obrigatório sem default (um segredo
+como `ADMIN_SECRET_KEY`, que não deve ter placeholder) não importa, e o passo
+sai com `2`. Depois do traceback vem o motivo:
+
+```text
+hint: src.schemas was imported in a child process with ENV=test (ENV=test discards the .env, so a required setting without a default is missing). Give the child the settings it needs under [tool.tempest] lint_schemas_env = { NAME = "value" }, or drop the step with check_lint_schemas = false.
+```
+
+Dê ao filho o que ele precisa, só para este passo:
+
+```toml
+[tool.tempest]
+lint_schemas_env = { ADMIN_SECRET_KEY = "lint-only" }
+```
+
+A precedência é: o default `ENV=test`, depois a tabela, depois o shell — um
+valor que o shell exporta nunca é trocado pelo placeholder. Valor que não é
+string sai com `2`.
+
 ### Regras de camada — `tempest lint-layers`
 
 O `CLAUDE.md` que o `tempest new` escreve diz como um service e um
@@ -57790,6 +57838,14 @@ Every route's declared errors match its flow (src).
 !!! note "Declaração do router nunca é `unreachable`"
     Uma rota do mesmo router que não alcança o 401 não é acusada de declará-lo
     à toa: a declaração é do router, e enxugá-la não é decisão de uma rota só.
+
+!!! tip "`TempestAPIRouter` e subclasses contam como router"
+    O `dependencies=` e o `responses=` de um `TempestAPIRouter(...)` valem como
+    os de um `APIRouter(...)`, assim como os de uma classe do projeto que
+    derive de qualquer um dos dois (`class AppRouter(TempestAPIRouter)`), mesmo
+    em outro módulo. Até a 0.349.0 só o nome `APIRouter` contava: a
+    declaração do `TempestAPIRouter` não cobria as rotas e a exceção da
+    dependência dele nunca era acusada (#735).
 
 !!! info "Corrigido na 0.349.0"
     Antes, só o corpo do handler era percorrido. O router acima saía com

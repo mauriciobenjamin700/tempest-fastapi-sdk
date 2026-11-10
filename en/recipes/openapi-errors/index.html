@@ -5858,6 +5858,15 @@ the OpenAPI:</p>
 declaring it: the declaration belongs to the router, and trimming it is not
 one route's call.</p>
 </div>
+<div class="admonition tip">
+<p class="admonition-title"><code>TempestAPIRouter</code> and subclasses count as routers</p>
+<p>The <code>dependencies=</code> and <code>responses=</code> of a <code>TempestAPIRouter(...)</code> count
+like those of an <code>APIRouter(...)</code>, and so do those of a project class
+deriving from either (<code>class AppRouter(TempestAPIRouter)</code>), even in another
+module. Up to 0.349.0 only the <code>APIRouter</code> name counted: the
+<code>TempestAPIRouter</code> declaration did not cover the routes and its
+dependency's exception was never reported (<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/735" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #735">#735</a>).</p>
+</div>
 <div class="admonition info">
 <p class="admonition-title">Fixed in 0.349.0</p>
 <p>Before, only the handler body was walked. The router above came out as
