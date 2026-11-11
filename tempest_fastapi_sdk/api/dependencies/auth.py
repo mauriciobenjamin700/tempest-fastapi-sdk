@@ -13,7 +13,10 @@ from tempest_fastapi_sdk.exceptions.forbidden import (
     ForbiddenException,
     MFARequiredException,
 )
-from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
+from tempest_fastapi_sdk.exceptions.unauthorized import (
+    MISSING_TOKEN_MESSAGE,
+    UnauthorizedException,
+)
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
     MFA_AMR_METHODS,
@@ -186,7 +189,7 @@ def make_bearer_token_dependency(
     accepted_typ: Collection[str] = (ACCESS_TOKEN_TYPE,),
     strict: bool = False,
     legacy_claims: Collection[str] = (),
-    error_message: str = "Authorization token is missing or invalid",
+    error_message: str = MISSING_TOKEN_MESSAGE,
 ) -> Callable[..., Coroutine[Any, Any, dict[str, Any] | None]]:
     """Build a FastAPI dependency that decodes a JWT from header/cookie/query.
 
@@ -323,7 +326,7 @@ def make_jwt_user_dependency(
     strict: bool = False,
     legacy_claims: Collection[str] = (),
     subject_claim: str = "sub",
-    error_message: str = "Authorization token is missing or invalid",
+    error_message: str = MISSING_TOKEN_MESSAGE,
     session_dependency: Callable[..., Any] | None = None,
 ) -> Callable[..., Coroutine[Any, Any, Any]]:
     """Build a FastAPI dependency that returns the authenticated user.
@@ -504,7 +507,7 @@ def make_mfa_required_dependency(
     cookie_name: str | None = None,
     strict: bool = False,
     legacy_claims: Collection[str] = (),
-    unauthorized_message: str = "Authorization token is missing or invalid",
+    unauthorized_message: str = MISSING_TOKEN_MESSAGE,
     forbidden_message: str = MFARequiredException.message,
 ) -> Callable[..., Coroutine[Any, Any, dict[str, Any]]]:
     """Build a FastAPI dependency that admits only sessions that passed MFA.
@@ -590,7 +593,7 @@ def make_role_dependency(
     roles_claim: str = "roles",
     require_all: bool = False,
     bearer_scheme: HTTPBearer | None = None,
-    unauthorized_message: str = "Authorization token is missing or invalid",
+    unauthorized_message: str = MISSING_TOKEN_MESSAGE,
     forbidden_message: str = "Insufficient role for this operation",
 ) -> Callable[..., Coroutine[Any, Any, None]]:
     """Build a FastAPI dependency that gates a route by JWT role claims.
@@ -662,7 +665,7 @@ def make_permission_dependency(
     permissions_claim: str = "permissions",
     require_all: bool = True,
     bearer_scheme: HTTPBearer | None = None,
-    unauthorized_message: str = "Authorization token is missing or invalid",
+    unauthorized_message: str = MISSING_TOKEN_MESSAGE,
     forbidden_message: str = "Insufficient permissions for this operation",
 ) -> Callable[..., Coroutine[Any, Any, None]]:
     """Build a FastAPI dependency that gates a route by permission claims.

@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
@@ -24,7 +25,11 @@ from tempest_fastapi_sdk import (
     make_user_token_model,
     register_exception_handlers,
 )
-from tempest_fastapi_sdk.exceptions import AppException, ForbiddenException
+from tempest_fastapi_sdk.exceptions import (
+    MISSING_TOKEN_MESSAGE,
+    AppException,
+    ForbiddenException,
+)
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
 
 PASSWORD: str = "strong-pass-12-chars"
@@ -169,6 +174,57 @@ class TestCurrentUserDependency:
 
         assert status == 423
         assert body["code"] == "ACCOUNT_SUSPENDED"
+
+
+class TestUnauthorizedMessage:
+    """``current_user_dependency(unauthorized_message=...)``."""
+
+    async def test_default_detail_is_the_english_phrase(
+        self, stack: tuple[UserAuthService, str]
+    ) -> None:
+        """Without the parameter, a removed account gets the historical phrase."""
+        service, access = stack
+        await _delete_users(service)
+
+        status, body = await _get_me(service.current_user_dependency(), access)
+
+        assert status == 401
+        assert body["code"] == "UNAUTHORIZED"
+        assert body["detail"] == MISSING_TOKEN_MESSAGE
+
+    async def test_custom_detail_reaches_the_response(
+        self, stack: tuple[UserAuthService, str]
+    ) -> None:
+        """A service answering in Portuguese words the ``401`` itself.
+
+        The dependency forwarded no message before, so the English phrase
+        reached the end user of a PT-BR app.
+        """
+        service, access = stack
+        await _delete_users(service)
+
+        status, body = await _get_me(
+            service.current_user_dependency(
+                unauthorized_message="Sua sessão expirou. Entre de novo."
+            ),
+            access,
+        )
+
+        assert status == 401
+        assert body["code"] == "UNAUTHORIZED"
+        assert body["detail"] == "Sua sessão expirou. Entre de novo."
+
+
+async def _delete_users(service: UserAuthService) -> None:
+    """Remove every account, leaving the issued token pointing at nobody.
+
+    Args:
+        service (UserAuthService): The service whose database is emptied.
+    """
+    assert service.db is not None
+    async with service.db.get_session_context() as session:
+        await session.execute(delete(_ActiveUser))
+        await session.commit()
 
 
 class TestBundledRouter:
