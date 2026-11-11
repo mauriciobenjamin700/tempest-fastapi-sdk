@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AdminModel(create_handler=AdminCreateHandler(schema=..., handler=...,
+  label=...))`: o "+ New" da lista abre um form gerado do schema Pydantic
+  (enum vira select, campo em `autocomplete_fields` usa a busca de FK) e o
+  handler recebe o schema validado e o `AdminActionContext`. Devolve o mesmo
+  `AdminActionResult`: com `secrets`, o segredo aparece uma vez na resposta do
+  `POST`; sem eles, redirect com a mensagem. Erro de validação ou
+  `AppException` re-renderiza com o que foi digitado. Para registro que nasce
+  de service, como chave de API (#739).
+- `AdminSubmissionNonces`: token de uso único no form do `create_handler` e no
+  das ações em lote. Recarregar a página do segredo não chama o handler de
+  novo; volta para a lista com aviso. Medido no Chromium (#739).
+
+### Changed
+
+- `AdminModel(can_create=)` passa a ter default `None`: `True` sem
+  `create_handler`, `False` com ele. `create_handler` junto de
+  `can_create=True` levanta `ValueError`. `AdminModel.creates` diz se a lista
+  mostra o "+ New" (#739).
+
+### Fixed
+
+- O autocomplete de FK do admin nunca gravava a escolha: o `tojson` (aspas
+  duplas) dentro de `onclick="..."` fechava o atributo no primeiro valor, e o
+  campo oculto ficava vazio. Qualquer form com `autocomplete_fields` salvava a
+  FK sem a seleção. Medido no Chromium antes e depois (#739).
+
 ## [0.351.0] — 2026-11-10
 
 ### Changed

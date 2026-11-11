@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import datetime as _dt
 import json as _json
+import types as _types
 import uuid as _uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 
+from pydantic import BaseModel as PydanticModel
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import JSON
 from sqlalchemy import inspect as sa_inspect
 
@@ -644,6 +647,156 @@ def _coerce_scalar(py: type, raw: str) -> Any:
     return raw
 
 
+def _schema_scalar(annotation: Any) -> Any:
+    """Strip ``Optional`` / ``X | None`` from a schema annotation.
+
+    Args:
+        annotation (Any): The field's annotation.
+
+    Returns:
+        Any: The single non-``None`` member, or the annotation unchanged
+        when it is not a two-member union with ``None``.
+    """
+    if get_origin(annotation) in (Union, _types.UnionType):
+        members = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(members) == 1:
+            return members[0]
+    return annotation
+
+
+def _schema_widget(annotation: Any) -> tuple[str, str | None, list[tuple[str, str]]]:
+    """Map a schema field type to ``(widget, step, options)``.
+
+    Args:
+        annotation (Any): The field annotation, ``Optional`` stripped.
+
+    Returns:
+        tuple[str, str | None, list[tuple[str, str]]]: Same shape as the
+        column mapping, so ``form.html`` renders both alike.
+    """
+    if annotation is bool:
+        return ("checkbox", None, [])
+    if annotation is SecretStr:
+        return ("password", None, [])
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return (
+            "select",
+            None,
+            [(str(member.value), humanize_field(member.name)) for member in annotation],
+        )
+    if annotation is int:
+        return ("number", "1", [])
+    if annotation is float or annotation is Decimal:
+        return ("number", "any", [])
+    if annotation is _dt.datetime:
+        return ("datetime", None, [])
+    if annotation is _dt.date:
+        return ("date", None, [])
+    if annotation is _dt.time:
+        return ("time", None, [])
+    return ("text", None, [])
+
+
+def schema_form_fields(
+    schema: type[PydanticModel],
+    *,
+    autocomplete: set[str],
+    submitted: Any | None = None,
+    errors: dict[str, str] | None = None,
+) -> list[FormField]:
+    """Build the controls of a ``create_handler`` form from its schema.
+
+    Each field becomes one :class:`FormField`: ``title`` (or the name,
+    humanized) is the label, the annotation picks the widget, a field
+    without a default is required. A field named in ``autocomplete`` is the
+    foreign-key search box the column form uses. A ``SecretStr`` is a
+    password input and is never echoed back on a re-render.
+
+    Args:
+        schema (type[PydanticModel]): The handler's schema.
+        autocomplete (set[str]): Field names to render as autocomplete.
+        submitted (Any | None): The submitted form, to keep what was typed
+            on a re-render; ``None`` pre-fills defaults.
+        errors (dict[str, str] | None): Field name to error message.
+
+    Returns:
+        list[FormField]: The controls, in schema field order.
+    """
+    fields: list[FormField] = []
+    for name, info in schema.model_fields.items():
+        annotation = _schema_scalar(info.annotation)
+        widget, step, options = _schema_widget(annotation)
+        if name in autocomplete:
+            widget = "autocomplete"
+        required = info.is_required()
+        if submitted is not None:
+            raw = submitted.get(name)
+            value: Any = "" if raw is None else str(raw)
+            checked = widget == "checkbox" and _truthy(raw)
+        else:
+            default = None if required else info.get_default(call_default_factory=True)
+            value = "" if default is None else default
+            if isinstance(value, Enum):
+                value = value.value
+            checked = widget == "checkbox" and bool(default)
+        if widget == "password":
+            value = ""
+        fields.append(
+            FormField(
+                name=name,
+                label=info.title or humanize_field(name),
+                widget=widget,
+                value=value,
+                required=required and widget != "checkbox",
+                checked=checked,
+                step=step,
+                options=options,
+                error=(errors or {}).get(name),
+            )
+        )
+    return fields
+
+
+def parse_schema_submission(
+    schema: type[PydanticModel], form: Any
+) -> tuple[PydanticModel | None, dict[str, str]]:
+    """Validate a ``create_handler`` submission against its schema.
+
+    An empty box on an optional field is left out, so the schema's default
+    applies instead of ``""``; an unchecked checkbox is ``False``. Every
+    other value goes to Pydantic as the string the browser sent, so the
+    schema's own coercion and validators decide.
+
+    Args:
+        schema (type[PydanticModel]): The handler's schema.
+        form (Any): The submitted form (``request.form()``).
+
+    Returns:
+        tuple[PydanticModel | None, dict[str, str]]: The validated instance
+        and no errors, or ``None`` and field name to the first message for
+        that field (``"__all__"`` for a model-level error).
+    """
+    data: dict[str, Any] = {}
+    for name, info in schema.model_fields.items():
+        annotation = _schema_scalar(info.annotation)
+        raw = form.get(name)
+        if annotation is bool:
+            data[name] = _truthy(raw)
+            continue
+        if raw is None or (raw == "" and not info.is_required()):
+            continue
+        data[name] = raw
+    try:
+        return schema.model_validate(data), {}
+    except ValidationError as exc:
+        errors: dict[str, str] = {}
+        for error in exc.errors():
+            location = error.get("loc") or ()
+            key = str(location[0]) if location else "__all__"
+            errors.setdefault(key, str(error.get("msg", "invalid value")))
+        return None, errors
+
+
 __all__: list[str] = [
     "FormField",
     "build_form_fields",
@@ -651,6 +804,8 @@ __all__: list[str] = [
     "fk_label",
     "from_display_timezone",
     "inline_editable_names",
+    "parse_schema_submission",
     "parse_submission",
+    "schema_form_fields",
     "to_display_timezone",
 ]

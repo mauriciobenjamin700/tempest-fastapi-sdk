@@ -27,6 +27,12 @@ ADMIN_SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 8
 ADMIN_SESSION_REVOKED_PREFIX: str = "admin-session-revoked:"
 """Key prefix under which :class:`AdminSessionRevocations` marks a session."""
 
+ADMIN_SUBMISSION_NONCE_PREFIX: str = "admin-submission-nonce:"
+"""Key prefix under which :class:`AdminSubmissionNonces` records a used nonce."""
+
+ADMIN_SUBMISSION_NONCE_MAX_LENGTH: int = 64
+"""Longest nonce accepted; :func:`secrets.token_urlsafe` (32) yields 43 chars."""
+
 ADMIN_CREDENTIAL_DIGEST_SALT: bytes = b"tempest-admin-credential"
 """HMAC salt for :func:`admin_credential_digest`, distinct from the cookie's."""
 
@@ -402,6 +408,66 @@ class AdminSessionRevocations:
         return await self.backend.get(key) is not None
 
 
+class AdminSubmissionNonces:
+    """Single-use tokens that stop a reloaded ``POST`` from running twice.
+
+    A form whose answer is the ``POST`` itself — the page that shows a new
+    API key once — is resubmitted by the browser on reload, and before #739
+    that ran the handler again and minted a second key. Each such form now
+    carries a nonce (:meth:`issue`); the ``POST`` calls :meth:`consume`
+    before running, and only the first call for a nonce gets ``True``.
+
+    ``consume`` is one ``incr`` on the same
+    :class:`~tempest_fastapi_sdk.utils.throttle.ThrottleBackend` the session
+    revocations use, so the check is atomic and, with the Redis client
+    passed to :class:`AdminSessionRevocations`, shared across workers. With
+    the default in-memory backend it is per process: a resend that lands on
+    another worker runs again.
+    """
+
+    def __init__(self, backend: ThrottleBackend, *, ttl_seconds: int) -> None:
+        """Initialize the store.
+
+        Args:
+            backend (ThrottleBackend): Key/value storage with ``incr``,
+                ``expire`` and ``get``.
+            ttl_seconds (int): How long a used nonce is remembered; at least
+                the session lifetime, since a form cannot outlive it.
+        """
+        self.backend: ThrottleBackend = backend
+        self.ttl_seconds: int = ttl_seconds
+
+    @staticmethod
+    def issue() -> str:
+        """Return a fresh nonce for a form.
+
+        Returns:
+            str: A URL-safe random token.
+        """
+        return secrets.token_urlsafe(32)
+
+    async def consume(self, session: AdminSession, nonce: str) -> bool:
+        """Mark ``nonce`` used for ``session``; ``True`` only the first time.
+
+        Args:
+            session (AdminSession): The session submitting the form; the key
+                is scoped to it so one operator's nonce never collides with
+                another's.
+            nonce (str): The value the form carried.
+
+        Returns:
+            bool: ``True`` when this is the first submission of the nonce,
+            ``False`` for a resubmission, an empty value or one longer than
+            :data:`ADMIN_SUBMISSION_NONCE_MAX_LENGTH`.
+        """
+        if not nonce or len(nonce) > ADMIN_SUBMISSION_NONCE_MAX_LENGTH:
+            return False
+        key = f"{ADMIN_SUBMISSION_NONCE_PREFIX}{session.session_id}:{nonce}"
+        count = await self.backend.incr(key)
+        await self.backend.expire(key, self.ttl_seconds)
+        return count == 1
+
+
 ADMIN_LOGIN_CSRF_COOKIE: str = "tempest_admin_login_csrf"
 """Cookie carrying the signed pre-login CSRF token of ``/login``."""
 
@@ -565,9 +631,12 @@ __all__: list[str] = [
     "ADMIN_LOGIN_CSRF_SALT",
     "ADMIN_SESSION_MAX_AGE_SECONDS",
     "ADMIN_SESSION_REVOKED_PREFIX",
+    "ADMIN_SUBMISSION_NONCE_MAX_LENGTH",
+    "ADMIN_SUBMISSION_NONCE_PREFIX",
     "AdminLoginCSRF",
     "AdminSession",
     "AdminSessionRevocations",
+    "AdminSubmissionNonces",
     "SessionStore",
     "SignedCookieSessionStore",
     "admin_credential_digest",

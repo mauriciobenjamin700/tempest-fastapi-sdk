@@ -40,6 +40,9 @@ if TYPE_CHECKING:
         AdminAuthError as AdminAuthError,
     )
     from tempest_fastapi_sdk.admin import (
+        AdminCreateHandler as AdminCreateHandler,
+    )
+    from tempest_fastapi_sdk.admin import (
         AdminModel as AdminModel,
     )
     from tempest_fastapi_sdk.admin import (
@@ -52,6 +55,9 @@ if TYPE_CHECKING:
         AdminSite as AdminSite,
     )
     from tempest_fastapi_sdk.admin import (
+        AdminSubmissionNonces as AdminSubmissionNonces,
+    )
+    from tempest_fastapi_sdk.admin import (
         AdminSurfaceEnum as AdminSurfaceEnum,
     )
     from tempest_fastapi_sdk.admin import (
@@ -59,6 +65,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.admin import (
         AdminTheme as AdminTheme,
+    )
+    from tempest_fastapi_sdk.admin import (
+        CreateHandlerFunc as CreateHandlerFunc,
     )
     from tempest_fastapi_sdk.admin import (
         FieldRef as FieldRef,
@@ -2397,6 +2406,9 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "AdminSurfaceEnum": "tempest_fastapi_sdk.admin",
     "AdminSurfacePolicy": "tempest_fastapi_sdk.admin",
     "AdminTheme": "tempest_fastapi_sdk.admin",
+    "AdminSubmissionNonces": "tempest_fastapi_sdk.admin",
+    "CreateHandlerFunc": "tempest_fastapi_sdk.admin",
+    "AdminCreateHandler": "tempest_fastapi_sdk.admin",
     "FieldRef": "tempest_fastapi_sdk.admin",
     "Inline": "tempest_fastapi_sdk.admin",
     "Lens": "tempest_fastapi_sdk.admin",
@@ -3329,10 +3341,12 @@ __all__: list[str] = [
     "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
+    "AdminCreateHandler",
     "AdminModel",
     "AdminPermissionEnum",
     "AdminSecret",
     "AdminSite",
+    "AdminSubmissionNonces",
     "AdminSurfaceEnum",
     "AdminSurfacePolicy",
     "AdminTheme",
@@ -3411,6 +3425,7 @@ __all__: list[str] = [
     "Controller",
     "CreateEnumCheckOp",
     "CreateEnumTypeOp",
+    "CreateHandlerFunc",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "DatabaseBackup",

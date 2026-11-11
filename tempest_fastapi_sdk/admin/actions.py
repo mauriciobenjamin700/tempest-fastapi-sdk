@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel as PydanticModel
     from sqlalchemy.ext.asyncio import AsyncSession
     from starlette.requests import Request
 
@@ -127,6 +128,51 @@ class AdminAction:
     dangerous: bool = field(default=False)
 
 
+CreateHandlerFunc = Callable[
+    [Any, AdminActionContext], Awaitable["AdminActionResult | None"]
+]
+"""An async ``(data, ctx)`` creating a record from a validated schema.
+
+``data`` is an instance of the handler's schema; ``ctx`` is the same
+:class:`AdminActionContext` a custom action gets, with ``ids`` empty.
+"""
+
+
+@dataclass(frozen=True)
+class AdminCreateHandler:
+    """A create flow driven by a schema and a service, not by the columns.
+
+    Some rows are born from a service rather than typed in: an API key is a
+    generated secret stored as a hash and shown in plaintext once, so the
+    column form (``key_hash``, ``key_prefix`` typed by hand) is wrong for
+    it. Pass this as ``AdminModel(create_handler=...)`` and the list's
+    "+ New" button opens a form generated from :attr:`schema`; on submit
+    the panel validates it and calls :attr:`handler`.
+
+    The handler returns the same :class:`AdminActionResult` a custom action
+    does. With ``secrets``, the database session is committed and the
+    values are shown once on the ``POST``'s own response; reloading that
+    page does not call the handler again (a single-use nonce in the form).
+    Without them, the panel redirects to the list and flashes the message.
+    An :class:`~tempest_fastapi_sdk.AppException` raised by the handler
+    re-renders the form with its message and what was typed.
+
+    Attributes:
+        schema (type[PydanticModel]): The Pydantic model the form is
+            generated from and the submission is validated against. A field
+            whose name is in the admin's ``autocomplete_fields`` renders as
+            the same foreign-key search box.
+        handler (CreateHandlerFunc): The async function that creates the
+            record.
+        label (str | None): Text of the "+ New" button and the form
+            heading; ``None`` uses ``New <verbose name>``.
+    """
+
+    schema: type[PydanticModel]
+    handler: CreateHandlerFunc
+    label: str | None = None
+
+
 def admin_action(
     *,
     label: str,
@@ -189,6 +235,8 @@ __all__: list[str] = [
     "AdminAction",
     "AdminActionContext",
     "AdminActionResult",
+    "AdminCreateHandler",
+    "CreateHandlerFunc",
     "admin_action",
     "resolve_admin_action",
 ]

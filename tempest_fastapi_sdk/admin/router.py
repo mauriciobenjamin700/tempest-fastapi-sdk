@@ -53,7 +53,9 @@ from tempest_fastapi_sdk.admin.forms import (
     fk_label,
     inline_editable_names,
     parse_password_submission,
+    parse_schema_submission,
     parse_submission,
+    schema_form_fields,
     to_display_timezone,
 )
 from tempest_fastapi_sdk.admin.permissions import (
@@ -67,6 +69,7 @@ from tempest_fastapi_sdk.admin.session import (
     AdminLoginCSRF,
     AdminSession,
     AdminSessionRevocations,
+    AdminSubmissionNonces,
     SessionStore,
     SignedCookieSessionStore,
     admin_credential_digest,
@@ -467,6 +470,9 @@ def make_admin_router(
             ),
         )
     )
+    nonces = AdminSubmissionNonces(
+        revocations.backend, ttl_seconds=revocations.ttl_seconds
+    )
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     stylesheet_version = _stylesheet_version()
     templates.env.filters["pluralize"] = _pluralize
@@ -777,6 +783,8 @@ def make_admin_router(
         session: AdminSession,
         principal: Any,
         result: AdminActionResult,
+        *,
+        reload_safe: bool = False,
     ) -> HTMLResponse:
         """Render a custom action's secrets on the action's own response.
 
@@ -793,6 +801,9 @@ def make_admin_router(
             principal (Any): The admin who ran the action; renders the
                 panel chrome (header and sidebar) like every other page.
             result (AdminActionResult): The action's result.
+            reload_safe (bool): Whether the ``POST`` carried a single-use
+                nonce, so a reload cannot run it again; the page's warning
+                says which.
 
         Returns:
             HTMLResponse: The page, status ``200``.
@@ -806,6 +817,7 @@ def make_admin_router(
                 "user": principal,
                 "user_display": auth_backend.display_name(principal),
                 "result": result,
+                "reload_safe": reload_safe,
                 "back_url": f"{prefix}/m/{admin.get_slug()}/",
             },
         )
@@ -813,6 +825,182 @@ def make_admin_router(
         response.headers["Pragma"] = "no-cache"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
+
+    def _already_processed(slug: str) -> RedirectResponse:
+        """Answer a resubmitted single-use form without running it again.
+
+        A ``303`` to the list turns the browser's reload of the ``POST``
+        into a ``GET``, with a warning flash saying why nothing happened.
+
+        Args:
+            slug (str): The admin slug.
+
+        Returns:
+            RedirectResponse: Redirect to the list with the flash.
+        """
+        query = urlencode(
+            {
+                "flash": "This form was already submitted; it did not run again.",
+                "flash_cat": "warning",
+            }
+        )
+        return RedirectResponse(
+            url=f"{prefix}/m/{slug}/?{query}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    async def _handler_form(
+        request: Request,
+        admin: AdminModel[Any],
+        session: AdminSession,
+        principal: Any,
+        db_session: AsyncSession,
+        *,
+        submitted: Any | None = None,
+        errors: dict[str, str] | None = None,
+        form_error: str | None = None,
+        status_code: int = status.HTTP_200_OK,
+    ) -> HTMLResponse:
+        """Render the form of an admin's ``create_handler``.
+
+        Every render carries a fresh single-use nonce, so a form re-rendered
+        after an error can still be submitted once.
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The admin, with ``create_handler`` set.
+            session (AdminSession): The validated session.
+            principal (Any): The signed-in admin.
+            db_session (AsyncSession): The DB session, for autocomplete labels.
+            submitted (Any | None): The submitted form on a re-render.
+            errors (dict[str, str] | None): Field errors on a re-render.
+            form_error (str | None): A message for the whole form.
+            status_code (int): The response status.
+
+        Returns:
+            HTMLResponse: ``form.html`` with the schema's controls.
+        """
+        handler = admin.create_handler
+        assert handler is not None
+        fields = schema_form_fields(
+            handler.schema,
+            autocomplete=set(admin.autocomplete_fields),
+            submitted=submitted,
+            errors=errors,
+        )
+        if admin.autocomplete_fields:
+            await _decorate_autocomplete_fields(admin, fields, db_session, principal)
+        slug = admin.get_slug()
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "create",
+                "form_title": handler.label,
+                "form_fields": fields,
+                "action_url": f"{prefix}/m/{slug}/new",
+                "back_url": f"{prefix}/m/{slug}/",
+                "form_error": form_error or (errors or {}).get("__all__"),
+                "submission_nonce": nonces.issue(),
+            },
+            status_code=status_code,
+        )
+
+    async def _run_create_handler(
+        request: Request,
+        admin: AdminModel[Any],
+        session: AdminSession,
+        principal: Any,
+        db_session: AsyncSession,
+        form: Any,
+    ) -> Response:
+        """Validate a ``create_handler`` submission and run the handler.
+
+        Order matters: the schema is validated first, and an invalid
+        submission re-renders without spending the nonce. Only a valid one
+        consumes it, right before the handler runs, so a reload of the
+        answer is refused while a corrected resubmission is not. An
+        ``AppException`` from the handler rolls the session back, reloads
+        the principal (the rollback expires it) and re-renders with the
+        message and what was typed.
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The admin, with ``create_handler`` set.
+            session (AdminSession): The validated session.
+            principal (Any): The signed-in admin.
+            db_session (AsyncSession): The DB session.
+            form (Any): The submitted form.
+
+        Returns:
+            Response: The secrets page (``200``), a redirect to the list
+            (``303``, with the flash when the handler returned a message),
+            or the re-rendered form (``400``).
+
+        Raises:
+            HTTPException: ``400`` when the form carries no nonce.
+        """
+        handler = admin.create_handler
+        assert handler is not None
+        data, errors = parse_schema_submission(handler.schema, form)
+        if data is None:
+            return await _handler_form(
+                request,
+                admin,
+                session,
+                principal,
+                db_session,
+                submitted=form,
+                errors=errors,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        nonce = form.get("submission_nonce")
+        if not isinstance(nonce, str) or not nonce:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "missing submission nonce")
+        slug = admin.get_slug()
+        if not await nonces.consume(session, nonce):
+            return _already_processed(slug)
+        try:
+            result = await handler.handler(
+                data,
+                AdminActionContext(
+                    ids=[],
+                    repository=admin.build_repository(db_session),
+                    db_session=db_session,
+                    request=request,
+                    session=session,
+                    principal=principal,
+                ),
+            )
+        except AppException as exc:
+            await db_session.rollback()
+            await _reload_expired(db_session, principal)
+            return await _handler_form(
+                request,
+                admin,
+                session,
+                principal,
+                db_session,
+                submitted=form,
+                form_error=exc.message,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        if result is not None and result.secrets:
+            await db_session.commit()
+            return _secrets_response(
+                request, admin, session, principal, result, reload_safe=True
+            )
+        await db_session.commit()
+        url = f"{prefix}/m/{slug}/"
+        if result is not None:
+            url += "?" + urlencode(
+                {"flash": result.message, "flash_cat": result.category}
+            )
+        return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
     def _require_admin(
         slug: str,
@@ -1478,7 +1666,7 @@ def make_admin_router(
                     "count": count,
                     "url": f"{prefix}/m/{admin.get_slug()}/",
                     "new_url": f"{prefix}/m/{admin.get_slug()}/new"
-                    if admin.can_create
+                    if admin.creates
                     and await _allows(principal, admin, AdminPermissionEnum.CREATE)
                     else None,
                 }
@@ -1947,10 +2135,15 @@ def make_admin_router(
                     admin, active_sort, active_ascending, sort_base
                 ),
                 "export_query": export_query,
-                "can_create": admin.can_create
+                "can_create": admin.creates
                 and await _allows(principal, admin, AdminPermissionEnum.CREATE),
+                "new_label": admin.create_handler.label
+                if admin.create_handler is not None
+                and admin.create_handler.label is not None
+                else None,
                 "new_url": f"{prefix}/m/{slug}/new",
                 "bulk_actions": _bulk_actions(admin),
+                "submission_nonce": nonces.issue(),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
                 "filters": await _filter_specs(admin, request, db_session, principal),
             },
@@ -2050,9 +2243,11 @@ def make_admin_router(
             key, so only names in ``editable_field_names()`` are accepted —
             an arbitrary query parameter can never reach the form.
         """
-        admin = _require_admin(slug, lambda a: a.can_create)
+        admin = _require_admin(slug, lambda a: a.creates)
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.CREATE)
+        if admin.create_handler is not None:
+            return await _handler_form(request, admin, session, principal, db_session)
         editable = set(admin.editable_field_names())
         prefill = {
             key: value for key, value in request.query_params.items() if key in editable
@@ -2230,11 +2425,15 @@ def make_admin_router(
             Response: Redirect to the new row's detail on success; the
             re-rendered form (``400``) on validation/integrity errors.
         """
-        admin = _require_admin(slug, lambda a: a.can_create)
+        admin = _require_admin(slug, lambda a: a.creates)
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.CREATE)
         _check_csrf(session, csrf_token)
         form = await request.form()
+        if admin.create_handler is not None:
+            return await _run_create_handler(
+                request, admin, session, principal, db_session, form
+            )
         data, errors = parse_submission(admin, form, creating=True)
         errors.update(await _save_uploads(admin, form, data, creating=True))
         passwords, password_errors = parse_password_submission(
@@ -2335,6 +2534,9 @@ def make_admin_router(
             admin_action = admin.get_action(action.removeprefix("custom:"))
             if admin_action is None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown action")
+            nonce = form.get("submission_nonce")
+            if isinstance(nonce, str) and not await nonces.consume(session, nonce):
+                return _already_processed(slug)
             result = await admin_action.handler(
                 AdminActionContext(
                     ids=ids,
@@ -2347,7 +2549,14 @@ def make_admin_router(
             )
             if result is not None and result.secrets:
                 await db_session.commit()
-                return _secrets_response(request, admin, session, principal, result)
+                return _secrets_response(
+                    request,
+                    admin,
+                    session,
+                    principal,
+                    result,
+                    reload_safe=isinstance(nonce, str),
+                )
             if result is not None:
                 redirect_url += "?" + urlencode(
                     {"flash": result.message, "flash_cat": result.category}

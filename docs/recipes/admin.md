@@ -320,10 +320,9 @@ que muda em relação ao flash:
 - **Nada vai para URL nem header.** O valor só existe no corpo dessa
   resposta.
 - **`Cache-Control: no-store`** e `Pragma: no-cache`: nem o browser nem um
-  proxy guardam cópia da página. Recarregar reenvia o `POST`, ou seja,
-  roda a ação de novo: medido no Chromium, o reload emitiu uma credencial
-  **nova**, com outro valor. O valor antigo não volta, e a credencial dele
-  continua válida até alguém revogá-la.
+  proxy guardam cópia da página. Recarregar reenvia o `POST`, mas o form
+  da lista leva um token de uso único e o reenvio não roda a ação de novo
+  (detalhe em [Recarregar não emite de novo](#recarregar-nao-emite-de-novo)).
 - **`Referrer-Policy: no-referrer`**: o link de volta não carrega a URL da
   ação.
 - **A sessão do request recebe `commit` antes de a página renderizar.** O
@@ -339,6 +338,92 @@ que muda em relação ao flash:
     `__secret_columns__`, para nenhuma tela do painel exibi-la.
 
 Ação sem `secrets` continua igual: flash na list view, por redirect.
+
+### Criar por service (`create_handler=`)
+
+Uma chave de API não nasce das colunas: o service gera o segredo, grava só o
+hash e mostra o texto puro uma vez. O form de colunas pediria `key_hash` e
+`key_prefix` digitados à mão — errado. Levar a emissão para uma ação em lote
+na lista de **usuários** funciona, mas quem abre **Api Keys** não acha botão
+nenhum, e a ação não tem campos para nome e validade.
+
+`create_handler` troca o form de colunas por um form gerado de um **schema
+Pydantic** e um handler que recebe o schema validado:
+
+```python
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+from tempest_fastapi_sdk import (
+    AdminActionContext,
+    AdminActionResult,
+    AdminCreateHandler,
+    AdminModel,
+    AdminSecret,
+    AdminSite,
+    generate_opaque_token,
+)
+
+from src.db.models import ApiKeyModel
+
+
+class ApiKeyAdminCreateSchema(BaseModel):
+    name: str = Field(title="Nome da chave", min_length=3)
+    expires_in_days: int | None = Field(default=None, title="Validade (dias)")
+    user_id: UUID | None = Field(default=None, title="Usuário")
+
+
+async def issue_api_key(
+    data: ApiKeyAdminCreateSchema, ctx: AdminActionContext
+) -> AdminActionResult:
+    plaintext, digest = generate_opaque_token()
+    ctx.db_session.add(
+        ApiKeyModel(name=data.name, key_hash=digest, user_id=data.user_id)
+    )
+    return AdminActionResult("Chave emitida", secrets=[AdminSecret(data.name, plaintext)])
+
+
+site = AdminSite(title="Admin")
+site.register(
+    AdminModel(
+        ApiKeyModel,
+        autocomplete_fields=["user_id"],
+        create_handler=AdminCreateHandler(
+            schema=ApiKeyAdminCreateSchema,
+            handler=issue_api_key,
+            label="Nova chave de API",
+        ),
+    )
+)
+```
+
+- O botão da lista vira **+ Nova chave de API** e abre o form do schema:
+  `title` vira o rótulo, o tipo escolhe o controle (enum vira select, `int`
+  vira número, `SecretStr` vira senha), campo sem default é obrigatório. Um
+  campo cujo nome está em `autocomplete_fields` usa a mesma busca de FK do
+  form de colunas.
+- Erro de validação re-renderiza com `400`, a mensagem de cada campo e o que
+  foi digitado. Uma `AppException` levantada pelo handler volta como erro do
+  form, também com o que foi digitado, e a sessão é desfeita.
+- Com `secrets`, a resposta é a do próprio `POST`, como na ação acima. Sem
+  eles, o painel redireciona para a lista com a mensagem.
+- `create_handler` substitui o form de colunas: `can_create=True` junto
+  levanta `ValueError` na construção.
+
+#### Recarregar não emite de novo
+
+O form leva um token de uso único, gasto logo antes de o handler rodar. Um
+reload da página do segredo reenvia o `POST`, e o painel responde com `303`
+para a lista e o aviso *This form was already submitted; it did not run
+again.*, sem chamar o handler. Medido no Chromium: o reload reenviou o
+`POST`, caiu na lista com o aviso e a tabela ficou com **uma** chave.
+
+O mesmo vale para as ações em lote da lista, que agora levam o token. Um
+`POST` sem o token (um script, um template próprio) roda como antes, uma vez
+por envio. O token é guardado no mesmo backend das revogações de sessão: com
+o `InMemoryThrottleBackend` padrão ele vale por processo; atrás de mais de um
+worker, passe o cliente Redis em `AdminSessionRevocations` para o reenvio ser
+recusado em qualquer um.
 
 ## Campo de upload de arquivo / imagem
 
