@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator
 
 from tempest_fastapi_sdk import default_message_catalog, register_exception_handlers
 
@@ -55,6 +55,12 @@ class Strict(BaseModel):
         raise ValueError("never accepted")
 
 
+class Contact(BaseModel):
+    """A body whose ``value_error`` carries ``reason``, not ``error``."""
+
+    email: EmailStr
+
+
 PAYLOAD: dict[str, str] = {
     "email": "a@b.c",
     "password": "hunter2",
@@ -81,6 +87,10 @@ def _app(*, envelope: bool) -> FastAPI:
 
     @app.post("/login")
     async def login(body: Login) -> dict[str, str]:
+        return {}
+
+    @app.post("/contact")
+    async def contact(body: Contact) -> dict[str, str]:
         return {}
 
     @app.post("/strict")
@@ -199,6 +209,38 @@ class TestTheMessagesComeFromTheCatalog:
             ).json()
 
         assert body["detail"] == "Erro de validação"
+
+
+class TestAPlaceholderNeverReachesTheClient:
+    """A template whose param is missing from ``ctx`` is not sent raw.
+
+    pydantic's ``email`` check reports ``value_error`` with
+    ``ctx={"reason": ...}``, and ``VALIDATION.value_error`` is
+    ``"Valor inválido: {error}"``. Measured on 0.353.0 in production: the
+    client received ``"Valor inválido: {error}"``, braces included.
+    """
+
+    def test_portuguese_gets_the_generic_message(self) -> None:
+        with TestClient(_app(envelope=True)) as client:
+            body: Any = client.post(
+                "/contact",
+                json={"email": "not-an-email"},
+                headers={"Accept-Language": "pt-BR"},
+            ).json()
+
+        [entry] = body["details"]["errors"]
+        assert entry["type"] == "value_error"
+        assert entry["msg"] == "Valor inválido"
+
+    def test_no_message_carries_braces(self) -> None:
+        with TestClient(_app(envelope=True)) as client:
+            body: Any = client.post(
+                "/contact",
+                json={"email": "not-an-email"},
+                headers={"Accept-Language": "pt-BR"},
+            ).json()
+
+        assert all("{" not in entry["msg"] for entry in body["details"]["errors"])
 
 
 class TestAnExceptionInTheContextStaysA422:

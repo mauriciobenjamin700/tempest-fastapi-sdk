@@ -61,10 +61,25 @@ def test_resolve_formats_params() -> None:
     assert catalog.resolve("X", "pt-BR", {"id": 7}) == "id 7 não encontrado"
 
 
-def test_resolve_missing_param_returns_template() -> None:
-    """A template referencing a missing param is returned unformatted."""
+def test_resolve_missing_param_returns_none() -> None:
+    """A template naming a missing param resolves to ``None``, never braces.
+
+    The unformatted template used to come back, and ``{id}`` reached the
+    end user. The raw string stays readable through ``template``.
+    """
     catalog = MessageCatalog({"pt-BR": {"X": "id {id}"}})
-    assert catalog.resolve("X", "pt-BR", {"other": 1}) == "id {id}"
+
+    assert catalog.resolve("X", "pt-BR", {"other": 1}) is None
+    assert catalog.resolve("X", "pt-BR") is None
+    assert catalog.template("X", "pt-BR") == "id {id}"
+
+
+def test_resolve_without_placeholders_needs_no_params() -> None:
+    """A plain template resolves with or without params."""
+    catalog = MessageCatalog({"pt-BR": {"X": "sem campos"}})
+
+    assert catalog.resolve("X", "pt-BR") == "sem campos"
+    assert catalog.resolve("X", "pt-BR", {"a": 1}) == "sem campos"
 
 
 def test_negotiate_prefers_available_locale() -> None:

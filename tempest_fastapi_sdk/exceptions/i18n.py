@@ -21,6 +21,7 @@ EN-US strings for every built-in exception code; projects extend it with
 from __future__ import annotations
 
 from collections.abc import Mapping
+from string import Formatter
 from typing import Any
 
 DEFAULT_LOCALE: str = "pt-BR"
@@ -154,18 +155,48 @@ class MessageCatalog:
 
         Returns:
             str | None: The formatted message, or ``None`` when the key
-            is unknown in the resolved locale. A template referencing a
-            missing param is returned unformatted rather than raising.
+            is unknown in the resolved locale **or** its template names a
+            param that ``params`` does not carry.
+
+            The second ``None`` is new in this version. The template used
+            to come back unformatted, and the literal braces reached the
+            end user: pydantic's ``email`` check reports ``value_error``
+            with ``ctx={"reason": ...}``, so ``VALIDATION.value_error``
+            (``"Valor inválido: {error}"``) answered
+            ``"Valor inválido: {error}"`` on every malformed address.
+            ``None`` hands the decision back to the caller, which already
+            has a fallback for an unknown key. Use :meth:`template` to
+            read the raw string.
         """
         template = self._table_for(locale).get(key)
         if template is None:
             return None
-        if params:
-            try:
-                return template.format(**params)
-            except (KeyError, IndexError):
-                return template
-        return template
+        fields = {
+            name.split(".", 1)[0].split("[", 1)[0]
+            for _, name, _, _ in Formatter().parse(template)
+            if name is not None
+        }
+        if not fields:
+            return template
+        if not fields <= set(params or {}):
+            return None
+        try:
+            return template.format(**(params or {}))
+        except (KeyError, IndexError, AttributeError):
+            return None
+
+    def template(self, key: str, locale: str) -> str | None:
+        """Return the raw template of a key, without formatting it.
+
+        Args:
+            key (str): The message key.
+            locale (str): The locale tag to read from.
+
+        Returns:
+            str | None: The template as stored, placeholders included, or
+            ``None`` when the key is unknown in the resolved locale.
+        """
+        return self._table_for(locale).get(key)
 
     def merge(self, other: Mapping[str, Mapping[str, str]]) -> MessageCatalog:
         """Return a new catalog with ``other`` overlaid on this one.
@@ -410,6 +441,7 @@ _SDK_VALUE_ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "INVALID_PHONE_BR": "Telefone brasileiro inválido",
         "INVALID_PIX_KEY": "Chave PIX inválida",
         "INVALID_UF": "UF inválida: {value}",
+        "INVALID_VALUE": "Valor inválido",
         "UNKNOWN_CITY": "Cidade {city} não encontrada na UF {uf}",
     },
     "en-US": {
@@ -421,6 +453,7 @@ _SDK_VALUE_ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "INVALID_PHONE_BR": "Invalid Brazilian phone number",
         "INVALID_PIX_KEY": "Invalid PIX key",
         "INVALID_UF": "Invalid federative unit: {value}",
+        "INVALID_VALUE": "Invalid value",
         "UNKNOWN_CITY": "City {city} not found in {uf}",
     },
 }

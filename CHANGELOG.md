@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- O `422` não manda mais placeholder cru ao cliente. A checagem de e-mail do
+  pydantic reporta `value_error` com `ctx={"reason": ...}`, e
+  `VALIDATION.value_error` (`"Valor inválido: {error}"`) chegava ao usuário
+  com as chaves. Agora cai no genérico da mesma língua,
+  `VALIDATION.INVALID_VALUE` (`"Valor inválido"` / `"Invalid value"`).
+
+### Changed
+
+- `MessageCatalog.resolve` devolve `None` quando o template nomeia um
+  parâmetro que não veio (antes devolvia o template sem formatar). Quem
+  chama já tinha fallback para chave desconhecida. Novo
+  `MessageCatalog.template(key, locale)` lê a string crua.
+
 ## [0.353.0] — 2026-11-11
 
 ### Added
