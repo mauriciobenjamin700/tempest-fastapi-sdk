@@ -48,6 +48,7 @@ settings: Settings = Settings()
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=<OpenAI model id>
+OPENAI_STT_MODEL=<transcription model id>
 DEEPSEEK_API_KEY=sk-...
 GOOGLE_API_KEY=AIza...
 GOOGLE_MODEL=<Gemini model id>
@@ -61,10 +62,11 @@ Each provider has `*_API_KEY`, `*_BASE_URL` and `*_MODEL`. The defaults:
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | empty — required |
+| `OPENAI_STT_MODEL` | empty — required by `openai_speech_kwargs()` |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | `deepseek-flash` |
 | `GOOGLE_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| `GOOGLE_MODEL` | empty — required by `google_kwargs()` |
+| `GOOGLE_MODEL` | empty — required by `gemini_kwargs()` |
 
 !!! note "Where the defaults come from"
 
@@ -558,7 +560,7 @@ Piece by piece:
   block with a base64 `source`, and `filename` becomes the block's `title`.
 - **OpenAI:** `OpenAICompatGenerator` forwards the part as is.
 - **Google and DeepSeek:** the generator `hosted_generator` builds for them
-  (and the one `google_kwargs()` / `deepseek_kwargs()` build) raises
+  (and the one `gemini_kwargs()` / `deepseek_kwargs()` build) raises
   `ValueError` **before** opening the connection when a message carries the
   part, with a message naming the provider. Text and images still go out
   normally.
@@ -625,6 +627,118 @@ Vectors come back in input order, sorted by the response's `index`.
     reference lists Chat Completions, Responses, FIM, models, balance and
     files — no embeddings. For RAG with those providers, produce the vectors
     with `OpenAICompatEmbedder`, `OllamaEmbedder` or `Embedder`.
+
+## Remote transcription (speech-to-text)
+
+`SpeechToText` runs Whisper **in your process**: it downloads weights, holds
+RAM (or GPU) and competes for CPU with the rest of the service. When a server
+that transcribes already exists — `tempest-ai`, OpenAI itself, a `vLLM`
+serving Whisper — `OpenAICompatSpeech` sends the audio to it over the OpenAI
+endpoint `POST {base_url}/audio/transcriptions` and returns the same
+`Transcription`.
+
+First, the settings. The key and the root are the ones `openai_kwargs()`
+uses (`OPENAI_API_KEY`, `OPENAI_BASE_URL`); only the model changes, in
+`OPENAI_STT_MODEL`:
+
+```bash
+# .env
+OPENAI_API_KEY=<tempest-ai API key>
+OPENAI_BASE_URL=https://ai.buscar.app.br/api/openai/v1
+OPENAI_STT_MODEL=<id that GET /models lists>
+```
+
+Then, a service that receives the upload and transcribes it:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, UploadFile
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    HostedGenAISettings,
+    register_exception_handlers,
+)
+from tempest_fastapi_sdk.genai import OpenAICompatSpeech
+from tempest_fastapi_sdk.genai.audio import Transcription
+
+
+class Settings(HostedGenAISettings, BaseAppSettings):
+    """Service settings."""
+
+
+settings: Settings = Settings()
+speech: OpenAICompatSpeech = OpenAICompatSpeech(**settings.openai_speech_kwargs())
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Close the backend's HTTP client on shutdown."""
+    yield
+    await speech.aclose()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+register_exception_handlers(app)
+
+
+@app.post("/transcribe")
+async def transcribe(file: UploadFile) -> Transcription:
+    """Transcribe the uploaded Portuguese audio."""
+    audio: bytes = await file.read()
+    return await speech.transcribe(audio, language="pt", with_segments=False)
+```
+
+Piece by piece:
+
+- `openai_speech_kwargs()` returns `model`, `api_key`, `base_url` and
+  `provider="openai"` — the splat builds the backend. With `OPENAI_STT_MODEL`
+  empty it raises `ValueError` at boot, as `openai_kwargs()` does for
+  `OPENAI_MODEL`.
+- `base_url` **includes** the version (`.../v1`), as with
+  `OpenAICompatGenerator`; the backend appends `/audio/transcriptions`. For
+  `tempest-ai`, pass `https://ai.buscar.app.br/api/openai/v1`.
+- The request is multipart with `file`, `model`, `language` (only when you
+  pass one) and `response_format=verbose_json`, the format that carries
+  `duration`, `language` and `segments`. The key goes in
+  `Authorization: Bearer`.
+- `language` takes the ISO-639-1 code (`"pt"`) or a `LanguageEnum`
+  (`LanguageEnum.PT_BR` becomes `"pt"`); `None` lets the server detect it.
+- `with_segments=False` returns `segments=[]`; `duration` and `language`
+  are still filled.
+- `audio` takes `bytes` or a local path (`str` or `Path`). A string is always
+  a path, never a URL: the backend fetches nothing off the machine.
+
+!!! tip "Drop-in for `SpeechToText`"
+
+    `OpenAICompatSpeech.transcribe` takes the same `language` and
+    `with_segments` as `SpeechToText` and satisfies the `SpeechTranscriber`
+    protocol. Code that does
+    `await transcriber.transcribe(audio, language="pt", with_segments=False)`
+    does not change; and `make_genai_router(speech_to_text=speech)` serves
+    `/transcribe` with it.
+
+Server errors become exceptions that `register_exception_handlers` already
+answers:
+
+| Server status | Exception | What your client gets |
+| --- | --- | --- |
+| 401, 403 | `HostedAuthenticationError` | 500 — a wrong key is a configuration defect |
+| 413 | `FileTooLargeException` (server's message) | 413 |
+| 400, 422 | `ValidationException` (server's message) | 422 |
+| 429 | `HostedRateLimitError` | 500 |
+| 5xx | `HostedServerError` | 500 |
+
+On `413`/`400`/`422`, `details` carries `backend`, `model`, `status` and the
+`server_code` the server sent (`AUDIO_TOO_LARGE`, `INVALID_AUDIO`).
+
+!!! warning "Speech synthesis is left out"
+
+    `/audio/speech` uses another model (the TTS one), and
+    `OpenAICompatSpeech` holds a single model. For speech, use
+    `TextToSpeech` or `OllamaSpeech`.
 
 ## When the provider fails
 
@@ -698,7 +812,7 @@ as Ollama's, and puts no upper bound in any consumer's lock.
 - `AnthropicGenerator` and `OpenAICompatGenerator` implement the same
   protocols as `OllamaGenerator`: change the construction, keep the rest.
 - `HostedGenAISettings` + `anthropic_kwargs()` / `openai_kwargs()` /
-  `deepseek_kwargs()` / `google_kwargs()` build the backend by splat.
+  `deepseek_kwargs()` / `gemini_kwargs()` build the backend by splat.
 - `GENAI_PROVIDER` + `GENAI_API_KEY` (+ `GENAI_BASE_URL`) pin one provider
   for every model from `.env`; another provider's model raises.
 - `hosted_generator(**settings.hosted_kwargs(model))` picks the provider
@@ -711,5 +825,9 @@ as Ollama's, and puts no upper bound in any consumer's lock.
 - Tool calling, structured output and streaming work on all four (on Gemini,
   tool calling and streaming go through the compatible endpoint without a
   test of their own); embeddings only on OpenAI (`OpenAICompatEmbedder`).
+- `OpenAICompatSpeech(**settings.openai_speech_kwargs())` transcribes on a
+  remote server (`/audio/transcriptions`) and replaces `SpeechToText` without
+  changing the call; `413` becomes `FileTooLargeException` and `400`/`422`
+  become `ValidationException`.
 - Failures become `HostedAuthenticationError`, `HostedRateLimitError` or
   `HostedServerError` — mid-stream included.

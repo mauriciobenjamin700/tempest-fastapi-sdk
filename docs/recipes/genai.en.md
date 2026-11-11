@@ -3833,7 +3833,7 @@ app.include_router(
 | `text_generator` | `POST /generate`, `POST /generate/stream` (token-by-token SSE), `POST /chat` |
 | `embedder` | `POST /embed` |
 | `retriever` | `POST /rag` (query → context block) |
-| `speech_to_text` | `POST /transcribe` (audio upload; `SpeechToText`, `OllamaSpeech` or any `SpeechTranscriber`) |
+| `speech_to_text` | `POST /transcribe` (audio upload; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` or any `SpeechTranscriber`) |
 | `text_to_speech` | `POST /tts` (returns `audio/wav`; `TextToSpeech`, `OllamaSpeech` or any `SpeechSynthesizer`) |
 
 !!! tip "Streaming"

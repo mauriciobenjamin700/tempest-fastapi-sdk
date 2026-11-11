@@ -867,6 +867,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Anthropic/DeepSeek fica fora: nenhum dos dois documenta endpoint. O
   "OpenAI-compatible client deliberately skipped" acima foi revertido por
   esta entrega. Receita: `docs/recipes/genai-hosted.md`.
+- **Transcrição remota (0.353.0, extra `[genai-hosted]`)** —
+  `OpenAICompatSpeech` em `genai/openai_compat_speech.py`: `transcribe`
+  (`bytes | str | Path`, `language`, `with_segments`) contra
+  `POST {base_url}/audio/transcriptions` com `verbose_json`, cumpre o
+  `SpeechTranscriber` e troca o `SpeechToText` sem mudar a chamada. `413` →
+  `FileTooLargeException`, `400`/`422` → `ValidationException`, resto pela
+  família `HostedAPIError`. `HostedGenAISettings.OPENAI_STT_MODEL` +
+  `openai_speech_kwargs()`. Síntese (`/audio/speech`) fica fora: pede um
+  segundo modelo na mesma instância. Na mesma versão,
+  `HostedGenAISettings.google_kwargs()` virou `gemini_kwargs()` (colidia com
+  o `OAuthSettings.google_kwargs(prefix=...)`), com o guard
+  `test_settings_mixin_clash_guard`.
 - **Resultado estruturado completo e provedor pelo id do modelo
   (v0.332.0 (2026-10-27), extra `[genai-hosted]`)** — `complete_structured` nos dois
   geradores hospedados devolve `StructuredCompletion` (saída, texto,

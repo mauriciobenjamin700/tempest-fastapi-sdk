@@ -4475,7 +4475,8 @@ class HostedGenAISettings(BaseAppSettings):
         AnthropicGenerator(**settings.anthropic_kwargs())
         OpenAICompatGenerator(**settings.openai_kwargs())
         OpenAICompatGenerator(**settings.deepseek_kwargs())
-        OpenAICompatGenerator(**settings.google_kwargs())
+        OpenAICompatGenerator(**settings.gemini_kwargs())
+        OpenAICompatSpeech(**settings.openai_speech_kwargs())
 
     And :meth:`hosted_kwargs` picks the provider from the model id, for a
     service that should change provider by changing one model variable::
@@ -4502,7 +4503,8 @@ class HostedGenAISettings(BaseAppSettings):
 
     An empty key is not rejected here — a service may configure one provider
     and not the others — but the backend constructor raises ``ValueError``
-    on it, and :meth:`openai_kwargs` raises when ``OPENAI_MODEL`` is unset.
+    on it, and :meth:`openai_kwargs` raises when ``OPENAI_MODEL`` is unset
+    (:meth:`openai_speech_kwargs` when ``OPENAI_STT_MODEL`` is).
 
     Each attribute is also the name of the environment variable that sets it
     (case-sensitive, no prefix).
@@ -4517,6 +4519,9 @@ class HostedGenAISettings(BaseAppSettings):
             Default: ``"https://api.openai.com/v1"``.
         OPENAI_MODEL (str): Model id. No default: OpenAI model ids are not
             hard-coded in this SDK. Default: ``""``.
+        OPENAI_STT_MODEL (str): Transcription model id for
+            ``OpenAICompatSpeech``, sent to the same ``OPENAI_BASE_URL`` with
+            the same ``OPENAI_API_KEY``. No default. Default: ``""``.
         DEEPSEEK_API_KEY (str): DeepSeek API key. Default: ``""``.
         DEEPSEEK_BASE_URL (str): API root. Default:
             ``"https://api.deepseek.com"``.
@@ -4605,6 +4610,16 @@ class HostedGenAISettings(BaseAppSettings):
         ),
         examples=[""],
     )
+    OPENAI_STT_MODEL: str = Field(
+        default="",
+        title="OpenAI transcription model",
+        description=(
+            "Model id passed to ``OpenAICompatSpeech``, called at "
+            "``{OPENAI_BASE_URL}/audio/transcriptions``. Required by "
+            "``openai_speech_kwargs()``; there is no default."
+        ),
+        examples=["", "base"],
+    )
     DEEPSEEK_API_KEY: str = Field(
         default="",
         title="DeepSeek API key",
@@ -4646,7 +4661,7 @@ class HostedGenAISettings(BaseAppSettings):
         title="Gemini model",
         description=(
             "Model id passed to ``OpenAICompatGenerator``. Required by "
-            "``google_kwargs()``; there is no default."
+            "``gemini_kwargs()``; there is no default."
         ),
         examples=[""],
     )
@@ -4754,6 +4769,33 @@ class HostedGenAISettings(BaseAppSettings):
             "structured_output": "json_schema",
         }
 
+    def openai_speech_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto ``OpenAICompatSpeech``.
+
+        The key and the API root are the ones :meth:`openai_kwargs` uses
+        (``OPENAI_API_KEY``, ``OPENAI_BASE_URL``); only the model differs,
+        because a server serves one transcription model and one chat model
+        under different ids.
+
+        Returns:
+            dict[str, Any]: ``model`` (``OPENAI_STT_MODEL``), ``api_key``,
+            ``base_url`` and ``provider="openai"``.
+
+        Raises:
+            ValueError: When ``OPENAI_STT_MODEL`` is empty.
+        """
+        if not self.OPENAI_STT_MODEL:
+            raise ValueError(
+                "OPENAI_STT_MODEL is empty; set it to the transcription model "
+                "id the server serves.",
+            )
+        return {
+            "model": self.OPENAI_STT_MODEL,
+            "api_key": self.OPENAI_API_KEY,
+            "base_url": self.OPENAI_BASE_URL,
+            "provider": "openai",
+        }
+
     def deepseek_kwargs(self) -> dict[str, Any]:
         """Map these settings onto ``OpenAICompatGenerator`` for DeepSeek.
 
@@ -4775,7 +4817,7 @@ class HostedGenAISettings(BaseAppSettings):
             "accepts_documents": False,
         }
 
-    def google_kwargs(self) -> dict[str, Any]:
+    def gemini_kwargs(self) -> dict[str, Any]:
         """Map these settings onto ``OpenAICompatGenerator`` for Gemini.
 
         Returns:

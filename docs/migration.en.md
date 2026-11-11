@@ -2,6 +2,15 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.353.0 — Gemini's `google_kwargs()` becomes `gemini_kwargs()`
+
+`HostedGenAISettings.google_kwargs()` (Gemini) and `OAuthSettings.google_kwargs(prefix=...)` (Google login) shared a name. A `Settings` composing both kept the first one in the MRO, and Google login broke with `TypeError` on `prefix`. The Gemini one was renamed, with no alias (an alias would keep the clash).
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `HostedGenAISettings` | `google_kwargs()` is now `gemini_kwargs()`; same return value, same `ValueError` when `GOOGLE_MODEL` is empty | `OpenAICompatGenerator(**settings.google_kwargs())` becomes `OpenAICompatGenerator(**settings.gemini_kwargs())`. With the old name, a `Settings` with only `HostedGenAISettings` raises `AttributeError` |
+| `OAuthSettings` | **Nothing**: `google_kwargs(prefix=...)` is still the Google login one | Nothing; services composing both mixins now get the right method |
+
 ## 0.349.0 — Coqui in its own extra, oversized upload as 413 and a stricter `tempest check`
 
 | Where | What changes | What to do |

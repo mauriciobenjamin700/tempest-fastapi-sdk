@@ -186,6 +186,12 @@ from tempest_fastapi_sdk.genai.openai_compat import (
 from tempest_fastapi_sdk.genai.openai_compat import (
     StructuredOutputMode as StructuredOutputMode,
 )
+from tempest_fastapi_sdk.genai.openai_compat_speech import (
+    TRANSCRIPTION_RESPONSE_FORMAT as TRANSCRIPTION_RESPONSE_FORMAT,
+)
+from tempest_fastapi_sdk.genai.openai_compat_speech import (
+    OpenAICompatSpeech as OpenAICompatSpeech,
+)
 from tempest_fastapi_sdk.genai.pipeline import AIChatPipeline as AIChatPipeline
 from tempest_fastapi_sdk.genai.pipeline import AIChatResult as AIChatResult
 from tempest_fastapi_sdk.genai.pipeline import StreamModeration as StreamModeration
@@ -332,6 +338,7 @@ __all__: list[str] = [
     "OPENAI_FINISH_REASONS",
     "OPENAI_MAX_TOKENS_FIELD",
     "PDF_MEDIA_TYPE",
+    "TRANSCRIPTION_RESPONSE_FORMAT",
     "AIChatPipeline",
     "AIChatResult",
     "AIUsageStore",
@@ -386,6 +393,7 @@ __all__: list[str] = [
     "OnnxEmbedder",
     "OpenAICompatEmbedder",
     "OpenAICompatGenerator",
+    "OpenAICompatSpeech",
     "RedisEmbeddingCache",
     "RedisGenerationCache",
     "RerankerModelEnum",
