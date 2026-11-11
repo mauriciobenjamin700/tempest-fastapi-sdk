@@ -127,6 +127,9 @@ from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException as TooManyRequestsException,
 )
 from tempest_fastapi_sdk.exceptions.unauthorized import (
+    MISSING_TOKEN_MESSAGE as MISSING_TOKEN_MESSAGE,
+)
+from tempest_fastapi_sdk.exceptions.unauthorized import (
     UnauthorizedException as UnauthorizedException,
 )
 from tempest_fastapi_sdk.exceptions.upload import (
@@ -178,6 +181,7 @@ __all__: list[str] = [
     "DEFAULT_LOCALE",
     "DEFAULT_NOT_FOUND_TEMPLATE",
     "DEFAULT_NOT_FOUND_TEMPLATE_ANONYMOUS",
+    "MISSING_TOKEN_MESSAGE",
     "AppException",
     "ConflictException",
     "EmailDeliveryException",
