@@ -3038,6 +3038,26 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
     account deactivated, request with the token → `403`; with
     `require_active=False` → `200`.
 
+!!! tip "The `401` message in your language"
+    A missing or invalid token, or one whose account no longer exists,
+    answers `401` `UNAUTHORIZED` with an English `detail`
+    (`"Authorization token is missing or invalid"`, the
+    `MISSING_TOKEN_MESSAGE` constant). A service answering in another
+    language passes its own phrase — that is what the app shows the user:
+
+    ```python
+    from tempest_fastapi_sdk import UserAuthService
+
+    def build_current_user(auth_service: UserAuthService):
+        return auth_service.current_user_dependency(
+            unauthorized_message="Sua sessão expirou. Entre de novo.",
+        )
+    ```
+
+    The `code` stays `UNAUTHORIZED`: the front end branches on the `code`,
+    the phrase is only the text. Measured in
+    `tests/auth/test_current_user_active.py`.
+
 !!! tip "Not header-only: cookie and query string count too"
     The dependency tries **header → cookie → query string** and stops at the first hit, so the single line above serves both bearer clients and cookie clients.
 

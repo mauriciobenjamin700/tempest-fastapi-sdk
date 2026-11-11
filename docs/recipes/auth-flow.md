@@ -3005,6 +3005,25 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
     desativada, request com o token → `403`; com `require_active=False` →
     `200`.
 
+!!! tip "A mensagem do `401` na sua língua"
+    Token ausente, inválido ou de conta que não existe mais responde `401`
+    `UNAUTHORIZED` com `detail` em inglês
+    (`"Authorization token is missing or invalid"`, a constante
+    `MISSING_TOKEN_MESSAGE`). Serviço que responde em PT-BR passa a própria
+    frase — é ela que o app mostra ao usuário:
+
+    ```python
+    from tempest_fastapi_sdk import UserAuthService
+
+    def build_current_user(auth_service: UserAuthService):
+        return auth_service.current_user_dependency(
+            unauthorized_message="Sua sessão expirou. Entre de novo.",
+        )
+    ```
+
+    O `code` continua `UNAUTHORIZED`: o front decide pelo `code`, a frase é
+    só o texto. Medido em `tests/auth/test_current_user_active.py`.
+
 !!! tip "Não é só o header: cookie e query string também valem"
     A dependency tenta **header → cookie → query string** e para no primeiro hit, então a mesma linha acima serve cliente bearer e cliente cookie.
 

@@ -66,6 +66,7 @@ from tempest_fastapi_sdk.db.user_token_model import (
     UserTokenPurposeEnum,
 )
 from tempest_fastapi_sdk.exceptions import (
+    MISSING_TOKEN_MESSAGE,
     ConflictException,
     EmailDeliveryException,
     ForbiddenException,
@@ -2804,6 +2805,7 @@ class UserAuthService:
         legacy_claims: Collection[str] = (),
         require_active: bool = True,
         inactive_exception: GuardException | None = None,
+        unauthorized_message: str = MISSING_TOKEN_MESSAGE,
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
         """Build a FastAPI dependency that returns the authenticated user.
 
@@ -2885,6 +2887,15 @@ class UserAuthService:
                 ``exceptions.account_inactive``. With
                 ``soft=True`` an inactive account yields ``None``
                 instead, as an invalid token does.
+            unauthorized_message (str): ``detail`` of the ``401`` for a
+                missing or invalid token, or one whose account no longer
+                exists. Defaults to
+                :data:`~tempest_fastapi_sdk.exceptions.unauthorized.MISSING_TOKEN_MESSAGE`,
+                in English. Before this parameter a service answering in
+                another language could not reword it: the dependency built
+                here forwarded no message to
+                :func:`~tempest_fastapi_sdk.make_jwt_user_dependency`, and
+                the English phrase reached the end user.
 
         Returns:
             Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
@@ -2973,6 +2984,7 @@ class UserAuthService:
             query_param=query_param,
             strict=strict,
             legacy_claims=legacy_claims,
+            error_message=unauthorized_message,
             session_dependency=session_dependency or self.db.session_dependency,
         )
 

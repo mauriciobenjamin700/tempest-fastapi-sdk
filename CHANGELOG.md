@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parâmetro que não veio (antes devolvia o template sem formatar). Quem
   chama já tinha fallback para chave desconhecida. Novo
   `MessageCatalog.template(key, locale)` lê a string crua.
+### Added
+
+- `UserAuthService.current_user_dependency(unauthorized_message=...)`: o
+  `detail` do `401` para token ausente, inválido ou de conta removida. Antes a
+  dependency não repassava mensagem nenhuma ao `make_jwt_user_dependency`, e a
+  frase em inglês chegava ao usuário final de um app PT-BR. O default segue
+  igual, agora como a constante `MISSING_TOKEN_MESSAGE`
+  (`tempest_fastapi_sdk.exceptions`), também default das outras dependencies
+  de token.
 
 ## [0.353.0] — 2026-11-11
 
