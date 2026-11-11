@@ -366,7 +366,7 @@ firebase = FirebaseAuth(**settings.firebase_kwargs())
 
 `firebase_kwargs()` **descarta valores vazios**, então variável não
 setada deixa o default do construtor de pé em vez de mandar caminho
-vazio. `settings.enabled` diz se há service account explícita — note que
+vazio. `settings.firebase_enabled` diz se há service account explícita — note que
 `False` não impede verificar: a credencial default do ambiente ainda
 funciona.
 

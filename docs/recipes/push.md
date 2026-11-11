@@ -366,12 +366,12 @@ settings = Settings()
 print(settings.web_enabled, settings.mobile_enabled, settings.enabled)
 ```
 
-`PushSettings` junta `WebPushSettings` e `FirebaseSettings` — e existe
-por causa de uma armadilha real: os dois declaram `enabled`, então
-compondo na mão o MRO escolhe silenciosamente o do Web Push, e um serviço
-só-mobile lê `enabled is False` com o FCM perfeitamente configurado. Aqui
-`enabled` responde "dá para notificar alguém?", e as duas metades ficam
-legíveis em `web_enabled` / `mobile_enabled`.
+`PushSettings` junta `WebPushSettings` e `FirebaseSettings` e acrescenta a
+pergunta que nenhuma das metades responde: `enabled`, "dá para notificar
+alguém?". As metades ficam legíveis em `web_enabled` / `mobile_enabled`.
+Compondo os dois mixins na mão, cada canal responde pelo próprio nome:
+`webpush_enabled` e `firebase_enabled`. Até a 0.352.0 os dois se chamavam
+`enabled`, e o MRO escolhia em silêncio o do Web Push (#742).
 
 ## Testando
 
@@ -409,7 +409,7 @@ a depreciação ao pé da letra mandaria o campo errado.
 
 ## Push mobile desligado (`FIREBASE_ENABLED=false`)
 
-Push não levanta: com `FIREBASE_ENABLED=false`, `settings.enabled` (e
+Push não levanta: com `FIREBASE_ENABLED=false`, `settings.firebase_enabled` (e
 `PushSettings.mobile_enabled`) responde `False`, então o wiring que já
 consulta essa flag não monta `FCMTransport` e o `DeviceService` pula os
 aparelhos mobile (eles aparecem em `PushFanoutResult.skipped`). Se o

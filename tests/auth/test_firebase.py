@@ -508,7 +508,7 @@ def test_settings_drop_empty_values() -> None:
     settings = FirebaseSettings()
 
     assert settings.firebase_kwargs() == {}
-    assert settings.enabled is False
+    assert settings.firebase_enabled is False
 
 
 def test_settings_prefer_inline_json_over_a_path() -> None:
@@ -523,4 +523,4 @@ def test_settings_prefer_inline_json_over_a_path() -> None:
 
     assert kwargs["credentials_json"] == '{"type": "service_account"}'
     assert kwargs["project_id"] == "tempest-test"
-    assert settings.enabled is True
+    assert settings.firebase_enabled is True

@@ -356,18 +356,21 @@ class TestEmailTLSModeRule:
 
 
 class TestFirebaseEnabled:
-    """``enabled`` follows the flag, whatever the credentials say."""
+    """``firebase_enabled`` follows the flag, whatever the credentials say."""
 
     def test_flag_off_wins_over_credentials(self) -> None:
         settings = FirebaseSettings(
             FIREBASE_CREDENTIALS_JSON="{}", FIREBASE_ENABLED=False
         )
-        assert settings.enabled is False
+        assert settings.firebase_enabled is False
         assert settings.disabled_integrations() == ["firebase"]
 
     def test_flag_on_still_needs_credentials(self) -> None:
-        assert FirebaseSettings().enabled is False
-        assert FirebaseSettings(FIREBASE_CREDENTIALS_PATH="sa.json").enabled is True
+        assert FirebaseSettings().firebase_enabled is False
+        assert (
+            FirebaseSettings(FIREBASE_CREDENTIALS_PATH="sa.json").firebase_enabled
+            is True
+        )
 
     def test_push_settings_mobile_half_follows_the_flag(self) -> None:
         settings = PushSettings(
