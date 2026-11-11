@@ -27,6 +27,7 @@ from tempest_fastapi_sdk.genai import (
     HOSTED_PROVIDERS,
     AnthropicGenerator,
     OpenAICompatGenerator,
+    OpenAICompatSpeech,
     hosted_generator,
 )
 
@@ -316,3 +317,58 @@ class TestGenericProviderProductionGuard:
             GENAI_API_KEY="sk-ant",
         )
         assert settings.genai_effective_api_key() == "sk-ant"
+
+
+class TestOpenAISpeechKwargs:
+    def test_needs_a_stt_model(self) -> None:
+        with pytest.raises(ValueError, match="OPENAI_STT_MODEL"):
+            HostedGenAISettings(
+                OPENAI_API_KEY="sk", OPENAI_MODEL="m"
+            ).openai_speech_kwargs()
+
+    def test_shares_key_and_root_with_openai_kwargs(self) -> None:
+        settings = HostedGenAISettings(
+            OPENAI_API_KEY="tk",
+            OPENAI_BASE_URL="https://ai.buscar.app.br/api/openai/v1",
+            OPENAI_MODEL="chat",
+            OPENAI_STT_MODEL="base",
+        )
+        kwargs = settings.openai_speech_kwargs()
+        assert kwargs == {
+            "model": "base",
+            "api_key": "tk",
+            "base_url": "https://ai.buscar.app.br/api/openai/v1",
+            "provider": "openai",
+        }
+        assert kwargs["api_key"] == settings.openai_kwargs()["api_key"]
+        assert kwargs["base_url"] == settings.openai_kwargs()["base_url"]
+
+    def test_unset_stt_model_is_not_a_production_violation(self) -> None:
+        settings = HostedGenAISettings(OPENAI_API_KEY="sk")
+        assert not any(
+            "OPENAI_STT_MODEL" in v for v in settings.production_violations()
+        )
+
+    async def test_splat_builds_a_working_backend(self) -> None:
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"text": "oi", "duration": 1.0})
+
+        settings = HostedGenAISettings(
+            OPENAI_API_KEY="tk",
+            OPENAI_BASE_URL="https://ai.buscar.app.br/api/openai/v1",
+            OPENAI_STT_MODEL="base",
+        )
+        speech = OpenAICompatSpeech(
+            **settings.openai_speech_kwargs(),
+            transport=httpx.MockTransport(handler),
+        )
+        assert speech.provider == "openai"
+        assert (await speech.transcribe(b"RIFF")).text == "oi"
+        assert str(seen[0].url) == (
+            "https://ai.buscar.app.br/api/openai/v1/audio/transcriptions"
+        )
+        assert seen[0].headers["Authorization"] == "Bearer tk"
+        await speech.aclose()

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.353.0] — 2026-11-10
+
+### Added
+
+- `OpenAICompatSpeech` (`tempest_fastapi_sdk.genai`, extra `[genai-hosted]`):
+  transcrição num servidor remoto pelo `POST {base_url}/audio/transcriptions`
+  da OpenAI, com `Authorization: Bearer`, multipart (`file`, `model`,
+  `language` opcional, `response_format=verbose_json`). `base_url` inclui a
+  versão, como no `OpenAICompatGenerator` (para o `tempest-ai`,
+  `https://ai.buscar.app.br/api/openai/v1`). `transcribe(audio, /, *,
+  language=None, with_segments=True)` aceita `bytes` ou caminho local,
+  devolve `Transcription` e cumpre o `SpeechTranscriber`, então substitui o
+  `SpeechToText` sem tirar o Whisper do processo à mão. `413` vira
+  `FileTooLargeException`, `400`/`422` viram `ValidationException` com a
+  mensagem do servidor, `401`/`403` viram `HostedAuthenticationError`.
+  Medido contra o `tempest-ai` com chave inválida: o pedido chega à URL e
+  volta `HostedAuthenticationError`.
+- `HostedGenAISettings.OPENAI_STT_MODEL` e `openai_speech_kwargs()`: mesma
+  chave e raiz do `openai_kwargs()`, modelo de transcrição próprio;
+  `ValueError` com o modelo vazio.
+
 ## [0.352.0] — 2026-11-10
 
 ### Added

@@ -45,7 +45,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[genai-tts-coqui]` | `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | TTS (Coqui XTTS v2) — o runtime do Coqui vem junto; sem o teto `transformers<5` desde a 0.342.0 ([detalhes](#genai-audio-transformers-bound)) |
 | `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |
 | `[genai-diarization]` | `sherpa-onnx` | diarização (quem falou quando) via `sherpa-onnx` em ONNX Runtime, sem PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Modelos (46 MB) baixados por `ensure_models()` |
-| `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. Nenhum SDK de fornecedor |
+| `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `OpenAICompatSpeech` (transcrição remota), `HostedGenAISettings`. Nenhum SDK de fornecedor |
 | `[genai-hub]` | `huggingface-hub` | ciclo de vida do peso: `resolve_revision` (fixar sha), `download_model` (baixar antes de servir, com preflight de disco), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
 | `[genai-image]` | `diffusers`, `pillow` | geração de imagem local: `ImageGenerator` (`generate` texto→imagem, `edit` imagem→imagem), `ImageGenerationConfig`, rota `POST /image` |
 | `[genai-sound]` | `diffusers` | efeitos sonoros e música locais (com `[genai]`): `AudioGenerator`, `AudioGenerationConfig`, `GeneratedAudio`, rota `POST /audio` |
