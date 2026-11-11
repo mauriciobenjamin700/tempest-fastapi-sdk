@@ -6456,6 +6456,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.351.0] — 2026-11-10
+
+### Changed
+
+- O piso default de senha caiu de 12 para **8** caracteres:
+  `AUTH_PASSWORD_MIN_LENGTH` (`AuthSettings`), `PasswordPolicy.min_length` e o
+  `min_length` de `generate_password`. Vale para signup, reset, troca de senha,
+  o campo de senha do admin e `tempest user create` / `set-password`, que leem
+  o `AUTH_PASSWORD_MIN_LENGTH` do projeto ou, sem ele, o default do
+  `PasswordPolicy`. Senha gerada continua com 24 caracteres. Para manter 12,
+  defina `AUTH_PASSWORD_MIN_LENGTH=12` no ambiente.
+
 ## [0.350.0] — 2026-11-10
 
 ### Added
@@ -43057,7 +43069,7 @@ Controla a assinatura e validade dos tokens que o login devolve. **É o mesmo `J
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `12` | Comprimento mínimo aceito no signup **e** no reset. |
+| `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `8` | Comprimento mínimo aceito no signup **e** no reset. |
 | `AUTH_PASSWORD_MAX_BYTES` | `int` (≥1) | `72` | Comprimento máximo em **bytes** UTF-8. É o limite duro do bcrypt. |
 | `AUTH_PASSWORD_REQUIRE_COMPLEXITY` | `bool` | `false` | `true` = exige 1 minúscula + 1 maiúscula + 1 dígito + 1 caractere especial. |
 
@@ -43087,7 +43099,7 @@ Tabela de decisão:
 
     | `message_key` | Quando | `detail` em pt-BR (catálogo default) |
     |---------------|--------|--------------------------------------|
-    | `PASSWORD_TOO_SHORT` | abaixo do piso efetivo | `A senha precisa ter pelo menos 12 caracteres` |
+    | `PASSWORD_TOO_SHORT` | abaixo do piso efetivo | `A senha precisa ter pelo menos 8 caracteres` |
     | `PASSWORD_TOO_LONG` | acima de `AUTH_PASSWORD_MAX_BYTES` | `A senha pode ter no máximo 72 bytes` |
     | `PASSWORD_TOO_WEAK` | falta classe de caractere (complexidade ligada) | `A senha precisa ter letra minúscula, letra maiúscula, número e caractere especial` |
 
@@ -47948,7 +47960,7 @@ tempest user set-password --email ana@example.com
     `create` e `set-password` validam o plaintext com
     `check_password_policy` contra os três campos `AUTH_PASSWORD_*` do
     `src.core.settings` do projeto — e contra os defaults do
-    `PasswordPolicy` (mínimo 12 caracteres, máximo 72 **bytes**) quando o
+    `PasswordPolicy` (mínimo 8 caracteres, máximo 72 **bytes**) quando o
     projeto não compõe `AuthSettings`. É a mesma régua do `signup` e do
     painel admin, então a senha que a CLI aceita é sempre uma que o dono
     da conta consegue usar pra logar.

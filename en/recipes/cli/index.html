@@ -6905,7 +6905,7 @@ carry no row to flip.</p>
 <p><code>create</code> and <code>set-password</code> both check the plaintext with
 <code>check_password_policy</code> against the three <code>AUTH_PASSWORD_*</code> fields of
 the project's <code>src.core.settings</code> — and against the <code>PasswordPolicy</code>
-defaults (minimum 12 characters, maximum 72 <strong>bytes</strong>) when the
+defaults (minimum 8 characters, maximum 72 <strong>bytes</strong>) when the
 project does not compose <code>AuthSettings</code>. It is the same ruler
 <code>signup</code> and the admin panel use, so a password the CLI accepts is
 always one the account owner can log in with.</p>
