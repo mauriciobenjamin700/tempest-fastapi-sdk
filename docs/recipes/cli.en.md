@@ -1194,7 +1194,7 @@ tempest user set-password --email ana@example.com
     `create` and `set-password` both check the plaintext with
     `check_password_policy` against the three `AUTH_PASSWORD_*` fields of
     the project's `src.core.settings` — and against the `PasswordPolicy`
-    defaults (minimum 12 characters, maximum 72 **bytes**) when the
+    defaults (minimum 8 characters, maximum 72 **bytes**) when the
     project does not compose `AuthSettings`. It is the same ruler
     `signup` and the admin panel use, so a password the CLI accepts is
     always one the account owner can log in with.

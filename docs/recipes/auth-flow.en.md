@@ -1551,7 +1551,7 @@ Controls the signing and lifetime of the tokens login returns. **It's the same `
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `12` | Minimum length accepted on signup **and** reset. |
+| `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `8` | Minimum length accepted on signup **and** reset. |
 | `AUTH_PASSWORD_MAX_BYTES` | `int` (≥1) | `72` | Maximum length in UTF-8 **bytes**. This is bcrypt's hard limit. |
 | `AUTH_PASSWORD_REQUIRE_COMPLEXITY` | `bool` | `false` | `true` = require 1 lowercase + 1 uppercase + 1 digit + 1 special character. |
 
@@ -1581,7 +1581,7 @@ Decision table:
 
     | `message_key` | When | `detail` in en-US (default catalog) |
     |---------------|------|-------------------------------------|
-    | `PASSWORD_TOO_SHORT` | below the effective floor | `Password must be at least 12 characters` |
+    | `PASSWORD_TOO_SHORT` | below the effective floor | `Password must be at least 8 characters` |
     | `PASSWORD_TOO_LONG` | above `AUTH_PASSWORD_MAX_BYTES` | `Password must be at most 72 bytes` |
     | `PASSWORD_TOO_WEAK` | missing a character class (complexity on) | `Password must contain a lowercase letter, an uppercase letter, a digit and a special character` |
 

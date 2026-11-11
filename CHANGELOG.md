@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- O piso default de senha caiu de 12 para **8** caracteres:
+  `AUTH_PASSWORD_MIN_LENGTH` (`AuthSettings`), `PasswordPolicy.min_length` e o
+  `min_length` de `generate_password`. Vale para signup, reset, troca de senha,
+  o campo de senha do admin e `tempest user create` / `set-password`, que leem
+  o `AUTH_PASSWORD_MIN_LENGTH` do projeto ou, sem ele, o default do
+  `PasswordPolicy`. Senha gerada continua com 24 caracteres. Para manter 12,
+  defina `AUTH_PASSWORD_MIN_LENGTH=12` no ambiente.
+
 ## [0.350.0] — 2026-11-10
 
 ### Added

@@ -150,6 +150,32 @@ class TestUserCreate:
         assert result.exit_code == 0
         assert "Created admin: admin@example.com" in result.stdout
 
+    @pytest.mark.parametrize(("password", "code"), [("eight-ch", 0), ("seven-c", 2)])
+    def test_default_floor_is_eight_characters(
+        self, project_db: str, password: str, code: int
+    ) -> None:
+        """Cenário: projeto sem ``AUTH_PASSWORD_*``, senha de 8 e de 7 caracteres.
+
+        Esperado: o CLI aplica o default do ``PasswordPolicy`` — 8 passa, 7
+        sai com 2 dizendo ``at least 8``.
+        """
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                f"len{len(password)}@example.com",
+                "--password",
+                password,
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == code, result.stdout + result.stderr
+        if code:
+            assert "at least 8" in (result.stdout + result.stderr)
+
     def test_short_password_rejected(self, project_db: str) -> None:
         result = runner.invoke(
             app,
@@ -165,7 +191,7 @@ class TestUserCreate:
             ],
         )
         assert result.exit_code == 2
-        assert "at least 12" in (result.stdout + result.stderr)
+        assert "at least 8" in (result.stdout + result.stderr)
 
     def test_invalid_model_spec_rejected(self, project_db: str) -> None:
         result = runner.invoke(
@@ -1070,7 +1096,7 @@ class TestUserSetPassword:
             ],
         )
         assert result.exit_code == 2
-        assert "at least 12" in (result.stdout + result.stderr)
+        assert "at least 8" in (result.stdout + result.stderr)
         assert _read_hash(project_db, "ana@example.com") == before
 
     def test_project_without_the_table_says_nothing_was_revoked(

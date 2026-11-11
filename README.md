@@ -4228,7 +4228,7 @@ When `tempest user create` runs in an interactive terminal **without** `--admin`
 
 `tempest user mfa-reset` is the way back for an account that lost both the authenticator and the recovery codes, which `set-password` cannot help since it asks for the factor. It runs `UserAuthService.mfa_reset` (clears the TOTP columns and deletes the recovery codes, without proof), revokes the sessions by default (`--keep-sessions` to opt out), requires confirmation (`--yes` outside a TTY), and with `--audit-model` records `user.mfa_reset` (or `--event`) in the same transaction. An account without MFA active exits `2`.
 
-Both `create` and `set-password` validate the plaintext with `check_password_policy` against the project's `AUTH_PASSWORD_*` settings (or the `PasswordPolicy` defaults: 12 characters minimum, 72 **bytes** maximum — the unit bcrypt counts), so the CLI accepts exactly the passwords `signup` and the admin panel accept.
+Both `create` and `set-password` validate the plaintext with `check_password_policy` against the project's `AUTH_PASSWORD_*` settings (or the `PasswordPolicy` defaults: 8 characters minimum, 72 **bytes** maximum — the unit bcrypt counts), so the CLI accepts exactly the passwords `signup` and the admin panel accept.
 
 #### Routes and contract — `tempest routes` / `tempest openapi-export`
 
