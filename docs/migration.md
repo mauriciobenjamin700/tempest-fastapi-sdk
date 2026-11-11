@@ -10,6 +10,7 @@ Passo a passo das mudanças que quebram compatibilidade, agrupadas por release m
 | --- | --- | --- |
 | `HostedGenAISettings` | `google_kwargs()` passa a se chamar `gemini_kwargs()`; mesmo retorno, mesmo `ValueError` com `GOOGLE_MODEL` vazio | `OpenAICompatGenerator(**settings.google_kwargs())` vira `OpenAICompatGenerator(**settings.gemini_kwargs())`. Com o nome antigo, um `Settings` só com `HostedGenAISettings` levanta `AttributeError` |
 | `OAuthSettings` | **Nada**: `google_kwargs(prefix=...)` continua sendo o do login Google | Nada; quem compunha os dois mixins passa a receber o método certo |
+| `WebPushSettings` / `FirebaseSettings` | `enabled` vira `webpush_enabled` e `firebase_enabled`, sem alias. Os dois tinham o mesmo nome e sentido diferente, e um `Settings` que compunha os dois sem o `PushSettings` lia a resposta do primeiro da MRO (#742) | `settings.enabled` num serviço com `WebPushSettings` vira `settings.webpush_enabled`; com `FirebaseSettings`, `settings.firebase_enabled`. O nome antigo levanta `AttributeError`. `PushSettings.enabled`, `web_enabled` e `mobile_enabled` **não mudam** |
 
 ## 0.349.0 — Coqui no próprio extra, upload grande em 413 e `tempest check` mais rigoroso
 

@@ -190,8 +190,8 @@ class TestMixinDefaults:
         assert WebPushDispatcher(**kwargs) is not None
 
     def test_enabled_reflects_private_key(self) -> None:
-        assert WebPushSettings().enabled is False
-        assert WebPushSettings(VAPID_PRIVATE_KEY="k").enabled is True
+        assert WebPushSettings().webpush_enabled is False
+        assert WebPushSettings(VAPID_PRIVATE_KEY="k").webpush_enabled is True
 
     def test_storage_kwargs_splats_into_client(self) -> None:
         from tempest_fastapi_sdk import AsyncMinIOClient, StorageSettings

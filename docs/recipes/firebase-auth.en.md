@@ -368,7 +368,7 @@ firebase = FirebaseAuth(**settings.firebase_kwargs())
 
 `firebase_kwargs()` **drops empty values**, so an unset variable leaves
 the constructor default in place instead of passing an empty path.
-`settings.enabled` tells whether an explicit service account is
+`settings.firebase_enabled` tells whether an explicit service account is
 configured — note that `False` does not prevent verification: the
 environment's default credential still works.
 

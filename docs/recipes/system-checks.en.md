@@ -421,7 +421,7 @@ class Settings(
 
 settings = Settings()
 print("disabled:", sorted(settings.disabled_integrations()))
-print("mobile push:", settings.enabled)
+print("mobile push:", settings.firebase_enabled)
 
 storage = AsyncMinIOClient(**settings.storage_kwargs())
 mailer = EmailUtils(**settings.email_kwargs())
@@ -465,7 +465,7 @@ What each integration does when switched off:
 | --- | --- | --- |
 | `storage` | `AsyncMinIOClient(**settings.storage_kwargs())` receives `enabled=False`; no `minio` client is created (or imported) | every operation — the `client` attribute included — raises `IntegrationDisabledException`; a `SubjectObjectStorage` on top inherits the refusal |
 | `email` | `EmailUtils(**settings.email_kwargs())` receives `enabled=False`; the `[email]` extra is not required | `send` and `send_many` raise `IntegrationDisabledException` before building the message; `render_template` keeps working |
-| `firebase` | `settings.enabled` (and `PushSettings.mobile_enabled`) becomes `False`; `firebase_kwargs()` returns only `{"enabled": False}` | `FirebaseAuth` initializes no app and answers `503` from `verify` and the dependencies; an `FCMTransport` on top claims no platform: mobile push is **discarded** (the `DeviceService` skips the device) and the transport logs one warning when built |
+| `firebase` | `settings.firebase_enabled` (and `PushSettings.mobile_enabled`) becomes `False`; `firebase_kwargs()` returns only `{"enabled": False}` | `FirebaseAuth` initializes no app and answers `503` from `verify` and the dependencies; an `FCMTransport` on top claims no platform: mobile push is **discarded** (the `DeviceService` skips the device) and the transport logs one warning when built |
 | `revenuecat` | only the guard and `disabled_integrations()` change | the webhook keeps reading its own secrets: with both empty it keeps refusing every delivery with `401` |
 
 !!! info "The `enabled` key only appears with the integration off"

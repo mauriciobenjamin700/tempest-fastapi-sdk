@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Quebra:** `WebPushSettings.enabled` vira `webpush_enabled` e
+  `FirebaseSettings.enabled` vira `firebase_enabled`, sem alias. Mesma
+  assinatura e sentido diferente: um `Settings` que compunha os dois mixins
+  sem o `PushSettings` lia o `enabled` do primeiro da MRO e respondia "posso
+  mandar push pelo Firebase?" com o estado do VAPID. `PushSettings.enabled`,
+  `web_enabled` e `mobile_enabled` não mudam (#742).
+- `tests/test_settings_mixin_clash_guard.py` recusa qualquer nome público
+  repetido entre os mixins de settings, não só os de assinatura diferente;
+  exceção vai em `ALLOWED_SHARED_NAMES` com o motivo (#742).
 - **Quebra:** `HostedGenAISettings.google_kwargs()` (Gemini) passa a se
   chamar `gemini_kwargs()`, sem alias. O nome era o mesmo do
   `OAuthSettings.google_kwargs(prefix=...)` (login Google): um `Settings` que

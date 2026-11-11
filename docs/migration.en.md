@@ -10,6 +10,7 @@ Breaking-change walkthroughs grouped by minor release. Stick to the version that
 | --- | --- | --- |
 | `HostedGenAISettings` | `google_kwargs()` is now `gemini_kwargs()`; same return value, same `ValueError` when `GOOGLE_MODEL` is empty | `OpenAICompatGenerator(**settings.google_kwargs())` becomes `OpenAICompatGenerator(**settings.gemini_kwargs())`. With the old name, a `Settings` with only `HostedGenAISettings` raises `AttributeError` |
 | `OAuthSettings` | **Nothing**: `google_kwargs(prefix=...)` is still the Google login one | Nothing; services composing both mixins now get the right method |
+| `WebPushSettings` / `FirebaseSettings` | `enabled` becomes `webpush_enabled` and `firebase_enabled`, with no alias. Both had the same name and different meanings, and a `Settings` composing both without `PushSettings` read the answer of the first one in the MRO (#742) | `settings.enabled` on a service with `WebPushSettings` becomes `settings.webpush_enabled`; with `FirebaseSettings`, `settings.firebase_enabled`. The old name raises `AttributeError`. `PushSettings.enabled`, `web_enabled` and `mobile_enabled` **do not change** |
 
 ## 0.349.0 — Coqui in its own extra, oversized upload as 413 and a stricter `tempest check`
 

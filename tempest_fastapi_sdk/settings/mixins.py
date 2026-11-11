@@ -1660,12 +1660,17 @@ class WebPushSettings(BaseAppSettings):
         }
 
     @property
-    def enabled(self) -> bool:
+    def webpush_enabled(self) -> bool:
         """Whether Web Push dispatch is configured.
 
         Dispatch needs a signing key; with an empty ``VAPID_PRIVATE_KEY``
         (the dev default) subscribe/unsubscribe still work but sending is
         skipped. Use this to gate notify calls.
+
+        Named for its channel: up to 0.352.0 it was ``enabled``, the same
+        name :class:`FirebaseSettings` used for FCM, and a service composing
+        both mixins without :class:`PushSettings` read whichever came first
+        in the MRO (#742).
 
         Returns:
             bool: ``True`` when a VAPID private key is set.
@@ -1772,7 +1777,7 @@ class FirebaseSettings(BaseAppSettings):
         return kwargs
 
     @property
-    def enabled(self) -> bool:
+    def firebase_enabled(self) -> bool:
         """Whether Firebase is switched on and has an explicit service account.
 
         ``False`` when ``FIREBASE_ENABLED`` is off, whatever the
@@ -1781,6 +1786,9 @@ class FirebaseSettings(BaseAppSettings):
         (``GOOGLE_APPLICATION_CREDENTIALS`` or the metadata server on
         Google infrastructure) still works. Use this to gate wiring in
         projects that must run without Firebase at all.
+
+        Named for its channel: up to 0.352.0 it was ``enabled``, shared with
+        :class:`WebPushSettings` (#742).
 
         Returns:
             bool: ``True`` when ``FIREBASE_ENABLED`` is on and a
@@ -1805,14 +1813,13 @@ class FirebaseSettings(BaseAppSettings):
 class PushSettings(WebPushSettings, FirebaseSettings):
     """Every variable a service delivering to browsers *and* phones needs.
 
-    Composing :class:`WebPushSettings` and :class:`FirebaseSettings`
-    by hand works, but it hides a trap: both declare an ``enabled``
-    property, so the MRO silently picks the Web Push one and a
-    mobile-only service reads ``enabled is False`` while FCM is perfectly
-    configured. This class exists to make that explicit — ``enabled``
-    answers "can this service push at all", and the two halves are
-    readable separately through :attr:`web_enabled` and
-    :attr:`mobile_enabled`.
+    Composing :class:`WebPushSettings` and :class:`FirebaseSettings` by
+    hand works too: each half answers through its own name
+    (:attr:`~WebPushSettings.webpush_enabled`,
+    :attr:`~FirebaseSettings.firebase_enabled`). This class adds the
+    question neither half can answer — ``enabled``, "can this service push
+    at all" — plus :attr:`web_enabled` / :attr:`mobile_enabled`, the
+    platform names the push recipe uses.
 
     Attributes:
         VAPID_PUBLIC_KEY (str): Inherited from :class:`WebPushSettings`.
@@ -1835,7 +1842,7 @@ class PushSettings(WebPushSettings, FirebaseSettings):
         Returns:
             bool: ``True`` when a VAPID private key is set.
         """
-        return bool(self.VAPID_PRIVATE_KEY)
+        return self.webpush_enabled
 
     @property
     def mobile_enabled(self) -> bool:
@@ -1850,9 +1857,7 @@ class PushSettings(WebPushSettings, FirebaseSettings):
             bool: ``True`` when ``FIREBASE_ENABLED`` is on and a
             credentials path or inline JSON is set.
         """
-        return self.FIREBASE_ENABLED and bool(
-            self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH
-        )
+        return self.firebase_enabled
 
     @property
     def enabled(self) -> bool:
