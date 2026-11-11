@@ -292,7 +292,7 @@ class TestProvidersWithoutDocuments:
             DEEPSEEK_API_KEY="sk-test",
         )
         kwargs = (
-            settings.google_kwargs()
+            settings.gemini_kwargs()
             if provider == "google"
             else settings.deepseek_kwargs()
         )

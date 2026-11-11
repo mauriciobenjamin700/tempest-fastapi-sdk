@@ -66,7 +66,7 @@ Cada provedor tem `*_API_KEY`, `*_BASE_URL` e `*_MODEL`. Os defaults:
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | `deepseek-flash` |
 | `GOOGLE_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| `GOOGLE_MODEL` | vazio — obrigatório em `google_kwargs()` |
+| `GOOGLE_MODEL` | vazio — obrigatório em `gemini_kwargs()` |
 
 !!! note "De onde vêm os defaults"
 
@@ -560,7 +560,7 @@ Pedaço por pedaço:
   `document` com `source` base64, e o `filename` vira o `title` do bloco.
 - **OpenAI:** o `OpenAICompatGenerator` repassa a parte como está.
 - **Google e DeepSeek:** o gerador que o `hosted_generator` monta para eles
-  (e o que `google_kwargs()` / `deepseek_kwargs()` montam) levanta
+  (e o que `gemini_kwargs()` / `deepseek_kwargs()` montam) levanta
   `ValueError` **antes** de abrir a conexão quando uma mensagem carrega a
   parte, com uma mensagem que nomeia o provedor. Texto e imagem continuam
   saindo normalmente.
@@ -806,7 +806,7 @@ Ollama, e não leva nenhum teto para o lock de quem consome.
 - `AnthropicGenerator` e `OpenAICompatGenerator` cumprem os mesmos protocolos
   que o `OllamaGenerator`: troque a construção, mantenha o resto.
 - `HostedGenAISettings` + `anthropic_kwargs()` / `openai_kwargs()` /
-  `deepseek_kwargs()` / `google_kwargs()` montam o backend por splat.
+  `deepseek_kwargs()` / `gemini_kwargs()` montam o backend por splat.
 - `GENAI_PROVIDER` + `GENAI_API_KEY` (+ `GENAI_BASE_URL`) fixam um provedor
   para todos os modelos, pelo `.env`; modelo de outro provedor levanta.
 - `hosted_generator(**settings.hosted_kwargs(modelo))` escolhe o provedor

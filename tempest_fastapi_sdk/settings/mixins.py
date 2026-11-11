@@ -4475,7 +4475,7 @@ class HostedGenAISettings(BaseAppSettings):
         AnthropicGenerator(**settings.anthropic_kwargs())
         OpenAICompatGenerator(**settings.openai_kwargs())
         OpenAICompatGenerator(**settings.deepseek_kwargs())
-        OpenAICompatGenerator(**settings.google_kwargs())
+        OpenAICompatGenerator(**settings.gemini_kwargs())
         OpenAICompatSpeech(**settings.openai_speech_kwargs())
 
     And :meth:`hosted_kwargs` picks the provider from the model id, for a
@@ -4661,7 +4661,7 @@ class HostedGenAISettings(BaseAppSettings):
         title="Gemini model",
         description=(
             "Model id passed to ``OpenAICompatGenerator``. Required by "
-            "``google_kwargs()``; there is no default."
+            "``gemini_kwargs()``; there is no default."
         ),
         examples=[""],
     )
@@ -4817,7 +4817,7 @@ class HostedGenAISettings(BaseAppSettings):
             "accepts_documents": False,
         }
 
-    def google_kwargs(self) -> dict[str, Any]:
+    def gemini_kwargs(self) -> dict[str, Any]:
         """Map these settings onto ``OpenAICompatGenerator`` for Gemini.
 
         Returns:

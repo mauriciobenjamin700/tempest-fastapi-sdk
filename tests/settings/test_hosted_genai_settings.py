@@ -117,14 +117,14 @@ class TestGoogle:
 
     def test_needs_a_model(self) -> None:
         with pytest.raises(ValueError, match="GOOGLE_MODEL"):
-            HostedGenAISettings(GOOGLE_API_KEY="AIza").google_kwargs()
+            HostedGenAISettings(GOOGLE_API_KEY="AIza").gemini_kwargs()
 
     def test_splat_builds_the_backend(self) -> None:
         settings = HostedGenAISettings(
             GOOGLE_API_KEY="AIza",
             GOOGLE_MODEL="gemini-3-flash",
         )
-        gen = OpenAICompatGenerator(**settings.google_kwargs())
+        gen = OpenAICompatGenerator(**settings.gemini_kwargs())
         assert gen.provider == "google"
         assert gen.base_url == DEFAULT_GOOGLE_OPENAI_URL
         assert gen.effort_values == dict(GOOGLE_EFFORT_VALUES)

@@ -2,6 +2,15 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.353.0 — `google_kwargs()` do Gemini vira `gemini_kwargs()`
+
+`HostedGenAISettings.google_kwargs()` (Gemini) e `OAuthSettings.google_kwargs(prefix=...)` (login Google) tinham o mesmo nome. Um `Settings` que compunha os dois ficava com o primeiro da MRO, e o login Google quebrava com `TypeError` no `prefix`. O do Gemini mudou de nome, sem alias (um alias manteria o conflito).
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `HostedGenAISettings` | `google_kwargs()` passa a se chamar `gemini_kwargs()`; mesmo retorno, mesmo `ValueError` com `GOOGLE_MODEL` vazio | `OpenAICompatGenerator(**settings.google_kwargs())` vira `OpenAICompatGenerator(**settings.gemini_kwargs())`. Com o nome antigo, um `Settings` só com `HostedGenAISettings` levanta `AttributeError` |
+| `OAuthSettings` | **Nada**: `google_kwargs(prefix=...)` continua sendo o do login Google | Nada; quem compunha os dois mixins passa a receber o método certo |
+
 ## 0.349.0 — Coqui no próprio extra, upload grande em 413 e `tempest check` mais rigoroso
 
 | Onde | O que muda | O que fazer |

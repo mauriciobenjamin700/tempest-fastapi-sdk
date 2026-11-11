@@ -28,6 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chave e raiz do `openai_kwargs()`, modelo de transcrição próprio;
   `ValueError` com o modelo vazio.
 
+### Changed
+
+- **Quebra:** `HostedGenAISettings.google_kwargs()` (Gemini) passa a se
+  chamar `gemini_kwargs()`, sem alias. O nome era o mesmo do
+  `OAuthSettings.google_kwargs(prefix=...)` (login Google): um `Settings` que
+  compunha os dois ficava com o do Gemini primeiro na MRO, o login Google
+  levantava `TypeError` no `prefix` (medido), e o pyright de um consumidor acusava "define method
+  google_kwargs in incompatible way". Migração: troque
+  `settings.google_kwargs()` por `settings.gemini_kwargs()` onde ele monta o
+  `OpenAICompatGenerator`; o do `OAuthSettings` não muda. Guia em
+  `docs/migration.md`.
+
+### Tests
+
+- `tests/test_settings_mixin_clash_guard.py`: falha quando dois mixins
+  públicos de `settings` definem o mesmo nome com assinaturas diferentes;
+  prova que dispara com o par `google_kwargs` que shippou.
+
 ## [0.352.0] — 2026-11-10
 
 ### Added
