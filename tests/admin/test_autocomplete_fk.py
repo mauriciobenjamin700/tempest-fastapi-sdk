@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from html.parser import HTMLParser
+from pathlib import Path
 from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +23,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
+from tempest_fastapi_sdk import admin as admin_package
 from tempest_fastapi_sdk.testing import admin_login
 
 
@@ -153,3 +157,79 @@ async def test_edit_form_prefills_display_label(
     assert response.status_code == 200
     # The current company's label is shown in the search box.
     assert 'value="Acme Corp"' in response.text
+
+
+class _OnclickParser(HTMLParser):
+    """Collect the ``onclick`` attribute of each autocomplete option."""
+
+    def __init__(self) -> None:
+        """Start with no attributes collected."""
+        super().__init__()
+        self.onclicks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Keep the ``onclick`` of every ``<button>``.
+
+        Args:
+            tag (str): The tag name.
+            attrs (list[tuple[str, str | None]]): Its attributes.
+        """
+        if tag == "button":
+            self.onclicks.extend(
+                value or "" for name, value in attrs if name == "onclick"
+            )
+
+
+def _onclicks(html: str) -> list[str]:
+    """Parse ``html`` as a browser would and return each option's handler.
+
+    Args:
+        html (str): The autocomplete fragment.
+
+    Returns:
+        list[str]: The ``onclick`` values, as the browser sees them.
+    """
+    parser = _OnclickParser()
+    parser.feed(html)
+    return parser.onclicks
+
+
+@pytest.mark.asyncio
+async def test_choosing_an_option_sets_the_hidden_value(
+    app_ac: tuple[FastAPI, str, str],
+) -> None:
+    """Cenário: o fragmento que o endpoint devolve, lido como HTML.
+
+    Esperado: o ``onclick`` inteiro chega ao browser, com o id e o rótulo.
+    Antes, o ``tojson`` (aspas duplas) dentro de ``onclick="..."`` fechava o
+    atributo no primeiro valor: o handler virava
+    ``...__value').value=`` e a seleção nunca gravava o id.
+    """
+    app, acme_id, _emp_id = app_ac
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(
+            f"/admin/m/{Employee.__tablename__}/autocomplete/company_id?q=acme"
+        )
+    (handler,) = _onclicks(response.text)
+    assert f'.value="{acme_id}"' in handler
+    assert '.value="Acme Corp"' in handler
+    assert handler.endswith('innerHTML="";')
+
+
+def test_a_label_with_quotes_stays_inside_the_handler() -> None:
+    """Cenário: rótulo com apóstrofo, aspas e ``&``.
+
+    Esperado: o ``onclick`` continua inteiro, com o apóstrofo escapado como
+    ``\\u0027`` pelo ``tojson``.
+    """
+    environment = Environment(
+        loader=FileSystemLoader(str(Path(admin_package.__file__).parent / "templates")),
+        autoescape=True,
+    )
+    html = environment.get_template("autocomplete.html").render(
+        results=[("1", 'O\'Hara "Q" & Co')]
+    )
+    (handler,) = _onclicks(html)
+    assert handler.endswith('innerHTML="";')
+    assert "\\u0027" in handler

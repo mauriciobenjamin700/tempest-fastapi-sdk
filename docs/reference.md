@@ -64,12 +64,15 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.actions.AdminActionContext
 ::: tempest_fastapi_sdk.admin.actions.AdminActionResult
 ::: tempest_fastapi_sdk.admin.actions.AdminSecret
+::: tempest_fastapi_sdk.admin.actions.AdminCreateHandler
+::: tempest_fastapi_sdk.admin.actions.CreateHandlerFunc
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router
 ::: tempest_fastapi_sdk.admin.discovery.discover_models
 ::: tempest_fastapi_sdk.admin.session.AdminSession
 ::: tempest_fastapi_sdk.admin.session.AdminSessionRevocations
+::: tempest_fastapi_sdk.admin.session.AdminSubmissionNonces
 ::: tempest_fastapi_sdk.admin.session.admin_credential_digest
 ::: tempest_fastapi_sdk.admin.session.SignedCookieSessionStore
 ::: tempest_fastapi_sdk.admin.session.AdminLoginCSRF

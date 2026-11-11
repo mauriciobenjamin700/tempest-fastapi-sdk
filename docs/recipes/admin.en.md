@@ -338,9 +338,9 @@ compared to the flash:
   response body.
 - **`Cache-Control: no-store`** and `Pragma: no-cache`: neither the browser
   nor a proxy keeps a copy of the page. Reloading resubmits the `POST`,
-  which runs the action again: measured on Chromium, the reload issued a
-  **new** credential with a different value. The old value does not come
-  back, and its credential stays valid until someone revokes it.
+  but the list form carries a single-use token and the resubmission does
+  not run the action again (details in
+  [Reloading does not issue again](#reloading-does-not-issue-again)).
 - **`Referrer-Policy: no-referrer`**: the link back does not carry the
   action URL.
 - **The request's session is committed before the page renders.** The
@@ -357,6 +357,93 @@ compared to the flash:
 
 An action without `secrets` is unchanged: flashed on the list view, through
 a redirect.
+
+### Create through a service (`create_handler=`)
+
+An API key is not born from columns: the service generates the secret,
+stores only the hash and shows the plaintext once. The column form would ask
+for `key_hash` and `key_prefix` typed by hand — wrong. Moving the issuance to
+a bulk action on the **users** list works, but whoever opens **Api Keys**
+finds no button at all, and the action has no fields for name and expiry.
+
+`create_handler` swaps the column form for a form generated from a
+**Pydantic schema** and a handler that receives the validated schema:
+
+```python
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+from tempest_fastapi_sdk import (
+    AdminActionContext,
+    AdminActionResult,
+    AdminCreateHandler,
+    AdminModel,
+    AdminSecret,
+    AdminSite,
+    generate_opaque_token,
+)
+
+from src.db.models import ApiKeyModel
+
+
+class ApiKeyAdminCreateSchema(BaseModel):
+    name: str = Field(title="Key name", min_length=3)
+    expires_in_days: int | None = Field(default=None, title="Expires in (days)")
+    user_id: UUID | None = Field(default=None, title="User")
+
+
+async def issue_api_key(
+    data: ApiKeyAdminCreateSchema, ctx: AdminActionContext
+) -> AdminActionResult:
+    plaintext, digest = generate_opaque_token()
+    ctx.db_session.add(
+        ApiKeyModel(name=data.name, key_hash=digest, user_id=data.user_id)
+    )
+    return AdminActionResult("Key issued", secrets=[AdminSecret(data.name, plaintext)])
+
+
+site = AdminSite(title="Admin")
+site.register(
+    AdminModel(
+        ApiKeyModel,
+        autocomplete_fields=["user_id"],
+        create_handler=AdminCreateHandler(
+            schema=ApiKeyAdminCreateSchema,
+            handler=issue_api_key,
+            label="New API key",
+        ),
+    )
+)
+```
+
+- The list button becomes **+ New API key** and opens the schema's form:
+  `title` is the label, the type picks the control (an enum is a select,
+  `int` a number, `SecretStr` a password), a field without a default is
+  required. A field whose name is in `autocomplete_fields` uses the same FK
+  search as the column form.
+- A validation error re-renders with `400`, each field's message and what
+  was typed. An `AppException` raised by the handler comes back as a form
+  error, also keeping what was typed, and the session is rolled back.
+- With `secrets`, the answer is the `POST`'s own response, as in the action
+  above. Without them, the panel redirects to the list with the message.
+- `create_handler` replaces the column form: `can_create=True` alongside it
+  raises `ValueError` at construction.
+
+#### Reloading does not issue again
+
+The form carries a single-use token, spent right before the handler runs. A
+reload of the secret page resubmits the `POST`, and the panel answers `303`
+to the list with the notice *This form was already submitted; it did not run
+again.*, without calling the handler. Measured on Chromium: the reload
+resubmitted the `POST`, landed on the list with the notice, and the table
+held **one** key.
+
+The same holds for the list's bulk actions, which now carry the token. A
+`POST` without the token (a script, a template of your own) runs as before,
+once per submission. The token is stored in the same backend as the session
+revocations: with the default `InMemoryThrottleBackend` it holds per
+process; behind more than one worker, pass the Redis client to
+`AdminSessionRevocations` so the resubmission is refused on any of them.
 
 ## File / image upload field
 

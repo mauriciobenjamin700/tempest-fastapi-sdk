@@ -12,7 +12,7 @@
       <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">Export CSV</a>
       <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
       {% if admin.can_import and admin.can_create %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_import', slug=admin.get_slug()) }}">Import CSV</a>{% endif %}
-      {% if can_create %}<a class="tempest-admin-btn tempest-admin-list__new" href="{{ new_url }}">+ New {{ admin.get_verbose_name() }}</a>{% endif %}
+      {% if can_create %}<a class="tempest-admin-btn tempest-admin-list__new" href="{{ new_url }}">+ {{ new_label or ("New " ~ admin.get_verbose_name()) }}</a>{% endif %}
     </div>
   </header>
   {% if flash %}
@@ -61,6 +61,7 @@
   {% if bulk_actions %}
   <form method="post" action="{{ bulk_url }}" class="tempest-admin-bulk" onsubmit="return confirm('Apply the selected action to the checked rows?');">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    {% if submission_nonce %}<input type="hidden" name="submission_nonce" value="{{ submission_nonce }}">{% endif %}
     <div class="tempest-admin-bulk__bar">
       <select name="action" aria-label="Bulk action">
         {% for value, label in bulk_actions %}

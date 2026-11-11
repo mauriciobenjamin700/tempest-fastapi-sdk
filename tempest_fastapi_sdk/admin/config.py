@@ -14,6 +14,7 @@ from sqlalchemy.sql.elements import UnaryExpression
 from tempest_fastapi_sdk.admin.actions import (
     ActionHandler,
     AdminAction,
+    AdminCreateHandler,
     resolve_admin_action,
 )
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, audit_redacted_columns
@@ -242,8 +243,13 @@ class AdminModel(Generic[ModelT]):
             model name humanized.
         verbose_name_plural (str | None): Plural display name; defaults to
             ``verbose_name`` pluralized (``Category`` -> ``Categories``).
-        can_create (bool): Whether the admin exposes the create form +
-            POST endpoint. Default ``True``.
+        can_create (bool): Whether the admin exposes the column create
+            form + POST endpoint. ``None`` (default) means ``True``, or
+            ``False`` when ``create_handler`` is given.
+        create_handler (AdminCreateHandler | None): A create flow driven by
+            a schema and a service instead of the columns (an API key
+            minted and shown once). "+ New" opens the schema's form.
+            Mutually exclusive with ``can_create=True``.
         can_edit (bool): Whether the admin exposes the edit form + POST
             endpoint. Default ``True``.
         can_delete (bool): Whether the admin exposes the delete action.
@@ -347,7 +353,8 @@ class AdminModel(Generic[ModelT]):
         ValueError: When ``display_timezone`` is not a zone the host's
             tz database knows, or when ``list_filter``, ``search_fields`` or
             a lens' ``filters`` carries a key the repository would refuse
-            with ``UnknownFilterKeyException`` (unknown column or operator).
+            with ``UnknownFilterKeyException`` (unknown column or operator),
+            or when ``create_handler`` is combined with ``can_create=True``.
     """
 
     def __init__(
@@ -364,7 +371,7 @@ class AdminModel(Generic[ModelT]):
         repository_class: type[BaseRepository[Any]] | None = None,
         verbose_name: str | None = None,
         verbose_name_plural: str | None = None,
-        can_create: bool = True,
+        can_create: bool | None = None,
         can_edit: bool = True,
         can_delete: bool = True,
         can_import: bool = False,
@@ -379,6 +386,7 @@ class AdminModel(Generic[ModelT]):
         password_fields: Sequence[FieldRef] = (),
         password_policy: PasswordPolicy | None = None,
         exclude_fields: Sequence[FieldRef] = (),
+        create_handler: AdminCreateHandler | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -399,7 +407,16 @@ class AdminModel(Generic[ModelT]):
         self.repository_class: type[BaseRepository[Any]] | None = repository_class
         self.verbose_name: str | None = verbose_name
         self.verbose_name_plural: str | None = verbose_name_plural
-        self.can_create: bool = can_create
+        if create_handler is not None and can_create:
+            raise ValueError(
+                f"AdminModel for {model.__name__}: `create_handler` replaces the "
+                "column form, so it cannot be combined with can_create=True. "
+                "Drop can_create; the '+ New' button opens the handler's form."
+            )
+        self.create_handler: AdminCreateHandler | None = create_handler
+        self.can_create: bool = (
+            create_handler is None if can_create is None else can_create
+        )
         self.can_edit: bool = can_edit
         self.can_delete: bool = can_delete
         self.can_import: bool = can_import
@@ -599,6 +616,16 @@ class AdminModel(Generic[ModelT]):
             if lens.slug() == slug:
                 return lens
         return None
+
+    @property
+    def creates(self) -> bool:
+        """Whether the list shows "+ New": the column form or a handler.
+
+        Returns:
+            bool: ``True`` when :attr:`can_create` or :attr:`create_handler`
+            is set.
+        """
+        return self.can_create or self.create_handler is not None
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.

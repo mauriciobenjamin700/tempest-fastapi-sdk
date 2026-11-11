@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{% if mode == 'create' %}New{% else %}Edit{% endif %} {{ admin.get_verbose_name() }} · {{ site.title }}{% endblock %}
+{% block title %}{% if form_title %}{{ form_title }}{% elif mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-form">
   <header class="tempest-admin-detail__header">
     <div class="tempest-admin-page-title">
       <a class="tempest-admin-crumb" href="{{ back_url }}">← Back</a>
-      <h1>{% if mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %}</h1>
+      <h1>{% if form_title %}{{ form_title }}{% elif mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %}</h1>
     </div>
   </header>
   {% if form_error %}
@@ -13,6 +13,7 @@
   {% endif %}
   <form method="post" action="{{ action_url }}" class="tempest-admin-form__form"{% if admin.upload_fields %} enctype="multipart/form-data"{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    {% if submission_nonce %}<input type="hidden" name="submission_nonce" value="{{ submission_nonce }}">{% endif %}
     {% for f in form_fields %}
     <div class="tempest-admin-form__field tempest-admin-form__field--{{ f.widget }}{% if f.error %} tempest-admin-form__field--error{% endif %}">
       {% if f.widget == 'checkbox' %}
