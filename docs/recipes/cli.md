@@ -1187,7 +1187,7 @@ tempest user set-password --email ana@example.com
     `create` e `set-password` validam o plaintext com
     `check_password_policy` contra os três campos `AUTH_PASSWORD_*` do
     `src.core.settings` do projeto — e contra os defaults do
-    `PasswordPolicy` (mínimo 12 caracteres, máximo 72 **bytes**) quando o
+    `PasswordPolicy` (mínimo 8 caracteres, máximo 72 **bytes**) quando o
     projeto não compõe `AuthSettings`. É a mesma régua do `signup` e do
     painel admin, então a senha que a CLI aceita é sempre uma que o dono
     da conta consegue usar pra logar.

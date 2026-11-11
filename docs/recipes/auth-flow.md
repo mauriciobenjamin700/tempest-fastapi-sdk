@@ -1533,7 +1533,7 @@ Controla a assinatura e validade dos tokens que o login devolve. **É o mesmo `J
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `12` | Comprimento mínimo aceito no signup **e** no reset. |
+| `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `8` | Comprimento mínimo aceito no signup **e** no reset. |
 | `AUTH_PASSWORD_MAX_BYTES` | `int` (≥1) | `72` | Comprimento máximo em **bytes** UTF-8. É o limite duro do bcrypt. |
 | `AUTH_PASSWORD_REQUIRE_COMPLEXITY` | `bool` | `false` | `true` = exige 1 minúscula + 1 maiúscula + 1 dígito + 1 caractere especial. |
 
@@ -1563,7 +1563,7 @@ Tabela de decisão:
 
     | `message_key` | Quando | `detail` em pt-BR (catálogo default) |
     |---------------|--------|--------------------------------------|
-    | `PASSWORD_TOO_SHORT` | abaixo do piso efetivo | `A senha precisa ter pelo menos 12 caracteres` |
+    | `PASSWORD_TOO_SHORT` | abaixo do piso efetivo | `A senha precisa ter pelo menos 8 caracteres` |
     | `PASSWORD_TOO_LONG` | acima de `AUTH_PASSWORD_MAX_BYTES` | `A senha pode ter no máximo 72 bytes` |
     | `PASSWORD_TOO_WEAK` | falta classe de caractere (complexidade ligada) | `A senha precisa ter letra minúscula, letra maiúscula, número e caractere especial` |
 

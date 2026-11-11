@@ -2296,15 +2296,16 @@ class AuthSettings(BaseAppSettings):
         examples=["password_reset.html"],
     )
     AUTH_PASSWORD_MIN_LENGTH: int = Field(
-        default=12,
+        default=8,
         ge=1,
         title="Minimum password length (chars)",
         description=(
             "Signup + reset reject passwords shorter than this. "
-            "Fully configurable — the default of 12 follows the "
-            "current OWASP guidance (longer passwords are the single "
-            "biggest brute-force deterrent), but a project can set any "
-            "value from 1 up. This floor is the single source of "
+            "Fully configurable — the default of 8 is the minimum "
+            "OWASP and NIST SP 800-63B accept for a password chosen by "
+            "the user; raise it (12 or more) for accounts worth more, "
+            "since length is the biggest brute-force deterrent. Any value "
+            "from 1 up is accepted. This floor is the single source of "
             "truth: the request schemas do NOT impose their own length "
             "bound, so lowering it (e.g. to 4) takes effect on the "
             "router path too."

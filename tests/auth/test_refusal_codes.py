@@ -210,7 +210,7 @@ class TestPasswordViolationCodes:
                 "short",
                 False,
                 PasswordViolationCodeEnum.PASSWORD_TOO_SHORT,
-                "A senha precisa ter pelo menos 12 caracteres",
+                "A senha precisa ter pelo menos 8 caracteres",
             ),
             (
                 "x" * 73,

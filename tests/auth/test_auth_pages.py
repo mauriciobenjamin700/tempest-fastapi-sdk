@@ -608,11 +608,11 @@ class TestSignup:
         """The service's policy error, localized, marking the field."""
         async with _client(harness.app) as client:
             response = await _form(
-                client, "/signup", email="new@example.com", password="curta-curta"
+                client, "/signup", email="new@example.com", password="curta"
             )
         assert response.status_code == 422
         assert (
-            'id="password-error">A senha precisa ter pelo menos 12 caracteres'
+            'id="password-error">A senha precisa ter pelo menos 8 caracteres'
             in response.text
         )
         assert 'aria-describedby="password-error"' in response.text

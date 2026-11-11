@@ -45,7 +45,7 @@ class PasswordPolicy:
             effective length floor to at least 8.
     """
 
-    min_length: int = 12
+    min_length: int = 8
     max_bytes: int = 72
     require_complexity: bool = False
 
@@ -303,7 +303,7 @@ those has a story about the quoting. Every character here is
 
 def generate_password(
     *,
-    min_length: int = 12,
+    min_length: int = 8,
     max_bytes: int = 72,
     require_complexity: bool = True,
 ) -> str:
@@ -318,7 +318,7 @@ def generate_password(
     **Compliance is by construction, not by retry.** Drawing from one
     flat alphabet and hoping is the defect this function exists to
     avoid: fed to ``UserAuthService._enforce_password_policy`` with
-    complexity on and the default 12-character floor, 200 000 samples
+    complexity on and a 12-character floor, 200 000 samples
     each, ``secrets.token_urlsafe(16)`` was rejected 53.01% of the
     time, ``secrets.token_urlsafe(32)`` 26.54%, and
     ``secrets.token_hex(32)`` 100% (it has neither uppercase nor a
