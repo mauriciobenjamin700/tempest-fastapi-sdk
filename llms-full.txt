@@ -3211,6 +3211,16 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.353.0 — `google_kwargs()` do Gemini vira `gemini_kwargs()`
+
+`HostedGenAISettings.google_kwargs()` (Gemini) e `OAuthSettings.google_kwargs(prefix=...)` (login Google) tinham o mesmo nome. Um `Settings` que compunha os dois ficava com o primeiro da MRO, e o login Google quebrava com `TypeError` no `prefix`. O do Gemini mudou de nome, sem alias (um alias manteria o conflito).
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `HostedGenAISettings` | `google_kwargs()` passa a se chamar `gemini_kwargs()`; mesmo retorno, mesmo `ValueError` com `GOOGLE_MODEL` vazio | `OpenAICompatGenerator(**settings.google_kwargs())` vira `OpenAICompatGenerator(**settings.gemini_kwargs())`. Com o nome antigo, um `Settings` só com `HostedGenAISettings` levanta `AttributeError` |
+| `OAuthSettings` | **Nada**: `google_kwargs(prefix=...)` continua sendo o do login Google | Nada; quem compunha os dois mixins passa a receber o método certo |
+| `WebPushSettings` / `FirebaseSettings` | `enabled` vira `webpush_enabled` e `firebase_enabled`, sem alias. Os dois tinham o mesmo nome e sentido diferente, e um `Settings` que compunha os dois sem o `PushSettings` lia a resposta do primeiro da MRO (#742) | `settings.enabled` num serviço com `WebPushSettings` vira `settings.webpush_enabled`; com `FirebaseSettings`, `settings.firebase_enabled`. O nome antigo levanta `AttributeError`. `PushSettings.enabled`, `web_enabled` e `mobile_enabled` **não mudam** |
+
 ## 0.349.0 — Coqui no próprio extra, upload grande em 413 e `tempest check` mais rigoroso
 
 | Onde | O que muda | O que fazer |
@@ -6458,6 +6468,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.353.0] — 2026-11-11
+
+### Added
+
+- `OpenAICompatSpeech` (`tempest_fastapi_sdk.genai`, extra `[genai-hosted]`):
+  transcrição num servidor remoto pelo `POST {base_url}/audio/transcriptions`
+  da OpenAI, com `Authorization: Bearer`, multipart (`file`, `model`,
+  `language` opcional, `response_format=verbose_json`). `base_url` inclui a
+  versão, como no `OpenAICompatGenerator` (para o `tempest-ai`,
+  `https://ai.buscar.app.br/api/openai/v1`). `transcribe(audio, /, *,
+  language=None, with_segments=True)` aceita `bytes` ou caminho local,
+  devolve `Transcription` e cumpre o `SpeechTranscriber`, então substitui o
+  `SpeechToText` sem tirar o Whisper do processo à mão. `413` vira
+  `FileTooLargeException`, `400`/`422` viram `ValidationException` com a
+  mensagem do servidor, `401`/`403` viram `HostedAuthenticationError`.
+  Medido contra o `tempest-ai` com chave inválida: o pedido chega à URL e
+  volta `HostedAuthenticationError`.
+- `HostedGenAISettings.OPENAI_STT_MODEL` e `openai_speech_kwargs()`: mesma
+  chave e raiz do `openai_kwargs()`, modelo de transcrição próprio;
+  `ValueError` com o modelo vazio.
+
+### Changed
+
+- **Quebra:** `WebPushSettings.enabled` vira `webpush_enabled` e
+  `FirebaseSettings.enabled` vira `firebase_enabled`, sem alias. Mesma
+  assinatura e sentido diferente: um `Settings` que compunha os dois mixins
+  sem o `PushSettings` lia o `enabled` do primeiro da MRO e respondia "posso
+  mandar push pelo Firebase?" com o estado do VAPID. `PushSettings.enabled`,
+  `web_enabled` e `mobile_enabled` não mudam (#742).
+- `tests/test_settings_mixin_clash_guard.py` recusa qualquer nome público
+  repetido entre os mixins de settings, não só os de assinatura diferente;
+  exceção vai em `ALLOWED_SHARED_NAMES` com o motivo (#742).
+- **Quebra:** `HostedGenAISettings.google_kwargs()` (Gemini) passa a se
+  chamar `gemini_kwargs()`, sem alias. O nome era o mesmo do
+  `OAuthSettings.google_kwargs(prefix=...)` (login Google): um `Settings` que
+  compunha os dois ficava com o do Gemini primeiro na MRO, o login Google
+  levantava `TypeError` no `prefix` (medido), e o pyright de um consumidor acusava "define method
+  google_kwargs in incompatible way". Migração: troque
+  `settings.google_kwargs()` por `settings.gemini_kwargs()` onde ele monta o
+  `OpenAICompatGenerator`; o do `OAuthSettings` não muda. Guia em
+  `docs/migration.md`.
+
+### Tests
+
+- `tests/test_settings_mixin_clash_guard.py`: falha quando dois mixins
+  públicos de `settings` definem o mesmo nome com assinaturas diferentes;
+  prova que dispara com o par `google_kwargs` que shippou.
 
 ## [0.352.0] — 2026-11-10
 
@@ -29226,7 +29284,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[genai-tts-coqui]` | `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | TTS (Coqui XTTS v2) — o runtime do Coqui vem junto; sem o teto `transformers<5` desde a 0.342.0 ([detalhes](#genai-audio-transformers-bound)) |
 | `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |
 | `[genai-diarization]` | `sherpa-onnx` | diarização (quem falou quando) via `sherpa-onnx` em ONNX Runtime, sem PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Modelos (46 MB) baixados por `ensure_models()` |
-| `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `HostedGenAISettings`. Nenhum SDK de fornecedor |
+| `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `OpenAICompatSpeech` (transcrição remota), `HostedGenAISettings`. Nenhum SDK de fornecedor |
 | `[genai-hub]` | `huggingface-hub` | ciclo de vida do peso: `resolve_revision` (fixar sha), `download_model` (baixar antes de servir, com preflight de disco), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
 | `[genai-image]` | `diffusers`, `pillow` | geração de imagem local: `ImageGenerator` (`generate` texto→imagem, `edit` imagem→imagem), `ImageGenerationConfig`, rota `POST /image` |
 | `[genai-sound]` | `diffusers` | efeitos sonoros e música locais (com `[genai]`): `AudioGenerator`, `AudioGenerationConfig`, `GeneratedAudio`, rota `POST /audio` |
@@ -32977,7 +33035,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Guards de permissão (@requires) »](permission-guards.md)** | `@requires` + guards `(user) -> user` (com `meta: dict[str, Any]` opcional via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
 | **[Helpers brasileiros »](br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone, incluindo só-celular (`is_valid_mobile_phone_br`, `MobilePhoneBRField`) e `parse_phone_br` (DDD, número, E.164) |
 | **[HTTP client (saída) »](http-client.md)** | `HTTPClient` — httpx tipado com retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
-| **[IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google) »](genai-hosted.md)** | `AnthropicGenerator` (Messages API) e `OpenAICompatGenerator` (OpenAI, DeepSeek, Gemini) nos mesmos protocolos do Ollama — `generate`/`chat`/`stream`, `chat_with_tools`, `chat_structured`; `complete_structured` (saída + uso + motivo de parada, imagem por `image_part`, PDF por `document_part` + `supports_documents`); `hosted_generator` (provedor pelo id do modelo, Gemini incluso); `OpenAICompatEmbedder`; `HostedGenAISettings` + `*_kwargs()` / `hosted_kwargs()`; erros tipados (`HostedAuthenticationError`, `HostedRateLimitError`, `HostedServerError`) |
+| **[IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google) »](genai-hosted.md)** | `AnthropicGenerator` (Messages API) e `OpenAICompatGenerator` (OpenAI, DeepSeek, Gemini) nos mesmos protocolos do Ollama — `generate`/`chat`/`stream`, `chat_with_tools`, `chat_structured`; `complete_structured` (saída + uso + motivo de parada, imagem por `image_part`, PDF por `document_part` + `supports_documents`); `hosted_generator` (provedor pelo id do modelo, Gemini incluso); `OpenAICompatEmbedder`; transcrição remota com `OpenAICompatSpeech` (`/audio/transcriptions`, troca direta pelo `SpeechToText`); `HostedGenAISettings` + `*_kwargs()` / `hosted_kwargs()`; erros tipados (`HostedAuthenticationError`, `HostedRateLimitError`, `HostedServerError`) |
 | **[IA generativa self-hosted »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), áudio (STT/TTS + batching), `make_genai_router`; backend hospedado (`OpenAICompatGenerator`, qualquer `/chat/completions`) com `TokenUsage`, incluindo o prefixo servido de cache; saída em lista (`parse_structured_list`, retry com temperatura) e em objeto (`extract_json_object`); contabilidade de uso por usuário (`AIUsageStore`) |
 | **[Idempotência »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — replay seguro de POST/PUT/PATCH/DELETE |
 | **[Jobs (trabalho longo com status) »](jobs.md)** | `BaseJobModel` + `JobStore` — uma linha por unidade de trabalho, `claim`/`succeed`/`fail`, `watch` para a tela, `reclaim_stale`; cancelamento cooperativo (`cancel` + `run_cancellable`); `StageMap` para vários estágios no próprio registro |
@@ -59619,7 +59677,7 @@ firebase = FirebaseAuth(**settings.firebase_kwargs())
 
 `firebase_kwargs()` **descarta valores vazios**, então variável não
 setada deixa o default do construtor de pé em vez de mandar caminho
-vazio. `settings.enabled` diz se há service account explícita — note que
+vazio. `settings.firebase_enabled` diz se há service account explícita — note que
 `False` não impede verificar: a credencial default do ambiente ainda
 funciona.
 
@@ -61658,6 +61716,7 @@ settings: Settings = Settings()
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=<id do modelo OpenAI>
+OPENAI_STT_MODEL=<id do modelo de transcrição>
 DEEPSEEK_API_KEY=sk-...
 GOOGLE_API_KEY=AIza...
 GOOGLE_MODEL=<id do modelo Gemini>
@@ -61671,10 +61730,11 @@ Cada provedor tem `*_API_KEY`, `*_BASE_URL` e `*_MODEL`. Os defaults:
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | vazio — obrigatório |
+| `OPENAI_STT_MODEL` | vazio — obrigatório em `openai_speech_kwargs()` |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | `deepseek-flash` |
 | `GOOGLE_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| `GOOGLE_MODEL` | vazio — obrigatório em `google_kwargs()` |
+| `GOOGLE_MODEL` | vazio — obrigatório em `gemini_kwargs()` |
 
 !!! note "De onde vêm os defaults"
 
@@ -62168,7 +62228,7 @@ Pedaço por pedaço:
   `document` com `source` base64, e o `filename` vira o `title` do bloco.
 - **OpenAI:** o `OpenAICompatGenerator` repassa a parte como está.
 - **Google e DeepSeek:** o gerador que o `hosted_generator` monta para eles
-  (e o que `google_kwargs()` / `deepseek_kwargs()` montam) levanta
+  (e o que `gemini_kwargs()` / `deepseek_kwargs()` montam) levanta
   `ValueError` **antes** de abrir a conexão quando uma mensagem carrega a
   parte, com uma mensagem que nomeia o provedor. Texto e imagem continuam
   saindo normalmente.
@@ -62234,6 +62294,115 @@ Os vetores voltam na ordem da entrada, ordenados pelo `index` da resposta.
     referência do DeepSeek lista Chat Completions, Responses, FIM, modelos,
     saldo e arquivos — nenhum embedding. Para RAG com esses provedores, gere
     os vetores com `OpenAICompatEmbedder`, `OllamaEmbedder` ou `Embedder`.
+
+## Transcrição remota (speech-to-text)
+
+O `SpeechToText` roda o Whisper **no seu processo**: baixa peso, ocupa RAM
+(ou GPU) e disputa CPU com o resto do serviço. Quando já existe um servidor
+que transcreve — o `tempest-ai`, a própria OpenAI, um `vLLM` com Whisper —, o
+`OpenAICompatSpeech` manda o áudio para ele pelo endpoint OpenAI
+`POST {base_url}/audio/transcriptions` e devolve a mesma `Transcription`.
+
+Primeiro, as settings. A chave e a raiz são as mesmas do `openai_kwargs()`
+(`OPENAI_API_KEY`, `OPENAI_BASE_URL`); só o modelo muda, em
+`OPENAI_STT_MODEL`:
+
+```bash
+# .env
+OPENAI_API_KEY=<chave de API do tempest-ai>
+OPENAI_BASE_URL=https://ai.buscar.app.br/api/openai/v1
+OPENAI_STT_MODEL=<id que GET /models lista>
+```
+
+Depois, um serviço que recebe o upload e transcreve:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, UploadFile
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    HostedGenAISettings,
+    register_exception_handlers,
+)
+from tempest_fastapi_sdk.genai import OpenAICompatSpeech
+from tempest_fastapi_sdk.genai.audio import Transcription
+
+
+class Settings(HostedGenAISettings, BaseAppSettings):
+    """Settings do serviço."""
+
+
+settings: Settings = Settings()
+speech: OpenAICompatSpeech = OpenAICompatSpeech(**settings.openai_speech_kwargs())
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Fecha o cliente HTTP do backend no desligamento."""
+    yield
+    await speech.aclose()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+register_exception_handlers(app)
+
+
+@app.post("/transcrever")
+async def transcrever(arquivo: UploadFile) -> Transcription:
+    """Transcreve o áudio enviado em português."""
+    audio: bytes = await arquivo.read()
+    return await speech.transcribe(audio, language="pt", with_segments=False)
+```
+
+Pedaço por pedaço:
+
+- `openai_speech_kwargs()` devolve `model`, `api_key`, `base_url` e
+  `provider="openai"` — o splat monta o backend. Com `OPENAI_STT_MODEL`
+  vazio ele levanta `ValueError` no boot, como o `openai_kwargs()` faz com o
+  `OPENAI_MODEL`.
+- `base_url` **inclui** a versão (`.../v1`), igual ao `OpenAICompatGenerator`;
+  o backend acrescenta `/audio/transcriptions`. Para o `tempest-ai`, passe
+  `https://ai.buscar.app.br/api/openai/v1`.
+- O pedido é multipart com `file`, `model`, `language` (só quando você passa
+  um) e `response_format=verbose_json`, o formato que traz `duration`,
+  `language` e `segments`. A chave vai em `Authorization: Bearer`.
+- `language` aceita o código ISO-639-1 (`"pt"`) ou um `LanguageEnum`
+  (`LanguageEnum.PT_BR` vira `"pt"`); `None` deixa o servidor detectar.
+- `with_segments=False` devolve `segments=[]`; `duration` e `language`
+  continuam preenchidos.
+- `audio` aceita `bytes` ou um caminho local (`str` ou `Path`). String é
+  sempre caminho, nunca URL: o backend não busca nada fora da máquina.
+
+!!! tip "Troca direta pelo `SpeechToText`"
+
+    `OpenAICompatSpeech.transcribe` aceita os mesmos `language` e
+    `with_segments` do `SpeechToText` e cumpre o protocolo
+    `SpeechTranscriber`. Código que faz
+    `await transcriber.transcribe(audio, language="pt", with_segments=False)`
+    não muda; e `make_genai_router(speech_to_text=speech)` serve o
+    `/transcribe` com ele.
+
+Os erros do servidor viram exceções que o `register_exception_handlers`
+já sabe responder:
+
+| Status do servidor | Exceção | O que o seu cliente recebe |
+| --- | --- | --- |
+| 401, 403 | `HostedAuthenticationError` | 500 — chave errada é defeito de configuração |
+| 413 | `FileTooLargeException` (mensagem do servidor) | 413 |
+| 400, 422 | `ValidationException` (mensagem do servidor) | 422 |
+| 429 | `HostedRateLimitError` | 500 |
+| 5xx | `HostedServerError` | 500 |
+
+Em `413`/`400`/`422`, `details` traz `backend`, `model`, `status` e o
+`server_code` que o servidor mandou (`AUDIO_TOO_LARGE`, `INVALID_AUDIO`).
+
+!!! warning "Síntese de voz fica de fora"
+
+    O `/audio/speech` usa outro modelo (o de TTS), e o `OpenAICompatSpeech`
+    guarda um modelo só. Para voz, use `TextToSpeech` ou `OllamaSpeech`.
 
 ## Quando o provedor falha
 
@@ -62305,7 +62474,7 @@ Ollama, e não leva nenhum teto para o lock de quem consome.
 - `AnthropicGenerator` e `OpenAICompatGenerator` cumprem os mesmos protocolos
   que o `OllamaGenerator`: troque a construção, mantenha o resto.
 - `HostedGenAISettings` + `anthropic_kwargs()` / `openai_kwargs()` /
-  `deepseek_kwargs()` / `google_kwargs()` montam o backend por splat.
+  `deepseek_kwargs()` / `gemini_kwargs()` montam o backend por splat.
 - `GENAI_PROVIDER` + `GENAI_API_KEY` (+ `GENAI_BASE_URL`) fixam um provedor
   para todos os modelos, pelo `.env`; modelo de outro provedor levanta.
 - `hosted_generator(**settings.hosted_kwargs(modelo))` escolhe o provedor
@@ -62318,6 +62487,10 @@ Ollama, e não leva nenhum teto para o lock de quem consome.
 - Tool calling, saída estruturada e stream funcionam nos quatro (no Gemini,
   tool calling e stream vão pelo endpoint compatível sem teste próprio);
   embeddings só na OpenAI (`OpenAICompatEmbedder`).
+- `OpenAICompatSpeech(**settings.openai_speech_kwargs())` transcreve num
+  servidor remoto (`/audio/transcriptions`) e substitui o `SpeechToText` sem
+  mudar a chamada; `413` vira `FileTooLargeException` e `400`/`422` viram
+  `ValidationException`.
 - Falhas viram `HostedAuthenticationError`, `HostedRateLimitError` ou
   `HostedServerError` — inclusive no meio do stream.
 
@@ -81330,12 +81503,12 @@ settings = Settings()
 print(settings.web_enabled, settings.mobile_enabled, settings.enabled)
 ```
 
-`PushSettings` junta `WebPushSettings` e `FirebaseSettings` — e existe
-por causa de uma armadilha real: os dois declaram `enabled`, então
-compondo na mão o MRO escolhe silenciosamente o do Web Push, e um serviço
-só-mobile lê `enabled is False` com o FCM perfeitamente configurado. Aqui
-`enabled` responde "dá para notificar alguém?", e as duas metades ficam
-legíveis em `web_enabled` / `mobile_enabled`.
+`PushSettings` junta `WebPushSettings` e `FirebaseSettings` e acrescenta a
+pergunta que nenhuma das metades responde: `enabled`, "dá para notificar
+alguém?". As metades ficam legíveis em `web_enabled` / `mobile_enabled`.
+Compondo os dois mixins na mão, cada canal responde pelo próprio nome:
+`webpush_enabled` e `firebase_enabled`. Até a 0.352.0 os dois se chamavam
+`enabled`, e o MRO escolhia em silêncio o do Web Push (#742).
 
 ## Testando
 
@@ -81373,7 +81546,7 @@ a depreciação ao pé da letra mandaria o campo errado.
 
 ## Push mobile desligado (`FIREBASE_ENABLED=false`)
 
-Push não levanta: com `FIREBASE_ENABLED=false`, `settings.enabled` (e
+Push não levanta: com `FIREBASE_ENABLED=false`, `settings.firebase_enabled` (e
 `PushSettings.mobile_enabled`) responde `False`, então o wiring que já
 consulta essa flag não monta `FCMTransport` e o `DeviceService` pula os
 aparelhos mobile (eles aparecem em `PushFanoutResult.skipped`). Se o
@@ -90575,7 +90748,7 @@ app.include_router(
 | `text_generator` | `POST /generate`, `POST /generate/stream` (SSE token a token), `POST /chat` |
 | `embedder` | `POST /embed` |
 | `retriever` | `POST /rag` (query → bloco de contexto) |
-| `speech_to_text` | `POST /transcribe` (upload de áudio; `SpeechToText`, `OllamaSpeech` ou qualquer `SpeechTranscriber`) |
+| `speech_to_text` | `POST /transcribe` (upload de áudio; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` ou qualquer `SpeechTranscriber`) |
 | `text_to_speech` | `POST /tts` (devolve `audio/wav`; `TextToSpeech`, `OllamaSpeech` ou qualquer `SpeechSynthesizer`) |
 
 !!! tip "Streaming"
@@ -99934,7 +100107,7 @@ class Settings(
 
 settings = Settings()
 print("desligadas:", sorted(settings.disabled_integrations()))
-print("push mobile:", settings.enabled)
+print("push mobile:", settings.firebase_enabled)
 
 storage = AsyncMinIOClient(**settings.storage_kwargs())
 mailer = EmailUtils(**settings.email_kwargs())
@@ -99978,7 +100151,7 @@ O que cada integração faz quando desligada:
 | --- | --- | --- |
 | `storage` | `AsyncMinIOClient(**settings.storage_kwargs())` recebe `enabled=False`; não cria (nem importa) o cliente `minio` | toda operação — inclusive o atributo `client` — levanta `IntegrationDisabledException`; um `SubjectObjectStorage` por cima herda a recusa |
 | `email` | `EmailUtils(**settings.email_kwargs())` recebe `enabled=False`; não exige o extra `[email]` | `send` e `send_many` levantam `IntegrationDisabledException` antes de montar a mensagem; `render_template` continua funcionando |
-| `firebase` | `settings.enabled` (e `PushSettings.mobile_enabled`) vira `False`; `firebase_kwargs()` devolve só `{"enabled": False}` | `FirebaseAuth` não inicializa app e responde `503` em `verify` e nas dependências; um `FCMTransport` sobre ele não reivindica plataforma: o push mobile é **descartado** (o `DeviceService` pula o aparelho) e o transporte loga um aviso ao ser construído |
+| `firebase` | `settings.firebase_enabled` (e `PushSettings.mobile_enabled`) vira `False`; `firebase_kwargs()` devolve só `{"enabled": False}` | `FirebaseAuth` não inicializa app e responde `503` em `verify` e nas dependências; um `FCMTransport` sobre ele não reivindica plataforma: o push mobile é **descartado** (o `DeviceService` pula o aparelho) e o transporte loga um aviso ao ser construído |
 | `revenuecat` | só o guard e o `disabled_integrations()` mudam | o webhook continua lendo os próprios segredos: com os dois vazios, segue recusando toda entrega com `401` |
 
 !!! info "A chave `enabled` só aparece com a integração desligada"

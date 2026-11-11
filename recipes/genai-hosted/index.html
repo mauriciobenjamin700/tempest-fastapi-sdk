@@ -3001,6 +3001,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#transcricao-remota-speech-to-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transcrição remota (speech-to-text)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#quando-o-provedor-falha" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5215,9 +5226,10 @@ serviço declarar a capacidade que usa. Nenhum SDK de fornecedor
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>sk-ant-...
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nv">OPENAI_MODEL</span><span class="o">=</span>&lt;id<span class="w"> </span><span class="k">do</span><span class="w"> </span>modelo<span class="w"> </span>OpenAI&gt;
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nv">DEEPSEEK_API_KEY</span><span class="o">=</span>sk-...
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nv">GOOGLE_API_KEY</span><span class="o">=</span>AIza...
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="nv">GOOGLE_MODEL</span><span class="o">=</span>&lt;id<span class="w"> </span><span class="k">do</span><span class="w"> </span>modelo<span class="w"> </span>Gemini&gt;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nv">OPENAI_STT_MODEL</span><span class="o">=</span>&lt;id<span class="w"> </span><span class="k">do</span><span class="w"> </span>modelo<span class="w"> </span>de<span class="w"> </span>transcrição&gt;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nv">DEEPSEEK_API_KEY</span><span class="o">=</span>sk-...
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="nv">GOOGLE_API_KEY</span><span class="o">=</span>AIza...
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nv">GOOGLE_MODEL</span><span class="o">=</span>&lt;id<span class="w"> </span><span class="k">do</span><span class="w"> </span>modelo<span class="w"> </span>Gemini&gt;
 </span></code></pre></div>
 <p>Cada provedor tem <code>*_API_KEY</code>, <code>*_BASE_URL</code> e <code>*_MODEL</code>. Os defaults:</p>
 <table>
@@ -5245,6 +5257,10 @@ serviço declarar a capacidade que usa. Nenhum SDK de fornecedor
 <td>vazio — obrigatório</td>
 </tr>
 <tr>
+<td><code>OPENAI_STT_MODEL</code></td>
+<td>vazio — obrigatório em <code>openai_speech_kwargs()</code></td>
+</tr>
+<tr>
 <td><code>DEEPSEEK_BASE_URL</code></td>
 <td><code>https://api.deepseek.com</code></td>
 </tr>
@@ -5258,7 +5274,7 @@ serviço declarar a capacidade que usa. Nenhum SDK de fornecedor
 </tr>
 <tr>
 <td><code>GOOGLE_MODEL</code></td>
-<td>vazio — obrigatório em <code>google_kwargs()</code></td>
+<td>vazio — obrigatório em <code>gemini_kwargs()</code></td>
 </tr>
 </tbody>
 </table>
@@ -5742,7 +5758,7 @@ quebrar só o fluxo de PDF, e só em produção.</p>
   <code>document</code> com <code>source</code> base64, e o <code>filename</code> vira o <code>title</code> do bloco.</li>
 <li><strong>OpenAI:</strong> o <code>OpenAICompatGenerator</code> repassa a parte como está.</li>
 <li><strong>Google e DeepSeek:</strong> o gerador que o <code>hosted_generator</code> monta para eles
-  (e o que <code>google_kwargs()</code> / <code>deepseek_kwargs()</code> montam) levanta
+  (e o que <code>gemini_kwargs()</code> / <code>deepseek_kwargs()</code> montam) levanta
   <code>ValueError</code> <strong>antes</strong> de abrir a conexão quando uma mensagem carrega a
   parte, com uma mensagem que nomeia o provedor. Texto e imagem continuam
   saindo normalmente.</li>
@@ -5827,6 +5843,133 @@ referência do DeepSeek lista Chat Completions, Responses, FIM, modelos,
 saldo e arquivos — nenhum embedding. Para RAG com esses provedores, gere
 os vetores com <code>OpenAICompatEmbedder</code>, <code>OllamaEmbedder</code> ou <code>Embedder</code>.</p>
 </div>
+<h2 id="transcricao-remota-speech-to-text">Transcrição remota (speech-to-text)<a class="headerlink" href="#transcricao-remota-speech-to-text" title="Permanent link">&para;</a></h2>
+<p>O <code>SpeechToText</code> roda o Whisper <strong>no seu processo</strong>: baixa peso, ocupa RAM
+(ou GPU) e disputa CPU com o resto do serviço. Quando já existe um servidor
+que transcreve — o <code>tempest-ai</code>, a própria OpenAI, um <code>vLLM</code> com Whisper —, o
+<code>OpenAICompatSpeech</code> manda o áudio para ele pelo endpoint OpenAI
+<code>POST {base_url}/audio/transcriptions</code> e devolve a mesma <code>Transcription</code>.</p>
+<p>Primeiro, as settings. A chave e a raiz são as mesmas do <code>openai_kwargs()</code>
+(<code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>); só o modelo muda, em
+<code>OPENAI_STT_MODEL</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># .env</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>&lt;chave<span class="w"> </span>de<span class="w"> </span>API<span class="w"> </span><span class="k">do</span><span class="w"> </span>tempest-ai&gt;
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nv">OPENAI_BASE_URL</span><span class="o">=</span>https://ai.buscar.app.br/api/openai/v1
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="nv">OPENAI_STT_MODEL</span><span class="o">=</span>&lt;id<span class="w"> </span>que<span class="w"> </span>GET<span class="w"> </span>/models<span class="w"> </span>lista&gt;
+</span></code></pre></div>
+<p>Depois, um serviço que recebe o upload e transcreve:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncIterator</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">asynccontextmanager</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">UploadFile</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="n">BaseAppSettings</span><span class="p">,</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="n">HostedGenAISettings</span><span class="p">,</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="n">register_exception_handlers</span><span class="p">,</span>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="p">)</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAICompatSpeech</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai.audio</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transcription</span>
+</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>
+</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>
+</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span><span class="n">HostedGenAISettings</span><span class="p">,</span> <span class="n">BaseAppSettings</span><span class="p">):</span>
+</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">    </span><span class="sd">"""Settings do serviço."""</span>
+</span><span id="__span-13-17"><a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>
+</span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>
+</span><span id="__span-13-19"><a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a><span class="n">settings</span><span class="p">:</span> <span class="n">Settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
+</span><span id="__span-13-20"><a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a><span class="n">speech</span><span class="p">:</span> <span class="n">OpenAICompatSpeech</span> <span class="o">=</span> <span class="n">OpenAICompatSpeech</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">openai_speech_kwargs</span><span class="p">())</span>
+</span><span id="__span-13-21"><a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>
+</span><span id="__span-13-22"><a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a>
+</span><span id="__span-13-23"><a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a><span class="nd">@asynccontextmanager</span>
+</span><span id="__span-13-24"><a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">lifespan</span><span class="p">(</span><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="kc">None</span><span class="p">]:</span>
+</span><span id="__span-13-25"><a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a><span class="w">    </span><span class="sd">"""Fecha o cliente HTTP do backend no desligamento."""</span>
+</span><span id="__span-13-26"><a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a>    <span class="k">yield</span>
+</span><span id="__span-13-27"><a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a>    <span class="k">await</span> <span class="n">speech</span><span class="o">.</span><span class="n">aclose</span><span class="p">()</span>
+</span><span id="__span-13-28"><a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a>
+</span><span id="__span-13-29"><a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a>
+</span><span id="__span-13-30"><a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">lifespan</span><span class="o">=</span><span class="n">lifespan</span><span class="p">)</span>
+</span><span id="__span-13-31"><a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a><span class="n">register_exception_handlers</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+</span><span id="__span-13-32"><a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a>
+</span><span id="__span-13-33"><a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a>
+</span><span id="__span-13-34"><a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/transcrever"</span><span class="p">)</span>
+</span><span id="__span-13-35"><a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">transcrever</span><span class="p">(</span><span class="n">arquivo</span><span class="p">:</span> <span class="n">UploadFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Transcription</span><span class="p">:</span>
+</span><span id="__span-13-36"><a id="__codelineno-13-36" name="__codelineno-13-36" href="#__codelineno-13-36"></a><span class="w">    </span><span class="sd">"""Transcreve o áudio enviado em português."""</span>
+</span><span id="__span-13-37"><a id="__codelineno-13-37" name="__codelineno-13-37" href="#__codelineno-13-37"></a>    <span class="n">audio</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="k">await</span> <span class="n">arquivo</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+</span><span id="__span-13-38"><a id="__codelineno-13-38" name="__codelineno-13-38" href="#__codelineno-13-38"></a>    <span class="k">return</span> <span class="k">await</span> <span class="n">speech</span><span class="o">.</span><span class="n">transcribe</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="n">language</span><span class="o">=</span><span class="s2">"pt"</span><span class="p">,</span> <span class="n">with_segments</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Pedaço por pedaço:</p>
+<ul>
+<li><code>openai_speech_kwargs()</code> devolve <code>model</code>, <code>api_key</code>, <code>base_url</code> e
+  <code>provider="openai"</code> — o splat monta o backend. Com <code>OPENAI_STT_MODEL</code>
+  vazio ele levanta <code>ValueError</code> no boot, como o <code>openai_kwargs()</code> faz com o
+  <code>OPENAI_MODEL</code>.</li>
+<li><code>base_url</code> <strong>inclui</strong> a versão (<code>.../v1</code>), igual ao <code>OpenAICompatGenerator</code>;
+  o backend acrescenta <code>/audio/transcriptions</code>. Para o <code>tempest-ai</code>, passe
+  <code>https://ai.buscar.app.br/api/openai/v1</code>.</li>
+<li>O pedido é multipart com <code>file</code>, <code>model</code>, <code>language</code> (só quando você passa
+  um) e <code>response_format=verbose_json</code>, o formato que traz <code>duration</code>,
+  <code>language</code> e <code>segments</code>. A chave vai em <code>Authorization: Bearer</code>.</li>
+<li><code>language</code> aceita o código ISO-639-1 (<code>"pt"</code>) ou um <code>LanguageEnum</code>
+  (<code>LanguageEnum.PT_BR</code> vira <code>"pt"</code>); <code>None</code> deixa o servidor detectar.</li>
+<li><code>with_segments=False</code> devolve <code>segments=[]</code>; <code>duration</code> e <code>language</code>
+  continuam preenchidos.</li>
+<li><code>audio</code> aceita <code>bytes</code> ou um caminho local (<code>str</code> ou <code>Path</code>). String é
+  sempre caminho, nunca URL: o backend não busca nada fora da máquina.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Troca direta pelo <code>SpeechToText</code></p>
+<p><code>OpenAICompatSpeech.transcribe</code> aceita os mesmos <code>language</code> e
+<code>with_segments</code> do <code>SpeechToText</code> e cumpre o protocolo
+<code>SpeechTranscriber</code>. Código que faz
+<code>await transcriber.transcribe(audio, language="pt", with_segments=False)</code>
+não muda; e <code>make_genai_router(speech_to_text=speech)</code> serve o
+<code>/transcribe</code> com ele.</p>
+</div>
+<p>Os erros do servidor viram exceções que o <code>register_exception_handlers</code>
+já sabe responder:</p>
+<table>
+<thead>
+<tr>
+<th>Status do servidor</th>
+<th>Exceção</th>
+<th>O que o seu cliente recebe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>401, 403</td>
+<td><code>HostedAuthenticationError</code></td>
+<td>500 — chave errada é defeito de configuração</td>
+</tr>
+<tr>
+<td>413</td>
+<td><code>FileTooLargeException</code> (mensagem do servidor)</td>
+<td>413</td>
+</tr>
+<tr>
+<td>400, 422</td>
+<td><code>ValidationException</code> (mensagem do servidor)</td>
+<td>422</td>
+</tr>
+<tr>
+<td>429</td>
+<td><code>HostedRateLimitError</code></td>
+<td>500</td>
+</tr>
+<tr>
+<td>5xx</td>
+<td><code>HostedServerError</code></td>
+<td>500</td>
+</tr>
+</tbody>
+</table>
+<p>Em <code>413</code>/<code>400</code>/<code>422</code>, <code>details</code> traz <code>backend</code>, <code>model</code>, <code>status</code> e o
+<code>server_code</code> que o servidor mandou (<code>AUDIO_TOO_LARGE</code>, <code>INVALID_AUDIO</code>).</p>
+<div class="admonition warning">
+<p class="admonition-title">Síntese de voz fica de fora</p>
+<p>O <code>/audio/speech</code> usa outro modelo (o de TTS), e o <code>OpenAICompatSpeech</code>
+guarda um modelo só. Para voz, use <code>TextToSpeech</code> ou <code>OllamaSpeech</code>.</p>
+</div>
 <h2 id="quando-o-provedor-falha">Quando o provedor falha<a class="headerlink" href="#quando-o-provedor-falha" title="Permanent link">&para;</a></h2>
 <p>Os dois backends levantam a mesma família de exceções:</p>
 <table>
@@ -5862,29 +6005,29 @@ os vetores com <code>OpenAICompatEmbedder</code>, <code>OllamaEmbedder</code> ou
 </table>
 <p>Todas herdam de <code>HostedAPIError</code>, que herda de <code>httpx.HTTPStatusError</code> — quem
 já capturava essa exceção do <code>OpenAICompatGenerator</code> continua capturando.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">AnthropicGenerator</span><span class="p">,</span>
-</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">HostedRateLimitError</span><span class="p">,</span>
-</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">HostedServerError</span><span class="p">,</span>
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">OllamaGenerator</span><span class="p">,</span>
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="p">)</span>
-</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
-</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
-</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">responder</span><span class="p">(</span><span class="n">pergunta</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="sd">"""Usa o Claude e cai para o Ollama local se ele estiver fora."""</span>
-</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    <span class="n">claude</span><span class="p">:</span> <span class="n">AnthropicGenerator</span> <span class="o">=</span> <span class="n">AnthropicGenerator</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"sk-ant-..."</span><span class="p">)</span>
-</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">claude</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">pergunta</span><span class="p">)</span>
-</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="k">except</span> <span class="n">HostedRateLimitError</span> <span class="k">as</span> <span class="n">erro</span><span class="p">:</span>
-</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"limite atingido; tente de novo em </span><span class="si">{</span><span class="n">erro</span><span class="o">.</span><span class="n">retry_after</span><span class="si">}</span><span class="s2">s"</span><span class="p">)</span>
-</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>        <span class="k">raise</span>
-</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>    <span class="k">except</span> <span class="n">HostedServerError</span><span class="p">:</span>
-</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">OllamaGenerator</span><span class="p">(</span><span class="s2">"llama3.2"</span><span class="p">)</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">pergunta</span><span class="p">)</span>
-</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>
-</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>
-</span><span id="__span-12-23"><a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">responder</span><span class="p">(</span><span class="s2">"Explique PIX."</span><span class="p">)))</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">AnthropicGenerator</span><span class="p">,</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">HostedRateLimitError</span><span class="p">,</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="n">HostedServerError</span><span class="p">,</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="n">OllamaGenerator</span><span class="p">,</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="p">)</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">responder</span><span class="p">(</span><span class="n">pergunta</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">    </span><span class="sd">"""Usa o Claude e cai para o Ollama local se ele estiver fora."""</span>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    <span class="n">claude</span><span class="p">:</span> <span class="n">AnthropicGenerator</span> <span class="o">=</span> <span class="n">AnthropicGenerator</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"sk-ant-..."</span><span class="p">)</span>
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">claude</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">pergunta</span><span class="p">)</span>
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>    <span class="k">except</span> <span class="n">HostedRateLimitError</span> <span class="k">as</span> <span class="n">erro</span><span class="p">:</span>
+</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"limite atingido; tente de novo em </span><span class="si">{</span><span class="n">erro</span><span class="o">.</span><span class="n">retry_after</span><span class="si">}</span><span class="s2">s"</span><span class="p">)</span>
+</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>        <span class="k">raise</span>
+</span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>    <span class="k">except</span> <span class="n">HostedServerError</span><span class="p">:</span>
+</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">OllamaGenerator</span><span class="p">(</span><span class="s2">"llama3.2"</span><span class="p">)</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">pergunta</span><span class="p">)</span>
+</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>
+</span><span id="__span-14-22"><a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a>
+</span><span id="__span-14-23"><a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">responder</span><span class="p">(</span><span class="s2">"Explique PIX."</span><span class="p">)))</span>
 </span></code></pre></div>
 <p>Cada exceção traz <code>provider</code>, <code>status_code</code>, <code>error_type</code> e <code>detail</code> (do corpo
 de erro do provedor) e <code>request_id</code> (header <code>request-id</code> da Anthropic). Na
@@ -5913,7 +6056,7 @@ Ollama, e não leva nenhum teto para o lock de quem consome.</p>
 <li><code>AnthropicGenerator</code> e <code>OpenAICompatGenerator</code> cumprem os mesmos protocolos
   que o <code>OllamaGenerator</code>: troque a construção, mantenha o resto.</li>
 <li><code>HostedGenAISettings</code> + <code>anthropic_kwargs()</code> / <code>openai_kwargs()</code> /
-  <code>deepseek_kwargs()</code> / <code>google_kwargs()</code> montam o backend por splat.</li>
+  <code>deepseek_kwargs()</code> / <code>gemini_kwargs()</code> montam o backend por splat.</li>
 <li><code>GENAI_PROVIDER</code> + <code>GENAI_API_KEY</code> (+ <code>GENAI_BASE_URL</code>) fixam um provedor
   para todos os modelos, pelo <code>.env</code>; modelo de outro provedor levanta.</li>
 <li><code>hosted_generator(**settings.hosted_kwargs(modelo))</code> escolhe o provedor
@@ -5926,6 +6069,10 @@ Ollama, e não leva nenhum teto para o lock de quem consome.</p>
 <li>Tool calling, saída estruturada e stream funcionam nos quatro (no Gemini,
   tool calling e stream vão pelo endpoint compatível sem teste próprio);
   embeddings só na OpenAI (<code>OpenAICompatEmbedder</code>).</li>
+<li><code>OpenAICompatSpeech(**settings.openai_speech_kwargs())</code> transcreve num
+  servidor remoto (<code>/audio/transcriptions</code>) e substitui o <code>SpeechToText</code> sem
+  mudar a chamada; <code>413</code> vira <code>FileTooLargeException</code> e <code>400</code>/<code>422</code> viram
+  <code>ValidationException</code>.</li>
 <li>Falhas viram <code>HostedAuthenticationError</code>, <code>HostedRateLimitError</code> ou
   <code>HostedServerError</code> — inclusive no meio do stream.</li>
 </ul>

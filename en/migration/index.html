@@ -4858,6 +4858,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#03530-geminis-google_kwargs-becomes-gemini_kwargs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.353.0 — Gemini's google_kwargs() becomes gemini_kwargs()
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#03490-coqui-in-its-own-extra-oversized-upload-as-413-and-a-stricter-tempest-check" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7384,6 +7395,34 @@
 
 <h1 id="migration-guide">Migration guide<a class="headerlink" href="#migration-guide" title="Permanent link">&para;</a></h1>
 <p>Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading <strong>from</strong>. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.</p>
+<h2 id="03530-geminis-google_kwargs-becomes-gemini_kwargs">0.353.0 — Gemini's <code>google_kwargs()</code> becomes <code>gemini_kwargs()</code><a class="headerlink" href="#03530-geminis-google_kwargs-becomes-gemini_kwargs" title="Permanent link">&para;</a></h2>
+<p><code>HostedGenAISettings.google_kwargs()</code> (Gemini) and <code>OAuthSettings.google_kwargs(prefix=...)</code> (Google login) shared a name. A <code>Settings</code> composing both kept the first one in the MRO, and Google login broke with <code>TypeError</code> on <code>prefix</code>. The Gemini one was renamed, with no alias (an alias would keep the clash).</p>
+<table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What changes</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HostedGenAISettings</code></td>
+<td><code>google_kwargs()</code> is now <code>gemini_kwargs()</code>; same return value, same <code>ValueError</code> when <code>GOOGLE_MODEL</code> is empty</td>
+<td><code>OpenAICompatGenerator(**settings.google_kwargs())</code> becomes <code>OpenAICompatGenerator(**settings.gemini_kwargs())</code>. With the old name, a <code>Settings</code> with only <code>HostedGenAISettings</code> raises <code>AttributeError</code></td>
+</tr>
+<tr>
+<td><code>OAuthSettings</code></td>
+<td><strong>Nothing</strong>: <code>google_kwargs(prefix=...)</code> is still the Google login one</td>
+<td>Nothing; services composing both mixins now get the right method</td>
+</tr>
+<tr>
+<td><code>WebPushSettings</code> / <code>FirebaseSettings</code></td>
+<td><code>enabled</code> becomes <code>webpush_enabled</code> and <code>firebase_enabled</code>, with no alias. Both had the same name and different meanings, and a <code>Settings</code> composing both without <code>PushSettings</code> read the answer of the first one in the MRO (<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/742" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #742">#742</a>)</td>
+<td><code>settings.enabled</code> on a service with <code>WebPushSettings</code> becomes <code>settings.webpush_enabled</code>; with <code>FirebaseSettings</code>, <code>settings.firebase_enabled</code>. The old name raises <code>AttributeError</code>. <code>PushSettings.enabled</code>, <code>web_enabled</code> and <code>mobile_enabled</code> <strong>do not change</strong></td>
+</tr>
+</tbody>
+</table>
 <h2 id="03490-coqui-in-its-own-extra-oversized-upload-as-413-and-a-stricter-tempest-check">0.349.0 — Coqui in its own extra, oversized upload as 413 and a stricter <code>tempest check</code><a class="headerlink" href="#03490-coqui-in-its-own-extra-oversized-upload-as-413-and-a-stricter-tempest-check" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

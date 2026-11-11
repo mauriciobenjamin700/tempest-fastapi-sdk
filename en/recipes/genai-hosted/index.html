@@ -2555,6 +2555,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#remote-transcription-speech-to-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote transcription (speech-to-text)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-the-provider-fails" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5217,9 +5228,10 @@ exists so the service declares the capability it uses. No vendor SDK
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>sk-ant-...
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nv">OPENAI_MODEL</span><span class="o">=</span>&lt;OpenAI<span class="w"> </span>model<span class="w"> </span>id&gt;
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nv">DEEPSEEK_API_KEY</span><span class="o">=</span>sk-...
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nv">GOOGLE_API_KEY</span><span class="o">=</span>AIza...
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="nv">GOOGLE_MODEL</span><span class="o">=</span>&lt;Gemini<span class="w"> </span>model<span class="w"> </span>id&gt;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nv">OPENAI_STT_MODEL</span><span class="o">=</span>&lt;transcription<span class="w"> </span>model<span class="w"> </span>id&gt;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nv">DEEPSEEK_API_KEY</span><span class="o">=</span>sk-...
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="nv">GOOGLE_API_KEY</span><span class="o">=</span>AIza...
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nv">GOOGLE_MODEL</span><span class="o">=</span>&lt;Gemini<span class="w"> </span>model<span class="w"> </span>id&gt;
 </span></code></pre></div>
 <p>Each provider has <code>*_API_KEY</code>, <code>*_BASE_URL</code> and <code>*_MODEL</code>. The defaults:</p>
 <table>
@@ -5247,6 +5259,10 @@ exists so the service declares the capability it uses. No vendor SDK
 <td>empty — required</td>
 </tr>
 <tr>
+<td><code>OPENAI_STT_MODEL</code></td>
+<td>empty — required by <code>openai_speech_kwargs()</code></td>
+</tr>
+<tr>
 <td><code>DEEPSEEK_BASE_URL</code></td>
 <td><code>https://api.deepseek.com</code></td>
 </tr>
@@ -5260,7 +5276,7 @@ exists so the service declares the capability it uses. No vendor SDK
 </tr>
 <tr>
 <td><code>GOOGLE_MODEL</code></td>
-<td>empty — required by <code>google_kwargs()</code></td>
+<td>empty — required by <code>gemini_kwargs()</code></td>
 </tr>
 </tbody>
 </table>
@@ -5744,7 +5760,7 @@ refuses it:</p>
   block with a base64 <code>source</code>, and <code>filename</code> becomes the block's <code>title</code>.</li>
 <li><strong>OpenAI:</strong> <code>OpenAICompatGenerator</code> forwards the part as is.</li>
 <li><strong>Google and DeepSeek:</strong> the generator <code>hosted_generator</code> builds for them
-  (and the one <code>google_kwargs()</code> / <code>deepseek_kwargs()</code> build) raises
+  (and the one <code>gemini_kwargs()</code> / <code>deepseek_kwargs()</code> build) raises
   <code>ValueError</code> <strong>before</strong> opening the connection when a message carries the
   part, with a message naming the provider. Text and images still go out
   normally.</li>
@@ -5830,6 +5846,136 @@ reference lists Chat Completions, Responses, FIM, models, balance and
 files — no embeddings. For RAG with those providers, produce the vectors
 with <code>OpenAICompatEmbedder</code>, <code>OllamaEmbedder</code> or <code>Embedder</code>.</p>
 </div>
+<h2 id="remote-transcription-speech-to-text">Remote transcription (speech-to-text)<a class="headerlink" href="#remote-transcription-speech-to-text" title="Permanent link">&para;</a></h2>
+<p><code>SpeechToText</code> runs Whisper <strong>in your process</strong>: it downloads weights, holds
+RAM (or GPU) and competes for CPU with the rest of the service. When a server
+that transcribes already exists — <code>tempest-ai</code>, OpenAI itself, a <code>vLLM</code>
+serving Whisper — <code>OpenAICompatSpeech</code> sends the audio to it over the OpenAI
+endpoint <code>POST {base_url}/audio/transcriptions</code> and returns the same
+<code>Transcription</code>.</p>
+<p>First, the settings. The key and the root are the ones <code>openai_kwargs()</code>
+uses (<code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>); only the model changes, in
+<code>OPENAI_STT_MODEL</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># .env</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>&lt;tempest-ai<span class="w"> </span>API<span class="w"> </span>key&gt;
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nv">OPENAI_BASE_URL</span><span class="o">=</span>https://ai.buscar.app.br/api/openai/v1
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="nv">OPENAI_STT_MODEL</span><span class="o">=</span>&lt;id<span class="w"> </span>that<span class="w"> </span>GET<span class="w"> </span>/models<span class="w"> </span>lists&gt;
+</span></code></pre></div>
+<p>Then, a service that receives the upload and transcribes it:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncIterator</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">asynccontextmanager</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">UploadFile</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="n">BaseAppSettings</span><span class="p">,</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="n">HostedGenAISettings</span><span class="p">,</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="n">register_exception_handlers</span><span class="p">,</span>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="p">)</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAICompatSpeech</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai.audio</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transcription</span>
+</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>
+</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>
+</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span><span class="n">HostedGenAISettings</span><span class="p">,</span> <span class="n">BaseAppSettings</span><span class="p">):</span>
+</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">    </span><span class="sd">"""Service settings."""</span>
+</span><span id="__span-13-17"><a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>
+</span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>
+</span><span id="__span-13-19"><a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a><span class="n">settings</span><span class="p">:</span> <span class="n">Settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
+</span><span id="__span-13-20"><a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a><span class="n">speech</span><span class="p">:</span> <span class="n">OpenAICompatSpeech</span> <span class="o">=</span> <span class="n">OpenAICompatSpeech</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">openai_speech_kwargs</span><span class="p">())</span>
+</span><span id="__span-13-21"><a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>
+</span><span id="__span-13-22"><a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a>
+</span><span id="__span-13-23"><a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a><span class="nd">@asynccontextmanager</span>
+</span><span id="__span-13-24"><a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">lifespan</span><span class="p">(</span><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="kc">None</span><span class="p">]:</span>
+</span><span id="__span-13-25"><a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a><span class="w">    </span><span class="sd">"""Close the backend's HTTP client on shutdown."""</span>
+</span><span id="__span-13-26"><a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a>    <span class="k">yield</span>
+</span><span id="__span-13-27"><a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a>    <span class="k">await</span> <span class="n">speech</span><span class="o">.</span><span class="n">aclose</span><span class="p">()</span>
+</span><span id="__span-13-28"><a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a>
+</span><span id="__span-13-29"><a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a>
+</span><span id="__span-13-30"><a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">lifespan</span><span class="o">=</span><span class="n">lifespan</span><span class="p">)</span>
+</span><span id="__span-13-31"><a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a><span class="n">register_exception_handlers</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+</span><span id="__span-13-32"><a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a>
+</span><span id="__span-13-33"><a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a>
+</span><span id="__span-13-34"><a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/transcribe"</span><span class="p">)</span>
+</span><span id="__span-13-35"><a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">transcribe</span><span class="p">(</span><span class="n">file</span><span class="p">:</span> <span class="n">UploadFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Transcription</span><span class="p">:</span>
+</span><span id="__span-13-36"><a id="__codelineno-13-36" name="__codelineno-13-36" href="#__codelineno-13-36"></a><span class="w">    </span><span class="sd">"""Transcribe the uploaded Portuguese audio."""</span>
+</span><span id="__span-13-37"><a id="__codelineno-13-37" name="__codelineno-13-37" href="#__codelineno-13-37"></a>    <span class="n">audio</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="k">await</span> <span class="n">file</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+</span><span id="__span-13-38"><a id="__codelineno-13-38" name="__codelineno-13-38" href="#__codelineno-13-38"></a>    <span class="k">return</span> <span class="k">await</span> <span class="n">speech</span><span class="o">.</span><span class="n">transcribe</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="n">language</span><span class="o">=</span><span class="s2">"pt"</span><span class="p">,</span> <span class="n">with_segments</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Piece by piece:</p>
+<ul>
+<li><code>openai_speech_kwargs()</code> returns <code>model</code>, <code>api_key</code>, <code>base_url</code> and
+  <code>provider="openai"</code> — the splat builds the backend. With <code>OPENAI_STT_MODEL</code>
+  empty it raises <code>ValueError</code> at boot, as <code>openai_kwargs()</code> does for
+  <code>OPENAI_MODEL</code>.</li>
+<li><code>base_url</code> <strong>includes</strong> the version (<code>.../v1</code>), as with
+  <code>OpenAICompatGenerator</code>; the backend appends <code>/audio/transcriptions</code>. For
+  <code>tempest-ai</code>, pass <code>https://ai.buscar.app.br/api/openai/v1</code>.</li>
+<li>The request is multipart with <code>file</code>, <code>model</code>, <code>language</code> (only when you
+  pass one) and <code>response_format=verbose_json</code>, the format that carries
+  <code>duration</code>, <code>language</code> and <code>segments</code>. The key goes in
+  <code>Authorization: Bearer</code>.</li>
+<li><code>language</code> takes the ISO-639-1 code (<code>"pt"</code>) or a <code>LanguageEnum</code>
+  (<code>LanguageEnum.PT_BR</code> becomes <code>"pt"</code>); <code>None</code> lets the server detect it.</li>
+<li><code>with_segments=False</code> returns <code>segments=[]</code>; <code>duration</code> and <code>language</code>
+  are still filled.</li>
+<li><code>audio</code> takes <code>bytes</code> or a local path (<code>str</code> or <code>Path</code>). A string is always
+  a path, never a URL: the backend fetches nothing off the machine.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Drop-in for <code>SpeechToText</code></p>
+<p><code>OpenAICompatSpeech.transcribe</code> takes the same <code>language</code> and
+<code>with_segments</code> as <code>SpeechToText</code> and satisfies the <code>SpeechTranscriber</code>
+protocol. Code that does
+<code>await transcriber.transcribe(audio, language="pt", with_segments=False)</code>
+does not change; and <code>make_genai_router(speech_to_text=speech)</code> serves
+<code>/transcribe</code> with it.</p>
+</div>
+<p>Server errors become exceptions that <code>register_exception_handlers</code> already
+answers:</p>
+<table>
+<thead>
+<tr>
+<th>Server status</th>
+<th>Exception</th>
+<th>What your client gets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>401, 403</td>
+<td><code>HostedAuthenticationError</code></td>
+<td>500 — a wrong key is a configuration defect</td>
+</tr>
+<tr>
+<td>413</td>
+<td><code>FileTooLargeException</code> (server's message)</td>
+<td>413</td>
+</tr>
+<tr>
+<td>400, 422</td>
+<td><code>ValidationException</code> (server's message)</td>
+<td>422</td>
+</tr>
+<tr>
+<td>429</td>
+<td><code>HostedRateLimitError</code></td>
+<td>500</td>
+</tr>
+<tr>
+<td>5xx</td>
+<td><code>HostedServerError</code></td>
+<td>500</td>
+</tr>
+</tbody>
+</table>
+<p>On <code>413</code>/<code>400</code>/<code>422</code>, <code>details</code> carries <code>backend</code>, <code>model</code>, <code>status</code> and the
+<code>server_code</code> the server sent (<code>AUDIO_TOO_LARGE</code>, <code>INVALID_AUDIO</code>).</p>
+<div class="admonition warning">
+<p class="admonition-title">Speech synthesis is left out</p>
+<p><code>/audio/speech</code> uses another model (the TTS one), and
+<code>OpenAICompatSpeech</code> holds a single model. For speech, use
+<code>TextToSpeech</code> or <code>OllamaSpeech</code>.</p>
+</div>
 <h2 id="when-the-provider-fails">When the provider fails<a class="headerlink" href="#when-the-provider-fails" title="Permanent link">&para;</a></h2>
 <p>Both backends raise the same exception family:</p>
 <table>
@@ -5866,29 +6012,29 @@ with <code>OpenAICompatEmbedder</code>, <code>OllamaEmbedder</code> or <code>Emb
 <p>All inherit from <code>HostedAPIError</code>, which inherits from
 <code>httpx.HTTPStatusError</code> — code that already caught that exception from
 <code>OpenAICompatGenerator</code> keeps catching it.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">AnthropicGenerator</span><span class="p">,</span>
-</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">HostedRateLimitError</span><span class="p">,</span>
-</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">HostedServerError</span><span class="p">,</span>
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">OllamaGenerator</span><span class="p">,</span>
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="p">)</span>
-</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
-</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
-</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">answer</span><span class="p">(</span><span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="sd">"""Use Claude and fall back to local Ollama when it is down."""</span>
-</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    <span class="n">claude</span><span class="p">:</span> <span class="n">AnthropicGenerator</span> <span class="o">=</span> <span class="n">AnthropicGenerator</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"sk-ant-..."</span><span class="p">)</span>
-</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">claude</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">question</span><span class="p">)</span>
-</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="k">except</span> <span class="n">HostedRateLimitError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
-</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"rate limited; retry in </span><span class="si">{</span><span class="n">error</span><span class="o">.</span><span class="n">retry_after</span><span class="si">}</span><span class="s2">s"</span><span class="p">)</span>
-</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>        <span class="k">raise</span>
-</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>    <span class="k">except</span> <span class="n">HostedServerError</span><span class="p">:</span>
-</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">OllamaGenerator</span><span class="p">(</span><span class="s2">"llama3.2"</span><span class="p">)</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">question</span><span class="p">)</span>
-</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>
-</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>
-</span><span id="__span-12-23"><a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">answer</span><span class="p">(</span><span class="s2">"Explain PIX."</span><span class="p">)))</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">AnthropicGenerator</span><span class="p">,</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">HostedRateLimitError</span><span class="p">,</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="n">HostedServerError</span><span class="p">,</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="n">OllamaGenerator</span><span class="p">,</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="p">)</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">answer</span><span class="p">(</span><span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">    </span><span class="sd">"""Use Claude and fall back to local Ollama when it is down."""</span>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    <span class="n">claude</span><span class="p">:</span> <span class="n">AnthropicGenerator</span> <span class="o">=</span> <span class="n">AnthropicGenerator</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"sk-ant-..."</span><span class="p">)</span>
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">claude</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">question</span><span class="p">)</span>
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>    <span class="k">except</span> <span class="n">HostedRateLimitError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"rate limited; retry in </span><span class="si">{</span><span class="n">error</span><span class="o">.</span><span class="n">retry_after</span><span class="si">}</span><span class="s2">s"</span><span class="p">)</span>
+</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>        <span class="k">raise</span>
+</span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>    <span class="k">except</span> <span class="n">HostedServerError</span><span class="p">:</span>
+</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">OllamaGenerator</span><span class="p">(</span><span class="s2">"llama3.2"</span><span class="p">)</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">question</span><span class="p">)</span>
+</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>
+</span><span id="__span-14-22"><a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a>
+</span><span id="__span-14-23"><a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">answer</span><span class="p">(</span><span class="s2">"Explain PIX."</span><span class="p">)))</span>
 </span></code></pre></div>
 <p>Each exception carries <code>provider</code>, <code>status_code</code>, <code>error_type</code> and <code>detail</code>
 (from the provider's error body) and <code>request_id</code> (Anthropic's <code>request-id</code>
@@ -5918,7 +6064,7 @@ as Ollama's, and puts no upper bound in any consumer's lock.</p>
 <li><code>AnthropicGenerator</code> and <code>OpenAICompatGenerator</code> implement the same
   protocols as <code>OllamaGenerator</code>: change the construction, keep the rest.</li>
 <li><code>HostedGenAISettings</code> + <code>anthropic_kwargs()</code> / <code>openai_kwargs()</code> /
-  <code>deepseek_kwargs()</code> / <code>google_kwargs()</code> build the backend by splat.</li>
+  <code>deepseek_kwargs()</code> / <code>gemini_kwargs()</code> build the backend by splat.</li>
 <li><code>GENAI_PROVIDER</code> + <code>GENAI_API_KEY</code> (+ <code>GENAI_BASE_URL</code>) pin one provider
   for every model from <code>.env</code>; another provider's model raises.</li>
 <li><code>hosted_generator(**settings.hosted_kwargs(model))</code> picks the provider
@@ -5931,6 +6077,10 @@ as Ollama's, and puts no upper bound in any consumer's lock.</p>
 <li>Tool calling, structured output and streaming work on all four (on Gemini,
   tool calling and streaming go through the compatible endpoint without a
   test of their own); embeddings only on OpenAI (<code>OpenAICompatEmbedder</code>).</li>
+<li><code>OpenAICompatSpeech(**settings.openai_speech_kwargs())</code> transcribes on a
+  remote server (<code>/audio/transcriptions</code>) and replaces <code>SpeechToText</code> without
+  changing the call; <code>413</code> becomes <code>FileTooLargeException</code> and <code>400</code>/<code>422</code>
+  become <code>ValidationException</code>.</li>
 <li>Failures become <code>HostedAuthenticationError</code>, <code>HostedRateLimitError</code> or
   <code>HostedServerError</code> — mid-stream included.</li>
 </ul>

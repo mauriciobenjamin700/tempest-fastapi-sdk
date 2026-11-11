@@ -5574,7 +5574,7 @@ construção de sempre:</p>
 </span><span id="__span-16-32"><a id="__codelineno-16-32" name="__codelineno-16-32" href="#__codelineno-16-32"></a>
 </span><span id="__span-16-33"><a id="__codelineno-16-33" name="__codelineno-16-33" href="#__codelineno-16-33"></a><span class="n">settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
 </span><span id="__span-16-34"><a id="__codelineno-16-34" name="__codelineno-16-34" href="#__codelineno-16-34"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"desligadas:"</span><span class="p">,</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">disabled_integrations</span><span class="p">()))</span>
-</span><span id="__span-16-35"><a id="__codelineno-16-35" name="__codelineno-16-35" href="#__codelineno-16-35"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"push mobile:"</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">enabled</span><span class="p">)</span>
+</span><span id="__span-16-35"><a id="__codelineno-16-35" name="__codelineno-16-35" href="#__codelineno-16-35"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"push mobile:"</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">firebase_enabled</span><span class="p">)</span>
 </span><span id="__span-16-36"><a id="__codelineno-16-36" name="__codelineno-16-36" href="#__codelineno-16-36"></a>
 </span><span id="__span-16-37"><a id="__codelineno-16-37" name="__codelineno-16-37" href="#__codelineno-16-37"></a><span class="n">storage</span> <span class="o">=</span> <span class="n">AsyncMinIOClient</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">storage_kwargs</span><span class="p">())</span>
 </span><span id="__span-16-38"><a id="__codelineno-16-38" name="__codelineno-16-38" href="#__codelineno-16-38"></a><span class="n">mailer</span> <span class="o">=</span> <span class="n">EmailUtils</span><span class="p">(</span><span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">email_kwargs</span><span class="p">())</span>
@@ -5627,7 +5627,7 @@ boot volta a cair, como antes:</p>
 </tr>
 <tr>
 <td><code>firebase</code></td>
-<td><code>settings.enabled</code> (e <code>PushSettings.mobile_enabled</code>) vira <code>False</code>; <code>firebase_kwargs()</code> devolve só <code>{"enabled": False}</code></td>
+<td><code>settings.firebase_enabled</code> (e <code>PushSettings.mobile_enabled</code>) vira <code>False</code>; <code>firebase_kwargs()</code> devolve só <code>{"enabled": False}</code></td>
 <td><code>FirebaseAuth</code> não inicializa app e responde <code>503</code> em <code>verify</code> e nas dependências; um <code>FCMTransport</code> sobre ele não reivindica plataforma: o push mobile é <strong>descartado</strong> (o <code>DeviceService</code> pula o aparelho) e o transporte loga um aviso ao ser construído</td>
 </tr>
 <tr>

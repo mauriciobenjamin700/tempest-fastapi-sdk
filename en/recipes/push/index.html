@@ -5583,12 +5583,13 @@ explicitly: <code>DeviceService.register(..., transfer_ownership=True)</code>, o
 </span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="n">settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
 </span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">web_enabled</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">mobile_enabled</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">enabled</span><span class="p">)</span>
 </span></code></pre></div>
-<p><code>PushSettings</code> joins <code>WebPushSettings</code> and <code>FirebaseSettings</code> — and it
-exists because of a real trap: both declare <code>enabled</code>, so composing them
-by hand makes the MRO silently pick the Web Push one, and a mobile-only
-service reads <code>enabled is False</code> with FCM perfectly configured. Here
-<code>enabled</code> answers "can this service notify anyone?", and the two halves
-stay readable through <code>web_enabled</code> / <code>mobile_enabled</code>.</p>
+<p><code>PushSettings</code> joins <code>WebPushSettings</code> and <code>FirebaseSettings</code> and adds the
+question neither half answers: <code>enabled</code>, "can this service notify
+anyone?". The halves stay readable through <code>web_enabled</code> /
+<code>mobile_enabled</code>. Composing the two mixins by hand, each channel answers
+through its own name: <code>webpush_enabled</code> and <code>firebase_enabled</code>. Up to
+0.352.0 both were called <code>enabled</code>, and the MRO silently picked the Web
+Push one (<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/742" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #742">#742</a>).</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>The contract is a <code>Protocol</code>, so a fake transport is a class with one
 method:</p>
@@ -5619,7 +5620,7 @@ are <strong>different wire fields</strong> (<code>{"token": ...}</code> vs <code
 FCM registration token belongs in <code>token</code>. Following the deprecation
 literally would send the wrong field.</p>
 <h2 id="mobile-push-switched-off-firebase_enabledfalse">Mobile push switched off (<code>FIREBASE_ENABLED=false</code>)<a class="headerlink" href="#mobile-push-switched-off-firebase_enabledfalse" title="Permanent link">&para;</a></h2>
-<p>Push does not raise: with <code>FIREBASE_ENABLED=false</code>, <code>settings.enabled</code>
+<p>Push does not raise: with <code>FIREBASE_ENABLED=false</code>, <code>settings.firebase_enabled</code>
 (and <code>PushSettings.mobile_enabled</code>) answers <code>False</code>, so wiring that
 already reads that flag builds no <code>FCMTransport</code> and <code>DeviceService</code> skips
 mobile devices (they show up in <code>PushFanoutResult.skipped</code>). If the

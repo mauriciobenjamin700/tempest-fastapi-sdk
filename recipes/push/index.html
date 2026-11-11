@@ -5577,12 +5577,12 @@ explicitamente: <code>DeviceService.register(..., transfer_ownership=True)</code
 </span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="n">settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
 </span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">web_enabled</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">mobile_enabled</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">enabled</span><span class="p">)</span>
 </span></code></pre></div>
-<p><code>PushSettings</code> junta <code>WebPushSettings</code> e <code>FirebaseSettings</code> — e existe
-por causa de uma armadilha real: os dois declaram <code>enabled</code>, então
-compondo na mão o MRO escolhe silenciosamente o do Web Push, e um serviço
-só-mobile lê <code>enabled is False</code> com o FCM perfeitamente configurado. Aqui
-<code>enabled</code> responde "dá para notificar alguém?", e as duas metades ficam
-legíveis em <code>web_enabled</code> / <code>mobile_enabled</code>.</p>
+<p><code>PushSettings</code> junta <code>WebPushSettings</code> e <code>FirebaseSettings</code> e acrescenta a
+pergunta que nenhuma das metades responde: <code>enabled</code>, "dá para notificar
+alguém?". As metades ficam legíveis em <code>web_enabled</code> / <code>mobile_enabled</code>.
+Compondo os dois mixins na mão, cada canal responde pelo próprio nome:
+<code>webpush_enabled</code> e <code>firebase_enabled</code>. Até a 0.352.0 os dois se chamavam
+<code>enabled</code>, e o MRO escolhia em silêncio o do Web Push (<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/742" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #742">#742</a>).</p>
 <h2 id="testando">Testando<a class="headerlink" href="#testando" title="Permanent link">&para;</a></h2>
 <p>O contrato é um <code>Protocol</code>, então um transporte falso é uma classe com um
 método:</p>
@@ -5613,7 +5613,7 @@ dois são <strong>campos de wire diferentes</strong> (<code>{"token": ...}</code
 <code>{"fid": ...}</code>), e um token de registro do FCM pertence a <code>token</code>. Seguir
 a depreciação ao pé da letra mandaria o campo errado.</p>
 <h2 id="push-mobile-desligado-firebase_enabledfalse">Push mobile desligado (<code>FIREBASE_ENABLED=false</code>)<a class="headerlink" href="#push-mobile-desligado-firebase_enabledfalse" title="Permanent link">&para;</a></h2>
-<p>Push não levanta: com <code>FIREBASE_ENABLED=false</code>, <code>settings.enabled</code> (e
+<p>Push não levanta: com <code>FIREBASE_ENABLED=false</code>, <code>settings.firebase_enabled</code> (e
 <code>PushSettings.mobile_enabled</code>) responde <code>False</code>, então o wiring que já
 consulta essa flag não monta <code>FCMTransport</code> e o <code>DeviceService</code> pula os
 aparelhos mobile (eles aparecem em <code>PushFanoutResult.skipped</code>). Se o
