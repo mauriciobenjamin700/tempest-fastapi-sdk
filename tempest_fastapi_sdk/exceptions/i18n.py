@@ -503,6 +503,9 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "IMAGE_TYPE_MISMATCH": "O conteúdo da imagem não corresponde ao tipo declarado",
         "IMAGE_FORMAT_UNSUPPORTED": "Este tipo de imagem não pode ser processado",
         "IMAGE_TOO_LARGE": "A imagem tem mais pixels que o permitido",
+        "EVENTSOURCING_WRONG_EXPECTED_VERSION": (
+            "O registro foi alterado por outra operação; recarregue e tente de novo"
+        ),
         "WALLET_INSUFFICIENT_BALANCE": "Saldo insuficiente na carteira",
         "WALLET_PAYOUT_REJECTED": "O provedor recusou a transferência",
         "WALLET_PAYOUT_UNCERTAIN": (
@@ -656,6 +659,9 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "IMAGE_TYPE_MISMATCH": "The image content does not match the declared type",
         "IMAGE_FORMAT_UNSUPPORTED": "This image type cannot be processed",
         "IMAGE_TOO_LARGE": "The image has more pixels than allowed",
+        "EVENTSOURCING_WRONG_EXPECTED_VERSION": (
+            "The record was changed by another operation; reload and try again"
+        ),
         "WALLET_INSUFFICIENT_BALANCE": "Insufficient wallet balance",
         "WALLET_PAYOUT_REJECTED": "The provider rejected the transfer",
         "WALLET_PAYOUT_UNCERTAIN": (

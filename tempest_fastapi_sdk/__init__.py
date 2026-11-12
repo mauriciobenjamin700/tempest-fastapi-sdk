@@ -1481,6 +1481,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.exceptions import (
         parse_accept_language as parse_accept_language,
     )
+    from tempest_fastapi_sdk.exceptions.eventsourcing import (
+        WrongExpectedVersionException as WrongExpectedVersionException,
+    )
     from tempest_fastapi_sdk.exceptions.wallet import (
         InsufficientBalanceException as InsufficientBalanceException,
     )
@@ -1711,6 +1714,15 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.settings import (
         JWTSettings as JWTSettings,
+    )
+    from tempest_fastapi_sdk.settings import (
+        KafkaSaslMechanismEnum as KafkaSaslMechanismEnum,
+    )
+    from tempest_fastapi_sdk.settings import (
+        KafkaSecurityProtocolEnum as KafkaSecurityProtocolEnum,
+    )
+    from tempest_fastapi_sdk.settings import (
+        KafkaSettings as KafkaSettings,
     )
     from tempest_fastapi_sdk.settings import (
         LogSettings as LogSettings,
@@ -2854,6 +2866,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "default_message_catalog": "tempest_fastapi_sdk.exceptions",
     "not_found_exception": "tempest_fastapi_sdk.exceptions",
     "parse_accept_language": "tempest_fastapi_sdk.exceptions",
+    "WrongExpectedVersionException": "tempest_fastapi_sdk.exceptions.eventsourcing",
     "InsufficientBalanceException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutRejectedException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutUncertainException": "tempest_fastapi_sdk.exceptions.wallet",
@@ -2931,6 +2944,9 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "HostBridgeSettings": "tempest_fastapi_sdk.settings",
     "HostedGenAISettings": "tempest_fastapi_sdk.settings",
     "JWTSettings": "tempest_fastapi_sdk.settings",
+    "KafkaSaslMechanismEnum": "tempest_fastapi_sdk.settings",
+    "KafkaSecurityProtocolEnum": "tempest_fastapi_sdk.settings",
+    "KafkaSettings": "tempest_fastapi_sdk.settings",
     "LogSettings": "tempest_fastapi_sdk.settings",
     "MercadoPagoSettings": "tempest_fastapi_sdk.settings",
     "MinIOSettings": "tempest_fastapi_sdk.settings",
@@ -3523,6 +3539,9 @@ __all__: list[str] = [
     "JSONFormatter",
     "JWTSettings",
     "JWTUtils",
+    "KafkaSaslMechanismEnum",
+    "KafkaSecurityProtocolEnum",
+    "KafkaSettings",
     "LatitudeField",
     "Lens",
     "Liveness",
@@ -3794,6 +3813,7 @@ __all__: list[str] = [
     "WebhookSender",
     "WebhookSignatureVerifier",
     "WhereClause",
+    "WrongExpectedVersionException",
     "ZapSendFailedException",
     "__version__",
     "admin_action",

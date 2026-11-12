@@ -138,6 +138,7 @@ plugins:
               - Downloads: recipes/downloads.md
               - Enum columns (safe on both databases): recipes/enum-columns.md
               - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
+              - "Event sourcing (event store)": recipes/event-sourcing.md
               - Face recognition: recipes/faces.md
               - "Fakes (no real provider)": recipes/fakes.md
               - Feature flags: recipes/feature-flags.md
@@ -159,6 +160,7 @@ plugins:
               - Kestra (workflow orchestrator): recipes/kestra.md
               - Logging: recipes/logging.md
               - Management commands (tempest <cmd>): recipes/management-commands.md
+              - "MCP (Model Context Protocol)": recipes/mcp.md
               - Mercado Pago (Pix, cards, boleto): recipes/mercado-pago.md
               - Mercado Pago (test accounts and credentials): recipes/mercado-pago-sandbox.md
               - Mercado Pago (testing webhooks): recipes/mercado-pago-webhooks.md
@@ -457,6 +459,7 @@ nav:
       - "Erros do app (relatados pelo cliente)": recipes/app-errors.md
       - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
       - "Escolhendo o modelo": recipes/models.md
+      - "Event sourcing (event store)": recipes/event-sourcing.md
       - "Exemplos completos":
           - "Exemplo integrado (admin completo)": admin-showcase.md
           - "Exemplo integrado (checkout Pix)": integrated.md
@@ -484,6 +487,7 @@ nav:
       - Login e cadastro server-side: recipes/auth-pages.md
       - "Login social (OAuth2/OIDC)": recipes/oauth.md
       - "Management commands (tempest <cmd>)": recipes/management-commands.md
+      - "MCP (Model Context Protocol)": recipes/mcp.md
       - "Mercado Pago (contas e credenciais de teste)": recipes/mercado-pago-sandbox.md
       - "Mercado Pago (Pix, cartão, boleto)": recipes/mercado-pago.md
       - "Mercado Pago (testando webhooks)": recipes/mercado-pago-webhooks.md

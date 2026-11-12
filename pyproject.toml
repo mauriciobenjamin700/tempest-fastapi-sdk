@@ -83,8 +83,25 @@ metrics = [
     "psutil>=7.2.2",
     "nvidia-ml-py>=13.610.43",
 ]
+# One extra per FastStream transport, as `tasks` / `tasks-redis` do for
+# TaskIQ: `[queue]` installs the RabbitMQ client only, so the other
+# constructors of `MessageBroker` need their own client library and their
+# own extra to name in the install error.
 queue = [
     "faststream[rabbit]>=0.7.5",
+]
+# FastStream accepts `aiokafka>=0.9`, but every subscriber passes
+# `group_instance_id`, which `AIOKafkaConsumer` only takes from 0.10.0:
+# under 0.9.0 each Kafka consumer fails to start with a `TypeError`.
+queue-kafka = [
+    "faststream[kafka]>=0.7.5",
+    "aiokafka>=0.10.0",
+]
+queue-nats = [
+    "faststream[nats]>=0.7.5",
+]
+queue-redis = [
+    "faststream[redis]>=0.7.5",
 ]
 tasks = [
     "taskiq>=0.12.6",
@@ -140,6 +157,17 @@ firebase = [
     # is why it is an opt-in extra, is imported lazily at FirebaseAuth
     # construction time, and stays out of [all].
     "firebase-admin>=7.5.0",
+]
+fastmcp = [
+    # MCP in both directions: mount a FastMCP server into the app
+    # (tempest_fastapi_sdk.mcp.mount_mcp) and adapt an external server's tools
+    # into AgentTools (MCPToolset). The floor is 4.1.0 because it is the first
+    # release that validates OpenAPI path-parameter segments, and
+    # add_fastapi_routes hands model-chosen arguments to exactly that code
+    # path. fastmcp 4 brings its own HTTP stack (httpx2) and requires
+    # starlette>=1.0.1, which is why it is an opt-in extra, imported lazily,
+    # and stays out of [all].
+    "fastmcp>=4.1.0",
 ]
 pdf = [
     "weasyprint>=69.0",
@@ -320,6 +348,15 @@ sqlite = [
 postgres = [
     "asyncpg>=0.31.0",
 ]
+# KurrentDB (formerly EventStoreDB) backend of the event store. The official
+# client renamed from `esdbclient`, whose last release (1.1.7, 2025-04) pins
+# `grpcio<1.72`; `kurrentdbclient` is the maintained line. The floor is the
+# first 1.3 release, the oldest one the live suite was run against (see
+# tests/eventsourcing/test_kurrentdb_matrix.py). Imported only inside
+# `eventsourcing/kurrentdb.py` functions, so the rest of the SDK does not need it.
+kurrentdb = [
+    "kurrentdbclient>=1.3.0",
+]
 otel = [
     "opentelemetry-sdk>=1.44.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
@@ -350,7 +387,14 @@ all = [
     "cryptography>=50.0.1",
     "psutil>=7.2.2",
     "nvidia-ml-py>=13.610.43",
-    "faststream[rabbit]>=0.7.5",
+    # Every FastStream transport, as `queue` + `queue-kafka` + `queue-nats` +
+    # `queue-redis` declare them. The client caps come from FastStream's own
+    # extras, not from us: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0`
+    # and `redis<9.0.0` (same in FastStream 0.7.5 and 0.7.8). `[all]` is the
+    # only extra that carries all four at once; `aiokafka` 0.15.0 is already
+    # out and held back by this cap.
+    "faststream[rabbit,kafka,nats,redis]>=0.7.5",
+    "aiokafka>=0.10.0",
     "taskiq>=0.12.6",
     "taskiq-aio-pika>=0.6.0",
     "taskiq-redis>=1.2.3",
@@ -373,6 +417,7 @@ all = [
     "email-validator>=2.3.0",
     "aiosqlite>=0.22.1",
     "asyncpg>=0.31.0",
+    "kurrentdbclient>=1.3.0",
     "opentelemetry-sdk>=1.44.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
     "opentelemetry-instrumentation-fastapi>=0.65b0",
@@ -590,6 +635,12 @@ ignore = [
 "tempest_fastapi_sdk/integrations/payment/openpix/__init__.py" = ["F405"]
 "tempest_fastapi_sdk/integrations/payment/mercado_pago/__init__.py" = ["F405"]
 "tempest_fastapi_sdk/integrations/messaging/zap/__init__.py" = ["F405"]
+
+# `src` includes `tests`, so the `tests/mcp/` package makes ruff classify the
+# third-party `mcp` (the MCP SDK that fastmcp depends on) as first-party and
+# sort its imports below `mcp_types`.
+[tool.ruff.lint.isort]
+known-third-party = ["mcp"]
 
 [tool.ruff.format]
 quote-style = "double"
