@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.356.0] — 2026-11-12
+
 ### Added
 
 - `parse_trip_intent` (`tempest_fastapi_sdk.geo`): origem, destino, data e
