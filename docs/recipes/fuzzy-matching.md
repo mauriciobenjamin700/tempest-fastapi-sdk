@@ -259,12 +259,14 @@ Saída de uma das execuções com `qwen2.5:3b` no Ollama local:
 
 ```text
 ['find_brazilian_city']
-A cidade é Florianópolis e a UF é SC. O código IBGE para esta localização é 4205407. A localização geográfica exata da cidade é -27.5945 latitude e -48.5477 longitude.
+A cidade é Florianópolis, que está localizada no estado de Santa Catarina (UF SC). Seu código IBGE é 4205407 e as coordenadas geográficas são lat -27.5945, lon -48.5477.
 ```
 
-Em 3 execuções seguidas o modelo chamou a tool nas 3 e respondeu
-Florianópolis/SC com o código 4205407. A redação da resposta muda a cada
-execução; o que a tool devolve, não.
+Em 20 execuções seguidas (N=20) o modelo chamou a tool em todas e respondeu
+Florianópolis/SC com o código 4205407 em todas. Em 3 delas ele passou
+`uf="SC"` junto da frase: a UF filtra o que a frase achou, em vez de trocar a
+busca na frase pela busca do texto inteiro como nome. A redação da resposta
+muda a cada execução; o que a tool devolve, não.
 
 ## Quanto custa
 

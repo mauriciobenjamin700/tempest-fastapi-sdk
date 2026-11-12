@@ -128,9 +128,15 @@ def municipality_search_tool(
     """Build a tool that finds Brazilian municipalities in a text.
 
     Uses :func:`~tempest_fastapi_sdk.geo.find_municipalities_in_text` on the
-    text; when it finds nothing (or a state is given), falls back to
+    text, keeping only the given state when the model passes ``uf``; when
+    that finds nothing, falls back to
     :func:`~tempest_fastapi_sdk.geo.search_municipalities` on the whole text
     as a name. Offline: no model and no network.
+
+    The state filters the sentence's matches rather than replacing the
+    sentence search: a model that passed ``uf="SC"`` together with
+    ``"vou pra floripa semana que vem"`` got "nothing found" before, because
+    the whole sentence was looked up as a city name.
 
     Args:
         name (str): The function name the model calls.
@@ -144,6 +150,7 @@ def municipality_search_tool(
         find_municipalities_in_text,
         search_municipalities,
     )
+    from tempest_fastapi_sdk.utils.locations import UFEnum
 
     async def handler(arguments: dict[str, Any], _context: AgentContext) -> str:
         """Find the municipalities and render one per line.
@@ -162,15 +169,22 @@ def municipality_search_tool(
         text = str(arguments.get("text", "")).strip()
         if not text:
             raise AgentToolError("'text' is required")
-        uf = str(arguments.get("uf") or "").strip() or None
-        try:
-            matches = (
-                [] if uf is not None else find_municipalities_in_text(text, limit=limit)
-            )
-            if not matches:
-                matches = search_municipalities(text, uf=uf, limit=limit)
-        except ValueError as exc:
-            raise AgentToolError(f"'uf' must be a Brazilian state: {uf!r}") from exc
+        raw_uf = str(arguments.get("uf") or "").strip().upper()
+        state: UFEnum | None = None
+        if raw_uf:
+            try:
+                state = UFEnum(raw_uf)
+            except ValueError as exc:
+                raise AgentToolError(
+                    f"'uf' must be a Brazilian state: {raw_uf!r}"
+                ) from exc
+        matches = [
+            match
+            for match in find_municipalities_in_text(text, limit=None)
+            if state is None or match.municipality.uf is state
+        ][:limit]
+        if not matches:
+            matches = search_municipalities(text, uf=state, limit=limit)
         if not matches:
             return f"No Brazilian municipality found in {text!r}."
         lines = []

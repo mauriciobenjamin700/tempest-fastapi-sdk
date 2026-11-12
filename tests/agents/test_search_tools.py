@@ -98,3 +98,17 @@ class TestMunicipalitySearchTool:
         assert await _call(
             municipality_search_tool(), {"text": "estou feliz hoje"}
         ) == ("No Brazilian municipality found in 'estou feliz hoje'.")
+
+
+async def test_a_state_filters_the_sentence_instead_of_replacing_it() -> None:
+    """Cenário: o modelo passa ``uf="SC"`` junto da frase inteira.
+
+    Esperado: Florianópolis achada na frase; antes a frase inteira era
+    buscada como nome de cidade e a tool respondia "nada encontrado" (2 de
+    11 execuções do exemplo com ``qwen2.5:3b``).
+    """
+    text = await _call(
+        municipality_search_tool(),
+        {"text": "vou pra floripa semana que vem", "uf": "SC"},
+    )
+    assert text.startswith("Florianópolis/SC — IBGE 4205407")

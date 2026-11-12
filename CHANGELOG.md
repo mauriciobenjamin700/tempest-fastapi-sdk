@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coordenada a partir de uma frase ou nome, `uf` opcional, offline) e
   `name_search_tool(index)` (qualquer `FuzzyIndex`, `SemanticNameIndex` ou
   `HybridNameIndex`). Com `qwen2.5:3b`, o agente chamou a tool e respondeu a
-  cidade certa em 3 de 3 execuções.
+  cidade certa em 20 de 20 execuções (em 3 o modelo passou `uf`, que filtra
+  o que a frase achou).
 - `tempest_fastapi_sdk.text`, sem dependência: `normalize_text` /
   `strip_accents` / `tokenize` (forma canônica sem acento, caixa e
   pontuação; tokens com o offset no texto original), `levenshtein` (com troca
