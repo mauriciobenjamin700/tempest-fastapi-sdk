@@ -23,6 +23,13 @@ from tempest_fastapi_sdk.genai.rag.fusion import (
 )
 from tempest_fastapi_sdk.genai.rag.hybrid import HybridRetriever as HybridRetriever
 from tempest_fastapi_sdk.genai.rag.memory import MemoryHit as MemoryHit
+from tempest_fastapi_sdk.genai.rag.name_search import (
+    HybridNameIndex as HybridNameIndex,
+)
+from tempest_fastapi_sdk.genai.rag.name_search import NameMatch as NameMatch
+from tempest_fastapi_sdk.genai.rag.name_search import (
+    SemanticNameIndex as SemanticNameIndex,
+)
 from tempest_fastapi_sdk.genai.rag.pdf import PdfReader as PdfReader
 from tempest_fastapi_sdk.genai.rag.pg_memory import PgChatMemory as PgChatMemory
 from tempest_fastapi_sdk.genai.rag.rerank import Reranker as Reranker
@@ -52,9 +59,11 @@ __all__: list[str] = [
     "ContentExtractor",
     "Document",
     "ExtractionResult",
+    "HybridNameIndex",
     "HybridRetriever",
     "InMemoryVectorStore",
     "MemoryHit",
+    "NameMatch",
     "PdfPage",
     "PdfReader",
     "PgChatMemory",
@@ -63,6 +72,7 @@ __all__: list[str] = [
     "Retriever",
     "SearchResult",
     "SearxngBackend",
+    "SemanticNameIndex",
     "SupportsEmbed",
     "SupportsRerank",
     "SupportsRetrieve",

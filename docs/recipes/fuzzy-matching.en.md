@@ -6,9 +6,10 @@ coordinate, without an external service and without failing on a typo.
 
 To match what the user typed against a **known list of names** (cities,
 products, categories), lexical matching beats an embedding: no model to
-download, no GPU, and a typo costs one edit. Semantic search over free-form
-passages stays in [`genai`](genai.md) (`Embedder`, `Retriever`,
-`HybridRetriever`).
+download, no GPU, and a typo costs one edit. When the user describes it in
+**other words**, this same page shows search by meaning (embeddings), the combined search, and the
+agent tools; semantic search over long passages stays in [`genai`](genai.md)
+(`Retriever`, `HybridRetriever`).
 
 This recipe has two parts:
 
@@ -153,6 +154,119 @@ São Paulo -23.5329 -46.6395 True
 that state only. `br_municipalities()` returns the whole list, ordered by
 code.
 
+## By meaning: AI search
+
+`FuzzyIndex` finds the name **spelled** alike; it does not find the name that
+**means** the same. "tênis de corrida" shares no letters with "calçado
+esportivo". That is what an embedding is for, and `genai.rag` brings two
+indexes over any SDK embedder (`Embedder`, `OllamaEmbedder`,
+`OpenAICompatEmbedder`, `OnnxEmbedder`):
+
+- **`SemanticNameIndex`**: ranks the names by cosine similarity to the query.
+  The names are embedded once, in a batch, on the first search.
+- **`HybridNameIndex`**: runs both sides, spelling (word by word, typos
+  included) and meaning, and fuses the rankings with
+  `reciprocal_rank_fusion`. Each result carries `lexical_score` and
+  `semantic_score`, so you can see why it came back.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import HybridNameIndex
+
+PRODUCTS: list[tuple[str, int]] = [
+    ("Calçado esportivo para corrida", 1),
+    ("Camiseta básica de algodão", 2),
+    ("Calça jeans masculina", 3),
+    ("Garrafa térmica 1 litro", 4),
+    ("Mochila para notebook", 5),
+    ("Fone de ouvido bluetooth", 6),
+]
+
+
+async def main() -> None:
+    embedder = OllamaEmbedder(model="nomic-embed-text")
+    index: HybridNameIndex[int] = HybridNameIndex(embedder, PRODUCTS)
+    for query in ["camizeta basica", "tênis de corrida", "headphone sem fio"]:
+        best = (await index.search(query, limit=1))[0]
+        spelling = "-" if best.lexical_score is None else f"{best.lexical_score:.2f}"
+        meaning = "-" if best.semantic_score is None else f"{best.semantic_score:.2f}"
+        print(f"{query!r} -> {best.key} (spelling {spelling}, meaning {meaning})")
+
+
+asyncio.run(main())
+```
+
+Output, with `nomic-embed-text` on a local Ollama:
+
+```text
+'camizeta basica' -> Camiseta básica de algodão (spelling 0.94, meaning 0.84)
+'tênis de corrida' -> Calçado esportivo para corrida (spelling 0.50, meaning 0.64)
+'headphone sem fio' -> Fone de ouvido bluetooth (spelling -, meaning 0.57)
+```
+
+- `"camizeta basica"` came through **both** sides: spelling matches both
+  misspelled words, and so does meaning.
+- `"tênis de corrida"` came through **meaning**. The word "corrida" matches,
+  but alone it covers only half the query.
+- `"headphone sem fio"` came **only** through meaning: no word matches.
+
+!!! info "Short words do not count"
+    The spelling side ignores words shorter than three letters
+    (`MIN_LEXICAL_WORD_LENGTH`). Without that, the "de" in "tênis de corrida"
+    matched every name holding a "de".
+
+!!! tip "When to use which"
+    A list of proper names (cities, people, brands): `FuzzyIndex`, no model.
+    A catalogue where users describe what they want in other words:
+    `HybridNameIndex`, which keeps spelling as a signal of its own instead
+    of relying on the model having seen the misspelling.
+
+## In a conversation: agent tool
+
+An agent talking to a user needs to find the city without you writing the
+step. `municipality_search_tool()` gives it the municipality lookup (sentence
+or name, optional `uf`), and `name_search_tool(index)` exposes any of the
+three indexes.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.agents import Agent, municipality_search_tool
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+async def main() -> None:
+    agent = Agent(
+        OllamaGenerator(model="qwen2.5:3b"),
+        tools=[municipality_search_tool()],
+    )
+    run = await agent.run(
+        "O usuário escreveu: 'vou pra floripa semana que vem'. "
+        "Qual é a cidade, a UF e o código IBGE?"
+    )
+    print([step.name for step in run.steps if step.kind == "tool"])
+    print(run.output)
+
+
+asyncio.run(main())
+```
+
+Output of one of the runs with `qwen2.5:3b` on a local Ollama:
+
+```text
+['find_brazilian_city']
+A cidade é Florianópolis, que está localizada no estado de Santa Catarina (UF SC). Seu código IBGE é 4205407 e as coordenadas geográficas são lat -27.5945, lon -48.5477.
+```
+
+Over 20 runs in a row (N=20) the model called the tool in every one and
+answered Florianópolis/SC with code 4205407 in every one. In 3 of them it
+passed `uf="SC"` along with the sentence: the state filters what the
+sentence found, instead of replacing the sentence search with a lookup of
+the whole text as a name. The answer's wording changes from run to run; what
+the tool returns does not.
+
 ## What it costs
 
 Measured on x86_64 with Python 3.12.7:
@@ -187,3 +301,7 @@ The index is built once per process and stays in memory.
 - **`search_municipalities` / `municipality_by_ibge_code`**: lookup by name
   (typos included) and by code, with coordinate and capital.
 - Homonyms without a state come back tied. The decision is yours.
+- **`SemanticNameIndex` / `HybridNameIndex`**: search by meaning, and by
+  meaning plus spelling, over any SDK embedder.
+- **`municipality_search_tool` / `name_search_tool`**: the same searches as
+  an agent tool.

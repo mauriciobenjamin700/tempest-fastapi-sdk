@@ -4409,3 +4409,18 @@ palavra comum (`UNCUED_SINGLE_WORD_FACTOR`), regiões do DF vêm do
 rapidfuzz) e homônimos sem UF empatados (sem população). Medido: 45,9 ms a
 primeira chamada, 0,1-3,3 ms por frase. Receita: `docs/recipes/fuzzy-matching.md`.
 
+## Busca por significado e tools de agente (2026-11-12)
+
+`genai/rag/name_search.py`: `SemanticNameIndex` (embed em lote via
+`_embed_passages`, consulta via `_embed_query`, vetores normalizados, produto
+matricial com NumPy ou loop puro) e `HybridNameIndex` (FuzzyIndex de
+palavras ≥ `MIN_LEXICAL_WORD_LENGTH`, nota = média da melhor similaridade por
+palavra da consulta; RRF com o lado semântico). `agents/search_tools.py`:
+`name_search_tool`, `municipality_search_tool` (com `uf`, filtra o achado da
+frase; a primeira versão buscava a frase inteira como nome e falhou 2 de 11
+vezes, achado da auditoria). Validado com modelos reais no Ollama local
+(`nomic-embed-text`, `qwen2.5:3b`: 20/20 com a correção). Testes com embedder
+determinístico de conceitos: `tests/genai/test_name_search.py`,
+`tests/agents/test_search_tools.py`. Empilhado sobre o PR da busca em texto
+(#749).
+

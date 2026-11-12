@@ -94,6 +94,12 @@ from tempest_fastapi_sdk.agents.schemas import AgentStep as AgentStep
 from tempest_fastapi_sdk.agents.schemas import StepKindEnum as StepKindEnum
 from tempest_fastapi_sdk.agents.schemas import StopReasonEnum as StopReasonEnum
 from tempest_fastapi_sdk.agents.schemas import ToolResult as ToolResult
+from tempest_fastapi_sdk.agents.search_tools import (
+    municipality_search_tool as municipality_search_tool,
+)
+from tempest_fastapi_sdk.agents.search_tools import (
+    name_search_tool as name_search_tool,
+)
 from tempest_fastapi_sdk.agents.skills import LOAD_SKILL_TOOL as LOAD_SKILL_TOOL
 from tempest_fastapi_sdk.agents.skills import Skill as Skill
 from tempest_fastapi_sdk.agents.skills import discover_skills as discover_skills
@@ -186,6 +192,8 @@ __all__: list[str] = [
     "make_agent_router",
     "make_agent_run_model",
     "make_fact_model",
+    "municipality_search_tool",
+    "name_search_tool",
     "recall_prompt",
     "refine",
     "retrieve_tool",
