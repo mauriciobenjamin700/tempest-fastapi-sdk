@@ -158,6 +158,17 @@ firebase = [
     # construction time, and stays out of [all].
     "firebase-admin>=7.5.0",
 ]
+fastmcp = [
+    # MCP in both directions: mount a FastMCP server into the app
+    # (tempest_fastapi_sdk.mcp.mount_mcp) and adapt an external server's tools
+    # into AgentTools (MCPToolset). The floor is 4.1.0 because it is the first
+    # release that validates OpenAPI path-parameter segments, and
+    # add_fastapi_routes hands model-chosen arguments to exactly that code
+    # path. fastmcp 4 brings its own HTTP stack (httpx2) and requires
+    # starlette>=1.0.1, which is why it is an opt-in extra, imported lazily,
+    # and stays out of [all].
+    "fastmcp>=4.1.0",
+]
 pdf = [
     "weasyprint>=69.0",
     "jinja2>=3.1.6",
@@ -624,6 +635,12 @@ ignore = [
 "tempest_fastapi_sdk/integrations/payment/openpix/__init__.py" = ["F405"]
 "tempest_fastapi_sdk/integrations/payment/mercado_pago/__init__.py" = ["F405"]
 "tempest_fastapi_sdk/integrations/messaging/zap/__init__.py" = ["F405"]
+
+# `src` includes `tests`, so the `tests/mcp/` package makes ruff classify the
+# third-party `mcp` (the MCP SDK that fastmcp depends on) as first-party and
+# sort its imports below `mcp_types`.
+[tool.ruff.lint.isort]
+known-third-party = ["mcp"]
 
 [tool.ruff.format]
 quote-style = "double"

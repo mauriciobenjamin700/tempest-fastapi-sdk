@@ -724,6 +724,25 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## MCP (Model Context Protocol)
+
+### `tempest_fastapi_sdk.mcp`
+
+::: tempest_fastapi_sdk.mcp
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+::: tempest_fastapi_sdk.mcp.client.DEFAULT_MCP_CALL_TIMEOUT
+::: tempest_fastapi_sdk.mcp.server.DEFAULT_FORWARDED_HEADERS
+::: tempest_fastapi_sdk.mcp.server.DEFAULT_MCP_TOOL_TIMEOUT
+::: tempest_fastapi_sdk.mcp.server.PRINCIPAL_STATE_KEY
+
+---
+
 ## Modelops
 
 ### `tempest_fastapi_sdk.modelops`
