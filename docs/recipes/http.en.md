@@ -394,6 +394,21 @@ With the flag on, `POST /login` with a short `password` answers:
     to `VALIDATION.value_error`, and `ValidationValueError` subclasses
     `ValueError`, so every `except ValueError` keeps catching it.
 
+!!! check "A placeholder never reaches the client"
+    A template whose param is missing from `ctx` is no longer sent raw.
+    The real case: pydantic's e-mail check (`EmailStr`) reports
+    `value_error` with `ctx={"reason": ...}`, no `error`, and the client
+    literally received `Valor inválido: {error}`. The message now falls
+    back to the same locale's generic `VALIDATION.INVALID_VALUE`:
+
+    ```json
+    {"loc": ["body", "email"], "type": "value_error", "msg": "Valor inválido"}
+    ```
+
+    Underneath, `MessageCatalog.resolve` returns `None` when a param is
+    missing (it used to return the template, braces included).
+    `MessageCatalog.template(key, locale)` reads the raw string.
+
 !!! warning "Turning the flag on changes the body, so it is opt-in"
     A frontend doing `body.detail.map(...)` and a client generated from the
     OpenAPI schema both model the 422 as an array. That is why the default

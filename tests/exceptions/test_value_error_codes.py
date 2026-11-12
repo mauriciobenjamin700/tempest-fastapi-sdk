@@ -199,7 +199,7 @@ class TestCatalogKeys:
         missing = [
             code
             for code in codes
-            if catalog.resolve(f"{VALIDATION_KEY_PREFIX}{code}", locale) is None
+            if catalog.template(f"{VALIDATION_KEY_PREFIX}{code}", locale) is None
         ]
 
         assert missing == []
@@ -208,7 +208,7 @@ class TestCatalogKeys:
         """The namespace is shared; the casing is what keeps it safe."""
         catalog = default_message_catalog()
 
-        assert catalog.resolve(f"{VALIDATION_KEY_PREFIX}value_error", "pt-BR") == (
+        assert catalog.template(f"{VALIDATION_KEY_PREFIX}value_error", "pt-BR") == (
             "Valor inválido: {error}"
         )
 

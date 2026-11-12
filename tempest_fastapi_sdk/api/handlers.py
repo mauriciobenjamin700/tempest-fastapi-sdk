@@ -78,6 +78,11 @@ def _localize_error(
         catalog (MessageCatalog): The catalog to resolve against.
         locale (str): The negotiated locale.
 
+    When the type's template exists but ``ctx`` lacks a param it names,
+    the answer is the generic ``VALIDATION.INVALID_VALUE`` of the same
+    locale, not pydantic's English ``msg``: the locale was supported, only
+    the detail was missing.
+
     Returns:
         str | None: The localized message, or ``None`` when neither key
         is in the catalog — the caller then keeps pydantic's ``msg``.
@@ -95,11 +100,11 @@ def _localize_error(
         )
         if localized is not None:
             return localized
-    return catalog.resolve(
-        f"{VALIDATION_KEY_PREFIX}{error_type}",
-        locale,
-        context,
-    )
+    key = f"{VALIDATION_KEY_PREFIX}{error_type}"
+    localized = catalog.resolve(key, locale, context)
+    if localized is None and catalog.template(key, locale) is not None:
+        return catalog.resolve(f"{VALIDATION_KEY_PREFIX}INVALID_VALUE", locale)
+    return localized
 
 
 def _notify_after_response(

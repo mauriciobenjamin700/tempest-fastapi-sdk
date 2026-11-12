@@ -47,7 +47,7 @@ one identifier while the reader gets the sentence that fits.
 @pytest.mark.parametrize("key", CODES + MESSAGE_KEYS)
 def test_every_code_has_a_sentence(key: str, locale: str) -> None:
     """A missing entry falls back to the raise site's untranslatable English."""
-    assert default_message_catalog().resolve(key, locale)
+    assert default_message_catalog().template(key, locale)
 
 
 @pytest.mark.parametrize(
@@ -70,6 +70,6 @@ def test_dynamic_values_travel_as_placeholders(
     Every locale needs the same placeholders, or one language shows the
     path and the other does not.
     """
-    message = default_message_catalog().resolve(key, locale)
+    message = default_message_catalog().template(key, locale)
     for placeholder in placeholders:
         assert placeholder in message
