@@ -554,3 +554,21 @@ def test_municipality_by_name_links_old_spellings_with_a_cutoff(
     assert found is not None
     assert found.name == official
     assert municipality_by_name(name, uf) is None
+
+
+def test_day_missing_in_the_current_month_rolls_to_the_next() -> None:
+    """``"dia 31"`` said on 14 April (30 days) is 31 May, not no date."""
+    intent = parse_trip_intent("de Picos pra Floriano dia 31", date(2026, 4, 14))
+
+    assert intent.departure_date == date(2026, 5, 31)
+    assert intent.unresolved_date is None
+
+
+def test_phrase_full_of_markers_spends_a_bounded_fuzzy_budget() -> None:
+    """Forty ``"de xyzwq pra qwzxy"`` do not scan the index forty times."""
+    text = " ".join(["de xyzwq pra qwzxy"] * 40)
+
+    intent = parse_trip_intent(text, TODAY)
+
+    assert intent.origin is None
+    assert intent.destination is None
