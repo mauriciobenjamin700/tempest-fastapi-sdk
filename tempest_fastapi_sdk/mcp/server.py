@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.params import Depends as DependsParam
 
+from tempest_fastapi_sdk.exceptions import MISSING_TOKEN_MESSAGE, UnauthorizedException
 from tempest_fastapi_sdk.mcp._dependency import require_fastmcp
 
 if TYPE_CHECKING:
@@ -115,7 +116,11 @@ def mount_mcp(
         principal (Callable[..., Any] | None): A dependency that resolves the
             caller — typically your ``current_user``. It runs on every MCP
             request, refuses the ones it would refuse on a route, and its
-            result is what :func:`mcp_principal` returns inside a tool.
+            result is what :func:`mcp_principal` returns inside a tool. A
+            ``None`` result — what a ``soft=True`` dependency returns for an
+            anonymous request — is answered with ``401`` unless
+            ``allow_unauthenticated`` is ``True``, so an optional-user
+            dependency never opens the endpoint by accident.
         dependencies (Sequence[DependsParam]): Further gates, as on
             ``APIRouter(dependencies=...)`` — a permission or role check.
         stateless (bool): Serve each request on its own, without an
@@ -126,9 +131,10 @@ def mount_mcp(
             features that need a session (progress notifications on a later
             request, sampling).
         allow_unauthenticated (bool): Serve without ``principal`` and without
-            ``dependencies``. Refused otherwise, because an MCP endpoint
-            runs tools on the caller's behalf and an open one runs them for
-            anyone who finds the URL.
+            ``dependencies``, or let a ``principal`` that resolved ``None``
+            through. Refused otherwise, because an MCP endpoint runs tools on
+            the caller's behalf and an open one runs them for anyone who
+            finds the URL.
 
     Raises:
         ValueError: When neither ``principal`` nor ``dependencies`` is given
@@ -154,6 +160,8 @@ def mount_mcp(
             request: Request,
             caller: Any = Depends(principal),
         ) -> Response:
+            if caller is None and not allow_unauthenticated:
+                raise UnauthorizedException(message=MISSING_TOKEN_MESSAGE)
             setattr(request.state, PRINCIPAL_STATE_KEY, caller)
             return _ASGIPassthrough(transport)
 

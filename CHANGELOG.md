@@ -40,7 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `principal=` (e as de `dependencies=`) roda como nas suas rotas, e um
     cliente sem token recebe o mesmo `401` `UNAUTHORIZED` da API antes de
     chegar ao servidor MCP. Sem `principal=` nem `dependencies=` a montagem
-    levanta `ValueError`, salvo `allow_unauthenticated=True`. O lifespan da
+    levanta `ValueError`, salvo `allow_unauthenticated=True`; pela mesma
+    regra, um `principal=` que resolve `None` (dependência `soft=True`)
+    recebe `401`. O lifespan da
     app é composto em volta do transporte (o MCP para antes dos seus
     recursos fecharem), e o transporte roda sem sessão por padrão
     (`stateless=True`). `mcp_principal(tipo)` devolve, dentro da ferramenta, o
@@ -55,8 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     mesmo processo com `Authorization`/`Cookie` do cliente MCP repassados
     (`forward_headers=`), de modo que a rota autentica quem chamou o MCP;
     esses cabeçalhos saem do schema e um valor posto pelo modelo é
-    sobrescrito. Sem seleção, ou com `operation_id`/tag inexistente, levanta
-    `ValueError`.
+    sobrescrito. A chamada à rota leva o `Host` e o endereço do cliente da
+    requisição MCP, e uma exceção não tratada na rota chega ao cliente como
+    o `500` da aplicação, sem o texto da exceção. Sem seleção, ou com
+    `operation_id`/tag inexistente, levanta `ValueError`.
   - **Consumir.** `MCPToolset.stdio(...)` / `MCPToolset.http(...)` conecta a
     outro servidor MCP e devolve as ferramentas dele como `AgentTool`s
     (`prefix=`, `include=`). Timeout (padrão 30 s, encurtado pelo `deadline`

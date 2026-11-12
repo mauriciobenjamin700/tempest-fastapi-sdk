@@ -1152,7 +1152,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   transport behind an **ordinary FastAPI route**, so the SDK's own auth
   dependencies refuse an unauthenticated client with the API's `401` before
   the MCP server sees the request (no `principal`/`dependencies` →
-  `ValueError` unless `allow_unauthenticated=True`); `stateless=True` by
+  `ValueError` unless `allow_unauthenticated=True`; a `principal` that
+  resolves `None` — a `soft=True` dependency — is answered `401` under the
+  same rule); `stateless=True` by
   default so no `Mcp-Session-Id` outlives or changes hands with a token;
   `app.router.lifespan_context` is wrapped (app lifespan outside, transport
   inside); `mcp_principal(kind)` reads the resolved caller inside a tool.
@@ -1165,7 +1167,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   the MCP caller's `Authorization`/`Cookie`** (`forward_headers=`) so the
   route's own dependencies authenticate the caller; forwarded headers are
   stripped from the tool schema and a model-supplied value is overwritten or
-  removed; `app.openapi_schema` cache restored. **Consume:**
+  removed; the route call carries the MCP request's `Host` and client
+  address, and runs with `raise_app_exceptions=False`, so an unhandled route
+  exception reaches the client as the app's `500`, not as its text;
+  `app.openapi_schema` cache restored. **Consume:**
   `MCPToolset.stdio/.http` (or a configured `fastmcp.Client`) →
   `await toolset.tools()` → `AgentTool`s (`prefix=`, `include=`); timeout
   (30 s, shortened by the run's `deadline`; an exhausted run refuses

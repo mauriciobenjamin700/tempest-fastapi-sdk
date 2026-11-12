@@ -140,6 +140,13 @@ O que `principal=` resolveu fica disponível dentro da ferramenta por
 tipado. Gates extras (permissão, papel) entram em `dependencies=`, como num
 `APIRouter`.
 
+Uma dependência `soft=True` (a que devolve `None` para quem não mandou token,
+em vez de recusar) não abre o endpoint: se `principal=` resolve `None`, o
+`mount_mcp` responde o mesmo `401` acima. Para aceitar chamador anônimo de
+propósito, passe `allow_unauthenticated=True` — aí o anônimo chega à
+ferramenta, e `mcp_principal(dict)` levanta `TypeError` para ele (`None` não é
+um `dict`).
+
 !!! danger "Endpoint aberto só por escolha explícita"
     `mount_mcp` sem `principal=` e sem `dependencies=` levanta `ValueError`. Um
     endpoint MCP executa ferramentas em nome de quem chama; aberto, executa para
@@ -204,6 +211,12 @@ as próprias dependências, e autentica **quem chamou o MCP** — no exemplo, o
 `owner` do pedido é o `sub` do token do cliente. Esses cabeçalhos também saem
 do schema da ferramenta, e um valor que o modelo coloque nos argumentos é
 sobrescrito (ou removido, se a requisição MCP não tinha o cabeçalho).
+
+A rota vê a chamada como veria a requisição MCP: o `Host` e o endereço do
+cliente são os da requisição MCP (um `TrustedHostMiddleware` aceita, e um
+limite por IP conta cada cliente no próprio balde), e uma exceção não tratada
+na rota chega ao cliente MCP como o `500` que a aplicação responde por HTTP —
+nunca com o texto da exceção.
 
 !!! tip "Cabeçalho de `make_token_dependency`"
     Uma rota protegida por segredo compartilhado lê outro cabeçalho

@@ -67,6 +67,11 @@ def _selected_operations(
 def _forwarding_hook(forward_headers: set[str]) -> Any:
     """Build the request hook that carries the MCP caller's credentials.
 
+    The ``Host`` of the MCP request is copied too, so a
+    ``TrustedHostMiddleware`` accepts the call and URLs the route builds
+    (``request.url_for``) name the host the caller used, not the internal
+    base URL.
+
     Args:
         forward_headers (set[str]): Lower-case header names to forward.
 
@@ -79,6 +84,8 @@ def _forwarding_hook(forward_headers: set[str]) -> Any:
             incoming = get_http_request().headers
         except RuntimeError:
             incoming = None
+        if incoming is not None and "host" in incoming:
+            request.headers["host"] = incoming["host"]
         for header in forward_headers:
             value = incoming.get(header) if incoming is not None else None
             if value is None:
@@ -87,6 +94,45 @@ def _forwarding_hook(forward_headers: set[str]) -> Any:
                 request.headers[header] = value
 
     return forward
+
+
+class _CallerASGITransport(httpx2.ASGITransport):
+    """An in-process transport that presents the MCP caller's address.
+
+    ``httpx2.ASGITransport`` puts a fixed ``("127.0.0.1", 123)`` in every
+    scope, so every route call made for any MCP client would share one
+    loopback address: one per-IP rate-limit bucket for all of them, and
+    access logs that name nobody. The ``client`` read here is the address
+    of the MCP request being served, falling back to the fixed one outside
+    an HTTP request (a stdio server).
+    """
+
+    _fallback_client: tuple[str, int] = ("127.0.0.1", 123)
+
+    @property
+    def client(self) -> tuple[str, int]:
+        """The peer address put in the route call's ASGI scope.
+
+        Returns:
+            tuple[str, int]: The MCP request's client address, or the
+            fallback outside an HTTP request.
+        """
+        try:
+            peer = get_http_request().client
+        except RuntimeError:
+            peer = None
+        if peer is None:
+            return self._fallback_client
+        return (peer.host, peer.port)
+
+    @client.setter
+    def client(self, value: tuple[str, int]) -> None:
+        """Keep the address used outside an HTTP request.
+
+        Args:
+            value (tuple[str, int]): The fallback address.
+        """
+        self._fallback_client = value
 
 
 def _strip_forwarded_parameters(forward_headers: set[str]) -> Any:
@@ -134,6 +180,12 @@ def build_route_provider(
 ) -> tuple[OpenAPIProvider, list[str]]:
     """Build the provider that turns the selected routes into tools.
 
+    The in-process client runs with ``raise_app_exceptions=False``: an
+    unhandled exception in a route reaches the tool as the ``500`` the app
+    answers over HTTP, never as the exception itself, whose text FastMCP
+    would otherwise hand to the MCP client (``Error calling tool 'x':
+    <message>``) — a DSN or a token included.
+
     Args:
         spec (dict[str, Any]): The app's OpenAPI document (a private copy).
         app (FastAPI): The app the tools call, in process.
@@ -149,7 +201,7 @@ def build_route_provider(
     selected = _selected_operations(spec, operations, tags)
     chosen = set(selected)
     client = httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=app),
+        transport=_CallerASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://fastapi",
         timeout=timeout,
         event_hooks={"request": [_forwarding_hook(forward_headers)]},

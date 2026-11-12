@@ -140,6 +140,13 @@ Whatever `principal=` resolved is available inside a tool through
 already typed. Extra gates (permission, role) go in `dependencies=`, as on an
 `APIRouter`.
 
+A `soft=True` dependency (the kind that returns `None` for a request without a
+token instead of refusing it) does not open the endpoint: when `principal=`
+resolves `None`, `mount_mcp` answers the same `401` as above. To accept
+anonymous callers on purpose, pass `allow_unauthenticated=True` — then the
+anonymous caller reaches the tool, and `mcp_principal(dict)` raises `TypeError`
+for it (`None` is not a `dict`).
+
 !!! danger "An open endpoint only by explicit choice"
     `mount_mcp` with neither `principal=` nor `dependencies=` raises
     `ValueError`. An MCP endpoint runs tools on behalf of whoever calls it;
@@ -206,6 +213,12 @@ MCP** — in the example, the order's `owner` is the `sub` of the client's token
 Those headers are also taken out of the tool's schema, and a value the model
 puts in the arguments is overwritten (or removed, when the MCP request had no
 such header).
+
+The route sees the call as it would see the MCP request: the `Host` and the
+client address are the MCP request's (a `TrustedHostMiddleware` accepts it, and
+a per-IP limit counts each client in its own bucket), and an unhandled
+exception in the route reaches the MCP client as the `500` the app answers over
+HTTP — never with the exception's text.
 
 !!! tip "The `make_token_dependency` header"
     A route protected by a shared secret reads another header (`X-Token` by
