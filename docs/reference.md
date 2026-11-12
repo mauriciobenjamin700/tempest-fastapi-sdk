@@ -633,6 +633,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.queue.topology.ExchangeSpec
 ::: tempest_fastapi_sdk.queue.topology.ExchangeBinding
 ::: tempest_fastapi_sdk.queue.topology.ExchangeKindEnum
+::: tempest_fastapi_sdk.queue.topology.OffsetResetEnum
 ::: tempest_fastapi_sdk.queue.topology.QueueTypeEnum
 ::: tempest_fastapi_sdk.queue.topology.TransportEnum
 ::: tempest_fastapi_sdk.queue.topology.UnsupportedTopologyError

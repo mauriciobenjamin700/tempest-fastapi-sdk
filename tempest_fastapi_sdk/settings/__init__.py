@@ -35,6 +35,13 @@ from tempest_fastapi_sdk.settings.mixins import (
     HostedGenAISettings as HostedGenAISettings,
 )
 from tempest_fastapi_sdk.settings.mixins import JWTSettings as JWTSettings
+from tempest_fastapi_sdk.settings.mixins import (
+    KafkaSaslMechanismEnum as KafkaSaslMechanismEnum,
+)
+from tempest_fastapi_sdk.settings.mixins import (
+    KafkaSecurityProtocolEnum as KafkaSecurityProtocolEnum,
+)
+from tempest_fastapi_sdk.settings.mixins import KafkaSettings as KafkaSettings
 from tempest_fastapi_sdk.settings.mixins import LogSettings as LogSettings
 from tempest_fastapi_sdk.settings.mixins import (
     MercadoPagoSettings as MercadoPagoSettings,
@@ -84,6 +91,9 @@ __all__: list[str] = [
     "HostBridgeSettings",
     "HostedGenAISettings",
     "JWTSettings",
+    "KafkaSaslMechanismEnum",
+    "KafkaSecurityProtocolEnum",
+    "KafkaSettings",
     "LogSettings",
     "MercadoPagoSettings",
     "MinIOSettings",

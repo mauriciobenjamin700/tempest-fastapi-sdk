@@ -1716,6 +1716,15 @@ if TYPE_CHECKING:
         JWTSettings as JWTSettings,
     )
     from tempest_fastapi_sdk.settings import (
+        KafkaSaslMechanismEnum as KafkaSaslMechanismEnum,
+    )
+    from tempest_fastapi_sdk.settings import (
+        KafkaSecurityProtocolEnum as KafkaSecurityProtocolEnum,
+    )
+    from tempest_fastapi_sdk.settings import (
+        KafkaSettings as KafkaSettings,
+    )
+    from tempest_fastapi_sdk.settings import (
         LogSettings as LogSettings,
     )
     from tempest_fastapi_sdk.settings import (
@@ -2935,6 +2944,9 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "HostBridgeSettings": "tempest_fastapi_sdk.settings",
     "HostedGenAISettings": "tempest_fastapi_sdk.settings",
     "JWTSettings": "tempest_fastapi_sdk.settings",
+    "KafkaSaslMechanismEnum": "tempest_fastapi_sdk.settings",
+    "KafkaSecurityProtocolEnum": "tempest_fastapi_sdk.settings",
+    "KafkaSettings": "tempest_fastapi_sdk.settings",
     "LogSettings": "tempest_fastapi_sdk.settings",
     "MercadoPagoSettings": "tempest_fastapi_sdk.settings",
     "MinIOSettings": "tempest_fastapi_sdk.settings",
@@ -3527,6 +3539,9 @@ __all__: list[str] = [
     "JSONFormatter",
     "JWTSettings",
     "JWTUtils",
+    "KafkaSaslMechanismEnum",
+    "KafkaSecurityProtocolEnum",
+    "KafkaSettings",
     "LatitudeField",
     "Lens",
     "Liveness",
