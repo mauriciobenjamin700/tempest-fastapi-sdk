@@ -1789,6 +1789,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pedido-de-viagem-de-onde-pra-onde-quando" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pedido de viagem: de onde, pra onde, quando
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#por-nome-e-por-codigo" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5292,19 +5303,100 @@ correspondência exata, passa pela busca aproximada com <code>cutoff=0.85</code>
 <code>"trabalho em sao paolo"</code> acha São Paulo com <code>0.80</code>: a semelhança do nome
 (<code>0.89</code>) vezes <code>0.9</code>, porque nenhuma UF confirmou.</p>
 </div>
-<h2 id="por-nome-e-por-codigo">Por nome e por código<a class="headerlink" href="#por-nome-e-por-codigo" title="Permanent link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="n">municipality_by_ibge_code</span><span class="p">,</span> <span class="n">search_municipalities</span>
+<h2 id="pedido-de-viagem-de-onde-pra-onde-quando">Pedido de viagem: de onde, pra onde, quando<a class="headerlink" href="#pedido-de-viagem-de-onde-pra-onde-quando" title="Permanent link">&para;</a></h2>
+<p>Achar a cidade é metade do trabalho de uma busca de viagem. A outra metade é
+saber o <strong>papel</strong> dela: em "quero ir de Teresina pra Parnaíba sexta de
+manhã", Teresina é a origem, Parnaíba o destino, sexta a data e manhã o
+período. <code>parse_trip_intent</code> lê tudo isso numa frase digitada ou transcrita:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">date</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="n">search_municipalities</span><span class="p">(</span><span class="s2">"sao paolo"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">municipality</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">match</span><span class="o">.</span><span class="n">municipality</span><span class="o">.</span><span class="n">uf</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">score</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">city</span> <span class="o">=</span> <span class="n">municipality_by_ibge_code</span><span class="p">(</span><span class="mi">3550308</span><span class="p">)</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="k">assert</span> <span class="n">city</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">city</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">coordinate</span><span class="o">.</span><span class="n">latitude</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">coordinate</span><span class="o">.</span><span class="n">longitude</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">capital</span><span class="p">)</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_trip_intent</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">today</span> <span class="o">=</span> <span class="n">date</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">14</span><span class="p">)</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="p">[</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="s2">"quero ir de teresinha pra parnaiba sexta de manhã"</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="s2">"de Pico pra Sobrau amanhã"</span><span class="p">,</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="s2">"de floripa pra sampa dia 20"</span><span class="p">,</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="s2">"de pedro segundo pra piripiri à noite"</span><span class="p">,</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="p">]:</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">intent</span> <span class="o">=</span> <span class="n">parse_trip_intent</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">today</span><span class="p">)</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="n">origin</span> <span class="o">=</span> <span class="n">intent</span><span class="o">.</span><span class="n">origin</span><span class="o">.</span><span class="n">name</span> <span class="k">if</span> <span class="n">intent</span><span class="o">.</span><span class="n">origin</span> <span class="k">else</span> <span class="kc">None</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">destination</span> <span class="o">=</span> <span class="n">intent</span><span class="o">.</span><span class="n">destination</span><span class="o">.</span><span class="n">name</span> <span class="k">if</span> <span class="n">intent</span><span class="o">.</span><span class="n">destination</span> <span class="k">else</span> <span class="kc">None</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="s2">"-&gt;"</span><span class="p">,</span> <span class="n">origin</span><span class="p">,</span> <span class="n">destination</span><span class="p">,</span> <span class="n">intent</span><span class="o">.</span><span class="n">departure_date</span><span class="p">,</span> <span class="n">intent</span><span class="o">.</span><span class="n">period</span><span class="p">)</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>quero ir de teresinha pra parnaiba sexta de manhã -&gt; Teresina Parnaíba 2026-10-16 manha
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>de Pico pra Sobrau amanhã -&gt; Picos Sobral 2026-10-15 None
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>de floripa pra sampa dia 20 -&gt; Florianópolis São Paulo 2026-10-20 None
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>de pedro segundo pra piripiri à noite -&gt; Pedro II Piripiri None noite
+</span></code></pre></div>
+<p>Cada linha mostra um erro que a fala transcrita produz e que a busca
+absorve:</p>
+<ul>
+<li><strong>"teresinha"</strong>, <strong>"Pico"</strong>: letra trocada ou que caiu. O <code>FuzzyIndex</code>
+  junta os candidatos por distância de edição, e a razão do <code>difflib</code>
+  decide entre eles (Teresina ganha de Terezinha/PE).</li>
+<li><strong>"Sobrau"</strong>: o "l" de fim de sílaba que o português falado diz "u". Uma
+  chave fonética (<code>vocalized_key</code>) casa exato, sem baixar o corte.</li>
+<li><strong>"floripa"</strong>, <strong>"sampa"</strong>: os apelidos de <code>BR_CITY_NICKNAMES</code>.</li>
+<li><strong>"pedro segundo"</strong>: o numeral romano dito por extenso.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Só as cidades que você atende</p>
+<p>Passe <code>municipalities=</code> com as cidades que têm rota, e só elas são
+reconhecidas. Cidade real fora da lista volta em <code>unrecognized</code>, com o
+que foi dito, para o app perguntar em vez de buscar sem destino:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">date</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">build_trip_city_index</span><span class="p">,</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">municipality_by_name</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">parse_trip_intent</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="p">)</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="n">served</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">municipality_by_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">uf</span><span class="p">)</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">uf</span> <span class="ow">in</span> <span class="p">[(</span><span class="s2">"Teresina"</span><span class="p">,</span> <span class="s2">"PI"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"Picos"</span><span class="p">,</span> <span class="s2">"PI"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"Sobral"</span><span class="p">,</span> <span class="s2">"CE"</span><span class="p">)]</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">]</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="n">index</span> <span class="o">=</span> <span class="n">build_trip_city_index</span><span class="p">([</span><span class="n">city</span> <span class="k">for</span> <span class="n">city</span> <span class="ow">in</span> <span class="n">served</span> <span class="k">if</span> <span class="n">city</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">])</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="n">intent</span> <span class="o">=</span> <span class="n">parse_trip_intent</span><span class="p">(</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>    <span class="s2">"de Teresina pra Natal amanhã"</span><span class="p">,</span> <span class="n">date</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">14</span><span class="p">),</span> <span class="n">municipalities</span><span class="o">=</span><span class="n">index</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="p">)</span>
+</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">intent</span><span class="o">.</span><span class="n">origin</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">intent</span><span class="o">.</span><span class="n">destination</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">intent</span><span class="o">.</span><span class="n">unrecognized</span><span class="p">))</span>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="c1"># Teresina None {&lt;TripRoleEnum.DESTINATION: 'destination'&gt;: 'natal'}</span>
+</span></code></pre></div>
+<p><code>municipality_by_name</code> liga o nome que o seu banco guarda ("SAO LUIS",
+"MA") ao registro do IBGE, sem caixa nem acento. Monte o índice uma vez
+e reaproveite.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Homônimos e ambiguidade</p>
+<p>"Batalha" existe no PI e em AL. Sem UF, os dois voltam em
+<code>intent.origin.candidates</code> (<code>resolved</code> é <code>None</code>, <code>name</code> é "Batalha"),
+para a decisão ser sua. "Batalha no Piauí" ou "Batalha PI" resolve.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Palavra comum no país inteiro</p>
+<p>Sem <code>municipalities=</code>, uma palavra solta minúscula só vira cidade quando a
+frase é só cidades ("picos sobral"): "estou feliz de ir pra fortaleza" não
+é a cidade de Feliz (RS). Com a lista restrita, essa trava não existe.</p>
+</div>
+<p>A qualidade é fixada por uma tabela de 61 frases reais
+(<code>tests/geo/test_trip_intent.py</code>), vindas da busca de viagem em produção do
+BusCar. Mudança que quebre uma linha é regressão da busca.</p>
+<h2 id="por-nome-e-por-codigo">Por nome e por código<a class="headerlink" href="#por-nome-e-por-codigo" title="Permanent link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="n">municipality_by_ibge_code</span><span class="p">,</span> <span class="n">search_municipalities</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="n">search_municipalities</span><span class="p">(</span><span class="s2">"sao paolo"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">municipality</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">match</span><span class="o">.</span><span class="n">municipality</span><span class="o">.</span><span class="n">uf</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">score</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">city</span> <span class="o">=</span> <span class="n">municipality_by_ibge_code</span><span class="p">(</span><span class="mi">3550308</span><span class="p">)</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="k">assert</span> <span class="n">city</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">city</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">coordinate</span><span class="o">.</span><span class="n">latitude</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">coordinate</span><span class="o">.</span><span class="n">longitude</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">capital</span><span class="p">)</span>
 </span></code></pre></div>
 <p>Saída:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>São Paulo SP 0.89
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>São Paulo -23.5329 -46.6395 True
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>São Paulo SP 0.89
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>São Paulo -23.5329 -46.6395 True
 </span></code></pre></div>
 <p><code>search_municipalities(nome, uf=...)</code> serve para um campo "cidade" de
 formulário: com <code>uf</code>, só aquele estado. <code>br_municipalities()</code> devolve a lista
@@ -5323,37 +5415,37 @@ dizer</strong> a mesma coisa. "tênis de corrida" não tem letra em comum com
   <code>reciprocal_rank_fusion</code>. Cada resultado traz <code>lexical_score</code> e
   <code>semantic_score</code>, então você vê por que ele veio.</li>
 </ul>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaEmbedder</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai.rag</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridNameIndex</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">PRODUCTS</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="p">(</span><span class="s2">"Calçado esportivo para corrida"</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="p">(</span><span class="s2">"Camiseta básica de algodão"</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="p">(</span><span class="s2">"Calça jeans masculina"</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="p">(</span><span class="s2">"Garrafa térmica 1 litro"</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="p">(</span><span class="s2">"Mochila para notebook"</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>    <span class="p">(</span><span class="s2">"Fone de ouvido bluetooth"</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span>
-</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="p">]</span>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
-</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>
-</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>    <span class="n">embedder</span> <span class="o">=</span> <span class="n">OllamaEmbedder</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">)</span>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>    <span class="n">index</span><span class="p">:</span> <span class="n">HybridNameIndex</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">HybridNameIndex</span><span class="p">(</span><span class="n">embedder</span><span class="p">,</span> <span class="n">PRODUCTS</span><span class="p">)</span>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>    <span class="k">for</span> <span class="n">query</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"camizeta basica"</span><span class="p">,</span> <span class="s2">"tênis de corrida"</span><span class="p">,</span> <span class="s2">"headphone sem fio"</span><span class="p">]:</span>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>        <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">1</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
-</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>        <span class="n">spelling</span> <span class="o">=</span> <span class="s2">"-"</span> <span class="k">if</span> <span class="n">best</span><span class="o">.</span><span class="n">lexical_score</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">best</span><span class="o">.</span><span class="n">lexical_score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span>
-</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>        <span class="n">meaning</span> <span class="o">=</span> <span class="s2">"-"</span> <span class="k">if</span> <span class="n">best</span><span class="o">.</span><span class="n">semantic_score</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">best</span><span class="o">.</span><span class="n">semantic_score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span>
-</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">query</span><span class="si">!r}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">best</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s2"> (spelling </span><span class="si">{</span><span class="n">spelling</span><span class="si">}</span><span class="s2">, meaning </span><span class="si">{</span><span class="n">meaning</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
-</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>
-</span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>
-</span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaEmbedder</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai.rag</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridNameIndex</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">PRODUCTS</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="p">(</span><span class="s2">"Calçado esportivo para corrida"</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="p">(</span><span class="s2">"Camiseta básica de algodão"</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="p">(</span><span class="s2">"Calça jeans masculina"</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="p">(</span><span class="s2">"Garrafa térmica 1 litro"</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="p">(</span><span class="s2">"Mochila para notebook"</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="p">(</span><span class="s2">"Fone de ouvido bluetooth"</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="p">]</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="n">embedder</span> <span class="o">=</span> <span class="n">OllamaEmbedder</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">)</span>
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    <span class="n">index</span><span class="p">:</span> <span class="n">HybridNameIndex</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">HybridNameIndex</span><span class="p">(</span><span class="n">embedder</span><span class="p">,</span> <span class="n">PRODUCTS</span><span class="p">)</span>
+</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    <span class="k">for</span> <span class="n">query</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"camizeta basica"</span><span class="p">,</span> <span class="s2">"tênis de corrida"</span><span class="p">,</span> <span class="s2">"headphone sem fio"</span><span class="p">]:</span>
+</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>        <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">1</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>        <span class="n">spelling</span> <span class="o">=</span> <span class="s2">"-"</span> <span class="k">if</span> <span class="n">best</span><span class="o">.</span><span class="n">lexical_score</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">best</span><span class="o">.</span><span class="n">lexical_score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span>
+</span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>        <span class="n">meaning</span> <span class="o">=</span> <span class="s2">"-"</span> <span class="k">if</span> <span class="n">best</span><span class="o">.</span><span class="n">semantic_score</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">best</span><span class="o">.</span><span class="n">semantic_score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span>
+</span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">query</span><span class="si">!r}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">best</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s2"> (spelling </span><span class="si">{</span><span class="n">spelling</span><span class="si">}</span><span class="s2">, meaning </span><span class="si">{</span><span class="n">meaning</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>
+</span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>
+</span><span id="__span-9-26"><a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <p>Saída, com <code>nomic-embed-text</code> num Ollama local:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>'camizeta basica' -&gt; Camiseta básica de algodão (spelling 0.94, meaning 0.84)
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>'tênis de corrida' -&gt; Calçado esportivo para corrida (spelling 0.50, meaning 0.64)
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>'headphone sem fio' -&gt; Fone de ouvido bluetooth (spelling -, meaning 0.57)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>'camizeta basica' -&gt; Camiseta básica de algodão (spelling 0.94, meaning 0.84)
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>'tênis de corrida' -&gt; Calçado esportivo para corrida (spelling 0.50, meaning 0.64)
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>'headphone sem fio' -&gt; Fone de ouvido bluetooth (spelling -, meaning 0.57)
 </span></code></pre></div>
 <ul>
 <li><code>"camizeta basica"</code> veio pelos <strong>dois</strong> lados: a escrita casa as duas
@@ -5380,30 +5472,30 @@ vez de depender de o modelo ter visto a grafia errada.</p>
 escreva o passo. <code>municipality_search_tool()</code> dá a ele a busca de município
 (frase ou nome, com <code>uf</code> opcional), e <code>name_search_tool(index)</code> expõe
 qualquer um dos três índices.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.agents</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">municipality_search_tool</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaGenerator</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>        <span class="n">OllamaGenerator</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"qwen2.5:3b"</span><span class="p">),</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>        <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">municipality_search_tool</span><span class="p">()],</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    <span class="p">)</span>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="n">run</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
-</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>        <span class="s2">"O usuário escreveu: 'vou pra floripa semana que vem'. "</span>
-</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>        <span class="s2">"Qual é a cidade, a UF e o código IBGE?"</span>
-</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>    <span class="p">)</span>
-</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>    <span class="nb">print</span><span class="p">([</span><span class="n">step</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="n">run</span><span class="o">.</span><span class="n">steps</span> <span class="k">if</span> <span class="n">step</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"tool"</span><span class="p">])</span>
-</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
-</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>
-</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>
-</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.agents</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">municipality_search_tool</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.genai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaGenerator</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>        <span class="n">OllamaGenerator</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"qwen2.5:3b"</span><span class="p">),</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>        <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">municipality_search_tool</span><span class="p">()],</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="p">)</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>    <span class="n">run</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>        <span class="s2">"O usuário escreveu: 'vou pra floripa semana que vem'. "</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>        <span class="s2">"Qual é a cidade, a UF e o código IBGE?"</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="p">)</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>    <span class="nb">print</span><span class="p">([</span><span class="n">step</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="n">run</span><span class="o">.</span><span class="n">steps</span> <span class="k">if</span> <span class="n">step</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"tool"</span><span class="p">])</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <p>Saída de uma das execuções com <code>qwen2.5:3b</code> no Ollama local:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>['find_brazilian_city']
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>A cidade é Florianópolis, que está localizada no estado de Santa Catarina (UF SC). Seu código IBGE é 4205407 e as coordenadas geográficas são lat -27.5945, lon -48.5477.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>['find_brazilian_city']
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>A cidade é Florianópolis, que está localizada no estado de Santa Catarina (UF SC). Seu código IBGE é 4205407 e as coordenadas geográficas são lat -27.5945, lon -48.5477.
 </span></code></pre></div>
 <p>Em 20 execuções seguidas (N=20) o modelo chamou a tool em todas e respondeu
 Florianópolis/SC com o código 4205407 em todas. Em 3 delas ele passou
@@ -5436,6 +5528,22 @@ muda a cada execução; o que a tool devolve, não.</p>
 <td>Frase com três cidades, uma com erro</td>
 <td>3,27 ms (N=200)</td>
 </tr>
+<tr>
+<td><code>parse_trip_intent</code>, frase sem erro (país inteiro)</td>
+<td>0,03 ms (N=200)</td>
+</tr>
+<tr>
+<td><code>parse_trip_intent</code>, "de Pico pra Sobrau amanhã" (país inteiro, cache frio)</td>
+<td>8,4 ms (N=200)</td>
+</tr>
+<tr>
+<td><code>parse_trip_intent</code>, "teresinha" + "floripa" (país inteiro, cache frio)</td>
+<td>28,3 ms (N=200)</td>
+</tr>
+<tr>
+<td>Índice restrito a 4 cidades (<code>build_trip_city_index</code>)</td>
+<td>0,05 ms</td>
+</tr>
 </tbody>
 </table>
 <p>O índice é montado uma vez por processo e fica em memória.</p>
@@ -5457,6 +5565,9 @@ dos dados, então uma regeneração aparece no diff do PR.</p>
   sem dependência.</li>
 <li><strong><code>find_municipalities_in_text</code></strong>: acha a cidade numa frase, com a UF
   confirmando e desempatando, apelidos e palavra comum filtrada.</li>
+<li><strong><code>parse_trip_intent</code></strong>: origem, destino, data e período de uma frase de
+  viagem, com fala transcrita (erro, "l" vocalizado, numeral por extenso) e
+  restrita às cidades que você atende (<code>municipalities=</code>).</li>
 <li><strong><code>search_municipalities</code> / <code>municipality_by_ibge_code</code></strong>: busca por nome
   (com erro) e por código, com coordenada e capital.</li>
 <li>Homônimos sem UF voltam empatados. A decisão é sua.</li>
