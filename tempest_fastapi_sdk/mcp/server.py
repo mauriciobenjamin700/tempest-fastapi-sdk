@@ -29,6 +29,7 @@ from fastapi.params import Depends as DependsParam
 
 from tempest_fastapi_sdk.exceptions import MISSING_TOKEN_MESSAGE, UnauthorizedException
 from tempest_fastapi_sdk.mcp._dependency import require_fastmcp
+from tempest_fastapi_sdk.mcp._sessions import SessionBindings, principal_key
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -61,14 +62,25 @@ class _ASGIPassthrough(Response):
     unread at that point, which is what lets the inner app consume it.
     """
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        sessions: SessionBindings | None = None,
+        owner: str | None = None,
+    ) -> None:
         """Hold the app to delegate to.
 
         Args:
             app (ASGIApp): The MCP transport app.
+            sessions (SessionBindings | None): The session registry of a
+                stateful endpoint, or ``None`` when stateless.
+            owner (str | None): The caller's session owner key.
         """
         super().__init__()
         self._app: ASGIApp = app
+        self._sessions: SessionBindings | None = sessions
+        self._owner: str | None = owner
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Let the inner app answer the request.
@@ -78,7 +90,49 @@ class _ASGIPassthrough(Response):
             receive (Receive): Its receive channel, body unread.
             send (Send): Its send channel.
         """
-        await self._app(scope, receive, send)
+        if self._sessions is None:
+            await self._app(scope, receive, send)
+        else:
+            await self._sessions.serve(self._app, self._owner, scope, receive, send)
+
+
+def _unmasked_servers(server: FastMCP) -> list[str]:
+    """Name every server reachable from ``server`` that does not mask errors.
+
+    FastMCP keeps the setting per server: a server mounted into another with
+    ``server.mount(child)`` answers its own tool errors, and an unmasking
+    child leaks its exception text through a masking parent (measured on
+    fastmcp 4.1.8, which only logs a warning at mount time). So the mounted
+    servers are walked too, through the providers FastMCP registers for
+    them, unwrapping the namespace wrappers ``mount`` adds.
+
+    Args:
+        server (FastMCP): The server about to be served.
+
+    Returns:
+        list[str]: The names of the servers that would send exception text
+        to the client, ``server`` first when it is one of them.
+    """
+    from fastmcp import FastMCP
+    from fastmcp.server.providers.fastmcp_provider import FastMCPProvider
+
+    unmasked: list[str] = []
+    seen: set[int] = set()
+    pending: list[FastMCP] = [server]
+    while pending:
+        current = pending.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if getattr(current, "_mask_error_details", None) is not True:
+            unmasked.append(current.name)
+        for provider in current.providers:
+            inner: Any = provider
+            while not isinstance(inner, FastMCPProvider) and hasattr(inner, "_inner"):
+                inner = inner._inner
+            if isinstance(inner, FastMCPProvider) and isinstance(inner.server, FastMCP):
+                pending.append(inner.server)
+    return unmasked
 
 
 def mount_mcp(
@@ -108,10 +162,20 @@ def mount_mcp(
     Serve the app with its lifespan on (uvicorn does by default; a test client
     needs ``with TestClient(app)`` or an equivalent).
 
+    The server must mask error details: an exception raised in a tool of a
+    default ``FastMCP`` reaches the MCP client as ``Error calling tool 'x':
+    <message>`` — a DSN or a token included — while one built with
+    ``FastMCP(..., mask_error_details=True)`` sends ``Error calling tool
+    'x'`` and keeps the text in the server log. A ``ToolError`` you raise on
+    purpose still reaches the client with its message. Servers mounted into
+    ``server`` with ``server.mount(...)`` are checked too, because each
+    answers its own tool errors.
+
     Args:
         app (FastAPI): The application to mount on. Call this after setting
             the app's own lifespan.
-        server (FastMCP): The MCP server, already holding its tools.
+        server (FastMCP): The MCP server, already holding its tools, built
+            with ``mask_error_details=True``.
         path (str): Where the endpoint lives. Defaults to ``"/mcp"``.
         principal (Callable[..., Any] | None): A dependency that resolves the
             caller — typically your ``current_user``. It runs on every MCP
@@ -124,12 +188,18 @@ def mount_mcp(
         dependencies (Sequence[DependsParam]): Further gates, as on
             ``APIRouter(dependencies=...)`` — a permission or role check.
         stateless (bool): Serve each request on its own, without an
-            ``Mcp-Session-Id``. Defaults to ``True``: every request is
-            authenticated on its own anyway, and a session that outlives the
-            token that opened it, or is presented with another user's token,
-            is exactly what this avoids. Set ``False`` for server-to-client
-            features that need a session (progress notifications on a later
-            request, sampling).
+            ``Mcp-Session-Id``. Defaults to ``True``. Set ``False`` for
+            server-to-client features that need a session (progress
+            notifications on a later request, sampling); the session is then
+            bound to the principal that opened it. The binding key is the
+            ``sub`` claim of a mapping principal, or the type and ``id`` of an
+            object one; a request presenting the id under any other principal
+            — another user, or an anonymous caller — gets the ``404`` the
+            transport answers for an unknown session, so whether the id exists
+            is not revealed. A ``DELETE`` that ends the session releases the
+            binding. Bindings live in the process, like the transport's
+            sessions themselves. Without ``principal=`` every caller has the
+            same identity and the binding does not tell them apart.
         allow_unauthenticated (bool): Serve without ``principal`` and without
             ``dependencies``, or let a ``principal`` that resolved ``None``
             through. Refused otherwise, because an MCP endpoint runs tools on
@@ -138,7 +208,11 @@ def mount_mcp(
 
     Raises:
         ValueError: When neither ``principal`` nor ``dependencies`` is given
-            and ``allow_unauthenticated`` is ``False``.
+            and ``allow_unauthenticated`` is ``False``, or when ``server`` (or
+            a server mounted into it) does not mask error details.
+        TypeError: At request time with ``stateless=False``, when the
+            principal has no stable identity to bind the session to (a
+            mapping without ``sub``, an object without ``id``).
         ImportError: When the ``[fastmcp]`` extra is not installed.
     """
     require_fastmcp()
@@ -147,12 +221,21 @@ def mount_mcp(
             "mount_mcp needs principal= or dependencies= to authenticate MCP "
             "clients; pass allow_unauthenticated=True to serve it open.",
         )
+    unmasked = _unmasked_servers(server)
+    if unmasked:
+        raise ValueError(
+            "mount_mcp serves only FastMCP servers that mask error details, "
+            "or a tool exception reaches the MCP client with its text; build "
+            f"{', '.join(repr(name) for name in unmasked)} with "
+            "FastMCP(..., mask_error_details=True)",
+        )
     transport = server.http_app(path=path, stateless_http=stateless)
+    sessions: SessionBindings | None = None if stateless else SessionBindings()
 
     if principal is None:
 
         async def _mcp_endpoint(request: Request) -> Response:
-            return _ASGIPassthrough(transport)
+            return _ASGIPassthrough(transport, sessions=sessions)
 
     else:
 
@@ -163,7 +246,8 @@ def mount_mcp(
             if caller is None and not allow_unauthenticated:
                 raise UnauthorizedException(message=MISSING_TOKEN_MESSAGE)
             setattr(request.state, PRINCIPAL_STATE_KEY, caller)
-            return _ASGIPassthrough(transport)
+            owner = None if sessions is None else principal_key(caller)
+            return _ASGIPassthrough(transport, sessions=sessions, owner=owner)
 
     _mcp_endpoint.__doc__ = "Serve the MCP streamable HTTP transport."
     app.add_api_route(

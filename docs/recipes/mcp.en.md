@@ -95,7 +95,7 @@ async def shout(arguments: dict[str, Any], _context: AgentContext) -> str:
     return str(arguments["text"]).upper()
 
 
-server = FastMCP("orders")
+server = FastMCP("orders", mask_error_details=True)
 
 
 @server.tool
@@ -117,6 +117,36 @@ The SDK does not wrap `FastMCP`. You build it and register tools, resources
 and prompts with its decorators (`@server.tool`, `@server.resource`,
 `@server.prompt`), which derive the schema from the type hints — a parameter
 annotated with a Pydantic model gets that model's schema.
+
+One thing `mount_mcp` requires of it: **`mask_error_details=True`**. On a
+default `FastMCP`, a tool's exception reaches the client with its text
+(measured on fastmcp 4.1.8, a tool raising
+`RuntimeError("postgres://admin:hunter2@db/prod")`):
+
+```text
+Error calling tool 'boom': postgres://admin:hunter2@db/prod
+```
+
+With `mask_error_details=True`, the client reads only the tool name, and the
+text stays in the server log:
+
+```text
+Error calling tool 'boom'
+```
+
+A server that does not mask is refused when mounted:
+
+```text
+ValueError: mount_mcp serves only FastMCP servers that mask error details, or a tool exception reaches the MCP client with its text; build 'orders' with FastMCP(..., mask_error_details=True)
+```
+
+The check also walks the servers mounted into yours with
+`server.mount(child)`: each answers its own errors, and an unmasking child
+leaks the text even under a masking parent. The global fastmcp setting
+(`FASTMCP_MASK_ERROR_DETAILS=true`) counts too, because `FastMCP` reads it when
+built. When a message **should** reach the model, raise
+`fastmcp.exceptions.ToolError("order 42 is already closed")`: it passes the mask
+on purpose.
 
 ### Authentication is your routes': `mount_mcp`
 
@@ -145,7 +175,8 @@ token instead of refusing it) does not open the endpoint: when `principal=`
 resolves `None`, `mount_mcp` answers the same `401` as above. To accept
 anonymous callers on purpose, pass `allow_unauthenticated=True` — then the
 anonymous caller reaches the tool, and `mcp_principal(dict)` raises `TypeError`
-for it (`None` is not a `dict`).
+for it (`None` is not a `dict`) — the client reads `Error calling tool
+'<name>'`, because the server masks the error.
 
 !!! danger "An open endpoint only by explicit choice"
     `mount_mcp` with neither `principal=` nor `dependencies=` raises
@@ -154,11 +185,46 @@ for it (`None` is not a `dict`).
     authentication on purpose (a local demo), pass
     `allow_unauthenticated=True`.
 
+### Sessions: none by default, and bound to their owner when there is one
+
 By default the transport runs **without a session** (`stateless=True`): each
-request is authenticated on its own, and no `Mcp-Session-Id` outlives the token
-that opened it or can be presented with another user's token. Features that
-need a session (a progress notification on a later request, sampling) need
-`stateless=False`.
+request is authenticated on its own and no `Mcp-Session-Id` is issued. Features
+that need a session (a progress notification on a later request, sampling)
+need `stateless=False`.
+
+With `stateless=False`, the session is **bound to the principal that opened
+it**. `mount_mcp` records `Mcp-Session-Id → owner` when the transport issues
+the id, and every later request carrying that id goes through the same
+`principal=` dependency and is compared with the owner. The owner is the `sub`
+claim when the principal is a claims dictionary (it survives a token refresh),
+and the type plus `id` when it is an object, such as your user model. Another
+user with a valid token — or an anonymous caller, with
+`allow_unauthenticated=True` — presenting the id gets exactly what the
+transport answers for a session that does not exist:
+
+```text
+HTTP/1.1 404 Not Found
+content-type: application/json
+
+{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Session not found"}}
+```
+
+It is `404`, not `403`, because that is what the MCP specification says to
+answer for a session the server no longer serves — the client opens another —
+and because `403` would tell whoever tried that the id exists.
+
+The binding is released when a `DELETE` ends the session, and a binding with no
+request in flight for more than 30 minutes (the same window in which the MCP
+SDK closes an idle session) is dropped when another session opens. It lives in
+the process, like the transport's sessions themselves: behind several workers,
+a session only works when its requests reach the worker that opened it.
+
+!!! note "Without `principal=`, everyone is the same owner"
+    The binding compares the principal. Mounted with `dependencies=` only (a
+    shared secret, say), every caller has the same identity and the session
+    does not tell them apart. A principal with no stable identity — a
+    dictionary without `sub`, an object without `id` — makes the request fail
+    with `TypeError`; serve that case with `stateless=True`.
 
 ### The lifespan is composed, not replaced
 
@@ -217,8 +283,9 @@ such header).
 The route sees the call as it would see the MCP request: the `Host` and the
 client address are the MCP request's (a `TrustedHostMiddleware` accepts it, and
 a per-IP limit counts each client in its own bucket), and an unhandled
-exception in the route reaches the MCP client as the `500` the app answers over
-HTTP — never with the exception's text.
+exception in the route ends in the `500` the app answers over HTTP, never as the
+exception itself — and the MCP client reads `Error calling tool '<name>'`,
+without its text.
 
 !!! tip "The `make_token_dependency` header"
     A route protected by a shared secret reads another header (`X-Token` by
@@ -358,7 +425,10 @@ says the name each one was saved under.
 ## Recap
 
 - `mount_mcp(app, server, principal=current_user)` serves a `FastMCP` at `/mcp`
-  behind the same dependencies as your routes, inside the app's lifespan.
+  behind the same dependencies as your routes, inside the app's lifespan —
+  and only a `FastMCP(..., mask_error_details=True)`.
+- With `stateless=False`, the session is bound to whoever opened it; another
+  principal gets `404`.
 - `add_agent_tools` publishes `AgentTool`s with the schema they already have;
   `add_fastapi_routes` publishes the routes you picked, with the OpenAPI schema
   and the caller's credentials.

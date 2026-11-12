@@ -102,7 +102,7 @@ def build_server(*, tool_timeout: float | None = 120.0) -> FastMCP:
     Returns:
         FastMCP: The server with the agent tools and one native tool.
     """
-    server = FastMCP("fixture")
+    server = FastMCP("fixture", mask_error_details=True)
     add_agent_tools(server, AGENT_TOOLS, timeout=tool_timeout)
 
     @server.tool

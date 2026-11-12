@@ -123,11 +123,11 @@ class TestAuthentication:
 
     def test_mounting_without_any_gate_is_refused(self) -> None:
         with pytest.raises(ValueError, match="allow_unauthenticated"):
-            mount_mcp(FastAPI(), FastMCP("open"))
+            mount_mcp(FastAPI(), FastMCP("open", mask_error_details=True))
 
     async def test_an_explicitly_open_endpoint_serves_anyone(self) -> None:
         app = FastAPI()
-        server = FastMCP("open")
+        server = FastMCP("open", mask_error_details=True)
         add_agent_tools(server, AGENT_TOOLS[:1])
         mount_mcp(app, server, allow_unauthenticated=True)
         async with serve(app) as base, MCPToolset.http(f"{base}/mcp", name="o") as mcp:
@@ -146,7 +146,7 @@ class TestLifespan:
             events.append("app-stop")
 
         app = FastAPI(lifespan=app_lifespan)
-        server = FastMCP("ordered")
+        server = FastMCP("ordered", mask_error_details=True)
 
         @server.tool
         def ping() -> str:

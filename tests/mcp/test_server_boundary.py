@@ -19,7 +19,7 @@ pytest.importorskip("fastmcp")
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
-from fastmcp import FastMCP
+from fastmcp import Client, FastMCP
 
 from tempest_fastapi_sdk import (
     JWTUtils,
@@ -67,7 +67,7 @@ def _soft_app(*, allow_unauthenticated: bool = False) -> FastAPI:
     soft_user = make_bearer_token_dependency(JWTUtils(JWT_SECRET), soft=True)
     app = FastAPI()
     register_exception_handlers(app, log_traceback=False)
-    server = FastMCP("soft")
+    server = FastMCP("soft", mask_error_details=True)
     add_agent_tools(server, AGENT_TOOLS[:1])
 
     @server.tool
@@ -90,17 +90,13 @@ def _soft_app(*, allow_unauthenticated: bool = False) -> FastAPI:
 
 
 def _route_app() -> FastAPI:
-    """Build an app exposing a failing route and an introspection route.
+    """Build an app exposing an introspection route.
 
     Returns:
         FastAPI: The app, ``/mcp`` open so the route call is the subject.
     """
     app = FastAPI()
     register_exception_handlers(app, log_traceback=False)
-
-    @app.get("/boom", operation_id="boom")
-    async def boom() -> dict[str, str]:
-        raise RuntimeError(ROUTE_SECRET_TEXT)
 
     @app.get("/peer", operation_id="peer")
     async def peer(request: Request) -> dict[str, Any]:
@@ -110,8 +106,8 @@ def _route_app() -> FastAPI:
             "port": client.port if client is not None else None,
         }
 
-    server = FastMCP("routes")
-    add_fastapi_routes(server, app, operations=["boom", "peer"])
+    server = FastMCP("routes", mask_error_details=True)
+    add_fastapi_routes(server, app, operations=["peer"])
     mount_mcp(app, server, allow_unauthenticated=True)
     return app
 
@@ -145,21 +141,35 @@ class TestSoftPrincipal:
         app = _soft_app(allow_unauthenticated=True)
         async with serve(app) as base, MCPToolset.http(f"{base}/mcp", name="s") as mcp:
             result = await _call(mcp, "caller")
-            with pytest.raises(AgentToolError, match=r"TypeError|not a dict"):
+            with pytest.raises(AgentToolError, match="Error calling tool 'claims'"):
                 await _call(mcp, "claims")
         assert result.text == "None"
 
 
 class TestRouteCall:
     async def test_an_unhandled_route_exception_stays_on_the_server(self) -> None:
-        async with (
-            serve(_route_app()) as base,
-            MCPToolset.http(f"{base}/mcp", name="r") as mcp,
-        ):
-            with pytest.raises(AgentToolError) as caught:
-                await _call(mcp, "boom")
-        assert ROUTE_SECRET_TEXT not in str(caught.value)
-        assert "500" in str(caught.value)
+        """The route's own ``500`` reaches the tool, not its exception.
+
+        Checked on a server that does **not** mask error details, called in
+        memory: ``mount_mcp`` would refuse it, and on a masking server every
+        failure reads ``Error calling tool 'boom'``, which hides whether the
+        exception text ever left the route call.
+        """
+        app = FastAPI()
+        register_exception_handlers(app, log_traceback=False)
+
+        @app.get("/boom", operation_id="boom")
+        async def boom() -> dict[str, str]:
+            raise RuntimeError(ROUTE_SECRET_TEXT)
+
+        server = FastMCP("unmasked")
+        add_fastapi_routes(server, app, operations=["boom"])
+        async with Client(server) as client:
+            result = await client.call_tool("boom", {}, raise_on_error=False)
+        text = str(result.content)
+        assert result.is_error
+        assert ROUTE_SECRET_TEXT not in text
+        assert "500" in text
 
     async def test_the_route_sees_the_callers_host_and_address(self) -> None:
         async with (

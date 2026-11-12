@@ -42,11 +42,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     chegar ao servidor MCP. Sem `principal=` nem `dependencies=` a montagem
     levanta `ValueError`, salvo `allow_unauthenticated=True`; pela mesma
     regra, um `principal=` que resolve `None` (dependência `soft=True`)
-    recebe `401`. O lifespan da
+    recebe `401`. O servidor precisa mascarar erro: um `FastMCP` sem
+    `mask_error_details=True` (ou com um servidor montado nele que não
+    mascara) levanta `ValueError` na montagem, porque a exceção de uma
+    ferramenta chegaria ao cliente com o texto (`Error calling tool 'x':
+    <mensagem>`, medido no fastmcp 4.1.8). O lifespan da
     app é composto em volta do transporte (o MCP para antes dos seus
     recursos fecharem), e o transporte roda sem sessão por padrão
-    (`stateless=True`). `mcp_principal(tipo)` devolve, dentro da ferramenta, o
-    que `principal=` resolveu.
+    (`stateless=True`). Com `stateless=False`, a sessão fica presa ao
+    principal que a abriu (claim `sub`, ou tipo + `id`): outro principal, ou
+    um anônimo, que apresenta o `Mcp-Session-Id` recebe o mesmo `404`
+    `Session not found` de uma sessão inexistente; o `DELETE` libera o
+    registro, que é por processo. `mcp_principal(tipo)` devolve, dentro da
+    ferramenta, o que `principal=` resolveu.
   - `add_agent_tools(server, tools)` publica `AgentTool`s com o schema que
     elas já declaram, com o contrato de falha dos agentes (`AgentToolError`
     chega com a mensagem; outra exceção chega como `tool failed: <Tipo>`) e
@@ -58,8 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`forward_headers=`), de modo que a rota autentica quem chamou o MCP;
     esses cabeçalhos saem do schema e um valor posto pelo modelo é
     sobrescrito. A chamada à rota leva o `Host` e o endereço do cliente da
-    requisição MCP, e uma exceção não tratada na rota chega ao cliente como
-    o `500` da aplicação, sem o texto da exceção. Sem seleção, ou com
+    requisição MCP, e uma exceção não tratada na rota termina no `500` da
+    aplicação, nunca como a própria exceção; o cliente lê
+    `Error calling tool '<nome>'`. Sem seleção, ou com
     `operation_id`/tag inexistente, levanta `ValueError`.
   - **Consumir.** `MCPToolset.stdio(...)` / `MCPToolset.http(...)` conecta a
     outro servidor MCP e devolve as ferramentas dele como `AgentTool`s

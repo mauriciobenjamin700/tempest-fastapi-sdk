@@ -95,7 +95,7 @@ async def shout(arguments: dict[str, Any], _context: AgentContext) -> str:
     return str(arguments["text"]).upper()
 
 
-server = FastMCP("pedidos")
+server = FastMCP("pedidos", mask_error_details=True)
 
 
 @server.tool
@@ -117,6 +117,36 @@ O SDK não embrulha o `FastMCP`. Você o constrói e registra ferramentas,
 recursos e prompts com os decoradores dele (`@server.tool`, `@server.resource`,
 `@server.prompt`), que derivam o schema das anotações de tipo — um parâmetro
 anotado com um modelo Pydantic vira o schema daquele modelo.
+
+Uma coisa o `mount_mcp` exige dele: **`mask_error_details=True`**. Num
+`FastMCP` padrão, a exceção de uma ferramenta chega ao cliente com o texto
+(medido no fastmcp 4.1.8, ferramenta que levanta
+`RuntimeError("postgres://admin:hunter2@db/prod")`):
+
+```text
+Error calling tool 'boom': postgres://admin:hunter2@db/prod
+```
+
+Com `mask_error_details=True`, o cliente lê só o nome da ferramenta, e o texto
+fica no log do servidor:
+
+```text
+Error calling tool 'boom'
+```
+
+Um servidor que não mascara é recusado na montagem:
+
+```text
+ValueError: mount_mcp serves only FastMCP servers that mask error details, or a tool exception reaches the MCP client with its text; build 'pedidos' with FastMCP(..., mask_error_details=True)
+```
+
+A checagem desce também nos servidores montados dentro do seu com
+`server.mount(filho)`: cada um responde os próprios erros, e um filho que não
+mascara vaza o texto mesmo com o pai mascarando. A configuração global do
+fastmcp (`FASTMCP_MASK_ERROR_DETAILS=true`) também conta, porque o `FastMCP`
+a lê ao ser construído. Quando a mensagem **deve** chegar ao modelo, levante
+`fastmcp.exceptions.ToolError("pedido 42 já fechado")`: ela passa pela máscara
+de propósito.
 
 ### A autenticação é a das suas rotas: `mount_mcp`
 
@@ -145,7 +175,8 @@ em vez de recusar) não abre o endpoint: se `principal=` resolve `None`, o
 `mount_mcp` responde o mesmo `401` acima. Para aceitar chamador anônimo de
 propósito, passe `allow_unauthenticated=True` — aí o anônimo chega à
 ferramenta, e `mcp_principal(dict)` levanta `TypeError` para ele (`None` não é
-um `dict`).
+um `dict`) — o cliente lê `Error calling tool '<nome>'`, porque o servidor
+mascara o erro.
 
 !!! danger "Endpoint aberto só por escolha explícita"
     `mount_mcp` sem `principal=` e sem `dependencies=` levanta `ValueError`. Um
@@ -153,11 +184,46 @@ um `dict`).
     qualquer um que ache a URL. Para servir sem autenticação de propósito (uma
     demo local), passe `allow_unauthenticated=True`.
 
+### Sessão: nenhuma por padrão, e presa ao dono quando existe
+
 Por padrão o transporte roda **sem sessão** (`stateless=True`): cada requisição
-é autenticada sozinha e nenhum `Mcp-Session-Id` sobrevive ao token que o abriu
-nem pode ser apresentado com o token de outro usuário. Recursos que precisam de
-sessão (notificação de progresso numa requisição posterior, sampling) pedem
-`stateless=False`.
+é autenticada sozinha e nenhum `Mcp-Session-Id` é emitido. Recursos que
+precisam de sessão (notificação de progresso numa requisição posterior,
+sampling) pedem `stateless=False`.
+
+Com `stateless=False`, a sessão fica **presa ao principal que a abriu**. O
+`mount_mcp` guarda `Mcp-Session-Id → dono` quando o transporte emite o id, e
+toda requisição seguinte com aquele id passa pela mesma dependência de
+`principal=` e é comparada com o dono. O dono é o claim `sub` quando o
+principal é um dicionário de claims (sobrevive à renovação do token), e o tipo
+mais o `id` quando é um objeto, como o model de usuário. Outro usuário com
+token válido — ou um anônimo, com `allow_unauthenticated=True` — que apresenta
+o id recebe exatamente o que o transporte responde para uma sessão que não
+existe:
+
+```text
+HTTP/1.1 404 Not Found
+content-type: application/json
+
+{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Session not found"}}
+```
+
+É `404`, e não `403`, porque é o que a especificação do MCP manda responder
+para sessão que o servidor não atende — o cliente abre outra —, e porque `403`
+contaria a quem tentou que o id existe.
+
+O registro é liberado quando um `DELETE` encerra a sessão, e uma ligação sem
+requisição em andamento há mais de 30 minutos (a mesma janela em que o SDK do
+MCP encerra a sessão ociosa) é descartada quando outra sessão abre. Ele vive
+no processo, como as próprias sessões do transporte: atrás de vários workers,
+a sessão só funciona se as requisições dela chegam ao worker que a abriu.
+
+!!! note "Sem `principal=`, todos são o mesmo dono"
+    A ligação compara o principal. Montado só com `dependencies=` (um segredo
+    compartilhado, por exemplo), todo chamador tem a mesma identidade e a
+    sessão não separa um do outro. Um principal sem identidade estável — um
+    dicionário sem `sub`, um objeto sem `id` — faz a requisição falhar com
+    `TypeError`; sirva esse caso com `stateless=True`.
 
 ### O lifespan é composto, não substituído
 
@@ -215,8 +281,9 @@ sobrescrito (ou removido, se a requisição MCP não tinha o cabeçalho).
 A rota vê a chamada como veria a requisição MCP: o `Host` e o endereço do
 cliente são os da requisição MCP (um `TrustedHostMiddleware` aceita, e um
 limite por IP conta cada cliente no próprio balde), e uma exceção não tratada
-na rota chega ao cliente MCP como o `500` que a aplicação responde por HTTP —
-nunca com o texto da exceção.
+na rota termina no `500` que a aplicação responde por HTTP, nunca como a
+própria exceção — e o cliente MCP lê `Error calling tool '<nome>'`, sem o texto
+dela.
 
 !!! tip "Cabeçalho de `make_token_dependency`"
     Uma rota protegida por segredo compartilhado lê outro cabeçalho
@@ -357,7 +424,10 @@ diz com que nome cada um foi salvo.
 ## Recap
 
 - `mount_mcp(app, server, principal=current_user)` serve um `FastMCP` em `/mcp`
-  atrás das mesmas dependências das suas rotas, dentro do lifespan da app.
+  atrás das mesmas dependências das suas rotas, dentro do lifespan da app —
+  e só um `FastMCP(..., mask_error_details=True)`.
+- Com `stateless=False`, a sessão fica presa a quem a abriu; outro principal
+  recebe `404`.
 - `add_agent_tools` publica `AgentTool`s com o schema que elas já têm;
   `add_fastapi_routes` publica as rotas escolhidas, com o schema do OpenAPI e as
   credenciais do chamador.
