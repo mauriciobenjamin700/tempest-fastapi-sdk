@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Busca por significado sobre listas de nomes, no `genai.rag`:
+  `SemanticNameIndex` (nomes embedados uma vez, em lote, ranqueados por
+  cosseno; NumPy quando instalado) e `HybridNameIndex` (escrita palavra por
+  palavra com erro de digitação + significado, fundidos por
+  `reciprocal_rank_fusion`; cada `NameMatch` traz `lexical_score` e
+  `semantic_score`). Medido com `nomic-embed-text`: "camizeta basica",
+  "tênis de corrida" e "headphone sem fio" acham o produto certo.
+- Tools de agente: `municipality_search_tool()` (cidade, UF, código IBGE e
+  coordenada a partir de uma frase ou nome, `uf` opcional, offline) e
+  `name_search_tool(index)` (qualquer `FuzzyIndex`, `SemanticNameIndex` ou
+  `HybridNameIndex`). Com `qwen2.5:3b`, o agente chamou a tool e respondeu a
+  cidade certa em 3 de 3 execuções.
 - `tempest_fastapi_sdk.text`, sem dependência: `normalize_text` /
   `strip_accents` / `tokenize` (forma canônica sem acento, caixa e
   pontuação; tokens com o offset no texto original), `levenshtein` (com troca
