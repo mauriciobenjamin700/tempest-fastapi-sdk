@@ -147,6 +147,9 @@ Piece by piece:
   version"; `StreamStateEnum.NO_STREAM` says "the stream does not exist yet";
   `EXISTS` requires it to exist; `ANY` turns the check off. There is no
   default — the concurrency check is a decision, not something to forget.
+  A member's plain value (`"no_stream"`, which is what a field under
+  `use_enum_values` holds) means the member; any other string is a
+  `ValueError`.
 - **`EventMetadata`** carries `correlation_id`, `causation_id` and `extra`.
   The time comes from the store: `recorded.recorded_at`, in UTC.
 - **`read_stream`** reads forwards or backwards (`backwards=True`), from an

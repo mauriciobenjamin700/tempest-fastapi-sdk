@@ -336,6 +336,45 @@ class Snapshot:
     state: dict[str, Any]
 
 
+def _check_expected_version(expected_version: object) -> int | StreamStateEnum:
+    """Validate an append's ``expected_version`` and normalize it.
+
+    Both stores branch on the enum by identity (``is StreamStateEnum.EXISTS``),
+    so the plain value of a member — ``"exists"``, which is what a field
+    under ``use_enum_values`` holds — would match none of the branches and
+    the SQL store would append with no concurrency check at all. The value
+    is turned back into its member here, once, before any backend reads it.
+
+    Args:
+        expected_version (object): The caller's expectation, typed
+            ``object`` because the point is to check what arrives at runtime.
+
+    Returns:
+        int | StreamStateEnum: The version number, or the enum member.
+
+    Raises:
+        ValueError: When it is a negative number or a string that names no
+            :class:`StreamStateEnum` member.
+        TypeError: When it is neither an ``int`` nor a ``StreamStateEnum``
+            (``bool`` included).
+    """
+    if isinstance(expected_version, StreamStateEnum):
+        return expected_version
+    if isinstance(expected_version, str):
+        return StreamStateEnum(expected_version)
+    if isinstance(expected_version, bool) or not isinstance(expected_version, int):
+        raise TypeError(
+            "expected_version must be an int or a StreamStateEnum, got "
+            f"{type(expected_version).__name__}"
+        )
+    if expected_version < 0:
+        raise ValueError(
+            "expected_version must be >= 0; use StreamStateEnum.NO_STREAM "
+            "for a stream that does not exist yet"
+        )
+    return expected_version
+
+
 def _expected_version_label(expected_version: int | StreamStateEnum) -> int | str:
     """Return ``expected_version`` as an ``int`` or the enum's plain value.
 

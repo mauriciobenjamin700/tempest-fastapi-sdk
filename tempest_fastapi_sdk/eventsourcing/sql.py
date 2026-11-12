@@ -48,6 +48,7 @@ from tempest_fastapi_sdk.eventsourcing.events import (
     RecordedEvent,
     Snapshot,
     StreamStateEnum,
+    _check_expected_version,
     _expected_version_label,
 )
 from tempest_fastapi_sdk.exceptions.eventsourcing import (
@@ -195,17 +196,17 @@ class SqlEventStore:
         Raises:
             WrongExpectedVersionException: When the stream does not match
                 ``expected_version``.
-            ValueError: When ``events`` is empty or ``expected_version`` is
-                a negative number.
+            ValueError: When ``events`` is empty, or ``expected_version``
+                is a negative number or a string naming no
+                :class:`StreamStateEnum` member (the member's plain value,
+                ``"exists"``, is accepted and means the member).
+            TypeError: When ``expected_version`` is neither an ``int`` nor
+                a :class:`StreamStateEnum`.
             UnknownEventTypeError: When an event's class is not registered.
         """
         if not events:
             raise ValueError("append needs at least one event")
-        if isinstance(expected_version, int) and expected_version < 0:
-            raise ValueError(
-                "expected_version must be >= 0; use StreamStateEnum.NO_STREAM "
-                "for a stream that does not exist yet"
-            )
+        expected_version = _check_expected_version(expected_version)
         encoded = [self.registry.encode(event) for event in events]
         meta = metadata if metadata is not None else EventMetadata()
         async with self._unit(session) as active:
@@ -306,6 +307,10 @@ class SqlEventStore:
     ) -> int:
         """Move the stream row forward by ``count`` if it matches.
 
+        For ``ANY`` on a missing stream the row is inserted; when that insert
+        hits the unique constraint, another writer created the stream between
+        the ``UPDATE`` and the ``INSERT``, so the row is bumped again.
+
         Args:
             session (AsyncSession): The session.
             stream_id (str): The stream.
@@ -347,7 +352,6 @@ class SqlEventStore:
             raise await self._conflict(session, stream_id, expected_version)
         if await self._create_stream(session, stream_id, count - 1):
             return count - 1
-        # Another writer created the stream between our UPDATE and INSERT.
         await self._update_rowcount(session, bump)
         return await self._bumped_version(session, stream_id)
 
@@ -625,7 +629,9 @@ class SqlEventStore:
         """Save a snapshot, keeping the newest one per stream.
 
         A snapshot older than the stored one is ignored, so two writers
-        racing never move the snapshot backwards.
+        racing never move the snapshot backwards: the conditional ``UPDATE``
+        matches nothing, and the ``INSERT`` that follows hits the unique
+        ``stream_id`` and is dropped, keeping the newer row.
 
         Args:
             stream_id (str): The stream.
@@ -657,7 +663,6 @@ class SqlEventStore:
                         )
                     )
             except IntegrityError:
-                # A newer snapshot already exists; keep it.
                 return
 
     async def load_snapshot(
