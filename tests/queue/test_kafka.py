@@ -356,6 +356,38 @@ class TestPublish:
 
         assert len(seen[0]) == 36
 
+    @pytest.mark.parametrize(
+        ("message_id", "expected"),
+        [("evt-explicit", "evt-explicit"), (None, "evt-header")],
+    )
+    async def test_explicit_message_id_beats_the_header(
+        self,
+        message_id: str | None,
+        expected: str,
+    ) -> None:
+        broker = _kafka()
+        mq = MessageBroker(broker)
+        seen: list[str] = []
+        done = asyncio.Event()
+
+        @mq.on("orders.paid")
+        async def handle(event: OrderPaid, message: KafkaMessage) -> None:
+            seen.append(message.headers[MESSAGE_ID_HEADER])
+            done.set()
+
+        async with TestKafkaBroker(broker):
+            await mq.connect()
+            await mq.publish(
+                "orders.paid",
+                OrderPaid(order_id="abc"),
+                message_id=message_id,
+                headers={MESSAGE_ID_HEADER: "evt-header"},
+            )
+            await asyncio.wait_for(done.wait(), timeout=1.0)
+            await mq.disconnect()
+
+        assert seen == [expected]
+
     async def test_bytes_key_is_kept(self) -> None:
         broker = _kafka()
         mq = MessageBroker(broker)

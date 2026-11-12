@@ -876,6 +876,7 @@ class MessageBroker:
         *,
         exchange: ExchangeSpec | str | None = None,
         key: str | bytes | None = None,
+        message_id: str | None = None,
         **options: Any,
     ) -> Any:
         """Publish ``message`` to ``channel``.
@@ -910,17 +911,19 @@ class MessageBroker:
                 producer spread records over the partitions. A ``str`` is
                 encoded as UTF-8 (``aiokafka`` takes bytes only and raises
                 ``TypeError`` on a ``str``). Kafka only.
+            message_id (str | None): The id :meth:`deduplicate` keys on.
+                ``None`` fills a fresh UUID — without a stable id there is
+                no key to work from, and a redelivery is
+                indistinguishable from a new event. Pass your own to key
+                deduplication on something the domain owns. On a
+                transport whose publish has no ``message_id`` (Kafka,
+                NATS, Redis) it travels in the
+                :data:`~tempest_fastapi_sdk.queue.dedup.MESSAGE_ID_HEADER`
+                header instead, overriding a header of that name in
+                ``headers=``.
             **options (Any): Extra transport-specific publish options
                 forwarded to FastStream (e.g. ``headers=``,
-                ``correlation_id=``). ``message_id`` is filled with a
-                fresh UUID when absent — without a stable id there is no
-                key for :meth:`deduplicate` to work from, and a
-                redelivery is indistinguishable from a new event. Pass
-                your own to key deduplication on something the domain
-                owns. On a transport whose publish has no ``message_id``
-                (Kafka, NATS, Redis) it travels in the
-                :data:`~tempest_fastapi_sdk.queue.dedup.MESSAGE_ID_HEADER`
-                header instead.
+                ``correlation_id=``).
 
         Returns:
             Any: Whatever the transport's publish returns (often ``None``;
@@ -947,12 +950,16 @@ class MessageBroker:
             options["key"] = key.encode() if isinstance(key, str) else key
         publish = self.broker.publish
         if _publish_accepts(publish, "message_id"):
-            options.setdefault("message_id", str(uuid4()))
+            options["message_id"] = message_id or str(uuid4())
         elif _publish_accepts(publish, "headers"):
-            message_id = options.pop("message_id", None) or str(uuid4())
             headers = dict(options.get("headers") or {})
-            headers.setdefault(MESSAGE_ID_HEADER, str(message_id))
+            if message_id:
+                headers[MESSAGE_ID_HEADER] = message_id
+            else:
+                headers.setdefault(MESSAGE_ID_HEADER, str(uuid4()))
             options["headers"] = headers
+        elif message_id is not None:
+            options["message_id"] = message_id
         if _publish_accepts(publish, "headers"):
             options["headers"] = inject_context(dict(options.get("headers") or {}))
         if exchange is None:

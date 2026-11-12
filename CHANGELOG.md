@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   evento publicado duas vezes rodava duas vezes, e dois registros no mesmo
   offset de partições diferentes, no mesmo milissegundo, colidiam. Registro
   Kafka sem o header é deduplicado por `tópico:partição:offset`.
+  `message_id` passa a ser parâmetro nomeado de `MessageBroker.publish`
+  (antes lido de dentro do `**options`), e o explícito vence um header
+  `message_id` passado em `headers=`.
 - `ack_policy` que commita (`ACK`, `NACK_ON_ERROR`, `REJECT_ON_ERROR`,
   `MANUAL`, também quando vem do broker inteiro) sem `group_id` no Kafka
   levanta `ValueError` ao registrar o consumidor. Antes o `aiokafka` recusava
@@ -67,7 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `group_id`, `auto_offset_reset` e `key=` fora do Kafka também. O `prefetch`
   chegava ao FastStream como `Channel` do RabbitMQ e falhava com
   `TypeError: ... unexpected keyword argument 'channel'`.
-
 
 ## [0.354.0] — 2026-11-11
 
