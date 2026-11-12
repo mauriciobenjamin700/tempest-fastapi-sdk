@@ -55,6 +55,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[geo]` | `httpx` | helpers geoespaciais: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + rotas), `GeoPointMixin` |
 | `[http]` | `httpx` (já vem no pacote base) | `HTTPClient` + `RetryPolicy` + circuit-breaker. O extra é opcional: o `HTTPClient` funciona na instalação base, e declarar o extra só registra a intenção no `pyproject.toml` do serviço |
 | `[image]` | `pillow` | `strip_image_metadata`: recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, com teto de pixels contra decompression bomb |
+| `[kurrentdb]` | `kurrentdbclient` | backend KurrentDB (antigo EventStoreDB) do event store: `KurrentDBEventStore`. O backend SQL (`SqlEventStore`) não precisa de extra. Entra no `[all]`. [Receita](recipes/event-sourcing.md) |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth + QR code do cadastro (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |

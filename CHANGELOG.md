@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Event sourcing em `tempest_fastapi_sdk.eventsourcing`: o protocolo
+  `EventStore` (append com `expected_version`, leitura de stream para frente
+  e para trás a partir de uma versão, `$all` por posição com
+  `after_position` exclusivo, `subscribe_all`, snapshots) e dois backends.
+  - `SqlEventStore` sobre o PostgreSQL/SQLite que o serviço já tem, sem
+    dependência nova: tabelas abstratas `BaseEventModel`,
+    `BaseEventStreamModel`, `BaseEventSnapshotModel` e
+    `BaseProjectionCheckpointModel`; `session=` em todo método para gravar na
+    transação do chamador; `outbox_model=` grava uma linha de outbox por
+    evento na mesma transação, publicada pelo `OutboxRelay`. A checagem de
+    versão é um `UPDATE` condicional da linha do stream, e no PostgreSQL todo
+    append toma um advisory lock de transação para numerar `$all` na ordem de
+    commit, sem buraco — appends no store inteiro rodam um de cada vez.
+  - `KurrentDBEventStore` sobre KurrentDB (antigo EventStoreDB), pelo cliente
+    oficial `kurrentdbclient`, no novo extra `[kurrentdb]` (piso 1.3.0, entra
+    no `[all]`). Medido com KurrentDB 26.2.3 e o cliente 1.3.0 e 1.3.6.
+  - `WrongExpectedVersionException` (409,
+    `EVENTSOURCING_WRONG_EXPECTED_VERSION`, também no topo do pacote) nos dois
+    backends, com `stream_id`, `expected_version` e `actual_version`.
+  - `DomainEvent` + `EventRegistry` (eventos Pydantic tipados, gravados por
+    nome), `EventMetadata` (correlation/causation id), `RecordedEvent`,
+    `Aggregate` + `AggregateRepository` (replay após snapshot,
+    `snapshot_every=`), `ProjectionRunner` + `SqlCheckpointStore` /
+    `InMemoryCheckpointStore`.
+
 ## [0.354.0] — 2026-11-11
 
 ### Fixed

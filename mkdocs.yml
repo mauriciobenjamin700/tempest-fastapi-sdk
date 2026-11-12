@@ -138,6 +138,7 @@ plugins:
               - Downloads: recipes/downloads.md
               - Enum columns (safe on both databases): recipes/enum-columns.md
               - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
+              - "Event sourcing (event store)": recipes/event-sourcing.md
               - Face recognition: recipes/faces.md
               - "Fakes (no real provider)": recipes/fakes.md
               - Feature flags: recipes/feature-flags.md
@@ -455,6 +456,7 @@ nav:
       - "Erros do app (relatados pelo cliente)": recipes/app-errors.md
       - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
       - "Escolhendo o modelo": recipes/models.md
+      - "Event sourcing (event store)": recipes/event-sourcing.md
       - "Exemplos completos":
           - "Exemplo integrado (admin completo)": admin-showcase.md
           - "Exemplo integrado (checkout Pix)": integrated.md

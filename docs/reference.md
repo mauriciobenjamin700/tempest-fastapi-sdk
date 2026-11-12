@@ -538,6 +538,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Event sourcing
+
+### `tempest_fastapi_sdk.eventsourcing`
+
+::: tempest_fastapi_sdk.eventsourcing
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Exceções
 
 ### `tempest_fastapi_sdk.exceptions`
@@ -588,6 +602,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.wallet.InsufficientBalanceException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutRejectedException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutUncertainException
+::: tempest_fastapi_sdk.exceptions.eventsourcing.WrongExpectedVersionException
 ::: tempest_fastapi_sdk.exceptions.i18n.MessageCatalog
 ::: tempest_fastapi_sdk.exceptions.i18n.default_message_catalog
 ::: tempest_fastapi_sdk.exceptions.i18n.parse_accept_language

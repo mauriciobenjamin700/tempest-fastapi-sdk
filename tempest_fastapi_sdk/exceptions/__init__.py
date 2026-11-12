@@ -9,6 +9,9 @@ from tempest_fastapi_sdk.exceptions.base import (
 from tempest_fastapi_sdk.exceptions.conflict import (
     ConflictException as ConflictException,
 )
+from tempest_fastapi_sdk.exceptions.eventsourcing import (
+    WrongExpectedVersionException as WrongExpectedVersionException,
+)
 from tempest_fastapi_sdk.exceptions.factories import (
     DEFAULT_CONFLICT_TEMPLATE as DEFAULT_CONFLICT_TEMPLATE,
 )
@@ -229,6 +232,7 @@ __all__: list[str] = [
     "UploadTooLargeException",
     "ValidationException",
     "ValidationValueError",
+    "WrongExpectedVersionException",
     "ZapSendFailedException",
     "conflict_exception",
     "default_message_catalog",

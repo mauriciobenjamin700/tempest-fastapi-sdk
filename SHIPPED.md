@@ -4287,3 +4287,25 @@ irmão, ciclo recusa. Contrato congelado gerado da mesma introspecção.
 `ruff` no `PATH` ordena e formata o que foi escrito. Testes:
 `tests/cli/test_standard.py` (rodam o pytest gerado dentro do projeto).
 Receita: "Projeto existente" em `docs/service-standard.md`.
+
+## Event sourcing: `EventStore` com backend SQL e KurrentDB
+
+`tempest_fastapi_sdk/eventsourcing/` (pacote de topo, alcançado pelo caminho,
+como `wallet`): `events.py` (`DomainEvent`, `EventRegistry`, `EventMetadata`,
+`RecordedEvent`, `AppendResult`, `Snapshot`, `StreamStateEnum`,
+`UnknownEventTypeError`), `store.py` (protocolo `EventStore`), `models.py`
+(tabelas abstratas de evento, stream, snapshot e checkpoint), `sql.py`
+(`SqlEventStore`: `UPDATE` condicional da linha do stream antes de inserir,
+advisory lock de transação no PostgreSQL para `$all` sem buraco, `session=`,
+`outbox_model=` grava no outbox na mesma transação), `kurrentdb.py`
+(`KurrentDBEventStore`, extra `[kurrentdb]`, cliente importado só dentro das
+funções), `aggregate.py` (`Aggregate`, `AggregateRepository`) e
+`projection.py` (`ProjectionRunner`, `CheckpointStore`,
+`SqlCheckpointStore`, `InMemoryCheckpointStore`).
+`WrongExpectedVersionException` em `exceptions/eventsourcing.py`, no topo e no
+catálogo i18n. Fora de propósito: subscriptions persistentes do KurrentDB (use
+`store.client`) e upcasting de evento. Testes: `tests/eventsourcing/` —
+concorrência real (transação aberta + `pg_stat_activity`, 8 escritores × 20
+rodadas) em SQLite e PostgreSQL 16, a sequence que deixaria uma projeção pular
+evento, e a suíte viva do KurrentDB 26.2.3 rodada no piso (1.3.0) e no 1.3.6 do
+cliente (`test_kurrentdb_matrix.py`). Receita: `docs/recipes/event-sourcing.md`.
