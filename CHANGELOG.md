@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.354.0] — 2026-11-11
+
 ### Fixed
 
 - O `422` não manda mais placeholder cru ao cliente. A checagem de e-mail do
