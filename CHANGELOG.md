@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `parse_trip_intent` (`tempest_fastapi_sdk.geo`): origem, destino, data e
+  período de uma frase de viagem em PT-BR, digitada ou transcrita ("quero ir
+  de teresinha pra parnaiba sexta de manhã"). Papéis por preposição e verbo
+  ("de X", "pra Y", "saindo de", "indo pra", "X pra Y", ordem sem
+  preposição); datas ("hoje", "amanhã", "depois de amanhã", dia da semana,
+  "dia 20", "20/10") e período; homônimo sem UF volta com todos os
+  candidatos; cidade dita e não reconhecida volta em `unrecognized`.
+  Absorve erro de transcrição: candidatos pelo `FuzzyIndex` e decisão pela
+  razão do `difflib` ("Pico" → Picos), "l" vocalizado por chave fonética
+  ("Sobrau" → Sobral), numeral romano por extenso ("pedro segundo" → Pedro
+  II) e os apelidos de `BR_CITY_NICKNAMES`. `municipalities=` restringe às
+  cidades atendidas (`build_trip_city_index`, montado uma vez). Portado da
+  busca de viagem em produção do BusCar; a tabela de 61 frases em
+  `tests/geo/test_trip_intent.py` é a régua de qualidade.
+- `municipality_by_name(nome, uf, typo_cutoff=None)`: o município de nome
+  exato numa UF, sem caixa nem acento, para ligar o nome guardado por um
+  serviço ao IBGE. Com `typo_cutoff`, aceita o mais parecido da UF quando é
+  único: dos 5569 nomes do dataset antigo do BusCar, 7 tinham grafia diferente
+  do IBGE ("Alvorada do Oeste", "Camacã") e 6 passam a casar em `0.85`; fica
+  de fora Boa Saúde (RN), renomeada Januário Cicco.
+- `TripRoleEnum` (`origin` / `destination`) e o vocabulário PT-BR em
+  `tempest_fastapi_sdk.geo.trip_vocabulary`.
+
 ## [0.355.0] — 2026-11-12
 
 ### Added

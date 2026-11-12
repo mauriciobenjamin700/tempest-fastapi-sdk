@@ -73,6 +73,7 @@ from tempest_fastapi_sdk.geo.db import make_geo_point_model as make_geo_point_mo
 from tempest_fastapi_sdk.geo.distance import EARTH_RADIUS_KM as EARTH_RADIUS_KM
 from tempest_fastapi_sdk.geo.distance import haversine_km as haversine_km
 from tempest_fastapi_sdk.geo.enums import TravelModeEnum as TravelModeEnum
+from tempest_fastapi_sdk.geo.enums import TripRoleEnum as TripRoleEnum
 from tempest_fastapi_sdk.geo.estimate import (
     DEFAULT_CAR_SPEED_KMH as DEFAULT_CAR_SPEED_KMH,
 )
@@ -119,6 +120,9 @@ from tempest_fastapi_sdk.geo.municipalities import (
     municipality_by_ibge_code as municipality_by_ibge_code,
 )
 from tempest_fastapi_sdk.geo.municipalities import (
+    municipality_by_name as municipality_by_name,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
     search_municipalities as search_municipalities,
 )
 from tempest_fastapi_sdk.geo.polyline import decode_polyline as decode_polyline
@@ -137,6 +141,15 @@ from tempest_fastapi_sdk.geo.schemas import DistanceMatrix as DistanceMatrix
 from tempest_fastapi_sdk.geo.schemas import GeocodeAddress as GeocodeAddress
 from tempest_fastapi_sdk.geo.schemas import GeocodeResult as GeocodeResult
 from tempest_fastapi_sdk.geo.schemas import TravelEstimate as TravelEstimate
+from tempest_fastapi_sdk.geo.trip_intent import CityMention as CityMention
+from tempest_fastapi_sdk.geo.trip_intent import TripCityIndex as TripCityIndex
+from tempest_fastapi_sdk.geo.trip_intent import TripIntent as TripIntent
+from tempest_fastapi_sdk.geo.trip_intent import (
+    build_trip_city_index as build_trip_city_index,
+)
+from tempest_fastapi_sdk.geo.trip_intent import (
+    parse_trip_intent as parse_trip_intent,
+)
 
 __all__: list[str] = [
     "BRASILIA_IBGE_CODE",
@@ -155,6 +168,7 @@ __all__: list[str] = [
     "UF_CENTROIDS",
     "BoundingBox",
     "CachedGeocodingBackend",
+    "CityMention",
     "Coordinate",
     "DistanceMatrix",
     "GeoPointMixin",
@@ -174,8 +188,12 @@ __all__: list[str] = [
     "RoutingBackend",
     "TravelEstimate",
     "TravelModeEnum",
+    "TripCityIndex",
+    "TripIntent",
+    "TripRoleEnum",
     "bounding_box",
     "br_municipalities",
+    "build_trip_city_index",
     "cep_to_coordinate",
     "decode_polyline",
     "destination_point",
@@ -189,7 +207,9 @@ __all__: list[str] = [
     "initial_bearing",
     "make_geo_point_model",
     "municipality_by_ibge_code",
+    "municipality_by_name",
     "nearest",
+    "parse_trip_intent",
     "path_length_km",
     "point_in_polygon",
     "polygon_area_km2",

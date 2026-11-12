@@ -284,6 +284,44 @@ def _state_names() -> dict[str, UFEnum]:
     return names
 
 
+def municipality_by_name(
+    name: str, uf: UFEnum | str, *, typo_cutoff: float | None = None
+) -> Municipality | None:
+    """Return the municipality with this name in a state.
+
+    Case, accents and punctuation do not matter (``"SAO LUIS"`` is São
+    Luís), and IBGE aliases count (``"Assu"``). For linking a name stored by
+    a service (a route's city and state) to its IBGE record.
+
+    Args:
+        name (str): The municipality name.
+        uf (UFEnum | str): Its state, as enum or acronym.
+        typo_cutoff (float | None): When set and no name matches exactly,
+            accept the most similar name in the state at this similarity or
+            above, if it is the only best one. Old datasets spell some
+            towns differently (``"Alvorada do Oeste"`` for ``"Alvorada
+            D'Oeste"``, ``"Camacã"`` for ``"Camacan"``); ``0.85`` links them.
+            ``None`` (default) is exact only.
+
+    Returns:
+        Municipality | None: The municipality, or ``None`` when the state
+        has none by that name (or ``uf`` is not a Brazilian state).
+    """
+    try:
+        state = UFEnum(str(uf).strip().upper())
+    except ValueError:
+        return None
+    for municipality in _name_index().exact(name):
+        if municipality.uf is state:
+            return municipality
+    if typo_cutoff is None:
+        return None
+    hits = search_municipalities(name, uf=state, limit=2, cutoff=typo_cutoff)
+    if not hits or (len(hits) == 2 and hits[0].score == hits[1].score):
+        return None
+    return hits[0].municipality
+
+
 def search_municipalities(
     name: str,
     *,
@@ -510,5 +548,6 @@ __all__: list[str] = [
     "br_municipalities",
     "find_municipalities_in_text",
     "municipality_by_ibge_code",
+    "municipality_by_name",
     "search_municipalities",
 ]
