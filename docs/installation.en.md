@@ -39,6 +39,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` — without it the handshake 404s |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face recognition on ONNX Runtime, no opencv and no torch: `FaceRecognizer` (detect/embed/compare), `compare_faces`. 16 MB models fetched by `ensure_models()`. **No system libraries** |
+| `[fastmcp]` | `fastmcp` | MCP in both directions: `mount_mcp` (a `FastMCP` server at `/mcp` behind `current_user`), `add_agent_tools`, `add_fastapi_routes`, `MCPToolset` (another MCP server's tools in an `Agent`, stdio and HTTP). Adds 47 packages to the base install (fastmcp 4.1.8), `httpx2` among them — and therefore **out of `[all]`** |
 | `[firebase]` | `firebase-admin` | Firebase ID token verification: `FirebaseAuth` (idempotent init, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Heavy — 33 packages, 52 MB measured on `firebase-admin` 7.5.0 — and therefore **out of `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `MusicGenerator`, `BarkSpeech`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `torch` | STT (Whisper). Since 0.349.0 it no longer brings Coqui: its `torchaudio` broke Bark on a GPU ([details](#genai-audio-coqui-split)) |
@@ -81,7 +82,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | Passkeys / security keys: `WebAuthnService`, `make_web_authn_credential_model`, the `/auth/webauthn/*` routes — passwordless, phishing-resistant login |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the 18 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 18 above separately (and `[tests]`, which is test tooling, in the dev group) |
+| `[all]` | everything above **except** the 19 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[fastmcp]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 19 above separately (and `[tests]`, which is test tooling, in the dev group) |
 
 === "Subset (recommended)"
 

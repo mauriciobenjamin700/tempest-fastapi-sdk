@@ -33,6 +33,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Aggregate` + `AggregateRepository` (replay após snapshot,
     `snapshot_every=`), `ProjectionRunner` + `SqlCheckpointStore` /
     `InMemoryCheckpointStore`.
+- `tempest_fastapi_sdk.mcp` (extra novo `[fastmcp]`, `fastmcp>=4.1.0`, fora do
+  `[all]`): Model Context Protocol nas duas direções.
+  - **Servir.** `mount_mcp(app, server, principal=current_user)` serve um
+    `FastMCP` em `/mcp` como rota FastAPI comum: a dependência de
+    `principal=` (e as de `dependencies=`) roda como nas suas rotas, e um
+    cliente sem token recebe o mesmo `401` `UNAUTHORIZED` da API antes de
+    chegar ao servidor MCP. Sem `principal=` nem `dependencies=` a montagem
+    levanta `ValueError`, salvo `allow_unauthenticated=True`. O lifespan da
+    app é composto em volta do transporte (o MCP para antes dos seus
+    recursos fecharem), e o transporte roda sem sessão por padrão
+    (`stateless=True`). `mcp_principal(tipo)` devolve, dentro da ferramenta, o
+    que `principal=` resolveu.
+  - `add_agent_tools(server, tools)` publica `AgentTool`s com o schema que
+    elas já declaram, com o contrato de falha dos agentes (`AgentToolError`
+    chega com a mensagem; outra exceção chega como `tool failed: <Tipo>`) e
+    teto por chamada (`timeout`, padrão 120 s). Artefatos viram conteúdo
+    `image`/`audio` ou recurso binário embutido.
+  - `add_fastapi_routes(server, app, operations=..., tags=...)` publica as
+    rotas escolhidas com o schema do OpenAPI da própria app, chamadas no
+    mesmo processo com `Authorization`/`Cookie` do cliente MCP repassados
+    (`forward_headers=`), de modo que a rota autentica quem chamou o MCP;
+    esses cabeçalhos saem do schema e um valor posto pelo modelo é
+    sobrescrito. Sem seleção, ou com `operation_id`/tag inexistente, levanta
+    `ValueError`.
+  - **Consumir.** `MCPToolset.stdio(...)` / `MCPToolset.http(...)` conecta a
+    outro servidor MCP e devolve as ferramentas dele como `AgentTool`s
+    (`prefix=`, `include=`). Timeout (padrão 30 s, encurtado pelo `deadline`
+    da execução), erro JSON-RPC e resultado marcado como erro viram
+    `AgentToolError`; imagem, áudio e recurso binário viram artefatos.
+    `connect`/`disconnect` idempotentes fazem dele um `LifecycleResource`, e
+    o stdio encerra o subprocesso no `disconnect` (o padrão do FastMCP o
+    deixa vivo).
+  - Receita bilíngue `docs/recipes/mcp.md`.
 
 ## [0.354.0] — 2026-11-11
 

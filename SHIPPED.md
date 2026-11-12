@@ -1143,6 +1143,39 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **MCP, both directions (unreleased, extra `[fastmcp]` = `fastmcp>=4.1.0`,
+  out of `[all]`)** — `tempest_fastapi_sdk.mcp`, submodule import, imports
+  without the extra. **Serve:** the consumer builds the `FastMCP` and
+  decorates it (FastMCP derives tool/resource/prompt schemas from type
+  hints — the SDK does not wrap that); `mount_mcp(app, server,
+  principal=current_user, dependencies=...)` mounts the streamable-HTTP
+  transport behind an **ordinary FastAPI route**, so the SDK's own auth
+  dependencies refuse an unauthenticated client with the API's `401` before
+  the MCP server sees the request (no `principal`/`dependencies` →
+  `ValueError` unless `allow_unauthenticated=True`); `stateless=True` by
+  default so no `Mcp-Session-Id` outlives or changes hands with a token;
+  `app.router.lifespan_context` is wrapped (app lifespan outside, transport
+  inside); `mcp_principal(kind)` reads the resolved caller inside a tool.
+  `add_agent_tools` exposes `AgentTool`s with their own `parameters` and the
+  agent failure contract (`AgentToolError` text through, anything else
+  `tool failed: <Type>`, per-call `timeout` 120 s, artifacts as MCP
+  image/audio/embedded-blob content). `add_fastapi_routes` exposes picked
+  routes (`operations=`/`tags=`, required; unknown ids/tags raise) through
+  FastMCP's `OpenAPIProvider` over an in-process ASGI client, **forwarding
+  the MCP caller's `Authorization`/`Cookie`** (`forward_headers=`) so the
+  route's own dependencies authenticate the caller; forwarded headers are
+  stripped from the tool schema and a model-supplied value is overwritten or
+  removed; `app.openapi_schema` cache restored. **Consume:**
+  `MCPToolset.stdio/.http` (or a configured `fastmcp.Client`) →
+  `await toolset.tools()` → `AgentTool`s (`prefix=`, `include=`); timeout
+  (30 s, shortened by the run's `deadline`; an exhausted run refuses
+  without calling, since a zero timeout means none to the client), JSON-RPC
+  errors and error results → `AgentToolError`; binary content → artifacts.
+  `connect`/`disconnect` (idempotent) = `LifecycleResource`; stdio passes
+  `keep_alive=False` because FastMCP's default leaves the subprocess running
+  after the client exits (measured). Tests: `tests/mcp/` — uvicorn on a
+  loopback port and a stdio subprocess, both against the SDK's own server.
+  Recipe: `docs/recipes/mcp.md`.
 - **Agents audit (v0.300.0)** — ceilings now hold *during* a call, not
   just between turns: every model call runs under `asyncio.timeout` of the
   time left and every tool call under that plus a grace that shrinks per
