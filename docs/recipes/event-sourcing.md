@@ -146,7 +146,9 @@ Pedaço por pedaço:
 - **`expected_version` é obrigatório.** Um número diz "o stream está nesta
   versão"; `StreamStateEnum.NO_STREAM` diz "o stream ainda não existe";
   `EXISTS` exige que exista; `ANY` desliga a checagem. Não há default — a
-  checagem de concorrência é uma decisão, não um esquecimento.
+  checagem de concorrência é uma decisão, não um esquecimento. O valor puro
+  do membro (`"no_stream"`, que é o que um campo com `use_enum_values`
+  guarda) vale o mesmo que o membro; string fora do enum é `ValueError`.
 - **`EventMetadata`** leva `correlation_id`, `causation_id` e `extra`. O
   horário vem do store: `recorded.recorded_at`, em UTC.
 - **`read_stream`** lê para frente ou para trás (`backwards=True`), a partir

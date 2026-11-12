@@ -190,6 +190,30 @@ async def test_input_validation(db: AsyncDatabaseManager) -> None:
     assert await store.stream_version("s") is None
 
 
+async def test_plain_enum_value_keeps_the_concurrency_check(
+    db: AsyncDatabaseManager,
+) -> None:
+    """``"no_stream"`` / ``"exists"`` mean the member, not ``ANY``.
+
+    Before the normalization the backends compared the enum by identity, so
+    the plain value matched no branch and the SQL store appended with no
+    check: a second ``"no_stream"`` and an ``"exists"`` on a missing stream
+    were both accepted.
+    """
+    store = make_store(db)
+    await store.append("s", [placed()], expected_version="no_stream")  # type: ignore[arg-type]
+    with pytest.raises(WrongExpectedVersionException):
+        await store.append("s", [placed()], expected_version="no_stream")  # type: ignore[arg-type]
+    with pytest.raises(WrongExpectedVersionException):
+        await store.append("missing", [placed()], expected_version="exists")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        await store.append("s", [placed()], expected_version="whatever")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        await store.append("s", [placed()], expected_version=True)
+    assert await store.stream_version("s") == 0
+    assert await store.stream_version("missing") is None
+
+
 async def test_read_stream_with_unregistered_type_raises(
     db: AsyncDatabaseManager,
 ) -> None:

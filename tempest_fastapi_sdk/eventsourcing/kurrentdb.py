@@ -40,6 +40,7 @@ from tempest_fastapi_sdk.eventsourcing.events import (
     RecordedEvent,
     Snapshot,
     StreamStateEnum,
+    _check_expected_version,
     _expected_version_label,
 )
 from tempest_fastapi_sdk.exceptions.eventsourcing import (
@@ -253,8 +254,12 @@ class KurrentDBEventStore:
             WrongExpectedVersionException: When the stream does not match
                 ``expected_version`` (the client's
                 ``WrongCurrentVersionError``).
-            ValueError: When ``events`` is empty or ``expected_version`` is
-                a negative number.
+            ValueError: When ``events`` is empty, or ``expected_version``
+                is a negative number or a string naming no
+                :class:`StreamStateEnum` member (the member's plain value,
+                ``"exists"``, is accepted and means the member).
+            TypeError: When ``expected_version`` is neither an ``int`` nor
+                a :class:`StreamStateEnum`.
             UnknownEventTypeError: When an event's class is not registered.
         """
         from kurrentdbclient import NewEvent
@@ -262,11 +267,7 @@ class KurrentDBEventStore:
 
         if not events:
             raise ValueError("append needs at least one event")
-        if isinstance(expected_version, int) and expected_version < 0:
-            raise ValueError(
-                "expected_version must be >= 0; use StreamStateEnum.NO_STREAM "
-                "for a stream that does not exist yet"
-            )
+        expected_version = _check_expected_version(expected_version)
         meta = _encode_metadata(metadata if metadata is not None else EventMetadata())
         new_events = []
         for event in events:
