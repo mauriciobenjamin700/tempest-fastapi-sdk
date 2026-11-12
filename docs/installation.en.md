@@ -55,6 +55,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[geo]` | `httpx` | geospatial helpers: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + routing), `GeoPointMixin` |
 | `[http]` | `httpx` (already in the base package) | `HTTPClient` + `RetryPolicy` + circuit-breaker. The extra is optional: `HTTPClient` works on the base install, and declaring the extra only records the intent in the service's `pyproject.toml` |
 | `[image]` | `pillow` | `strip_image_metadata`: re-encodes a user's photo in the same format without EXIF (GPS, device), XMP, IPTC, ICC and text chunks, with a pixel ceiling against decompression bombs |
+| `[kurrentdb]` | `kurrentdbclient` (+ `grpcio`, `grpcio-tools`, `setuptools`, `protobuf`) | KurrentDB (formerly EventStoreDB) backend of the event store: `KurrentDBEventStore`. The SQL backend (`SqlEventStore`) needs no extra. Included in `[all]`. Weighs 34 MB in a clean venv (`kurrentdbclient` 1.3.6: `grpc` 18 MB, `grpc_tools` 7.9 MB, `setuptools` 3.9 MB), because the client asks for `grpcio[protobuf]`; `pip-audit` found no advisory in the 2026-11-12 resolution. [Recipe](recipes/event-sourcing.md) |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow + enrollment QR code (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |

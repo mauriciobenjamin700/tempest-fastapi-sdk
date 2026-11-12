@@ -1481,6 +1481,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.exceptions import (
         parse_accept_language as parse_accept_language,
     )
+    from tempest_fastapi_sdk.exceptions.eventsourcing import (
+        WrongExpectedVersionException as WrongExpectedVersionException,
+    )
     from tempest_fastapi_sdk.exceptions.wallet import (
         InsufficientBalanceException as InsufficientBalanceException,
     )
@@ -2854,6 +2857,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "default_message_catalog": "tempest_fastapi_sdk.exceptions",
     "not_found_exception": "tempest_fastapi_sdk.exceptions",
     "parse_accept_language": "tempest_fastapi_sdk.exceptions",
+    "WrongExpectedVersionException": "tempest_fastapi_sdk.exceptions.eventsourcing",
     "InsufficientBalanceException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutRejectedException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutUncertainException": "tempest_fastapi_sdk.exceptions.wallet",
@@ -3794,6 +3798,7 @@ __all__: list[str] = [
     "WebhookSender",
     "WebhookSignatureVerifier",
     "WhereClause",
+    "WrongExpectedVersionException",
     "ZapSendFailedException",
     "__version__",
     "admin_action",
