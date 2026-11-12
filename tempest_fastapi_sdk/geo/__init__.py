@@ -24,7 +24,10 @@ Layers, all sharing the same schemas:
 * **Brazil**: :func:`uf_centroid` (offline state centres),
   :func:`cep_to_coordinate` (CEP via a geocoder), :func:`extract_cep` (CEP
   from free text) and :func:`resolve_br_coordinate` (CEP → address → state
-  centroid).
+  centroid). Every IBGE municipality offline, with code and coordinate:
+  :func:`municipality_by_ibge_code`, :func:`search_municipalities` (typos
+  included) and :func:`find_municipalities_in_text` (``"moro em sao jose
+  dos campos - sp"``).
 
 Motorcycle/bus/bicycle/pedestrian are derived from the car result by
 scaling the duration (see :data:`DEFAULT_MODE_DURATION_FACTORS`).
@@ -94,6 +97,30 @@ from tempest_fastapi_sdk.geo.geometry import path_length_km as path_length_km
 from tempest_fastapi_sdk.geo.geometry import point_in_polygon as point_in_polygon
 from tempest_fastapi_sdk.geo.geometry import polygon_area_km2 as polygon_area_km2
 from tempest_fastapi_sdk.geo.geometry import within_radius as within_radius
+from tempest_fastapi_sdk.geo.municipalities import (
+    BR_CITY_NICKNAMES as BR_CITY_NICKNAMES,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
+    BRASILIA_IBGE_CODE as BRASILIA_IBGE_CODE,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
+    Municipality as Municipality,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
+    MunicipalityMatch as MunicipalityMatch,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
+    br_municipalities as br_municipalities,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
+    find_municipalities_in_text as find_municipalities_in_text,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
+    municipality_by_ibge_code as municipality_by_ibge_code,
+)
+from tempest_fastapi_sdk.geo.municipalities import (
+    search_municipalities as search_municipalities,
+)
 from tempest_fastapi_sdk.geo.polyline import decode_polyline as decode_polyline
 from tempest_fastapi_sdk.geo.polyline import encode_polyline as encode_polyline
 from tempest_fastapi_sdk.geo.routing import (
@@ -112,6 +139,8 @@ from tempest_fastapi_sdk.geo.schemas import GeocodeResult as GeocodeResult
 from tempest_fastapi_sdk.geo.schemas import TravelEstimate as TravelEstimate
 
 __all__: list[str] = [
+    "BRASILIA_IBGE_CODE",
+    "BR_CITY_NICKNAMES",
     "CEP_PATTERN",
     "DEFAULT_CAR_SPEED_KMH",
     "DEFAULT_CIRCUITY_FACTOR",
@@ -135,6 +164,8 @@ __all__: list[str] = [
     "GeocodeResult",
     "GeocodingBackend",
     "InMemoryGeocodeCacheStore",
+    "Municipality",
+    "MunicipalityMatch",
     "NearbyMatch",
     "NominatimBackend",
     "OSRMBackend",
@@ -144,6 +175,7 @@ __all__: list[str] = [
     "TravelEstimate",
     "TravelModeEnum",
     "bounding_box",
+    "br_municipalities",
     "cep_to_coordinate",
     "decode_polyline",
     "destination_point",
@@ -151,15 +183,18 @@ __all__: list[str] = [
     "encode_polyline",
     "estimate_travel",
     "extract_cep",
+    "find_municipalities_in_text",
     "haversine_distance_sql",
     "haversine_km",
     "initial_bearing",
     "make_geo_point_model",
+    "municipality_by_ibge_code",
     "nearest",
     "path_length_km",
     "point_in_polygon",
     "polygon_area_km2",
     "resolve_br_coordinate",
+    "search_municipalities",
     "uf_centroid",
     "within_radius",
 ]

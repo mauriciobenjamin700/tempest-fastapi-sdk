@@ -145,6 +145,7 @@ plugins:
               - File in the service (mixin): recipes/stored-files.md
               - "Firebase auth (ID token)": recipes/firebase-auth.md
               - Forms from Pydantic schemas: recipes/ui-forms.md
+              - Fuzzy matching and cities in text: recipes/fuzzy-matching.md
               - Geolocation (distance + time): recipes/geo.md
               - "Host control (files, commands, power)": recipes/hostbridge.md
               - "Hosted generative AI (Anthropic, OpenAI, DeepSeek, Google)": recipes/genai-hosted.md
@@ -436,6 +437,7 @@ nav:
       - Auth flow (signup/reset): recipes/auth-flow.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
       - Banco de dados: recipes/database.md
+      - Busca aproximada (fuzzy) e cidades em texto: recipes/fuzzy-matching.md
       - "Busca textual (LIKE + full-text)": recipes/text-search.md
       - Cache: recipes/cache.md
       - Camada HTTP: recipes/http.md
