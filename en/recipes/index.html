@@ -1191,6 +1191,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -2172,6 +2178,34 @@
   
   
     <li class="md-nav__item">
+      <a href="event-sourcing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event sourcing (event store)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="faces/" class="md-nav__link">
         
   
@@ -2320,6 +2354,34 @@
     
   
     Forms from Pydantic schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fuzzy-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy matching and cities in text
   
 
     
@@ -2712,6 +2774,34 @@
     
   
     Management commands (tempest <cmd>)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP (Model Context Protocol)
   
 
     
@@ -5450,6 +5540,10 @@ come back here to plug in each capability as you need it.</p>
 <td><code>error_responses</code>, <code>@raises</code>, <code>TempestAPIRouter</code>, <code>ErrorResponseSchema</code>, <code>tempest openapi-errors --fix</code></td>
 </tr>
 <tr>
+<td><strong><a href="event-sourcing/">Event sourcing (event store) »</a></strong></td>
+<td><code>EventStore</code> (append with <code>expected_version</code>, stream reads forwards and backwards, <code>$all</code> by position, subscription, snapshots) on SQL (<code>SqlEventStore</code>, no new dependency, outbox in the same transaction) or KurrentDB (<code>KurrentDBEventStore</code>, <code>[kurrentdb]</code> extra), <code>DomainEvent</code> + <code>EventRegistry</code>, <code>WrongExpectedVersionException</code>, <code>AggregateRepository</code>, <code>ProjectionRunner</code></td>
+</tr>
+<tr>
 <td><strong><a href="faces/">Face recognition »</a></strong></td>
 <td><code>FaceRecognizer</code> (detect / embed / compare), <code>compare_faces</code>, 16 MB or 191 MB packs, no opencv and no torch</td>
 </tr>
@@ -5472,6 +5566,10 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="ui-forms/">Forms from Pydantic schemas »</a></strong></td>
 <td><code>form_for</code> / <code>form_spec_for</code> / <code>render_form</code>, <code>parse_form</code> + <code>FormResult</code> (per-field errors, input preserved), <code>form_dependency</code> (no <code>Request</code> in the route), hidden fields, <code>UploadFile</code> uploads, type-to-control mapping, <code>json_schema_extra={"ui": ...}</code>, <code>form_stylesheet</code></td>
+</tr>
+<tr>
+<td><strong><a href="fuzzy-matching/">Fuzzy matching and cities in text »</a></strong></td>
+<td><code>normalize_text</code>, <code>similarity</code>, <code>FuzzyIndex</code> (trigrams, no dependency), the 5571 IBGE municipalities with code and coordinate, <code>find_municipalities_in_text</code> (city and state in a sentence, typos and nicknames included), <code>search_municipalities</code>, search by meaning and combined (<code>SemanticNameIndex</code>, <code>HybridNameIndex</code>), agent tools (<code>municipality_search_tool</code>, <code>name_search_tool</code>)</td>
 </tr>
 <tr>
 <td><strong><a href="geo/">Geolocation (distance + travel time) »</a></strong></td>
@@ -5528,6 +5626,10 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="management-commands/">Management commands (tempest &lt;cmd&gt;) »</a></strong></td>
 <td>register your own commands on the project's <code>tempest</code> CLI</td>
+</tr>
+<tr>
+<td><strong><a href="mcp/">MCP (Model Context Protocol) »</a></strong></td>
+<td>serve a <code>FastMCP</code> at <code>/mcp</code> behind <code>current_user</code> (<code>mount_mcp</code>), publish <code>AgentTool</code>s and picked FastAPI routes as MCP tools (<code>add_agent_tools</code>, <code>add_fastapi_routes</code>), and use another MCP server's tools in an <code>Agent</code> (<code>MCPToolset</code>, stdio and HTTP)</td>
 </tr>
 <tr>
 <td><strong><a href="mercado-pago/">Mercado Pago (Pix, cards, boleto) »</a></strong></td>

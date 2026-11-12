@@ -1350,6 +1350,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -2327,6 +2333,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../recipes/event-sourcing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event sourcing (event store)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../recipes/faces/" class="md-nav__link">
         
   
@@ -2475,6 +2509,34 @@
     
   
     Forms from Pydantic schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/fuzzy-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy matching and cities in text
   
 
     
@@ -2867,6 +2929,34 @@
     
   
     Management commands (tempest <cmd>)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP (Model Context Protocol)
   
 
     
@@ -5223,6 +5313,11 @@
 <td>Face recognition on ONNX Runtime, no opencv and no torch: <code>FaceRecognizer</code> (detect/embed/compare), <code>compare_faces</code>. 16 MB models fetched by <code>ensure_models()</code>. <strong>No system libraries</strong></td>
 </tr>
 <tr>
+<td><code>[fastmcp]</code></td>
+<td><code>fastmcp</code></td>
+<td>MCP in both directions: <code>mount_mcp</code> (a <code>FastMCP</code> server at <code>/mcp</code> behind <code>current_user</code>), <code>add_agent_tools</code>, <code>add_fastapi_routes</code>, <code>MCPToolset</code> (another MCP server's tools in an <code>Agent</code>, stdio and HTTP). Adds 47 packages to the base install (fastmcp 4.1.8), <code>httpx2</code> among them — and therefore <strong>out of <code>[all]</code></strong></td>
+</tr>
+<tr>
 <td><code>[firebase]</code></td>
 <td><code>firebase-admin</code></td>
 <td>Firebase ID token verification: <code>FirebaseAuth</code> (idempotent init, <code>get_identity</code> / <code>get_uid</code> / <code>get_optional_identity</code>), <code>FirebaseIdentity</code>, <code>FirebaseUserResolver</code>, <code>FirebaseSettings</code>. Heavy — 33 packages, 52 MB measured on <code>firebase-admin</code> 7.5.0 — and therefore <strong>out of <code>[all]</code></strong></td>
@@ -5303,6 +5398,11 @@
 <td><code>strip_image_metadata</code>: re-encodes a user's photo in the same format without EXIF (GPS, device), XMP, IPTC, ICC and text chunks, with a pixel ceiling against decompression bombs</td>
 </tr>
 <tr>
+<td><code>[kurrentdb]</code></td>
+<td><code>kurrentdbclient</code> (+ <code>grpcio</code>, <code>grpcio-tools</code>, <code>setuptools</code>, <code>protobuf</code>)</td>
+<td>KurrentDB (formerly EventStoreDB) backend of the event store: <code>KurrentDBEventStore</code>. The SQL backend (<code>SqlEventStore</code>) needs no extra. Included in <code>[all]</code>. Weighs 34 MB in a clean venv (<code>kurrentdbclient</code> 1.3.6: <code>grpc</code> 18 MB, <code>grpc_tools</code> 7.9 MB, <code>setuptools</code> 3.9 MB), because the client asks for <code>grpcio[protobuf]</code>; <code>pip-audit</code> found no advisory in the 2026-11-12 resolution. <a href="../recipes/event-sourcing/">Recipe</a></td>
+</tr>
+<tr>
 <td><code>[metrics]</code></td>
 <td><code>psutil</code>, <code>nvidia-ml-py</code></td>
 <td><code>MetricsUtils</code></td>
@@ -5365,7 +5465,22 @@
 <tr>
 <td><code>[queue]</code></td>
 <td><code>faststream[rabbit]</code></td>
-<td><code>AsyncBrokerManager</code></td>
+<td><code>MessageBroker.rabbitmq</code>, <code>AsyncBrokerManager</code></td>
+</tr>
+<tr>
+<td><code>[queue-kafka]</code></td>
+<td><code>faststream[kafka]</code>, <code>aiokafka&gt;=0.10.0</code></td>
+<td><code>MessageBroker.kafka</code> and <code>MessageBroker.kafka_from_settings</code> (with <code>KafkaSettings</code>): topic, partition <code>key</code>, <code>group_id</code>, <code>auto_offset_reset</code>, SASL and TLS. Inherits <code>aiokafka&lt;0.15</code> from FastStream. <a href="../recipes/queue-tasks/#kafka-key-group-and-commit">Recipe</a></td>
+</tr>
+<tr>
+<td><code>[queue-nats]</code></td>
+<td><code>faststream[nats]</code></td>
+<td><code>MessageBroker.nats</code></td>
+</tr>
+<tr>
+<td><code>[queue-redis]</code></td>
+<td><code>faststream[redis]</code></td>
+<td><code>MessageBroker.redis</code></td>
 </tr>
 <tr>
 <td><code>[slides]</code></td>
@@ -5429,8 +5544,8 @@
 </tr>
 <tr>
 <td><code>[all]</code></td>
-<td>everything above <strong>except</strong> the 18 extras that pull a heavy stack or a native binary: <code>[genai]</code>, <code>[genai-audio]</code>, <code>[genai-tts-coqui]</code>, <code>[genai-diarization]</code>, <code>[genai-hub]</code>, <code>[genai-image]</code>, <code>[genai-onnx]</code>, <code>[genai-sound]</code>, <code>[genai-quant]</code>, <code>[genai-rag]</code>, <code>[genai-structured]</code>, <code>[genai-vlm]</code>, <code>[faces]</code>, <code>[modelops-onnx]</code>, <code>[modelops-sklearn]</code>, <code>[admin-sql]</code>, <code>[firebase]</code>, <code>[slides-mermaid]</code></td>
-<td>the application helpers — install the 18 above separately (and <code>[tests]</code>, which is test tooling, in the dev group)</td>
+<td>everything above <strong>except</strong> the 19 extras that pull a heavy stack or a native binary: <code>[genai]</code>, <code>[genai-audio]</code>, <code>[genai-tts-coqui]</code>, <code>[genai-diarization]</code>, <code>[genai-hub]</code>, <code>[genai-image]</code>, <code>[genai-onnx]</code>, <code>[genai-sound]</code>, <code>[genai-quant]</code>, <code>[genai-rag]</code>, <code>[genai-structured]</code>, <code>[genai-vlm]</code>, <code>[faces]</code>, <code>[modelops-onnx]</code>, <code>[modelops-sklearn]</code>, <code>[admin-sql]</code>, <code>[fastmcp]</code>, <code>[firebase]</code>, <code>[slides-mermaid]</code></td>
+<td>the application helpers — install the 19 above separately (and <code>[tests]</code>, which is test tooling, in the dev group). Brings the four <code>MessageBroker</code> transports (<code>faststream[rabbit,kafka,nats,redis]</code>) and, with them, the caps FastStream declares on its own extras: <code>aio-pika&lt;11</code>, <code>aiokafka&lt;0.15</code>, <code>nats-py&lt;=3.0.0</code> and <code>redis&lt;9.0.0</code> (the same in FastStream 0.7.5 and 0.7.8). Together with <code>redis&gt;=8.1.0</code> from <code>[cache]</code>, <code>[all]</code> stays on <code>redis</code> 8.x; <code>aiokafka</code> 0.15.0 is already out and is held back</td>
 </tr>
 </tbody>
 </table>

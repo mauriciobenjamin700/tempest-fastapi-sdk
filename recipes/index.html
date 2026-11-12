@@ -1189,6 +1189,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1681,6 +1687,34 @@
     
   
     Banco de dados
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fuzzy-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Busca aproximada (fuzzy) e cidades em texto
   
 
     
@@ -2288,6 +2322,34 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="event-sourcing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event sourcing (event store)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
     
       
@@ -2319,10 +2381,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_39" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_41" >
         
           
-          <label class="md-nav__link" for="__nav_5_39" id="__nav_5_39_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_41" id="__nav_5_41_label" tabindex="">
             
   
   
@@ -2340,8 +2402,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_39_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_39">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_41_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_41">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -3074,6 +3136,34 @@
     
   
     Management commands (tempest <cmd>)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP (Model Context Protocol)
   
 
     
@@ -5411,6 +5501,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <td><code>BaseModel</code>, <code>AsyncDatabaseManager</code>, <code>BaseRepository</code> (CRUD + filtros + bulk), paginação offset/cursor, mixins, <code>AlembicHelper</code>, <code>SlowQueryLogger</code></td>
 </tr>
 <tr>
+<td><strong><a href="fuzzy-matching/">Busca aproximada (fuzzy) e cidades em texto »</a></strong></td>
+<td><code>normalize_text</code>, <code>similarity</code>, <code>FuzzyIndex</code> (trigramas, sem dependência), os 5571 municípios do IBGE com código e coordenada, <code>find_municipalities_in_text</code> (cidade e UF numa frase, com erro de digitação e apelido), <code>search_municipalities</code>, busca por significado e combinada (<code>SemanticNameIndex</code>, <code>HybridNameIndex</code>), tools de agente (<code>municipality_search_tool</code>, <code>name_search_tool</code>)</td>
+</tr>
+<tr>
 <td><strong><a href="text-search/">Busca textual (LIKE + full-text) »</a></strong></td>
 <td><code>search()</code> portátil (ILIKE escapado, <code>AND</code> entre palavras), <code>full_text_search()</code> com <code>websearch_to_tsquery</code> + <code>ts_rank</code> no PostgreSQL, <code>TextSearchLanguageEnum</code> / <code>TextSearchWeightEnum</code> / <code>TokenMatchEnum</code>, condições que entram em <code>where=</code></td>
 </tr>
@@ -5495,6 +5589,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <td><code>TextModelEnum</code> / <code>EmbeddingModelEnum</code> / <code>RerankerModelEnum</code> / <code>VisionModelEnum</code> / <code>ImageModelEnum</code> / <code>SpeechToTextModelEnum</code> / <code>TextToSpeechModelEnum</code> — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha</td>
 </tr>
 <tr>
+<td><strong><a href="event-sourcing/">Event sourcing (event store) »</a></strong></td>
+<td><code>EventStore</code> (append com <code>expected_version</code>, leitura de stream para frente e para trás, <code>$all</code> por posição, assinatura, snapshots) sobre SQL (<code>SqlEventStore</code>, sem dependência nova, outbox na mesma transação) ou KurrentDB (<code>KurrentDBEventStore</code>, extra <code>[kurrentdb]</code>), <code>DomainEvent</code> + <code>EventRegistry</code>, <code>WrongExpectedVersionException</code>, <code>AggregateRepository</code>, <code>ProjectionRunner</code></td>
+</tr>
+<tr>
 <td><strong><a href="subject-data/">Exportação e exclusão de titular (LGPD) »</a></strong></td>
 <td><code>SubjectGraph</code> (tabelas que o <code>DELETE</code> do titular alcança por cascata, derivadas da <code>MetaData</code>), <code>export</code> sem colunas secretas, <code>violations</code> + <code>assert_subject_graph_valid</code> como guard de CI, <code>SubjectObjectStorage</code> (prefixo por titular, upload direto com <code>presign_put</code> + <code>read</code> limitado, <code>delete_all</code> em lote)</td>
 </tr>
@@ -5577,6 +5675,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <tr>
 <td><strong><a href="management-commands/">Management commands (tempest &lt;cmd&gt;) »</a></strong></td>
 <td>registrar comandos próprios na CLI <code>tempest</code> do projeto</td>
+</tr>
+<tr>
+<td><strong><a href="mcp/">MCP (Model Context Protocol) »</a></strong></td>
+<td>servir um <code>FastMCP</code> em <code>/mcp</code> atrás do <code>current_user</code> (<code>mount_mcp</code>), publicar <code>AgentTool</code>s e rotas FastAPI escolhidas como ferramentas MCP (<code>add_agent_tools</code>, <code>add_fastapi_routes</code>), e usar ferramentas de outro servidor MCP num <code>Agent</code> (<code>MCPToolset</code>, stdio e HTTP)</td>
 </tr>
 <tr>
 <td><strong><a href="mercado-pago-sandbox/">Mercado Pago (contas e credenciais de teste) »</a></strong></td>

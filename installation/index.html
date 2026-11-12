@@ -1348,6 +1348,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1839,6 +1845,34 @@
     
   
     Banco de dados
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/fuzzy-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Busca aproximada (fuzzy) e cidades em texto
   
 
     
@@ -2446,6 +2480,34 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../recipes/event-sourcing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event sourcing (event store)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
     
       
@@ -2474,10 +2536,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_39" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_41" >
         
           
-          <label class="md-nav__link" for="__nav_5_39" id="__nav_5_39_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_41" id="__nav_5_41_label" tabindex="0">
             
   
   
@@ -2495,8 +2557,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_39_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_39">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_41_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_41">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -3229,6 +3291,34 @@
     
   
     Management commands (tempest <cmd>)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP (Model Context Protocol)
   
 
     
@@ -5221,6 +5311,11 @@
 <td>reconhecimento facial em ONNX Runtime, sem opencv e sem torch: <code>FaceRecognizer</code> (detectar/embutir/comparar), <code>compare_faces</code>. Modelos de 16 MB baixados por <code>ensure_models()</code>. <strong>Nenhuma biblioteca de sistema</strong></td>
 </tr>
 <tr>
+<td><code>[fastmcp]</code></td>
+<td><code>fastmcp</code></td>
+<td>MCP nas duas direções: <code>mount_mcp</code> (servidor <code>FastMCP</code> em <code>/mcp</code> atrás do <code>current_user</code>), <code>add_agent_tools</code>, <code>add_fastapi_routes</code>, <code>MCPToolset</code> (ferramentas de outro servidor MCP num <code>Agent</code>, stdio e HTTP). Soma 47 pacotes à instalação base (fastmcp 4.1.8), entre eles o <code>httpx2</code> — e por isso fica <strong>fora do <code>[all]</code></strong></td>
+</tr>
+<tr>
 <td><code>[firebase]</code></td>
 <td><code>firebase-admin</code></td>
 <td>verificação de ID token do Firebase: <code>FirebaseAuth</code> (init idempotente, <code>get_identity</code> / <code>get_uid</code> / <code>get_optional_identity</code>), <code>FirebaseIdentity</code>, <code>FirebaseUserResolver</code>, <code>FirebaseSettings</code>. Pesado — 33 pacotes, 52 MB medidos com <code>firebase-admin</code> 7.5.0 — e por isso <strong>fora do <code>[all]</code></strong></td>
@@ -5301,6 +5396,11 @@
 <td><code>strip_image_metadata</code>: recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, com teto de pixels contra decompression bomb</td>
 </tr>
 <tr>
+<td><code>[kurrentdb]</code></td>
+<td><code>kurrentdbclient</code> (+ <code>grpcio</code>, <code>grpcio-tools</code>, <code>setuptools</code>, <code>protobuf</code>)</td>
+<td>backend KurrentDB (antigo EventStoreDB) do event store: <code>KurrentDBEventStore</code>. O backend SQL (<code>SqlEventStore</code>) não precisa de extra. Entra no <code>[all]</code>. Pesa 34 MB numa venv limpa (<code>kurrentdbclient</code> 1.3.6: <code>grpc</code> 18 MB, <code>grpc_tools</code> 7,9 MB, <code>setuptools</code> 3,9 MB), porque o cliente pede <code>grpcio[protobuf]</code>; <code>pip-audit</code> sem advisory na resolução de 2026-11-12. <a href="../recipes/event-sourcing/">Receita</a></td>
+</tr>
+<tr>
 <td><code>[metrics]</code></td>
 <td><code>psutil</code>, <code>nvidia-ml-py</code></td>
 <td><code>MetricsUtils</code></td>
@@ -5363,7 +5463,22 @@
 <tr>
 <td><code>[queue]</code></td>
 <td><code>faststream[rabbit]</code></td>
-<td><code>AsyncBrokerManager</code></td>
+<td><code>MessageBroker.rabbitmq</code>, <code>AsyncBrokerManager</code></td>
+</tr>
+<tr>
+<td><code>[queue-kafka]</code></td>
+<td><code>faststream[kafka]</code>, <code>aiokafka&gt;=0.10.0</code></td>
+<td><code>MessageBroker.kafka</code> e <code>MessageBroker.kafka_from_settings</code> (com <code>KafkaSettings</code>): tópico, <code>key</code> de partição, <code>group_id</code>, <code>auto_offset_reset</code>, SASL e TLS. Herda <code>aiokafka&lt;0.15</code> do FastStream. <a href="../recipes/queue-tasks/#kafka-chave-grupo-e-commit">Receita</a></td>
+</tr>
+<tr>
+<td><code>[queue-nats]</code></td>
+<td><code>faststream[nats]</code></td>
+<td><code>MessageBroker.nats</code></td>
+</tr>
+<tr>
+<td><code>[queue-redis]</code></td>
+<td><code>faststream[redis]</code></td>
+<td><code>MessageBroker.redis</code></td>
 </tr>
 <tr>
 <td><code>[slides]</code></td>
@@ -5427,8 +5542,8 @@
 </tr>
 <tr>
 <td><code>[all]</code></td>
-<td>tudo acima <strong>exceto</strong> os 18 extras de stack pesado ou binário nativo: <code>[genai]</code>, <code>[genai-audio]</code>, <code>[genai-tts-coqui]</code>, <code>[genai-diarization]</code>, <code>[genai-hub]</code>, <code>[genai-image]</code>, <code>[genai-onnx]</code>, <code>[genai-sound]</code>, <code>[genai-quant]</code>, <code>[genai-rag]</code>, <code>[genai-structured]</code>, <code>[genai-vlm]</code>, <code>[faces]</code>, <code>[modelops-onnx]</code>, <code>[modelops-sklearn]</code>, <code>[admin-sql]</code>, <code>[firebase]</code>, <code>[slides-mermaid]</code></td>
-<td>os helpers de aplicação — instale os 18 acima à parte (e o <code>[tests]</code>, que é ferramenta de teste, no grupo de dev)</td>
+<td>tudo acima <strong>exceto</strong> os 19 extras de stack pesado ou binário nativo: <code>[genai]</code>, <code>[genai-audio]</code>, <code>[genai-tts-coqui]</code>, <code>[genai-diarization]</code>, <code>[genai-hub]</code>, <code>[genai-image]</code>, <code>[genai-onnx]</code>, <code>[genai-sound]</code>, <code>[genai-quant]</code>, <code>[genai-rag]</code>, <code>[genai-structured]</code>, <code>[genai-vlm]</code>, <code>[faces]</code>, <code>[modelops-onnx]</code>, <code>[modelops-sklearn]</code>, <code>[admin-sql]</code>, <code>[fastmcp]</code>, <code>[firebase]</code>, <code>[slides-mermaid]</code></td>
+<td>os helpers de aplicação — instale os 19 acima à parte (e o <code>[tests]</code>, que é ferramenta de teste, no grupo de dev). Traz os quatro transportes do <code>MessageBroker</code> (<code>faststream[rabbit,kafka,nats,redis]</code>) e, com eles, os tetos que o FastStream declara nos próprios extras: <code>aio-pika&lt;11</code>, <code>aiokafka&lt;0.15</code>, <code>nats-py&lt;=3.0.0</code> e <code>redis&lt;9.0.0</code> (iguais no FastStream 0.7.5 e 0.7.8). Somado ao <code>redis&gt;=8.1.0</code> do <code>[cache]</code>, o <code>[all]</code> fica no <code>redis</code> 8.x; o <code>aiokafka</code> 0.15.0 já saiu e fica de fora</td>
 </tr>
 </tbody>
 </table>

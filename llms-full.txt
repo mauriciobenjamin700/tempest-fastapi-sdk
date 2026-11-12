@@ -1,6 +1,6 @@
 # tempest-fastapi-sdk
 
-> tempest-fastapi-sdk holds the shared FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 building blocks used across Tempest services. Core: BaseAppSettings (+ composable settings mixins), BaseModel, BaseRepository[Model], BaseService, BaseController, base/pagination schemas, the AppException hierarchy + handlers (with an i18n message catalog and OpenAPI error documentation), AsyncDatabaseManager and AlembicHelper. Batteries: JWT/OAuth2 auth with a bundled signup/login/reset flow and TOTP MFA, a Django-style admin site, typed SSR pages, Server-Sent Events and WebSockets, Redis cache, FastStream queues and TaskIQ tasks (retries + dead letters), MinIO/S3 storage and uploads, Web Push, feature flags, audit trail, rate limiting and idempotency middleware, Prometheus metrics and OpenTelemetry tracing, self-hosted generative AI (local LLM, embeddings, RAG, speech), geolocation, Brazilian document/phone/PIX validation, and a `tempest` CLI that scaffolds services and generates typed clients from an OpenAPI spec. Python >= 3.12. Optional features ship as extras: [cli-ops], [cli], [auth], [email], [upload], [cache], [websocket], [webpush], [metrics], [queue], [tasks], [tasks-redis], [admin], [admin-sql], [minio], [storage-encryption], [http], [oidc], [openapi], [prometheus], [mfa], [webauthn], [firebase], [pdf], [pdf-read], [pdf-layout], [slides], [slides-mermaid], [spreadsheet], [image], [vision], [genai], [genai-quant], [genai-rag], [genai-audio], [genai-tts-coqui], [genai-diarization], [faces], [genai-ollama], [genai-hosted], [genai-chroma], [genai-structured], [genai-onnx], [genai-vlm], [genai-hub], [genai-image], [genai-sound], [modelops], [modelops-compose], [modelops-onnx], [modelops-sklearn], [geo], [ssr], [sqlite], [postgres], [otel], [tests], [all].
+> tempest-fastapi-sdk holds the shared FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 building blocks used across Tempest services. Core: BaseAppSettings (+ composable settings mixins), BaseModel, BaseRepository[Model], BaseService, BaseController, base/pagination schemas, the AppException hierarchy + handlers (with an i18n message catalog and OpenAPI error documentation), AsyncDatabaseManager and AlembicHelper. Batteries: JWT/OAuth2 auth with a bundled signup/login/reset flow and TOTP MFA, a Django-style admin site, typed SSR pages, Server-Sent Events and WebSockets, Redis cache, FastStream queues and TaskIQ tasks (retries + dead letters), MinIO/S3 storage and uploads, Web Push, feature flags, audit trail, rate limiting and idempotency middleware, Prometheus metrics and OpenTelemetry tracing, self-hosted generative AI (local LLM, embeddings, RAG, speech), geolocation, Brazilian document/phone/PIX validation, and a `tempest` CLI that scaffolds services and generates typed clients from an OpenAPI spec. Python >= 3.12. Optional features ship as extras: [cli-ops], [cli], [auth], [email], [upload], [cache], [websocket], [webpush], [metrics], [queue], [queue-kafka], [queue-nats], [queue-redis], [tasks], [tasks-redis], [admin], [admin-sql], [minio], [storage-encryption], [http], [oidc], [openapi], [prometheus], [mfa], [webauthn], [firebase], [fastmcp], [pdf], [pdf-read], [pdf-layout], [slides], [slides-mermaid], [spreadsheet], [image], [vision], [genai], [genai-quant], [genai-rag], [genai-audio], [genai-tts-coqui], [genai-diarization], [faces], [genai-ollama], [genai-hosted], [genai-chroma], [genai-structured], [genai-onnx], [genai-vlm], [genai-hub], [genai-image], [genai-sound], [modelops], [modelops-compose], [modelops-onnx], [modelops-sklearn], [geo], [ssr], [sqlite], [postgres], [kurrentdb], [otel], [tests], [all].
 
 
 ---
@@ -35,7 +35,7 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/
 | `tempest_fastapi_sdk.queue` | `MessageBroker` (fachada tipada recomendada), `AsyncQueueManager` / `AsyncBrokerManager` (wrappers de ciclo de vida FastStream / RabbitMQ) |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema`, paginação por cursor |
 | `tempest_fastapi_sdk.services` | `BaseService` |
-| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `AuthSettings`, `CORSSettings`, `EmailSettings`, `LogSettings`, `TokenSettings`, `UploadSettings`, `WebPushSettings`, `TaskIQSettings` |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `KafkaSettings`, `JWTSettings`, `AuthSettings`, `CORSSettings`, `EmailSettings`, `LogSettings`, `TokenSettings`, `UploadSettings`, `WebPushSettings`, `TaskIQSettings` |
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response`, `SSEBroker` |
 | `tempest_fastapi_sdk.storage` | `AsyncMinIOClient`, `ObjectStat` |
 | `tempest_fastapi_sdk.tasks` | `TaskQueue` (fachada tipada recomendada), `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
@@ -1681,10 +1681,25 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ---
 
+## Event sourcing
+
+### `tempest_fastapi_sdk.eventsourcing`
+
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Exceções
 
 ### `tempest_fastapi_sdk.exceptions`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -1777,6 +1792,7 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
     options:
       show_root_toc_entry: false
       show_submodules: false
@@ -1832,6 +1848,10 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 ---
 
 ## Host (controle da máquina)
@@ -1846,6 +1866,25 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
       filters:
         - "!^_"
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+
+---
+
+## MCP (Model Context Protocol)
+
+### `tempest_fastapi_sdk.mcp`
+
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
@@ -2627,6 +2666,18 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
+
+## Texto (busca aproximada)
+
+### `tempest_fastapi_sdk.text`
+
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
 
 ## Utils
 
@@ -6468,6 +6519,171 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.355.0] — 2026-11-12
+
+### Added
+
+- Event sourcing em `tempest_fastapi_sdk.eventsourcing`: o protocolo
+  `EventStore` (append com `expected_version`, leitura de stream para frente
+  e para trás a partir de uma versão, `$all` por posição com
+  `after_position` exclusivo, `subscribe_all`, snapshots) e dois backends.
+  - `SqlEventStore` sobre o PostgreSQL/SQLite que o serviço já tem, sem
+    dependência nova: tabelas abstratas `BaseEventModel`,
+    `BaseEventStreamModel`, `BaseEventSnapshotModel` e
+    `BaseProjectionCheckpointModel`; `session=` em todo método para gravar na
+    transação do chamador; `outbox_model=` grava uma linha de outbox por
+    evento na mesma transação, publicada pelo `OutboxRelay`. A checagem de
+    versão é um `UPDATE` condicional da linha do stream, e no PostgreSQL todo
+    append toma um advisory lock de transação para numerar `$all` na ordem de
+    commit, sem buraco — appends no store inteiro rodam um de cada vez.
+  - `KurrentDBEventStore` sobre KurrentDB (antigo EventStoreDB), pelo cliente
+    oficial `kurrentdbclient`, no novo extra `[kurrentdb]` (piso 1.3.0, entra
+    no `[all]`). Medido com KurrentDB 26.2.3 e o cliente 1.3.0 e 1.3.6.
+  - `WrongExpectedVersionException` (409,
+    `EVENTSOURCING_WRONG_EXPECTED_VERSION`, também no topo do pacote) nos dois
+    backends, com `stream_id`, `expected_version` e `actual_version`.
+  - `DomainEvent` + `EventRegistry` (eventos Pydantic tipados, gravados por
+    nome), `EventMetadata` (correlation/causation id), `RecordedEvent`,
+    `Aggregate` + `AggregateRepository` (replay após snapshot,
+    `snapshot_every=`), `ProjectionRunner` + `SqlCheckpointStore` /
+    `InMemoryCheckpointStore`.
+- Kafka pela fachada tipada do `MessageBroker`, no decorator e no caminho de
+  classe. `publish(..., key=...)` e `Publisher.publish(..., key=...)` escolhem
+  a partição (`str` vira UTF-8; o `aiokafka` recusa `str` com `TypeError`);
+  `group_id` e `auto_offset_reset` (`OffsetResetEnum`, novo) em `@mq.on`,
+  `@subscribe` e `Consumer`, com a mesma regra de herança do `prefetch`.
+  Medido contra um Kafka 3.9.1 real: a mesma chave fica numa partição e é
+  lida em ordem; duas réplicas de um grupo dividem as partições sem repetir
+  registro, e outro grupo recebe tudo.
+- Extras `[queue-kafka]` (`faststream[kafka]`, `aiokafka>=0.10.0`),
+  `[queue-nats]` e `[queue-redis]`; o `[all]` passa a instalar os quatro
+  transportes e, com eles, os tetos que o FastStream declara nos próprios
+  extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` e `redis<9.0.0`
+  (iguais no FastStream 0.7.5 e 0.7.8). O `aiokafka` 0.15.0 já saiu e fica
+  de fora.
+- `KafkaSettings` (mixin, também no topo do pacote), com
+  `KafkaSecurityProtocolEnum` (`PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`,
+  `SASL_SSL`) e `KafkaSaslMechanismEnum` (`PLAIN`, `SCRAM-SHA-256`,
+  `SCRAM-SHA-512`): `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_CLIENT_ID`,
+  `KAFKA_SECURITY_PROTOCOL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME`,
+  `KAFKA_SASL_PASSWORD` (`SecretStr`, mascarado em `repr`/`str`/log),
+  `KAFKA_SSL_CAFILE`, `KAFKA_SSL_CERTFILE`, `KAFKA_SSL_KEYFILE` e
+  `KAFKA_SSL_KEY_PASSWORD`. `kafka_kwargs()` devolve o objeto de
+  `faststream.security` do protocolo (`BaseSecurity`, `SASLPlaintext`,
+  `SASLScram256`, `SASLScram512`, com `ssl.SSLContext` verificando
+  certificado e host sob TLS) e o `client_id`; `kafka_ssl_context()` expõe o
+  contexto. `MessageBroker.kafka_from_settings(settings)` monta o broker com
+  os seeds. Combinação que o protocolo ignoraria (`SASL_*` sem usuário,
+  arquivo TLS sem TLS, chave sem certificado) falha no boot; com
+  `ENV=production`, `SASL_PLAINTEXT` + `PLAIN` e senha SASL vazia são
+  recusados.
+- `tempest_fastapi_sdk.mcp` (extra novo `[fastmcp]`, `fastmcp>=4.1.0`, fora do
+  `[all]`): Model Context Protocol nas duas direções.
+  - **Servir.** `mount_mcp(app, server, principal=current_user)` serve um
+    `FastMCP` em `/mcp` como rota FastAPI comum: a dependência de
+    `principal=` (e as de `dependencies=`) roda como nas suas rotas, e um
+    cliente sem token recebe o mesmo `401` `UNAUTHORIZED` da API antes de
+    chegar ao servidor MCP. Sem `principal=` nem `dependencies=` a montagem
+    levanta `ValueError`, salvo `allow_unauthenticated=True`; pela mesma
+    regra, um `principal=` que resolve `None` (dependência `soft=True`)
+    recebe `401`. O servidor precisa mascarar erro: um `FastMCP` sem
+    `mask_error_details=True` (ou com um servidor montado nele que não
+    mascara) levanta `ValueError` na montagem, porque a exceção de uma
+    ferramenta chegaria ao cliente com o texto (`Error calling tool 'x':
+    <mensagem>`, medido no fastmcp 4.1.8). O lifespan da
+    app é composto em volta do transporte (o MCP para antes dos seus
+    recursos fecharem), e o transporte roda sem sessão por padrão
+    (`stateless=True`). Com `stateless=False`, a sessão fica presa ao
+    principal que a abriu (claim `sub`, ou tipo + `id`): outro principal, ou
+    um anônimo, que apresenta o `Mcp-Session-Id` recebe o mesmo `404`
+    `Session not found` de uma sessão inexistente; o `DELETE` libera o
+    registro, que é por processo. `mcp_principal(tipo)` devolve, dentro da
+    ferramenta, o que `principal=` resolveu.
+  - `add_agent_tools(server, tools)` publica `AgentTool`s com o schema que
+    elas já declaram, com o contrato de falha dos agentes (`AgentToolError`
+    chega com a mensagem; outra exceção chega como `tool failed: <Tipo>`) e
+    teto por chamada (`timeout`, padrão 120 s). Artefatos viram conteúdo
+    `image`/`audio` ou recurso binário embutido.
+  - `add_fastapi_routes(server, app, operations=..., tags=...)` publica as
+    rotas escolhidas com o schema do OpenAPI da própria app, chamadas no
+    mesmo processo com `Authorization`/`Cookie` do cliente MCP repassados
+    (`forward_headers=`), de modo que a rota autentica quem chamou o MCP;
+    esses cabeçalhos saem do schema e um valor posto pelo modelo é
+    sobrescrito. A chamada à rota leva o `Host` e o endereço do cliente da
+    requisição MCP, e uma exceção não tratada na rota termina no `500` da
+    aplicação, nunca como a própria exceção; o cliente lê
+    `Error calling tool '<nome>'`. Sem seleção, ou com
+    `operation_id`/tag inexistente, levanta `ValueError`.
+  - **Consumir.** `MCPToolset.stdio(...)` / `MCPToolset.http(...)` conecta a
+    outro servidor MCP e devolve as ferramentas dele como `AgentTool`s
+    (`prefix=`, `include=`). Timeout (padrão 30 s, encurtado pelo `deadline`
+    da execução), erro JSON-RPC e resultado marcado como erro viram
+    `AgentToolError`; imagem, áudio e recurso binário viram artefatos.
+    `connect`/`disconnect` idempotentes fazem dele um `LifecycleResource`, e
+    o stdio encerra o subprocesso no `disconnect` (o padrão do FastMCP o
+    deixa vivo).
+  - Receita bilíngue `docs/recipes/mcp.md`.
+- Busca por significado sobre listas de nomes, no `genai.rag`:
+  `SemanticNameIndex` (nomes embedados uma vez, em lote, ranqueados por
+  cosseno; NumPy quando instalado) e `HybridNameIndex` (escrita palavra por
+  palavra com erro de digitação + significado, fundidos por
+  `reciprocal_rank_fusion`; cada `NameMatch` traz `lexical_score` e
+  `semantic_score`). Medido com `nomic-embed-text`: "camizeta basica",
+  "tênis de corrida" e "headphone sem fio" acham o produto certo.
+- Tools de agente: `municipality_search_tool()` (cidade, UF, código IBGE e
+  coordenada a partir de uma frase ou nome, `uf` opcional, offline) e
+  `name_search_tool(index)` (qualquer `FuzzyIndex`, `SemanticNameIndex` ou
+  `HybridNameIndex`). Com `qwen2.5:3b`, o agente chamou a tool e respondeu a
+  cidade certa em 20 de 20 execuções (em 3 o modelo passou `uf`, que filtra
+  o que a frase achou).
+- `tempest_fastapi_sdk.text`, sem dependência: `normalize_text` /
+  `strip_accents` / `tokenize` (forma canônica sem acento, caixa e
+  pontuação; tokens com o offset no texto original), `levenshtein` (com troca
+  de vizinhos) / `similarity` / `trigrams`, e `FuzzyIndex` (nome → valor,
+  busca exata e com erro de digitação por um filtro de trigramas que não perde
+  candidato — comparado com força bruta em 300 consultas por `cutoff`, de
+  `0.5` a `0.9`; com o limite em zero, varre todos os nomes).
+- Municípios do IBGE no `geo`, offline: os 5571 com código, nome oficial, UF,
+  coordenada, capital e grafias antigas (`br_municipalities`,
+  `municipality_by_ibge_code`, `Municipality`), `search_municipalities(nome,
+  uf=...)` com erro de digitação, e `find_municipalities_in_text`, que acha a
+  cidade numa frase ("moro em sao jose dos campos - sp", "vou pra floripa"):
+  UF ao lado confirma e desempata, apelidos (`BR_CITY_NICKNAMES`) e regiões do
+  DF casam, palavra comum sem cara de lugar ("estou feliz") fica abaixo do
+  `min_score`, homônimos sem UF voltam empatados. Dados do IBGE (nome, UF) e
+  de kelvins/municipios-brasileiros (coordenada, MIT), gerados por
+  `scripts/regen_br_municipalities.py` e fixados por hash.
+
+### Fixed
+
+- `MessageBroker.kafka()` sem nenhum seed levanta `ValueError` apontando o
+  `kafka_from_settings`. Antes o FastStream aceitava a lista vazia e o broker
+  só falhava no `connect()`, com
+  `KafkaConnectionError: Unable to bootstrap from []`.
+- `MessageBroker.kafka()`, `.redis()` e `.nats()` mandavam instalar o
+  `[queue]`, que só traz `faststream[rabbit]`: seguir a mensagem deixava o
+  mesmo `ImportError` no lugar. Cada construtor agora nomeia o extra que
+  instala o seu cliente.
+- No Kafka, NATS e Redis o `message_id` vai no header `message_id`
+  (`MESSAGE_ID_HEADER`), que o `deduplicate` lê primeiro. Antes o
+  `message_id=` explícito era `TypeError` nesses transportes, e no Kafka a
+  deduplicação usava o id do FastStream, `<offset>-<timestamp>`: um mesmo
+  evento publicado duas vezes rodava duas vezes, e dois registros no mesmo
+  offset de partições diferentes, no mesmo milissegundo, colidiam. Registro
+  Kafka sem o header é deduplicado por `tópico:partição:offset`.
+  `message_id` passa a ser parâmetro nomeado de `MessageBroker.publish`
+  (antes lido de dentro do `**options`), e o explícito vence um header
+  `message_id` passado em `headers=`.
+- `ack_policy` que commita (`ACK`, `NACK_ON_ERROR`, `REJECT_ON_ERROR`,
+  `MANUAL`, também quando vem do broker inteiro) sem `group_id` no Kafka
+  levanta `ValueError` ao registrar o consumidor. Antes o `aiokafka` recusava
+  o commit com `IllegalOperation('Requires group_id')` em toda mensagem,
+  depois de o handler rodar.
+- `prefetch` no Kafka, NATS ou Redis levanta `UnsupportedTopologyError`, e
+  `group_id`, `auto_offset_reset` e `key=` fora do Kafka também. O `prefetch`
+  chegava ao FastStream como `Channel` do RabbitMQ e falhava com
+  `TypeError: ... unexpected keyword argument 'channel'`.
 
 ## [0.354.0] — 2026-11-11
 
@@ -29304,6 +29520,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[websocket]` | `websockets` | Driver de protocolo do `make_websocket_router` — sem ele o handshake devolve 404 |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (com `render_template` + templates Jinja2) |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | reconhecimento facial em ONNX Runtime, sem opencv e sem torch: `FaceRecognizer` (detectar/embutir/comparar), `compare_faces`. Modelos de 16 MB baixados por `ensure_models()`. **Nenhuma biblioteca de sistema** |
+| `[fastmcp]` | `fastmcp` | MCP nas duas direções: `mount_mcp` (servidor `FastMCP` em `/mcp` atrás do `current_user`), `add_agent_tools`, `add_fastapi_routes`, `MCPToolset` (ferramentas de outro servidor MCP num `Agent`, stdio e HTTP). Soma 47 pacotes à instalação base (fastmcp 4.1.8), entre eles o `httpx2` — e por isso fica **fora do `[all]`** |
 | `[firebase]` | `firebase-admin` | verificação de ID token do Firebase: `FirebaseAuth` (init idempotente, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Pesado — 33 pacotes, 52 MB medidos com `firebase-admin` 7.5.0 — e por isso **fora do `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | GenAI local (pesado): `TextGenerator`, `Embedder`, `MusicGenerator`, `BarkSpeech`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `torch` | STT (Whisper). Desde a 0.349.0 não traz mais o Coqui: o `torchaudio` dele derrubava o Bark na GPU ([detalhes](#genai-audio-coqui-split)) |
@@ -29320,6 +29537,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[geo]` | `httpx` | helpers geoespaciais: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + rotas), `GeoPointMixin` |
 | `[http]` | `httpx` (já vem no pacote base) | `HTTPClient` + `RetryPolicy` + circuit-breaker. O extra é opcional: o `HTTPClient` funciona na instalação base, e declarar o extra só registra a intenção no `pyproject.toml` do serviço |
 | `[image]` | `pillow` | `strip_image_metadata`: recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, com teto de pixels contra decompression bomb |
+| `[kurrentdb]` | `kurrentdbclient` (+ `grpcio`, `grpcio-tools`, `setuptools`, `protobuf`) | backend KurrentDB (antigo EventStoreDB) do event store: `KurrentDBEventStore`. O backend SQL (`SqlEventStore`) não precisa de extra. Entra no `[all]`. Pesa 34 MB numa venv limpa (`kurrentdbclient` 1.3.6: `grpc` 18 MB, `grpc_tools` 7,9 MB, `setuptools` 3,9 MB), porque o cliente pede `grpcio[protobuf]`; `pip-audit` sem advisory na resolução de 2026-11-12. [Receita](recipes/event-sourcing.md) |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth + QR code do cadastro (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
@@ -29332,7 +29550,10 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[pdf]` | `weasyprint`, `jinja2`, `segno` | geração de PDF a partir de templates HTML: `PdfRenderer`, cinco documentos prontos com schema tipado, `make_pdf_router`, `tempest pdf`. **Exige Pango + fontconfig no sistema** — veja a receita |
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
-| `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` e `MessageBroker.kafka_from_settings` (com `KafkaSettings`): tópico, `key` de partição, `group_id`, `auto_offset_reset`, SASL e TLS. Herda `aiokafka<0.15` do FastStream. [Receita](recipes/queue-tasks.md#kafka-chave-grupo-e-commit) |
+| `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
+| `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | slides e gabaritos a partir de texto estruturado (HTML, PDF, PPTX, DOCX, Markdown) e Markdown em PDF com folha de estilo própria ou ABNT: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Exige Pango + fontconfig no sistema**, como o `[pdf]`. [Receita](recipes/slides.md) |
 | `[slides-mermaid]` | `playwright` | desenhar blocos `` ```mermaid `` no `MarkdownPdfRenderer` (`render_mermaid=True`). Exige `playwright install chromium`; por isso fica **fora do `[all]`** |
 | `[sqlite]` | `aiosqlite` | driver async SQLite para URLs `sqlite+aiosqlite://` (default de dev) |
@@ -29345,7 +29566,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | tudo acima **exceto** os 18 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 18 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev) |
+| `[all]` | tudo acima **exceto** os 19 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[fastmcp]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 19 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev). Traz os quatro transportes do `MessageBroker` (`faststream[rabbit,kafka,nats,redis]`) e, com eles, os tetos que o FastStream declara nos próprios extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` e `redis<9.0.0` (iguais no FastStream 0.7.5 e 0.7.8). Somado ao `redis>=8.1.0` do `[cache]`, o `[all]` fica no `redis` 8.x; o `aiokafka` 0.15.0 já saiu e fica de fora |
 
 === "Subconjunto (recomendado)"
 
@@ -33028,6 +33249,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Auth flow (signup/reset) »](auth-flow.md)** | `UserAuthService`, `make_auth_router` — signup / ativação / login / reset de senha, entrega de token (bearer/cookie/ambos), `BaseUserModel` |
 | **[Auth por introspecção (resource server) »](introspection-auth.md)** | `IntrospectionAuth` — validar bearer opaco perguntando ao provedor de identidade upstream |
 | **[Banco de dados »](database.md)** | `BaseModel`, `AsyncDatabaseManager`, `BaseRepository` (CRUD + filtros + bulk), paginação offset/cursor, mixins, `AlembicHelper`, `SlowQueryLogger` |
+| **[Busca aproximada (fuzzy) e cidades em texto »](fuzzy-matching.md)** | `normalize_text`, `similarity`, `FuzzyIndex` (trigramas, sem dependência), os 5571 municípios do IBGE com código e coordenada, `find_municipalities_in_text` (cidade e UF numa frase, com erro de digitação e apelido), `search_municipalities`, busca por significado e combinada (`SemanticNameIndex`, `HybridNameIndex`), tools de agente (`municipality_search_tool`, `name_search_tool`) |
 | **[Busca textual (LIKE + full-text) »](text-search.md)** | `search()` portátil (ILIKE escapado, `AND` entre palavras), `full_text_search()` com `websearch_to_tsquery` + `ts_rank` no PostgreSQL, `TextSearchLanguageEnum` / `TextSearchWeightEnum` / `TokenMatchEnum`, condições que entram em `where=` |
 | **[Cache »](cache.md)** | `AsyncRedisManager` (+ `client_proxy`, para store construído no import), decorator `@cached`, `CacheInvalidator` (tag/namespace) |
 | **[Camada HTTP »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` (429 no envelope de erro do SDK), `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
@@ -33049,6 +33271,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Erros do app (relatados pelo cliente) »](app-errors.md)** | `make_app_error_model` (FK de usuário nullable, `SET NULL`, `created_at` indexado), `AppErrorService` (trunca em vez de recusar), listagem admin opt-in, intervalo de datas semiaberto |
 | **[Erros no OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
 | **[Escolhendo o modelo »](models.md)** | `TextModelEnum` / `EmbeddingModelEnum` / `RerankerModelEnum` / `VisionModelEnum` / `ImageModelEnum` / `SpeechToTextModelEnum` / `TextToSpeechModelEnum` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
+| **[Event sourcing (event store) »](event-sourcing.md)** | `EventStore` (append com `expected_version`, leitura de stream para frente e para trás, `$all` por posição, assinatura, snapshots) sobre SQL (`SqlEventStore`, sem dependência nova, outbox na mesma transação) ou KurrentDB (`KurrentDBEventStore`, extra `[kurrentdb]`), `DomainEvent` + `EventRegistry`, `WrongExpectedVersionException`, `AggregateRepository`, `ProjectionRunner` |
 | **[Exportação e exclusão de titular (LGPD) »](subject-data.md)** | `SubjectGraph` (tabelas que o `DELETE` do titular alcança por cascata, derivadas da `MetaData`), `export` sem colunas secretas, `violations` + `assert_subject_graph_valid` como guard de CI, `SubjectObjectStorage` (prefixo por titular, upload direto com `presign_put` + `read` limitado, `delete_all` em lote) |
 | **[Fakes (sem provedor real) »](fakes.md)** | `FakePixProvider`, `FakeCardProvider`, `FakePayoutProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend`, `FakeObjectStorageClient` — onze costuras sem credencial e sem rede, dirigíveis (`advance`, `flag`, `fail_next`) e inspecionáveis |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
@@ -33070,6 +33293,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Login e cadastro server-side »](auth-pages.md)** | `make_auth_pages_router`, `make_session_user_dependency`, `redirect_to_login` — login, MFA, cadastro, ativação e logout como páginas HTML sem JavaScript, sessão `SessionAuth`, CSRF por formulário |
 | **[Login social (OAuth2/OIDC) »](oauth.md)** | `AUTH_OAUTH_ENABLED` + `oauth_clients=` (quatro rotas `/auth/oauth/*`), `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`, `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `OAuthClient`, `generate_oauth_state` |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
+| **[MCP (Model Context Protocol) »](mcp.md)** | servir um `FastMCP` em `/mcp` atrás do `current_user` (`mount_mcp`), publicar `AgentTool`s e rotas FastAPI escolhidas como ferramentas MCP (`add_agent_tools`, `add_fastapi_routes`), e usar ferramentas de outro servidor MCP num `Agent` (`MCPToolset`, stdio e HTTP) |
 | **[Mercado Pago (contas e credenciais de teste) »](mercado-pago-sandbox.md)** | passo a passo para criar a vendedora de teste e achar o token certo (Checkout Transparente / API de Orders), o que o pagador precisa ter, cartões de teste e a tabela de erros que cada desvio produz |
 | **[Mercado Pago (Pix, cartão, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (132 operações geradas da OpenAPI oficial do provedor, sem a API de Payments descontinuada), `MercadoPagoPixProvider` + `MercadoPagoCardProvider` (Pix e cartão pela API de Orders, recusa de cartão como resultado, autorizar e capturar, reembolso parcial), `make_mercado_pago_webhook_delivery_dependency` (webhook que relê a order), `AuthenticatedUser`, `to_cents` / `from_cents` (reais, não centavos), `make_mercado_pago_webhook_dependency`, `MercadoPagoSettings`, `x_idempotency_key` por chamada |
 | **[Mercado Pago (testando webhooks) »](mercado-pago-webhooks.md)** | simulação assinada local com `sign_manifest` relendo uma order real do sandbox (sem URL pública), os quatro casos que a rota precisa acertar, simulação do painel e entrega real por túnel |
@@ -58314,6 +58538,523 @@ gerado já vem com os codes. 🎉
 
 ---
 
+# Event sourcing (event store)
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/event-sourcing/
+
+# Event sourcing (event store)
+
+Em vez de guardar o estado atual de um pedido numa linha que você atualiza,
+você guarda **os fatos que aconteceram com ele** — `order.placed`,
+`order.shipped` — numa sequência que só cresce. O estado é a soma dos fatos.
+Você ganha histórico completo, auditoria de graça e read models que podem ser
+reconstruídos do zero.
+
+O SDK entrega isso em `tempest_fastapi_sdk.eventsourcing`, com **um
+protocolo e dois backends**:
+
+| Backend | Onde grava | Instalação |
+| --- | --- | --- |
+| `SqlEventStore` | o PostgreSQL / SQLite que o serviço já tem | nenhuma dependência nova |
+| `KurrentDBEventStore` | KurrentDB (antigo EventStoreDB) | extra `[kurrentdb]` |
+
+Código escrito contra `EventStore` — agregados, projeções — roda nos dois.
+
+## Defina os eventos
+
+Cada evento é uma classe Pydantic que herda `DomainEvent`. O registro
+(`EventRegistry`) mapeia o nome gravado de volta para a classe, então uma
+leitura devolve o mesmo tipo que foi escrito.
+
+```python
+from typing import ClassVar
+
+from tempest_fastapi_sdk.eventsourcing import DomainEvent, EventRegistry
+
+
+class OrderPlaced(DomainEvent):
+    event_type: ClassVar[str] = "order.placed"
+
+    order_id: str
+    total_cents: int
+
+
+class OrderShipped(DomainEvent):
+    event_type: ClassVar[str] = "order.shipped"
+
+    order_id: str
+
+
+registry = EventRegistry(OrderPlaced, OrderShipped)
+```
+
+- **`event_type` é o nome no banco.** Sem ele, o nome da classe é usado —
+  declare-o assim que houver evento gravado, para renomear a classe não
+  deixar as linhas antigas órfãs.
+- **Evento é imutável** (`frozen`). Campo desconhecido é ignorado ao ler,
+  então remover um campo mantém eventos antigos legíveis; campo novo precisa
+  de default pelo mesmo motivo.
+- **Não é `BaseSchema` de propósito:** ela tira espaço das strings, e o
+  evento gravado seria diferente do que você construiu.
+
+## Grave e leia (backend SQL)
+
+O backend SQL usa tabelas abstratas que você herda e nomeia, igual ao
+`BaseOutboxModel` — elas entram no seu `metadata` e nas suas migrations.
+
+```python
+import asyncio
+from typing import ClassVar
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseModel,
+    WrongExpectedVersionException,
+)
+from tempest_fastapi_sdk.eventsourcing import (
+    BaseEventModel,
+    BaseEventStreamModel,
+    DomainEvent,
+    EventMetadata,
+    EventRegistry,
+    SqlEventStore,
+    StreamStateEnum,
+)
+
+
+class OrderPlaced(DomainEvent):
+    event_type: ClassVar[str] = "order.placed"
+
+    order_id: str
+    total_cents: int
+
+
+class OrderShipped(DomainEvent):
+    event_type: ClassVar[str] = "order.shipped"
+
+    order_id: str
+
+
+class EventModel(BaseEventModel):
+    __tablename__ = "events"
+
+
+class EventStreamModel(BaseEventStreamModel):
+    __tablename__ = "event_streams"
+
+
+async def main() -> None:
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+    await db.create_tables(BaseModel.metadata)
+    store = SqlEventStore(
+        db,
+        registry=EventRegistry(OrderPlaced, OrderShipped),
+        event_model=EventModel,
+        stream_model=EventStreamModel,
+    )
+
+    result = await store.append(
+        "order-42",
+        [OrderPlaced(order_id="42", total_cents=990)],
+        expected_version=StreamStateEnum.NO_STREAM,
+        metadata=EventMetadata(correlation_id="req-1"),
+    )
+    print(result.version, result.position)  # 0 1
+
+    await store.append(
+        "order-42", [OrderShipped(order_id="42")], expected_version=result.version
+    )
+    try:
+        await store.append(
+            "order-42", [OrderShipped(order_id="42")], expected_version=result.version
+        )
+    except WrongExpectedVersionException as error:
+        print(error.status_code, error.expected_version, error.actual_version)
+        # 409 0 1
+
+    for recorded in await store.read_stream("order-42"):
+        print(recorded.version, recorded.event_type, recorded.event)
+    # 0 order.placed order_id='42' total_cents=990
+    # 1 order.shipped order_id='42'
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Pedaço por pedaço:
+
+- **Versões começam em `0`.** O primeiro evento de um stream é a versão `0`;
+  um stream com três eventos está na versão `2`. É a mesma convenção do
+  KurrentDB, então trocar de backend não muda número nenhum.
+- **`expected_version` é obrigatório.** Um número diz "o stream está nesta
+  versão"; `StreamStateEnum.NO_STREAM` diz "o stream ainda não existe";
+  `EXISTS` exige que exista; `ANY` desliga a checagem. Não há default — a
+  checagem de concorrência é uma decisão, não um esquecimento. O valor puro
+  do membro (`"no_stream"`, que é o que um campo com `use_enum_values`
+  guarda) vale o mesmo que o membro; string fora do enum é `ValueError`.
+- **`EventMetadata`** leva `correlation_id`, `causation_id` e `extra`. O
+  horário vem do store: `recorded.recorded_at`, em UTC.
+- **`read_stream`** lê para frente ou para trás (`backwards=True`), a partir
+  de uma versão **inclusiva** (`from_version`), com `limit`. Stream que não
+  existe devolve `[]`.
+
+## Concorrência otimista
+
+Dois processos carregam o pedido na versão `1` e decidem coisas diferentes.
+O primeiro grava; o segundo recebe `WrongExpectedVersionException` (status
+`409`, code `EVENTSOURCING_WRONG_EXPECTED_VERSION`) com `expected_version` e
+`actual_version`. A reação certa é **recarregar e decidir de novo** —
+repetir o mesmo append às cegas apagaria a decisão do outro.
+
+No SQL, a checagem é um `UPDATE` condicional da linha do stream
+(`... WHERE version = :expected`) feito **antes** de inserir qualquer
+evento. Medido com transações de verdade, em conexões separadas:
+
+- com a primeira transação **aberta**, a segunda fica bloqueada (confirmado
+  no `pg_stat_activity` do PostgreSQL 16) e, quando a primeira faz commit, é
+  recusada — no SQLite (arquivo) e no PostgreSQL;
+- 8 escritores com a mesma expectativa, 20 rodadas: exatamente um grava por
+  rodada, nos dois bancos (`tests/eventsourcing/test_sql_concurrency.py`).
+
+!!! warning "Um append por vez no PostgreSQL"
+    A posição global (`position`) é `max + 1` sob um advisory lock de
+    transação, então os eventos são numerados **na ordem de commit, sem
+    buraco**. Uma sequence não daria isso — e foi medido: a transação 1
+    pega a posição `1` e fica aberta, a 2 pega `2` e faz commit, e um leitor
+    enxerga `2` sem `1`. Uma projeção que salvasse `2` como checkpoint nunca
+    leria o `1`. O preço é que appends no store inteiro rodam um de cada vez,
+    e o lock fica preso até o commit: ao passar sua própria `session=`,
+    mantenha a transação curta. Sem o lock, a suíte mede appends concorrentes
+    em streams diferentes colidindo na unique de `position`.
+
+## Na transação do seu caso de uso
+
+Todo método do `SqlEventStore` aceita `session=`. Com ela, o append entra na
+**sua** transação e o commit é seu — o evento e a atualização de um read
+model, ou de outra tabela, valem juntos ou não valem.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk.eventsourcing import (
+    DomainEvent,
+    SqlEventStore,
+    StreamStateEnum,
+)
+
+
+async def place_order(
+    store: SqlEventStore, session: AsyncSession, order_id: str, event: DomainEvent
+) -> None:
+    await store.append(
+        f"order-{order_id}",
+        [event],
+        expected_version=StreamStateEnum.NO_STREAM,
+        session=session,
+    )
+    await session.commit()
+```
+
+Um conflito de `NO_STREAM` dentro da sua sessão não estraga a transação: o
+insert roda num savepoint, e a suíte confere que um append seguinte na mesma
+sessão ainda faz commit.
+
+!!! note "SQLite: grave antes de ler"
+    No SQLite, uma transação que já leu e tenta gravar depois que outro
+    escritor fez commit falha na hora com `database is locked` — medido com
+    o busy timeout de 30 s do `AsyncDatabaseManager`. O `append` grava antes
+    de ler por isso; ao passar a sua `session=`, faça o append antes de
+    qualquer leitura na mesma transação.
+
+## Publicar no broker: outbox
+
+Passe `outbox_model=` e cada evento gravado ganha uma linha de
+[outbox](outbox.md) **na mesma transação**, com o payload de
+`RecordedEvent.to_payload()` e o tópico igual ao `event_type` (troque com
+`outbox_topic=`). O `OutboxRelay` publica (at-least-once). Um append recusado
+por `expected_version` não deixa linha no outbox — a suíte confere que, depois
+de um append aceito com dois eventos e um recusado, o relay publica dois.
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager
+from tempest_fastapi_sdk.db.outbox import BaseOutboxModel, OutboxRelay
+from tempest_fastapi_sdk.eventsourcing import (
+    BaseEventModel,
+    BaseEventStreamModel,
+    EventRegistry,
+    SqlEventStore,
+)
+
+
+class EventModel(BaseEventModel):
+    __tablename__ = "events"
+
+
+class EventStreamModel(BaseEventStreamModel):
+    __tablename__ = "event_streams"
+
+
+class OutboxModel(BaseOutboxModel):
+    __tablename__ = "outbox"
+
+
+def build(
+    db: AsyncDatabaseManager, registry: EventRegistry
+) -> tuple[SqlEventStore, OutboxRelay]:
+    store = SqlEventStore(
+        db,
+        registry=registry,
+        event_model=EventModel,
+        stream_model=EventStreamModel,
+        outbox_model=OutboxModel,
+    )
+
+    async def publish(row: BaseOutboxModel) -> None:
+        print(row.topic, row.payload["stream_id"], row.payload["version"])
+        # order.placed order-42 0
+
+    return store, OutboxRelay(db, model=OutboxModel, publish=publish)
+```
+
+## `$all`, posições e projeções
+
+`read_all(after_position=...)` lê o log inteiro do store em ordem de posição,
+**depois** da posição dada (exclusiva), e só os tipos registrados.
+`subscribe_all()` faz o mesmo e continua esperando eventos novos (no SQL,
+por polling; no KurrentDB, por push).
+
+Para alimentar um read model, use `ProjectionRunner`: ele lê a partir do
+checkpoint, entrega cada evento ao seu handler e avança o checkpoint.
+
+```python
+from typing import ClassVar
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
+from tempest_fastapi_sdk.eventsourcing import (
+    BaseProjectionCheckpointModel,
+    DomainEvent,
+    EventStore,
+    ProjectionRunner,
+    RecordedEvent,
+    SqlCheckpointStore,
+)
+
+
+class OrderPlaced(DomainEvent):
+    event_type: ClassVar[str] = "order.placed"
+
+    order_id: str
+    total_cents: int
+
+
+class ProjectionCheckpointModel(BaseProjectionCheckpointModel):
+    __tablename__ = "projection_checkpoints"
+
+
+async def project_totals(store: EventStore, db: AsyncDatabaseManager) -> None:
+    totals: dict[str, int] = {}
+
+    async def project(event: RecordedEvent) -> None:
+        if isinstance(event.event, OrderPlaced):
+            totals[event.event.order_id] = event.event.total_cents
+
+    runner = ProjectionRunner(
+        store,
+        name="order-totals",
+        handler=project,
+        checkpoints=SqlCheckpointStore(db, model=ProjectionCheckpointModel),
+    )
+    await runner.run_once()
+```
+
+- **Entrega é at-least-once.** Se o processo morrer depois do handler e antes
+  do checkpoint, o evento volta. Faça o handler idempotente (upsert pelo
+  `event_id` ou pela versão).
+- Handler que levanta para o lote ali: o checkpoint é salvo no último evento
+  que terminou, e a próxima execução recomeça no que falhou.
+- `runner.run(poll_interval=..., stop_event=...)` roda em loop, no molde do
+  `OutboxRelay.run`.
+- Posição só se compara e se guarda. No SQL ela é `1, 2, 3...`; no KurrentDB
+  é a commit position, que pula valores.
+
+## Agregados
+
+`Aggregate` é uma classe base fina: você implementa `apply` (como cada evento
+muda o estado) e chama `record` nos métodos de comando.
+`AggregateRepository` carrega reproduzindo o stream e salva com um append
+cujo `expected_version` é a versão em que o agregado foi carregado.
+
+```python
+from typing import Any, ClassVar
+
+from tempest_fastapi_sdk.eventsourcing import (
+    Aggregate,
+    AggregateRepository,
+    DomainEvent,
+    EventStore,
+)
+
+
+class OrderPlaced(DomainEvent):
+    event_type: ClassVar[str] = "order.placed"
+
+    order_id: str
+    total_cents: int
+
+
+class OrderShipped(DomainEvent):
+    event_type: ClassVar[str] = "order.shipped"
+
+    order_id: str
+
+
+class Order(Aggregate):
+    def __init__(self, aggregate_id: str) -> None:
+        super().__init__(aggregate_id)
+        self.total_cents = 0
+        self.shipped = False
+
+    def place(self, total_cents: int) -> None:
+        self.record(OrderPlaced(order_id=self.aggregate_id, total_cents=total_cents))
+
+    def ship(self) -> None:
+        if self.shipped:
+            raise ValueError("already shipped")
+        self.record(OrderShipped(order_id=self.aggregate_id))
+
+    def apply(self, event: DomainEvent) -> None:
+        if isinstance(event, OrderPlaced):
+            self.total_cents = event.total_cents
+        elif isinstance(event, OrderShipped):
+            self.shipped = True
+
+    def snapshot(self) -> dict[str, Any] | None:
+        return {"total_cents": self.total_cents, "shipped": self.shipped}
+
+    def restore(self, state: dict[str, Any]) -> None:
+        self.total_cents = int(state["total_cents"])
+        self.shipped = bool(state["shipped"])
+
+
+async def ship(store: EventStore, order_id: str) -> None:
+    orders = AggregateRepository(store, Order, stream_prefix="order-", snapshot_every=50)
+    order = await orders.load(order_id)
+    if order is None:
+        raise LookupError(order_id)
+    order.ship()
+    await orders.save(order)
+```
+
+- `load` devolve `None` para stream inexistente; um agregado novo (`Order("43")`)
+  é salvo com `NO_STREAM`, então criar duas vezes o mesmo id dá `409`.
+- `save` com conflito mantém os eventos pendentes no agregado.
+- **Snapshots são opt-in:** `snapshot_every=50` grava um snapshot sempre que o
+  stream cruza um múltiplo de 50 eventos, e `load` aplica só o que veio depois
+  dele. No SQL, passe `snapshot_model=` (uma subclasse de
+  `BaseEventSnapshotModel`) ao store. Um snapshot mais antigo que o gravado é
+  ignorado.
+
+## KurrentDB
+
+```bash
+uv add "tempest-fastapi-sdk[kurrentdb]"
+docker run -d --name kurrentdb -p 127.0.0.1:2113:2113 \
+  -e KURRENTDB_INSECURE=true kurrentplatform/kurrentdb:26.2.3
+```
+
+```python
+import asyncio
+from typing import ClassVar
+
+from tempest_fastapi_sdk import WrongExpectedVersionException
+from tempest_fastapi_sdk.eventsourcing import (
+    DomainEvent,
+    EventRegistry,
+    KurrentDBEventStore,
+    StreamStateEnum,
+)
+
+
+class OrderPlaced(DomainEvent):
+    event_type: ClassVar[str] = "order.placed"
+
+    order_id: str
+    total_cents: int
+
+
+async def main() -> None:
+    store = KurrentDBEventStore.from_uri(
+        "kurrentdb://127.0.0.1:2113?Tls=false",
+        registry=EventRegistry(OrderPlaced),
+    )
+    try:
+        first = await store.append(
+            "order-42",
+            [OrderPlaced(order_id="42", total_cents=990)],
+            expected_version=StreamStateEnum.NO_STREAM,
+        )
+        print(first.version)  # 0
+        try:
+            await store.append(
+                "order-42",
+                [OrderPlaced(order_id="42", total_cents=1)],
+                expected_version=StreamStateEnum.NO_STREAM,
+            )
+        except WrongExpectedVersionException as error:
+            print(error.expected_version, error.actual_version)  # no_stream 0
+
+        async for recorded in store.subscribe_all():
+            print(recorded.stream_id, recorded.version, recorded.event)
+            break
+    finally:
+        await store.close()
+
+
+asyncio.run(main())
+```
+
+É o mesmo protocolo; o que muda por baixo:
+
+- **Cliente oficial `kurrentdbclient`** (o `esdbclient` parou na 1.1.7, de
+  abril de 2025, preso em `grpcio<1.72`). Importado só quando usado: o
+  pacote `eventsourcing` importa sem o extra.
+- **`WrongCurrentVersionError` do cliente vira `WrongExpectedVersionException`**,
+  com o mesmo `actual_version`.
+- **`after_position` é exclusivo nos dois métodos.** No cliente,
+  `read_all(commit_position=p)` inclui o evento em `p` e
+  `subscribe_to_all(commit_position=p)` começa depois dele — medido; o store
+  esconde a diferença.
+- **Só tipos registrados em `$all`.** O filtro do cliente monta
+  `"^" + "|".join(padrões) + "$"`, que ancora só a primeira e a última
+  alternativa; o store passa um padrão agrupado. Sem isso, registrar
+  `order.placed` trazia um `order.placed.v2` não registrado do `$all`
+  (medido no KurrentDB 26.2.3).
+- **Metadata** usa as chaves `$correlationId` e `$causationId` do próprio
+  KurrentDB, que a projeção de sistema `$by_correlation_id` lê.
+- **Snapshots** moram no stream `snapshot-<stream>`, com `$maxCount: 1`.
+- Subscriptions persistentes (consumidores concorrentes) não são embrulhadas:
+  use `store.client` direto.
+
+Medido com KurrentDB 26.2.3 (imagem `kurrentplatform/kurrentdb:26.2.3`) e
+`kurrentdbclient` 1.3.0 (o piso declarado) e 1.3.6. Outra versão do servidor
+não foi exercitada.
+
+## Recap
+
+- `DomainEvent` + `EventRegistry`: eventos tipados, gravados por nome.
+- `EventStore.append(..., expected_version=...)`: tudo ou nada, com
+  `WrongExpectedVersionException` (409) quando outro escritor chegou antes.
+- `SqlEventStore`: sem dependência nova, `session=` para a sua transação,
+  `outbox_model=` para publicar; no PostgreSQL, appends serializados para que
+  `$all` não tenha buraco.
+- `KurrentDBEventStore`: mesmo protocolo, extra `[kurrentdb]`.
+- `AggregateRepository` (replay + snapshot) e `ProjectionRunner` (checkpoint
+  sobre `$all`) funcionam com qualquer um dos dois.
+
+
+---
+
 # Reconhecimento facial
 
 Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/faces/
@@ -60434,6 +61175,321 @@ design system próprio, passe `classes=FormClasses(...)` tanto para
   schema gera o upload com `multipart/form-data`.
 
 Veja também: [Camada UI »](ui.md) e [CSS tipado »](ui-css.md).
+
+
+---
+
+# Busca aproximada (fuzzy) e cidades em texto
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fuzzy-matching/
+
+# Busca aproximada (fuzzy) e cidades em texto
+
+O usuário escreve "moro em sao jose dos campos - sp", "vou pra floripa" ou
+"sao paolo". Você precisa saber **qual** cidade é, com o código do IBGE e a
+coordenada, sem depender de serviço externo e sem errar quando ele digita
+errado.
+
+Para casar o que o usuário digitou com uma **lista conhecida de nomes**
+(cidades, produtos, categorias), busca léxica resolve melhor que embedding:
+não tem modelo para baixar, não precisa de GPU, e um erro de digitação custa
+uma edição. Quando o usuário descreve com **outras palavras**, a mesma
+página mostra a busca por significado (embeddings) e a combinada, e as tools
+de agente; a busca semântica sobre trechos longos continua no
+[`genai`](genai.md) (`Retriever`, `HybridRetriever`).
+
+Esta receita tem duas partes:
+
+1. `tempest_fastapi_sdk.text`: normalização, distância de edição e um índice
+   de busca aproximada, sem nenhuma dependência.
+2. `tempest_fastapi_sdk.geo`: os 5571 municípios do IBGE embutidos, a busca
+   por nome e a extração da cidade de um texto livre.
+
+## Normalizar e comparar
+
+```python
+from tempest_fastapi_sdk.text import FuzzyIndex, normalize_text, similarity
+
+print(normalize_text("  São José-dos Campos/SP "))
+print(round(similarity("florianopols", "florianopolis"), 2))
+
+index: FuzzyIndex[int] = FuzzyIndex(
+    [("Camiseta básica", 101), ("Calça jeans", 102), ("Camisa social", 103)]
+)
+for match in index.search("camizeta basica"):
+    print(match.key, match.value, round(match.score, 2))
+```
+
+Saída:
+
+```text
+sao jose dos campos sp
+0.92
+camiseta basica 101 0.93
+```
+
+- **`normalize_text`** tira acento, ignora caixa e troca pontuação por
+  espaço. É a forma que todo o resto compara.
+- **`similarity`** vai de `0.0` a `1.0`: `1 - edições / tamanho do maior`.
+  Trocar duas letras vizinhas ("soa" por "sao") conta como uma edição só.
+- **`FuzzyIndex`** guarda nome → valor. `exact()` acha o nome normalizado;
+  `search(query, cutoff=0.8, limit=5)` aceita erros até o `cutoff`.
+
+!!! info "Por que é rápido"
+    O índice guarda os trigramas (pedaços de três letras) de cada nome. Uma
+    consulta só calcula a distância de edição contra os nomes que dividem
+    trigramas suficientes com ela. O filtro **não perde** nome nenhum: um nome
+    a `d` edições divide pelo menos `trigramas - 4d` com a consulta, e o
+    índice só descarta abaixo disso. Quando esse limite chega a zero (consulta
+    curta com `cutoff` baixo), o índice compara com todos os nomes de tamanho
+    próximo. Um teste compara o índice com a comparação contra todos os
+    nomes, em 300 consultas aleatórias para cada `cutoff` de `0.5` a `0.9`,
+    e os dois batem.
+
+## Achar a cidade num texto
+
+```python
+from tempest_fastapi_sdk.geo import find_municipalities_in_text
+
+for text in [
+    "moro em sao jose dos campos - sp",
+    "Sou de Campinas, São Paulo",
+    "vou pra floripa semana que vem",
+    "estou feliz hoje",
+    "nasci em bom jesus",
+]:
+    matches = find_municipalities_in_text(text, limit=3)
+    print(text)
+    for match in matches:
+        city = match.municipality
+        print(
+            f"  {city.name}/{city.uf.value} ibge={city.ibge_code}"
+            f" score={match.score:.2f} confirmed={match.uf_confirmed}"
+            f" text={match.matched_text!r}"
+        )
+```
+
+Saída:
+
+```text
+moro em sao jose dos campos - sp
+  São José dos Campos/SP ibge=3549904 score=1.00 confirmed=True text='sao jose dos campos'
+Sou de Campinas, São Paulo
+  Campinas/SP ibge=3509502 score=1.00 confirmed=True text='Campinas'
+vou pra floripa semana que vem
+  Florianópolis/SC ibge=4205407 score=0.90 confirmed=False text='floripa'
+estou feliz hoje
+nasci em bom jesus
+  Bom Jesus/PI ibge=2201903 score=0.90 confirmed=False text='bom jesus'
+  Bom Jesus/RN ibge=2401701 score=0.90 confirmed=False text='bom jesus'
+  Bom Jesus/PB ibge=2502201 score=0.90 confirmed=False text='bom jesus'
+```
+
+O que cada caso mostra:
+
+- **A UF ao lado confirma.** `"- sp"`, `"/SP"`, `", São Paulo"` ou `"SP"`
+  logo depois do nome deixam só a cidade daquele estado e marcam
+  `uf_confirmed=True` (nota `1.0`). Uma UF em que o nome não existe
+  (`"Campinas/RJ"`) descarta a cidade.
+- **O estado não vira cidade.** Em `"Campinas, São Paulo"`, o "São Paulo" é o
+  estado de Campinas e não aparece como a capital.
+- **Apelidos** comuns entram: `bh`, `sampa`, `floripa`, `poa`, `bsb`,
+  `jampa`, `sjc`, `rio` (`BR_CITY_NICKNAMES`). As regiões administrativas do
+  DF (Ceilândia, Gama, ...) apontam para Brasília, e grafias antigas ("Açu"
+  para "Assú") também casam. Apelido é nome de uma palavra como outro qualquer:
+  precisa de sinal de lugar (`"vou pra bh"`, `"Rio"`, `"sampa, sp"`, ou o
+  texto inteiro ser só `"bh"`).
+- **Palavra comum não vira cidade.** "Feliz", "Natal" e "Alegre" são
+  municípios. Minúscula, no meio de outras palavras, sem "em/de/moro" antes
+  e sem UF depois, a palavra fica com metade da nota e cai abaixo do
+  `min_score` padrão (`0.6`). `"moro em Feliz/RS"` acha Feliz, e um texto que
+  é **só** o nome (`"feliz"`, o campo "cidade" de um formulário) também.
+- **Homônimos sem UF empatam.** `"bom jesus"` devolve todas as Bom Jesus com
+  a mesma nota; quem decide é você, com outra informação (o CEP, o DDD, a
+  pergunta seguinte ao usuário).
+
+`matched_text`, `start` e `end` apontam para o trecho **como o usuário
+escreveu**, então dá para destacar ou substituir no texto original.
+
+!!! tip "Erro de digitação dentro da frase"
+    Cada sequência de até quatro palavras, com pelo menos cinco letras e sem
+    correspondência exata, passa pela busca aproximada com `cutoff=0.85`.
+    `"trabalho em sao paolo"` acha São Paulo com `0.80`: a semelhança do nome
+    (`0.89`) vezes `0.9`, porque nenhuma UF confirmou.
+
+## Por nome e por código
+
+```python
+from tempest_fastapi_sdk.geo import municipality_by_ibge_code, search_municipalities
+
+for match in search_municipalities("sao paolo", limit=2):
+    print(match.municipality.name, match.municipality.uf.value, round(match.score, 2))
+
+city = municipality_by_ibge_code(3550308)
+assert city is not None
+print(city.name, city.coordinate.latitude, city.coordinate.longitude, city.capital)
+```
+
+Saída:
+
+```text
+São Paulo SP 0.89
+São Paulo -23.5329 -46.6395 True
+```
+
+`search_municipalities(nome, uf=...)` serve para um campo "cidade" de
+formulário: com `uf`, só aquele estado. `br_municipalities()` devolve a lista
+inteira, ordenada por código.
+
+## Por significado: busca com IA
+
+`FuzzyIndex` acha o nome **escrito** parecido; não acha o nome que **quer
+dizer** a mesma coisa. "tênis de corrida" não tem letra em comum com
+"calçado esportivo". Para isso existe o embedding, e o `genai.rag` traz dois
+índices sobre qualquer embedder do SDK (`Embedder`, `OllamaEmbedder`,
+`OpenAICompatEmbedder`, `OnnxEmbedder`):
+
+- **`SemanticNameIndex`**: ranqueia os nomes por similaridade de cosseno com a
+  consulta. Os nomes são embedados uma vez, em lote, na primeira busca.
+- **`HybridNameIndex`**: roda os dois lados, escrita (palavra por palavra,
+  com erro de digitação) e significado, e funde os rankings com
+  `reciprocal_rank_fusion`. Cada resultado traz `lexical_score` e
+  `semantic_score`, então você vê por que ele veio.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import HybridNameIndex
+
+PRODUCTS: list[tuple[str, int]] = [
+    ("Calçado esportivo para corrida", 1),
+    ("Camiseta básica de algodão", 2),
+    ("Calça jeans masculina", 3),
+    ("Garrafa térmica 1 litro", 4),
+    ("Mochila para notebook", 5),
+    ("Fone de ouvido bluetooth", 6),
+]
+
+
+async def main() -> None:
+    embedder = OllamaEmbedder(model="nomic-embed-text")
+    index: HybridNameIndex[int] = HybridNameIndex(embedder, PRODUCTS)
+    for query in ["camizeta basica", "tênis de corrida", "headphone sem fio"]:
+        best = (await index.search(query, limit=1))[0]
+        spelling = "-" if best.lexical_score is None else f"{best.lexical_score:.2f}"
+        meaning = "-" if best.semantic_score is None else f"{best.semantic_score:.2f}"
+        print(f"{query!r} -> {best.key} (spelling {spelling}, meaning {meaning})")
+
+
+asyncio.run(main())
+```
+
+Saída, com `nomic-embed-text` num Ollama local:
+
+```text
+'camizeta basica' -> Camiseta básica de algodão (spelling 0.94, meaning 0.84)
+'tênis de corrida' -> Calçado esportivo para corrida (spelling 0.50, meaning 0.64)
+'headphone sem fio' -> Fone de ouvido bluetooth (spelling -, meaning 0.57)
+```
+
+- `"camizeta basica"` veio pelos **dois** lados: a escrita casa as duas
+  palavras com erro, e o sentido também.
+- `"tênis de corrida"` veio pelo **significado**. A palavra "corrida" casa,
+  mas sozinha cobre só metade da consulta.
+- `"headphone sem fio"` veio **só** pelo significado: nenhuma palavra casa.
+
+!!! info "Palavra curta não conta"
+    O lado da escrita ignora palavras com menos de três letras
+    (`MIN_LEXICAL_WORD_LENGTH`). Sem isso, o "de" de "tênis de corrida"
+    casava com todo nome que tivesse um "de".
+
+!!! tip "Quando usar cada um"
+    Lista de nomes próprios (cidades, pessoas, marcas): `FuzzyIndex`, sem
+    modelo. Catálogo em que o usuário descreve o que quer com outras
+    palavras: `HybridNameIndex`, que mantém a escrita como sinal próprio em
+    vez de depender de o modelo ter visto a grafia errada.
+
+## Numa conversa: tool de agente
+
+Um agente que conversa com o usuário precisa achar a cidade sem que você
+escreva o passo. `municipality_search_tool()` dá a ele a busca de município
+(frase ou nome, com `uf` opcional), e `name_search_tool(index)` expõe
+qualquer um dos três índices.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.agents import Agent, municipality_search_tool
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+async def main() -> None:
+    agent = Agent(
+        OllamaGenerator(model="qwen2.5:3b"),
+        tools=[municipality_search_tool()],
+    )
+    run = await agent.run(
+        "O usuário escreveu: 'vou pra floripa semana que vem'. "
+        "Qual é a cidade, a UF e o código IBGE?"
+    )
+    print([step.name for step in run.steps if step.kind == "tool"])
+    print(run.output)
+
+
+asyncio.run(main())
+```
+
+Saída de uma das execuções com `qwen2.5:3b` no Ollama local:
+
+```text
+['find_brazilian_city']
+A cidade é Florianópolis, que está localizada no estado de Santa Catarina (UF SC). Seu código IBGE é 4205407 e as coordenadas geográficas são lat -27.5945, lon -48.5477.
+```
+
+Em 20 execuções seguidas (N=20) o modelo chamou a tool em todas e respondeu
+Florianópolis/SC com o código 4205407 em todas. Em 3 delas ele passou
+`uf="SC"` junto da frase: a UF filtra o que a frase achou, em vez de trocar a
+busca na frase pela busca do texto inteiro como nome. A redação da resposta
+muda a cada execução; o que a tool devolve, não.
+
+## Quanto custa
+
+Medido num x86_64 com Python 3.12.7:
+
+| O quê | Mediana |
+| --- | --- |
+| Primeira chamada no processo (monta o índice dos 5571 nomes) | 45,9 ms (N=5) |
+| `"vou pra floripa semana que vem"` | 0,79 ms (N=200) |
+| `"moro em sao jose dos campos - sp"` | 3,02 ms (N=200) |
+| Frase com três cidades, uma com erro | 3,27 ms (N=200) |
+
+O índice é montado uma vez por processo e fica em memória.
+
+!!! note "De onde vêm os dados"
+    Nome e UF vêm da API de localidades do IBGE (dado público); coordenada,
+    capital e as grafias antigas vêm de `kelvins/municipios-brasileiros`
+    (MIT, com o aviso de licença no módulo gerado). As duas fontes listam os
+    mesmos 5571 códigos. A lista de `list_states()` (receita
+    [Helpers BR](br-helpers.md)) conta 5606 porque inclui as 35 regiões
+    administrativas do DF; aqui elas são apelidos de Brasília. Para atualizar:
+    `uv run python scripts/regen_br_municipalities.py`. Um teste fixa o hash
+    dos dados, então uma regeneração aparece no diff do PR.
+
+## Recap
+
+- **`tempest_fastapi_sdk.text`**: `normalize_text`, `similarity` e
+  `FuzzyIndex` para casar o que o usuário digita com qualquer lista de nomes,
+  sem dependência.
+- **`find_municipalities_in_text`**: acha a cidade numa frase, com a UF
+  confirmando e desempatando, apelidos e palavra comum filtrada.
+- **`search_municipalities` / `municipality_by_ibge_code`**: busca por nome
+  (com erro) e por código, com coordenada e capital.
+- Homônimos sem UF voltam empatados. A decisão é sua.
+- **`SemanticNameIndex` / `HybridNameIndex`**: busca por significado, e por
+  significado mais escrita, sobre qualquer embedder do SDK.
+- **`municipality_search_tool` / `name_search_tool`**: as mesmas buscas como
+  tool de agente.
 
 
 ---
@@ -64632,6 +65688,7 @@ Cada mixin é dono do seu próprio prefixo de env var — escolha só os que o s
 | `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE`, `DATABASE_SQLITE_WAL`, `DATABASE_SQLITE_BUSY_TIMEOUT`, `DATABASE_SQLITE_FOREIGN_KEYS` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
 | `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |
+| `KafkaSettings` | `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_CLIENT_ID`, `KAFKA_SECURITY_PROTOCOL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME`, `KAFKA_SASL_PASSWORD`, `KAFKA_SSL_CAFILE`, `KAFKA_SSL_CERTFILE`, `KAFKA_SSL_KEYFILE`, `KAFKA_SSL_KEY_PASSWORD` |
 | `TaskIQSettings` | `TASKIQ_BROKER_URL`, `TASKIQ_RESULT_BACKEND_URL`, `TASKIQ_STORE_RESULTS`, `TASKIQ_RESULT_TTL_SECONDS`, `TASKIQ_WORKER_HEARTBEAT_FILE`, `TASKIQ_SCHEDULER_HEARTBEAT_FILE`, `TASKIQ_HEARTBEAT_SECONDS` |
 | `JWTSettings` | `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `JWT_ISSUER` |
 | `CORSSettings` | `CORS_ORIGINS`, `CORS_ORIGIN_REGEX`, `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_EXPOSE_HEADERS`, `CORS_MAX_AGE` |
@@ -69915,6 +70972,449 @@ tempest ops resync
 - `[tool.tempest] commands` aponta outro módulo (string ou lista).
 - Colisão com embutido → embutido vence, projeto pulado com aviso.
 - Typer puro: args/options/tipos/help/grupos aninhados de graça.
+
+
+---
+
+# MCP (Model Context Protocol)
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mcp/
+
+# MCP (Model Context Protocol)
+
+O [MCP](https://modelcontextprotocol.io) é o protocolo com que um cliente de
+IA (Claude Desktop, um IDE, outro agente) descobre e chama ferramentas de um
+servidor. O módulo `tempest_fastapi_sdk.mcp` cobre as duas direções, em cima
+do [FastMCP](https://gofastmcp.com):
+
+| Você quer… | Use |
+| --- | --- |
+| que um cliente MCP chame ferramentas do **seu** serviço | `mount_mcp` + `add_agent_tools` / `add_fastapi_routes` |
+| que um `Agent` do SDK use ferramentas de um servidor MCP **de fora** | `MCPToolset` |
+
+## Instalação
+
+```bash
+pip install "tempest-fastapi-sdk[fastmcp]"
+```
+
+O extra declara `fastmcp>=4.1.0`. O piso é a 4.1.0 porque ela é a primeira que
+valida os segmentos de parâmetro de caminho nas ferramentas geradas de
+OpenAPI — o mesmo caminho por onde `add_fastapi_routes` passa argumentos
+escolhidos pelo modelo. A suíte do módulo passa na 4.1.0 (com `mcp` 2.0.0) e
+na 4.1.8.
+
+!!! note "Fora do `[all]`"
+    Numa venv nova com Python 3.12, o extra somou 47 pacotes à instalação base
+    do SDK (fastmcp 4.1.8), entre eles um segundo cliente HTTP (`httpx2`), e
+    exige `starlette>=1.0.1`. Por isso ele é opt-in e não entra no `[all]`.
+    Sem o extra, `import tempest_fastapi_sdk.mcp` funciona; cada função levanta
+    `ImportError` dizendo o que instalar.
+
+## Servir: um endpoint MCP na sua aplicação
+
+Um serviço de pedidos que já tem uma rota `POST /orders` autenticada, e quer
+que um cliente MCP possa criar pedidos, perguntar quem está logado e usar uma
+ferramenta de agente que já existe:
+
+```python title="mcp_server.py"
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import Depends, FastAPI
+from fastmcp import FastMCP
+from pydantic import BaseModel, Field
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    make_bearer_token_dependency,
+    register_exception_handlers,
+)
+from tempest_fastapi_sdk.agents import AgentContext, text_tool
+from tempest_fastapi_sdk.mcp import (
+    add_agent_tools,
+    add_fastapi_routes,
+    mcp_principal,
+    mount_mcp,
+)
+
+jwt = JWTUtils("troque-por-um-segredo-de-32-bytes-ou-mais")
+current_user = make_bearer_token_dependency(jwt)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    print("app: abrindo recursos")
+    yield
+    print("app: fechando recursos")
+
+
+app = FastAPI(lifespan=lifespan)
+register_exception_handlers(app)
+
+
+class OrderInSchema(BaseModel):
+    sku: str = Field(min_length=1, description="Código do produto.")
+    quantity: int = Field(ge=1, description="Quantidade.")
+
+
+class OrderOutSchema(BaseModel):
+    sku: str
+    quantity: int
+    owner: str
+
+
+@app.post("/orders", operation_id="create_order", tags=["orders"])
+async def create_order(
+    order: OrderInSchema,
+    claims: dict[str, Any] = Depends(current_user),
+) -> OrderOutSchema:
+    return OrderOutSchema(sku=order.sku, quantity=order.quantity, owner=claims["sub"])
+
+
+async def shout(arguments: dict[str, Any], _context: AgentContext) -> str:
+    return str(arguments["text"]).upper()
+
+
+server = FastMCP("pedidos", mask_error_details=True)
+
+
+@server.tool
+def whoami() -> str:
+    """Return the subject of the token that called this tool."""
+    return str(mcp_principal(dict)["sub"])
+
+
+add_agent_tools(server, [text_tool("shout", "Return the text in upper case.", shout)])
+add_fastapi_routes(server, app, operations=["create_order"])
+mount_mcp(app, server, principal=current_user)
+```
+
+Rode com `uvicorn mcp_server:app`. O endpoint fica em `/mcp`.
+
+### O servidor é seu: `FastMCP`
+
+O SDK não embrulha o `FastMCP`. Você o constrói e registra ferramentas,
+recursos e prompts com os decoradores dele (`@server.tool`, `@server.resource`,
+`@server.prompt`), que derivam o schema das anotações de tipo — um parâmetro
+anotado com um modelo Pydantic vira o schema daquele modelo.
+
+Uma coisa o `mount_mcp` exige dele: **`mask_error_details=True`**. Num
+`FastMCP` padrão, a exceção de uma ferramenta chega ao cliente com o texto
+(medido no fastmcp 4.1.8, ferramenta que levanta
+`RuntimeError("postgres://admin:hunter2@db/prod")`):
+
+```text
+Error calling tool 'boom': postgres://admin:hunter2@db/prod
+```
+
+Com `mask_error_details=True`, o cliente lê só o nome da ferramenta, e o texto
+fica no log do servidor:
+
+```text
+Error calling tool 'boom'
+```
+
+Um servidor que não mascara é recusado na montagem:
+
+```text
+ValueError: mount_mcp serves only FastMCP servers that mask error details, or a tool exception reaches the MCP client with its text; build 'pedidos' with FastMCP(..., mask_error_details=True)
+```
+
+A checagem desce também nos servidores montados dentro do seu com
+`server.mount(filho)`: cada um responde os próprios erros, e um filho que não
+mascara vaza o texto mesmo com o pai mascarando. A configuração global do
+fastmcp (`FASTMCP_MASK_ERROR_DETAILS=true`) também conta, porque o `FastMCP`
+a lê ao ser construído. Quando a mensagem **deve** chegar ao modelo, levante
+`fastmcp.exceptions.ToolError("pedido 42 já fechado")`: ela passa pela máscara
+de propósito.
+
+### A autenticação é a das suas rotas: `mount_mcp`
+
+`mount_mcp` registra `/mcp` como uma **rota FastAPI** comum (`GET`, `POST` e
+`DELETE`, fora do OpenAPI). Por isso a dependência que você passa em
+`principal=` roda exatamente como roda no `POST /orders`: o mesmo
+`current_user`, a mesma resposta de recusa. Sem token, a requisição para antes
+de chegar ao servidor MCP:
+
+```text
+HTTP/1.1 401 Unauthorized
+content-type: application/json
+
+{"detail":"Authorization token is missing or invalid","code":"UNAUTHORIZED","details":{}}
+```
+
+O que `principal=` resolveu fica disponível dentro da ferramenta por
+`mcp_principal(tipo)` — `dict` para as claims de
+`make_bearer_token_dependency`, o seu model de usuário para
+`make_jwt_user_dependency`. O `isinstance` é conferido, então o retorno já sai
+tipado. Gates extras (permissão, papel) entram em `dependencies=`, como num
+`APIRouter`.
+
+Uma dependência `soft=True` (a que devolve `None` para quem não mandou token,
+em vez de recusar) não abre o endpoint: se `principal=` resolve `None`, o
+`mount_mcp` responde o mesmo `401` acima. Para aceitar chamador anônimo de
+propósito, passe `allow_unauthenticated=True` — aí o anônimo chega à
+ferramenta, e `mcp_principal(dict)` levanta `TypeError` para ele (`None` não é
+um `dict`) — o cliente lê `Error calling tool '<nome>'`, porque o servidor
+mascara o erro.
+
+!!! danger "Endpoint aberto só por escolha explícita"
+    `mount_mcp` sem `principal=` e sem `dependencies=` levanta `ValueError`. Um
+    endpoint MCP executa ferramentas em nome de quem chama; aberto, executa para
+    qualquer um que ache a URL. Para servir sem autenticação de propósito (uma
+    demo local), passe `allow_unauthenticated=True`.
+
+### Sessão: nenhuma por padrão, e presa ao dono quando existe
+
+Por padrão o transporte roda **sem sessão** (`stateless=True`): cada requisição
+é autenticada sozinha e nenhum `Mcp-Session-Id` é emitido. Recursos que
+precisam de sessão (notificação de progresso numa requisição posterior,
+sampling) pedem `stateless=False`.
+
+Com `stateless=False`, a sessão fica **presa ao principal que a abriu**. O
+`mount_mcp` guarda `Mcp-Session-Id → dono` quando o transporte emite o id, e
+toda requisição seguinte com aquele id passa pela mesma dependência de
+`principal=` e é comparada com o dono. O dono é o claim `sub` quando o
+principal é um dicionário de claims (sobrevive à renovação do token), e o tipo
+mais o `id` quando é um objeto, como o model de usuário. Outro usuário com
+token válido — ou um anônimo, com `allow_unauthenticated=True` — que apresenta
+o id recebe exatamente o que o transporte responde para uma sessão que não
+existe:
+
+```text
+HTTP/1.1 404 Not Found
+content-type: application/json
+
+{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Session not found"}}
+```
+
+É `404`, e não `403`, porque é o que a especificação do MCP manda responder
+para sessão que o servidor não atende — o cliente abre outra —, e porque `403`
+contaria a quem tentou que o id existe.
+
+O registro é liberado quando um `DELETE` encerra a sessão, e uma ligação sem
+requisição em andamento há mais de 30 minutos (a mesma janela em que o SDK do
+MCP encerra a sessão ociosa) é descartada quando outra sessão abre. Ele vive
+no processo, como as próprias sessões do transporte: atrás de vários workers,
+a sessão só funciona se as requisições dela chegam ao worker que a abriu.
+
+!!! note "Sem `principal=`, todos são o mesmo dono"
+    A ligação compara o principal. Montado só com `dependencies=` (um segredo
+    compartilhado, por exemplo), todo chamador tem a mesma identidade e a
+    sessão não separa um do outro. Um principal sem identidade estável — um
+    dicionário sem `sub`, um objeto sem `id` — faz a requisição falhar com
+    `TypeError`; sirva esse caso com `stateless=True`.
+
+### O lifespan é composto, não substituído
+
+O transporte MCP precisa rodar dentro do lifespan da aplicação. `mount_mcp`
+troca o `app.router.lifespan_context` por um que entra primeiro no **seu**
+lifespan e depois no do transporte — o MCP para antes de os recursos que você
+abriu fecharem. Rodando o exemplo e encerrando com `Ctrl+C`:
+
+```text
+INFO:     Waiting for application startup.
+app: abrindo recursos
+INFO:     Application startup complete.
+...
+INFO:     Waiting for application shutdown.
+app: fechando recursos
+INFO:     Application shutdown complete.
+```
+
+Chame `mount_mcp` depois de definir o lifespan da aplicação, e sirva com o
+lifespan ligado (o uvicorn liga por padrão; num teste, `with TestClient(app)`).
+
+### Ferramentas de agente que já existem: `add_agent_tools`
+
+`add_agent_tools(server, tools)` publica `AgentTool`s com o `parameters` que
+elas já declaram — o cliente MCP vê o mesmo schema que um `Agent` do SDK vê. O
+contrato de falha é o dos agentes:
+
+| A ferramenta… | O cliente MCP recebe |
+| --- | --- |
+| levanta `AgentToolError("pedido 42 já fechado")` | o erro com essa mensagem |
+| levanta qualquer outra exceção | `tool failed: <Tipo>` — o texto fica no log do servidor, porque pode carregar uma DSN ou um token |
+| passa de `timeout` (padrão 120 s) | `tool '<nome>' timed out after <n>s` |
+| devolve `ToolResult` com artefatos | o texto, e cada artefato como conteúdo `image`/`audio` do MCP ou recurso binário embutido |
+
+Cada chamada roda com um `AgentContext` novo: uma chamada MCP não carrega
+artefatos de chamadas anteriores.
+
+### Rotas FastAPI, sem duplicar schema: `add_fastapi_routes`
+
+`add_fastapi_routes(server, app, operations=[...], tags=[...])` publica as
+rotas que você **escolheu** — por `operation_id` ou por tag — com o schema tirado
+do OpenAPI da própria aplicação. Sem seleção ela levanta `ValueError`: expor
+todas as rotas (inclusive os `DELETE`) não é padrão. Um `operation_id` que não
+existe, ou uma tag sem rota, também levanta — que é o que avisa quando a função
+foi chamada antes de as rotas serem incluídas.
+
+A chamada vai para a rota no mesmo processo (transporte ASGI, sem socket), e
+**as credenciais do cliente MCP vão junto**: `Authorization` e `Cookie` (os
+nomes em `forward_headers`) são copiados da requisição MCP. A rota autentica com
+as próprias dependências, e autentica **quem chamou o MCP** — no exemplo, o
+`owner` do pedido é o `sub` do token do cliente. Esses cabeçalhos também saem
+do schema da ferramenta, e um valor que o modelo coloque nos argumentos é
+sobrescrito (ou removido, se a requisição MCP não tinha o cabeçalho).
+
+A rota vê a chamada como veria a requisição MCP: o `Host` e o endereço do
+cliente são os da requisição MCP (um `TrustedHostMiddleware` aceita, e um
+limite por IP conta cada cliente no próprio balde), e uma exceção não tratada
+na rota termina no `500` que a aplicação responde por HTTP, nunca como a
+própria exceção — e o cliente MCP lê `Error calling tool '<nome>'`, sem o texto
+dela.
+
+!!! tip "Cabeçalho de `make_token_dependency`"
+    Uma rota protegida por segredo compartilhado lê outro cabeçalho
+    (`X-Token` por padrão). Acrescente-o:
+    `forward_headers=("authorization", "cookie", "x-token")`.
+
+O OpenAPI é gerado uma vez, na chamada, e o cache da aplicação
+(`app.openapi_schema`) é deixado como estava — a página `/docs` continua vendo
+rotas incluídas depois.
+
+## Consumir: ferramentas de outro servidor MCP num `Agent`
+
+`MCPToolset` mantém **uma** conexão com um servidor MCP e transforma as
+ferramentas que ele lista em `AgentTool`s. Contra o servidor acima, com o
+modelo roteirizado pelo `ScriptedBackend` (ver
+[Agentes de IA (testes)](agents-testing.md)):
+
+```python title="mcp_client.py"
+import asyncio
+
+from tempest_fastapi_sdk import JWTUtils
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.agents.testing import (
+    ScriptedBackend,
+    replies,
+    replies_with_tool,
+    tool_steps,
+)
+from tempest_fastapi_sdk.mcp import MCPToolset
+
+jwt = JWTUtils("troque-por-um-segredo-de-32-bytes-ou-mais")
+
+
+async def main() -> None:
+    token = jwt.encode({"sub": "maria", "typ": "access"})
+    backend = ScriptedBackend(
+        [
+            replies_with_tool("pedidos_whoami"),
+            replies_with_tool("pedidos_create_order", {"sku": "CAFE", "quantity": 2}),
+            replies("Pedido criado."),
+        ],
+    )
+    async with MCPToolset.http(
+        "http://127.0.0.1:8000/mcp",
+        name="pedidos",
+        token=token,
+        prefix="pedidos_",
+    ) as pedidos:
+        tools = await pedidos.tools()
+        print([tool.name for tool in tools])
+        run = await Agent(backend, tools=tools).run("Faça um pedido de 2 cafés.")
+    for step in tool_steps(run):
+        print(step.name, "->", step.output)
+    print(run.stop_reason, run.output)
+
+
+asyncio.run(main())
+```
+
+Com o `mcp_server.py` rodando na porta 8000, ele imprime:
+
+```text
+['pedidos_whoami', 'pedidos_shout', 'pedidos_create_order']
+pedidos_whoami -> maria
+pedidos_create_order -> {"sku":"CAFE","quantity":2,"owner":"maria"}
+completed Pedido criado.
+```
+
+`prefix=` separa ferramentas de dois servidores que usam o mesmo nome;
+`include=` adapta só as que você listar.
+
+### Servidor local, por stdio
+
+Servidores MCP distribuídos como programa (`uvx`, `npx`, um script Python)
+falam por stdio. `MCPToolset.stdio` sobe o processo no `connect` e o encerra no
+`disconnect`:
+
+```python title="stdio_client.py"
+import asyncio
+import sys
+
+from tempest_fastapi_sdk.agents import AgentContext
+from tempest_fastapi_sdk.mcp import MCPToolset
+
+
+async def main() -> None:
+    async with MCPToolset.stdio(
+        sys.executable,
+        ["local_server.py"],
+        name="local",
+    ) as local:
+        tools = {tool.name: tool for tool in await local.tools()}
+        print(tools["add"].parameters)
+        result = await tools["add"].invoke({"a": 2, "b": 3}, AgentContext())
+        print(result.text)
+
+
+asyncio.run(main())
+```
+
+Com um `local_server.py` que define `add(a: int, b: int) -> int` num `FastMCP` e
+termina em `server.run(transport="stdio")`, a saída é:
+
+```text
+{'type': 'object', 'additionalProperties': False, 'properties': {'a': {'type': 'integer'}, 'b': {'type': 'integer'}}, 'required': ['a', 'b']}
+5
+```
+
+O `StdioTransport` do FastMCP, no padrão (`keep_alive=True`), deixa o
+subprocesso vivo depois que o `Client` sai do `with` — medido no fastmcp 4.1.8:
+o PID do servidor ainda respondia 1 s depois. O `MCPToolset.stdio` passa
+`keep_alive=False`, e a suíte confere que o processo do servidor deixa de
+existir depois do `disconnect()`.
+
+### Ciclo de vida
+
+`MCPToolset` tem `connect()` e `disconnect()`, idempotentes — é um
+`LifecycleResource`, então também abre no lifespan da aplicação ou em
+`TaskQueue(resources=[...])` e fica aberto a vida do processo. As ferramentas
+adaptadas chamam pela conexão do toolset: depois do `disconnect` elas
+respondem com `AgentToolError("... is not connected")`, que o modelo lê, em vez
+de travar.
+
+### Erros que o modelo lê
+
+| Acontece… | A ferramenta levanta |
+| --- | --- |
+| o servidor marca o resultado como erro | `AgentToolError` com o texto do servidor |
+| a chamada passa de `timeout` (padrão 30 s) ou do `deadline` da execução do agente | `AgentToolError("... timed out after <n>s")` |
+| a execução do agente já não tem tempo | `AgentToolError("no time left ...")`, sem chamar |
+| o servidor responde com erro JSON-RPC | `AgentToolError` com a mensagem do erro |
+| o transporte quebra | a exceção sobe, e o agente a mostra como `tool failed: <Tipo>` — o texto pode carregar a URL do servidor |
+
+Imagem, áudio e recurso binário que o servidor devolve viram **artefatos** do
+agente (`<ferramenta>.png`, …), nunca base64 no prompt; o texto da ferramenta
+diz com que nome cada um foi salvo.
+
+## Recap
+
+- `mount_mcp(app, server, principal=current_user)` serve um `FastMCP` em `/mcp`
+  atrás das mesmas dependências das suas rotas, dentro do lifespan da app —
+  e só um `FastMCP(..., mask_error_details=True)`.
+- Com `stateless=False`, a sessão fica presa a quem a abriu; outro principal
+  recebe `404`.
+- `add_agent_tools` publica `AgentTool`s com o schema que elas já têm;
+  `add_fastapi_routes` publica as rotas escolhidas, com o schema do OpenAPI e as
+  credenciais do chamador.
+- `MCPToolset.http` / `.stdio` trazem ferramentas de outro servidor para um
+  `Agent`, com timeout e erros convertidos em `AgentToolError`.
 
 
 ---
@@ -81865,7 +83365,7 @@ O problema que o FastStream resolve mal: a API muda de forma conforme o transpor
 
 `MessageBroker` esconde isso atrás de **um** conceito: um **channel** (uma string). Você publica num channel e quem estiver inscrito nele recebe.
 
-Instale com `[queue]` (puxa `faststream[rabbit]`).
+Instale com `[queue]` (puxa `faststream[rabbit]`). Os outros transportes têm extra próprio, porque o `[queue]` traz só o cliente do RabbitMQ: `[queue-kafka]`, `[queue-nats]`, `[queue-redis]`.
 
 ```python
 # src/queue/__init__.py
@@ -81932,7 +83432,7 @@ async def pay_order(order_id: str) -> dict[str, str]:
 ```
 
 !!! info "Transportes"
-    `MessageBroker.rabbitmq(url)`, `.redis(url)`, `.kafka(*servers)`, `.nats(servers)`. Cada um faz lazy-import do backend certo do FastStream e erra com a mensagem de instalação exata se o extra faltar. Precisa injetar um broker customizado (ou de teste)? `MessageBroker(meu_broker)`.
+    `MessageBroker.rabbitmq(url)`, `.redis(url)`, `.kafka(*servers)`, `.nats(servers)`. Cada um faz lazy-import do backend certo do FastStream e, se ele faltar, erra nomeando o extra que o instala (`[queue]`, `[queue-redis]`, `[queue-kafka]`, `[queue-nats]`). No Kafka, veja [Kafka: chave, grupo e commit](#kafka-chave-grupo-e-commit). Precisa injetar um broker customizado (ou de teste)? `MessageBroker(meu_broker)`.
 
 !!! check "Recapitulando"
     - `MessageBroker.rabbitmq(url)` — escolhe o transporte, esconde o FastStream.
@@ -82102,6 +83602,180 @@ nome não seja engolida.
 
 !!! warning "Não confunda com `mq.publisher(canal)`"
     `mq.publisher(...)` devolve o objeto publisher do próprio FastStream — escape hatch, útil sobretudo porque faz o canal aparecer no AsyncAPI gerado. O `Publisher` passa por `mq.publish()`, então mantém o `message_id` de que a deduplicação depende e os headers `traceparent` / `x-request-id` de que o tracing depende. Um publicador que contornasse isso pareceria idêntico e quebraria os dois em silêncio.
+
+### Kafka: chave, grupo e commit
+
+Instale com `[queue-kafka]`. Ele puxa `faststream[kafka]` e declara `aiokafka>=0.10.0` por conta própria: o FastStream aceita `aiokafka>=0.9`, e com o 0.9.0 todo consumidor falha ao subir com `TypeError: AIOKafkaConsumer.__init__() got an unexpected keyword argument 'group_instance_id'` (medido com o FastStream 0.7.5).
+
+No Kafka não existe fila: o channel é um **tópico**, e quem recebe uma cópia é decidido pelo **grupo de consumidores**. Três knobs cobrem isso, todos pela fachada tipada:
+
+```python
+# src/queue/billing.py
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.queue import (
+    Consumer,
+    MessageBroker,
+    OffsetResetEnum,
+    Publisher,
+)
+
+mq = MessageBroker.kafka("localhost:9092")
+
+
+class OrderPaid(BaseModel):
+    order_id: str
+
+
+@mq.on(
+    "orders.paid",
+    group_id="billing",
+    auto_offset_reset=OffsetResetEnum.EARLIEST,
+)
+async def bill(event: OrderPaid) -> None:
+    """Uma réplica do grupo `billing` recebe cada pedido."""
+    print(f"faturando {event.order_id}")
+
+
+class AuditConsumer(Consumer):
+    """O mesmo tópico, outro grupo: o audit lê a sua própria cópia."""
+
+    group_id = "audit"
+    auto_offset_reset = OffsetResetEnum.EARLIEST
+
+    async def handle(self, event: OrderPaid) -> None:
+        print(f"auditando {event.order_id}")
+
+
+class OrderPaidPublisher(Publisher[OrderPaid]):
+    channel = "orders.paid"
+    schema = OrderPaid
+
+
+mq.register(AuditConsumer(channel="orders.paid", schema=OrderPaid))
+orders = mq.publisher_for(OrderPaidPublisher)
+
+
+async def pay(order_id: str) -> None:
+    """A chave escolhe a partição: os eventos de um pedido chegam em ordem."""
+    await orders.publish(OrderPaid(order_id=order_id), key=order_id)
+```
+
+| Knob | Onde | O que faz |
+| --- | --- | --- |
+| `key=` | `mq.publish`, `Publisher.publish` | Mesma chave, mesma partição, lida na ordem em que foi escrita. `str` vira UTF-8 — o `aiokafka` só aceita `bytes` e levanta `TypeError: a bytes-like object is required, not 'str'`. |
+| `group_id=` | `@mq.on`, `@subscribe`, `Consumer` | Réplicas com o mesmo grupo dividem as partições; cada grupo distinto lê tudo. Sem grupo não há onde commitar offset (veja a tabela de `ack_policy` abaixo). |
+| `auto_offset_reset=` | `@mq.on`, `@subscribe`, `Consumer` | Onde um grupo **sem offset commitado** começa. O default do Kafka é `LATEST`: o consumidor novo não vê o que foi publicado antes do primeiro deploy. Grupo que já commitou retoma do commit, diga isso o que disser. |
+
+`Consumer` e `@subscribe` seguem a mesma regra de `prefetch` e `ack_policy`: o valor da classe vale para todo binding, e o do `@subscribe` sobrescreve para aquele método.
+
+O que foi medido contra um Kafka 3.9.1 real (`tests/queue/test_kafka_live.py`, no `make test-docker`, com o FastStream 0.7.5 + `aiokafka` 0.10.0 e com o FastStream 0.7.8):
+
+- 6 chaves × 8 registros num tópico de 3 partições: cada chave caiu numa partição só, a mesma que o `publish` devolveu no `RecordMetadata`, e foi lida na ordem 0..7; as 6 chaves ocuparam mais de uma partição.
+- 40 registros num tópico de 2 partições, duas réplicas no grupo `workers` e uma no grupo `audit`: cada réplica recebeu uma parte não vazia, sem registro repetido entre elas, e as duas juntas somaram os 40; o `audit` recebeu os 40.
+
+#### `ack_policy` no Kafka é a política de **commit**
+
+| `ack_policy` | Comportamento |
+| --- | --- |
+| `None` (`ACK_FIRST`) | O FastStream liga o `enable_auto_commit` do `aiokafka`: o offset é commitado por timer, tenha o handler dado certo ou não. |
+| `ACK` | Commit depois do handler — também quando ele levantou. Medido: o handler levantou no registro 1 de 3, a réplica parou, outra subiu no mesmo grupo e leu só os registros novos. |
+| `NACK_ON_ERROR` | Volta o consumidor para o registro que falhou e o lê de novo. Medido: um handler que levanta na primeira vez rodou duas vezes com o mesmo registro. |
+| `REJECT_ON_ERROR` | O mesmo que `ACK` no Kafka; o FastStream avisa com um `UserWarning` (`has the same effect as AckPolicy.ACK`) — que **levanta** em quem roda `filterwarnings = ["error"]`. Prefira `ACK`. |
+| `MANUAL` | O handler commita. |
+
+Qualquer política que não seja `ACK_FIRST` exige `group_id`, porque o Kafka guarda offset por grupo. Sem grupo, o `aiokafka` recusa o commit com `IllegalOperation('Requires group_id')` em **toda** mensagem, depois de o handler já ter rodado. A fachada recusa antes, na hora de registrar:
+
+```text
+ValueError: Consumer of 'orders.paid' runs under ack_policy=ACK, which commits
+the offset after the handler, and Kafka commits only for a consumer group.
+Pass group_id=..., or leave ack_policy unset (ACK_FIRST: offsets
+auto-committed on a timer).
+```
+
+A política vale também quando vem do broker inteiro (`MessageBroker.kafka(..., ack_policy=AckPolicy.ACK)`).
+
+#### Deduplicação no Kafka
+
+O Kafka não tem o campo `message_id` do AMQP, e o `publish` do FastStream para Kafka não aceita esse argumento. O `mq.publish` põe o id no header `message_id` (`MESSAGE_ID_HEADER`), e o `mq.deduplicate(...)` lê dali primeiro — o seu `message_id=` explícito vai pelo mesmo caminho. Medido: dois `publish` com o mesmo `message_id` viram dois registros, em dois offsets, e o handler rodou uma vez.
+
+Registro publicado por outro produtor, sem o header, é deduplicado por `tópico:partição:offset`. O id que o FastStream dá a uma mensagem Kafka é `<offset>-<timestamp>` (`0-1794491612333`, por exemplo), e o offset é por partição: dois registros no mesmo offset de partições diferentes, escritos no mesmo milissegundo, têm o mesmo id. Medido: dois registros no offset 0 das partições 0 e 1, com o mesmo `timestamp_ms`, deduplicados por esse id — o segundo era pulado; por coordenada, os dois rodam.
+
+#### O que o Kafka não expressa **levanta**
+
+`prefetch` é o `basic.qos` do AMQP: no Kafka, NATS e Redis levanta `UnsupportedTopologyError`. Antes ele chegava ao FastStream como um `Channel` do RabbitMQ e falhava com `TypeError: KafkaRegistrator.subscriber() got an unexpected keyword argument 'channel'`, sem nomear o knob. No sentido contrário, `group_id`, `auto_offset_reset` e `key=` fora do Kafka também levantam `UnsupportedTopologyError` — em `@mq.on`, em `mq.register` e em `mq.publish` —, porque descartá-los trocaria "uma cópia por grupo" pelo que o outro transporte faz por default.
+
+#### Conexão pelo ambiente — `KafkaSettings`
+
+O exemplo acima escreve `"localhost:9092"` no código. Em produção o cluster pede TLS e SASL, e montar isso à mão significa escolher a classe certa de `faststream.security` e criar um `ssl.SSLContext` em cada serviço. O mixin `KafkaSettings` lê tudo do ambiente e o `MessageBroker.kafka_from_settings` monta o broker:
+
+```python
+# src/queue/broker.py
+
+from tempest_fastapi_sdk import BaseAppSettings
+from tempest_fastapi_sdk.queue import MessageBroker
+from tempest_fastapi_sdk.settings import KafkaSettings
+
+
+class Settings(KafkaSettings, BaseAppSettings):
+    """Configuração do serviço."""
+
+
+settings: Settings = Settings()
+mq: MessageBroker = MessageBroker.kafka_from_settings(settings)
+```
+
+Com este `.env`:
+
+```text
+KAFKA_BOOTSTRAP_SERVERS=["kafka-1:9093","kafka-2:9093"]
+KAFKA_CLIENT_ID=billing-api
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=SCRAM-SHA-512
+KAFKA_SASL_USERNAME=billing
+KAFKA_SASL_PASSWORD=troque-me
+```
+
+`print(settings)` mostra a senha mascarada, e o broker sai com um `SASLScram512` (medido):
+
+```text
+KAFKA_BOOTSTRAP_SERVERS=['kafka-1:9093', 'kafka-2:9093'] KAFKA_CLIENT_ID='billing-api' KAFKA_SECURITY_PROTOCOL=<KafkaSecurityProtocolEnum.SASL_SSL: 'SASL_SSL'> KAFKA_SASL_MECHANISM=<KafkaSaslMechanismEnum.SCRAM_SHA_512: 'SCRAM-SHA-512'> KAFKA_SASL_USERNAME='billing' KAFKA_SASL_PASSWORD=SecretStr('**********') KAFKA_SSL_CAFILE=None KAFKA_SSL_CERTFILE=None KAFKA_SSL_KEYFILE=None KAFKA_SSL_KEY_PASSWORD=SecretStr('')
+```
+
+Sem nada no ambiente, os defaults apontam para `localhost:9092` em `PLAINTEXT` — o broker de desenvolvimento.
+
+| `KAFKA_SECURITY_PROTOCOL` | O que o `kafka_kwargs()` põe em `security` |
+| --- | --- |
+| `PLAINTEXT` (default) | `None`: sem TLS, sem autenticação |
+| `SSL` | `BaseSecurity` com um `ssl.SSLContext` que verifica certificado e host; `KAFKA_SSL_CAFILE` troca a loja do sistema, `KAFKA_SSL_CERTFILE` + `KAFKA_SSL_KEYFILE` + `KAFKA_SSL_KEY_PASSWORD` acrescentam o certificado de cliente (mTLS) |
+| `SASL_PLAINTEXT` | `SASLPlaintext`, `SASLScram256` ou `SASLScram512`, pelo `KAFKA_SASL_MECHANISM` (`PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512`), sem TLS |
+| `SASL_SSL` | a mesma classe SASL, com o `ssl.SSLContext` do `SSL` |
+
+`kafka_kwargs()` devolve só o que vai por keyword (`security`, e `client_id` quando `KAFKA_CLIENT_ID` está definido): os seeds são posicionais no `MessageBroker.kafka`. Por isso `MessageBroker.kafka(**settings.kafka_kwargs())` sozinho é recusado, em vez de subir um broker sem seed que só falharia no `connect()` com `KafkaConnectionError: Unable to bootstrap from []`:
+
+```text
+ValueError: MessageBroker.kafka() needs at least one bootstrap server. From a KafkaSettings, use MessageBroker.kafka_from_settings(settings), or pass *settings.KAFKA_BOOTSTRAP_SERVERS before **settings.kafka_kwargs().
+```
+
+Combinação que o protocolo ignoraria falha no boot, não no primeiro `connect()`: `SASL_*` sem `KAFKA_SASL_USERNAME`, arquivo `KAFKA_SSL_*` sob um protocolo sem TLS, e `KAFKA_SSL_KEYFILE` sem `KAFKA_SSL_CERTFILE`:
+
+```text
+1 validation error for KafkaSettings
+  Value error, KAFKA_SSL_CAFILE set, but KAFKA_SECURITY_PROTOCOL=PLAINTEXT has no TLS; use SSL or SASL_SSL, or drop the file. [type=value_error]
+```
+
+Composto com `EnvironmentSettings` e `ENV=production`, o mixin recusa `SASL_PLAINTEXT` com `PLAIN` (a senha atravessa a rede em claro; SCRAM não manda a senha e passa) e senha SASL vazia:
+
+```text
+1 validation error for Settings
+  Value error, ENV=production refuses development values:
+- KAFKA_SASL_PASSWORD: empty under a SASL security protocol
+- KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT with the PLAIN mechanism sends the password unencrypted; use SASL_SSL [type=value_error]
+```
+
+!!! tip "Opção do FastStream que o mixin não modela"
+    `MessageBroker.kafka_from_settings(settings, acks="all", enable_idempotence=True)` repassa o resto ao `KafkaBroker`. Uma chave que o `kafka_kwargs()` também devolve (`security`, `client_id`) vence a das settings.
 
 ## Topologia da fila — `QueueSpec`
 
@@ -100021,6 +101695,7 @@ regras no método `production_violations()`:
 | `CORSSettings` | `"*"` em `CORS_ORIGINS`; com `CORS_ALLOW_CREDENTIALS=true`, também `"null"` em `CORS_ORIGINS` e um `CORS_ORIGIN_REGEX` que casa com uma origem reservada `.invalid` (`.*`, `https://.*`; regex parcialmente ancorado como `https://.*example\.com` não é detectado) — o Starlette devolve a própria `Origin` do chamador com `Access-Control-Allow-Credentials: true` |
 | `TokenSettings` | `TOKEN_SECRET` vazio (só passaria o gate `X-Token` com `allow_unauthenticated=True`) |
 | `TaskIQSettings` | `TASKIQ_BROKER_URL` vazio (cai no broker em memória) |
+| `KafkaSettings` | `KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT` com o mecanismo `PLAIN` (a senha atravessa a rede sem criptografia); `KAFKA_SASL_PASSWORD` vazio sob um protocolo `SASL_*` |
 | `StorageSettings` | chaves `minioadmin` do default, `STORAGE_SECURE=false` (exceto bucket privado atrás de endpoint público HTTPS — veja [Storage](storage.md#bucket-privado-atras-de-https)), `STORAGE_PUBLIC_SECURE=false` explícito |
 | `EmailSettings` | host `mailpit`/`mailhog`, loopback na porta `1025`, `SMTP_HOST` default sem `SMTP_USERNAME`, `SMTP_FROM_ADDR` default ou com domínio reservado |
 | `RevenueCatSettings` | os dois segredos de webhook vazios |
