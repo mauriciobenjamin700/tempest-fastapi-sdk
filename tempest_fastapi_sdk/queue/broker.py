@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
 
     from tempest_fastapi_sdk.queue.consumer import Consumer
+    from tempest_fastapi_sdk.settings import KafkaSettings
 
 logger = logging.getLogger("tempest_fastapi_sdk.queue")
 
@@ -744,7 +745,21 @@ class MessageBroker:
 
         Returns:
             MessageBroker: A facade around a ``KafkaBroker``.
+
+        Raises:
+            ValueError: When no seed is given. FastStream accepts the empty
+                list and the broker fails only on ``connect()``, with
+                ``KafkaConnectionError: Unable to bootstrap from []``; the
+                usual cause is ``MessageBroker.kafka(**settings.kafka_kwargs())``,
+                which carries every setting but the positional seeds.
         """
+        if not bootstrap_servers:
+            raise ValueError(
+                "MessageBroker.kafka() needs at least one bootstrap server. "
+                "From a KafkaSettings, use "
+                "MessageBroker.kafka_from_settings(settings), or pass "
+                "*settings.KAFKA_BOOTSTRAP_SERVERS before **settings.kafka_kwargs().",
+            )
         kafka = _require("faststream.kafka", "queue-kafka")
         servers: str | list[str] = (
             list(bootstrap_servers)
@@ -754,6 +769,41 @@ class MessageBroker:
         return cls(
             kafka.KafkaBroker(servers, **options),
             declare_topology=declare_topology,
+        )
+
+    @classmethod
+    def kafka_from_settings(
+        cls,
+        settings: KafkaSettings,
+        *,
+        declare_topology: bool = True,
+        **options: Any,
+    ) -> MessageBroker:
+        """Build the Kafka broker a :class:`KafkaSettings` describes.
+
+        The seeds are positional on :meth:`kafka` and the rest comes from
+        :meth:`~tempest_fastapi_sdk.settings.KafkaSettings.kafka_kwargs`,
+        so a plain ``MessageBroker.kafka(**settings.kafka_kwargs())``
+        would connect to FastStream's ``localhost`` default; this is the
+        one call that passes both halves.
+
+        Args:
+            settings (KafkaSettings): The mixin, or a service ``Settings``
+                composing it.
+            declare_topology (bool): See :meth:`__init__`.
+            **options (Any): Extra keyword arguments forwarded to
+                ``faststream.kafka.KafkaBroker``. A key that
+                :meth:`~tempest_fastapi_sdk.settings.KafkaSettings.kafka_kwargs`
+                also returns (``security``, ``client_id``) wins over the
+                settings.
+
+        Returns:
+            MessageBroker: A facade around a ``KafkaBroker``.
+        """
+        return cls.kafka(
+            *settings.KAFKA_BOOTSTRAP_SERVERS,
+            declare_topology=declare_topology,
+            **{**settings.kafka_kwargs(), **options},
         )
 
     @classmethod
