@@ -538,6 +538,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Event sourcing
+
+### `tempest_fastapi_sdk.eventsourcing`
+
+::: tempest_fastapi_sdk.eventsourcing
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Exceções
 
 ### `tempest_fastapi_sdk.exceptions`
@@ -588,6 +602,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.wallet.InsufficientBalanceException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutRejectedException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutUncertainException
+::: tempest_fastapi_sdk.exceptions.eventsourcing.WrongExpectedVersionException
 ::: tempest_fastapi_sdk.exceptions.i18n.MessageCatalog
 ::: tempest_fastapi_sdk.exceptions.i18n.default_message_catalog
 ::: tempest_fastapi_sdk.exceptions.i18n.parse_accept_language
@@ -618,6 +633,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.queue.topology.ExchangeSpec
 ::: tempest_fastapi_sdk.queue.topology.ExchangeBinding
 ::: tempest_fastapi_sdk.queue.topology.ExchangeKindEnum
+::: tempest_fastapi_sdk.queue.topology.OffsetResetEnum
 ::: tempest_fastapi_sdk.queue.topology.QueueTypeEnum
 ::: tempest_fastapi_sdk.queue.topology.TransportEnum
 ::: tempest_fastapi_sdk.queue.topology.UnsupportedTopologyError
@@ -709,6 +725,25 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.hostbridge.config.DEFAULT_COMMAND_TIMEOUT
 ::: tempest_fastapi_sdk.hostbridge.config.DEFAULT_MAX_FILE_READ_BYTES
+
+---
+
+## MCP (Model Context Protocol)
+
+### `tempest_fastapi_sdk.mcp`
+
+::: tempest_fastapi_sdk.mcp
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+::: tempest_fastapi_sdk.mcp.client.DEFAULT_MCP_CALL_TIMEOUT
+::: tempest_fastapi_sdk.mcp.server.DEFAULT_FORWARDED_HEADERS
+::: tempest_fastapi_sdk.mcp.server.DEFAULT_MCP_TOOL_TIMEOUT
+::: tempest_fastapi_sdk.mcp.server.PRINCIPAL_STATE_KEY
 
 ---
 

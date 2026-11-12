@@ -38,6 +38,7 @@ calling a third party, publishing downstream.
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
@@ -54,6 +55,17 @@ an outage — a restart, a requeue, a lost ack — while keeping the key
 space bounded. Raise it if your retry topology can hold a message longer
 than that, because a key that expires before the last retry lets the
 message run twice.
+"""
+
+MESSAGE_ID_HEADER: Final[str] = "message_id"
+"""Header carrying the publish-side id on a transport without the field.
+
+AMQP has a ``message_id`` property; Kafka, NATS and Redis do not, and
+FastStream's ``publish`` on them takes no ``message_id`` keyword.
+:meth:`~tempest_fastapi_sdk.queue.MessageBroker.publish` puts the id in
+this header there instead, so a message published twice under one id is
+recognized as the same message wherever it lands. Named like the
+``correlation_id`` header FastStream itself writes on those transports.
 """
 
 IN_FLIGHT: Final[str] = "in_flight"
@@ -277,13 +289,45 @@ class RedisDedupStore:
         await self.client.delete(self._key(key))
 
 
+def _kafka_record_key(message: Any) -> str | None:
+    """Return ``topic:partition:offset`` when ``message`` wraps a Kafka record.
+
+    FastStream gives a Kafka message the id ``<offset>-<timestamp>``. The
+    offset is per partition, so two records at the same offset of two
+    partitions, written in the same millisecond, share that id — and the
+    second would be skipped as already processed. The record's coordinates
+    name it uniquely within the cluster, and a redelivery of the same
+    record carries the same ones.
+
+    Args:
+        message (Any): The FastStream message.
+
+    Returns:
+        str | None: The coordinates, or ``None`` when the raw message is
+        not a single Kafka record.
+    """
+    raw = getattr(message, "raw_message", None)
+    topic = getattr(raw, "topic", None)
+    partition = getattr(raw, "partition", None)
+    offset = getattr(raw, "offset", None)
+    if not (
+        isinstance(topic, str)
+        and isinstance(partition, int)
+        and isinstance(offset, int)
+    ):
+        return None
+    return f"{topic}:{partition}:{offset}"
+
+
 def message_key(message: Any) -> str | None:
     """Return the id a message is deduplicated by.
 
-    Prefers the broker's ``message_id``, which
-    :meth:`~tempest_fastapi_sdk.queue.MessageBroker.publish` sets on every
-    publish. Falls back to ``correlation_id`` for messages published by
-    something other than this SDK.
+    In order: the :data:`MESSAGE_ID_HEADER` header, which
+    :meth:`~tempest_fastapi_sdk.queue.MessageBroker.publish` writes on a
+    transport without a ``message_id`` field (Kafka, NATS, Redis); the
+    coordinates of a Kafka record published by something else; the
+    broker's ``message_id``, which the facade sets on every AMQP publish;
+    and ``correlation_id`` for anything else.
 
     Args:
         message (Any): The FastStream message.
@@ -294,6 +338,14 @@ def message_key(message: Any) -> str | None:
         a key derived from the body would silently collapse two
         legitimately identical events into one.
     """
+    headers = getattr(message, "headers", None)
+    if isinstance(headers, Mapping):
+        header = headers.get(MESSAGE_ID_HEADER)
+        if header:
+            return str(header)
+    record = _kafka_record_key(message)
+    if record is not None:
+        return record
     for attribute in ("message_id", "correlation_id"):
         value = getattr(message, attribute, None)
         if value:
@@ -374,6 +426,7 @@ __all__: list[str] = [
     "DEFAULT_DEDUP_TTL_SECONDS",
     "DONE",
     "IN_FLIGHT",
+    "MESSAGE_ID_HEADER",
     "ConcurrentDeliveryError",
     "DedupStateEnum",
     "DedupStore",

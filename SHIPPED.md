@@ -1143,6 +1143,54 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **MCP, both directions (unreleased, extra `[fastmcp]` = `fastmcp>=4.1.0`,
+  out of `[all]`)** — `tempest_fastapi_sdk.mcp`, submodule import, imports
+  without the extra. **Serve:** the consumer builds the `FastMCP` and
+  decorates it (FastMCP derives tool/resource/prompt schemas from type
+  hints — the SDK does not wrap that); `mount_mcp(app, server,
+  principal=current_user, dependencies=...)` mounts the streamable-HTTP
+  transport behind an **ordinary FastAPI route**, so the SDK's own auth
+  dependencies refuse an unauthenticated client with the API's `401` before
+  the MCP server sees the request (no `principal`/`dependencies` →
+  `ValueError` unless `allow_unauthenticated=True`; a `principal` that
+  resolves `None` — a `soft=True` dependency — is answered `401` under the
+  same rule); the server must be built with `mask_error_details=True` —
+  `_unmasked_servers` walks `server.providers` (unwrapping `_inner` to each
+  `FastMCPProvider.server`) and a non-masking server or mounted child is a
+  `ValueError` (a default `FastMCP` sends `Error calling tool 'x': <text>`,
+  and a masking parent does not mask an unmasking child — fastmcp 4.1.8
+  only logs a warning); `stateless=True` by default; with `stateless=False`
+  `mcp/_sessions.py` `SessionBindings` binds each issued `Mcp-Session-Id`
+  to `principal_key(principal)` (`sub` claim, or type + `id`) and answers
+  another principal — or an anonymous one — with the transport's own
+  `404 Session not found` body, byte for byte; released on `DELETE`/`404`,
+  idle bindings (30 min, nothing in flight) pruned on the next open, per
+  process;
+  `app.router.lifespan_context` is wrapped (app lifespan outside, transport
+  inside); `mcp_principal(kind)` reads the resolved caller inside a tool.
+  `add_agent_tools` exposes `AgentTool`s with their own `parameters` and the
+  agent failure contract (`AgentToolError` text through, anything else
+  `tool failed: <Type>`, per-call `timeout` 120 s, artifacts as MCP
+  image/audio/embedded-blob content). `add_fastapi_routes` exposes picked
+  routes (`operations=`/`tags=`, required; unknown ids/tags raise) through
+  FastMCP's `OpenAPIProvider` over an in-process ASGI client, **forwarding
+  the MCP caller's `Authorization`/`Cookie`** (`forward_headers=`) so the
+  route's own dependencies authenticate the caller; forwarded headers are
+  stripped from the tool schema and a model-supplied value is overwritten or
+  removed; the route call carries the MCP request's `Host` and client
+  address, and runs with `raise_app_exceptions=False`, so an unhandled route
+  exception ends as the app's `500`, never as the exception;
+  `app.openapi_schema` cache restored. **Consume:**
+  `MCPToolset.stdio/.http` (or a configured `fastmcp.Client`) →
+  `await toolset.tools()` → `AgentTool`s (`prefix=`, `include=`); timeout
+  (30 s, shortened by the run's `deadline`; an exhausted run refuses
+  without calling, since a zero timeout means none to the client), JSON-RPC
+  errors and error results → `AgentToolError`; binary content → artifacts.
+  `connect`/`disconnect` (idempotent) = `LifecycleResource`; stdio passes
+  `keep_alive=False` because FastMCP's default leaves the subprocess running
+  after the client exits (measured). Tests: `tests/mcp/` — uvicorn on a
+  loopback port and a stdio subprocess, both against the SDK's own server.
+  Recipe: `docs/recipes/mcp.md`.
 - **Agents audit (v0.300.0)** — ceilings now hold *during* a call, not
   just between turns: every model call runs under `asyncio.timeout` of the
   time left and every tool call under that plus a grace that shrinks per
@@ -4287,6 +4335,62 @@ irmão, ciclo recusa. Contrato congelado gerado da mesma introspecção.
 `ruff` no `PATH` ordena e formata o que foi escrito. Testes:
 `tests/cli/test_standard.py` (rodam o pytest gerado dentro do projeto).
 Receita: "Projeto existente" em `docs/service-standard.md`.
+
+## Event sourcing: `EventStore` com backend SQL e KurrentDB
+
+`tempest_fastapi_sdk/eventsourcing/` (pacote de topo, alcançado pelo caminho,
+como `wallet`): `events.py` (`DomainEvent`, `EventRegistry`, `EventMetadata`,
+`RecordedEvent`, `AppendResult`, `Snapshot`, `StreamStateEnum`,
+`UnknownEventTypeError`), `store.py` (protocolo `EventStore`), `models.py`
+(tabelas abstratas de evento, stream, snapshot e checkpoint), `sql.py`
+(`SqlEventStore`: `UPDATE` condicional da linha do stream antes de inserir,
+advisory lock de transação no PostgreSQL para `$all` sem buraco, `session=`,
+`outbox_model=` grava no outbox na mesma transação), `kurrentdb.py`
+(`KurrentDBEventStore`, extra `[kurrentdb]`, cliente importado só dentro das
+funções), `aggregate.py` (`Aggregate`, `AggregateRepository`) e
+`projection.py` (`ProjectionRunner`, `CheckpointStore`,
+`SqlCheckpointStore`, `InMemoryCheckpointStore`).
+`WrongExpectedVersionException` em `exceptions/eventsourcing.py`, no topo e no
+catálogo i18n. Fora de propósito: subscriptions persistentes do KurrentDB (use
+`store.client`) e upcasting de evento. Testes: `tests/eventsourcing/` —
+concorrência real (transação aberta + `pg_stat_activity`, 8 escritores × 20
+rodadas) em SQLite e PostgreSQL 16, a sequence que deixaria uma projeção pular
+evento, e a suíte viva do KurrentDB 26.2.3 rodada no piso (1.3.0) e no 1.3.6 do
+cliente (`test_kurrentdb_matrix.py`). Receita: `docs/recipes/event-sourcing.md`.
+
+## Kafka pela fachada do `MessageBroker`
+
+`publish(key=...)` / `Publisher.publish(key=...)` (partição; `str` vira
+UTF-8), `group_id` e `auto_offset_reset` (`OffsetResetEnum`, em
+`queue/topology.py`) em `@mq.on`, `@subscribe`, `Consumer` e `Subscription`,
+montados por um caminho só (`MessageBroker._consumer_options`) para o
+decorator e o `register`. Recusa: knob de Kafka fora do Kafka e `prefetch`
+fora do RabbitMQ (`UnsupportedTopologyError`); política que commita sem grupo
+(`ValueError`). Dedup: `MESSAGE_ID_HEADER` em `queue/dedup.py` para
+transporte sem campo `message_id` (Kafka, NATS, Redis), e
+`tópico:partição:offset` para registro Kafka sem o header. Extras
+`[queue-kafka]` (com `aiokafka>=0.10.0`: o 0.9.0, que o FastStream aceita,
+não sobe consumidor), `[queue-nats]`, `[queue-redis]`; `_require` de cada
+construtor aponta o seu. Conexão pelo ambiente: `KafkaSettings` (em
+`settings/mixins.py`, com `KafkaSecurityProtocolEnum` e
+`KafkaSaslMechanismEnum`) — seeds, client id, protocolo, mecanismo SASL,
+usuário/senha (`SecretStr`) e arquivos TLS; `kafka_ssl_context()` monta o
+`ssl.SSLContext` e `kafka_kwargs()` devolve `security` (objeto de
+`faststream.security`, importado dentro do método) + `client_id`.
+`MessageBroker.kafka_from_settings(settings)` junta os seeds posicionais;
+`MessageBroker.kafka()` sem seed levanta `ValueError`. Combinação que o
+protocolo ignoraria é `ValidationError`; `production_violations` recusa
+`SASL_PLAINTEXT` + `PLAIN` e senha SASL vazia. Não há `from_settings`
+genérico do `MessageBroker` — só o `TaskQueue` mapeia esquema de URL, e ele
+continua recusando `kafka://`. O scaffold do `tempest new` não tem Kafka (nem
+serviço no compose nem bloco no `.env.example`).
+Testes: `tests/queue/test_kafka.py` (unidade, `TestKafkaBroker`),
+`tests/queue/test_kafka_live.py` (Kafka 3.9.1 em docker) e
+`tests/queue/test_kafka_matrix.py` (o live sob FastStream 0.7.5 + `aiokafka`
+0.10.0 e sob FastStream 0.7.8), `tests/settings/test_kafka_settings.py` e
+`tests/queue/test_kafka_from_settings.py`. Receita: "Kafka: chave, grupo e
+commit" e "Conexão pelo ambiente — `KafkaSettings`" em
+`docs/recipes/queue-tasks.md`.
 
 ## Busca aproximada e cidades em texto (2026-11-12)
 

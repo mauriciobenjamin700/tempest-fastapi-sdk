@@ -54,12 +54,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from faststream import AckPolicy
 
-    from tempest_fastapi_sdk.queue.topology import QueueSpec
+    from tempest_fastapi_sdk.queue.topology import OffsetResetEnum, QueueSpec
 
 _CHANNEL_ATTR = "__tempest_channel__"
 _OPTIONS_ATTR = "__tempest_subscribe_options__"
 _PREFETCH_ATTR = "__tempest_prefetch__"
 _ACK_POLICY_ATTR = "__tempest_ack_policy__"
+_GROUP_ID_ATTR = "__tempest_group_id__"
+_OFFSET_RESET_ATTR = "__tempest_auto_offset_reset__"
 
 
 def subscribe(
@@ -67,6 +69,8 @@ def subscribe(
     *,
     prefetch: int | None = None,
     ack_policy: AckPolicy | None = None,
+    group_id: str | None = None,
+    auto_offset_reset: OffsetResetEnum | str | None = None,
     **options: Any,
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Mark a :class:`Consumer` method as the handler for ``channel``.
@@ -92,6 +96,12 @@ def subscribe(
             :meth:`~tempest_fastapi_sdk.queue.MessageBroker.on` resolves
             it: pinned to ``REJECT_ON_ERROR`` on a spec with a
             dead-letter exchange. Overrides :attr:`Consumer.ack_policy`.
+        group_id (str | None): Kafka consumer group for this handler, as
+            :meth:`~tempest_fastapi_sdk.queue.MessageBroker.on` takes it.
+            Overrides :attr:`Consumer.group_id`. Kafka only.
+        auto_offset_reset (OffsetResetEnum | str | None): Where the group starts
+            without a committed offset. Overrides
+            :attr:`Consumer.auto_offset_reset`. Kafka only.
         **options (Any): Extra transport-specific subscriber options
             forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ).
 
@@ -106,6 +116,8 @@ def subscribe(
         setattr(method, _OPTIONS_ATTR, options)
         setattr(method, _PREFETCH_ATTR, prefetch)
         setattr(method, _ACK_POLICY_ATTR, ack_policy)
+        setattr(method, _GROUP_ID_ATTR, group_id)
+        setattr(method, _OFFSET_RESET_ATTR, auto_offset_reset)
         return method
 
     return mark
@@ -130,6 +142,9 @@ class Subscription:
             a FastStream ``Channel`` rather than forwarded as a keyword.
         ack_policy (AckPolicy | None): The ack policy asked for, resolved
             by :meth:`~tempest_fastapi_sdk.queue.MessageBroker.register`.
+        group_id (str | None): The Kafka consumer group asked for.
+        auto_offset_reset (OffsetResetEnum | str | None): Where that group starts
+            without a committed offset.
     """
 
     channel: str | QueueSpec
@@ -138,6 +153,8 @@ class Subscription:
     options: dict[str, Any]
     prefetch: int | None = None
     ack_policy: AckPolicy | None = None
+    group_id: str | None = None
+    auto_offset_reset: OffsetResetEnum | str | None = None
 
 
 class Consumer:
@@ -161,6 +178,11 @@ class Consumer:
             :meth:`~tempest_fastapi_sdk.queue.MessageBroker.register`
             decide (``REJECT_ON_ERROR`` on a spec with a dead-letter
             exchange).
+        group_id (str | None): Kafka consumer group for every binding,
+            with the same override rule as :attr:`prefetch`. Kafka only.
+        auto_offset_reset (OffsetResetEnum | str | None): Where that group
+            starts without a committed offset, same override rule. Kafka
+            only.
         options (dict[str, Any]): Subscriber options for the constructor
             form. Never mutated, so the empty class-level default is safe
             to share.
@@ -170,6 +192,8 @@ class Consumer:
     schema: type | None = None
     prefetch: int | None = None
     ack_policy: AckPolicy | None = None
+    group_id: str | None = None
+    auto_offset_reset: OffsetResetEnum | str | None = None
     options: dict[str, Any] = {}  # noqa: RUF012
 
     def __init__(
@@ -179,6 +203,8 @@ class Consumer:
         schema: type | None = None,
         prefetch: int | None = None,
         ack_policy: AckPolicy | None = None,
+        group_id: str | None = None,
+        auto_offset_reset: OffsetResetEnum | str | None = None,
         **options: Any,
     ) -> None:
         """Configure the constructor form.
@@ -200,6 +226,11 @@ class Consumer:
                 :func:`subscribe` names its own. RabbitMQ only.
             ack_policy (AckPolicy | None): Ack policy for every binding,
                 unless a :func:`subscribe` names its own.
+            group_id (str | None): Kafka consumer group for every binding,
+                unless a :func:`subscribe` names its own. Kafka only.
+            auto_offset_reset (OffsetResetEnum | str | None): Where that group
+                starts without a committed offset, unless a
+                :func:`subscribe` names its own. Kafka only.
             **options (Any): Extra transport-specific subscriber options
                 forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ),
                 for the constructor form. The grouped form takes its own
@@ -213,6 +244,10 @@ class Consumer:
             self.prefetch = prefetch
         if ack_policy is not None:
             self.ack_policy = ack_policy
+        if group_id is not None:
+            self.group_id = group_id
+        if auto_offset_reset is not None:
+            self.auto_offset_reset = auto_offset_reset
         if options:
             self.options = options
 
@@ -238,7 +273,8 @@ class Consumer:
         Grouped ``@subscribe`` methods take precedence; if none are
         present, the constructor form (``channel`` + ``handle``) is used.
         A binding with no ``prefetch`` of its own inherits
-        :attr:`prefetch`.
+        :attr:`prefetch`; the same goes for ``ack_policy``, ``group_id``
+        and ``auto_offset_reset``.
 
         Returns:
             list[Subscription]: One entry per subscription.
@@ -256,6 +292,8 @@ class Consumer:
             if channel is not None:
                 prefetch = getattr(attr, _PREFETCH_ATTR, None)
                 ack_policy = getattr(attr, _ACK_POLICY_ATTR, None)
+                group_id = getattr(attr, _GROUP_ID_ATTR, None)
+                offset_reset = getattr(attr, _OFFSET_RESET_ATTR, None)
                 grouped.append(
                     Subscription(
                         channel=channel,
@@ -265,6 +303,12 @@ class Consumer:
                         prefetch=self.prefetch if prefetch is None else prefetch,
                         ack_policy=(
                             self.ack_policy if ack_policy is None else ack_policy
+                        ),
+                        group_id=self.group_id if group_id is None else group_id,
+                        auto_offset_reset=(
+                            self.auto_offset_reset
+                            if offset_reset is None
+                            else offset_reset
                         ),
                     ),
                 )
@@ -284,6 +328,8 @@ class Consumer:
                 options=dict(self.options),
                 prefetch=self.prefetch,
                 ack_policy=self.ack_policy,
+                group_id=self.group_id,
+                auto_offset_reset=self.auto_offset_reset,
             ),
         ]
 

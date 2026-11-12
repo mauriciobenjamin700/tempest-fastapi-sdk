@@ -39,6 +39,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` — without it the handshake 404s |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face recognition on ONNX Runtime, no opencv and no torch: `FaceRecognizer` (detect/embed/compare), `compare_faces`. 16 MB models fetched by `ensure_models()`. **No system libraries** |
+| `[fastmcp]` | `fastmcp` | MCP in both directions: `mount_mcp` (a `FastMCP` server at `/mcp` behind `current_user`), `add_agent_tools`, `add_fastapi_routes`, `MCPToolset` (another MCP server's tools in an `Agent`, stdio and HTTP). Adds 47 packages to the base install (fastmcp 4.1.8), `httpx2` among them — and therefore **out of `[all]`** |
 | `[firebase]` | `firebase-admin` | Firebase ID token verification: `FirebaseAuth` (idempotent init, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Heavy — 33 packages, 52 MB measured on `firebase-admin` 7.5.0 — and therefore **out of `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `MusicGenerator`, `BarkSpeech`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `torch` | STT (Whisper). Since 0.349.0 it no longer brings Coqui: its `torchaudio` broke Bark on a GPU ([details](#genai-audio-coqui-split)) |
@@ -55,6 +56,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[geo]` | `httpx` | geospatial helpers: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + routing), `GeoPointMixin` |
 | `[http]` | `httpx` (already in the base package) | `HTTPClient` + `RetryPolicy` + circuit-breaker. The extra is optional: `HTTPClient` works on the base install, and declaring the extra only records the intent in the service's `pyproject.toml` |
 | `[image]` | `pillow` | `strip_image_metadata`: re-encodes a user's photo in the same format without EXIF (GPS, device), XMP, IPTC, ICC and text chunks, with a pixel ceiling against decompression bombs |
+| `[kurrentdb]` | `kurrentdbclient` (+ `grpcio`, `grpcio-tools`, `setuptools`, `protobuf`) | KurrentDB (formerly EventStoreDB) backend of the event store: `KurrentDBEventStore`. The SQL backend (`SqlEventStore`) needs no extra. Included in `[all]`. Weighs 34 MB in a clean venv (`kurrentdbclient` 1.3.6: `grpc` 18 MB, `grpc_tools` 7.9 MB, `setuptools` 3.9 MB), because the client asks for `grpcio[protobuf]`; `pip-audit` found no advisory in the 2026-11-12 resolution. [Recipe](recipes/event-sourcing.md) |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow + enrollment QR code (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
@@ -67,7 +69,10 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[pdf]` | `weasyprint`, `jinja2`, `segno` | PDF generation from HTML templates: `PdfRenderer`, five bundled typed documents, `make_pdf_router`, `tempest pdf`. **Needs Pango + fontconfig on the system** — see the recipe |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
-| `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` and `MessageBroker.kafka_from_settings` (with `KafkaSettings`): topic, partition `key`, `group_id`, `auto_offset_reset`, SASL and TLS. Inherits `aiokafka<0.15` from FastStream. [Recipe](recipes/queue-tasks.md#kafka-key-group-and-commit) |
+| `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
+| `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | Slides and answer keys from structured text (HTML, PDF, PPTX, DOCX, Markdown) and Markdown to PDF with your own or the ABNT stylesheet: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Needs Pango + fontconfig on the system**, like `[pdf]`. [Recipe](recipes/slides.md) |
 | `[slides-mermaid]` | `playwright` | Drawing `` ```mermaid `` blocks in `MarkdownPdfRenderer` (`render_mermaid=True`). Needs `playwright install chromium`; that is why it stays **out of `[all]`** |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
@@ -80,7 +85,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | Passkeys / security keys: `WebAuthnService`, `make_web_authn_credential_model`, the `/auth/webauthn/*` routes — passwordless, phishing-resistant login |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the 18 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 18 above separately (and `[tests]`, which is test tooling, in the dev group) |
+| `[all]` | everything above **except** the 19 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[fastmcp]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 19 above separately (and `[tests]`, which is test tooling, in the dev group). Brings the four `MessageBroker` transports (`faststream[rabbit,kafka,nats,redis]`) and, with them, the caps FastStream declares on its own extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` and `redis<9.0.0` (the same in FastStream 0.7.5 and 0.7.8). Together with `redis>=8.1.0` from `[cache]`, `[all]` stays on `redis` 8.x; `aiokafka` 0.15.0 is already out and is held back |
 
 === "Subset (recommended)"
 

@@ -9,6 +9,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Event sourcing em `tempest_fastapi_sdk.eventsourcing`: o protocolo
+  `EventStore` (append com `expected_version`, leitura de stream para frente
+  e para trás a partir de uma versão, `$all` por posição com
+  `after_position` exclusivo, `subscribe_all`, snapshots) e dois backends.
+  - `SqlEventStore` sobre o PostgreSQL/SQLite que o serviço já tem, sem
+    dependência nova: tabelas abstratas `BaseEventModel`,
+    `BaseEventStreamModel`, `BaseEventSnapshotModel` e
+    `BaseProjectionCheckpointModel`; `session=` em todo método para gravar na
+    transação do chamador; `outbox_model=` grava uma linha de outbox por
+    evento na mesma transação, publicada pelo `OutboxRelay`. A checagem de
+    versão é um `UPDATE` condicional da linha do stream, e no PostgreSQL todo
+    append toma um advisory lock de transação para numerar `$all` na ordem de
+    commit, sem buraco — appends no store inteiro rodam um de cada vez.
+  - `KurrentDBEventStore` sobre KurrentDB (antigo EventStoreDB), pelo cliente
+    oficial `kurrentdbclient`, no novo extra `[kurrentdb]` (piso 1.3.0, entra
+    no `[all]`). Medido com KurrentDB 26.2.3 e o cliente 1.3.0 e 1.3.6.
+  - `WrongExpectedVersionException` (409,
+    `EVENTSOURCING_WRONG_EXPECTED_VERSION`, também no topo do pacote) nos dois
+    backends, com `stream_id`, `expected_version` e `actual_version`.
+  - `DomainEvent` + `EventRegistry` (eventos Pydantic tipados, gravados por
+    nome), `EventMetadata` (correlation/causation id), `RecordedEvent`,
+    `Aggregate` + `AggregateRepository` (replay após snapshot,
+    `snapshot_every=`), `ProjectionRunner` + `SqlCheckpointStore` /
+    `InMemoryCheckpointStore`.
+- Kafka pela fachada tipada do `MessageBroker`, no decorator e no caminho de
+  classe. `publish(..., key=...)` e `Publisher.publish(..., key=...)` escolhem
+  a partição (`str` vira UTF-8; o `aiokafka` recusa `str` com `TypeError`);
+  `group_id` e `auto_offset_reset` (`OffsetResetEnum`, novo) em `@mq.on`,
+  `@subscribe` e `Consumer`, com a mesma regra de herança do `prefetch`.
+  Medido contra um Kafka 3.9.1 real: a mesma chave fica numa partição e é
+  lida em ordem; duas réplicas de um grupo dividem as partições sem repetir
+  registro, e outro grupo recebe tudo.
+- Extras `[queue-kafka]` (`faststream[kafka]`, `aiokafka>=0.10.0`),
+  `[queue-nats]` e `[queue-redis]`; o `[all]` passa a instalar os quatro
+  transportes e, com eles, os tetos que o FastStream declara nos próprios
+  extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` e `redis<9.0.0`
+  (iguais no FastStream 0.7.5 e 0.7.8). O `aiokafka` 0.15.0 já saiu e fica
+  de fora.
+- `KafkaSettings` (mixin, também no topo do pacote), com
+  `KafkaSecurityProtocolEnum` (`PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`,
+  `SASL_SSL`) e `KafkaSaslMechanismEnum` (`PLAIN`, `SCRAM-SHA-256`,
+  `SCRAM-SHA-512`): `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_CLIENT_ID`,
+  `KAFKA_SECURITY_PROTOCOL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME`,
+  `KAFKA_SASL_PASSWORD` (`SecretStr`, mascarado em `repr`/`str`/log),
+  `KAFKA_SSL_CAFILE`, `KAFKA_SSL_CERTFILE`, `KAFKA_SSL_KEYFILE` e
+  `KAFKA_SSL_KEY_PASSWORD`. `kafka_kwargs()` devolve o objeto de
+  `faststream.security` do protocolo (`BaseSecurity`, `SASLPlaintext`,
+  `SASLScram256`, `SASLScram512`, com `ssl.SSLContext` verificando
+  certificado e host sob TLS) e o `client_id`; `kafka_ssl_context()` expõe o
+  contexto. `MessageBroker.kafka_from_settings(settings)` monta o broker com
+  os seeds. Combinação que o protocolo ignoraria (`SASL_*` sem usuário,
+  arquivo TLS sem TLS, chave sem certificado) falha no boot; com
+  `ENV=production`, `SASL_PLAINTEXT` + `PLAIN` e senha SASL vazia são
+  recusados.
+- `tempest_fastapi_sdk.mcp` (extra novo `[fastmcp]`, `fastmcp>=4.1.0`, fora do
+  `[all]`): Model Context Protocol nas duas direções.
+  - **Servir.** `mount_mcp(app, server, principal=current_user)` serve um
+    `FastMCP` em `/mcp` como rota FastAPI comum: a dependência de
+    `principal=` (e as de `dependencies=`) roda como nas suas rotas, e um
+    cliente sem token recebe o mesmo `401` `UNAUTHORIZED` da API antes de
+    chegar ao servidor MCP. Sem `principal=` nem `dependencies=` a montagem
+    levanta `ValueError`, salvo `allow_unauthenticated=True`; pela mesma
+    regra, um `principal=` que resolve `None` (dependência `soft=True`)
+    recebe `401`. O servidor precisa mascarar erro: um `FastMCP` sem
+    `mask_error_details=True` (ou com um servidor montado nele que não
+    mascara) levanta `ValueError` na montagem, porque a exceção de uma
+    ferramenta chegaria ao cliente com o texto (`Error calling tool 'x':
+    <mensagem>`, medido no fastmcp 4.1.8). O lifespan da
+    app é composto em volta do transporte (o MCP para antes dos seus
+    recursos fecharem), e o transporte roda sem sessão por padrão
+    (`stateless=True`). Com `stateless=False`, a sessão fica presa ao
+    principal que a abriu (claim `sub`, ou tipo + `id`): outro principal, ou
+    um anônimo, que apresenta o `Mcp-Session-Id` recebe o mesmo `404`
+    `Session not found` de uma sessão inexistente; o `DELETE` libera o
+    registro, que é por processo. `mcp_principal(tipo)` devolve, dentro da
+    ferramenta, o que `principal=` resolveu.
+  - `add_agent_tools(server, tools)` publica `AgentTool`s com o schema que
+    elas já declaram, com o contrato de falha dos agentes (`AgentToolError`
+    chega com a mensagem; outra exceção chega como `tool failed: <Tipo>`) e
+    teto por chamada (`timeout`, padrão 120 s). Artefatos viram conteúdo
+    `image`/`audio` ou recurso binário embutido.
+  - `add_fastapi_routes(server, app, operations=..., tags=...)` publica as
+    rotas escolhidas com o schema do OpenAPI da própria app, chamadas no
+    mesmo processo com `Authorization`/`Cookie` do cliente MCP repassados
+    (`forward_headers=`), de modo que a rota autentica quem chamou o MCP;
+    esses cabeçalhos saem do schema e um valor posto pelo modelo é
+    sobrescrito. A chamada à rota leva o `Host` e o endereço do cliente da
+    requisição MCP, e uma exceção não tratada na rota termina no `500` da
+    aplicação, nunca como a própria exceção; o cliente lê
+    `Error calling tool '<nome>'`. Sem seleção, ou com
+    `operation_id`/tag inexistente, levanta `ValueError`.
+  - **Consumir.** `MCPToolset.stdio(...)` / `MCPToolset.http(...)` conecta a
+    outro servidor MCP e devolve as ferramentas dele como `AgentTool`s
+    (`prefix=`, `include=`). Timeout (padrão 30 s, encurtado pelo `deadline`
+    da execução), erro JSON-RPC e resultado marcado como erro viram
+    `AgentToolError`; imagem, áudio e recurso binário viram artefatos.
+    `connect`/`disconnect` idempotentes fazem dele um `LifecycleResource`, e
+    o stdio encerra o subprocesso no `disconnect` (o padrão do FastMCP o
+    deixa vivo).
+  - Receita bilíngue `docs/recipes/mcp.md`.
 - Busca por significado sobre listas de nomes, no `genai.rag`:
   `SemanticNameIndex` (nomes embedados uma vez, em lote, ranqueados por
   cosseno; NumPy quando instalado) e `HybridNameIndex` (escrita palavra por
@@ -39,6 +139,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `min_score`, homônimos sem UF voltam empatados. Dados do IBGE (nome, UF) e
   de kelvins/municipios-brasileiros (coordenada, MIT), gerados por
   `scripts/regen_br_municipalities.py` e fixados por hash.
+
+### Fixed
+
+- `MessageBroker.kafka()` sem nenhum seed levanta `ValueError` apontando o
+  `kafka_from_settings`. Antes o FastStream aceitava a lista vazia e o broker
+  só falhava no `connect()`, com
+  `KafkaConnectionError: Unable to bootstrap from []`.
+- `MessageBroker.kafka()`, `.redis()` e `.nats()` mandavam instalar o
+  `[queue]`, que só traz `faststream[rabbit]`: seguir a mensagem deixava o
+  mesmo `ImportError` no lugar. Cada construtor agora nomeia o extra que
+  instala o seu cliente.
+- No Kafka, NATS e Redis o `message_id` vai no header `message_id`
+  (`MESSAGE_ID_HEADER`), que o `deduplicate` lê primeiro. Antes o
+  `message_id=` explícito era `TypeError` nesses transportes, e no Kafka a
+  deduplicação usava o id do FastStream, `<offset>-<timestamp>`: um mesmo
+  evento publicado duas vezes rodava duas vezes, e dois registros no mesmo
+  offset de partições diferentes, no mesmo milissegundo, colidiam. Registro
+  Kafka sem o header é deduplicado por `tópico:partição:offset`.
+  `message_id` passa a ser parâmetro nomeado de `MessageBroker.publish`
+  (antes lido de dentro do `**options`), e o explícito vence um header
+  `message_id` passado em `headers=`.
+- `ack_policy` que commita (`ACK`, `NACK_ON_ERROR`, `REJECT_ON_ERROR`,
+  `MANUAL`, também quando vem do broker inteiro) sem `group_id` no Kafka
+  levanta `ValueError` ao registrar o consumidor. Antes o `aiokafka` recusava
+  o commit com `IllegalOperation('Requires group_id')` em toda mensagem,
+  depois de o handler rodar.
+- `prefetch` no Kafka, NATS ou Redis levanta `UnsupportedTopologyError`, e
+  `group_id`, `auto_offset_reset` e `key=` fora do Kafka também. O `prefetch`
+  chegava ao FastStream como `Channel` do RabbitMQ e falhava com
+  `TypeError: ... unexpected keyword argument 'channel'`.
 
 ## [0.354.0] — 2026-11-11
 

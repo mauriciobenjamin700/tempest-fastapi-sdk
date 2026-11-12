@@ -115,12 +115,22 @@ class Publisher(Generic[MessageT]):
         self.broker: MessageBroker = broker
         self.options: dict[str, Any] = options
 
-    async def publish(self, message: MessageT, **options: Any) -> Any:
+    async def publish(
+        self,
+        message: MessageT,
+        *,
+        key: str | bytes | None = None,
+        **options: Any,
+    ) -> Any:
         """Publish ``message`` to this publisher's channel.
 
         Args:
             message (MessageT): The payload. Validated against
                 :attr:`schema` when one is declared.
+            key (str | bytes | None): Kafka record key, exactly as
+                :meth:`~tempest_fastapi_sdk.queue.MessageBroker.publish`
+                takes it: same key, same partition, read in order. Kafka
+                only.
             **options (Any): Extra publish options for this message,
                 overriding the defaults given to the constructor.
 
@@ -133,6 +143,8 @@ class Publisher(Generic[MessageT]):
                 consumer, which is a process away and can only reject what
                 already left.
             RuntimeError: When the broker is not connected.
+            UnsupportedTopologyError: When ``key`` is set on a transport
+                other than Kafka.
         """
         if self.schema is not None and not isinstance(message, self.schema):
             raise TypeError(
@@ -141,11 +153,10 @@ class Publisher(Generic[MessageT]):
             )
         if self.channel is None:  # pragma: no cover - refused in __init__
             raise ValueError(f"{type(self).__name__} has no channel.")
-        return await self.broker.publish(
-            self.channel,
-            message,
-            **{**self.options, **options},
-        )
+        merged = {**self.options, **options}
+        if key is not None:
+            merged["key"] = key
+        return await self.broker.publish(self.channel, message, **merged)
 
 
 __all__: list[str] = [
