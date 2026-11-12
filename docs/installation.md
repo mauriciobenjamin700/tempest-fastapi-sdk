@@ -68,7 +68,10 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[pdf]` | `weasyprint`, `jinja2`, `segno` | geração de PDF a partir de templates HTML: `PdfRenderer`, cinco documentos prontos com schema tipado, `make_pdf_router`, `tempest pdf`. **Exige Pango + fontconfig no sistema** — veja a receita |
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
-| `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka`: tópico, `key` de partição, `group_id`, `auto_offset_reset`. [Receita](recipes/queue-tasks.md#kafka-chave-grupo-e-commit) |
+| `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
+| `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | slides e gabaritos a partir de texto estruturado (HTML, PDF, PPTX, DOCX, Markdown) e Markdown em PDF com folha de estilo própria ou ABNT: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Exige Pango + fontconfig no sistema**, como o `[pdf]`. [Receita](recipes/slides.md) |
 | `[slides-mermaid]` | `playwright` | desenhar blocos `` ```mermaid `` no `MarkdownPdfRenderer` (`render_mermaid=True`). Exige `playwright install chromium`; por isso fica **fora do `[all]`** |
 | `[sqlite]` | `aiosqlite` | driver async SQLite para URLs `sqlite+aiosqlite://` (default de dev) |

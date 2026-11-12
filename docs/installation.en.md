@@ -68,7 +68,10 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[pdf]` | `weasyprint`, `jinja2`, `segno` | PDF generation from HTML templates: `PdfRenderer`, five bundled typed documents, `make_pdf_router`, `tempest pdf`. **Needs Pango + fontconfig on the system** — see the recipe |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
-| `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka`: topic, partition `key`, `group_id`, `auto_offset_reset`. [Recipe](recipes/queue-tasks.md#kafka-key-group-and-commit) |
+| `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
+| `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | Slides and answer keys from structured text (HTML, PDF, PPTX, DOCX, Markdown) and Markdown to PDF with your own or the ABNT stylesheet: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Needs Pango + fontconfig on the system**, like `[pdf]`. [Recipe](recipes/slides.md) |
 | `[slides-mermaid]` | `playwright` | Drawing `` ```mermaid `` blocks in `MarkdownPdfRenderer` (`render_mermaid=True`). Needs `playwright install chromium`; that is why it stays **out of `[all]`** |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |

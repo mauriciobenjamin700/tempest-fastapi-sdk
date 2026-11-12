@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from tempest_fastapi_sdk.queue.dedup import (
     DEFAULT_DEDUP_TTL_SECONDS,
+    MESSAGE_ID_HEADER,
     make_dedup_middleware,
 )
 from tempest_fastapi_sdk.queue.publisher import Publisher
@@ -39,6 +40,7 @@ from tempest_fastapi_sdk.queue.reliability import (
 from tempest_fastapi_sdk.queue.topology import (
     QUEUE_TYPE_ARG,
     ExchangeSpec,
+    OffsetResetEnum,
     QueueSpec,
     TransportEnum,
     UnsupportedTopologyError,
@@ -97,7 +99,9 @@ def _require(module: str, extra: str) -> Any:
     Args:
         module (str): The dotted module to import (e.g.
             ``"faststream.rabbit"``).
-        extra (str): The pip extra that provides it (e.g. ``"queue"``).
+        extra (str): The pip extra that provides it (e.g. ``"queue"``, or
+            ``"queue-kafka"`` for ``faststream.kafka``: ``[queue]``
+            installs the RabbitMQ client only).
 
     Returns:
         Any: The imported module.
@@ -209,6 +213,16 @@ def _with_prefetch(
     return options
 
 
+_NO_PREFETCH_TRANSPORTS: frozenset[TransportEnum] = frozenset(
+    {TransportEnum.KAFKA, TransportEnum.NATS, TransportEnum.REDIS},
+)
+"""Transports known to have no ``basic.qos``.
+
+A prefetch on them was forwarded as a RabbitMQ ``Channel`` and failed
+inside FastStream instead of naming the knob. An unknown (injected or
+test) broker is left alone.
+"""
+
 DEAD_LETTER_ACK_POLICIES: frozenset[str] = frozenset({"reject_on_error", "manual"})
 """``AckPolicy`` values a consumer with a dead-letter queue may run under.
 
@@ -271,6 +285,96 @@ def _subscriber_ack_policy(
             "there; use REJECT_ON_ERROR (the default) or MANUAL.",
         )
     return ack_policy
+
+
+def _effective_ack_policy(broker: Any, ack_policy: AckPolicy | None) -> Any:
+    """Return the ack policy a subscriber will actually run under.
+
+    Args:
+        broker (Any): The FastStream broker, whose broker-wide
+            ``ack_policy`` applies when the subscriber names none.
+        ack_policy (AckPolicy | None): What the subscriber asked for.
+
+    Returns:
+        Any: ``ack_policy`` when set, else the broker-wide policy — which
+        is FastStream's ``EMPTY`` sentinel (or ``None`` on a broker
+        without that config) when nobody set one.
+    """
+    if ack_policy is not None:
+        return ack_policy
+    return getattr(getattr(broker, "config", None), "ack_policy", None)
+
+
+def _kafka_consumer_options(
+    channel: str | QueueSpec,
+    options: dict[str, Any],
+    *,
+    transport: TransportEnum,
+    effective_ack_policy: Any,
+    group_id: str | None,
+    auto_offset_reset: OffsetResetEnum | str | None,
+) -> dict[str, Any]:
+    """Add the consumer-group knobs of a Kafka subscriber, or refuse them.
+
+    Args:
+        channel (str | QueueSpec): The channel being subscribed.
+        options (dict[str, Any]): The subscriber options, mutated in place.
+        transport (TransportEnum): The broker's transport.
+        effective_ack_policy (Any): The policy the subscriber runs under
+            (see :func:`_effective_ack_policy`).
+        group_id (str | None): The consumer group.
+        auto_offset_reset (OffsetResetEnum | str | None): Where a group with no
+            committed offset starts.
+
+    Returns:
+        dict[str, Any]: The same mapping.
+
+    Raises:
+        UnsupportedTopologyError: When ``group_id`` or
+            ``auto_offset_reset`` is set on a transport other than Kafka,
+            which has no consumer groups to honor them — dropping them
+            would turn "one copy per group" into whatever that transport
+            does by default.
+        ValueError: On Kafka, when the ack policy commits offsets and no
+            ``group_id`` is set. Kafka stores offsets per group, and
+            ``aiokafka`` refuses the commit (``IllegalOperation('Requires
+            group_id')``) on every message, after the handler already ran.
+    """
+    name = channel_name(channel)
+    if transport is not TransportEnum.KAFKA:
+        asked = [
+            field
+            for field, value in (
+                ("group_id", group_id),
+                ("auto_offset_reset", auto_offset_reset),
+            )
+            if value is not None
+        ]
+        if asked:
+            raise UnsupportedTopologyError(
+                f"Consumer of {name!r} sets {', '.join(asked)}, which the "
+                f"{transport.value} transport cannot express: consumer "
+                "groups and offsets are Kafka's.",
+            )
+        return options
+    if group_id is not None:
+        options["group_id"] = group_id
+    if auto_offset_reset is not None:
+        options["auto_offset_reset"] = OffsetResetEnum(auto_offset_reset).value
+    from faststream import AckPolicy
+
+    commits = isinstance(effective_ack_policy, AckPolicy) and (
+        effective_ack_policy is not AckPolicy.ACK_FIRST
+    )
+    if commits and group_id is None:
+        raise ValueError(
+            f"Consumer of {name!r} runs under "
+            f"ack_policy={effective_ack_policy.name}, which commits the "
+            "offset after the handler, and Kafka commits only for a "
+            "consumer group. Pass group_id=..., or leave ack_policy unset "
+            "(ACK_FIRST: offsets auto-committed on a timer).",
+        )
+    return options
 
 
 def _routing_key(channel: str | QueueSpec) -> str:
@@ -485,6 +589,60 @@ class MessageBroker:
             options["exchange"] = to_rabbit_exchange(channel.binding.exchange)
         return options
 
+    def _consumer_options(
+        self,
+        channel: str | QueueSpec,
+        options: dict[str, Any],
+        *,
+        prefetch: int | None,
+        ack_policy: AckPolicy | None,
+        group_id: str | None,
+        auto_offset_reset: OffsetResetEnum | str | None,
+    ) -> dict[str, Any]:
+        """Assemble the subscriber options :meth:`on` and :meth:`register` pass.
+
+        One path for both, so the decorator and the class-based consumer
+        cannot drift apart in what they accept or refuse.
+
+        Args:
+            channel (str | QueueSpec): The channel being subscribed.
+            options (dict[str, Any]): Transport options the caller passed,
+                mutated in place.
+            prefetch (int | None): See :meth:`on`.
+            ack_policy (AckPolicy | None): See :meth:`on`.
+            group_id (str | None): See :meth:`on`.
+            auto_offset_reset (OffsetResetEnum | str | None): See :meth:`on`.
+
+        Returns:
+            dict[str, Any]: The same mapping.
+
+        Raises:
+            UnsupportedTopologyError: When ``prefetch`` is set on Kafka,
+                NATS or Redis, or a Kafka-only knob on another transport.
+            ValueError: When the ack policy contradicts the spec's
+                dead-letter exchange, or commits on Kafka without a group.
+        """
+        transport = self.transport
+        resolved_policy = _subscriber_ack_policy(channel, ack_policy, transport)
+        if resolved_policy is not None:
+            options["ack_policy"] = resolved_policy
+        if prefetch is not None and transport in _NO_PREFETCH_TRANSPORTS:
+            raise UnsupportedTopologyError(
+                f"Consumer of {channel_name(channel)!r} sets prefetch, which "
+                f"the {transport.value} transport cannot express: it is "
+                "AMQP's basic.qos.",
+            )
+        _with_prefetch(options, prefetch, "channel")
+        _kafka_consumer_options(
+            channel,
+            options,
+            transport=transport,
+            effective_ack_policy=_effective_ack_policy(self.broker, resolved_policy),
+            group_id=group_id,
+            auto_offset_reset=auto_offset_reset,
+        )
+        return self._subscriber_options(channel, options)
+
     @property
     def specs(self) -> dict[str, QueueSpec]:
         """Return the topology declared through this broker, by channel.
@@ -544,7 +702,7 @@ class MessageBroker:
         declare_topology: bool = True,
         **options: Any,
     ) -> MessageBroker:
-        """Build a Redis-backed broker (``faststream[redis]``).
+        """Build a Redis-backed broker (``[queue-redis]`` extra).
 
         Args:
             url (str): Redis URL, e.g. ``"redis://localhost:6379/0"``.
@@ -555,7 +713,7 @@ class MessageBroker:
         Returns:
             MessageBroker: A facade around a ``RedisBroker``.
         """
-        redis = _require("faststream.redis", "queue")
+        redis = _require("faststream.redis", "queue-redis")
         return cls(
             redis.RedisBroker(url, **options),
             declare_topology=declare_topology,
@@ -568,7 +726,15 @@ class MessageBroker:
         declare_topology: bool = True,
         **options: Any,
     ) -> MessageBroker:
-        """Build a Kafka-backed broker (``faststream[kafka]``).
+        """Build a Kafka-backed broker (``[queue-kafka]`` extra).
+
+        Kafka has no queues: a channel is a **topic**, and who gets a copy
+        is decided by the consumer **group**. Consumers sharing a
+        ``group_id`` (see :meth:`on`) split the topic's partitions between
+        them; each distinct group reads every record. Without a group
+        there is nowhere to commit an offset. A publish ``key`` (see
+        :meth:`publish`) picks the partition, so the records of one key
+        are read in the order they were written.
 
         Args:
             *bootstrap_servers (str): One or more ``host:port`` seeds.
@@ -579,7 +745,7 @@ class MessageBroker:
         Returns:
             MessageBroker: A facade around a ``KafkaBroker``.
         """
-        kafka = _require("faststream.kafka", "queue")
+        kafka = _require("faststream.kafka", "queue-kafka")
         servers: str | list[str] = (
             list(bootstrap_servers)
             if len(bootstrap_servers) != 1
@@ -598,7 +764,7 @@ class MessageBroker:
         declare_topology: bool = True,
         **options: Any,
     ) -> MessageBroker:
-        """Build a NATS-backed broker (``faststream[nats]``).
+        """Build a NATS-backed broker (``[queue-nats]`` extra).
 
         Args:
             servers (str | list[str]): NATS server URL(s).
@@ -609,7 +775,7 @@ class MessageBroker:
         Returns:
             MessageBroker: A facade around a ``NatsBroker``.
         """
-        nats = _require("faststream.nats", "queue")
+        nats = _require("faststream.nats", "queue-nats")
         return cls(
             nats.NatsBroker(servers, **options),
             declare_topology=declare_topology,
@@ -626,6 +792,8 @@ class MessageBroker:
         *,
         prefetch: int | None = None,
         ack_policy: AckPolicy | None = None,
+        group_id: str | None = None,
+        auto_offset_reset: OffsetResetEnum | str | None = None,
         **options: Any,
     ) -> Callable[[Handler], Handler]:
         """Register the decorated async function as a consumer of ``channel``.
@@ -649,12 +817,28 @@ class MessageBroker:
             prefetch (int | None): Caps how many unacknowledged
                 messages the broker pushes to **this consumer**,
                 overriding the connection-wide cap set on
-                :meth:`rabbitmq`. RabbitMQ only.
+                :meth:`rabbitmq`. RabbitMQ only: raises on Kafka, NATS and
+                Redis.
             ack_policy (AckPolicy | None): FastStream's ack policy for this
                 consumer. ``None`` keeps FastStream's choice, except on a
                 spec with a dead-letter exchange, where it is pinned to
                 ``REJECT_ON_ERROR`` so a raising handler's message reaches
                 the dead-letter queue — no ``faststream`` import needed.
+                On Kafka the policy is the **commit** behavior: ``None``
+                is FastStream's ``ACK_FIRST``, offsets auto-committed on a
+                timer whatever the handler did; ``ACK`` commits after the
+                handler, also when it raised; ``NACK_ON_ERROR`` seeks back
+                to the failed record so it is read again. Any policy but
+                ``ACK_FIRST`` needs ``group_id``.
+            group_id (str | None): Kafka consumer group. Consumers sharing
+                it split the topic's partitions — each record goes to one
+                of them; every distinct group gets its own copy. Kafka
+                only.
+            auto_offset_reset (OffsetResetEnum | str | None): Where the group
+                starts when it has no committed offset. A member or its
+                value (``"earliest"``, what FastStream's own keyword
+                takes); an unknown value raises ``ValueError``. ``None``
+                keeps Kafka's ``LATEST``. Kafka only.
             **options (Any): Extra transport-specific subscriber options
                 forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ).
 
@@ -664,14 +848,22 @@ class MessageBroker:
         Raises:
             ValueError: When the spec has a dead-letter exchange and
                 ``ack_policy`` is ``ACK``, ``ACK_FIRST`` or
-                ``NACK_ON_ERROR``, none of which ever dead-letters.
+                ``NACK_ON_ERROR``, none of which ever dead-letters; or, on
+                Kafka, when the ack policy commits and no ``group_id`` is
+                set.
+            UnsupportedTopologyError: When ``prefetch`` is set on a
+                transport without it, or ``group_id`` /
+                ``auto_offset_reset`` on one other than Kafka.
         """
-        resolved_policy = _subscriber_ack_policy(channel, ack_policy, self.transport)
-        if resolved_policy is not None:
-            options["ack_policy"] = resolved_policy
-        _with_prefetch(options, prefetch, "channel")
+        self._consumer_options(
+            channel,
+            options,
+            prefetch=prefetch,
+            ack_policy=ack_policy,
+            group_id=group_id,
+            auto_offset_reset=auto_offset_reset,
+        )
         bound = self._bind(channel)
-        self._subscriber_options(channel, options)
         return cast(
             "Callable[[Handler], Handler]",
             self.broker.subscriber(bound, **options),
@@ -683,6 +875,7 @@ class MessageBroker:
         message: Any,
         *,
         exchange: ExchangeSpec | str | None = None,
+        key: str | bytes | None = None,
         **options: Any,
     ) -> Any:
         """Publish ``message`` to ``channel``.
@@ -711,6 +904,12 @@ class MessageBroker:
                 — the exchange already exists (``amq.topic``, or one the
                 infrastructure owns) and its type is not ours to assert.
                 RabbitMQ only.
+            key (str | bytes | None): Kafka record key. Records with the
+                same key go to the same partition, so a consumer reads
+                them in the order they were written; ``None`` lets the
+                producer spread records over the partitions. A ``str`` is
+                encoded as UTF-8 (``aiokafka`` takes bytes only and raises
+                ``TypeError`` on a ``str``). Kafka only.
             **options (Any): Extra transport-specific publish options
                 forwarded to FastStream (e.g. ``headers=``,
                 ``correlation_id=``). ``message_id`` is filled with a
@@ -718,7 +917,10 @@ class MessageBroker:
                 key for :meth:`deduplicate` to work from, and a
                 redelivery is indistinguishable from a new event. Pass
                 your own to key deduplication on something the domain
-                owns.
+                owns. On a transport whose publish has no ``message_id``
+                (Kafka, NATS, Redis) it travels in the
+                :data:`~tempest_fastapi_sdk.queue.dedup.MESSAGE_ID_HEADER`
+                header instead.
 
         Returns:
             Any: Whatever the transport's publish returns (often ``None``;
@@ -727,7 +929,8 @@ class MessageBroker:
         Raises:
             RuntimeError: When :meth:`connect` has not been called yet.
             UnsupportedTopologyError: When ``exchange`` is given on a
-                transport without exchanges.
+                transport without exchanges, or ``key`` on one other than
+                Kafka.
             ValueError: When ``exchange`` comes with a ``routing_key=``
                 option, which would contradict the channel.
         """
@@ -735,9 +938,22 @@ class MessageBroker:
             raise RuntimeError(
                 "MessageBroker.connect() must be called before publishing.",
             )
-        if _publish_accepts(self.broker.publish, "message_id"):
+        if key is not None:
+            if self.transport is not TransportEnum.KAFKA:
+                raise UnsupportedTopologyError(
+                    f"publish(key=...) picks a Kafka partition; the "
+                    f"{self.transport.value} transport has none.",
+                )
+            options["key"] = key.encode() if isinstance(key, str) else key
+        publish = self.broker.publish
+        if _publish_accepts(publish, "message_id"):
             options.setdefault("message_id", str(uuid4()))
-        if _publish_accepts(self.broker.publish, "headers"):
+        elif _publish_accepts(publish, "headers"):
+            message_id = options.pop("message_id", None) or str(uuid4())
+            headers = dict(options.get("headers") or {})
+            headers.setdefault(MESSAGE_ID_HEADER, str(message_id))
+            options["headers"] = headers
+        if _publish_accepts(publish, "headers"):
             options["headers"] = inject_context(dict(options.get("headers") or {}))
         if exchange is None:
             return await self.broker.publish(message, channel_name(channel), **options)
@@ -936,7 +1152,8 @@ class MessageBroker:
         object and has no ``prefetch`` keyword, so forwarding it verbatim
         raises ``TypeError`` instead of capping anything.
 
-        A binding's ``ack_policy`` is resolved as :meth:`on` resolves it.
+        A binding's ``ack_policy``, ``group_id`` and ``auto_offset_reset``
+        are resolved — and refused — exactly as :meth:`on` does it.
 
         Call it at import/startup time, before :meth:`connect`.
 
@@ -945,17 +1162,21 @@ class MessageBroker:
 
         Raises:
             ValueError: When a spec with a dead-letter exchange is bound
-                under an ack policy that never dead-letters.
+                under an ack policy that never dead-letters, or a Kafka
+                binding commits without a ``group_id``.
+            UnsupportedTopologyError: When a binding sets a knob its
+                transport cannot express.
         """
         for sub in consumer.subscriptions():
             bound = self._bind(sub.channel)
-            options = _with_prefetch(dict(sub.options), sub.prefetch, "channel")
-            resolved_policy = _subscriber_ack_policy(
-                sub.channel, sub.ack_policy, self.transport
+            options = self._consumer_options(
+                sub.channel,
+                dict(sub.options),
+                prefetch=sub.prefetch,
+                ack_policy=sub.ack_policy,
+                group_id=sub.group_id,
+                auto_offset_reset=sub.auto_offset_reset,
             )
-            if resolved_policy is not None:
-                options["ack_policy"] = resolved_policy
-            self._subscriber_options(sub.channel, options)
             handler = (
                 _schema_entry(sub.handler, sub.schema)
                 if sub.schema is not None

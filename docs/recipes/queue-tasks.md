@@ -16,7 +16,7 @@ O problema que o FastStream resolve mal: a API muda de forma conforme o transpor
 
 `MessageBroker` esconde isso atrás de **um** conceito: um **channel** (uma string). Você publica num channel e quem estiver inscrito nele recebe.
 
-Instale com `[queue]` (puxa `faststream[rabbit]`).
+Instale com `[queue]` (puxa `faststream[rabbit]`). Os outros transportes têm extra próprio, porque o `[queue]` traz só o cliente do RabbitMQ: `[queue-kafka]`, `[queue-nats]`, `[queue-redis]`.
 
 ```python
 # src/queue/__init__.py
@@ -83,7 +83,7 @@ async def pay_order(order_id: str) -> dict[str, str]:
 ```
 
 !!! info "Transportes"
-    `MessageBroker.rabbitmq(url)`, `.redis(url)`, `.kafka(*servers)`, `.nats(servers)`. Cada um faz lazy-import do backend certo do FastStream e erra com a mensagem de instalação exata se o extra faltar. Precisa injetar um broker customizado (ou de teste)? `MessageBroker(meu_broker)`.
+    `MessageBroker.rabbitmq(url)`, `.redis(url)`, `.kafka(*servers)`, `.nats(servers)`. Cada um faz lazy-import do backend certo do FastStream e, se ele faltar, erra nomeando o extra que o instala (`[queue]`, `[queue-redis]`, `[queue-kafka]`, `[queue-nats]`). No Kafka, veja [Kafka: chave, grupo e commit](#kafka-chave-grupo-e-commit). Precisa injetar um broker customizado (ou de teste)? `MessageBroker(meu_broker)`.
 
 !!! check "Recapitulando"
     - `MessageBroker.rabbitmq(url)` — escolhe o transporte, esconde o FastStream.
@@ -253,6 +253,109 @@ nome não seja engolida.
 
 !!! warning "Não confunda com `mq.publisher(canal)`"
     `mq.publisher(...)` devolve o objeto publisher do próprio FastStream — escape hatch, útil sobretudo porque faz o canal aparecer no AsyncAPI gerado. O `Publisher` passa por `mq.publish()`, então mantém o `message_id` de que a deduplicação depende e os headers `traceparent` / `x-request-id` de que o tracing depende. Um publicador que contornasse isso pareceria idêntico e quebraria os dois em silêncio.
+
+### Kafka: chave, grupo e commit
+
+Instale com `[queue-kafka]`. Ele puxa `faststream[kafka]` e declara `aiokafka>=0.10.0` por conta própria: o FastStream aceita `aiokafka>=0.9`, e com o 0.9.0 todo consumidor falha ao subir com `TypeError: AIOKafkaConsumer.__init__() got an unexpected keyword argument 'group_instance_id'` (medido com o FastStream 0.7.5).
+
+No Kafka não existe fila: o channel é um **tópico**, e quem recebe uma cópia é decidido pelo **grupo de consumidores**. Três knobs cobrem isso, todos pela fachada tipada:
+
+```python
+# src/queue/billing.py
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.queue import (
+    Consumer,
+    MessageBroker,
+    OffsetResetEnum,
+    Publisher,
+)
+
+mq = MessageBroker.kafka("localhost:9092")
+
+
+class OrderPaid(BaseModel):
+    order_id: str
+
+
+@mq.on(
+    "orders.paid",
+    group_id="billing",
+    auto_offset_reset=OffsetResetEnum.EARLIEST,
+)
+async def bill(event: OrderPaid) -> None:
+    """Uma réplica do grupo `billing` recebe cada pedido."""
+    print(f"faturando {event.order_id}")
+
+
+class AuditConsumer(Consumer):
+    """O mesmo tópico, outro grupo: o audit lê a sua própria cópia."""
+
+    group_id = "audit"
+    auto_offset_reset = OffsetResetEnum.EARLIEST
+
+    async def handle(self, event: OrderPaid) -> None:
+        print(f"auditando {event.order_id}")
+
+
+class OrderPaidPublisher(Publisher[OrderPaid]):
+    channel = "orders.paid"
+    schema = OrderPaid
+
+
+mq.register(AuditConsumer(channel="orders.paid", schema=OrderPaid))
+orders = mq.publisher_for(OrderPaidPublisher)
+
+
+async def pay(order_id: str) -> None:
+    """A chave escolhe a partição: os eventos de um pedido chegam em ordem."""
+    await orders.publish(OrderPaid(order_id=order_id), key=order_id)
+```
+
+| Knob | Onde | O que faz |
+| --- | --- | --- |
+| `key=` | `mq.publish`, `Publisher.publish` | Mesma chave, mesma partição, lida na ordem em que foi escrita. `str` vira UTF-8 — o `aiokafka` só aceita `bytes` e levanta `TypeError: a bytes-like object is required, not 'str'`. |
+| `group_id=` | `@mq.on`, `@subscribe`, `Consumer` | Réplicas com o mesmo grupo dividem as partições; cada grupo distinto lê tudo. Sem grupo não há onde commitar offset (veja a tabela de `ack_policy` abaixo). |
+| `auto_offset_reset=` | `@mq.on`, `@subscribe`, `Consumer` | Onde um grupo **sem offset commitado** começa. O default do Kafka é `LATEST`: o consumidor novo não vê o que foi publicado antes do primeiro deploy. Grupo que já commitou retoma do commit, diga isso o que disser. |
+
+`Consumer` e `@subscribe` seguem a mesma regra de `prefetch` e `ack_policy`: o valor da classe vale para todo binding, e o do `@subscribe` sobrescreve para aquele método.
+
+O que foi medido contra um Kafka 3.9.1 real (`tests/queue/test_kafka_live.py`, no `make test-docker`, com o FastStream 0.7.5 + `aiokafka` 0.10.0 e com o FastStream 0.7.8):
+
+- 6 chaves × 8 registros num tópico de 3 partições: cada chave caiu numa partição só, a mesma que o `publish` devolveu no `RecordMetadata`, e foi lida na ordem 0..7; as 6 chaves ocuparam mais de uma partição.
+- 40 registros num tópico de 2 partições, duas réplicas no grupo `workers` e uma no grupo `audit`: cada réplica recebeu uma parte não vazia, sem registro repetido entre elas, e as duas juntas somaram os 40; o `audit` recebeu os 40.
+
+#### `ack_policy` no Kafka é a política de **commit**
+
+| `ack_policy` | Comportamento |
+| --- | --- |
+| `None` (`ACK_FIRST`) | O FastStream liga o `enable_auto_commit` do `aiokafka`: o offset é commitado por timer, tenha o handler dado certo ou não. |
+| `ACK` | Commit depois do handler — também quando ele levantou. Medido: o handler levantou no registro 1 de 3, a réplica parou, outra subiu no mesmo grupo e leu só os registros novos. |
+| `NACK_ON_ERROR` | Volta o consumidor para o registro que falhou e o lê de novo. Medido: um handler que levanta na primeira vez rodou duas vezes com o mesmo registro. |
+| `REJECT_ON_ERROR` | O mesmo que `ACK` no Kafka; o FastStream avisa com um `UserWarning` (`has the same effect as AckPolicy.ACK`) — que **levanta** em quem roda `filterwarnings = ["error"]`. Prefira `ACK`. |
+| `MANUAL` | O handler commita. |
+
+Qualquer política que não seja `ACK_FIRST` exige `group_id`, porque o Kafka guarda offset por grupo. Sem grupo, o `aiokafka` recusa o commit com `IllegalOperation('Requires group_id')` em **toda** mensagem, depois de o handler já ter rodado. A fachada recusa antes, na hora de registrar:
+
+```text
+ValueError: Consumer of 'orders.paid' runs under ack_policy=ACK, which commits
+the offset after the handler, and Kafka commits only for a consumer group.
+Pass group_id=..., or leave ack_policy unset (ACK_FIRST: offsets
+auto-committed on a timer).
+```
+
+A política vale também quando vem do broker inteiro (`MessageBroker.kafka(..., ack_policy=AckPolicy.ACK)`).
+
+#### Deduplicação no Kafka
+
+O Kafka não tem o campo `message_id` do AMQP, e o `publish` do FastStream para Kafka não aceita esse argumento. O `mq.publish` põe o id no header `message_id` (`MESSAGE_ID_HEADER`), e o `mq.deduplicate(...)` lê dali primeiro — o seu `message_id=` explícito vai pelo mesmo caminho. Medido: dois `publish` com o mesmo `message_id` viram dois registros, em dois offsets, e o handler rodou uma vez.
+
+Registro publicado por outro produtor, sem o header, é deduplicado por `tópico:partição:offset`. O id que o FastStream dá a uma mensagem Kafka é `<offset>-<timestamp>` (`0-1794491612333`, por exemplo), e o offset é por partição: dois registros no mesmo offset de partições diferentes, escritos no mesmo milissegundo, têm o mesmo id. Medido: dois registros no offset 0 das partições 0 e 1, com o mesmo `timestamp_ms`, deduplicados por esse id — o segundo era pulado; por coordenada, os dois rodam.
+
+#### O que o Kafka não expressa **levanta**
+
+`prefetch` é o `basic.qos` do AMQP: no Kafka, NATS e Redis levanta `UnsupportedTopologyError`. Antes ele chegava ao FastStream como um `Channel` do RabbitMQ e falhava com `TypeError: KafkaRegistrator.subscriber() got an unexpected keyword argument 'channel'`, sem nomear o knob. No sentido contrário, `group_id`, `auto_offset_reset` e `key=` fora do Kafka também levantam `UnsupportedTopologyError` — em `@mq.on`, em `mq.register` e em `mq.publish` —, porque descartá-los trocaria "uma cópia por grupo" pelo que o outro transporte faz por default.
 
 ## Topologia da fila — `QueueSpec`
 

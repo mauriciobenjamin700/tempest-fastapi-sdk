@@ -34,6 +34,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `snapshot_every=`), `ProjectionRunner` + `SqlCheckpointStore` /
     `InMemoryCheckpointStore`.
 
+- Kafka pela fachada tipada do `MessageBroker`, no decorator e no caminho de
+  classe. `publish(..., key=...)` e `Publisher.publish(..., key=...)` escolhem
+  a partição (`str` vira UTF-8; o `aiokafka` recusa `str` com `TypeError`);
+  `group_id` e `auto_offset_reset` (`OffsetResetEnum`, novo) em `@mq.on`,
+  `@subscribe` e `Consumer`, com a mesma regra de herança do `prefetch`.
+  Medido contra um Kafka 3.9.1 real: a mesma chave fica numa partição e é
+  lida em ordem; duas réplicas de um grupo dividem as partições sem repetir
+  registro, e outro grupo recebe tudo.
+- Extras `[queue-kafka]` (`faststream[kafka]`, `aiokafka>=0.10.0`),
+  `[queue-nats]` e `[queue-redis]`; o `[all]` passa a instalar os quatro
+  transportes.
+
+### Fixed
+
+- `MessageBroker.kafka()`, `.redis()` e `.nats()` mandavam instalar o
+  `[queue]`, que só traz `faststream[rabbit]`: seguir a mensagem deixava o
+  mesmo `ImportError` no lugar. Cada construtor agora nomeia o extra que
+  instala o seu cliente.
+- No Kafka, NATS e Redis o `message_id` vai no header `message_id`
+  (`MESSAGE_ID_HEADER`), que o `deduplicate` lê primeiro. Antes o
+  `message_id=` explícito era `TypeError` nesses transportes, e no Kafka a
+  deduplicação usava o id do FastStream, `<offset>-<timestamp>`: um mesmo
+  evento publicado duas vezes rodava duas vezes, e dois registros no mesmo
+  offset de partições diferentes, no mesmo milissegundo, colidiam. Registro
+  Kafka sem o header é deduplicado por `tópico:partição:offset`.
+- `ack_policy` que commita (`ACK`, `NACK_ON_ERROR`, `REJECT_ON_ERROR`,
+  `MANUAL`, também quando vem do broker inteiro) sem `group_id` no Kafka
+  levanta `ValueError` ao registrar o consumidor. Antes o `aiokafka` recusava
+  o commit com `IllegalOperation('Requires group_id')` em toda mensagem,
+  depois de o handler rodar.
+- `prefetch` no Kafka, NATS ou Redis levanta `UnsupportedTopologyError`, e
+  `group_id`, `auto_offset_reset` e `key=` fora do Kafka também. O `prefetch`
+  chegava ao FastStream como `Channel` do RabbitMQ e falhava com
+  `TypeError: ... unexpected keyword argument 'channel'`.
+
+
 ## [0.354.0] — 2026-11-11
 
 ### Fixed

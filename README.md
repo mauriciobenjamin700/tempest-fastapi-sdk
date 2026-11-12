@@ -121,7 +121,10 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher`, `WebPushSubscriptionService`, `BaseWebPushSubscriptionModel`, `make_web_push_router` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
-| `[queue]` | `faststream[rabbit]` | `MessageBroker` (typed FastStream facade) |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker` (typed FastStream facade) over RabbitMQ |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` — partition `key` on publish, `group_id` / `auto_offset_reset` on `@mq.on`, `Consumer` and `@subscribe` |
+| `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
+| `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `TaskQueue` (typed TaskIQ facade) |
 | `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` over Redis Streams, plus the result backend and the scheduler lease |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
@@ -215,7 +218,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.integrations.payment.mercado_pago` | `MercadoPagoClient` + 305 schemas and 132 operations (generated from the provider's own spec plus a measured overlay that drops the discontinued Payments API, checked in, loaded lazily), `to_cents` / `from_cents` (reais), and `make_mercado_pago_webhook_dependency` (HMAC ported from the provider's validator; the adapters' `make_mercado_pago_webhook_delivery_dependency` also re-reads the order) |
 | `tempest_fastapi_sdk.integrations.payment.openpix` | `OpenPixClient` + all 686 OpenPix schemas and 125 operations (generated from the pinned spec, checked in, loaded lazily), plus `OpenPixEnvironmentEnum`, `OpenPixEventEnum` (28 webhook events), `make_openpix_webhook_dependency` / `webhook_verifier` / `decode_public_key` and `to_cents` / `reais_to_cents` / `cents_to_reais` |
 | `tempest_fastapi_sdk.integrations.subscriptions.revenuecat` | RevenueCat (App Store / Google Play subscriptions), written from the provider's documentation: `make_revenuecat_webhook_router` (dashboard `Authorization` value and optional `X-RevenueCat-Webhook-Signature` HMAC, constant-time, an empty secret refuses everything; records each `event.id` once in a `WebhookInbox` and answers `200`), `RevenueCatEvent` (`subscriber_attributes` kept out of `model_dump`), `normalize` → `SubscriptionSnapshot` over the 21 documented event types (`UNKNOWN` for a new one), `RevenueCatClient.get_subscriber` for reconciliation, `RevenueCatSettings`, `FakeRevenueCatClient` |
-| `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `MessageBroker` (typed, transport-agnostic FastStream facade — `.rabbitmq`/`.redis`/`.kafka`/`.nats`, `@mq.on(channel)`, channel-first `publish`); class-based consumers (`Consumer` + `@subscribe` + `MessageBroker.register`); `AsyncQueueManager` (thin lifecycle wrapper, formerly `AsyncBrokerManager`) |
+| `tempest_fastapi_sdk.queue` *(extra: `[queue]`, or `[queue-kafka]` / `[queue-nats]` / `[queue-redis]` per transport)* | `MessageBroker` (typed, transport-agnostic FastStream facade — `.rabbitmq`/`.redis`/`.kafka`/`.nats`, `@mq.on(channel)`, channel-first `publish`); class-based consumers (`Consumer` + `@subscribe` + `MessageBroker.register`); `AsyncQueueManager` (thin lifecycle wrapper, formerly `AsyncBrokerManager`) |
 | `tempest_fastapi_sdk.reviews` | Comments + 0–5 star ratings on any polymorphic target: `BaseCommentModel`/`BaseRatingModel` (+ `make_*`), `ReviewService` (`add_comment`/`list_comments`/`rate` upsert/`get_user_rating`/`aggregate`), `make_reviews_router` (opt-in), `RatingField` |
 | `tempest_fastapi_sdk.wallet` | Wallet, ledger, holds and Pix payouts in integer cents: `WalletBalanceMixin`, `BaseWalletEntryModel` (+ `make_wallet_entry_model`, user FK `RESTRICT` by default), `WalletLedger` (the data layer: `credit`, `debit_available`, `reverse`, `balance`, `statement` — what a project service receives to move a balance inside its own transaction), `WalletService` (`withdraw` plus the ledger's operations by delegation: `credit` with `hold=`, `debit_available` with the hold inside the `UPDATE`, `reverse`, `withdraw` that debits first and refunds only on a definitive refusal, `balance`, `statement` — every balance change is one `UPDATE ... RETURNING` plus its ledger line in the same transaction), `claim_once`, `openpix_fee_cents` / `split_net` (basis points), `make_wallet_router` (opt-in); payout contract `PayoutProvider` in `integrations.payment`, `OpenPixPayoutProvider` in `integrations.payment.adapters` |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `ErrorResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `LogFilesClearedSchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
@@ -2979,7 +2982,7 @@ async def broadcast(
 
 `MessageBroker` is a typed, transport-agnostic facade over FastStream — you never import `faststream` in application code. Pick the transport with a constructor and address everything by a single **channel** string.
 
-Install with `[queue]` (pulls `faststream[rabbit]`).
+Install with `[queue]` (pulls `faststream[rabbit]`). The other transports have their own extra, because `[queue]` carries the RabbitMQ client only: `[queue-kafka]`, `[queue-nats]`, `[queue-redis]`.
 
 ```python
 # src/queue/__init__.py
@@ -3030,6 +3033,29 @@ async def pay_order(order_id: str) -> dict[str, str]:
 ```
 
 `@mq.on(channel)` declares a consumer (the handler's Pydantic type hint validates each message); `publish(channel, message)` sends it. Lifecycle is `connect()` / `disconnect()` / `lifespan()` / `health_check()` / `is_connected`; the raw broker stays at `mq.broker`. Wire it on the health router with `make_health_router(checks={"queue": mq.health_check})`. See the [Queues and Tasks recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/) for the full guide.
+
+On Kafka (`[queue-kafka]`) the channel is a topic, and the facade carries the three knobs that decide delivery: a publish `key` (same key, same partition, read in order), `group_id` (replicas sharing it split the partitions; another group reads its own copy) and `auto_offset_reset`. `Consumer` and `@subscribe` take the same two subscriber knobs, and `Publisher.publish` the same `key`. A knob the transport cannot express raises `UnsupportedTopologyError`, and an `ack_policy` that commits without a `group_id` raises `ValueError` at registration instead of failing every commit at runtime.
+
+```python
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.queue import MessageBroker, OffsetResetEnum
+
+mq = MessageBroker.kafka("localhost:9092")
+
+
+class OrderPaid(BaseModel):
+    order_id: str
+
+
+@mq.on("orders.paid", group_id="billing", auto_offset_reset=OffsetResetEnum.EARLIEST)
+async def bill(event: OrderPaid) -> None:
+    print(f"billing {event.order_id}")
+
+
+async def pay(order_id: str) -> None:
+    await mq.publish("orders.paid", OrderPaid(order_id=order_id), key=order_id)
+```
 
 ### Background tasks — TaskIQ recipe
 
