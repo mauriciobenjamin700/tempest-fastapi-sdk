@@ -119,43 +119,51 @@ class TestFuzzyIndex:
         with pytest.raises(ValueError, match="cutoff"):
             FuzzyIndex([("a", 1)]).search("a", cutoff=0.0)
 
-    def test_the_trigram_filter_loses_nothing(self) -> None:
-        """Cenário: 300 consultas aleatórias contra 400 nomes, cutoff 0.75.
+    @pytest.mark.parametrize("cutoff", [0.5, 0.6, 0.75, 0.8, 0.85, 0.9])
+    def test_the_trigram_filter_loses_nothing(self, cutoff: float) -> None:
+        """Cenário: 300 consultas aleatórias contra 600 nomes curtos de um
+        alfabeto pequeno, em cada ``cutoff`` (o caso em que o filtro mais
+        corta).
 
-        Esperado: o índice devolve exatamente os nomes que uma comparação
-        com todos aceitaria — o filtro de trigramas não descarta nenhum
-        nome que a distância de edição aprovaria.
+        Esperado: o índice devolve exatamente os nomes que a comparação com
+        todos aceitaria. Abaixo de ``0.75`` o limite ``|Q| - 4d`` chega a zero
+        e o índice tem de varrer; antes da correção, ``"ebfg"`` não achava
+        ``"efbg"`` em ``0.75``.
         """
-        rng = random.Random(7)
-        alphabet = string.ascii_lowercase[:8] + " "
+        rng = random.Random(int(cutoff * 100))
+        alphabet = string.ascii_lowercase[:7]
         names = sorted(
             {
-                "".join(rng.choice(alphabet) for _ in range(rng.randint(3, 12))).strip()
-                or "a"
-                for _ in range(400)
+                "".join(rng.choice(alphabet) for _ in range(rng.randint(3, 9)))
+                for _ in range(600)
             }
         )
         index = FuzzyIndex((name, name) for name in names)
-        cutoff = 0.75
         for _ in range(300):
-            base = rng.choice(names)
-            query = list(base)
+            query = list(rng.choice(names))
             for _ in range(rng.randint(0, 2)):
-                if query:
-                    query[rng.randrange(len(query))] = rng.choice(alphabet)
-            text = normalize_text("".join(query))
-            if not text:
-                continue
-            expected = {
-                normalize_text(name)
-                for name in names
-                if normalize_text(name)
-                and similarity(text, normalize_text(name)) >= cutoff
-            }
+                position = rng.randrange(len(query))
+                if rng.random() < 0.5 and position + 1 < len(query):
+                    query[position], query[position + 1] = (
+                        query[position + 1],
+                        query[position],
+                    )
+                else:
+                    query[position] = rng.choice(alphabet)
+            text = "".join(query)
+            expected = {name for name in names if similarity(text, name) >= cutoff}
             found = {
                 match.key for match in index.search(text, limit=None, cutoff=cutoff)
             }
-            assert found == expected, text
+            assert found == expected, (cutoff, text)
+
+    def test_a_swap_with_no_shared_trigram_is_found(self) -> None:
+        """Cenário: o par que a auditoria achou, ``"ebfg"`` x ``"efbg"``.
+
+        Esperado: achado em ``0.75`` (uma troca de vizinhos).
+        """
+        index = FuzzyIndex([("efbg", 1)])
+        assert [match.value for match in index.search("ebfg", cutoff=0.75)] == [1]
 
     def test_max_edits_bound(self) -> None:
         """Cenário: cutoff 0.8 em nove letras.
@@ -164,3 +172,19 @@ class TestFuzzyIndex:
         """
         assert max_edits(9, 0.8) == 2
         assert max_edits(9, 1.0) == 0
+
+
+def test_the_banded_distance_matches_the_full_one() -> None:
+    """Cenário: 5000 pares aleatórios, com e sem ``limit``.
+
+    Esperado: com ``limit``, o valor exato quando cabe e ``limit + 1`` quando
+    não cabe — a faixa em volta da diagonal não muda o resultado.
+    """
+    rng = random.Random(11)
+    for _ in range(5000):
+        left = "".join(rng.choice("abcd") for _ in range(rng.randint(0, 9)))
+        right = "".join(rng.choice("abcd") for _ in range(rng.randint(0, 9)))
+        full = levenshtein(left, right)
+        limit = rng.randint(0, 4)
+        expected = full if full <= limit else limit + 1
+        assert levenshtein(left, right, limit=limit) == expected, (left, right, limit)

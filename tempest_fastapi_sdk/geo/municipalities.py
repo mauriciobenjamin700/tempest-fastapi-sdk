@@ -45,8 +45,11 @@ BR_CITY_NICKNAMES: dict[str, int] = {
 
 Belo Horizonte, São Paulo, Florianópolis, Porto Alegre, Brasília, João
 Pessoa, São José dos Campos and Rio de Janeiro. A short list on purpose:
-every entry is a word that, written alone, means that city to most
-Brazilians.
+every entry is a word most Brazilians read as that city. In a text it is a
+one-word name like any other, so it needs a sign of being a place — a
+locative cue before it (``"vou pra bh"``), an uppercase first letter
+(``"Rio"``), a state after it, or being the whole text (``"bh"``) — and
+``"o bh do time"`` scores below the default ``min_score``.
 """
 
 LOCATIVE_CUES: frozenset[str] = frozenset(
@@ -73,14 +76,58 @@ LOCATIVE_CUES: frozenset[str] = frozenset(
 )
 """Normalized words that, right before a name, make it read as a place."""
 
+FUZZY_EDGE_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "o",
+        "as",
+        "os",
+        "e",
+        "ao",
+        "aos",
+        "um",
+        "uma",
+        "que",
+        "com",
+        "na",
+        "no",
+        "nas",
+        "nos",
+        "se",
+        "eu",
+        "ele",
+        "ela",
+        "mas",
+        "por",
+        "sem",
+        "muito",
+        "mais",
+        "esta",
+        "estou",
+        "foi",
+        "vai",
+        "vou",
+        "tem",
+    }
+)
+"""Words a typo-tolerant window may not start or end with.
+
+A run like ``"está ao"`` is two edits from ``"Estação"``, and a long text
+holds thousands of such runs. The exact lookup still sees every window, so a
+municipality whose name starts or ends with one of these words is still
+found when written correctly; only the typo search skips them, which also
+spares it most of the windows of a long text.
+"""
+
 UNCUED_SINGLE_WORD_FACTOR: float = 0.5
 """Score factor for a one-word match with no sign of being a place.
 
 ``"Feliz"``, ``"Natal"`` and ``"Alegre"`` are municipalities and everyday
 words. A lowercase single word with no locative cue before it
-(:data:`LOCATIVE_CUES`) and no state after it is kept at half the score, so
-``"estou feliz"`` ranks below the default ``min_score`` while
-``"moro em feliz"`` and ``"Feliz/RS"`` do not.
+(:data:`LOCATIVE_CUES`), no state after it, and other words around it is
+kept at half the score, so ``"estou feliz"`` ranks below the default
+``min_score`` while ``"moro em feliz"``, ``"Feliz/RS"`` and a text that is
+only ``"feliz"`` (a form's city field) do not.
 """
 
 MAX_NAME_TOKENS: int = 7
@@ -327,11 +374,17 @@ def _looks_like_place(text: str, tokens: list[Token], start: int, end: int) -> b
         end (int): Index just past its last token.
 
     Returns:
-        bool: ``True`` when the name has more than one word, starts with an
-        uppercase letter, follows a locative cue, or is followed by a state.
+        bool: ``True`` when the name has more than one word, is the whole
+        text (a form field holding ``"campinas"``, optionally with its
+        state after it), starts with an uppercase letter, follows a
+        locative cue, or is followed by a state.
     """
     if end - start > 1:
         return True
+    if start == 0:
+        state = _state_after(text, tokens, end)
+        if end == len(tokens) or (state is not None and state[1] == len(tokens)):
+            return True
     if tokens[start].original[:1].isupper():
         return True
     if start > 0 and tokens[start - 1].text in LOCATIVE_CUES:
@@ -374,6 +427,7 @@ def find_municipalities_in_text(
     """
     tokens = tokenize(text)
     index = _name_index()
+    fuzzy_cache: dict[str, list[tuple[float, Municipality]]] = {}
     candidates: list[tuple[float, int, int, Municipality, int | None]] = []
     for start in range(len(tokens)):
         if tokens[start].text in LOCATIVE_CUES:
@@ -383,11 +437,21 @@ def find_municipalities_in_text(
                 continue
             phrase = " ".join(token.text for token in tokens[start:end])
             hits = [(1.0, value) for value in index.exact(phrase)]
-            if not hits and len(phrase) >= 5 and end - start <= 4:
-                hits = [
-                    (hit.score, hit.value)
-                    for hit in index.search(phrase, limit=None, cutoff=cutoff)
-                ]
+            if (
+                not hits
+                and len(phrase) >= 5
+                and end - start <= 4
+                and tokens[start].text not in FUZZY_EDGE_STOPWORDS
+                and tokens[end - 1].text not in FUZZY_EDGE_STOPWORDS
+            ):
+                cached = fuzzy_cache.get(phrase)
+                if cached is None:
+                    cached = [
+                        (hit.score, hit.value)
+                        for hit in index.search(phrase, limit=None, cutoff=cutoff)
+                    ]
+                    fuzzy_cache[phrase] = cached
+                hits = cached
             if not hits:
                 continue
             state = _state_after(text, tokens, end)
@@ -436,6 +500,7 @@ def find_municipalities_in_text(
 __all__: list[str] = [
     "BRASILIA_IBGE_CODE",
     "BR_CITY_NICKNAMES",
+    "FUZZY_EDGE_STOPWORDS",
     "LOCATIVE_CUES",
     "MAX_NAME_TOKENS",
     "STATE_SEPARATORS",

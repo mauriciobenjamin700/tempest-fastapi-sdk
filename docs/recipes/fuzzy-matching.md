@@ -53,9 +53,11 @@ camiseta basica 101 0.93
     consulta só calcula a distância de edição contra os nomes que dividem
     trigramas suficientes com ela. O filtro **não perde** nome nenhum: um nome
     a `d` edições divide pelo menos `trigramas - 4d` com a consulta, e o
-    índice só descarta abaixo disso. Há um teste que compara, em 300
-    consultas aleatórias, o resultado do índice com o de comparar contra
-    todos os nomes, e os dois batem.
+    índice só descarta abaixo disso. Quando esse limite chega a zero (consulta
+    curta com `cutoff` baixo), o índice compara com todos os nomes de tamanho
+    próximo. Um teste compara o índice com a comparação contra todos os
+    nomes, em 300 consultas aleatórias para cada `cutoff` de `0.5` a `0.9`,
+    e os dois batem.
 
 ## Achar a cidade num texto
 
@@ -107,11 +109,14 @@ O que cada caso mostra:
 - **Apelidos** comuns entram: `bh`, `sampa`, `floripa`, `poa`, `bsb`,
   `jampa`, `sjc`, `rio` (`BR_CITY_NICKNAMES`). As regiões administrativas do
   DF (Ceilândia, Gama, ...) apontam para Brasília, e grafias antigas ("Açu"
-  para "Assú") também casam.
+  para "Assú") também casam. Apelido é nome de uma palavra como outro qualquer:
+  precisa de sinal de lugar (`"vou pra bh"`, `"Rio"`, `"sampa, sp"`, ou o
+  texto inteiro ser só `"bh"`).
 - **Palavra comum não vira cidade.** "Feliz", "Natal" e "Alegre" são
-  municípios. Sozinha, minúscula, sem "em/de/moro" antes e sem UF depois, a
-  palavra fica com metade da nota e cai abaixo do `min_score` padrão
-  (`0.6`). `"moro em Feliz/RS"` acha Feliz.
+  municípios. Minúscula, no meio de outras palavras, sem "em/de/moro" antes
+  e sem UF depois, a palavra fica com metade da nota e cai abaixo do
+  `min_score` padrão (`0.6`). `"moro em Feliz/RS"` acha Feliz, e um texto que
+  é **só** o nome (`"feliz"`, o campo "cidade" de um formulário) também.
 - **Homônimos sem UF empatam.** `"bom jesus"` devolve todas as Bom Jesus com
   a mesma nota; quem decide é você, com outra informação (o CEP, o DDD, a
   pergunta seguinte ao usuário).
@@ -120,9 +125,10 @@ O que cada caso mostra:
 escreveu**, então dá para destacar ou substituir no texto original.
 
 !!! tip "Erro de digitação dentro da frase"
-    Cada sequência de até quatro palavras sem correspondência exata passa pela
-    busca aproximada com `cutoff=0.85`. `"trabalho em sao paolo"` acha São
-    Paulo com nota menor (`0.80`) que um nome escrito certo.
+    Cada sequência de até quatro palavras, com pelo menos cinco letras e sem
+    correspondência exata, passa pela busca aproximada com `cutoff=0.85`.
+    `"trabalho em sao paolo"` acha São Paulo com `0.80`: a semelhança do nome
+    (`0.89`) vezes `0.9`, porque nenhuma UF confirmou.
 
 ## Por nome e por código
 
@@ -165,7 +171,9 @@ O índice é montado uma vez por processo e fica em memória.
     Nome e UF vêm da API de localidades do IBGE (dado público); coordenada,
     capital e as grafias antigas vêm de `kelvins/municipios-brasileiros`
     (MIT, com o aviso de licença no módulo gerado). As duas fontes listam os
-    mesmos 5571 códigos. Para atualizar:
+    mesmos 5571 códigos. A lista de `list_states()` (receita
+    [Helpers BR](br-helpers.md)) conta 5606 porque inclui as 35 regiões
+    administrativas do DF; aqui elas são apelidos de Brasília. Para atualizar:
     `uv run python scripts/regen_br_municipalities.py`. Um teste fixa o hash
     dos dados, então uma regeneração aparece no diff do PR.
 

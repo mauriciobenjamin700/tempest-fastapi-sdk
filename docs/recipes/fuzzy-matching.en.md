@@ -52,8 +52,11 @@ camiseta basica 101 0.93
     only computes the edit distance against the names that share enough
     trigrams with it. The filter **loses nothing**: a name `d` edits away
     shares at least `trigrams - 4d` with the query, and the index only drops
-    below that. A test compares, over 300 random queries, the index's result
-    with comparing against every name, and the two agree.
+    below that. When that bound reaches zero (a short query with a low
+    `cutoff`), the index compares against every name of a close length. A
+    test compares the index with comparing against every name, over 300
+    random queries for each `cutoff` from `0.5` to `0.9`, and the two
+    agree.
 
 ## Find the city in a text
 
@@ -105,11 +108,14 @@ What each case shows:
 - **Nicknames** count: `bh`, `sampa`, `floripa`, `poa`, `bsb`, `jampa`,
   `sjc`, `rio` (`BR_CITY_NICKNAMES`). The Federal District's administrative
   regions (Ceilândia, Gama, ...) point at Brasília, and older spellings
-  ("Açu" for "Assú") match too.
+  ("Açu" for "Assú") match too. A nickname is a one-word name like any other: it
+  needs a sign of being a place (`"vou pra bh"`, `"Rio"`, `"sampa, sp"`, or
+  the whole text being just `"bh"`).
 - **An everyday word is not a city.** "Feliz", "Natal" and "Alegre" are
-  municipalities. Alone, lowercase, with no "em/de/moro" before and no state
-  after, the word keeps half its score and falls below the default
-  `min_score` (`0.6`). `"moro em Feliz/RS"` finds Feliz.
+  municipalities. Lowercase, among other words, with no "em/de/moro" before
+  and no state after, the word keeps half its score and falls below the
+  default `min_score` (`0.6`). `"moro em Feliz/RS"` finds Feliz, and so does a
+  text that is **only** the name (`"feliz"`, a form's city field).
 - **Homonyms without a state tie.** `"bom jesus"` returns every Bom Jesus
   with the same score; you decide, with other information (the CEP, the area
   code, the next question to the user).
@@ -118,9 +124,10 @@ What each case shows:
 it**, so you can highlight or replace it in the original.
 
 !!! tip "Typos inside the sentence"
-    Every run of up to four words with no exact match goes through the fuzzy
-    lookup with `cutoff=0.85`. `"trabalho em sao paolo"` finds São Paulo with
-    a lower score (`0.80`) than a correctly spelled name.
+    Every run of up to four words, at least five letters long and with no
+    exact match, goes through the fuzzy lookup with `cutoff=0.85`.
+    `"trabalho em sao paolo"` finds São Paulo at `0.80`: the name similarity
+    (`0.89`) times `0.9`, since no state confirmed it.
 
 ## By name and by code
 
@@ -163,7 +170,10 @@ The index is built once per process and stays in memory.
     Name and state come from the IBGE localities API (public data);
     coordinate, capital and the older spellings come from
     `kelvins/municipios-brasileiros` (MIT, with the license notice in the
-    generated module). Both sources list the same 5571 codes. To refresh:
+    generated module). Both sources list the same 5571 codes. The
+    `list_states()` table ([BR helpers](br-helpers.md) recipe) counts 5606
+    because it includes the Federal District's 35 administrative regions;
+    here they are nicknames of Brasília. To refresh:
     `uv run python scripts/regen_br_municipalities.py`. A test pins the data
     hash, so a regeneration shows up in the PR diff.
 

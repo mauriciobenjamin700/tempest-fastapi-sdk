@@ -136,7 +136,7 @@ class TestFindInText:
         assert _found(text) == expected
 
     @pytest.mark.parametrize(
-        "text", ["estou feliz hoje", "o rio estava cheio", "natal", "foi um bom dia"]
+        "text", ["estou feliz hoje", "o rio estava cheio", "foi um bom dia"]
     )
     def test_everyday_words_are_not_cities(self, text: str) -> None:
         """Cenário: palavra comum que também é município, sem cara de lugar.
@@ -182,3 +182,31 @@ class TestFindInText:
         assert (
             text[match.start : match.end] == match.matched_text == "São José dos Campos"
         )
+
+
+def test_function_words_do_not_become_a_misspelled_city() -> None:
+    """Cenário: ``"está ao"`` (duas edições de "Estação") num texto longo.
+
+    Esperado: nenhuma cidade; o achado do benchmark de 2000 palavras.
+    """
+    text = " ".join(["ontem eu fui ao mercado e o tempo está ao contrário"] * 20)
+    assert find_municipalities_in_text(text, limit=None) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("campinas", [("Campinas", "SP", False)]),
+        ("bh", [("Belo Horizonte", "MG", False)]),
+        ("feliz/rs", [("Feliz", "RS", True)]),
+    ],
+)
+def test_a_text_that_is_only_the_name_is_a_place(
+    text: str, expected: list[tuple[str, str, bool]]
+) -> None:
+    """Cenário: o campo "cidade" de um formulário, só com o nome.
+
+    Esperado: achado, mesmo minúsculo e de uma palavra; o benchmark mostrou
+    que esse era o erro do caso "sem acento".
+    """
+    assert _found(text) == expected

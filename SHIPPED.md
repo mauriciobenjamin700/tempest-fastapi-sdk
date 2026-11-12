@@ -4292,8 +4292,9 @@ Receita: "Projeto existente" em `docs/service-standard.md`.
 
 `tempest_fastapi_sdk/text/` (normalize, similarity, fuzzy) sem dependência:
 OSA-Levenshtein com `limit`, `FuzzyIndex` com índice invertido de trigramas e
-filtro `shared >= |Q| - 4d` (lossless; `tests/text/test_text.py` compara com
-força bruta em 300 consultas aleatórias). `geo/municipalities.py` +
+filtro `shared >= |Q| - 4d` (lossless; com o limite ≤ 0 varre todos os nomes,
+o que a auditoria achou faltando; `tests/text/test_text.py` compara com força
+bruta em 300 consultas por cutoff de 0.5 a 0.9). `geo/municipalities.py` +
 `geo/_br_municipalities_data.py` (gerado, CSV numa constante, 5571 linhas,
 hash fixado): IBGE (nome/UF) + kelvins (coordenada/capital/alias, MIT).
 `find_municipalities_in_text`: janelas de até 7 tokens, exato e depois fuzzy

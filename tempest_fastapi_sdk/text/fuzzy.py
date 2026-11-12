@@ -9,9 +9,15 @@ list alone.
 
 The filter is lossless for the cutoff it is given. A name within ``d`` edits
 of the query shares at least ``|trigrams(query)| - 4 * d`` trigrams with it
-(one edit touches at most three trigrams, a swap of neighbours four), and
+(one edit touches at most three trigrams, a swap of neighbours four), and,
+by the same argument from the other side, at least
+``|trigrams(name)| - 4 * d``; both bounds must hold. And
 the longest distance a ``cutoff`` allows is bounded by the query length, so
-every name the edit distance would accept reaches the edit distance.
+every name the edit distance would accept reaches the edit distance. When
+that bound reaches zero (a short query with a low ``cutoff``: ``"ebfg"`` at
+``0.75`` allows one edit, and the swap to ``"efbg"`` leaves no trigram in
+common), the trigrams cannot rule anything out and the search compares the
+query with every name of a close enough length instead.
 """
 
 from __future__ import annotations
@@ -157,14 +163,20 @@ class FuzzyIndex[T]:
             return [FuzzyMatch(key, value, 1.0) for value in self._values.get(key, ())]
         edits = max_edits(len(key), cutoff)
         query_grams = trigrams(key)
-        needed = max(1, len(query_grams) - 4 * edits)
+        needed = len(query_grams) - 4 * edits
+        scan = needed <= 0
         shared: dict[int, int] = {}
-        for gram in query_grams:
-            for position in self._postings.get(gram, ()):
-                shared[position] = shared.get(position, 0) + 1
+        if scan:
+            shared = dict.fromkeys(range(len(self._keys)), 0)
+        else:
+            for gram in query_grams:
+                for position in self._postings.get(gram, ()):
+                    shared[position] = shared.get(position, 0) + 1
         scored: list[tuple[float, str]] = []
         for position, count in shared.items():
-            if count < needed:
+            if not scan and (
+                count < needed or count < len(self._grams[position]) - 4 * edits
+            ):
                 continue
             candidate = self._keys[position]
             if abs(len(candidate) - len(key)) > edits:

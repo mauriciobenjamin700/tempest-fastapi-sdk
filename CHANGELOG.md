@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pontuação; tokens com o offset no texto original), `levenshtein` (com troca
   de vizinhos) / `similarity` / `trigrams`, e `FuzzyIndex` (nome → valor,
   busca exata e com erro de digitação por um filtro de trigramas que não perde
-  candidato — provado contra a comparação com todos em 300 consultas).
+  candidato — comparado com força bruta em 300 consultas por `cutoff`, de
+  `0.5` a `0.9`; com o limite em zero, varre todos os nomes).
 - Municípios do IBGE no `geo`, offline: os 5571 com código, nome oficial, UF,
   coordenada, capital e grafias antigas (`br_municipalities`,
   `municipality_by_ibge_code`, `Municipality`), `search_municipalities(nome,

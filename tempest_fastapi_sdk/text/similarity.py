@@ -23,8 +23,11 @@ def levenshtein(left: str, right: str, *, limit: int | None = None) -> int:
         left (str): One string.
         right (str): The other.
         limit (int | None): Stop early and return ``limit + 1`` once every
-            path is already longer than ``limit``. ``None`` computes the
-            exact distance.
+            path is already longer than ``limit``. With a limit only the
+            cells within ``limit`` of the diagonal are computed (no path
+            that leaves that band can come back under the limit), so the
+            cost is ``O(len * limit)`` instead of ``O(len * len)``.
+            ``None`` computes the exact distance.
 
     Returns:
         int: The number of edits; ``limit + 1`` when ``limit`` is given and
@@ -34,15 +37,25 @@ def levenshtein(left: str, right: str, *, limit: int | None = None) -> int:
         return 0
     if len(left) < len(right):
         left, right = right, left
-    if not right:
-        return len(left)
     if limit is not None and len(left) - len(right) > limit:
         return limit + 1
+    if not right:
+        return len(left)
+    width = len(right)
+    big = len(left) + width + 1
+    band = len(left) if limit is None else limit
     previous_previous: list[int] = []
-    previous = list(range(len(right) + 1))
+    previous = [j if j <= band else big for j in range(width + 1)]
     for i, left_char in enumerate(left, start=1):
-        current = [i] + [0] * len(right)
-        for j, right_char in enumerate(right, start=1):
+        low = max(1, i - band)
+        high = min(width, i + band)
+        if low > high and i > band:
+            return big if limit is None else limit + 1
+        current = [big] * (width + 1)
+        if i <= band:
+            current[0] = i
+        for j in range(low, high + 1):
+            right_char = right[j - 1]
             cost = 0 if left_char == right_char else 1
             best = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
             if (
@@ -53,10 +66,13 @@ def levenshtein(left: str, right: str, *, limit: int | None = None) -> int:
             ):
                 best = min(best, previous_previous[j - 2] + 1)
             current[j] = best
-        if limit is not None and min(current) > limit:
+        if limit is not None and min(current[max(0, low - 1) : high + 1]) > limit:
             return limit + 1
         previous_previous, previous = previous, current
-    return previous[-1]
+    distance = previous[-1]
+    if limit is not None and distance > limit:
+        return limit + 1
+    return distance
 
 
 def similarity(left: str, right: str) -> float:
