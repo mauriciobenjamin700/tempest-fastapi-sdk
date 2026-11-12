@@ -68,7 +68,10 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[pdf]` | `weasyprint`, `jinja2`, `segno` | geração de PDF a partir de templates HTML: `PdfRenderer`, cinco documentos prontos com schema tipado, `make_pdf_router`, `tempest pdf`. **Exige Pango + fontconfig no sistema** — veja a receita |
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
-| `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` e `MessageBroker.kafka_from_settings` (com `KafkaSettings`): tópico, `key` de partição, `group_id`, `auto_offset_reset`, SASL e TLS. Herda `aiokafka<0.15` do FastStream. [Receita](recipes/queue-tasks.md#kafka-chave-grupo-e-commit) |
+| `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
+| `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | slides e gabaritos a partir de texto estruturado (HTML, PDF, PPTX, DOCX, Markdown) e Markdown em PDF com folha de estilo própria ou ABNT: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Exige Pango + fontconfig no sistema**, como o `[pdf]`. [Receita](recipes/slides.md) |
 | `[slides-mermaid]` | `playwright` | desenhar blocos `` ```mermaid `` no `MarkdownPdfRenderer` (`render_mermaid=True`). Exige `playwright install chromium`; por isso fica **fora do `[all]`** |
 | `[sqlite]` | `aiosqlite` | driver async SQLite para URLs `sqlite+aiosqlite://` (default de dev) |
@@ -81,7 +84,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | tudo acima **exceto** os 18 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 18 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev) |
+| `[all]` | tudo acima **exceto** os 18 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 18 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev). Traz os quatro transportes do `MessageBroker` (`faststream[rabbit,kafka,nats,redis]`) e, com eles, os tetos que o FastStream declara nos próprios extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` e `redis<9.0.0` (iguais no FastStream 0.7.5 e 0.7.8). Somado ao `redis>=8.1.0` do `[cache]`, o `[all]` fica no `redis` 8.x; o `aiokafka` 0.15.0 já saiu e fica de fora |
 
 === "Subconjunto (recomendado)"
 

@@ -33,6 +33,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Aggregate` + `AggregateRepository` (replay após snapshot,
     `snapshot_every=`), `ProjectionRunner` + `SqlCheckpointStore` /
     `InMemoryCheckpointStore`.
+- Kafka pela fachada tipada do `MessageBroker`, no decorator e no caminho de
+  classe. `publish(..., key=...)` e `Publisher.publish(..., key=...)` escolhem
+  a partição (`str` vira UTF-8; o `aiokafka` recusa `str` com `TypeError`);
+  `group_id` e `auto_offset_reset` (`OffsetResetEnum`, novo) em `@mq.on`,
+  `@subscribe` e `Consumer`, com a mesma regra de herança do `prefetch`.
+  Medido contra um Kafka 3.9.1 real: a mesma chave fica numa partição e é
+  lida em ordem; duas réplicas de um grupo dividem as partições sem repetir
+  registro, e outro grupo recebe tudo.
+- Extras `[queue-kafka]` (`faststream[kafka]`, `aiokafka>=0.10.0`),
+  `[queue-nats]` e `[queue-redis]`; o `[all]` passa a instalar os quatro
+  transportes e, com eles, os tetos que o FastStream declara nos próprios
+  extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` e `redis<9.0.0`
+  (iguais no FastStream 0.7.5 e 0.7.8). O `aiokafka` 0.15.0 já saiu e fica
+  de fora.
+- `KafkaSettings` (mixin, também no topo do pacote), com
+  `KafkaSecurityProtocolEnum` (`PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`,
+  `SASL_SSL`) e `KafkaSaslMechanismEnum` (`PLAIN`, `SCRAM-SHA-256`,
+  `SCRAM-SHA-512`): `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_CLIENT_ID`,
+  `KAFKA_SECURITY_PROTOCOL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME`,
+  `KAFKA_SASL_PASSWORD` (`SecretStr`, mascarado em `repr`/`str`/log),
+  `KAFKA_SSL_CAFILE`, `KAFKA_SSL_CERTFILE`, `KAFKA_SSL_KEYFILE` e
+  `KAFKA_SSL_KEY_PASSWORD`. `kafka_kwargs()` devolve o objeto de
+  `faststream.security` do protocolo (`BaseSecurity`, `SASLPlaintext`,
+  `SASLScram256`, `SASLScram512`, com `ssl.SSLContext` verificando
+  certificado e host sob TLS) e o `client_id`; `kafka_ssl_context()` expõe o
+  contexto. `MessageBroker.kafka_from_settings(settings)` monta o broker com
+  os seeds. Combinação que o protocolo ignoraria (`SASL_*` sem usuário,
+  arquivo TLS sem TLS, chave sem certificado) falha no boot; com
+  `ENV=production`, `SASL_PLAINTEXT` + `PLAIN` e senha SASL vazia são
+  recusados.
+
+### Fixed
+
+- `MessageBroker.kafka()` sem nenhum seed levanta `ValueError` apontando o
+  `kafka_from_settings`. Antes o FastStream aceitava a lista vazia e o broker
+  só falhava no `connect()`, com
+  `KafkaConnectionError: Unable to bootstrap from []`.
+- `MessageBroker.kafka()`, `.redis()` e `.nats()` mandavam instalar o
+  `[queue]`, que só traz `faststream[rabbit]`: seguir a mensagem deixava o
+  mesmo `ImportError` no lugar. Cada construtor agora nomeia o extra que
+  instala o seu cliente.
+- No Kafka, NATS e Redis o `message_id` vai no header `message_id`
+  (`MESSAGE_ID_HEADER`), que o `deduplicate` lê primeiro. Antes o
+  `message_id=` explícito era `TypeError` nesses transportes, e no Kafka a
+  deduplicação usava o id do FastStream, `<offset>-<timestamp>`: um mesmo
+  evento publicado duas vezes rodava duas vezes, e dois registros no mesmo
+  offset de partições diferentes, no mesmo milissegundo, colidiam. Registro
+  Kafka sem o header é deduplicado por `tópico:partição:offset`.
+  `message_id` passa a ser parâmetro nomeado de `MessageBroker.publish`
+  (antes lido de dentro do `**options`), e o explícito vence um header
+  `message_id` passado em `headers=`.
+- `ack_policy` que commita (`ACK`, `NACK_ON_ERROR`, `REJECT_ON_ERROR`,
+  `MANUAL`, também quando vem do broker inteiro) sem `group_id` no Kafka
+  levanta `ValueError` ao registrar o consumidor. Antes o `aiokafka` recusava
+  o commit com `IllegalOperation('Requires group_id')` em toda mensagem,
+  depois de o handler rodar.
+- `prefetch` no Kafka, NATS ou Redis levanta `UnsupportedTopologyError`, e
+  `group_id`, `auto_offset_reset` e `key=` fora do Kafka também. O `prefetch`
+  chegava ao FastStream como `Channel` do RabbitMQ e falhava com
+  `TypeError: ... unexpected keyword argument 'channel'`.
 
 ## [0.354.0] — 2026-11-11
 

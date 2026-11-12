@@ -38,13 +38,14 @@ import binascii
 import ipaddress
 import logging
 import re
+import ssl
 import warnings
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypedDict
 from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from tempest_fastapi_sdk.core.docs_locale import (
@@ -52,6 +53,7 @@ from tempest_fastapi_sdk.core.docs_locale import (
     DocsLocale,
     normalize_docs_locale,
 )
+from tempest_fastapi_sdk.core.enums import BaseStrEnum
 from tempest_fastapi_sdk.core.logging import (
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_MAX_BYTES,
@@ -1867,6 +1869,354 @@ class PushSettings(WebPushSettings, FirebaseSettings):
             bool: ``True`` when either half is configured.
         """
         return self.web_enabled or self.mobile_enabled
+
+
+class KafkaSecurityProtocolEnum(BaseStrEnum):
+    """How a Kafka client reaches the brokers (Kafka's ``security.protocol``).
+
+    Attributes:
+        PLAINTEXT: No TLS, no authentication. The development default.
+        SSL: TLS, optionally with a client certificate (mutual TLS).
+        SASL_PLAINTEXT: SASL authentication over an unencrypted
+            connection: the ``PLAIN`` mechanism sends the password in clear.
+        SASL_SSL: SASL authentication over TLS.
+    """
+
+    PLAINTEXT = "PLAINTEXT"
+    SSL = "SSL"
+    SASL_PLAINTEXT = "SASL_PLAINTEXT"
+    SASL_SSL = "SASL_SSL"
+
+
+class KafkaSaslMechanismEnum(BaseStrEnum):
+    """Which SASL mechanism authenticates the client (``sasl.mechanism``).
+
+    Read only when :class:`KafkaSecurityProtocolEnum` is one of the
+    ``SASL_*`` protocols.
+
+    Attributes:
+        PLAIN: Username and password, sent as they are; only safe over TLS.
+        SCRAM_SHA_256: Salted challenge-response with SHA-256.
+        SCRAM_SHA_512: Salted challenge-response with SHA-512.
+    """
+
+    PLAIN = "PLAIN"
+    SCRAM_SHA_256 = "SCRAM-SHA-256"
+    SCRAM_SHA_512 = "SCRAM-SHA-512"
+
+
+_KAFKA_TLS_PROTOCOLS: frozenset[KafkaSecurityProtocolEnum] = frozenset(
+    {KafkaSecurityProtocolEnum.SSL, KafkaSecurityProtocolEnum.SASL_SSL}
+)
+"""Protocols that wrap the connection in TLS, so they need an ``ssl_context``."""
+
+_KAFKA_SASL_PROTOCOLS: frozenset[KafkaSecurityProtocolEnum] = frozenset(
+    {
+        KafkaSecurityProtocolEnum.SASL_PLAINTEXT,
+        KafkaSecurityProtocolEnum.SASL_SSL,
+    }
+)
+"""Protocols that authenticate with SASL, so they need a username."""
+
+
+class KafkaSettings(BaseAppSettings):
+    """Kafka connection configuration for :meth:`MessageBroker.kafka`.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix). The defaults
+    reach a local broker on ``localhost:9092`` with no TLS and no
+    authentication.
+
+    The transport security is chosen by ``KAFKA_SECURITY_PROTOCOL`` and
+    translated by :meth:`kafka_kwargs` into the FastStream security
+    object (``faststream.security``) the broker expects, so the service
+    never builds an ``ssl.SSLContext`` or picks a SASL class by hand.
+
+    Attributes:
+        KAFKA_BOOTSTRAP_SERVERS (list[str]): ``host:port`` seeds, as a
+            JSON list. Default: ``["localhost:9092"]``.
+        KAFKA_CLIENT_ID (str | None): Name the client reports to the
+            brokers (logs, quotas). ``None`` keeps FastStream's default.
+            Default: ``None``.
+        KAFKA_SECURITY_PROTOCOL (KafkaSecurityProtocolEnum): Transport
+            security. Default: ``PLAINTEXT``.
+        KAFKA_SASL_MECHANISM (KafkaSaslMechanismEnum): SASL mechanism,
+            read under ``SASL_PLAINTEXT`` / ``SASL_SSL``. Default:
+            ``PLAIN``.
+        KAFKA_SASL_USERNAME (str): SASL username; required under a
+            ``SASL_*`` protocol. Default: ``""``.
+        KAFKA_SASL_PASSWORD (SecretStr): SASL password; masked in
+            ``repr`` and ``str``. Default: empty.
+        KAFKA_SSL_CAFILE (str | None): PEM bundle of the CAs that sign the
+            broker certificate. ``None`` trusts the system store.
+            Default: ``None``.
+        KAFKA_SSL_CERTFILE (str | None): PEM client certificate, for
+            mutual TLS. Default: ``None``.
+        KAFKA_SSL_KEYFILE (str | None): PEM private key of the client
+            certificate; ``None`` reads it from ``KAFKA_SSL_CERTFILE``.
+            Default: ``None``.
+        KAFKA_SSL_KEY_PASSWORD (SecretStr): Password of an encrypted
+            ``KAFKA_SSL_KEYFILE``; empty for an unencrypted key.
+            Default: empty.
+    """
+
+    KAFKA_BOOTSTRAP_SERVERS: list[str] = Field(
+        default_factory=lambda: ["localhost:9092"],
+        min_length=1,
+        title="Kafka bootstrap servers",
+        description=(
+            "``host:port`` seeds the client contacts first, as a JSON list. "
+            "One reachable seed is enough: the client learns the rest of "
+            "the cluster from it."
+        ),
+        examples=[["localhost:9092"], ["kafka-1:9093", "kafka-2:9093"]],
+    )
+    KAFKA_CLIENT_ID: str | None = Field(
+        default=None,
+        title="Kafka client id",
+        description=(
+            "Name the client reports to the brokers, shown in their logs "
+            "and used by client quotas. ``None`` keeps FastStream's "
+            "default (``faststream-<version>``)."
+        ),
+        examples=[None, "billing-api"],
+    )
+    KAFKA_SECURITY_PROTOCOL: KafkaSecurityProtocolEnum = Field(
+        default=KafkaSecurityProtocolEnum.PLAINTEXT,
+        title="Kafka security protocol",
+        description=(
+            "``PLAINTEXT`` (no TLS, no auth), ``SSL`` (TLS, optional "
+            "client certificate), ``SASL_PLAINTEXT`` (SASL without TLS) "
+            "or ``SASL_SSL`` (SASL over TLS)."
+        ),
+        examples=["PLAINTEXT", "SASL_SSL"],
+    )
+    KAFKA_SASL_MECHANISM: KafkaSaslMechanismEnum = Field(
+        default=KafkaSaslMechanismEnum.PLAIN,
+        title="Kafka SASL mechanism",
+        description=(
+            "``PLAIN``, ``SCRAM-SHA-256`` or ``SCRAM-SHA-512``. Read only "
+            "under a ``SASL_*`` security protocol."
+        ),
+        examples=["PLAIN", "SCRAM-SHA-512"],
+    )
+    KAFKA_SASL_USERNAME: str = Field(
+        default="",
+        title="Kafka SASL username",
+        description="SASL username; required under a ``SASL_*`` protocol.",
+        examples=["", "billing-api"],
+    )
+    KAFKA_SASL_PASSWORD: SecretStr = Field(
+        default=SecretStr(""),
+        title="Kafka SASL password",
+        description=(
+            "SASL password. Held as ``SecretStr``, so ``repr`` and ``str`` "
+            "of the settings print ``**********``."
+        ),
+        examples=["change-me"],
+    )
+    KAFKA_SSL_CAFILE: str | None = Field(
+        default=None,
+        title="Kafka TLS CA bundle",
+        description=(
+            "PEM file with the CAs that sign the broker certificate. "
+            "``None`` trusts the system store. Read under ``SSL`` / "
+            "``SASL_SSL``."
+        ),
+        examples=[None, "/etc/kafka/ca.pem"],
+    )
+    KAFKA_SSL_CERTFILE: str | None = Field(
+        default=None,
+        title="Kafka TLS client certificate",
+        description="PEM client certificate, for mutual TLS.",
+        examples=[None, "/etc/kafka/client.pem"],
+    )
+    KAFKA_SSL_KEYFILE: str | None = Field(
+        default=None,
+        title="Kafka TLS client key",
+        description=(
+            "PEM private key of ``KAFKA_SSL_CERTFILE``. ``None`` reads the "
+            "key from the certificate file."
+        ),
+        examples=[None, "/etc/kafka/client.key"],
+    )
+    KAFKA_SSL_KEY_PASSWORD: SecretStr = Field(
+        default=SecretStr(""),
+        title="Kafka TLS client key password",
+        description="Password of an encrypted ``KAFKA_SSL_KEYFILE``.",
+        examples=[""],
+    )
+
+    @model_validator(mode="after")
+    def _refuse_inconsistent_kafka_security(self) -> Self:
+        """Refuse a combination the selected protocol would silently ignore.
+
+        A TLS file under a protocol without TLS, or a client key without
+        its certificate, would be dropped by :meth:`kafka_kwargs`; a
+        ``SASL_*`` protocol without a username fails only at connect.
+        Both are configuration mistakes, so they fail at boot.
+
+        Returns:
+            Self: The validated settings, unchanged.
+
+        Raises:
+            ValueError: On a SASL protocol with an empty
+                ``KAFKA_SASL_USERNAME``, a ``KAFKA_SSL_*`` file under a
+                protocol without TLS, or ``KAFKA_SSL_KEYFILE`` without
+                ``KAFKA_SSL_CERTFILE``. Pydantic wraps it in a
+                ``ValidationError``.
+        """
+        protocol = self.KAFKA_SECURITY_PROTOCOL
+        if protocol in _KAFKA_SASL_PROTOCOLS and not self.KAFKA_SASL_USERNAME:
+            raise ValueError(
+                f"KAFKA_SECURITY_PROTOCOL={protocol.value} authenticates with "
+                "SASL; set KAFKA_SASL_USERNAME (and KAFKA_SASL_PASSWORD)."
+            )
+        tls_files: list[str] = [
+            name
+            for name, value in (
+                ("KAFKA_SSL_CAFILE", self.KAFKA_SSL_CAFILE),
+                ("KAFKA_SSL_CERTFILE", self.KAFKA_SSL_CERTFILE),
+                ("KAFKA_SSL_KEYFILE", self.KAFKA_SSL_KEYFILE),
+            )
+            if value
+        ]
+        if tls_files and protocol not in _KAFKA_TLS_PROTOCOLS:
+            raise ValueError(
+                f"{', '.join(tls_files)} set, but "
+                f"KAFKA_SECURITY_PROTOCOL={protocol.value} has no TLS; use "
+                "SSL or SASL_SSL, or drop the file."
+            )
+        if self.KAFKA_SSL_KEYFILE and not self.KAFKA_SSL_CERTFILE:
+            raise ValueError(
+                "KAFKA_SSL_KEYFILE set without KAFKA_SSL_CERTFILE: the key "
+                "belongs to a client certificate."
+            )
+        return self
+
+    def kafka_ssl_context(self) -> ssl.SSLContext | None:
+        """Build the TLS context the selected protocol needs.
+
+        Starts from :func:`ssl.create_default_context`, so the broker
+        certificate and host name are verified, trusting
+        ``KAFKA_SSL_CAFILE`` when set and the system store otherwise.
+        ``KAFKA_SSL_CERTFILE`` (with ``KAFKA_SSL_KEYFILE`` and
+        ``KAFKA_SSL_KEY_PASSWORD``) adds the client certificate of mutual
+        TLS.
+
+        Returns:
+            ssl.SSLContext | None: The context under ``SSL`` /
+            ``SASL_SSL``; ``None`` under the protocols without TLS.
+
+        Raises:
+            FileNotFoundError: When a configured file does not exist.
+            ssl.SSLError: When a file is not valid PEM, or the key does
+                not match the certificate.
+        """
+        if self.KAFKA_SECURITY_PROTOCOL not in _KAFKA_TLS_PROTOCOLS:
+            return None
+        context = ssl.create_default_context(cafile=self.KAFKA_SSL_CAFILE)
+        if self.KAFKA_SSL_CERTFILE:
+            context.load_cert_chain(
+                certfile=self.KAFKA_SSL_CERTFILE,
+                keyfile=self.KAFKA_SSL_KEYFILE,
+                password=self.KAFKA_SSL_KEY_PASSWORD.get_secret_value() or None,
+            )
+        return context
+
+    def kafka_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :meth:`MessageBroker.kafka` keyword arguments.
+
+        The seeds are positional on :meth:`MessageBroker.kafka`, so they
+        are not in the mapping:
+        ``MessageBroker.kafka(*settings.KAFKA_BOOTSTRAP_SERVERS,
+        **settings.kafka_kwargs())``, or
+        :meth:`MessageBroker.kafka_from_settings`, which does exactly that.
+
+        ``security`` is the FastStream object for the protocol and
+        mechanism: ``None`` under ``PLAINTEXT``, ``BaseSecurity`` under
+        ``SSL``, and ``SASLPlaintext`` / ``SASLScram256`` /
+        ``SASLScram512`` under the ``SASL_*`` protocols, carrying the TLS
+        context under ``SASL_SSL``. FastStream is imported here, not at
+        module level, so the mixin imports without the ``[queue-kafka]``
+        extra.
+
+        Returns:
+            dict[str, Any]: ``{"security": ...}``, plus ``"client_id"``
+            when ``KAFKA_CLIENT_ID`` is set.
+
+        Raises:
+            ImportError: When ``faststream`` is not installed and the
+                protocol needs a security object.
+        """
+        kwargs: dict[str, Any] = {"security": self._kafka_security()}
+        if self.KAFKA_CLIENT_ID is not None:
+            kwargs["client_id"] = self.KAFKA_CLIENT_ID
+        return kwargs
+
+    def _kafka_security(self) -> Any:
+        """Build the ``faststream.security`` object for the protocol.
+
+        Returns:
+            Any: ``None`` under ``PLAINTEXT``; otherwise a
+            ``faststream.security.BaseSecurity`` (or SASL subclass).
+        """
+        protocol = self.KAFKA_SECURITY_PROTOCOL
+        if protocol is KafkaSecurityProtocolEnum.PLAINTEXT:
+            return None
+        from faststream.security import (
+            BaseSecurity,
+            SASLPlaintext,
+            SASLScram256,
+            SASLScram512,
+        )
+
+        context = self.kafka_ssl_context()
+        if protocol is KafkaSecurityProtocolEnum.SSL:
+            return BaseSecurity(ssl_context=context, use_ssl=True)
+        sasl_classes: dict[
+            KafkaSaslMechanismEnum,
+            type[SASLPlaintext | SASLScram256 | SASLScram512],
+        ] = {
+            KafkaSaslMechanismEnum.PLAIN: SASLPlaintext,
+            KafkaSaslMechanismEnum.SCRAM_SHA_256: SASLScram256,
+            KafkaSaslMechanismEnum.SCRAM_SHA_512: SASLScram512,
+        }
+        sasl_class = sasl_classes[self.KAFKA_SASL_MECHANISM]
+        return sasl_class(
+            username=self.KAFKA_SASL_USERNAME,
+            password=self.KAFKA_SASL_PASSWORD.get_secret_value(),
+            ssl_context=context,
+            use_ssl=context is not None,
+        )
+
+    def production_violations(self) -> list[str]:
+        """Refuse a Kafka password that travels or is stored in clear.
+
+        Returns:
+            list[str]: The parent's entries plus one when the protocol is
+            ``SASL_PLAINTEXT`` with the ``PLAIN`` mechanism (the password
+            crosses the network unencrypted), and one when a ``SASL_*``
+            protocol has an empty ``KAFKA_SASL_PASSWORD``.
+        """
+        violations: list[str] = super().production_violations()
+        protocol = self.KAFKA_SECURITY_PROTOCOL
+        if (
+            protocol is KafkaSecurityProtocolEnum.SASL_PLAINTEXT
+            and self.KAFKA_SASL_MECHANISM is KafkaSaslMechanismEnum.PLAIN
+        ):
+            violations.append(
+                "KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT with the PLAIN "
+                "mechanism sends the password unencrypted; use SASL_SSL"
+            )
+        if (
+            protocol in _KAFKA_SASL_PROTOCOLS
+            and not self.KAFKA_SASL_PASSWORD.get_secret_value()
+        ):
+            violations.append(
+                "KAFKA_SASL_PASSWORD: empty under a SASL security protocol"
+            )
+        return violations
 
 
 class TaskIQSettings(BaseAppSettings):

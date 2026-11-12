@@ -4309,3 +4309,37 @@ concorrência real (transação aberta + `pg_stat_activity`, 8 escritores × 20
 rodadas) em SQLite e PostgreSQL 16, a sequence que deixaria uma projeção pular
 evento, e a suíte viva do KurrentDB 26.2.3 rodada no piso (1.3.0) e no 1.3.6 do
 cliente (`test_kurrentdb_matrix.py`). Receita: `docs/recipes/event-sourcing.md`.
+
+## Kafka pela fachada do `MessageBroker`
+
+`publish(key=...)` / `Publisher.publish(key=...)` (partição; `str` vira
+UTF-8), `group_id` e `auto_offset_reset` (`OffsetResetEnum`, em
+`queue/topology.py`) em `@mq.on`, `@subscribe`, `Consumer` e `Subscription`,
+montados por um caminho só (`MessageBroker._consumer_options`) para o
+decorator e o `register`. Recusa: knob de Kafka fora do Kafka e `prefetch`
+fora do RabbitMQ (`UnsupportedTopologyError`); política que commita sem grupo
+(`ValueError`). Dedup: `MESSAGE_ID_HEADER` em `queue/dedup.py` para
+transporte sem campo `message_id` (Kafka, NATS, Redis), e
+`tópico:partição:offset` para registro Kafka sem o header. Extras
+`[queue-kafka]` (com `aiokafka>=0.10.0`: o 0.9.0, que o FastStream aceita,
+não sobe consumidor), `[queue-nats]`, `[queue-redis]`; `_require` de cada
+construtor aponta o seu. Conexão pelo ambiente: `KafkaSettings` (em
+`settings/mixins.py`, com `KafkaSecurityProtocolEnum` e
+`KafkaSaslMechanismEnum`) — seeds, client id, protocolo, mecanismo SASL,
+usuário/senha (`SecretStr`) e arquivos TLS; `kafka_ssl_context()` monta o
+`ssl.SSLContext` e `kafka_kwargs()` devolve `security` (objeto de
+`faststream.security`, importado dentro do método) + `client_id`.
+`MessageBroker.kafka_from_settings(settings)` junta os seeds posicionais;
+`MessageBroker.kafka()` sem seed levanta `ValueError`. Combinação que o
+protocolo ignoraria é `ValidationError`; `production_violations` recusa
+`SASL_PLAINTEXT` + `PLAIN` e senha SASL vazia. Não há `from_settings`
+genérico do `MessageBroker` — só o `TaskQueue` mapeia esquema de URL, e ele
+continua recusando `kafka://`. O scaffold do `tempest new` não tem Kafka (nem
+serviço no compose nem bloco no `.env.example`).
+Testes: `tests/queue/test_kafka.py` (unidade, `TestKafkaBroker`),
+`tests/queue/test_kafka_live.py` (Kafka 3.9.1 em docker) e
+`tests/queue/test_kafka_matrix.py` (o live sob FastStream 0.7.5 + `aiokafka`
+0.10.0 e sob FastStream 0.7.8), `tests/settings/test_kafka_settings.py` e
+`tests/queue/test_kafka_from_settings.py`. Receita: "Kafka: chave, grupo e
+commit" e "Conexão pelo ambiente — `KafkaSettings`" em
+`docs/recipes/queue-tasks.md`.

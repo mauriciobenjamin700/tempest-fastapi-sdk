@@ -36,6 +36,7 @@ from tempest_fastapi_sdk.queue.topology import DeadLetterSpec as DeadLetterSpec
 from tempest_fastapi_sdk.queue.topology import ExchangeBinding as ExchangeBinding
 from tempest_fastapi_sdk.queue.topology import ExchangeKindEnum as ExchangeKindEnum
 from tempest_fastapi_sdk.queue.topology import ExchangeSpec as ExchangeSpec
+from tempest_fastapi_sdk.queue.topology import OffsetResetEnum as OffsetResetEnum
 from tempest_fastapi_sdk.queue.topology import QueueSpec as QueueSpec
 from tempest_fastapi_sdk.queue.topology import QueueTypeEnum as QueueTypeEnum
 from tempest_fastapi_sdk.queue.topology import TransportEnum as TransportEnum
@@ -60,6 +61,7 @@ __all__: list[str] = [
     "ExchangeSpec",
     "MemoryDedupStore",
     "MessageBroker",
+    "OffsetResetEnum",
     "Publisher",
     "QueueMetrics",
     "QueueSpec",

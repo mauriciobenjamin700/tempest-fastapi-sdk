@@ -80,6 +80,27 @@ class TransportEnum(BaseStrEnum):
     UNKNOWN = "unknown"
 
 
+class OffsetResetEnum(BaseStrEnum):
+    """Where a Kafka consumer group starts when it has no committed offset.
+
+    Only read when the group has never committed on a partition (a new
+    group, or offsets expired by the broker's retention). A group that
+    committed resumes from its commit whatever this says.
+
+    Attributes:
+        LATEST: Start at the end — only records written after the
+            consumer joined are read. Kafka's and FastStream's default,
+            and the reason a brand-new consumer misses everything that was
+            published before its first deploy.
+        EARLIEST: Start at the oldest record the topic still retains.
+        NONE: Refuse to start without a committed offset.
+    """
+
+    LATEST = "latest"
+    EARLIEST = "earliest"
+    NONE = "none"
+
+
 class QueueTypeEnum(BaseStrEnum):
     """RabbitMQ queue implementation.
 
@@ -561,6 +582,7 @@ __all__: list[str] = [
     "ExchangeBinding",
     "ExchangeKindEnum",
     "ExchangeSpec",
+    "OffsetResetEnum",
     "QueueSpec",
     "QueueTypeEnum",
     "TransportEnum",

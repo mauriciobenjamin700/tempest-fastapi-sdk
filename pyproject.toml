@@ -83,8 +83,25 @@ metrics = [
     "psutil>=7.2.2",
     "nvidia-ml-py>=13.610.43",
 ]
+# One extra per FastStream transport, as `tasks` / `tasks-redis` do for
+# TaskIQ: `[queue]` installs the RabbitMQ client only, so the other
+# constructors of `MessageBroker` need their own client library and their
+# own extra to name in the install error.
 queue = [
     "faststream[rabbit]>=0.7.5",
+]
+# FastStream accepts `aiokafka>=0.9`, but every subscriber passes
+# `group_instance_id`, which `AIOKafkaConsumer` only takes from 0.10.0:
+# under 0.9.0 each Kafka consumer fails to start with a `TypeError`.
+queue-kafka = [
+    "faststream[kafka]>=0.7.5",
+    "aiokafka>=0.10.0",
+]
+queue-nats = [
+    "faststream[nats]>=0.7.5",
+]
+queue-redis = [
+    "faststream[redis]>=0.7.5",
 ]
 tasks = [
     "taskiq>=0.12.6",
@@ -359,7 +376,14 @@ all = [
     "cryptography>=50.0.1",
     "psutil>=7.2.2",
     "nvidia-ml-py>=13.610.43",
-    "faststream[rabbit]>=0.7.5",
+    # Every FastStream transport, as `queue` + `queue-kafka` + `queue-nats` +
+    # `queue-redis` declare them. The client caps come from FastStream's own
+    # extras, not from us: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0`
+    # and `redis<9.0.0` (same in FastStream 0.7.5 and 0.7.8). `[all]` is the
+    # only extra that carries all four at once; `aiokafka` 0.15.0 is already
+    # out and held back by this cap.
+    "faststream[rabbit,kafka,nats,redis]>=0.7.5",
+    "aiokafka>=0.10.0",
     "taskiq>=0.12.6",
     "taskiq-aio-pika>=0.6.0",
     "taskiq-redis>=1.2.3",

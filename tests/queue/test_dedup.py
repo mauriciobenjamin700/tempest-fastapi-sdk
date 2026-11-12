@@ -279,7 +279,7 @@ class TestPublishGeneratesAnId:
         from tempest_fastapi_sdk.queue.broker import MessageBroker
 
         source = inspect.getsource(MessageBroker.publish)
-        assert 'options.setdefault("message_id"' in source
+        assert 'options["message_id"] = message_id or str(uuid4())' in source
 
     async def test_an_explicit_id_is_kept(self) -> None:
         from tempest_fastapi_sdk.queue import MessageBroker
