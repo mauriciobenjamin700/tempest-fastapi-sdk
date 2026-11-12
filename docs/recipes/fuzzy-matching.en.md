@@ -130,6 +130,96 @@ it**, so you can highlight or replace it in the original.
     `"trabalho em sao paolo"` finds São Paulo at `0.80`: the name similarity
     (`0.89`) times `0.9`, since no state confirmed it.
 
+## Trip request: from where, to where, when
+
+Finding the city is half of a trip search. The other half is its **role**:
+in "quero ir de Teresina pra Parnaíba sexta de manhã", Teresina is the
+origin, Parnaíba the destination, Friday the date and morning the period.
+`parse_trip_intent` reads all of it from a typed or transcribed phrase:
+
+```python
+from datetime import date
+
+from tempest_fastapi_sdk.geo import parse_trip_intent
+
+today = date(2026, 10, 14)
+for text in [
+    "quero ir de teresinha pra parnaiba sexta de manhã",
+    "de Pico pra Sobrau amanhã",
+    "de floripa pra sampa dia 20",
+    "de pedro segundo pra piripiri à noite",
+]:
+    intent = parse_trip_intent(text, today)
+    origin = intent.origin.name if intent.origin else None
+    destination = intent.destination.name if intent.destination else None
+    print(text, "->", origin, destination, intent.departure_date, intent.period)
+```
+
+```text
+quero ir de teresinha pra parnaiba sexta de manhã -> Teresina Parnaíba 2026-10-16 manha
+de Pico pra Sobrau amanhã -> Picos Sobral 2026-10-15 None
+de floripa pra sampa dia 20 -> Florianópolis São Paulo 2026-10-20 None
+de pedro segundo pra piripiri à noite -> Pedro II Piripiri None noite
+```
+
+Each line shows an error speech-to-text makes and the search absorbs:
+
+- **"teresinha"**, **"Pico"**: a letter swapped or dropped. `FuzzyIndex`
+  gathers candidates by edit distance, and the `difflib` ratio decides
+  between them (Teresina beats Terezinha/PE).
+- **"Sobrau"**: the syllable-final "l" spoken Portuguese says as "u". A
+  phonetic key (`vocalized_key`) matches exactly, without lowering the
+  cutoff.
+- **"floripa"**, **"sampa"**: the nicknames in `BR_CITY_NICKNAMES`.
+- **"pedro segundo"**: the Roman numeral said as a word.
+
+!!! tip "Only the cities you serve"
+    Pass `municipalities=` with the cities that have routes, and only those
+    are recognized. A real city outside the list comes back in
+    `unrecognized`, with what was said, for the app to ask instead of
+    searching without a destination:
+
+    ```python
+    from datetime import date
+
+    from tempest_fastapi_sdk.geo import (
+        build_trip_city_index,
+        municipality_by_name,
+        parse_trip_intent,
+    )
+
+    served = [
+        municipality_by_name(name, uf)
+        for name, uf in [("Teresina", "PI"), ("Picos", "PI"), ("Sobral", "CE")]
+    ]
+    index = build_trip_city_index([city for city in served if city is not None])
+
+    intent = parse_trip_intent(
+        "de Teresina pra Natal amanhã", date(2026, 10, 14), municipalities=index
+    )
+    print(intent.origin.name, intent.destination, dict(intent.unrecognized))
+    # Teresina None {<TripRoleEnum.DESTINATION: 'destination'>: 'natal'}
+    ```
+
+    `municipality_by_name` links the name your database stores ("SAO LUIS",
+    "MA") to the IBGE record, ignoring case and accents. Build the index once
+    and reuse it.
+
+!!! note "Homonyms and ambiguity"
+    "Batalha" exists in PI and AL. Without a state both come back in
+    `intent.origin.candidates` (`resolved` is `None`, `name` is "Batalha"),
+    so the decision is yours. "Batalha no Piauí" or "Batalha PI" settles it.
+
+!!! warning "Ordinary words country-wide"
+    Without `municipalities=`, a lowercase loose word only becomes a city when
+    the phrase is nothing but cities ("picos sobral"): "estou feliz de ir pra
+    fortaleza" is not the town of Feliz (RS). With a restricted list, that
+    guard does not apply.
+
+Quality is fixed by a table of 61 real phrases
+(`tests/geo/test_trip_intent.py`) from BusCar's production trip search. A
+change that breaks a line is a search regression.
+
 ## By name and by code
 
 ```python
@@ -277,6 +367,10 @@ Measured on x86_64 with Python 3.12.7:
 | `"vou pra floripa semana que vem"` | 0.79 ms (N=200) |
 | `"moro em sao jose dos campos - sp"` | 3.02 ms (N=200) |
 | A sentence with three cities, one misspelled | 3.27 ms (N=200) |
+| `parse_trip_intent`, phrase with no typo (whole country) | 0.03 ms (N=200) |
+| `parse_trip_intent`, "de Pico pra Sobrau amanhã" (whole country, cold cache) | 8.4 ms (N=200) |
+| `parse_trip_intent`, "teresinha" + "floripa" (whole country, cold cache) | 28.3 ms (N=200) |
+| Index restricted to 4 cities (`build_trip_city_index`) | 0.05 ms |
 
 The index is built once per process and stays in memory.
 
@@ -298,6 +392,9 @@ The index is built once per process and stays in memory.
   no dependency.
 - **`find_municipalities_in_text`**: finds the city in a sentence, with the
   state confirming and breaking ties, nicknames, and everyday words filtered.
+- **`parse_trip_intent`**: origin, destination, date and period of a trip
+  phrase, with transcribed speech (typos, vocalized "l", numerals as words)
+  and restricted to the cities you serve (`municipalities=`).
 - **`search_municipalities` / `municipality_by_ibge_code`**: lookup by name
   (typos included) and by code, with coordinate and capital.
 - Homonyms without a state come back tied. The decision is yours.

@@ -20,6 +20,18 @@ class TravelModeEnum(BaseStrEnum):
     PEDESTRIAN = "pedestrian"
 
 
+class TripRoleEnum(BaseStrEnum):
+    """The part a city plays in a trip request (:func:`parse_trip_intent`).
+
+    Values are the lowercase English words so they can key a JSON object
+    the client reads (``{"destination": "natal"}``).
+    """
+
+    ORIGIN = "origin"
+    DESTINATION = "destination"
+
+
 __all__: list[str] = [
     "TravelModeEnum",
+    "TripRoleEnum",
 ]

@@ -132,6 +132,94 @@ escreveu**, então dá para destacar ou substituir no texto original.
     `"trabalho em sao paolo"` acha São Paulo com `0.80`: a semelhança do nome
     (`0.89`) vezes `0.9`, porque nenhuma UF confirmou.
 
+## Pedido de viagem: de onde, pra onde, quando
+
+Achar a cidade é metade do trabalho de uma busca de viagem. A outra metade é
+saber o **papel** dela: em "quero ir de Teresina pra Parnaíba sexta de
+manhã", Teresina é a origem, Parnaíba o destino, sexta a data e manhã o
+período. `parse_trip_intent` lê tudo isso numa frase digitada ou transcrita:
+
+```python
+from datetime import date
+
+from tempest_fastapi_sdk.geo import parse_trip_intent
+
+today = date(2026, 10, 14)
+for text in [
+    "quero ir de teresinha pra parnaiba sexta de manhã",
+    "de Pico pra Sobrau amanhã",
+    "de floripa pra sampa dia 20",
+    "de pedro segundo pra piripiri à noite",
+]:
+    intent = parse_trip_intent(text, today)
+    origin = intent.origin.name if intent.origin else None
+    destination = intent.destination.name if intent.destination else None
+    print(text, "->", origin, destination, intent.departure_date, intent.period)
+```
+
+```text
+quero ir de teresinha pra parnaiba sexta de manhã -> Teresina Parnaíba 2026-10-16 manha
+de Pico pra Sobrau amanhã -> Picos Sobral 2026-10-15 None
+de floripa pra sampa dia 20 -> Florianópolis São Paulo 2026-10-20 None
+de pedro segundo pra piripiri à noite -> Pedro II Piripiri None noite
+```
+
+Cada linha mostra um erro que a fala transcrita produz e que a busca
+absorve:
+
+- **"teresinha"**, **"Pico"**: letra trocada ou que caiu. O `FuzzyIndex`
+  junta os candidatos por distância de edição, e a razão do `difflib`
+  decide entre eles (Teresina ganha de Terezinha/PE).
+- **"Sobrau"**: o "l" de fim de sílaba que o português falado diz "u". Uma
+  chave fonética (`vocalized_key`) casa exato, sem baixar o corte.
+- **"floripa"**, **"sampa"**: os apelidos de `BR_CITY_NICKNAMES`.
+- **"pedro segundo"**: o numeral romano dito por extenso.
+
+!!! tip "Só as cidades que você atende"
+    Passe `municipalities=` com as cidades que têm rota, e só elas são
+    reconhecidas. Cidade real fora da lista volta em `unrecognized`, com o
+    que foi dito, para o app perguntar em vez de buscar sem destino:
+
+    ```python
+    from datetime import date
+
+    from tempest_fastapi_sdk.geo import (
+        build_trip_city_index,
+        municipality_by_name,
+        parse_trip_intent,
+    )
+
+    served = [
+        municipality_by_name(name, uf)
+        for name, uf in [("Teresina", "PI"), ("Picos", "PI"), ("Sobral", "CE")]
+    ]
+    index = build_trip_city_index([city for city in served if city is not None])
+
+    intent = parse_trip_intent(
+        "de Teresina pra Natal amanhã", date(2026, 10, 14), municipalities=index
+    )
+    print(intent.origin.name, intent.destination, dict(intent.unrecognized))
+    # Teresina None {<TripRoleEnum.DESTINATION: 'destination'>: 'natal'}
+    ```
+
+    `municipality_by_name` liga o nome que o seu banco guarda ("SAO LUIS",
+    "MA") ao registro do IBGE, sem caixa nem acento. Monte o índice uma vez
+    e reaproveite.
+
+!!! note "Homônimos e ambiguidade"
+    "Batalha" existe no PI e em AL. Sem UF, os dois voltam em
+    `intent.origin.candidates` (`resolved` é `None`, `name` é "Batalha"),
+    para a decisão ser sua. "Batalha no Piauí" ou "Batalha PI" resolve.
+
+!!! warning "Palavra comum no país inteiro"
+    Sem `municipalities=`, uma palavra solta minúscula só vira cidade quando a
+    frase é só cidades ("picos sobral"): "estou feliz de ir pra fortaleza" não
+    é a cidade de Feliz (RS). Com a lista restrita, essa trava não existe.
+
+A qualidade é fixada por uma tabela de 61 frases reais
+(`tests/geo/test_trip_intent.py`), vindas da busca de viagem em produção do
+BusCar. Mudança que quebre uma linha é regressão da busca.
+
 ## Por nome e por código
 
 ```python
@@ -278,6 +366,10 @@ Medido num x86_64 com Python 3.12.7:
 | `"vou pra floripa semana que vem"` | 0,79 ms (N=200) |
 | `"moro em sao jose dos campos - sp"` | 3,02 ms (N=200) |
 | Frase com três cidades, uma com erro | 3,27 ms (N=200) |
+| `parse_trip_intent`, frase sem erro (país inteiro) | 0,03 ms (N=200) |
+| `parse_trip_intent`, "de Pico pra Sobrau amanhã" (país inteiro, cache frio) | 8,4 ms (N=200) |
+| `parse_trip_intent`, "teresinha" + "floripa" (país inteiro, cache frio) | 28,3 ms (N=200) |
+| Índice restrito a 4 cidades (`build_trip_city_index`) | 0,05 ms |
 
 O índice é montado uma vez por processo e fica em memória.
 
@@ -298,6 +390,9 @@ O índice é montado uma vez por processo e fica em memória.
   sem dependência.
 - **`find_municipalities_in_text`**: acha a cidade numa frase, com a UF
   confirmando e desempatando, apelidos e palavra comum filtrada.
+- **`parse_trip_intent`**: origem, destino, data e período de uma frase de
+  viagem, com fala transcrita (erro, "l" vocalizado, numeral por extenso) e
+  restrita às cidades que você atende (`municipalities=`).
 - **`search_municipalities` / `municipality_by_ibge_code`**: busca por nome
   (com erro) e por código, com coordenada e capital.
 - Homônimos sem UF voltam empatados. A decisão é sua.
