@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `tempest_fastapi_sdk.text`, sem dependência: `normalize_text` /
+  `strip_accents` / `tokenize` (forma canônica sem acento, caixa e
+  pontuação; tokens com o offset no texto original), `levenshtein` (com troca
+  de vizinhos) / `similarity` / `trigrams`, e `FuzzyIndex` (nome → valor,
+  busca exata e com erro de digitação por um filtro de trigramas que não perde
+  candidato — provado contra a comparação com todos em 300 consultas).
+- Municípios do IBGE no `geo`, offline: os 5571 com código, nome oficial, UF,
+  coordenada, capital e grafias antigas (`br_municipalities`,
+  `municipality_by_ibge_code`, `Municipality`), `search_municipalities(nome,
+  uf=...)` com erro de digitação, e `find_municipalities_in_text`, que acha a
+  cidade numa frase ("moro em sao jose dos campos - sp", "vou pra floripa"):
+  UF ao lado confirma e desempata, apelidos (`BR_CITY_NICKNAMES`) e regiões do
+  DF casam, palavra comum sem cara de lugar ("estou feliz") fica abaixo do
+  `min_score`, homônimos sem UF voltam empatados. Dados do IBGE (nome, UF) e
+  de kelvins/municipios-brasileiros (coordenada, MIT), gerados por
+  `scripts/regen_br_municipalities.py` e fixados por hash.
+
 ## [0.354.0] — 2026-11-11
 
 ### Fixed

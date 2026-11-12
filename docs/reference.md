@@ -688,6 +688,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.cache.DEFAULT_GEOCODE_CACHE_TTL_SECONDS
 ::: tempest_fastapi_sdk.geo.cache.DEFAULT_GEOCODE_CACHE_KEY_PREFIX
 ::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
+::: tempest_fastapi_sdk.geo.municipalities.LOCATIVE_CUES
+::: tempest_fastapi_sdk.geo.municipalities.MAX_NAME_TOKENS
+::: tempest_fastapi_sdk.geo.municipalities.STATE_SEPARATORS
+::: tempest_fastapi_sdk.geo.municipalities.UNCUED_SINGLE_WORD_FACTOR
 ::: tempest_fastapi_sdk.geo.br.CEP_PATTERN
 ---
 
@@ -1484,6 +1488,18 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.testing.fakes.search.FakeWebSearchBackend
 
 ---
+
+## Texto (busca aproximada)
+
+### `tempest_fastapi_sdk.text`
+
+::: tempest_fastapi_sdk.text
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
 
 ## Utils
 

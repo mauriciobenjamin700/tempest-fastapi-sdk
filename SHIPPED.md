@@ -4287,3 +4287,20 @@ irmão, ciclo recusa. Contrato congelado gerado da mesma introspecção.
 `ruff` no `PATH` ordena e formata o que foi escrito. Testes:
 `tests/cli/test_standard.py` (rodam o pytest gerado dentro do projeto).
 Receita: "Projeto existente" em `docs/service-standard.md`.
+
+## Busca aproximada e cidades em texto (2026-11-12)
+
+`tempest_fastapi_sdk/text/` (normalize, similarity, fuzzy) sem dependência:
+OSA-Levenshtein com `limit`, `FuzzyIndex` com índice invertido de trigramas e
+filtro `shared >= |Q| - 4d` (lossless; `tests/text/test_text.py` compara com
+força bruta em 300 consultas aleatórias). `geo/municipalities.py` +
+`geo/_br_municipalities_data.py` (gerado, CSV numa constante, 5571 linhas,
+hash fixado): IBGE (nome/UF) + kelvins (coordenada/capital/alias, MIT).
+`find_municipalities_in_text`: janelas de até 7 tokens, exato e depois fuzzy
+(até 4 tokens, `cutoff=0.85`), UF ou nome de estado logo depois confirma e
+consome o trecho, `LOCATIVE_CUES` + maiúscula + UF distinguem lugar de
+palavra comum (`UNCUED_SINGLE_WORD_FACTOR`), regiões do DF vêm do
+`br_locations.json` existente. Decisão do usuário: Python puro (sem
+rapidfuzz) e homônimos sem UF empatados (sem população). Medido: 45,9 ms a
+primeira chamada, 0,1-3,3 ms por frase. Receita: `docs/recipes/fuzzy-matching.md`.
+
