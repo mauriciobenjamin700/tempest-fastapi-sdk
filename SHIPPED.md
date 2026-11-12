@@ -4323,10 +4323,23 @@ transporte sem campo `message_id` (Kafka, NATS, Redis), e
 `tópico:partição:offset` para registro Kafka sem o header. Extras
 `[queue-kafka]` (com `aiokafka>=0.10.0`: o 0.9.0, que o FastStream aceita,
 não sobe consumidor), `[queue-nats]`, `[queue-redis]`; `_require` de cada
-construtor aponta o seu. `MessageBroker` não tem `from_settings` — só o
-`TaskQueue` mapeia esquema de URL, e ele continua recusando `kafka://`.
+construtor aponta o seu. Conexão pelo ambiente: `KafkaSettings` (em
+`settings/mixins.py`, com `KafkaSecurityProtocolEnum` e
+`KafkaSaslMechanismEnum`) — seeds, client id, protocolo, mecanismo SASL,
+usuário/senha (`SecretStr`) e arquivos TLS; `kafka_ssl_context()` monta o
+`ssl.SSLContext` e `kafka_kwargs()` devolve `security` (objeto de
+`faststream.security`, importado dentro do método) + `client_id`.
+`MessageBroker.kafka_from_settings(settings)` junta os seeds posicionais;
+`MessageBroker.kafka()` sem seed levanta `ValueError`. Combinação que o
+protocolo ignoraria é `ValidationError`; `production_violations` recusa
+`SASL_PLAINTEXT` + `PLAIN` e senha SASL vazia. Não há `from_settings`
+genérico do `MessageBroker` — só o `TaskQueue` mapeia esquema de URL, e ele
+continua recusando `kafka://`. O scaffold do `tempest new` não tem Kafka (nem
+serviço no compose nem bloco no `.env.example`).
 Testes: `tests/queue/test_kafka.py` (unidade, `TestKafkaBroker`),
 `tests/queue/test_kafka_live.py` (Kafka 3.9.1 em docker) e
 `tests/queue/test_kafka_matrix.py` (o live sob FastStream 0.7.5 + `aiokafka`
-0.10.0 e sob FastStream 0.7.8). Receita: "Kafka: chave, grupo e commit" em
+0.10.0 e sob FastStream 0.7.8), `tests/settings/test_kafka_settings.py` e
+`tests/queue/test_kafka_from_settings.py`. Receita: "Kafka: chave, grupo e
+commit" e "Conexão pelo ambiente — `KafkaSettings`" em
 `docs/recipes/queue-tasks.md`.

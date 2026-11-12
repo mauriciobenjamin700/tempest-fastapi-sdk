@@ -69,7 +69,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
-| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka`: topic, partition `key`, `group_id`, `auto_offset_reset`. [Recipe](recipes/queue-tasks.md#kafka-key-group-and-commit) |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` and `MessageBroker.kafka_from_settings` (with `KafkaSettings`): topic, partition `key`, `group_id`, `auto_offset_reset`, SASL and TLS. Inherits `aiokafka<0.15` from FastStream. [Recipe](recipes/queue-tasks.md#kafka-key-group-and-commit) |
 | `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
 | `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | Slides and answer keys from structured text (HTML, PDF, PPTX, DOCX, Markdown) and Markdown to PDF with your own or the ABNT stylesheet: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Needs Pango + fontconfig on the system**, like `[pdf]`. [Recipe](recipes/slides.md) |
@@ -84,7 +84,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | Passkeys / security keys: `WebAuthnService`, `make_web_authn_credential_model`, the `/auth/webauthn/*` routes — passwordless, phishing-resistant login |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the 18 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 18 above separately (and `[tests]`, which is test tooling, in the dev group) |
+| `[all]` | everything above **except** the 18 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]`, `[slides-mermaid]` | the application helpers — install the 18 above separately (and `[tests]`, which is test tooling, in the dev group). Brings the four `MessageBroker` transports (`faststream[rabbit,kafka,nats,redis]`) and, with them, the caps FastStream declares on its own extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` and `redis<9.0.0` (the same in FastStream 0.7.5 and 0.7.8). Together with `redis>=8.1.0` from `[cache]`, `[all]` stays on `redis` 8.x; `aiokafka` 0.15.0 is already out and is held back |
 
 === "Subset (recommended)"
 

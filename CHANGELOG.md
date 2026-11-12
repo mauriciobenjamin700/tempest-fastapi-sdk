@@ -43,10 +43,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registro, e outro grupo recebe tudo.
 - Extras `[queue-kafka]` (`faststream[kafka]`, `aiokafka>=0.10.0`),
   `[queue-nats]` e `[queue-redis]`; o `[all]` passa a instalar os quatro
-  transportes.
+  transportes e, com eles, os tetos que o FastStream declara nos próprios
+  extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` e `redis<9.0.0`
+  (iguais no FastStream 0.7.5 e 0.7.8). O `aiokafka` 0.15.0 já saiu e fica
+  de fora.
+- `KafkaSettings` (mixin, também no topo do pacote), com
+  `KafkaSecurityProtocolEnum` (`PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`,
+  `SASL_SSL`) e `KafkaSaslMechanismEnum` (`PLAIN`, `SCRAM-SHA-256`,
+  `SCRAM-SHA-512`): `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_CLIENT_ID`,
+  `KAFKA_SECURITY_PROTOCOL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME`,
+  `KAFKA_SASL_PASSWORD` (`SecretStr`, mascarado em `repr`/`str`/log),
+  `KAFKA_SSL_CAFILE`, `KAFKA_SSL_CERTFILE`, `KAFKA_SSL_KEYFILE` e
+  `KAFKA_SSL_KEY_PASSWORD`. `kafka_kwargs()` devolve o objeto de
+  `faststream.security` do protocolo (`BaseSecurity`, `SASLPlaintext`,
+  `SASLScram256`, `SASLScram512`, com `ssl.SSLContext` verificando
+  certificado e host sob TLS) e o `client_id`; `kafka_ssl_context()` expõe o
+  contexto. `MessageBroker.kafka_from_settings(settings)` monta o broker com
+  os seeds. Combinação que o protocolo ignoraria (`SASL_*` sem usuário,
+  arquivo TLS sem TLS, chave sem certificado) falha no boot; com
+  `ENV=production`, `SASL_PLAINTEXT` + `PLAIN` e senha SASL vazia são
+  recusados.
 
 ### Fixed
 
+- `MessageBroker.kafka()` sem nenhum seed levanta `ValueError` apontando o
+  `kafka_from_settings`. Antes o FastStream aceitava a lista vazia e o broker
+  só falhava no `connect()`, com
+  `KafkaConnectionError: Unable to bootstrap from []`.
 - `MessageBroker.kafka()`, `.redis()` e `.nats()` mandavam instalar o
   `[queue]`, que só traz `faststream[rabbit]`: seguir a mensagem deixava o
   mesmo `ImportError` no lugar. Cada construtor agora nomeia o extra que

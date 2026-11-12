@@ -358,6 +358,77 @@ A record published by another producer, without the header, is deduplicated by `
 
 `prefetch` is AMQP's `basic.qos`: on Kafka, NATS and Redis it raises `UnsupportedTopologyError`. It used to reach FastStream as a RabbitMQ `Channel` and fail with `TypeError: KafkaRegistrator.subscriber() got an unexpected keyword argument 'channel'`, without naming the knob. The other way around, `group_id`, `auto_offset_reset` and `key=` off Kafka raise `UnsupportedTopologyError` too — on `@mq.on`, `mq.register` and `mq.publish` — because dropping them would trade "one copy per group" for whatever the other transport does by default.
 
+#### Connecting from the environment — `KafkaSettings`
+
+The example above writes `"localhost:9092"` in code. In production the cluster asks for TLS and SASL, and building that by hand means picking the right `faststream.security` class and creating an `ssl.SSLContext` in every service. The `KafkaSettings` mixin reads it all from the environment and `MessageBroker.kafka_from_settings` builds the broker:
+
+```python
+# src/queue/broker.py
+
+from tempest_fastapi_sdk import BaseAppSettings
+from tempest_fastapi_sdk.queue import MessageBroker
+from tempest_fastapi_sdk.settings import KafkaSettings
+
+
+class Settings(KafkaSettings, BaseAppSettings):
+    """Service settings."""
+
+
+settings: Settings = Settings()
+mq: MessageBroker = MessageBroker.kafka_from_settings(settings)
+```
+
+With this `.env`:
+
+```text
+KAFKA_BOOTSTRAP_SERVERS=["kafka-1:9093","kafka-2:9093"]
+KAFKA_CLIENT_ID=billing-api
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=SCRAM-SHA-512
+KAFKA_SASL_USERNAME=billing
+KAFKA_SASL_PASSWORD=change-me
+```
+
+`print(settings)` shows the password masked, and the broker comes out with a `SASLScram512` (measured):
+
+```text
+KAFKA_BOOTSTRAP_SERVERS=['kafka-1:9093', 'kafka-2:9093'] KAFKA_CLIENT_ID='billing-api' KAFKA_SECURITY_PROTOCOL=<KafkaSecurityProtocolEnum.SASL_SSL: 'SASL_SSL'> KAFKA_SASL_MECHANISM=<KafkaSaslMechanismEnum.SCRAM_SHA_512: 'SCRAM-SHA-512'> KAFKA_SASL_USERNAME='billing' KAFKA_SASL_PASSWORD=SecretStr('**********') KAFKA_SSL_CAFILE=None KAFKA_SSL_CERTFILE=None KAFKA_SSL_KEYFILE=None KAFKA_SSL_KEY_PASSWORD=SecretStr('')
+```
+
+With nothing in the environment, the defaults point at `localhost:9092` over `PLAINTEXT` — the development broker.
+
+| `KAFKA_SECURITY_PROTOCOL` | What `kafka_kwargs()` puts in `security` |
+| --- | --- |
+| `PLAINTEXT` (default) | `None`: no TLS, no authentication |
+| `SSL` | `BaseSecurity` with an `ssl.SSLContext` that verifies certificate and host name; `KAFKA_SSL_CAFILE` replaces the system store, `KAFKA_SSL_CERTFILE` + `KAFKA_SSL_KEYFILE` + `KAFKA_SSL_KEY_PASSWORD` add the client certificate (mTLS) |
+| `SASL_PLAINTEXT` | `SASLPlaintext`, `SASLScram256` or `SASLScram512`, by `KAFKA_SASL_MECHANISM` (`PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512`), without TLS |
+| `SASL_SSL` | the same SASL class, with the `SSL` context |
+
+`kafka_kwargs()` returns only what goes by keyword (`security`, plus `client_id` when `KAFKA_CLIENT_ID` is set): the seeds are positional on `MessageBroker.kafka`. That is why `MessageBroker.kafka(**settings.kafka_kwargs())` on its own is refused, instead of building a broker with no seed that would fail only on `connect()` with `KafkaConnectionError: Unable to bootstrap from []`:
+
+```text
+ValueError: MessageBroker.kafka() needs at least one bootstrap server. From a KafkaSettings, use MessageBroker.kafka_from_settings(settings), or pass *settings.KAFKA_BOOTSTRAP_SERVERS before **settings.kafka_kwargs().
+```
+
+A combination the protocol would ignore fails at boot, not on the first `connect()`: `SASL_*` without `KAFKA_SASL_USERNAME`, a `KAFKA_SSL_*` file under a protocol without TLS, and `KAFKA_SSL_KEYFILE` without `KAFKA_SSL_CERTFILE`:
+
+```text
+1 validation error for KafkaSettings
+  Value error, KAFKA_SSL_CAFILE set, but KAFKA_SECURITY_PROTOCOL=PLAINTEXT has no TLS; use SSL or SASL_SSL, or drop the file. [type=value_error]
+```
+
+Composed with `EnvironmentSettings` and `ENV=production`, the mixin refuses `SASL_PLAINTEXT` with `PLAIN` (the password crosses the network in clear; SCRAM does not send the password and passes) and an empty SASL password:
+
+```text
+1 validation error for Settings
+  Value error, ENV=production refuses development values:
+- KAFKA_SASL_PASSWORD: empty under a SASL security protocol
+- KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT with the PLAIN mechanism sends the password unencrypted; use SASL_SSL [type=value_error]
+```
+
+!!! tip "A FastStream option the mixin does not model"
+    `MessageBroker.kafka_from_settings(settings, acks="all", enable_idempotence=True)` forwards the rest to `KafkaBroker`. A key `kafka_kwargs()` also returns (`security`, `client_id`) wins over the settings.
+
 ## Queue topology — `QueueSpec`
 
 A channel as a string covers most cases. What it does **not** express is exactly what decides whether the queue survives a restart, where a rejected message goes, and how long it lives. On RabbitMQ that lives in the queue declaration, not in the name.
