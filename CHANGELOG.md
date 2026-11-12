@@ -33,7 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Aggregate` + `AggregateRepository` (replay após snapshot,
     `snapshot_every=`), `ProjectionRunner` + `SqlCheckpointStore` /
     `InMemoryCheckpointStore`.
-
 - Kafka pela fachada tipada do `MessageBroker`, no decorator e no caminho de
   classe. `publish(..., key=...)` e `Publisher.publish(..., key=...)` escolhem
   a partição (`str` vira UTF-8; o `aiokafka` recusa `str` com `TypeError`);
