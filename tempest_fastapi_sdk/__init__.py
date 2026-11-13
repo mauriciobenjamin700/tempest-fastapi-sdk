@@ -1484,6 +1484,12 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.exceptions.eventsourcing import (
         WrongExpectedVersionException as WrongExpectedVersionException,
     )
+    from tempest_fastapi_sdk.exceptions.payment import (
+        PixRefundExceedsBalanceException as PixRefundExceedsBalanceException,
+    )
+    from tempest_fastapi_sdk.exceptions.payment import (
+        PixRefundReferenceConflictException as PixRefundReferenceConflictException,
+    )
     from tempest_fastapi_sdk.exceptions.wallet import (
         InsufficientBalanceException as InsufficientBalanceException,
     )
@@ -2867,6 +2873,8 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "not_found_exception": "tempest_fastapi_sdk.exceptions",
     "parse_accept_language": "tempest_fastapi_sdk.exceptions",
     "WrongExpectedVersionException": "tempest_fastapi_sdk.exceptions.eventsourcing",
+    "PixRefundExceedsBalanceException": "tempest_fastapi_sdk.exceptions.payment",
+    "PixRefundReferenceConflictException": ("tempest_fastapi_sdk.exceptions.payment"),
     "InsufficientBalanceException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutRejectedException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutUncertainException": "tempest_fastapi_sdk.exceptions.wallet",
@@ -3650,6 +3658,8 @@ __all__: list[str] = [
     "PhoneNumberBR",
     "PixKeyField",
     "PixKeyType",
+    "PixRefundExceedsBalanceException",
+    "PixRefundReferenceConflictException",
     "PlanRateLimitPolicy",
     "PortField",
     "PositiveFloatField",

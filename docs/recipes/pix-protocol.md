@@ -241,6 +241,13 @@ async def cobrar_e_acompanhar(provider: PixProvider) -> PixCharge:
     [OpenPix »](openpix.md) mostra os dois lados montados — webhook para
     reagir, conferência para reconciliar.
 
+!!! tip "E o estorno?"
+    Estornar não está no `PixProvider`: está no `PixRefundProvider`, que o
+    estende com `refund_pix_charge(..., refund_reference=)` e
+    `get_refunded_cents`. Os três provedores do SDK (OpenPix, Mercado Pago e
+    `FakePixProvider`) implementam, e o retry com a mesma referência não
+    estorna duas vezes. Veja [Estorno de Pix (idempotente)](pix-refund.md).
+
 ## Trocando de provedor
 
 O adapter é a única linha que muda. Concentre a escolha num lugar e devolva

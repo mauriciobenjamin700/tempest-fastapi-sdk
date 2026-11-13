@@ -237,6 +237,11 @@ O que os adapters decidem por você, cada item medido no sandbox:
   `refund_pix_charge` acham o segundo sozinhos. Sem valor, reembolsam o que
   sobrou. No cartão, `refunded_cents` soma os reembolsos processados; no Pix,
   eles ficam em `raw["transactions"]["refunds"]`.
+- **Estorno de Pix idempotente.** Com `refund_reference=`,
+  `refund_pix_charge` deriva a `X-Idempotency-Key` da referência e devolve um
+  `PixRefund`; repetir com a mesma referência não estorna de novo. Sem ela, a
+  forma antiga continua: um `PixCharge` e uma chave nova por chamada. Veja
+  [Estorno de Pix (idempotente)](pix-refund.md).
 - **Pix só se estorna depois de pago.** Medido em 2026-10-10: o parcial
   deixa a cobrança `PAID` (o `status_detail` `partially_refunded` fica em `raw`), o resto a deixa
   `REFUNDED`. Num Pix ainda não pago, a resposta é

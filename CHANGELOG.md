@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Estorno de Pix no protocolo (#755): `PixRefundProvider` estende
+  `PixProvider` com `refund_pix_charge(charge_id, amount_cents=None, *,
+  refund_reference)` → `PixRefund` e `get_refunded_cents(charge_id)`. A mesma
+  `refund_reference` não estorna duas vezes — nem no retry depois de uma
+  resposta perdida —, a mesma referência com outro valor levanta
+  `PixRefundReferenceConflictException` e um valor acima do que sobrou,
+  `PixRefundExceedsBalanceException` (as duas `409`). Implementado no
+  `MercadoPagoPixProvider` (`X-Idempotency-Key` derivada da referência), no
+  `OpenPixPixProvider` (referência como `correlationID` do estorno, conferida
+  na lista de estornos antes e depois do `POST`) e no `FakePixProvider`
+  (`fail_after_next_refund` estorna e depois falha; `refunds` lista o que foi
+  aplicado). `PixProviderRouter.refund_pix_charge` e `get_refunded_cents`
+  roteiam pelo provedor guardado. Receita nova: "Estorno de Pix
+  (idempotente)".
+
+### Changed
+
+- `MercadoPagoPixProvider.refund_pix_charge` sem `refund_reference` continua
+  como antes (devolve `PixCharge`, chave nova por chamada); com ela, devolve
+  `PixRefund`. Os dois retornos estão tipados por `@overload`. Um
+  `amount_cents` zero ou negativo agora levanta `ValueError` antes da
+  requisição, nas duas formas.
+
 ## [0.357.0] — 2026-11-13
 
 ### Added

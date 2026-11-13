@@ -179,6 +179,7 @@ plugins:
               - PDFs: recipes/pdf.md
               - Permission guards (@requires): recipes/permission-guards.md
               - "Pix protocol (one contract, many providers)": recipes/pix-protocol.md
+              - "Pix refunds (idempotent)": recipes/pix-refund.md
               - "Push (web + mobile)": recipes/push.md
               - Query plans (EXPLAIN): recipes/query-plans.md
               - Queue & Tasks: recipes/queue-tasks.md
@@ -459,6 +460,7 @@ nav:
       - "Erros do app (relatados pelo cliente)": recipes/app-errors.md
       - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
       - "Escolhendo o modelo": recipes/models.md
+      - "Estorno de Pix (idempotente)": recipes/pix-refund.md
       - "Event sourcing (event store)": recipes/event-sourcing.md
       - "Exemplos completos":
           - "Exemplo integrado (admin completo)": admin-showcase.md

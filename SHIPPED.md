@@ -1594,6 +1594,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Mastercard de teste antigo. Evidência §9.6. Testes:
   `test_mercado_pago_adapter.py`, `test_contract.py`,
   `tests/testing/test_fakes_*.py`.
+- **Estorno de Pix no protocolo, idempotente (Unreleased)** — issue #755.
+  `PixRefundProvider` (estende `PixProvider`: `refund_pix_charge(charge_id,
+  amount_cents=None, *, refund_reference)` → `PixRefund` e
+  `get_refunded_cents`), `PixRefundStatusEnum`,
+  `PixRefundExceedsBalanceException` / `PixRefundReferenceConflictException`
+  (409). Mercado Pago: `X-Idempotency-Key` = UUID5(order id, referência), saldo
+  conferido antes mas o pedido sai mesmo assim para o retry receber o replay;
+  forma antiga sem referência mantida por `@overload` (devolve `PixCharge`).
+  OpenPix: `correlationID` do estorno = referência, lista antes do `POST` e
+  relista depois de falha. `FakePixProvider`: estornos por cobrança,
+  `fail_after_next_refund`, `refunds`. `PixProviderRouter.refund_pix_charge`
+  / `get_refunded_cents`. Receita `pix-refund.md`. Testes:
+  `test_refund_contract.py` (os três provedores contra o mesmo contrato,
+  adapters sobre simuladores), `test_contract.py`, `test_routing.py`,
+  `test_mercado_pago_adapter.py`, `tests/testing/test_fakes_*.py`.
 - **Busca de chargebacks do Mercado Pago tipada (v0.312.0)** — issue #226.
   `search_chargebacks(payment_id=...)` → `ChargebackSearchResponse` /
   `ChargebackSearchPaging`, do `200` observado com a vendedora de teste; sem

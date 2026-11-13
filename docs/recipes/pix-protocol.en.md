@@ -242,6 +242,14 @@ async def charge_and_follow(provider: PixProvider) -> PixCharge:
     shows both sides wired up — the webhook to react, the read-back to
     reconcile.
 
+!!! tip "What about refunds?"
+    Refunding is not on `PixProvider`: it is on `PixRefundProvider`, which
+    extends it with `refund_pix_charge(..., refund_reference=)` and
+    `get_refunded_cents`. All three providers in the SDK (OpenPix, Mercado
+    Pago and `FakePixProvider`) implement it, and a retry with the same
+    reference does not refund twice. See
+    [Pix refunds (idempotent)](pix-refund.md).
+
 ## Switching provider
 
 The adapter is the only line that changes. Keep the choice in one place and

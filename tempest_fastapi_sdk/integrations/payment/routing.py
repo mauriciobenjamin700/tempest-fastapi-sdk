@@ -24,11 +24,14 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 from tempest_fastapi_sdk.integrations.payment.base import (
     PixCharge,
     PixChargeRequest,
     PixProvider,
+    PixRefund,
+    PixRefundProvider,
 )
 
 BUCKETS: int = 100
@@ -200,6 +203,83 @@ class PixProviderRouter:
             PixCharge: The charge after cancellation.
         """
         return await self.provider_for(provider_name).cancel_pix_charge(charge_id)
+
+    def refund_provider_for(self, provider_name: str) -> PixRefundProvider:
+        """Return the provider a stored charge belongs to, as a refunder.
+
+        Args:
+            provider_name (str): The stored :attr:`PixCharge.provider`.
+
+        Returns:
+            PixRefundProvider: That provider.
+
+        Raises:
+            KeyError: If no provider with that name is registered.
+            TypeError: If the provider has no ``refund_pix_charge`` or no
+                ``get_refunded_cents``. ``PixRefundProvider`` is not
+                ``runtime_checkable`` (see :class:`PixProvider`), so the
+                check is on the two names, at the call that needs them,
+                instead of an ``AttributeError`` halfway through a refund.
+        """
+        provider = self.provider_for(provider_name)
+        missing = [
+            name
+            for name in ("refund_pix_charge", "get_refunded_cents")
+            if not callable(getattr(provider, name, None))
+        ]
+        if missing:
+            raise TypeError(
+                f"provider {provider_name!r} cannot refund: it has no "
+                f"{', '.join(missing)} (PixRefundProvider)"
+            )
+        return cast(PixRefundProvider, provider)
+
+    async def refund_pix_charge(
+        self,
+        provider_name: str,
+        charge_id: str,
+        amount_cents: int | None = None,
+        *,
+        refund_reference: str,
+    ) -> PixRefund:
+        """Refund a stored charge at the provider that created it.
+
+        Args:
+            provider_name (str): The stored :attr:`PixCharge.provider`.
+            charge_id (str): The stored :attr:`PixCharge.provider_charge_id`.
+            amount_cents (int | None): How much to refund; ``None`` refunds
+                what is left.
+            refund_reference (str): The refund's idempotency key.
+
+        Returns:
+            PixRefund: The refund, or the existing one for that reference.
+
+        Raises:
+            KeyError: If no provider with that name is registered.
+            TypeError: If that provider cannot refund.
+        """
+        return await self.refund_provider_for(provider_name).refund_pix_charge(
+            charge_id, amount_cents, refund_reference=refund_reference
+        )
+
+    async def get_refunded_cents(self, provider_name: str, charge_id: str) -> int:
+        """Answer how much of a stored charge has been refunded.
+
+        Args:
+            provider_name (str): The stored :attr:`PixCharge.provider`.
+            charge_id (str): The stored :attr:`PixCharge.provider_charge_id`.
+
+        Returns:
+            int: The total, as :meth:`PixRefundProvider.get_refunded_cents`
+            counts it.
+
+        Raises:
+            KeyError: If no provider with that name is registered.
+            TypeError: If that provider cannot refund.
+        """
+        return await self.refund_provider_for(provider_name).get_refunded_cents(
+            charge_id
+        )
 
 
 __all__: list[str] = ["BUCKETS", "PixProviderRouter"]
