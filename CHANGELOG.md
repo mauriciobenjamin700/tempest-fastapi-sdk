@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.356.0] — 2026-11-13
+## [0.357.0] — 2026-11-13
 
 ### Added
 
@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   campo. Para enum guardado como texto e vocabulário aberto, como o `kind` da
   carteira (`choices={"kind": WalletEntryKindEnum}`). Coluna
   `Mapped[MeuEnum]` já era select. `ChoiceSource` exportado.
+
+### Security
+
+- Lock: `opentelemetry-api` e o resto da família OpenTelemetry (extra
+  `[otel]`) sobem de 1.45.1 para 1.45.2, a versão que corrige o
+  CVE-2026-126360. O piso declarado (`>=1.44.0`) não muda; quem instala
+  resolve a versão corrigida.
 
 ## [0.356.0] — 2026-11-12
 
