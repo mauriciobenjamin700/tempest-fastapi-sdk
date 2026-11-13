@@ -216,7 +216,52 @@ Each line shows an error speech-to-text makes and the search absorbs:
     fortaleza" is not the town of Feliz (RS). With a restricted list, that
     guard does not apply.
 
-Quality is fixed by a table of 61 real phrases
+### Leaving now
+
+In voice search, "quero ir agora" ("I want to go now") is as common as
+"hoje". `agora`, `agora mesmo`, `já`, `imediatamente`, `o quanto antes`,
+`o mais rápido possível`, `neste momento` and `nesse momento` become
+`departure_date=today` and set `departure_now`:
+
+```python
+from datetime import date
+
+from tempest_fastapi_sdk.geo import parse_trip_intent
+
+today = date(2026, 11, 13)
+for text in [
+    "quero ir de picos para teresina agora",
+    "picos teresina agora mesmo",
+    "de picos pra teresina o quanto antes",
+    "agora quero ver de picos pra teresina amanhã",
+]:
+    intent = parse_trip_intent(text, today)
+    print(text, "->", intent.departure_date, intent.departure_now)
+```
+
+```text
+quero ir de picos para teresina agora -> 2026-11-13 True
+picos teresina agora mesmo -> 2026-11-13 True
+de picos pra teresina o quanto antes -> 2026-11-13 True
+agora quero ver de picos pra teresina amanhã -> 2026-11-14 False
+```
+
+- **Whole words**: "agorafobia" and "Jaqueira" (the town in PE) do not count,
+  regardless of case and accents ("JÁ!" counts).
+- **A date said wins**: with "amanhã", "sexta" or "20/10" in the phrase, the
+  date is the one said and `departure_now` is `False`. A date that does not
+  exist ("dia 31 de fevereiro") wins too: the date stays `None` for the app to
+  ask.
+- **No prepositions**: "picos teresina agora mesmo" falls into the
+  cities-in-order rule (first origin, second destination), because "agora
+  mesmo" leaves the phrase first and only cities are left.
+
+!!! info "The parser has no clock"
+    `parse_trip_intent` receives `today: date`, not the time.
+    `departure_now` comes with no `period_start`: the caller applies "from
+    now on" with its own clock, showing only today's trips still to depart.
+
+Quality is fixed by a table of 65 real phrases
 (`tests/geo/test_trip_intent.py`) from BusCar's production trip search. A
 change that breaks a line is a search regression.
 
@@ -394,7 +439,9 @@ The index is built once per process and stays in memory.
   state confirming and breaking ties, nicknames, and everyday words filtered.
 - **`parse_trip_intent`**: origin, destination, date and period of a trip
   phrase, with transcribed speech (typos, vocalized "l", numerals as words)
-  and restricted to the cities you serve (`municipalities=`).
+  and restricted to the cities you serve (`municipalities=`). "Agora", "já"
+  and "o quanto antes" are today with `departure_now`; the time filter is
+  yours.
 - **`search_municipalities` / `municipality_by_ibge_code`**: lookup by name
   (typos included) and by code, with coordinate and capital.
 - Homonyms without a state come back tied. The decision is yours.

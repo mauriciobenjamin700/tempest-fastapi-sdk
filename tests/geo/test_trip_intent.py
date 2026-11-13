@@ -376,6 +376,34 @@ PHRASES: list[tuple[str, Cities, Cities, date | None, str | None]] = [
         date(2026, 10, 17),
         None,
     ),
+    (
+        "quero ir de picos para teresina agora",
+        (("PI", "Picos"),),
+        (("PI", "Teresina"),),
+        TODAY,
+        None,
+    ),
+    (
+        "de picos para teresina já",
+        (("PI", "Picos"),),
+        (("PI", "Teresina"),),
+        TODAY,
+        None,
+    ),
+    (
+        "quero ir agora para teresina saindo de picos",
+        (("PI", "Picos"),),
+        (("PI", "Teresina"),),
+        TODAY,
+        None,
+    ),
+    (
+        "picos teresina agora mesmo",
+        (("PI", "Picos"),),
+        (("PI", "Teresina"),),
+        TODAY,
+        None,
+    ),
 ]
 """Phrase, origin, destination, date and period expected."""
 
@@ -572,3 +600,92 @@ def test_phrase_full_of_markers_spends_a_bounded_fuzzy_budget() -> None:
 
     assert intent.origin is None
     assert intent.destination is None
+
+
+NOW_CASES: list[tuple[str, date | None, bool]] = [
+    ("quero ir de picos para teresina agora", TODAY, True),
+    ("de picos para teresina já", TODAY, True),
+    ("quero ir agora para teresina saindo de picos", TODAY, True),
+    ("picos teresina agora mesmo", TODAY, True),
+    ("De Picos pra Teresina, JÁ!", TODAY, True),
+    ("de picos pra teresina AGORA.", TODAY, True),
+    ("de picos pra teresina ja", TODAY, True),
+    ("de picos pra teresina imediatamente", TODAY, True),
+    ("de picos pra teresina o quanto antes", TODAY, True),
+    ("de picos pra teresina quanto antes", TODAY, True),
+    ("de picos pra teresina o mais rápido possível", TODAY, True),
+    ("de picos pra teresina neste momento", TODAY, True),
+    ("nesse momento quero ir de picos pra teresina", TODAY, True),
+    ("de picos pra teresina hoje agora", TODAY, True),
+    ("agora quero ver de picos pra teresina amanhã", date(2026, 10, 15), False),
+    ("de picos pra teresina sexta, o quanto antes", date(2026, 10, 16), False),
+    ("já de picos pra teresina 20/10", date(2026, 10, 20), False),
+    ("de picos pra teresina hoje", TODAY, False),
+    ("de picos pra teresina", None, False),
+]
+"""Phrase, departure date and ``departure_now`` expected."""
+
+
+@pytest.mark.parametrize(("text", "departure", "now"), NOW_CASES)
+def test_leaving_now_is_today_unless_a_date_is_said(
+    text: str, departure: date | None, now: bool
+) -> None:
+    """``"agora"`` and friends are today; an explicit date wins over them."""
+    intent = parse_trip_intent(text, TODAY)
+
+    assert cities(intent.origin) == (("PI", "Picos"),)
+    assert cities(intent.destination) == (("PI", "Teresina"),)
+    assert intent.departure_date == departure
+    assert intent.departure_now is now
+
+
+def test_leaving_now_sets_no_time_window() -> None:
+    """The parser has no clock: "now" sets no period, the caller filters."""
+    intent = parse_trip_intent("de picos pra teresina agora", TODAY)
+
+    assert intent.period is None
+    assert (intent.period_start, intent.period_end) == (None, None)
+
+
+def test_leaving_now_keeps_a_period_said_with_it() -> None:
+    """``"agora à noite"`` keeps the evening window next to ``departure_now``."""
+    intent = parse_trip_intent("de picos pra teresina agora à noite", TODAY)
+
+    assert intent.departure_now is True
+    assert intent.period == "noite"
+
+
+def test_impossible_date_wins_over_leaving_now() -> None:
+    """A date said that does not exist is asked about, not replaced by today."""
+    intent = parse_trip_intent("agora de picos pra teresina dia 31 de fevereiro", TODAY)
+
+    assert intent.departure_date is None
+    assert intent.departure_now is False
+    assert intent.unresolved_date == "dia 31 de fevereiro"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "de picos pra teresina agorafobia",
+        "de picos pra teresina jaqueira",
+        "de picos pra teresina momento",
+        "de picos pra teresina antes",
+        "de picos pra teresina mesmo",
+    ],
+)
+def test_words_near_now_do_not_count(text: str) -> None:
+    """Only whole "leave now" phrases count; a word containing one does not."""
+    intent = parse_trip_intent(text, TODAY)
+
+    assert intent.departure_date is None
+    assert intent.departure_now is False
+
+
+def test_jaqueira_stays_a_city() -> None:
+    """Jaqueira (PE) starts with ``"ja"`` and is still read as the city."""
+    intent = parse_trip_intent("de jaqueira pra recife", TODAY)
+
+    assert cities(intent.origin) == (("PE", "Jaqueira"),)
+    assert cities(intent.destination) == (("PE", "Recife"),)
+    assert intent.departure_now is False
