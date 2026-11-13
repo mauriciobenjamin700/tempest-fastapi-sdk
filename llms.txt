@@ -100,6 +100,7 @@
 - [PDFs](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pdf/)
 - [Guards de permissão (`@requires`)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/permission-guards/)
 - [Protocolo de Pix: um contrato, vários provedores](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-protocol/)
+- [Estorno de Pix (idempotente)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-refund/)
 - [Push (web + mobile num fluxo só)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/push/)
 - [Planos de query (EXPLAIN)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/query-plans/)
 - [Fila e Tarefas](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/)

@@ -16,7 +16,7 @@
         <link rel="prev" href="../permission-guards/">
       
       
-        <link rel="next" href="../push/">
+        <link rel="next" href="../pix-refund/">
       
       
         
@@ -973,6 +973,8 @@
       
         
           
+        
+      
         
       
         
@@ -3638,6 +3640,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pix refunds (idempotent)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../push/" class="md-nav__link">
         
   
@@ -5513,9 +5543,24 @@ lost (timeout, dropped connection) and you repeat <code>create_pix_charge</code>
 with the same <code>reference</code>, you get the charge that already exists, not
 a second one. On OpenPix that is <code>?return_existing=true</code>, which the
 adapter sends since v0.346.0 (Woovi's spec describes it as "make the
-endpoint idempotent"); on Mercado Pago, the <code>X-Idempotency-Key</code>. The SDK
-tests the request that leaves, not the provider's answer: a repeat
-against the sandbox has not been measured yet.</p>
+endpoint idempotent"); on Mercado Pago, an <code>X-Idempotency-Key</code> derived
+from the <code>reference</code> (a UUID5), the default since
+v0.358.0 — before it, each call carried a new key and a repeat opened a
+second order. <code>FakePixProvider</code> answers the existing charge too, so a
+test over the fake sees the same contract.</p>
+<p>How far that is measured: on Mercado Pago, the same key with the same
+body returned the same order in the sandbox (2026-10-10); on OpenPix, the
+SDK tests the request that leaves, and a repeat against the sandbox has
+not been measured yet.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Same <code>reference</code>, different charge: <code>409</code> on Mercado Pago</p>
+<p>The key collapses <strong>the same</strong> request. Repeating a <code>reference</code> with
+another amount, payer, description or expiry makes Mercado Pago answer
+<code>409 idempotency_key_already_used</code>, which the adapter raises as
+<code>httpx.HTTPStatusError</code> — it does not read the old order back, because
+that order is for an amount nobody asked for now. A new charge for the
+same purchase needs a new <code>reference</code>.</p>
 </div>
 <h3 id="what-comes-out-pixcharge">What comes out: <code>PixCharge</code><a class="headerlink" href="#what-comes-out-pixcharge" title="Permanent link">&para;</a></h3>
 <table>
@@ -5707,6 +5752,15 @@ service that only listens gets stuck when a delivery fails; one that only
 polls pays latency on every order. The <a href="../openpix/">OpenPix »</a> recipe
 shows both sides wired up — the webhook to react, the read-back to
 reconcile.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">What about refunds?</p>
+<p>Refunding is not on <code>PixProvider</code>: it is on <code>PixRefundProvider</code>, which
+extends it with <code>refund_pix_charge(..., refund_reference=)</code> and
+<code>get_refunded_cents</code>. All three providers in the SDK (OpenPix, Mercado
+Pago and <code>FakePixProvider</code>) implement it, and a retry with the same
+reference does not refund twice. See
+<a href="../pix-refund/">Pix refunds (idempotent)</a>.</p>
 </div>
 <h2 id="switching-provider">Switching provider<a class="headerlink" href="#switching-provider" title="Permanent link">&para;</a></h2>
 <p>The adapter is the only line that changes. Keep the choice in one place and
@@ -6906,13 +6960,13 @@ there, and not on the day of the first charge.</p>
         
         
           
-          <a href="../push/" class="md-footer__link md-footer__link--next" aria-label="Next: Push (web + mobile)">
+          <a href="../pix-refund/" class="md-footer__link md-footer__link--next" aria-label="Next: Pix refunds (idempotent)">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Push (web + mobile)
+                Pix refunds (idempotent)
               </div>
             </div>
             <div class="md-footer__button md-icon">

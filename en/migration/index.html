@@ -1195,6 +1195,8 @@
       
         
       
+        
+      
     
     
     
@@ -3300,6 +3302,34 @@
     
   
     Pix protocol (one contract, many providers)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pix refunds (idempotent)
   
 
     
@@ -8962,8 +8992,9 @@ the generated <code>Order</code> or the <code>PixCharge</code> / <code>CardCharg
    you stored the payment id as an integer, the column becomes text.</li>
 <li><strong>The webhook points at another resource.</strong> The notification should now
    name the order — that is what the provider's document describes
-   (<code>order.created</code> / <code>order.updated</code> actions); a live Orders delivery has
-   not been observed here yet. Replace manual reads of <code>data.id</code> with
+   (<code>order.created</code> / <code>order.updated</code> actions); the live delivery observed on
+   2026-11-13 carried <code>type=order</code>, and <code>event.event</code> is <code>ORDER</code> since
+   v0.358.0. Replace manual reads of <code>data.id</code> with
    <code>make_mercado_pago_webhook_delivery_dependency</code>, and tick the Order event
    in the application's webhook settings.</li>
 <li><strong>The credential must come from an "Orders API" application.</strong> Measured:

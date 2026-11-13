@@ -1197,6 +1197,8 @@
       
         
       
+        
+      
     
     
     
@@ -3326,6 +3328,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pix refunds (idempotent)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../push/" class="md-nav__link">
         
   
@@ -4227,6 +4257,17 @@
     <span class="md-ellipsis">
       
         Private bucket behind HTTPS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-key-per-bucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One key per bucket
       
     </span>
   </a>
@@ -6530,6 +6571,99 @@ And do not expose the admin API: block the server's admin path
 (<code>/minio/</code> on MinIO and compatibles) and never publish the console
 port.</p>
 </div>
+<h2 id="one-key-per-bucket">One key per bucket<a class="headerlink" href="#one-key-per-bucket" title="Permanent link">&para;</a></h2>
+<p>Some S3-compatible stores bind each access key to <strong>one</strong> bucket: the key
+made for the public images can neither read nor write the private
+documents. With a single credential, every upload, presigned URL, listing
+and cleanup on the second bucket answers <code>AccessDenied</code>.</p>
+<p><code>STORAGE_BUCKET_CREDENTIALS</code> gives each bucket its own key. It is a JSON of
+<code>bucket → {"access_key", "secret_key"}</code>; buckets missing from it keep
+<code>STORAGE_ACCESS_KEY</code> / <code>STORAGE_SECRET_KEY</code>.</p>
+<p><code>.env</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="nv">STORAGE_ENDPOINT</span><span class="o">=</span>storage.example.com
+</span><span id="__span-34-2"><a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="nv">STORAGE_SECURE</span><span class="o">=</span><span class="nb">true</span>
+</span><span id="__span-34-3"><a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="nv">STORAGE_DEFAULT_BUCKET</span><span class="o">=</span>images
+</span><span id="__span-34-4"><a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="nv">STORAGE_ACCESS_KEY</span><span class="o">=</span>images-key
+</span><span id="__span-34-5"><a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="nv">STORAGE_SECRET_KEY</span><span class="o">=</span>images-secret
+</span><span id="__span-34-6"><a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a><span class="nv">STORAGE_BUCKET_CREDENTIALS</span><span class="o">=</span><span class="s1">'{"documents": {"access_key": "documents-key", "secret_key": "documents-secret"}}'</span>
+</span></code></pre></div>
+<p>With it set, <code>build_storage_client()</code> returns a <code>BucketRoutedMinIOClient</code> —
+a subclass of <code>AsyncMinIOClient</code>, so the service's annotation and calls do
+not change. Every operation that takes <code>bucket</code> is signed with that
+bucket's key, presigned URLs included:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-35-2"><a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_qs</span><span class="p">,</span> <span class="n">urlsplit</span>
+</span><span id="__span-35-3"><a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>
+</span><span id="__span-35-4"><a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-35-5"><a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>    <span class="n">BaseAppSettings</span><span class="p">,</span>
+</span><span id="__span-35-6"><a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>    <span class="n">BucketRoutedMinIOClient</span><span class="p">,</span>
+</span><span id="__span-35-7"><a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a>    <span class="n">StorageSettings</span><span class="p">,</span>
+</span><span id="__span-35-8"><a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a><span class="p">)</span>
+</span><span id="__span-35-9"><a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a>
+</span><span id="__span-35-10"><a id="__codelineno-35-10" name="__codelineno-35-10" href="#__codelineno-35-10"></a>
+</span><span id="__span-35-11"><a id="__codelineno-35-11" name="__codelineno-35-11" href="#__codelineno-35-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span><span class="n">StorageSettings</span><span class="p">,</span> <span class="n">BaseAppSettings</span><span class="p">):</span>
+</span><span id="__span-35-12"><a id="__codelineno-35-12" name="__codelineno-35-12" href="#__codelineno-35-12"></a><span class="w">    </span><span class="sd">"""Two buckets, one key each."""</span>
+</span><span id="__span-35-13"><a id="__codelineno-35-13" name="__codelineno-35-13" href="#__codelineno-35-13"></a>
+</span><span id="__span-35-14"><a id="__codelineno-35-14" name="__codelineno-35-14" href="#__codelineno-35-14"></a>
+</span><span id="__span-35-15"><a id="__codelineno-35-15" name="__codelineno-35-15" href="#__codelineno-35-15"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-35-16"><a id="__codelineno-35-16" name="__codelineno-35-16" href="#__codelineno-35-16"></a><span class="w">    </span><span class="sd">"""Sign a link in each bucket and show which key signed it."""</span>
+</span><span id="__span-35-17"><a id="__codelineno-35-17" name="__codelineno-35-17" href="#__codelineno-35-17"></a>    <span class="n">settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
+</span><span id="__span-35-18"><a id="__codelineno-35-18" name="__codelineno-35-18" href="#__codelineno-35-18"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">STORAGE_BUCKET_CREDENTIALS</span><span class="p">)</span>
+</span><span id="__span-35-19"><a id="__codelineno-35-19" name="__codelineno-35-19" href="#__codelineno-35-19"></a>    <span class="n">storage</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">build_storage_client</span><span class="p">()</span>
+</span><span id="__span-35-20"><a id="__codelineno-35-20" name="__codelineno-35-20" href="#__codelineno-35-20"></a>    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">storage</span><span class="p">,</span> <span class="n">BucketRoutedMinIOClient</span><span class="p">)</span>
+</span><span id="__span-35-21"><a id="__codelineno-35-21" name="__codelineno-35-21" href="#__codelineno-35-21"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">storage</span><span class="o">.</span><span class="n">routed_buckets</span><span class="p">))</span>
+</span><span id="__span-35-22"><a id="__codelineno-35-22" name="__codelineno-35-22" href="#__codelineno-35-22"></a>    <span class="k">for</span> <span class="n">bucket</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"images"</span><span class="p">,</span> <span class="s2">"documents"</span><span class="p">):</span>
+</span><span id="__span-35-23"><a id="__codelineno-35-23" name="__codelineno-35-23" href="#__codelineno-35-23"></a>        <span class="n">url</span> <span class="o">=</span> <span class="k">await</span> <span class="n">storage</span><span class="o">.</span><span class="n">presigned_get_url</span><span class="p">(</span><span class="s2">"contract.pdf"</span><span class="p">,</span> <span class="n">bucket</span><span class="o">=</span><span class="n">bucket</span><span class="p">)</span>
+</span><span id="__span-35-24"><a id="__codelineno-35-24" name="__codelineno-35-24" href="#__codelineno-35-24"></a>        <span class="n">credential</span> <span class="o">=</span> <span class="n">parse_qs</span><span class="p">(</span><span class="n">urlsplit</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="o">.</span><span class="n">query</span><span class="p">)[</span><span class="s2">"X-Amz-Credential"</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+</span><span id="__span-35-25"><a id="__codelineno-35-25" name="__codelineno-35-25" href="#__codelineno-35-25"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">bucket</span><span class="p">,</span> <span class="s2">"-&gt;"</span><span class="p">,</span> <span class="n">credential</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+</span><span id="__span-35-26"><a id="__codelineno-35-26" name="__codelineno-35-26" href="#__codelineno-35-26"></a>
+</span><span id="__span-35-27"><a id="__codelineno-35-27" name="__codelineno-35-27" href="#__codelineno-35-27"></a>
+</span><span id="__span-35-28"><a id="__codelineno-35-28" name="__codelineno-35-28" href="#__codelineno-35-28"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p>Signing is local (<code>minio</code> does not ask the server anything to sign once
+<code>STORAGE_REGION</code> is set), so this runs with no bucket up:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>{'documents': StorageBucketCredential(access_key='documents-key', secret_key=SecretStr('**********'))}
+</span><span id="__span-36-2"><a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>['documents']
+</span><span id="__span-36-3"><a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>images -&gt; images-key
+</span><span id="__span-36-4"><a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>documents -&gt; documents-key
+</span></code></pre></div>
+<p>The secret is a <code>SecretStr</code>: masked in <code>repr</code>, <code>str</code> and <code>model_dump()</code>.</p>
+<p>The routing rules:</p>
+<ul>
+<li>A <strong>listed bucket</strong> uses its key; a <strong>bucket not listed</strong> uses the
+  primary one. A call without <code>bucket</code> goes to <code>STORAGE_DEFAULT_BUCKET</code>,
+  routed like any other.</li>
+<li><strong><code>list_buckets()</code> and the <code>client</code> attribute</strong> name no bucket and stay
+  on the primary credential.</li>
+<li><strong><code>copy_object</code> with both buckets on the same credential</strong> is the
+  server's own copy, as before. <strong>On different credentials</strong> no key can
+  read the source and write the destination at once, so the object is
+  downloaded with the source key into a temporary file (deleted at the end)
+  and uploaded with the destination key, carrying <code>Content-Type</code> and user
+  metadata. The bytes cross the app on that path, and other stored headers
+  (<code>Cache-Control</code>, <code>Content-Disposition</code>) are not copied.</li>
+<li><strong><code>tempest storage</code></strong> builds the same client, so
+  <code>tempest storage ls --bucket documents</code> signs with the documents key.</li>
+</ul>
+<p>The boot refuses a half credential — a key without a secret, a secret
+without a key, an empty value, or a misnamed field (<code>"secret"</code> instead of
+<code>"secret_key"</code>) — and the error does not echo the value:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-37-1"><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+</span><span id="__span-37-2"><a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>STORAGE_BUCKET_CREDENTIALS.documents.secret_key
+</span><span id="__span-37-3"><a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>  Field required [type=missing]
+</span></code></pre></div>
+<p>Under <code>ENV=production</code> the guard also refuses a bucket whose secret is
+still the local MinIO's <code>minioadmin</code>, and a non-empty
+<code>STORAGE_BUCKET_CREDENTIALS</code> with <code>STORAGE_BACKEND=local</code>, which never
+reads it.</p>
+<div class="admonition tip">
+<p class="admonition-title">Building the client by hand</p>
+<p><code>storage_kwargs()</code> does not change: <code>AsyncMinIOClient(**settings.storage_kwargs())</code>
+keeps a single credential. For routing, use
+<code>settings.build_storage_client()</code> or pass
+<code>bucket_credentials=settings.STORAGE_BUCKET_CREDENTIALS</code> to
+<code>BucketRoutedMinIOClient</code>.</p>
+</div>
 <h2 id="storage-switched-off-storage_enabledfalse">Storage switched off (<code>STORAGE_ENABLED=false</code>)<a class="headerlink" href="#storage-switched-off-storage_enabledfalse" title="Permanent link">&para;</a></h2>
 <p>Going to production before the bucket exists? <code>STORAGE_ENABLED=false</code>
 makes the production guard skip the <code>STORAGE_*</code> rules, and the same
@@ -6562,6 +6696,9 @@ while the integration is off. The complete example is in
   <code>make_signed_path_dependency</code>: the signature covers path, <code>expires</code> and
   <code>purpose</code>, and a rejection is <code>403</code> (<code>SIGNED_URL_INVALID</code> or
   <code>SIGNED_URL_EXPIRED</code>).</li>
+<li>A store that binds each key to one bucket: <code>STORAGE_BUCKET_CREDENTIALS</code>
+  makes <code>build_storage_client()</code> return the <code>BucketRoutedMinIOClient</code>, which
+  signs each call with its bucket's key and falls back on the primary one.</li>
 <li>Anything outside the facade is not blocked: call <code>storage.client.&lt;method&gt;</code> and
   use <code>minio-py</code> directly, instead of waiting for the facade to grow.</li>
 <li>To switch between local disk and MinIO by configuration, the pluggable upload

@@ -1197,6 +1197,8 @@
       
         
       
+        
+      
     
     
     
@@ -3306,6 +3308,34 @@
     
   
     Pix protocol (one contract, many providers)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pix refunds (idempotent)
   
 
     
@@ -5702,6 +5732,10 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="pix-protocol/">Pix protocol (one contract, many providers) »</a></strong></td>
 <td><code>PixProvider</code> (Protocol: <code>create</code> / <code>get</code> / <code>cancel</code> / <code>parse_webhook</code>), <code>PixCharge</code> / <code>PixChargeRequest</code> / <code>PixPayer</code> field by field, canonical <code>PaymentStatusEnum</code> beside the raw <code>provider_status</code>, the six <code>PixEventTypeEnum</code>s, <code>OpenPixPixProvider</code> and <code>MercadoPagoPixProvider</code>, <code>PixProviderRouter</code> to migrate provider by slices of orders, <code>confirm_pix_payment</code> + <code>claim_once</code> to release an order only after reading the charge back, and only once — plus how to write your own adapter, with an in-memory fake for testing without a network</td>
+</tr>
+<tr>
+<td><strong><a href="pix-refund/">Pix refunds (idempotent) »</a></strong></td>
+<td><code>PixRefundProvider</code> (<code>refund_pix_charge(..., refund_reference=)</code> + <code>get_refunded_cents</code>), <code>PixRefund</code>, a retry that is safe after a timeout with no lease of your own, partial refunds, <code>PixRefundExceedsBalanceException</code> / <code>PixRefundReferenceConflictException</code>, <code>PixProviderRouter.refund_pix_charge</code>, how idempotency is guaranteed at Mercado Pago, at OpenPix and in <code>FakePixProvider</code></td>
 </tr>
 <tr>
 <td><strong><a href="push/">Push (web + mobile) »</a></strong></td>

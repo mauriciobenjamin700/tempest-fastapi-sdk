@@ -1750,6 +1750,8 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -1992,6 +1994,9 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.integrations.payment.base`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -2459,6 +2464,8 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.storage`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -4125,7 +4132,8 @@ Três diferenças que pedem ajuste além do nome:
    Se você guardava o id do pagamento como inteiro, a coluna vira texto.
 2. **O webhook muda de recurso.** A notificação deve passar a apontar para a
    order — é o que o documento do provedor descreve (ações `order.created` /
-   `order.updated`); uma entrega real de Orders ainda não foi observada aqui.
+   `order.updated`); a entrega real observada em 2026-11-13 trazia
+   `type=order`, e `event.event` é `ORDER` desde a v0.358.0.
    Troque a leitura manual de `data.id` por
    `make_mercado_pago_webhook_delivery_dependency`, e marque o evento de
    Order na configuração de webhooks da aplicação.
@@ -6519,7 +6527,102 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.358.0] — 2026-11-13
+
+### Added
+
+- `prompt` e `temperature` na transcrição (#758). `OpenAICompatSpeech.transcribe`
+  manda os dois como campos do form do `POST /audio/transcriptions`, só quando
+  informados; `SpeechToText.transcribe` repassa ao faster-whisper como
+  `initial_prompt` e `temperature`, e ganha também `hotwords` (presente desde o
+  piso `faster-whisper>=1.2.1`, no `WhisperModel` e no
+  `BatchedInferencePipeline`). O protocolo `SpeechTranscriber` passa a ter
+  `prompt` e `temperature`; o `OllamaSpeech` aceita os dois só como `None` e
+  recusa outro valor com `ValidationException` (`details={"field": ...}`), como
+  já faz com `language`, porque não foi medido se o daemon os respeita. O
+  `/transcribe` do `make_genai_router` aceita `prompt` como campo do form,
+  limitado por `max_prompt_chars`, e só o repassa quando presente, então um
+  backend escrito antes do parâmetro continua servindo pedidos sem ele (e
+  recusa com `422` o pedido que traz `prompt`, em vez de um `500`);
+  `temperature` não é exposto na rota. Receita em `recipes/genai.md` ("Dar
+  vocabulário ao Whisper"): o faster-whisper 1.2.1 guarda os **últimos** 223
+  tokens do prompt (medido no `get_prompt` dele) e os **primeiros** 223 de
+  `hotwords`; a OpenAI documenta 224 tokens para o `whisper-1`.
+- Uma chave por bucket no storage S3 (#756): `STORAGE_BUCKET_CREDENTIALS`
+  (JSON `{"bucket": {"access_key": ..., "secret_key": ...}}`) dá a cada
+  bucket a sua credencial, para storage que amarra a chave a um bucket só.
+  Preenchido, `build_storage_client()` devolve o `BucketRoutedMinIOClient`,
+  subclasse de `AsyncMinIOClient` que assina cada operação — URL pré-assinada
+  inclusive — com a chave do bucket dela e cai na `STORAGE_ACCESS_KEY` para
+  os outros; o código do serviço não muda. `copy_object` entre credenciais
+  diferentes baixa com a chave da origem e envia com a do destino. O segredo
+  é `SecretStr` (`StorageBucketCredential`), credencial pela metade recusa o
+  boot sem ecoar o valor, e `ENV=production` recusa o segredo `minioadmin`
+  num bucket e o campo preenchido com `STORAGE_BACKEND=local`. O
+  `tempest storage` monta o mesmo cliente. Receita: "Uma chave por bucket"
+  em `recipes/storage`.
+- Estorno de Pix no protocolo (#755): `PixRefundProvider` estende
+  `PixProvider` com `refund_pix_charge(charge_id, amount_cents=None, *,
+  refund_reference)` → `PixRefund` e `get_refunded_cents(charge_id)`. A mesma
+  `refund_reference` não estorna duas vezes — nem no retry depois de uma
+  resposta perdida —, a mesma referência com outro valor levanta
+  `PixRefundReferenceConflictException` e um valor acima do que sobrou,
+  `PixRefundExceedsBalanceException` (as duas `409`). Implementado no
+  `MercadoPagoPixProvider` (`X-Idempotency-Key` derivada da referência), no
+  `OpenPixPixProvider` (referência como `correlationID` do estorno, conferida
+  na lista de estornos antes e depois do `POST`) e no `FakePixProvider`
+  (`fail_after_next_refund` estorna e depois falha; `refunds` lista o que foi
+  aplicado). `PixProviderRouter.refund_pix_charge` e `get_refunded_cents`
+  roteiam pelo provedor guardado. Receita nova: "Estorno de Pix
+  (idempotente)".
+
+### Changed
+
+- `MercadoPagoPixProvider.refund_pix_charge` sem `refund_reference` continua
+  como antes (devolve `PixCharge`, chave nova por chamada); com ela, devolve
+  `PixRefund`. Os dois retornos estão tipados por `@overload`. Um
+  `amount_cents` zero ou negativo agora levanta `ValueError` antes da
+  requisição, nas duas formas.
+
+### Fixed
+
+- Mercado Pago: toda entrega real de webhook da API de Orders voltava
+  `401 Invalid Mercado Pago webhook signature` (#753). O provedor assina o
+  `data.id` em minúsculas e os ids de order chegam em maiúsculas (`ORD01…`);
+  `build_manifest`, `sign_manifest` e `verify_signature` passam o id para
+  minúsculas. `MercadoPagoWebhookEvent.data_id` mantém o valor original, que
+  é o que o `GET /v1/orders/{id}` aceita. A regra diverge do `sdk-nodejs` do
+  provedor na versão atual, que deixou de passar para minúsculas em
+  2026-06-17; a evidência é a entrega real observada em 2026-11-13 (#498).
+- Mercado Pago: `MercadoPagoEventEnum.ORDER` (`"order"`); a entrega de
+  Orders virava `UNKNOWN` (#753).
+- Mercado Pago: `MercadoPagoPixProvider` sem `idempotency_key` usava um UUID4
+  novo por chamada, e repetir o `create_pix_charge` da mesma `reference`
+  abria uma segunda order, contra o contrato de `PixChargeRequest.reference`
+  (#754). O padrão agora deriva a chave da `reference`
+  (`reference_idempotency_key`, UUID5 sob `PIX_IDEMPOTENCY_NAMESPACE`). Mesma
+  `reference` com outro corpo volta `409 idempotency_key_already_used`, que
+  sai como `httpx.HTTPStatusError`. O `MercadoPagoCardProvider` continua com
+  uma chave por chamada.
+- `FakePixProvider.create_pix_charge` com uma `reference` já usada devolve a
+  cobrança existente em vez de abrir outra, como o contrato promete (#754).
+
+- `FakeObjectStorageClient.stream_object` aceita `chunk_size` (#757). O
+  `object_download_response` sempre passa esse argumento, então servir um
+  arquivo do fake por ele levantava `TypeError`; agora os chunks saem do tamanho pedido, como nos
+  clientes reais. `SubjectStorageClient.stream_object` ganha o mesmo
+  `chunk_size` — era dele que o fake copiava a assinatura — e passa a ter os
+  parâmetros do `DownloadableStore`. Quem implementa o protocolo à mão precisa
+  aceitar `chunk_size: int = 64 * 1024`.
+- `AsyncMinIOClient.stream_object` recusa `chunk_size < 1` com `ValueError`,
+  como o `LocalObjectStorageClient` e o fake já faziam. Antes, `0` respondia
+  `200` com `content-length` do objeto inteiro e corpo vazio, e `-1` lia o
+  objeto inteiro num chunk só.
+
+### Security
+
+- `uv.lock`: `dnspython` 2.9.0 → 2.9.2 (CVE-2026-128089). Só o lock
+  muda; nenhum piso declarado mudou.
 
 ## [0.357.0] — 2026-11-13
 
@@ -33317,6 +33420,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Erros do app (relatados pelo cliente) »](app-errors.md)** | `make_app_error_model` (FK de usuário nullable, `SET NULL`, `created_at` indexado), `AppErrorService` (trunca em vez de recusar), listagem admin opt-in, intervalo de datas semiaberto |
 | **[Erros no OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
 | **[Escolhendo o modelo »](models.md)** | `TextModelEnum` / `EmbeddingModelEnum` / `RerankerModelEnum` / `VisionModelEnum` / `ImageModelEnum` / `SpeechToTextModelEnum` / `TextToSpeechModelEnum` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
+| **[Estorno de Pix (idempotente) »](pix-refund.md)** | `PixRefundProvider` (`refund_pix_charge(..., refund_reference=)` + `get_refunded_cents`), `PixRefund`, retry seguro depois de timeout sem lease próprio, estorno parcial, `PixRefundExceedsBalanceException` / `PixRefundReferenceConflictException`, `PixProviderRouter.refund_pix_charge`, como a idempotência é garantida no Mercado Pago, no OpenPix e no `FakePixProvider` |
 | **[Event sourcing (event store) »](event-sourcing.md)** | `EventStore` (append com `expected_version`, leitura de stream para frente e para trás, `$all` por posição, assinatura, snapshots) sobre SQL (`SqlEventStore`, sem dependência nova, outbox na mesma transação) ou KurrentDB (`KurrentDBEventStore`, extra `[kurrentdb]`), `DomainEvent` + `EventRegistry`, `WrongExpectedVersionException`, `AggregateRepository`, `ProjectionRunner` |
 | **[Exportação e exclusão de titular (LGPD) »](subject-data.md)** | `SubjectGraph` (tabelas que o `DELETE` do titular alcança por cascata, derivadas da `MetaData`), `export` sem colunas secretas, `violations` + `assert_subject_graph_valid` como guard de CI, `SubjectObjectStorage` (prefixo por titular, upload direto com `presign_put` + `read` limitado, `delete_all` em lote) |
 | **[Fakes (sem provedor real) »](fakes.md)** | `FakePixProvider`, `FakeCardProvider`, `FakePayoutProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend`, `FakeObjectStorageClient` — onze costuras sem credencial e sem rede, dirigíveis (`advance`, `flag`, `fail_next`) e inspecionáveis |
@@ -59645,6 +59749,60 @@ Duas decisões que valem explicar:
 coordenada exata: um serviço reverte uma leitura de GPS, e leitura de GPS não
 cai em cima do decimal que você guardou.
 
+## Arquivo: download sem MinIO
+
+`FakeObjectStorageClient` serve download pelo mesmo
+`object_download_response` que o `AsyncMinIOClient` e o
+`LocalObjectStorageClient` usam: `Range`, `206`, `416` e os headers saem
+iguais, e os chunks têm o tamanho do `chunk_size` pedido.
+
+```python
+import asyncio
+
+from starlette.requests import Request
+
+from tempest_fastapi_sdk.storage import object_download_response
+from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
+
+
+async def main() -> None:
+    """Serve a stored object whole, then one byte range of it."""
+    storage = FakeObjectStorageClient()
+    await storage.put_object("docs/report.txt", b"0123456789" * 3)
+
+    whole = await object_download_response(storage, "docs/report.txt", chunk_size=8)
+    print(whole.status_code, [chunk async for chunk in whole.body_iterator])
+
+    ranged = Request(
+        {"type": "http", "method": "GET", "headers": [(b"range", b"bytes=5-14")]}
+    )
+    partial = await object_download_response(
+        storage, "docs/report.txt", request=ranged, chunk_size=4
+    )
+    print(partial.status_code, partial.headers["content-range"])
+    print([chunk async for chunk in partial.body_iterator])
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Saída:
+
+```text
+200 [b'01234567', b'89012345', b'67890123', b'456789']
+206 bytes 5-14/30
+[b'5678', b'9012', b'34']
+```
+
+!!! note "Os três clientes passam pelo mesmo teste"
+    `tests/storage/test_download_contract.py` roda o download, com e sem
+    `Range`, contra MinIO (com um `minio.Minio` falso), disco local e o fake.
+    `tests/test_storage_client_signature_guard.py` compara a assinatura de
+    cada método dos protocolos de storage com a dos três clientes — foi a
+    ausência de `chunk_size` no fake que derrubava esse exemplo com
+    `TypeError` até a #757.
+
 ## Ligando no serviço
 
 O fake entra onde o real entrava — no `Depends`:
@@ -63654,20 +63812,26 @@ Pedaço por pedaço:
 - `base_url` **inclui** a versão (`.../v1`), igual ao `OpenAICompatGenerator`;
   o backend acrescenta `/audio/transcriptions`. Para o `tempest-ai`, passe
   `https://ai.buscar.app.br/api/openai/v1`.
-- O pedido é multipart com `file`, `model`, `language` (só quando você passa
-  um) e `response_format=verbose_json`, o formato que traz `duration`,
+- O pedido é multipart com `file`, `model`, `language`, `prompt` e
+  `temperature` (cada um só quando você passa) e `response_format=verbose_json`, o formato que traz `duration`,
   `language` e `segments`. A chave vai em `Authorization: Bearer`.
 - `language` aceita o código ISO-639-1 (`"pt"`) ou um `LanguageEnum`
   (`LanguageEnum.PT_BR` vira `"pt"`); `None` deixa o servidor detectar.
 - `with_segments=False` devolve `segments=[]`; `duration` e `language`
   continuam preenchidos.
+- `prompt` dá vocabulário ao modelo — nomes de cidade, de produto —, e
+  `temperature` fixa a temperatura do decode. Como montar o prompt e o
+  limite de tokens dele estão em
+  [Dar vocabulário ao Whisper](genai.md#dar-vocabulario-ao-whisper-prompt-e-hotwords).
+  Se o servidor respeita os campos é com ele: o SDK garante que vão no form.
 - `audio` aceita `bytes` ou um caminho local (`str` ou `Path`). String é
   sempre caminho, nunca URL: o backend não busca nada fora da máquina.
 
 !!! tip "Troca direta pelo `SpeechToText`"
 
-    `OpenAICompatSpeech.transcribe` aceita os mesmos `language` e
-    `with_segments` do `SpeechToText` e cumpre o protocolo
+    `OpenAICompatSpeech.transcribe` aceita os mesmos `language`,
+    `with_segments`, `prompt` e `temperature` do `SpeechToText` (o
+    `hotwords` é só do local) e cumpre o protocolo
     `SpeechTranscriber`. Código que faz
     `await transcriber.transcribe(audio, language="pt", with_segments=False)`
     não muda; e `make_genai_router(speech_to_text=speech)` serve o
@@ -71849,6 +72013,11 @@ O que os adapters decidem por você, cada item medido no sandbox:
   `refund_pix_charge` acham o segundo sozinhos. Sem valor, reembolsam o que
   sobrou. No cartão, `refunded_cents` soma os reembolsos processados; no Pix,
   eles ficam em `raw["transactions"]["refunds"]`.
+- **Estorno de Pix idempotente.** Com `refund_reference=`,
+  `refund_pix_charge` deriva a `X-Idempotency-Key` da referência e devolve um
+  `PixRefund`; repetir com a mesma referência não estorna de novo. Sem ela, a
+  forma antiga continua: um `PixCharge` e uma chave nova por chamada. Veja
+  [Estorno de Pix (idempotente)](pix-refund.md).
 - **Pix só se estorna depois de pago.** Medido em 2026-10-10: o parcial
   deixa a cobrança `PAID` (o `status_detail` `partially_refunded` fica em `raw`), o resto a deixa
   `REFUNDED`. Num Pix ainda não pago, a resposta é
@@ -71870,11 +72039,22 @@ O que os adapters decidem por você, cada item medido no sandbox:
   (medido com `PT60S`).
 - **Pagador é obrigatório.** Order sem `payer` volta
   `400 '$.payer' - minimum 1 properties allowed`.
-- **Uma chave de idempotência por chamada**, que o `HTTPClient` reaproveita
-  nos próprios retries. O provedor honra a chave (medido em 2026-10-10): a
-  mesma chave com o mesmo corpo devolve a **mesma** order, e com outro corpo
-  volta `409 idempotency_key_already_used`. Para colapsar duas chamadas do
-  mesmo pedido, passe `idempotency_key=lambda reference: reference`.
+- **Pix: a reference é a chave de idempotência.** O `MercadoPagoPixProvider`
+  deriva a `X-Idempotency-Key` da `reference`
+  (`reference_idempotency_key`, um UUID5 — a especificação declara o header
+  `format: uuid`), então repetir o `create_pix_charge` com o mesmo pedido
+  devolve a order que a primeira chamada abriu, como o
+  [contrato Pix](pix-protocol.md) promete. O provedor honra a chave (medido
+  em 2026-10-10): a mesma chave com o mesmo corpo devolve a **mesma** order,
+  e com outro corpo volta `409 idempotency_key_already_used`. O adapter deixa
+  esse `409` sair como `httpx.HTTPStatusError`: reusar uma reference com
+  outro valor é defeito de quem chama, e devolver a order antiga entregaria
+  uma cobrança de valor errado. Até a v0.357.0 o padrão era um UUID4 novo por
+  chamada, e um create repetido abria uma segunda order.
+- **Cartão: uma chave por chamada**, que o `HTTPClient` reaproveita nos
+  próprios retries. Cartão recusado é refeito com outro token sob a mesma
+  reference — outro corpo, então uma chave derivada da reference voltaria
+  `409`. Passe `idempotency_key=` a qualquer um dos adapters para escolher.
 - **Parcelas dependem do cartão e do valor.** A consulta de parcelas
   (`get_installments`) responde pelo BIN: o Visa de teste (`423564`) oferece
   só 1x, na vendedora de teste e na conta real, e pedir 3x volta
@@ -71941,14 +72121,15 @@ não extrai nada do request à mão, e não decide o que fazer com um `False`:
   `MercadoPagoEventEnum.UNKNOWN` e `topic` guarda a string. Corpo que não é JSON
   também não: `payload` fica vazio e `body` traz os bytes.
 
-- Notificação de Orders deve chegar com o tópico `order` ou uma ação
-  `order.*`: o documento do provedor lista `order.created` e
-  `order.updated`, mas uma entrega real de Orders **ainda não foi observada**
-  aqui. `MercadoPagoEventEnum` só nomeia os tópicos que a spec declara
-  (`payment`, `merchant_order`, `point_integration_wh`), então para Orders
-  `event.event` é `UNKNOWN` — por isso o exemplo decide pelo `topic` e pela
-  ação, como faz `make_mercado_pago_webhook_delivery_dependency` (seção
-  seguinte), que além disso relê a order.
+- Notificação de Orders chega com o tópico `order` e uma ação `order.*`: o
+  documento do provedor lista `order.created` e `order.updated`, e uma
+  entrega real que um serviço em produção recebeu em 2026-11-13 trazia
+  `type=order` e `action: "order.canceled"`
+  ([#498](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/498)).
+  `event.event` é `MercadoPagoEventEnum.ORDER` desde esta release; até a
+  v0.357.0 era `UNKNOWN`. O exemplo decide pelo `topic` e pela ação, como faz
+  `make_mercado_pago_webhook_delivery_dependency` (seção seguinte), que além
+  disso relê a order.
 
 !!! warning "A assinatura não cobre o corpo"
     O manifesto assinado é `data.id`, `x-request-id` e `ts` — o corpo fica
@@ -71972,6 +72153,23 @@ tudo presente     id:<data.id>;request-id:<x-request-id>;ts:<ts>;
 sem data.id       request-id:<x-request-id>;ts:<ts>;
 sem os dois       ts:<ts>;
 ```
+
+E o **`data.id` é assinado em minúsculas**. Um id de Orders chega como
+`ORD01M7B5HWREYRJCAPJ61QTF1SRW` e o provedor assina
+`id:ord01m7b5hwreyrjcapj61qtf1srw;...`. O `build_manifest` (e por ele o
+`sign_manifest` e o `verify_signature`) passa o id para minúsculas; o
+`event.data_id` guarda o id como chegou, que é o que o
+`GET /v1/orders/{id}` aceita.
+
+!!! warning "Toda entrega de Orders era 401 até esta release"
+    Até a v0.357.0 o manifesto levava o id como chegou, então **toda**
+    notificação real de Orders era recusada com
+    `401 Invalid Mercado Pago webhook signature`
+    ([#753](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/753)).
+    Esta regra diverge do arquivo upstream no `99857f33`: o validador deles
+    passava o id para minúsculas quando saiu e deixou de passar no `ac20999a`
+    (2026-06-17). As entregas reais só verificam em minúsculas — a evidência
+    vence o port.
 
 !!! warning "Isto era um defeito até a v0.250.0"
     Até então este módulo renderizava um template fixo, então uma entrega sem
@@ -72024,16 +72222,15 @@ def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
     é `("v1",)` — falhar fechado é o comportamento certo para versão que o
     provedor ainda não mandou.
 
-!!! danger "Ainda não foi medido contra uma entrega real"
-    Portado da implementação do provedor não é o mesmo que verificado contra
-    notificação que o provedor mandou. O que está medido: os manifestos, byte
-    a byte, contra as regras que o upstream codifica; e os digests, contra
+!!! warning "Um tópico real observado, não todos"
+    Medido neste pacote: os manifestos, byte a byte, e os digests, contra
     vetores calculados com `openssl dgst -sha256 -hmac`, que é outra
     implementação de HMAC que não a do Python.
 
-    O que continua sem medição: se as entregas reais seguem o SDK deles. Passe
-    **uma** notificação real por `verify_signature` antes de isso guardar
-    dinheiro, e abra uma issue se ela for rejeitada.
+    Observado por um consumidor em produção em 2026-11-13: entregas reais do
+    tópico `order`, que só verificam com o `data.id` em minúsculas. Os outros
+    tópicos não passaram por `verify_signature` contra uma entrega real; abra
+    uma issue se algum for rejeitado.
 
 !!! warning "Notificação de QR Code não é assinada"
     O upstream diz isso explicitamente: essas entregas não carregam
@@ -72114,7 +72311,8 @@ O que a dependency faz, nesta ordem:
    nenhuma requisição ao Mercado Pago.
 2. **Decide se a notificação é de uma order**: tópico `order`, ou ação
    começando com `order.`. O documento do provedor lista `order.created` e
-   `order.updated`; uma entrega real de Orders ainda não foi observada aqui.
+   `order.updated`, e a entrega real observada em 2026-11-13 trazia
+   `type=order`.
 3. **Confere o formato do id** (`[A-Za-z0-9]+`) antes de pôr no path.
 4. **Relê a order** por esse id. `404` é resposta, não falha: a
    "simulação de notificação" do painel assina um id inventado, e levantar
@@ -81596,9 +81794,24 @@ nada — a mesma costura que o SDK usa em `RateLimitStore`, `QuotaStore`,
     `create_pix_charge` com o mesmo `reference`, volta a cobrança que já
     existe, não uma segunda. Na OpenPix isso é o `?return_existing=true`,
     que o adapter manda desde a v0.346.0 (a spec da Woovi o descreve como
-    "make the endpoint idempotent"); no Mercado Pago, o `X-Idempotency-Key`.
-    O SDK testa o request que sai, não a resposta do provedor: a repetição
-    contra o sandbox ainda não foi medida.
+    "make the endpoint idempotent"); no Mercado Pago, um `X-Idempotency-Key`
+    derivado da `reference` (um UUID5), o padrão desde a
+    v0.358.0 — antes dela, cada chamada levava uma chave nova e a repetição
+    abria uma segunda order. O `FakePixProvider` também devolve a cobrança
+    existente, então o teste sobre o fake vê o mesmo contrato.
+
+    Até onde isso está medido: no Mercado Pago, a mesma chave com o mesmo
+    corpo devolveu a mesma order no sandbox (2026-10-10); na OpenPix, o SDK
+    testa o request que sai, e a repetição contra o sandbox ainda não foi
+    medida.
+
+!!! warning "Mesma `reference`, outra cobrança: `409` no Mercado Pago"
+    A chave colapsa **o mesmo** pedido. Repetir uma `reference` com outro
+    valor, pagador, descrição ou prazo faz o Mercado Pago responder
+    `409 idempotency_key_already_used`, que o adapter levanta como
+    `httpx.HTTPStatusError` — ele não relê a order antiga, porque ela é de um
+    valor que ninguém pediu agora. Nova cobrança para a mesma compra precisa
+    de outra `reference`.
 
 ### O que sai: `PixCharge`
 
@@ -81733,6 +81946,13 @@ async def cobrar_e_acompanhar(provider: PixProvider) -> PixCharge:
     só consulta paga latência em cada pedido. A receita
     [OpenPix »](openpix.md) mostra os dois lados montados — webhook para
     reagir, conferência para reconciliar.
+
+!!! tip "E o estorno?"
+    Estornar não está no `PixProvider`: está no `PixRefundProvider`, que o
+    estende com `refund_pix_charge(..., refund_reference=)` e
+    `get_refunded_cents`. Os três provedores do SDK (OpenPix, Mercado Pago e
+    `FakePixProvider`) implementam, e o retry com a mesma referência não
+    estorna duas vezes. Veja [Estorno de Pix (idempotente)](pix-refund.md).
 
 ## Trocando de provedor
 
@@ -82874,6 +83094,337 @@ type-checker exige de você. Se um método sair com a assinatura errada,
 - No teste, `dependency_overrides` troca o provider pelo fake, a entrega
   verificada por um stub e a sessão por um SQLite temporário — três
   overrides, e a suíte roda sem rede.
+
+
+---
+
+# Estorno de Pix (idempotente)
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-refund/
+
+# Estorno de Pix (idempotente)
+
+Um passageiro cancela a passagem. Seu serviço devolve o dinheiro por Pix,
+numa rotina com retry. Na terceira tentativa, a primeira finalmente
+responde: ela tinha estornado, só a resposta se perdeu no timeout.
+
+Se a rotina não sabe disso, ela estorna de novo. O passageiro recebe duas
+vezes, e o dinheiro sai da sua conta.
+
+Esta receita mostra como estornar de um jeito em que o **retry é seguro por
+construção** — sem lease, sem reler a order e comparar totais à mão.
+
+## O contrato: `PixRefundProvider`
+
+```python
+from tempest_fastapi_sdk.integrations.payment import (
+    PixRefund,
+    PixRefundProvider,
+    PixRefundStatusEnum,
+)
+```
+
+`PixRefundProvider` é um `PixProvider` com dois métodos a mais:
+
+```text
+async def refund_pix_charge(
+    self,
+    charge_id: str,
+    amount_cents: int | None = None,
+    *,
+    refund_reference: str,
+) -> PixRefund
+
+async def get_refunded_cents(self, charge_id: str) -> int
+```
+
+O que cada um garante, em todo provedor:
+
+| Situação | Resposta |
+| --- | --- |
+| primeira chamada com uma `refund_reference` | estorna e devolve o `PixRefund` |
+| mesma `refund_reference`, mesmo valor | devolve **o mesmo** estorno; o dinheiro não sai de novo |
+| mesma `refund_reference`, outro valor | `PixRefundReferenceConflictException` (409) |
+| valor acima do que sobrou | `PixRefundExceedsBalanceException` (409) |
+| `amount_cents=None` | estorna o que sobrou; se nada sobrou, `PixRefundExceedsBalanceException` |
+| `amount_cents` zero ou negativo | `ValueError`, antes de falar com o provedor |
+
+`get_refunded_cents` soma os estornos que o provedor lista para a cobrança,
+menos os que falharam. Estorno ainda em processamento **conta**: tratá-lo como
+dinheiro devido é o que deixaria um segundo estorno sair enquanto o primeiro
+liquida.
+
+!!! tip "Uma `refund_reference` por estorno"
+    Use um identificador seu, estável e único na conta inteira — o id da
+    passagem cancelada, por exemplo (`"ticket-42-refund"`). É ele que torna
+    o retry idempotente. A OpenPix grava esse valor como o `correlationID`
+    do estorno, então não reaproveite a mesma referência em duas cobranças.
+
+## Estornar com retry, sem lease
+
+O exemplo inteiro, rodando sem rede com o `FakePixProvider`:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatusEnum,
+    PixChargeRequest,
+    PixRefund,
+    PixRefundProvider,
+)
+from tempest_fastapi_sdk.testing.fakes import FakePixProvider
+
+
+async def refund_ticket(
+    provider: PixRefundProvider,
+    *,
+    charge_id: str,
+    ticket_id: str,
+    amount_cents: int,
+    attempts: int = 3,
+) -> PixRefund:
+    """Estorna uma passagem, repetindo em caso de timeout.
+
+    Args:
+        provider (PixRefundProvider): Qualquer provedor que estorne.
+        charge_id (str): O `provider_charge_id` guardado na compra.
+        ticket_id (str): A passagem cancelada.
+        amount_cents (int): Quanto devolver.
+        attempts (int): Quantas vezes tentar.
+
+    Returns:
+        PixRefund: O estorno — o mesmo em todas as tentativas.
+
+    Raises:
+        TimeoutError: Se todas as tentativas expiraram.
+    """
+    last_error: TimeoutError | None = None
+    for _ in range(attempts):
+        try:
+            return await provider.refund_pix_charge(
+                charge_id,
+                amount_cents,
+                refund_reference=f"ticket-{ticket_id}-refund",
+            )
+        except TimeoutError as error:
+            last_error = error
+    assert last_error is not None
+    raise last_error
+
+
+async def main() -> None:
+    """Abre uma cobrança paga, perde a resposta do estorno e tenta de novo."""
+    provider = FakePixProvider()
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(amount_cents=12000, reference="order-42"),
+    )
+    provider.advance(charge.provider_charge_id, PaymentStatusEnum.PAID)
+
+    provider.fail_after_next_refund(TimeoutError("a resposta se perdeu"))
+    refund = await refund_ticket(
+        provider,
+        charge_id=charge.provider_charge_id,
+        ticket_id="42",
+        amount_cents=4500,
+    )
+
+    print(refund.amount_cents, refund.refunded_cents)
+    print(await provider.get_refunded_cents(charge.provider_charge_id))
+    print(len(provider.refunds[charge.provider_charge_id]))
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+4500 4500
+4500
+1
+```
+
+A primeira tentativa **estornou** e levantou `TimeoutError` — é isso que
+`fail_after_next_refund` simula. A segunda usou a mesma `refund_reference` e
+recebeu o estorno que já existia. Um estorno só, R$ 45,00 devolvidos uma vez.
+
+Note o que **não** está no código: nenhum lock, nenhuma leitura prévia da
+cobrança, nenhuma comparação de total. A referência faz esse trabalho.
+
+!!! warning "Duas chamadas *simultâneas* com a mesma referência"
+    A garantia acima é sobre chamadas **em sequência** (o retry). Duas
+    chamadas concorrentes com a mesma referência podem chegar as duas ao
+    provedor antes de qualquer uma ter terminado. No Mercado Pago, a
+    `X-Idempotency-Key` deveria cobrir esse caso do lado de lá, mas a
+    concorrência não foi medida; na OpenPix, nenhum
+    documento diz que um `correlationID` repetido é recusado. Se a sua
+    rotina pode disparar o mesmo estorno em paralelo (dois workers pegando a
+    mesma tarefa), serialize por referência — uma fila com um consumidor por
+    chave, ou `claim_once` antes de chamar.
+
+## Estorno parcial e o que já foi estornado
+
+Uma cobrança com três passagens; duas são canceladas em momentos diferentes:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.exceptions import PixRefundExceedsBalanceException
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatusEnum,
+    PixChargeRequest,
+)
+from tempest_fastapi_sdk.testing.fakes import FakePixProvider
+
+
+async def main() -> None:
+    """Estorna duas de três passagens e tenta estornar demais."""
+    provider = FakePixProvider()
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(amount_cents=9000, reference="order-7"),
+    )
+    charge_id = charge.provider_charge_id
+    provider.advance(charge_id, PaymentStatusEnum.PAID)
+
+    await provider.refund_pix_charge(charge_id, 3000, refund_reference="ticket-1")
+    await provider.refund_pix_charge(charge_id, 3000, refund_reference="ticket-2")
+    print(await provider.get_refunded_cents(charge_id))
+
+    try:
+        await provider.refund_pix_charge(
+            charge_id, 4000, refund_reference="ticket-3"
+        )
+    except PixRefundExceedsBalanceException as error:
+        print(error.requested_cents, error.refundable_cents)
+
+
+asyncio.run(main())
+```
+
+Saída:
+
+```text
+6000
+4000 3000
+```
+
+`get_refunded_cents` é a resposta para "quanto já devolvi desta cobrança?",
+perguntada ao provedor — não ao seu banco. Use-a para reconciliar: se o seu
+registro diz R$ 30,00 e o provedor diz R$ 60,00, alguém estornou por fora.
+
+As duas exceções são `AppException`: com `register_exception_handlers`, uma
+rota que as deixa subir responde `409` com `code`
+`PIX_REFUND_EXCEEDS_BALANCE` ou `PIX_REFUND_REFERENCE_CONFLICT` e os
+detalhes em `details`.
+
+## Com o roteador de provedores
+
+Se você usa o `PixProviderRouter` para migrar de provedor, o estorno vai
+para o provedor que criou a cobrança, igual a `get` e `cancel`:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PixProviderRouter, PixRefund
+
+
+async def refund_stored_charge(
+    router: PixProviderRouter,
+    *,
+    provider_name: str,
+    charge_id: str,
+    ticket_id: str,
+) -> PixRefund:
+    """Estorna o que sobrou de uma cobrança guardada.
+
+    Args:
+        router (PixProviderRouter): O roteador do serviço.
+        provider_name (str): O `PixCharge.provider` guardado.
+        charge_id (str): O `PixCharge.provider_charge_id` guardado.
+        ticket_id (str): A passagem cancelada.
+
+    Returns:
+        PixRefund: O estorno.
+    """
+    return await router.refund_pix_charge(
+        provider_name,
+        charge_id,
+        refund_reference=f"ticket-{ticket_id}-refund",
+    )
+```
+
+Um provedor registrado que só implementa `PixProvider` faz essa chamada
+levantar `TypeError`, dizendo qual método falta — antes de qualquer
+requisição.
+
+## Como cada provedor garante a idempotência
+
+| Provedor | Mecanismo |
+| --- | --- |
+| **Mercado Pago** | A `X-Idempotency-Key` do `POST /v1/orders/{id}/refund` é derivada da `refund_reference` (UUID5 do id da order + referência). Mesma referência, mesma chave: o Mercado Pago responde de novo o primeiro estorno. A order é lida antes para conferir o saldo; se não sobra o suficiente, o pedido **ainda sai** com a chave derivada, para que o retry de um estorno que já esvaziou a cobrança receba o replay em vez da exceção — e só uma recusa do provedor vira `PixRefundExceedsBalanceException`. `409 idempotency_key_already_used` vira `PixRefundReferenceConflictException`. |
+| **OpenPix** | A `refund_reference` vira o `correlationID` do estorno. Antes do `POST`, o adapter lista os estornos da cobrança (`GET /api/v1/charge/{id}/refund`) e, se já existe um com essa referência, devolve-o sem estornar. Se o `POST` falha (timeout, 5xx), o adapter relista: achou o estorno, devolve-o — a resposta se perdeu, o estorno não. O valor sai sempre explícito, mesmo no estorno total. |
+| **`FakePixProvider`** | Guarda os estornos por cobrança e responde a referência repetida com o estorno guardado. `fail_next` falha **antes** de estornar; `fail_after_next_refund` estorna e **depois** falha. |
+
+!!! info "O que foi medido e o que não foi"
+    No Mercado Pago, mesma chave e mesmo corpo devolvendo a mesma resposta,
+    e mesma chave com outro corpo respondendo `409
+    idempotency_key_already_used`, foram medidos no **create** da order
+    (2026-10-10), não na rota de estorno. A resposta do estorno lista todos
+    os estornos da order, do mais antigo ao mais novo (fixtures do sandbox),
+    e o adapter lê o último como o que acabou de fazer. Na OpenPix, o que
+    ela responde a um `correlationID` de estorno repetido não está na
+    especificação e não foi medido — por isso a idempotência de lá é a
+    leitura antes e depois do `POST`, não a do provedor.
+
+!!! note "`end_to_end_id` vazio no Mercado Pago"
+    O campo `e2e_id` dos estornos do sandbox traz um timestamp
+    (`"2026-10-10 09:41:40.107"`), não um identificador fim-a-fim do Pix.
+    O adapter deixa `PixRefund.end_to_end_id` em `None` e o valor cru fica
+    em `raw`.
+
+## Quem já chamava `MercadoPagoPixProvider.refund_pix_charge`
+
+A forma antiga continua igual:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PixCharge
+from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+    MercadoPagoPixProvider,
+)
+
+
+async def refund_old_way(provider: MercadoPagoPixProvider, order_id: str) -> PixCharge:
+    """Estorna R$ 5,00 sem referência, como antes do protocolo.
+
+    Args:
+        provider (MercadoPagoPixProvider): O adapter.
+        order_id (str): O id da order paga.
+
+    Returns:
+        PixCharge: A order depois do estorno.
+    """
+    return await provider.refund_pix_charge(order_id, 500)
+```
+
+Sem `refund_reference`, o método devolve um `PixCharge`, com uma chave nova
+por chamada — o retry da própria chamada é seguro, **uma segunda chamada é
+um segundo estorno**. Com `refund_reference`, devolve um `PixRefund` e ganha
+tudo desta receita. Os dois retornos estão tipados por `@overload`: o mypy
+sabe qual você recebe.
+
+## Recapitulando
+
+- Dependa de `PixRefundProvider` quando o service estorna.
+- Passe sempre uma `refund_reference` sua, estável, uma por estorno.
+- Retry com a mesma referência é seguro; não precisa de lease nem de
+  releitura.
+- `get_refunded_cents` pergunta ao provedor quanto já saiu.
+- Acima do saldo: `PixRefundExceedsBalanceException`. Referência reutilizada
+  com outro valor: `PixRefundReferenceConflictException`.
+- Para testar sem rede: `FakePixProvider` + `fail_after_next_refund`.
+
+Veja também: [Protocolo de Pix](pix-protocol.md) ·
+[Mercado Pago](mercado-pago.md) · [OpenPix](openpix.md) ·
+[Fakes](fakes.md) · [Idempotência](idempotency.md)
 
 
 ---
@@ -90803,6 +91354,84 @@ stt = SpeechToText(
     O callback roda **na worker thread**, não no event loop: não toque em
     corotina lá dentro sem `loop.call_soon_threadsafe`.
 
+#### Dar vocabulário ao Whisper: `prompt` e `hotwords`
+
+Nome próprio é onde o Whisper mais erra: numa busca de passagens por voz,
+"de Picos para Parnaíba amanhã" pode sair com o destino irreconhecível. O
+serviço já sabe quais nomes são prováveis — as cidades das próprias rotas,
+os produtos do catálogo — e o `prompt` é como entregá-los ao modelo:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import SpeechToText, Transcription
+
+stt: SpeechToText = SpeechToText("base", device="cpu")
+
+CIDADES: list[str] = ["Picos", "Teresina", "Parnaíba", "Floriano", "Oeiras"]
+
+
+def prompt_de_dominio(nomes: list[str], limite: int = 60) -> str:
+    """Monta o prompt com os nomes mais frequentes primeiro.
+
+    Args:
+        nomes (list[str]): Nomes do domínio, do mais ao menos frequente.
+        limite (int): Quantos nomes entram no prompt.
+
+    Returns:
+        str: Uma frase curta citando os nomes.
+    """
+    return "Viagens entre " + ", ".join(nomes[:limite]) + "."
+
+
+async def main() -> None:
+    """Run this example."""
+    result: Transcription = await stt.transcribe(
+        "pedido.wav",
+        language="pt",
+        prompt=prompt_de_dominio(CIDADES),
+    )
+    print(result.text)
+
+
+asyncio.run(main())
+```
+
+- **`prompt`** vira o `initial_prompt` do faster-whisper: texto que o
+  modelo lê como se viesse **antes** do áudio. Escreva como frase do
+  próprio domínio, com a grafia que você quer de volta (acento, maiúscula);
+  o Whisper não segue instruções ("transcreva os nomes de cidade") como um
+  modelo de chat.
+- **O limite é de tokens, e o começo é o que se perde.** No faster-whisper
+  1.2.1 o contexto anterior guarda os **últimos** 223 tokens
+  (`max_length // 2 - 1`, com `max_length = 448`) — medido chamando o
+  `get_prompt` dele com 400 tokens de contexto: entram 223, a partir do
+  178º. A documentação da OpenAI fala em 224 tokens para o `whisper-1`
+  ([guia de speech-to-text](https://developers.openai.com/api/docs/guides/speech-to-text)).
+  Por isso a receita põe os nomes **mais frequentes** num prompt curto,
+  em vez de despejar a lista inteira: o que passa do limite cai em
+  silêncio. Quantos nomes cabem depende do tokenizer do modelo; com lista
+  longa, conte os tokens antes em vez de estimar.
+- **`hotwords`** (só no `SpeechToText`) entra no prompt de **toda** janela,
+  com ou sem `condition_on_previous_text`; no faster-whisper 1.2.1 ficam os
+  **primeiros** 223 tokens dele. Já o `prompt` condiciona a primeira janela
+  do modelo sequencial e só segue adiante enquanto
+  `condition_on_previous_text=True`; no `batch_size` ele vai na frente de
+  cada lote. Para áudio curto (um pedido de voz) os dois chegam ao mesmo
+  lugar; para uma reunião longa, `hotwords` é o que continua valendo.
+- **`temperature`** fixa uma temperatura para o decode. `None` mantém o
+  default do faster-whisper, a escada `0.0, 0.2, …, 1.0` que ele sobe quando
+  uma janela reprova nos checks de compressão/log-probabilidade; um `float`
+  troca a escada por esse valor só.
+- O piso do extra (`faster-whisper>=1.2.1`) já tem os três parâmetros, no
+  `WhisperModel` e no `BatchedInferencePipeline` — um teste da suíte confere
+  a assinatura instalada.
+
+!!! note "Quanto o prompt melhora é medida sua, não nossa"
+    O SDK garante que o texto chega ao decoder; o ganho de acerto depende do
+    modelo, do áudio e da lista. Meça com gravações do seu domínio antes de
+    contar com ele.
+
 !!! info "Uma instância compartilhada carrega o modelo uma vez só"
     `load()` é protegido por um `threading.Lock`, e não pelo semáforo de
     concorrência — o semáforo admite `max_concurrent` chamadas por
@@ -91088,7 +91717,10 @@ O que o `OllamaSpeech` faz por você:
   inglês, marcado `"portuguese"`), e na fala a língua vem da voz. Por isso
   `transcribe` e `synthesize` aceitam `language` só como `None`: qualquer
   valor levanta `ValidationException` com `details={"field": "language"}`,
-  antes de ir à rede. `Transcription.language` fica vazio. Também não há
+  antes de ir à rede. `Transcription.language` fica vazio. `prompt` e
+  `temperature` também só entram como `None` (`details={"field": "prompt"}`
+  ou `"temperature"`): se o daemon os respeita não foi medido, então não são
+  enviados nem descartados em silêncio. Também não há
   `keep_alive`, que esses endpoints ignoram.
 - **Caminho é caminho.** `transcribe("https://...")` levanta
   `FileNotFoundError` sem ir à rede, como o `SpeechToText`.
@@ -92669,7 +93301,7 @@ app.include_router(
 | `text_generator` | `POST /generate`, `POST /generate/stream` (SSE token a token), `POST /chat` |
 | `embedder` | `POST /embed` |
 | `retriever` | `POST /rag` (query → bloco de contexto) |
-| `speech_to_text` | `POST /transcribe` (upload de áudio; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` ou qualquer `SpeechTranscriber`) |
+| `speech_to_text` | `POST /transcribe` (upload de áudio + campo opcional `prompt` no form, limitado por `max_prompt_chars`; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` ou qualquer `SpeechTranscriber`) |
 | `text_to_speech` | `POST /tts` (devolve `audio/wav`; `TextToSpeech`, `OllamaSpeech` ou qualquer `SpeechSynthesizer`) |
 
 !!! tip "Streaming"
@@ -100436,6 +101068,115 @@ server {
     o caminho de admin do servidor (`/minio/` no MinIO e compatíveis) e
     nunca publique a porta do console.
 
+## Uma chave por bucket
+
+Alguns storages S3-compatíveis amarram cada chave de acesso a **um** bucket:
+a chave criada para as imagens públicas não lê nem grava os documentos
+privados. Com uma credencial só, todo upload, URL pré-assinada, listagem e
+limpeza no segundo bucket responde `AccessDenied`.
+
+`STORAGE_BUCKET_CREDENTIALS` dá a cada bucket a sua chave. É um JSON de
+`bucket → {"access_key", "secret_key"}`; os buckets que não estão nele
+continuam com `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
+
+`.env`:
+
+```bash
+STORAGE_ENDPOINT=storage.example.com
+STORAGE_SECURE=true
+STORAGE_DEFAULT_BUCKET=images
+STORAGE_ACCESS_KEY=images-key
+STORAGE_SECRET_KEY=images-secret
+STORAGE_BUCKET_CREDENTIALS='{"documents": {"access_key": "documents-key", "secret_key": "documents-secret"}}'
+```
+
+Com ele preenchido, `build_storage_client()` devolve um
+`BucketRoutedMinIOClient` — subclasse de `AsyncMinIOClient`, então a
+anotação e as chamadas do serviço não mudam. Cada operação que recebe
+`bucket` é assinada com a chave daquele bucket, URL pré-assinada inclusive:
+
+```python
+import asyncio
+from urllib.parse import parse_qs, urlsplit
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    BucketRoutedMinIOClient,
+    StorageSettings,
+)
+
+
+class Settings(StorageSettings, BaseAppSettings):
+    """Dois buckets, uma chave para cada."""
+
+
+async def main() -> None:
+    """Assina um link em cada bucket e mostra qual chave assinou."""
+    settings = Settings()
+    print(settings.STORAGE_BUCKET_CREDENTIALS)
+    storage = settings.build_storage_client()
+    assert isinstance(storage, BucketRoutedMinIOClient)
+    print(sorted(storage.routed_buckets))
+    for bucket in ("images", "documents"):
+        url = await storage.presigned_get_url("contrato.pdf", bucket=bucket)
+        credential = parse_qs(urlsplit(url).query)["X-Amz-Credential"][0]
+        print(bucket, "->", credential.split("/")[0])
+
+
+asyncio.run(main())
+```
+
+A assinatura é local (o `minio` não consulta o servidor para assinar com
+`STORAGE_REGION` definido), então isto roda sem bucket nenhum no ar:
+
+```text
+{'documents': StorageBucketCredential(access_key='documents-key', secret_key=SecretStr('**********'))}
+['documents']
+images -> images-key
+documents -> documents-key
+```
+
+O segredo é `SecretStr`: sai mascarado no `repr`, no `str` e no
+`model_dump()`.
+
+As regras do roteamento:
+
+- **Bucket listado** usa a chave dele; **bucket fora da lista** usa a
+  principal. A chamada sem `bucket` vai para `STORAGE_DEFAULT_BUCKET`, que é
+  roteado como qualquer outro.
+- **`list_buckets()` e o atributo `client`** não nomeiam bucket e ficam na
+  credencial principal.
+- **`copy_object` com os dois buckets na mesma credencial** é a cópia do
+  próprio servidor, como antes. **Com credenciais diferentes**, nenhuma chave
+  lê a origem e grava o destino ao mesmo tempo, então o objeto é baixado com
+  a chave da origem para um arquivo temporário (apagado no fim) e enviado com
+  a chave do destino, levando `Content-Type` e metadados de usuário. Os bytes
+  passam pelo app nesse caminho, e outros headers gravados
+  (`Cache-Control`, `Content-Disposition`) não são copiados.
+- **`tempest storage`** monta o mesmo cliente, então
+  `tempest storage ls --bucket documents` assina com a chave dos documentos.
+
+O boot recusa credencial pela metade — chave sem segredo, segredo sem
+chave, valor vazio ou campo com nome errado (`"secret"` no lugar de
+`"secret_key"`) —, e o erro não ecoa o valor:
+
+```text
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+STORAGE_BUCKET_CREDENTIALS.documents.secret_key
+  Field required [type=missing]
+```
+
+Em `ENV=production` o guard também recusa um bucket cujo segredo ainda é o
+`minioadmin` do MinIO local, e `STORAGE_BUCKET_CREDENTIALS` preenchido com
+`STORAGE_BACKEND=local`, que nunca o lê.
+
+!!! tip "Quem monta o cliente na mão"
+    `storage_kwargs()` não muda: `AsyncMinIOClient(**settings.storage_kwargs())`
+    continua com uma credencial só. Para o roteamento, use
+    `settings.build_storage_client()` ou passe
+    `bucket_credentials=settings.STORAGE_BUCKET_CREDENTIALS` para
+    `BucketRoutedMinIOClient`.
+
 ## Storage desligado (`STORAGE_ENABLED=false`)
 
 Subindo para produção antes de o bucket existir? `STORAGE_ENABLED=false`
@@ -100469,6 +101210,9 @@ enquanto a integração estiver desligada. O exemplo completo está em
   path no mapper com `sign_path` e proteja a rota com
   `make_signed_path_dependency`: a assinatura cobre path, `expires` e
   `purpose`, e a recusa é `403` (`SIGNED_URL_INVALID` ou `SIGNED_URL_EXPIRED`).
+- Storage que amarra cada chave a um bucket: `STORAGE_BUCKET_CREDENTIALS`
+  faz o `build_storage_client()` devolver o `BucketRoutedMinIOClient`, que
+  assina cada chamada com a chave do bucket dela e cai na principal.
 - Operação fora da fachada não é bloqueada: chame `storage.client.<método>` e
   use o `minio-py` direto, em vez de esperar que a fachada cresça.
 - Para alternar disco local e MinIO por configuração, o backend pluggável de

@@ -1195,6 +1195,8 @@
       
         
       
+        
+      
     
     
     
@@ -2323,6 +2325,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estorno de Pix (idempotente)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../event-sourcing/" class="md-nav__link">
         
   
@@ -2381,10 +2411,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_41" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_42" >
         
           
-          <label class="md-nav__link" for="__nav_5_41" id="__nav_5_41_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_42" id="__nav_5_42_label" tabindex="">
             
   
   
@@ -2402,8 +2432,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_41_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_41">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_42_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_42">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2715,6 +2745,17 @@
     <span class="md-ellipsis">
       
         Geo: sem Nominatim, sem OSRM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arquivo-download-sem-minio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arquivo: download sem MinIO
       
     </span>
   </a>
@@ -5476,42 +5517,90 @@ exercitado.</p>
 <p><code>reverse</code> devolve o <strong>mais próximo</strong> dos lugares cadastrados, não o de
 coordenada exata: um serviço reverte uma leitura de GPS, e leitura de GPS não
 cai em cima do decimal que você guardou.</p>
+<h2 id="arquivo-download-sem-minio">Arquivo: download sem MinIO<a class="headerlink" href="#arquivo-download-sem-minio" title="Permanent link">&para;</a></h2>
+<p><code>FakeObjectStorageClient</code> serve download pelo mesmo
+<code>object_download_response</code> que o <code>AsyncMinIOClient</code> e o
+<code>LocalObjectStorageClient</code> usam: <code>Range</code>, <code>206</code>, <code>416</code> e os headers saem
+iguais, e os chunks têm o tamanho do <code>chunk_size</code> pedido.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">starlette.requests</span><span class="w"> </span><span class="kn">import</span> <span class="n">Request</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">object_download_response</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing.fakes</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeObjectStorageClient</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="sd">"""Serve a stored object whole, then one byte range of it."""</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>    <span class="n">storage</span> <span class="o">=</span> <span class="n">FakeObjectStorageClient</span><span class="p">()</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="k">await</span> <span class="n">storage</span><span class="o">.</span><span class="n">put_object</span><span class="p">(</span><span class="s2">"docs/report.txt"</span><span class="p">,</span> <span class="sa">b</span><span class="s2">"0123456789"</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="n">whole</span> <span class="o">=</span> <span class="k">await</span> <span class="n">object_download_response</span><span class="p">(</span><span class="n">storage</span><span class="p">,</span> <span class="s2">"docs/report.txt"</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">whole</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="p">[</span><span class="n">chunk</span> <span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">whole</span><span class="o">.</span><span class="n">body_iterator</span><span class="p">])</span>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>    <span class="n">ranged</span> <span class="o">=</span> <span class="n">Request</span><span class="p">(</span>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>        <span class="p">{</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"http"</span><span class="p">,</span> <span class="s2">"method"</span><span class="p">:</span> <span class="s2">"GET"</span><span class="p">,</span> <span class="s2">"headers"</span><span class="p">:</span> <span class="p">[(</span><span class="sa">b</span><span class="s2">"range"</span><span class="p">,</span> <span class="sa">b</span><span class="s2">"bytes=5-14"</span><span class="p">)]}</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>    <span class="p">)</span>
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>    <span class="n">partial</span> <span class="o">=</span> <span class="k">await</span> <span class="n">object_download_response</span><span class="p">(</span>
+</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>        <span class="n">storage</span><span class="p">,</span> <span class="s2">"docs/report.txt"</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">ranged</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="mi">4</span>
+</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>    <span class="p">)</span>
+</span><span id="__span-12-23"><a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">partial</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="n">partial</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">"content-range"</span><span class="p">])</span>
+</span><span id="__span-12-24"><a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a>    <span class="nb">print</span><span class="p">([</span><span class="n">chunk</span> <span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">partial</span><span class="o">.</span><span class="n">body_iterator</span><span class="p">])</span>
+</span><span id="__span-12-25"><a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a>
+</span><span id="__span-12-26"><a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a>
+</span><span id="__span-12-27"><a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+</span><span id="__span-12-28"><a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p>Saída:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>200 [b'01234567', b'89012345', b'67890123', b'456789']
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>206 bytes 5-14/30
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>[b'5678', b'9012', b'34']
+</span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Os três clientes passam pelo mesmo teste</p>
+<p><code>tests/storage/test_download_contract.py</code> roda o download, com e sem
+<code>Range</code>, contra MinIO (com um <code>minio.Minio</code> falso), disco local e o fake.
+<code>tests/test_storage_client_signature_guard.py</code> compara a assinatura de
+cada método dos protocolos de storage com a dos três clientes — foi a
+ausência de <code>chunk_size</code> no fake que derrubava esse exemplo com
+<code>TypeError</code> até a <a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/757" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #757">#757</a>.</p>
+</div>
 <h2 id="ligando-no-servico">Ligando no serviço<a class="headerlink" href="#ligando-no-servico" title="Permanent link">&para;</a></h2>
 <p>O fake entra onde o real entrava — no <code>Depends</code>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">Depends</span><span class="p">,</span> <span class="n">FastAPI</span>
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.integrations.payment</span><span class="w"> </span><span class="kn">import</span> <span class="n">PixChargeRequest</span><span class="p">,</span> <span class="n">PixProvider</span>
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing.fakes</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakePixProvider</span>
-</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
-</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">_FAKE_PROVIDER</span> <span class="o">=</span> <span class="n">FakePixProvider</span><span class="p">()</span>
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
-</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
-</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_pix_provider</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">PixProvider</span><span class="p">:</span>
-</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">    </span><span class="sd">"""Provide the Pix provider this deployment charges with.</span>
-</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
-</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="sd">    Returns:</span>
-</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="sd">        PixProvider: The provider, seen through the contract.</span>
-</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="sd">    """</span>
-</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="k">return</span> <span class="n">_FAKE_PROVIDER</span>
-</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>
-</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>
-</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/charges"</span><span class="p">)</span>
-</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_charge</span><span class="p">(</span>
-</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>    <span class="n">provider</span><span class="p">:</span> <span class="n">PixProvider</span> <span class="o">=</span> <span class="n">Depends</span><span class="p">(</span><span class="n">get_pix_provider</span><span class="p">),</span>
-</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-</span><span id="__span-12-23"><a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="w">    </span><span class="sd">"""Open a charge.</span>
-</span><span id="__span-12-24"><a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a>
-</span><span id="__span-12-25"><a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="sd">    Args:</span>
-</span><span id="__span-12-26"><a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a><span class="sd">        provider (PixProvider): Injected provider.</span>
-</span><span id="__span-12-27"><a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a>
-</span><span id="__span-12-28"><a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a><span class="sd">    Returns:</span>
-</span><span id="__span-12-29"><a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a><span class="sd">        dict[str, str]: The copy-and-paste code, for the payer.</span>
-</span><span id="__span-12-30"><a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a><span class="sd">    """</span>
-</span><span id="__span-12-31"><a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a>    <span class="n">charge</span> <span class="o">=</span> <span class="k">await</span> <span class="n">provider</span><span class="o">.</span><span class="n">create_pix_charge</span><span class="p">(</span>
-</span><span id="__span-12-32"><a id="__codelineno-12-32" name="__codelineno-12-32" href="#__codelineno-12-32"></a>        <span class="n">PixChargeRequest</span><span class="p">(</span><span class="n">amount_cents</span><span class="o">=</span><span class="mi">1990</span><span class="p">,</span> <span class="n">reference</span><span class="o">=</span><span class="s2">"pedido-1042"</span><span class="p">),</span>
-</span><span id="__span-12-33"><a id="__codelineno-12-33" name="__codelineno-12-33" href="#__codelineno-12-33"></a>    <span class="p">)</span>
-</span><span id="__span-12-34"><a id="__codelineno-12-34" name="__codelineno-12-34" href="#__codelineno-12-34"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"br_code"</span><span class="p">:</span> <span class="n">charge</span><span class="o">.</span><span class="n">br_code</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">}</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">Depends</span><span class="p">,</span> <span class="n">FastAPI</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.integrations.payment</span><span class="w"> </span><span class="kn">import</span> <span class="n">PixChargeRequest</span><span class="p">,</span> <span class="n">PixProvider</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing.fakes</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakePixProvider</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="n">_FAKE_PROVIDER</span> <span class="o">=</span> <span class="n">FakePixProvider</span><span class="p">()</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_pix_provider</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">PixProvider</span><span class="p">:</span>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">    </span><span class="sd">"""Provide the Pix provider this deployment charges with.</span>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="sd">    Returns:</span>
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="sd">        PixProvider: The provider, seen through the contract.</span>
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="sd">    """</span>
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>    <span class="k">return</span> <span class="n">_FAKE_PROVIDER</span>
+</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>
+</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>
+</span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/charges"</span><span class="p">)</span>
+</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_charge</span><span class="p">(</span>
+</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>    <span class="n">provider</span><span class="p">:</span> <span class="n">PixProvider</span> <span class="o">=</span> <span class="n">Depends</span><span class="p">(</span><span class="n">get_pix_provider</span><span class="p">),</span>
+</span><span id="__span-14-22"><a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+</span><span id="__span-14-23"><a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="w">    </span><span class="sd">"""Open a charge.</span>
+</span><span id="__span-14-24"><a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a>
+</span><span id="__span-14-25"><a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a><span class="sd">    Args:</span>
+</span><span id="__span-14-26"><a id="__codelineno-14-26" name="__codelineno-14-26" href="#__codelineno-14-26"></a><span class="sd">        provider (PixProvider): Injected provider.</span>
+</span><span id="__span-14-27"><a id="__codelineno-14-27" name="__codelineno-14-27" href="#__codelineno-14-27"></a>
+</span><span id="__span-14-28"><a id="__codelineno-14-28" name="__codelineno-14-28" href="#__codelineno-14-28"></a><span class="sd">    Returns:</span>
+</span><span id="__span-14-29"><a id="__codelineno-14-29" name="__codelineno-14-29" href="#__codelineno-14-29"></a><span class="sd">        dict[str, str]: The copy-and-paste code, for the payer.</span>
+</span><span id="__span-14-30"><a id="__codelineno-14-30" name="__codelineno-14-30" href="#__codelineno-14-30"></a><span class="sd">    """</span>
+</span><span id="__span-14-31"><a id="__codelineno-14-31" name="__codelineno-14-31" href="#__codelineno-14-31"></a>    <span class="n">charge</span> <span class="o">=</span> <span class="k">await</span> <span class="n">provider</span><span class="o">.</span><span class="n">create_pix_charge</span><span class="p">(</span>
+</span><span id="__span-14-32"><a id="__codelineno-14-32" name="__codelineno-14-32" href="#__codelineno-14-32"></a>        <span class="n">PixChargeRequest</span><span class="p">(</span><span class="n">amount_cents</span><span class="o">=</span><span class="mi">1990</span><span class="p">,</span> <span class="n">reference</span><span class="o">=</span><span class="s2">"pedido-1042"</span><span class="p">),</span>
+</span><span id="__span-14-33"><a id="__codelineno-14-33" name="__codelineno-14-33" href="#__codelineno-14-33"></a>    <span class="p">)</span>
+</span><span id="__span-14-34"><a id="__codelineno-14-34" name="__codelineno-14-34" href="#__codelineno-14-34"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"br_code"</span><span class="p">:</span> <span class="n">charge</span><span class="o">.</span><span class="n">br_code</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">}</span>
 </span></code></pre></div>
 <p>Em teste, use <code>app.dependency_overrides[get_pix_provider]</code> para injetar um
 fake novo por teste — instância nova é estado limpo.</p>

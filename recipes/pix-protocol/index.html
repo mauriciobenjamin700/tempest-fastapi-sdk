@@ -1195,6 +1195,8 @@
       
         
       
+        
+      
     
     
     
@@ -2323,6 +2325,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estorno de Pix (idempotente)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../event-sourcing/" class="md-nav__link">
         
   
@@ -2381,10 +2411,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_41" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_42" >
         
           
-          <label class="md-nav__link" for="__nav_5_41" id="__nav_5_41_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_42" id="__nav_5_42_label" tabindex="">
             
   
   
@@ -2402,8 +2432,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_41_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_41">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_42_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_42">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -5510,9 +5540,24 @@ resposta se perde (timeout, conexão caída) e você repete o
 <code>create_pix_charge</code> com o mesmo <code>reference</code>, volta a cobrança que já
 existe, não uma segunda. Na OpenPix isso é o <code>?return_existing=true</code>,
 que o adapter manda desde a v0.346.0 (a spec da Woovi o descreve como
-"make the endpoint idempotent"); no Mercado Pago, o <code>X-Idempotency-Key</code>.
-O SDK testa o request que sai, não a resposta do provedor: a repetição
-contra o sandbox ainda não foi medida.</p>
+"make the endpoint idempotent"); no Mercado Pago, um <code>X-Idempotency-Key</code>
+derivado da <code>reference</code> (um UUID5), o padrão desde a
+v0.358.0 — antes dela, cada chamada levava uma chave nova e a repetição
+abria uma segunda order. O <code>FakePixProvider</code> também devolve a cobrança
+existente, então o teste sobre o fake vê o mesmo contrato.</p>
+<p>Até onde isso está medido: no Mercado Pago, a mesma chave com o mesmo
+corpo devolveu a mesma order no sandbox (2026-10-10); na OpenPix, o SDK
+testa o request que sai, e a repetição contra o sandbox ainda não foi
+medida.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Mesma <code>reference</code>, outra cobrança: <code>409</code> no Mercado Pago</p>
+<p>A chave colapsa <strong>o mesmo</strong> pedido. Repetir uma <code>reference</code> com outro
+valor, pagador, descrição ou prazo faz o Mercado Pago responder
+<code>409 idempotency_key_already_used</code>, que o adapter levanta como
+<code>httpx.HTTPStatusError</code> — ele não relê a order antiga, porque ela é de um
+valor que ninguém pediu agora. Nova cobrança para a mesma compra precisa
+de outra <code>reference</code>.</p>
 </div>
 <h3 id="o-que-sai-pixcharge">O que sai: <code>PixCharge</code><a class="headerlink" href="#o-que-sai-pixcharge" title="Permanent link">&para;</a></h3>
 <table>
@@ -5704,6 +5749,14 @@ serviço que só escuta webhook fica preso quando a entrega falha; um que
 só consulta paga latência em cada pedido. A receita
 <a href="../openpix/">OpenPix »</a> mostra os dois lados montados — webhook para
 reagir, conferência para reconciliar.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">E o estorno?</p>
+<p>Estornar não está no <code>PixProvider</code>: está no <code>PixRefundProvider</code>, que o
+estende com <code>refund_pix_charge(..., refund_reference=)</code> e
+<code>get_refunded_cents</code>. Os três provedores do SDK (OpenPix, Mercado Pago e
+<code>FakePixProvider</code>) implementam, e o retry com a mesma referência não
+estorna duas vezes. Veja <a href="../pix-refund/">Estorno de Pix (idempotente)</a>.</p>
 </div>
 <h2 id="trocando-de-provedor">Trocando de provedor<a class="headerlink" href="#trocando-de-provedor" title="Permanent link">&para;</a></h2>
 <p>O adapter é a única linha que muda. Concentre a escolha num lugar e devolva

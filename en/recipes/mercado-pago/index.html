@@ -1197,6 +1197,8 @@
       
         
       
+        
+      
     
     
     
@@ -3478,6 +3480,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pix refunds (idempotent)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../push/" class="md-nav__link">
         
   
@@ -5419,6 +5449,11 @@ puts the service in PCI DSS scope.</p>
   <code>refund_pix_charge</code> find the second on their own. Without an amount, they
   refund what is left. On a card, <code>refunded_cents</code> sums the processed
   refunds; on a Pix, they are under <code>raw["transactions"]["refunds"]</code>.</li>
+<li><strong>Idempotent Pix refunds.</strong> With <code>refund_reference=</code>,
+  <code>refund_pix_charge</code> derives the <code>X-Idempotency-Key</code> from the reference and
+  returns a <code>PixRefund</code>; repeating it with the same reference does not refund
+  again. Without it, the old form stays: a <code>PixCharge</code> and a fresh key per
+  call. See <a href="../pix-refund/">Pix refunds (idempotent)</a>.</li>
 <li><strong>A Pix is refunded only once paid.</strong> Measured on 2026-10-10: a partial
   refund leaves the charge <code>PAID</code> (the <code>partially_refunded</code> <code>status_detail</code> stays in <code>raw</code>), the rest makes it
   <code>REFUNDED</code>. On an unpaid Pix the answer is <code>409 cannot_refund_order</code>: it
@@ -5440,11 +5475,23 @@ puts the service in PCI DSS scope.</p>
   (measured with <code>PT60S</code>).</li>
 <li><strong>The payer is required.</strong> An order without <code>payer</code> comes back
   <code>400 '$.payer' - minimum 1 properties allowed</code>.</li>
-<li><strong>One idempotency key per call</strong>, which the <code>HTTPClient</code> reuses across its
-  own retries. The provider honours the key (measured on 2026-10-10): the
-  same key with the same body returns the <strong>same</strong> order, and with another
-  body answers <code>409 idempotency_key_already_used</code>. To collapse two calls for
-  the same order, pass <code>idempotency_key=lambda reference: reference</code>.</li>
+<li><strong>Pix: the reference is the idempotency key.</strong> <code>MercadoPagoPixProvider</code>
+  derives the <code>X-Idempotency-Key</code> from <code>reference</code>
+  (<code>reference_idempotency_key</code>, a UUID5 — the specification declares the
+  header <code>format: uuid</code>), so repeating <code>create_pix_charge</code> with the same
+  request answers the order the first call opened, as the
+  <a href="../pix-protocol/">Pix contract</a> promises. The provider honours the key
+  (measured on 2026-10-10): the same key with the same body returns the
+  <strong>same</strong> order, and with another body answers
+  <code>409 idempotency_key_already_used</code>. The adapter lets that <code>409</code> out as
+  <code>httpx.HTTPStatusError</code>: reusing a reference for a different amount is a
+  bug in the caller, and answering the old order would hand over a charge
+  for the wrong amount. Through v0.357.0 the default was a new UUID4 per
+  call, and a repeated create opened a second order.</li>
+<li><strong>Card: one key per call</strong>, which the <code>HTTPClient</code> reuses across its own
+  retries. A declined card is retried with a new token under the same
+  reference — another body, so a key derived from the reference would
+  answer <code>409</code>. Pass <code>idempotency_key=</code> to either adapter to choose.</li>
 <li><strong>Installments depend on the card and the amount.</strong> The installment
   options (<code>get_installments</code>) answer by BIN: the test Visa (<code>423564</code>)
   offers only 1x, for the test seller and for a real account, and asking for
@@ -5514,14 +5561,15 @@ you do not decide what to do with a <code>False</code>:</p>
   the bytes.</p>
 </li>
 <li>
-<p>An Orders notification should arrive with the <code>order</code> topic or an
-  <code>order.*</code> action: the provider's document lists <code>order.created</code> and
-  <code>order.updated</code>, but a live Orders delivery <strong>has not been observed</strong> here
-  yet. <code>MercadoPagoEventEnum</code> only names the topics the spec declares
-  (<code>payment</code>, <code>merchant_order</code>, <code>point_integration_wh</code>), so for Orders
-  <code>event.event</code> is <code>UNKNOWN</code> — which is why the example decides on the
-  <code>topic</code> and the action, as <code>make_mercado_pago_webhook_delivery_dependency</code>
-  (next section) does, which also re-reads the order.</p>
+<p>An Orders notification arrives with the <code>order</code> topic and an <code>order.*</code>
+  action: the provider's document lists <code>order.created</code> and
+  <code>order.updated</code>, and a live delivery a production service received on
+  2026-11-13 carried <code>type=order</code> and <code>action: "order.canceled"</code>
+  (<a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/498">#498</a>).
+  <code>event.event</code> is <code>MercadoPagoEventEnum.ORDER</code> since that release; through
+  v0.357.0 it was <code>UNKNOWN</code>. The example decides on the <code>topic</code> and the
+  action, as <code>make_mercado_pago_webhook_delivery_dependency</code> (next section)
+  does, which also re-reads the order.</p>
 </li>
 </ul>
 <div class="admonition warning">
@@ -5544,6 +5592,22 @@ verification algorithm is not there.</p>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>no data.id           request-id:&lt;x-request-id&gt;;ts:&lt;ts&gt;;
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>neither one          ts:&lt;ts&gt;;
 </span></code></pre></div>
+<p>And the <strong><code>data.id</code> is signed in lowercase</strong>. An Orders id arrives as
+<code>ORD01M7B5HWREYRJCAPJ61QTF1SRW</code> and the provider signs
+<code>id:ord01m7b5hwreyrjcapj61qtf1srw;...</code>. <code>build_manifest</code> (and so
+<code>sign_manifest</code> and <code>verify_signature</code>) lowercases it; <code>event.data_id</code> keeps
+the id as delivered, which is what <code>GET /v1/orders/{id}</code> answers to.</p>
+<div class="admonition warning">
+<p class="admonition-title">Every Orders delivery was a 401 until this release</p>
+<p>Through v0.357.0 the manifest carried the id as delivered, so <strong>every</strong>
+live Orders notification was refused with
+<code>401 Invalid Mercado Pago webhook signature</code>
+(<a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/753">#753</a>).
+This rule departs from the upstream file at <code>99857f33</code>: their validator
+lowercased the id when it shipped and stopped in <code>ac20999a</code>
+(2026-06-17). The live deliveries verify only lowercased — the evidence
+beats the port.</p>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">This was a defect until v0.250.0</p>
 <p>Until then this module rendered a fixed template, so a delivery without
@@ -5595,16 +5659,15 @@ uses the first version you accept, so <code>versions=("v2", "v1")</code> adopts 
 one before this package changes. The default is <code>("v1",)</code> — failing closed
 is the right behaviour for a version the provider has not sent yet.</p>
 </div>
-<div class="admonition danger">
-<p class="admonition-title">Still not measured against a live delivery</p>
-<p>Ported from the provider's implementation is not the same as verified
-against a notification the provider sent. What is measured: the manifests,
-byte for byte, against the rules upstream encodes; and the digests,
+<div class="admonition warning">
+<p class="admonition-title">One live topic observed, not every topic</p>
+<p>Measured in this package: the manifests, byte for byte, and the digests,
 against vectors computed with <code>openssl dgst -sha256 -hmac</code>, a different
 HMAC implementation than Python's.</p>
-<p>What is still unmeasured: whether the live deliveries follow their own
-SDK. Run <strong>one</strong> real notification through <code>verify_signature</code> before this
-guards money, and open an issue if it is rejected.</p>
+<p>Observed by a consumer in production on 2026-11-13: live <code>order</code>
+deliveries, which verify only with the <code>data.id</code> lowercased. Other topics
+have not been run through <code>verify_signature</code> against a live delivery;
+open an issue if one is rejected.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">QR Code notifications are not signed</p>
@@ -5684,8 +5747,8 @@ builds the full service.</p>
    no request to Mercado Pago.</li>
 <li><strong>Decides whether the notification is about an order</strong>: topic <code>order</code>, or
    an action starting with <code>order.</code>. The provider's document lists
-   <code>order.created</code> and <code>order.updated</code>; a live Orders delivery has not been
-   observed here yet.</li>
+   <code>order.created</code> and <code>order.updated</code>, and the live delivery observed on
+   2026-11-13 carried <code>type=order</code>.</li>
 <li><strong>Checks the id's shape</strong> (<code>[A-Za-z0-9]+</code>) before putting it in a path.</li>
 <li><strong>Re-reads the order</strong> by that id. <code>404</code> is an answer, not a failure: the
    dashboard's "simulate notification" signs a made-up id, and raising there

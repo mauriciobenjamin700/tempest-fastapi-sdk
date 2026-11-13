@@ -1195,6 +1195,8 @@
       
         
       
+        
+      
     
     
     
@@ -2323,6 +2325,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estorno de Pix (idempotente)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../event-sourcing/" class="md-nav__link">
         
   
@@ -2381,10 +2411,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_41" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_42" >
         
           
-          <label class="md-nav__link" for="__nav_5_41" id="__nav_5_41_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_42" id="__nav_5_42_label" tabindex="">
             
   
   
@@ -2402,8 +2432,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_41_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_41">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_42_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_42">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -5415,6 +5445,11 @@ DSS.</p>
   <code>refund_pix_charge</code> acham o segundo sozinhos. Sem valor, reembolsam o que
   sobrou. No cartão, <code>refunded_cents</code> soma os reembolsos processados; no Pix,
   eles ficam em <code>raw["transactions"]["refunds"]</code>.</li>
+<li><strong>Estorno de Pix idempotente.</strong> Com <code>refund_reference=</code>,
+  <code>refund_pix_charge</code> deriva a <code>X-Idempotency-Key</code> da referência e devolve um
+  <code>PixRefund</code>; repetir com a mesma referência não estorna de novo. Sem ela, a
+  forma antiga continua: um <code>PixCharge</code> e uma chave nova por chamada. Veja
+  <a href="../pix-refund/">Estorno de Pix (idempotente)</a>.</li>
 <li><strong>Pix só se estorna depois de pago.</strong> Medido em 2026-10-10: o parcial
   deixa a cobrança <code>PAID</code> (o <code>status_detail</code> <code>partially_refunded</code> fica em <code>raw</code>), o resto a deixa
   <code>REFUNDED</code>. Num Pix ainda não pago, a resposta é
@@ -5436,11 +5471,22 @@ DSS.</p>
   (medido com <code>PT60S</code>).</li>
 <li><strong>Pagador é obrigatório.</strong> Order sem <code>payer</code> volta
   <code>400 '$.payer' - minimum 1 properties allowed</code>.</li>
-<li><strong>Uma chave de idempotência por chamada</strong>, que o <code>HTTPClient</code> reaproveita
-  nos próprios retries. O provedor honra a chave (medido em 2026-10-10): a
-  mesma chave com o mesmo corpo devolve a <strong>mesma</strong> order, e com outro corpo
-  volta <code>409 idempotency_key_already_used</code>. Para colapsar duas chamadas do
-  mesmo pedido, passe <code>idempotency_key=lambda reference: reference</code>.</li>
+<li><strong>Pix: a reference é a chave de idempotência.</strong> O <code>MercadoPagoPixProvider</code>
+  deriva a <code>X-Idempotency-Key</code> da <code>reference</code>
+  (<code>reference_idempotency_key</code>, um UUID5 — a especificação declara o header
+  <code>format: uuid</code>), então repetir o <code>create_pix_charge</code> com o mesmo pedido
+  devolve a order que a primeira chamada abriu, como o
+  <a href="../pix-protocol/">contrato Pix</a> promete. O provedor honra a chave (medido
+  em 2026-10-10): a mesma chave com o mesmo corpo devolve a <strong>mesma</strong> order,
+  e com outro corpo volta <code>409 idempotency_key_already_used</code>. O adapter deixa
+  esse <code>409</code> sair como <code>httpx.HTTPStatusError</code>: reusar uma reference com
+  outro valor é defeito de quem chama, e devolver a order antiga entregaria
+  uma cobrança de valor errado. Até a v0.357.0 o padrão era um UUID4 novo por
+  chamada, e um create repetido abria uma segunda order.</li>
+<li><strong>Cartão: uma chave por chamada</strong>, que o <code>HTTPClient</code> reaproveita nos
+  próprios retries. Cartão recusado é refeito com outro token sob a mesma
+  reference — outro corpo, então uma chave derivada da reference voltaria
+  <code>409</code>. Passe <code>idempotency_key=</code> a qualquer um dos adapters para escolher.</li>
 <li><strong>Parcelas dependem do cartão e do valor.</strong> A consulta de parcelas
   (<code>get_installments</code>) responde pelo BIN: o Visa de teste (<code>423564</code>) oferece
   só 1x, na vendedora de teste e na conta real, e pedir 3x volta
@@ -5507,14 +5553,15 @@ não extrai nada do request à mão, e não decide o que fazer com um <code>Fals
   também não: <code>payload</code> fica vazio e <code>body</code> traz os bytes.</p>
 </li>
 <li>
-<p>Notificação de Orders deve chegar com o tópico <code>order</code> ou uma ação
-  <code>order.*</code>: o documento do provedor lista <code>order.created</code> e
-  <code>order.updated</code>, mas uma entrega real de Orders <strong>ainda não foi observada</strong>
-  aqui. <code>MercadoPagoEventEnum</code> só nomeia os tópicos que a spec declara
-  (<code>payment</code>, <code>merchant_order</code>, <code>point_integration_wh</code>), então para Orders
-  <code>event.event</code> é <code>UNKNOWN</code> — por isso o exemplo decide pelo <code>topic</code> e pela
-  ação, como faz <code>make_mercado_pago_webhook_delivery_dependency</code> (seção
-  seguinte), que além disso relê a order.</p>
+<p>Notificação de Orders chega com o tópico <code>order</code> e uma ação <code>order.*</code>: o
+  documento do provedor lista <code>order.created</code> e <code>order.updated</code>, e uma
+  entrega real que um serviço em produção recebeu em 2026-11-13 trazia
+  <code>type=order</code> e <code>action: "order.canceled"</code>
+  (<a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/498">#498</a>).
+  <code>event.event</code> é <code>MercadoPagoEventEnum.ORDER</code> desde esta release; até a
+  v0.357.0 era <code>UNKNOWN</code>. O exemplo decide pelo <code>topic</code> e pela ação, como faz
+  <code>make_mercado_pago_webhook_delivery_dependency</code> (seção seguinte), que além
+  disso relê a order.</p>
 </li>
 </ul>
 <div class="admonition warning">
@@ -5537,6 +5584,23 @@ declarado leva esse nome, e o algoritmo de validação não está lá.</p>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>sem data.id       request-id:&lt;x-request-id&gt;;ts:&lt;ts&gt;;
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>sem os dois       ts:&lt;ts&gt;;
 </span></code></pre></div>
+<p>E o <strong><code>data.id</code> é assinado em minúsculas</strong>. Um id de Orders chega como
+<code>ORD01M7B5HWREYRJCAPJ61QTF1SRW</code> e o provedor assina
+<code>id:ord01m7b5hwreyrjcapj61qtf1srw;...</code>. O <code>build_manifest</code> (e por ele o
+<code>sign_manifest</code> e o <code>verify_signature</code>) passa o id para minúsculas; o
+<code>event.data_id</code> guarda o id como chegou, que é o que o
+<code>GET /v1/orders/{id}</code> aceita.</p>
+<div class="admonition warning">
+<p class="admonition-title">Toda entrega de Orders era 401 até esta release</p>
+<p>Até a v0.357.0 o manifesto levava o id como chegou, então <strong>toda</strong>
+notificação real de Orders era recusada com
+<code>401 Invalid Mercado Pago webhook signature</code>
+(<a href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/753">#753</a>).
+Esta regra diverge do arquivo upstream no <code>99857f33</code>: o validador deles
+passava o id para minúsculas quando saiu e deixou de passar no <code>ac20999a</code>
+(2026-06-17). As entregas reais só verificam em minúsculas — a evidência
+vence o port.</p>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">Isto era um defeito até a v0.250.0</p>
 <p>Até então este módulo renderizava um template fixo, então uma entrega sem
@@ -5589,16 +5653,15 @@ usa a primeira versão que você aceitar, então
 é <code>("v1",)</code> — falhar fechado é o comportamento certo para versão que o
 provedor ainda não mandou.</p>
 </div>
-<div class="admonition danger">
-<p class="admonition-title">Ainda não foi medido contra uma entrega real</p>
-<p>Portado da implementação do provedor não é o mesmo que verificado contra
-notificação que o provedor mandou. O que está medido: os manifestos, byte
-a byte, contra as regras que o upstream codifica; e os digests, contra
+<div class="admonition warning">
+<p class="admonition-title">Um tópico real observado, não todos</p>
+<p>Medido neste pacote: os manifestos, byte a byte, e os digests, contra
 vetores calculados com <code>openssl dgst -sha256 -hmac</code>, que é outra
 implementação de HMAC que não a do Python.</p>
-<p>O que continua sem medição: se as entregas reais seguem o SDK deles. Passe
-<strong>uma</strong> notificação real por <code>verify_signature</code> antes de isso guardar
-dinheiro, e abra uma issue se ela for rejeitada.</p>
+<p>Observado por um consumidor em produção em 2026-11-13: entregas reais do
+tópico <code>order</code>, que só verificam com o <code>data.id</code> em minúsculas. Os outros
+tópicos não passaram por <code>verify_signature</code> contra uma entrega real; abra
+uma issue se algum for rejeitado.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Notificação de QR Code não é assinada</p>
@@ -5677,7 +5740,8 @@ monta o service completo.</p>
    nenhuma requisição ao Mercado Pago.</li>
 <li><strong>Decide se a notificação é de uma order</strong>: tópico <code>order</code>, ou ação
    começando com <code>order.</code>. O documento do provedor lista <code>order.created</code> e
-   <code>order.updated</code>; uma entrega real de Orders ainda não foi observada aqui.</li>
+   <code>order.updated</code>, e a entrega real observada em 2026-11-13 trazia
+   <code>type=order</code>.</li>
 <li><strong>Confere o formato do id</strong> (<code>[A-Za-z0-9]+</code>) antes de pôr no path.</li>
 <li><strong>Relê a order</strong> por esse id. <code>404</code> é resposta, não falha: a
    "simulação de notificação" do painel assina um id inventado, e levantar

@@ -1195,6 +1195,8 @@
       
         
       
+        
+      
     
     
     
@@ -2323,6 +2325,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estorno de Pix (idempotente)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../event-sourcing/" class="md-nav__link">
         
   
@@ -2381,10 +2411,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_41" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_42" >
         
           
-          <label class="md-nav__link" for="__nav_5_41" id="__nav_5_41_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_42" id="__nav_5_42_label" tabindex="">
             
   
   
@@ -2402,8 +2432,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_41_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_41">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_42_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_42">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -5996,20 +6026,26 @@ que transcreve — o <code>tempest-ai</code>, a própria OpenAI, um <code>vLLM</
 <li><code>base_url</code> <strong>inclui</strong> a versão (<code>.../v1</code>), igual ao <code>OpenAICompatGenerator</code>;
   o backend acrescenta <code>/audio/transcriptions</code>. Para o <code>tempest-ai</code>, passe
   <code>https://ai.buscar.app.br/api/openai/v1</code>.</li>
-<li>O pedido é multipart com <code>file</code>, <code>model</code>, <code>language</code> (só quando você passa
-  um) e <code>response_format=verbose_json</code>, o formato que traz <code>duration</code>,
+<li>O pedido é multipart com <code>file</code>, <code>model</code>, <code>language</code>, <code>prompt</code> e
+  <code>temperature</code> (cada um só quando você passa) e <code>response_format=verbose_json</code>, o formato que traz <code>duration</code>,
   <code>language</code> e <code>segments</code>. A chave vai em <code>Authorization: Bearer</code>.</li>
 <li><code>language</code> aceita o código ISO-639-1 (<code>"pt"</code>) ou um <code>LanguageEnum</code>
   (<code>LanguageEnum.PT_BR</code> vira <code>"pt"</code>); <code>None</code> deixa o servidor detectar.</li>
 <li><code>with_segments=False</code> devolve <code>segments=[]</code>; <code>duration</code> e <code>language</code>
   continuam preenchidos.</li>
+<li><code>prompt</code> dá vocabulário ao modelo — nomes de cidade, de produto —, e
+  <code>temperature</code> fixa a temperatura do decode. Como montar o prompt e o
+  limite de tokens dele estão em
+  <a href="../genai/#dar-vocabulario-ao-whisper-prompt-e-hotwords">Dar vocabulário ao Whisper</a>.
+  Se o servidor respeita os campos é com ele: o SDK garante que vão no form.</li>
 <li><code>audio</code> aceita <code>bytes</code> ou um caminho local (<code>str</code> ou <code>Path</code>). String é
   sempre caminho, nunca URL: o backend não busca nada fora da máquina.</li>
 </ul>
 <div class="admonition tip">
 <p class="admonition-title">Troca direta pelo <code>SpeechToText</code></p>
-<p><code>OpenAICompatSpeech.transcribe</code> aceita os mesmos <code>language</code> e
-<code>with_segments</code> do <code>SpeechToText</code> e cumpre o protocolo
+<p><code>OpenAICompatSpeech.transcribe</code> aceita os mesmos <code>language</code>,
+<code>with_segments</code>, <code>prompt</code> e <code>temperature</code> do <code>SpeechToText</code> (o
+<code>hotwords</code> é só do local) e cumpre o protocolo
 <code>SpeechTranscriber</code>. Código que faz
 <code>await transcriber.transcribe(audio, language="pt", with_segments=False)</code>
 não muda; e <code>make_genai_router(speech_to_text=speech)</code> serve o

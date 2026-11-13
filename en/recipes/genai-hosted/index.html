@@ -1197,6 +1197,8 @@
       
         
       
+        
+      
     
     
     
@@ -3496,6 +3498,34 @@
     
   
     Pix protocol (one contract, many providers)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pix-refund/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pix refunds (idempotent)
   
 
     
@@ -6000,21 +6030,28 @@ uses (<code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>); only the model
 <li><code>base_url</code> <strong>includes</strong> the version (<code>.../v1</code>), as with
   <code>OpenAICompatGenerator</code>; the backend appends <code>/audio/transcriptions</code>. For
   <code>tempest-ai</code>, pass <code>https://ai.buscar.app.br/api/openai/v1</code>.</li>
-<li>The request is multipart with <code>file</code>, <code>model</code>, <code>language</code> (only when you
-  pass one) and <code>response_format=verbose_json</code>, the format that carries
+<li>The request is multipart with <code>file</code>, <code>model</code>, <code>language</code>, <code>prompt</code> and
+  <code>temperature</code> (each only when you pass it) and <code>response_format=verbose_json</code>, the format that carries
   <code>duration</code>, <code>language</code> and <code>segments</code>. The key goes in
   <code>Authorization: Bearer</code>.</li>
 <li><code>language</code> takes the ISO-639-1 code (<code>"pt"</code>) or a <code>LanguageEnum</code>
   (<code>LanguageEnum.PT_BR</code> becomes <code>"pt"</code>); <code>None</code> lets the server detect it.</li>
 <li><code>with_segments=False</code> returns <code>segments=[]</code>; <code>duration</code> and <code>language</code>
   are still filled.</li>
+<li><code>prompt</code> hands the model vocabulary — city names, product names — and
+  <code>temperature</code> pins the decode temperature. How to build the prompt and its
+  token limit are in
+  <a href="../genai/#give-whisper-the-vocabulary-prompt-and-hotwords">Give Whisper the vocabulary</a>.
+  Whether the server honours the fields is up to it: the SDK guarantees they
+  go in the form.</li>
 <li><code>audio</code> takes <code>bytes</code> or a local path (<code>str</code> or <code>Path</code>). A string is always
   a path, never a URL: the backend fetches nothing off the machine.</li>
 </ul>
 <div class="admonition tip">
 <p class="admonition-title">Drop-in for <code>SpeechToText</code></p>
-<p><code>OpenAICompatSpeech.transcribe</code> takes the same <code>language</code> and
-<code>with_segments</code> as <code>SpeechToText</code> and satisfies the <code>SpeechTranscriber</code>
+<p><code>OpenAICompatSpeech.transcribe</code> takes the same <code>language</code>,
+<code>with_segments</code>, <code>prompt</code> and <code>temperature</code> as <code>SpeechToText</code>
+(<code>hotwords</code> is local-only) and satisfies the <code>SpeechTranscriber</code>
 protocol. Code that does
 <code>await transcriber.transcribe(audio, language="pt", with_segments=False)</code>
 does not change; and <code>make_genai_router(speech_to_text=speech)</code> serves
