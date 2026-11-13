@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "Sair agora" no `parse_trip_intent` (#759). `agora`, `agora mesmo`, `já`,
+  `imediatamente`, `o quanto antes`, `o mais rápido possível`, `neste
+  momento` e `nesse momento` (`NOW_PHRASES`, por palavra inteira, sem caixa
+  nem acento: "agorafobia" e "Jaqueira" não contam) viram
+  `departure_date=today` quando a frase não diz outra data, e ligam o campo
+  novo `TripIntent.departure_now: bool` (default `False`; os campos antigos não
+  mudam). Data dita vence ("agora ... amanhã" é amanhã, com
+  `departure_now=False`), e data impossível também (fica `None` para o app
+  perguntar). O parser recebe `date`, não relógio, então não inventa hora: o
+  filtro "só o que ainda vai sair" é de quem chama. Com isso, "picos teresina
+  agora mesmo" passa a ler Picos -> Teresina pela regra de cidades em ordem
+  que já existia, porque só sobram cidades na frase. Receita: "Sair agora" em
+  `recipes/fuzzy-matching`.
 - `prompt` e `temperature` na transcrição (#758). `OpenAICompatSpeech.transcribe`
   manda os dois como campos do form do `POST /audio/transcriptions`, só quando
   informados; `SpeechToText.transcribe` repassa ao faster-whisper como

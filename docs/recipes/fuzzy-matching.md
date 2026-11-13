@@ -216,7 +216,51 @@ absorve:
     frase é só cidades ("picos sobral"): "estou feliz de ir pra fortaleza" não
     é a cidade de Feliz (RS). Com a lista restrita, essa trava não existe.
 
-A qualidade é fixada por uma tabela de 61 frases reais
+### Sair agora
+
+Na busca por voz, "quero ir agora" é tão comum quanto "hoje". `agora`,
+`agora mesmo`, `já`, `imediatamente`, `o quanto antes`, `o mais rápido
+possível`, `neste momento` e `nesse momento` viram `departure_date=today` e
+ligam `departure_now`:
+
+```python
+from datetime import date
+
+from tempest_fastapi_sdk.geo import parse_trip_intent
+
+today = date(2026, 11, 13)
+for text in [
+    "quero ir de picos para teresina agora",
+    "picos teresina agora mesmo",
+    "de picos pra teresina o quanto antes",
+    "agora quero ver de picos pra teresina amanhã",
+]:
+    intent = parse_trip_intent(text, today)
+    print(text, "->", intent.departure_date, intent.departure_now)
+```
+
+```text
+quero ir de picos para teresina agora -> 2026-11-13 True
+picos teresina agora mesmo -> 2026-11-13 True
+de picos pra teresina o quanto antes -> 2026-11-13 True
+agora quero ver de picos pra teresina amanhã -> 2026-11-14 False
+```
+
+- **Palavra inteira**: "agorafobia" e "Jaqueira" (a cidade de PE) não contam,
+  sem caixa nem acento ("JÁ!" conta).
+- **Data dita vence**: com "amanhã", "sexta" ou "20/10" na frase, a data é a
+  dita e `departure_now` é `False`. Data que não existe ("dia 31 de
+  fevereiro") também vence: a data fica `None` para o app perguntar.
+- **Sem preposição**: "picos teresina agora mesmo" cai na regra das cidades
+  em ordem (primeira origem, segunda destino), porque o "agora mesmo" sai da
+  frase antes e só sobram cidades.
+
+!!! info "O parser não tem relógio"
+    `parse_trip_intent` recebe `today: date`, não a hora. `departure_now`
+    não vem com `period_start`: quem chama aplica o "a partir de agora" com o
+    próprio relógio, mostrando só as viagens de hoje que ainda vão sair.
+
+A qualidade é fixada por uma tabela de 65 frases reais
 (`tests/geo/test_trip_intent.py`), vindas da busca de viagem em produção do
 BusCar. Mudança que quebre uma linha é regressão da busca.
 
@@ -392,7 +436,8 @@ O índice é montado uma vez por processo e fica em memória.
   confirmando e desempatando, apelidos e palavra comum filtrada.
 - **`parse_trip_intent`**: origem, destino, data e período de uma frase de
   viagem, com fala transcrita (erro, "l" vocalizado, numeral por extenso) e
-  restrita às cidades que você atende (`municipalities=`).
+  restrita às cidades que você atende (`municipalities=`). "Agora", "já" e
+  "o quanto antes" são hoje com `departure_now`; o filtro por hora é seu.
 - **`search_municipalities` / `municipality_by_ibge_code`**: busca por nome
   (com erro) e por código, com coordenada e capital.
 - Homônimos sem UF voltam empatados. A decisão é sua.

@@ -4484,3 +4484,16 @@ recusa em `parse_submission` (`admin/forms.py`). Motivo: o `kind` da
 livre. Validado no browser com a `WalletEntryModel` real. Testes:
 `tests/admin/test_choices.py`.
 
+
+## "Sair agora" no pedido de viagem (#759, 2026-11-13)
+
+`NOW_PHRASES` em `geo/trip_vocabulary.py` (agora, agora mesmo, já,
+imediatamente, o quanto antes, o mais rápido possível, neste/nesse momento,
+por token inteiro) e `TripIntent.departure_now` em `geo/trip_intent.py`: sem
+outra data, a frase vira `departure_date=today`; data dita (ou impossível)
+vence e `departure_now` fica `False`. Sem hora: o parser recebe `date`, e o
+"a partir de agora" é do caller. "picos teresina agora mesmo" não precisou de
+fallback novo: tirado o "agora mesmo", a regra de cidades em ordem que já
+existia (`_fill_without_markers`, só cidades na frase) resolve. Testes:
+`tests/geo/test_trip_intent.py` (4 linhas na tabela, agora 65, e
+`NOW_CASES`). Receita: "Sair agora" em `docs/recipes/fuzzy-matching.md`.

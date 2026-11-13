@@ -19,6 +19,10 @@ What it handles, each case fixed by a test:
   ``"sampa"``, ``"bh"``).
 * **Homonyms**: ``"Batalha no Piauí"`` keeps the one in the state; without
   a state both come back, for the app to ask.
+* **Leaving now**: ``"agora"``, ``"já"``, ``"o quanto antes"`` and the
+  rest of :data:`~tempest_fastapi_sdk.geo.trip_vocabulary.NOW_PHRASES` set
+  the date to today and :attr:`TripIntent.departure_now`; an explicit date
+  in the phrase wins.
 * **A city the user said but nothing matched** comes back in
   ``unrecognized`` with what was said, instead of disappearing.
 * **Restriction**: pass ``municipalities=`` (the cities a service actually
@@ -55,6 +59,7 @@ from tempest_fastapi_sdk.geo.trip_vocabulary import (
     MONTHS,
     NEXT_WEEK_PREFIXES,
     NEXT_WEEK_SUFFIX,
+    NOW_PHRASES,
     NUMERIC_DATE,
     ORIGIN_MARKERS,
     ORIGIN_VERB_LINKERS,
@@ -306,6 +311,14 @@ class TripIntent:
             its preposition that matched no city (``{"destination":
             "natal"}`` when Natal is outside ``municipalities``). Only a
             role left without a city is reported.
+        departure_now (bool): Whether the phrase asked to leave now
+            (``"agora"``, ``"já"``, ``"o quanto antes"``... the
+            :data:`~tempest_fastapi_sdk.geo.trip_vocabulary.NOW_PHRASES`)
+            and ``departure_date`` is ``today``. The parser receives a date,
+            not a clock, so it sets no time: the caller keeps only the trips
+            that leave from its own current time on. An explicit date in the
+            phrase (``"agora ... amanhã"``) or one said that does not exist
+            wins, and then this is ``False``.
     """
 
     origin: CityMention | None = None
@@ -316,6 +329,7 @@ class TripIntent:
     period_end: time | None = None
     unresolved_date: str | None = None
     unrecognized: dict[TripRoleEnum, str] = field(default_factory=dict)
+    departure_now: bool = False
 
 
 @dataclass
@@ -330,6 +344,9 @@ class _Parse:
         index (TripCityIndex): The cities.
         consumed (set[int]): Token positions read as date or period.
         fuzzy_budget (int): Similarity lookups still allowed.
+        asked_now (bool): Whether a phrase of
+            :data:`~tempest_fastapi_sdk.geo.trip_vocabulary.NOW_PHRASES` was
+            said.
     """
 
     intent: TripIntent
@@ -338,6 +355,7 @@ class _Parse:
     index: TripCityIndex
     consumed: set[int] = field(default_factory=set)
     fuzzy_budget: int = TRIP_MAX_FUZZY_LOOKUPS
+    asked_now: bool = False
 
 
 def next_weekday(today: date, weekday: int, *, strictly_after: bool) -> date:
@@ -423,8 +441,30 @@ def _numeric_date(
     return found, match.span(), None if found is not None else match.group(0)
 
 
+def _now_phrase_at(tokens: list[str], start: int) -> int:
+    """Return the length of the "leave now" phrase starting at ``start``.
+
+    Args:
+        tokens (list[str]): The normalized phrase tokens.
+        start (int): The position to read from.
+
+    Returns:
+        int: The token count of the longest
+        :data:`~tempest_fastapi_sdk.geo.trip_vocabulary.NOW_PHRASES` entry
+        there, or ``0``.
+    """
+    for phrase in NOW_PHRASES:
+        if tuple(tokens[start : start + len(phrase)]) == phrase:
+            return len(phrase)
+    return 0
+
+
 def _extract_dates(state: _Parse, today: date) -> None:
-    """Read relative dates, weekdays and ``"dia N"``.
+    """Read relative dates, weekdays, ``"dia N"`` and "leave now" phrases.
+
+    A "leave now" phrase only marks :attr:`_Parse.asked_now` and consumes its
+    tokens; :func:`parse_trip_intent` turns it into today once every explicit
+    date had the chance to win.
 
     Args:
         state (_Parse): The parse; dates and consumed tokens are written here.
@@ -435,7 +475,11 @@ def _extract_dates(state: _Parse, today: date) -> None:
     for i, token in enumerate(tokens):
         if i in state.consumed:
             continue
-        if tuple(tokens[i : i + size]) == DAY_AFTER_TOMORROW:
+        now_size = _now_phrase_at(tokens, i)
+        if now_size:
+            state.asked_now = True
+            state.consumed.update(range(i, i + now_size))
+        elif tuple(tokens[i : i + size]) == DAY_AFTER_TOMORROW:
             intent.departure_date = today + timedelta(days=2)
             state.consumed.update(range(i, i + size))
         elif token == TOMORROW_WORD:
@@ -810,7 +854,9 @@ def parse_trip_intent(
     destination), by exact name only. Dates: ``hoje``, ``amanhã``, ``depois
     de amanhã``, a weekday (``"próxima sexta"``, ``"sexta que vem"``),
     ``"dia 20"``, ``"dia 20 de outubro"``, ``"20/10"``; periods:
-    ``madrugada``, ``manhã``, ``tarde``, ``noite``.
+    ``madrugada``, ``manhã``, ``tarde``, ``noite``. A "leave now" phrase
+    (``"agora"``, ``"já"``, ``"o quanto antes"``...) with no other date is
+    today, with :attr:`TripIntent.departure_now` set.
 
     Args:
         text (str): The phrase as typed or transcribed.
@@ -849,6 +895,13 @@ def parse_trip_intent(
             if word.start < span[1] and span[0] < word.end
         )
     _extract_dates(state, today)
+    if (
+        state.asked_now
+        and intent.departure_date is None
+        and intent.unresolved_date is None
+    ):
+        intent.departure_date = today
+    intent.departure_now = state.asked_now and intent.departure_date == today
     _extract_period(state)
     state.tokens = [
         TRIP_SEPARATOR if k in state.consumed else token

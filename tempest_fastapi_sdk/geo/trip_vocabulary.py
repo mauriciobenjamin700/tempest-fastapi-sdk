@@ -123,6 +123,27 @@ Peixoto"`` is untouched).
 TODAY_WORDS: frozenset[str] = frozenset({"hoje"})
 """Words meaning today."""
 
+NOW_PHRASES: tuple[tuple[str, ...], ...] = (
+    ("o", "mais", "rapido", "possivel"),
+    ("mais", "rapido", "possivel"),
+    ("o", "quanto", "antes"),
+    ("quanto", "antes"),
+    ("neste", "momento"),
+    ("nesse", "momento"),
+    ("agora", "mesmo"),
+    ("imediatamente",),
+    ("agora",),
+    ("ja",),
+)
+"""Phrases asking to leave now, in tokens, longest first.
+
+``"agora"``, ``"agora mesmo"``, ``"já"``, ``"imediatamente"``, ``"o quanto
+antes"``, ``"o mais rápido possível"``, ``"neste momento"`` and ``"nesse
+momento"``. Matched on whole tokens, so ``"agorafobia"`` and ``"jaqueira"``
+do not count, and the longest phrase at a position wins (``"agora mesmo"``
+consumes both words). No IBGE municipality name has any of these words.
+"""
+
 TOMORROW_WORD: str = "amanha"
 """Tomorrow, normalized."""
 
@@ -222,6 +243,7 @@ __all__: list[str] = [
     "MONTH_LOOKAHEAD",
     "NEXT_WEEK_PREFIXES",
     "NEXT_WEEK_SUFFIX",
+    "NOW_PHRASES",
     "NUMERIC_DATE",
     "ORIGIN_MARKERS",
     "ORIGIN_VERBS",
