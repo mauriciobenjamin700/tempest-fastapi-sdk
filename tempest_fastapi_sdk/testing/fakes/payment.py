@@ -68,6 +68,7 @@ class FakePixProvider(_Steerable):
         super().__init__()
         self.provider_name = provider_name
         self._charges: dict[str, PixCharge] = {}
+        self._by_reference: dict[str, str] = {}
         self._next_id: int = 1
 
     @property
@@ -81,7 +82,12 @@ class FakePixProvider(_Steerable):
         return MappingProxyType(self._charges)
 
     async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge:
-        """Issue a pending charge.
+        """Issue a pending charge, or answer the one the reference already has.
+
+        Idempotent on :attr:`PixChargeRequest.reference`, as the contract
+        promises and the real adapters behave: a second create with the same
+        reference returns the charge the first one issued, in whatever state
+        it is now, and issues nothing.
 
         Args:
             request (PixChargeRequest): What the service asked to charge.
@@ -93,6 +99,9 @@ class FakePixProvider(_Steerable):
             BaseException: Whatever :meth:`fail_next` queued.
         """
         self._record("create_pix_charge")
+        existing = self._by_reference.get(request.reference)
+        if existing is not None:
+            return self._charges[existing]
         charge_id = f"{self.provider_name}-{self._next_id}"
         self._next_id += 1
         charge = PixCharge(
@@ -106,6 +115,7 @@ class FakePixProvider(_Steerable):
             expires_at=None,
         )
         self._charges[charge_id] = charge
+        self._by_reference[request.reference] = charge_id
         return charge
 
     async def get_pix_charge(self, charge_id: str) -> PixCharge:

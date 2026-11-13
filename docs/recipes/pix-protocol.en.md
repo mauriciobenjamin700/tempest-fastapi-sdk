@@ -104,9 +104,24 @@ nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
     with the same `reference`, you get the charge that already exists, not
     a second one. On OpenPix that is `?return_existing=true`, which the
     adapter sends since v0.346.0 (Woovi's spec describes it as "make the
-    endpoint idempotent"); on Mercado Pago, the `X-Idempotency-Key`. The SDK
-    tests the request that leaves, not the provider's answer: a repeat
-    against the sandbox has not been measured yet.
+    endpoint idempotent"); on Mercado Pago, an `X-Idempotency-Key` derived
+    from the `reference` (a UUID5), the default since the release after
+    v0.357.0 — before it, each call carried a new key and a repeat opened a
+    second order. `FakePixProvider` answers the existing charge too, so a
+    test over the fake sees the same contract.
+
+    How far that is measured: on Mercado Pago, the same key with the same
+    body returned the same order in the sandbox (2026-10-10); on OpenPix, the
+    SDK tests the request that leaves, and a repeat against the sandbox has
+    not been measured yet.
+
+!!! warning "Same `reference`, different charge: `409` on Mercado Pago"
+    The key collapses **the same** request. Repeating a `reference` with
+    another amount, payer, description or expiry makes Mercado Pago answer
+    `409 idempotency_key_already_used`, which the adapter raises as
+    `httpx.HTTPStatusError` — it does not read the old order back, because
+    that order is for an amount nobody asked for now. A new charge for the
+    same purchase needs a new `reference`.
 
 ### What comes out: `PixCharge`
 
