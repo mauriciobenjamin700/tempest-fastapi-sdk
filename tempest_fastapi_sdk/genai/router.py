@@ -24,7 +24,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Response, UploadFile, status
+from fastapi import APIRouter, Form, Response, UploadFile, status
 from pydantic import Field
 from starlette.responses import StreamingResponse
 
@@ -257,8 +257,11 @@ def make_genai_router(
         retriever (SupportsRetrieve | None): Backs ``/rag`` — a ``Retriever``
             (rerank via ``Retriever(reranker=...)``) or a ``HybridRetriever``.
         speech_to_text (SpeechTranscriber | None): Backs ``/transcribe`` —
-            a ``SpeechToText``, an ``OllamaSpeech``, or any
-            ``SpeechTranscriber``.
+            a ``SpeechToText``, an ``OpenAICompatSpeech``, an
+            ``OllamaSpeech``, or any ``SpeechTranscriber``. The route takes
+            an optional ``prompt`` form field (checked against
+            ``max_prompt_chars``) and forwards it; ``temperature`` is not
+            exposed.
         text_to_speech (SpeechSynthesizer | None): Backs ``/tts`` — a
             ``TextToSpeech``, an ``OllamaSpeech``, or any
             ``SpeechSynthesizer``.
@@ -439,23 +442,34 @@ def make_genai_router(
         async def transcribe(
             file: UploadFile,
             language: str | None = None,
+            prompt: str | None = Form(default=None),
         ) -> object:
             """Transcribe an uploaded audio file.
+
+            ``prompt`` is forwarded only when the request carries one, so a
+            backend written against the protocol before it had ``prompt``
+            still serves every request that does not use it.
 
             Args:
                 file (UploadFile): The audio file to transcribe.
                 language (str | None): Force a language, or auto-detect.
+                prompt (str | None): Vocabulary hint for the decoder (form
+                    field), capped at ``bounds.max_prompt_chars``.
 
             Returns:
                 object: The :class:`Transcription` (text, language,
                 duration, segments).
             """
+            if prompt is not None:
+                _check_prompt(prompt, bounds)
             audio = await read_upload_capped(
                 file,
                 max_bytes=bounds.max_upload_bytes,
                 label="audio",
             )
-            return await stt.transcribe(audio, language=language)
+            if prompt is None:
+                return await stt.transcribe(audio, language=language)
+            return await stt.transcribe(audio, language=language, prompt=prompt)
 
     if text_to_speech is not None:
         tts = text_to_speech

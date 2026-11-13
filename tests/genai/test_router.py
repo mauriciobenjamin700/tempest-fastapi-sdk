@@ -133,6 +133,39 @@ class TestOtherEndpoints:
         assert resp.status_code == 200
         assert resp.json()["text"] == "heard 4 bytes"
 
+    def test_transcribe_forwards_the_prompt_form_field(self) -> None:
+        seen: dict[str, Any] = {}
+
+        class _PromptSTT:
+            async def transcribe(
+                self,
+                audio: bytes,
+                *,
+                language: Any = None,
+                prompt: str | None = None,
+            ) -> _FakeTranscription:
+                seen["prompt"] = prompt
+                return _FakeTranscription(text="ok")
+
+        client = _client(speech_to_text=_PromptSTT())
+        resp = client.post(
+            "/api/genai/transcribe",
+            files={"file": ("clip.wav", b"1234", "audio/wav")},
+            data={"prompt": "Picos, Teresina"},
+        )
+        assert resp.status_code == 200
+        assert seen["prompt"] == "Picos, Teresina"
+
+    def test_transcribe_without_prompt_keeps_serving_an_older_backend(self) -> None:
+        """A backend with no ``prompt`` keyword still answers a plain request."""
+        client = _client(speech_to_text=_FakeSTT())
+        resp = client.post(
+            "/api/genai/transcribe",
+            files={"file": ("clip.wav", b"1234", "audio/wav")},
+            data={"language": "pt"},
+        )
+        assert resp.status_code == 200
+
     def test_tts(self) -> None:
         client = _client(text_to_speech=_FakeTTS())
         resp = client.post("/api/genai/tts", json={"text": "oi"})

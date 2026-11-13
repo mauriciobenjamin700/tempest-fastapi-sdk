@@ -353,6 +353,9 @@ class SpeechToText:
         beam_size: int | None = None,
         vad_filter: bool | None = None,
         on_progress: Callable[[float, float], None] | None = None,
+        prompt: str | None = None,
+        temperature: float | None = None,
+        hotwords: str | None = None,
     ) -> Transcription:
         """Transcribe ``audio`` into text.
 
@@ -378,6 +381,28 @@ class SpeechToText:
                 is what a caller turns into a log line or a progress bar.
                 **It runs on the worker thread**, so it must not touch the
                 event loop — use ``loop.call_soon_threadsafe`` if it has to.
+            prompt (str | None): Passed to faster-whisper as
+                ``initial_prompt``: text the decoder reads as preceding the
+                audio, the way to hand it the vocabulary of the domain
+                (city names, product names). faster-whisper 1.2.1 keeps
+                only the **last** 223 tokens of the prompt context
+                (``max_length // 2 - 1``, ``max_length = 448``). On the
+                sequential model it conditions the first window, and later
+                windows only while ``condition_on_previous_text`` holds; the
+                batched pipeline (``batch_size``) puts it in front of every
+                batch. ``None`` sends no prompt.
+            temperature (float | None): One sampling temperature for the
+                decode. ``None`` keeps faster-whisper's default, the
+                fallback ladder ``0.0, 0.2, ..., 1.0`` the sequential model
+                climbs when a window fails its compression or
+                log-probability checks; a float replaces that ladder with
+                the single value. The batched pipeline only ever uses one
+                temperature.
+            hotwords (str | None): Passed to faster-whisper as
+                ``hotwords``: hint phrases put in the prompt of **every**
+                window, whatever ``condition_on_previous_text`` says.
+                faster-whisper 1.2.1 keeps the **first** 223 tokens of it.
+                ``None`` sends none.
 
         Returns:
             Transcription: The transcript, language (+ probability),
@@ -389,6 +414,13 @@ class SpeechToText:
                 ``max_audio_seconds``.
             ValueError: When the audio cannot be decoded.
         """
+        hints: dict[str, Any] = {}
+        if prompt is not None:
+            hints["initial_prompt"] = prompt
+        if temperature is not None:
+            hints["temperature"] = temperature
+        if hotwords is not None:
+            hints["hotwords"] = hotwords
         async with self._semaphore:
             result = await asyncio.to_thread(
                 self._transcribe_sync,
@@ -398,6 +430,7 @@ class SpeechToText:
                 self.beam_size if beam_size is None else beam_size,
                 self.vad_filter if vad_filter is None else vad_filter,
                 on_progress,
+                hints,
             )
         return result
 
@@ -409,6 +442,7 @@ class SpeechToText:
         beam_size: int,
         vad_filter: bool,
         on_progress: Callable[[float, float], None] | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> Transcription:
         """Blocking transcription; assembles a :class:`Transcription`.
 
@@ -432,6 +466,7 @@ class SpeechToText:
                 beam_size,
                 vad_filter,
                 on_progress,
+                hints or {},
             )
 
     def _decode(
@@ -442,6 +477,7 @@ class SpeechToText:
         beam_size: int,
         vad_filter: bool,
         on_progress: Callable[[float, float], None] | None,
+        hints: dict[str, Any],
     ) -> Transcription:
         """Run the loaded engine and collect its segments.
 
@@ -454,6 +490,9 @@ class SpeechToText:
             vad_filter (bool): Whether to apply VAD.
             on_progress (Callable[[float, float], None] | None): Progress
                 callback, run on this thread.
+            hints (dict[str, Any]): ``initial_prompt`` / ``temperature`` /
+                ``hotwords``, holding only the keys the caller set, so an
+                unset one keeps faster-whisper's default.
 
         Returns:
             Transcription: The assembled transcript.
@@ -464,6 +503,7 @@ class SpeechToText:
             "beam_size": beam_size,
             "vad_filter": vad_filter,
             "condition_on_previous_text": self.condition_on_previous_text,
+            **hints,
         }
         if self._pipeline is not None:
             options["batch_size"] = self.batch_size

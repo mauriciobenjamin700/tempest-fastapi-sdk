@@ -879,6 +879,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `HostedGenAISettings.google_kwargs()` virou `gemini_kwargs()` (colidia com
   o `OAuthSettings.google_kwargs(prefix=...)`), com o guard
   `test_settings_mixin_clash_guard`.
+- **Vocabulário na transcrição (#758)** — `prompt` e `temperature` no
+  `SpeechTranscriber`, no `OpenAICompatSpeech` (campos do form) e no
+  `SpeechToText` (`initial_prompt`/`temperature` do faster-whisper, mais
+  `hotwords`); `OllamaSpeech` recusa os dois; `/transcribe` do
+  `make_genai_router` aceita `prompt` no form. Limite medido no
+  faster-whisper 1.2.1: últimos 223 tokens do prompt. Receita: "Dar
+  vocabulário ao Whisper" em `docs/recipes/genai.md`.
 - **Resultado estruturado completo e provedor pelo id do modelo
   (v0.332.0 (2026-10-27), extra `[genai-hosted]`)** — `complete_structured` nos dois
   geradores hospedados devolve `StructuredCompletion` (saída, texto,

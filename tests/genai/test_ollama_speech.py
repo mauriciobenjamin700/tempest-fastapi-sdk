@@ -292,6 +292,22 @@ class TestTranscribe:
 
         assert (await _speech(handler).transcribe(SAMPLES)).language == ""
 
+    @pytest.mark.parametrize(
+        ("field", "kwargs"),
+        [("prompt", {"prompt": "Picos"}), ("temperature", {"temperature": 0.0})],
+    )
+    async def test_transcription_hints_are_refused_without_a_request(
+        self,
+        field: str,
+        kwargs: dict[str, Any],
+    ) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no request expected")
+
+        with pytest.raises(ValidationException) as caught:
+            await _speech(handler).transcribe(SAMPLES, **kwargs)
+        assert caught.value.details == {"field": field}
+
     async def test_missing_file_raises_without_a_request(self, tmp_path: Path) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             raise AssertionError("no request expected")

@@ -1966,6 +1966,85 @@ stt = SpeechToText(
     The callback runs **on the worker thread**, not the event loop: do not
     touch a coroutine in there without `loop.call_soon_threadsafe`.
 
+#### Give Whisper the vocabulary: `prompt` and `hotwords`
+
+Proper nouns are where Whisper misses most: in a voice search for bus
+tickets, "from Picos to Parnaíba tomorrow" can come back with the
+destination unrecognisable. The service already knows which names are
+likely — the cities on its own routes, the products in its catalogue — and
+`prompt` is how you hand them to the model:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import SpeechToText, Transcription
+
+stt: SpeechToText = SpeechToText("base", device="cpu")
+
+CITIES: list[str] = ["Picos", "Teresina", "Parnaíba", "Floriano", "Oeiras"]
+
+
+def domain_prompt(names: list[str], limit: int = 60) -> str:
+    """Build the prompt with the most frequent names first.
+
+    Args:
+        names (list[str]): Domain names, most frequent first.
+        limit (int): How many names go into the prompt.
+
+    Returns:
+        str: A short sentence naming them.
+    """
+    return "Viagens entre " + ", ".join(names[:limit]) + "."
+
+
+async def main() -> None:
+    """Run this example."""
+    result: Transcription = await stt.transcribe(
+        "request.wav",
+        language="pt",
+        prompt=domain_prompt(CITIES),
+    )
+    print(result.text)
+
+
+asyncio.run(main())
+```
+
+- **`prompt`** becomes faster-whisper's `initial_prompt`: text the model
+  reads as if it came **before** the audio. Write it as a sentence from the
+  domain itself, in the language of the audio and with the spelling you want
+  back (accents, capitals); Whisper does not follow instructions ("transcribe
+  the city names") the way a chat model does.
+- **The limit is in tokens, and the start is what gets dropped.** In
+  faster-whisper 1.2.1 the previous context keeps the **last** 223 tokens
+  (`max_length // 2 - 1`, with `max_length = 448`) — measured by calling its
+  `get_prompt` with 400 tokens of context: 223 go in, from the 178th on.
+  OpenAI's documentation states 224 tokens for `whisper-1`
+  ([speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text)).
+  That is why the recipe puts the **most frequent** names in a short prompt
+  instead of dumping the whole list: whatever passes the limit is dropped
+  silently. How many names fit depends on the model's tokenizer; with a long
+  list, count the tokens up front instead of estimating.
+- **`hotwords`** (`SpeechToText` only) goes into the prompt of **every**
+  window, whatever `condition_on_previous_text` says; faster-whisper 1.2.1
+  keeps its **first** 223 tokens. `prompt`, by contrast, conditions the
+  first window of the sequential model and only carries forward while
+  `condition_on_previous_text=True`; with `batch_size` it goes in front of
+  every batch. For short audio (one voice request) both land in the same
+  place; for a long meeting, `hotwords` is the one that keeps applying.
+- **`temperature`** pins one temperature for the decode. `None` keeps
+  faster-whisper's default, the `0.0, 0.2, …, 1.0` ladder it climbs when a
+  window fails its compression/log-probability checks; a `float` replaces
+  the ladder with that single value.
+- The extra's floor (`faster-whisper>=1.2.1`) already has all three
+  parameters, on `WhisperModel` and on `BatchedInferencePipeline` — a test in
+  the suite checks the installed signature.
+
+!!! note "How much the prompt helps is your measurement, not ours"
+    The SDK guarantees the text reaches the decoder; the accuracy gain
+    depends on the model, the audio and the list. Measure it on recordings
+    from your domain before relying on it.
+
 !!! info "One shared instance loads the model exactly once"
     `load()` is guarded by a `threading.Lock`, not by the concurrency
     semaphore — the semaphore admits `max_concurrent` callers by
@@ -2252,7 +2331,11 @@ What `OllamaSpeech` does for you:
   the language. So `transcribe` and `synthesize` accept `language` only as
   `None`: any value raises `ValidationException` with
   `details={"field": "language"}`, before any request. `Transcription.language`
-  stays empty. There is no `keep_alive` either, which these endpoints ignore.
+  stays empty. `prompt` and `temperature` are likewise accepted only as
+  `None` (`details={"field": "prompt"}` or `"temperature"`): whether the
+  daemon honours them has not been measured, so they are neither sent nor
+  silently dropped. There is no `keep_alive` either, which these endpoints
+  ignore.
 - **A path is a path.** `transcribe("https://...")` raises
   `FileNotFoundError` without touching the network, like `SpeechToText`.
 
@@ -3833,7 +3916,7 @@ app.include_router(
 | `text_generator` | `POST /generate`, `POST /generate/stream` (token-by-token SSE), `POST /chat` |
 | `embedder` | `POST /embed` |
 | `retriever` | `POST /rag` (query → context block) |
-| `speech_to_text` | `POST /transcribe` (audio upload; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` or any `SpeechTranscriber`) |
+| `speech_to_text` | `POST /transcribe` (audio upload + optional `prompt` form field, capped by `max_prompt_chars`; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` or any `SpeechTranscriber`) |
 | `text_to_speech` | `POST /tts` (returns `audio/wav`; `TextToSpeech`, `OllamaSpeech` or any `SpeechSynthesizer`) |
 
 !!! tip "Streaming"

@@ -700,21 +700,28 @@ Piece by piece:
 - `base_url` **includes** the version (`.../v1`), as with
   `OpenAICompatGenerator`; the backend appends `/audio/transcriptions`. For
   `tempest-ai`, pass `https://ai.buscar.app.br/api/openai/v1`.
-- The request is multipart with `file`, `model`, `language` (only when you
-  pass one) and `response_format=verbose_json`, the format that carries
+- The request is multipart with `file`, `model`, `language`, `prompt` and
+  `temperature` (each only when you pass it) and `response_format=verbose_json`, the format that carries
   `duration`, `language` and `segments`. The key goes in
   `Authorization: Bearer`.
 - `language` takes the ISO-639-1 code (`"pt"`) or a `LanguageEnum`
   (`LanguageEnum.PT_BR` becomes `"pt"`); `None` lets the server detect it.
 - `with_segments=False` returns `segments=[]`; `duration` and `language`
   are still filled.
+- `prompt` hands the model vocabulary — city names, product names — and
+  `temperature` pins the decode temperature. How to build the prompt and its
+  token limit are in
+  [Give Whisper the vocabulary](genai.md#give-whisper-the-vocabulary-prompt-and-hotwords).
+  Whether the server honours the fields is up to it: the SDK guarantees they
+  go in the form.
 - `audio` takes `bytes` or a local path (`str` or `Path`). A string is always
   a path, never a URL: the backend fetches nothing off the machine.
 
 !!! tip "Drop-in for `SpeechToText`"
 
-    `OpenAICompatSpeech.transcribe` takes the same `language` and
-    `with_segments` as `SpeechToText` and satisfies the `SpeechTranscriber`
+    `OpenAICompatSpeech.transcribe` takes the same `language`,
+    `with_segments`, `prompt` and `temperature` as `SpeechToText`
+    (`hotwords` is local-only) and satisfies the `SpeechTranscriber`
     protocol. Code that does
     `await transcriber.transcribe(audio, language="pt", with_segments=False)`
     does not change; and `make_genai_router(speech_to_text=speech)` serves

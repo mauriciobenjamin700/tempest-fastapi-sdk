@@ -104,7 +104,11 @@ AI_ROUTES: dict[str, RouteDoc] = {
         description=(
             "Transcreve o áudio enviado e devolve o texto, o idioma, a "
             "duração e os segmentos. ``language`` força o idioma; sem ele, "
-            "o idioma é detectado. Upload acima do limite responde "
+            "o idioma é detectado. ``prompt`` (campo do form) passa "
+            "vocabulário ao modelo, como nomes de cidades ou produtos; "
+            "acima de ``max_prompt_chars`` responde **422**, e um backend "
+            "que não repassa o campo também responde **422**. Upload acima "
+            "do limite responde "
             "**422** antes de ser lido inteiro na memória."
         ),
     ),
