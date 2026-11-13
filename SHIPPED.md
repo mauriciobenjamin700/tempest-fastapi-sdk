@@ -2505,6 +2505,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tests/testing/test_fakes_contract.py` compara assinatura por
   `inspect.signature`, exige `async` onde a costura é `async`, e falha quando um
   fake novo entra sem cobertura.
+  O `FakeObjectStorageClient` serve download pelo `object_download_response`
+  (com `chunk_size` e `Range`) desde a #757; `tests/storage/test_download_contract.py`
+  roda o download contra MinIO, disco local e o fake, e
+  `tests/test_storage_client_signature_guard.py` confere que os três clientes
+  aceitam toda chamada de `DownloadableStore`, `SubjectStorageClient` e
+  `AdminStorageClient`.
 - **Helpers de banco de teste (`tempest_fastapi_sdk.testing`)** —
   `create_test_engine`, `create_test_session_factory`, `init_test_metadata`,
   `drop_test_metadata`, `make_test_database` e `make_test_session` (#450,
