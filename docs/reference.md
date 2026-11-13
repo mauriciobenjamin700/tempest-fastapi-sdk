@@ -603,6 +603,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.wallet.InsufficientBalanceException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutRejectedException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutUncertainException
+::: tempest_fastapi_sdk.exceptions.payment.PixRefundExceedsBalanceException
+::: tempest_fastapi_sdk.exceptions.payment.PixRefundReferenceConflictException
 ::: tempest_fastapi_sdk.exceptions.eventsourcing.WrongExpectedVersionException
 ::: tempest_fastapi_sdk.exceptions.i18n.MessageCatalog
 ::: tempest_fastapi_sdk.exceptions.i18n.default_message_catalog
@@ -856,6 +858,9 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.base.PixPaymentEvent
 ::: tempest_fastapi_sdk.integrations.payment.base.PaymentStatusEnum
 ::: tempest_fastapi_sdk.integrations.payment.base.PixEventTypeEnum
+::: tempest_fastapi_sdk.integrations.payment.base.PixRefundProvider
+::: tempest_fastapi_sdk.integrations.payment.base.PixRefund
+::: tempest_fastapi_sdk.integrations.payment.base.PixRefundStatusEnum
 ::: tempest_fastapi_sdk.integrations.payment.base.CardProvider
 ::: tempest_fastapi_sdk.integrations.payment.base.CardChargeRequest
 ::: tempest_fastapi_sdk.integrations.payment.base.CardCharge

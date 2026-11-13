@@ -506,6 +506,10 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "EVENTSOURCING_WRONG_EXPECTED_VERSION": (
             "O registro foi alterado por outra operação; recarregue e tente de novo"
         ),
+        "PIX_REFUND_EXCEEDS_BALANCE": ("O estorno passa do que resta da cobrança"),
+        "PIX_REFUND_REFERENCE_CONFLICT": (
+            "Esta referência de estorno já foi usada com outro valor"
+        ),
         "WALLET_INSUFFICIENT_BALANCE": "Saldo insuficiente na carteira",
         "WALLET_PAYOUT_REJECTED": "O provedor recusou a transferência",
         "WALLET_PAYOUT_UNCERTAIN": (
@@ -661,6 +665,10 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "IMAGE_TOO_LARGE": "The image has more pixels than allowed",
         "EVENTSOURCING_WRONG_EXPECTED_VERSION": (
             "The record was changed by another operation; reload and try again"
+        ),
+        "PIX_REFUND_EXCEEDS_BALANCE": "The refund exceeds what is left of the charge",
+        "PIX_REFUND_REFERENCE_CONFLICT": (
+            "The refund reference was already used for another amount"
         ),
         "WALLET_INSUFFICIENT_BALANCE": "Insufficient wallet balance",
         "WALLET_PAYOUT_REJECTED": "The provider rejected the transfer",

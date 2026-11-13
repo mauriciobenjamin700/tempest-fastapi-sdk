@@ -21,7 +21,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, get_type_hints
+from typing import Any, get_overloads, get_type_hints
 
 import httpx
 import pytest
@@ -36,6 +36,7 @@ from tempest_fastapi_sdk.integrations.payment import (
     PixEventTypeEnum,
     PixPayer,
     PixProvider,
+    PixRefundProvider,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
     STATUS_MAP as MERCADO_PAGO_STATUS_MAP,
@@ -43,6 +44,9 @@ from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
     MercadoPagoCardProvider,
     MercadoPagoPixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
+    REFUND_STATUS_MAP as OPENPIX_REFUND_STATUS_MAP,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
     STATUS_MAP,
@@ -54,6 +58,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     OrderStatus,
 )
 from tempest_fastapi_sdk.integrations.payment.openpix import (
+    ChargeRefundStatus,
     ChargeStatus,
     OpenPixClient,
     OpenPixEnvironmentEnum,
@@ -176,23 +181,95 @@ def test_card_adapter_signature_matches_protocol(
     assert adapter.provider_name
 
 
-def test_pix_refund_mirrors_the_card_refund() -> None:
-    """``refund_pix_charge`` takes what ``refund_card_charge`` takes.
+REFUND_ADAPTERS: list[type[Any]] = [
+    OpenPixPixProvider,
+    MercadoPagoPixProvider,
+    FakePixProvider,
+]
+"""Every class that claims to implement :class:`PixRefundProvider`."""
 
-    It is not a protocol member — the OpenPix adapter has no refund — so the
-    card contract is the reference: same parameters, same defaults, a
-    :class:`PixCharge` where the card one returns a :class:`CardCharge`.
+REFUND_METHODS: tuple[str, ...] = ("refund_pix_charge", "get_refunded_cents")
+"""The methods :class:`PixRefundProvider` adds to :class:`PixProvider`."""
+
+
+def _keyed_hints(adapter: type[Any], method_name: str) -> dict[str, Any]:
+    """Read the type hints of the form the refund protocol calls.
+
+    ``MercadoPagoPixProvider.refund_pix_charge`` is overloaded: without
+    ``refund_reference`` it keeps the ``PixCharge`` answer it had before the
+    protocol existed, with it it answers a ``PixRefund``. The protocol is
+    satisfied by the second overload, so that is the one compared.
+
+    Args:
+        adapter (type[Any]): The adapter.
+        method_name (str): The method.
+
+    Returns:
+        dict[str, Any]: The hints of the matching overload, or of the method
+        itself when it is not overloaded.
     """
-    expected = inspect.signature(CardProvider.refund_card_charge)
-    actual = inspect.signature(MercadoPagoPixProvider.refund_pix_charge)
+    method = getattr(adapter, method_name)
+    for overload in get_overloads(method):
+        hints = get_type_hints(overload)
+        if hints.get("refund_reference") is str:
+            return hints
+    return get_type_hints(method)
+
+
+@pytest.mark.parametrize("adapter", REFUND_ADAPTERS, ids=lambda a: a.__name__)
+@pytest.mark.parametrize("method_name", REFUND_METHODS)
+def test_refund_adapter_matches_the_refund_protocol(
+    adapter: type[Any], method_name: str
+) -> None:
+    """Same parameters, kinds and defaults, and the protocol's types.
+
+    ``refund_reference`` is keyword-only everywhere: a positional third
+    argument could not tell an amount from a reference. The Mercado Pago
+    adapter's default of ``None`` is the compatibility form, and the only
+    difference allowed.
+    """
+    expected = inspect.signature(getattr(PixRefundProvider, method_name))
+    actual = inspect.signature(getattr(adapter, method_name))
 
     assert list(actual.parameters) == list(expected.parameters)
-    for name, parameter in expected.parameters.items():
-        assert actual.parameters[name].default == parameter.default, name
-    expected_hints = get_type_hints(CardProvider.refund_card_charge)
-    actual_hints = get_type_hints(MercadoPagoPixProvider.refund_pix_charge)
-    assert actual_hints == {**expected_hints, "return": PixCharge}
-    assert inspect.iscoroutinefunction(MercadoPagoPixProvider.refund_pix_charge)
+    assert [p.kind for p in actual.parameters.values()] == [
+        p.kind for p in expected.parameters.values()
+    ]
+    expected_hints = get_type_hints(getattr(PixRefundProvider, method_name))
+    assert _keyed_hints(adapter, method_name) == expected_hints
+    assert inspect.iscoroutinefunction(getattr(adapter, method_name))
+
+
+def test_the_mercado_pago_refund_keeps_its_old_form() -> None:
+    """Without a reference, the call made before the protocol still types.
+
+    ``refund_pix_charge(charge_id, amount_cents)`` answered a
+    :class:`PixCharge` and still does; a caller that never passes
+    ``refund_reference`` sees no change in signature or return.
+    """
+    overloads = get_overloads(MercadoPagoPixProvider.refund_pix_charge)
+    legacy = [
+        get_type_hints(overload)
+        for overload in overloads
+        if get_type_hints(overload).get("refund_reference") is type(None)
+    ]
+
+    assert len(overloads) == 2
+    assert legacy == [
+        {
+            "charge_id": str,
+            "amount_cents": int | None,
+            "refund_reference": type(None),
+            "return": PixCharge,
+        }
+    ]
+
+
+def test_every_openpix_refund_status_is_mapped() -> None:
+    """No member of OpenPix's ``ChargeRefundStatus`` falls through."""
+    declared = {status.value for status in ChargeRefundStatus}
+
+    assert declared == set(OPENPIX_REFUND_STATUS_MAP)
 
 
 def test_every_openpix_status_is_mapped() -> None:

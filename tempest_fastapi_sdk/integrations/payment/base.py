@@ -371,6 +371,146 @@ class PixProvider(Protocol):
         ...
 
 
+class PixRefundStatusEnum(BaseStrEnum):
+    """Where one refund stands, in the vocabulary the SDK guarantees.
+
+    The provider's own string travels alongside in
+    :attr:`PixRefund.provider_status`.
+
+    Attributes:
+        PENDING (str): Accepted by the provider and not settled yet —
+            OpenPix's ``IN_PROCESSING``.
+        COMPLETED (str): The money went back to the payer — OpenPix's
+            ``CONFIRMED``, Mercado Pago's ``processed``.
+        FAILED (str): Refused after it was accepted — OpenPix's
+            ``REJECTED``. The only state :meth:`PixRefundProvider.get_refunded_cents`
+            leaves out of the total.
+        UNKNOWN (str): A state this SDK version does not classify. Counted
+            as refunded by ``get_refunded_cents``: reading an unrecognized
+            refund as money still owed is what lets a retry refund twice.
+    """
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+class PixRefund(_EnumSafeSchema):
+    """One refund of a Pix charge, in the shape every provider is mapped into.
+
+    Attributes:
+        provider (str): The provider that owns the charge.
+        provider_charge_id (str): The charge the refund belongs to, as
+            :attr:`PixCharge.provider_charge_id` names it.
+        refund_reference (str): The identifier the service sent — the
+            refund's idempotency key.
+        provider_refund_id (str | None): The refund's identifier at the
+            provider, when it reports one.
+        amount_cents (int): How much this refund gives back, in cents.
+        refunded_cents (int): How much of the charge has been refunded in
+            total once this refund is counted, with the same rule as
+            :meth:`PixRefundProvider.get_refunded_cents`.
+        status (PixRefundStatusEnum): The canonical state of this refund.
+        provider_status (str): The provider's own string for it.
+        end_to_end_id (str | None): The refund's Pix end-to-end
+            identifier, when the provider reports one.
+        raw (dict[str, Any]): The provider's record of the refund, as
+            decoded.
+    """
+
+    provider: str = Field(description="Provedor dono da cobrança.")
+    provider_charge_id: str = Field(
+        description="Identificador da cobrança no provedor."
+    )
+    refund_reference: str = Field(
+        description="Identificador do estorno no lado do serviço."
+    )
+    provider_refund_id: str | None = Field(
+        default=None, description="Identificador do estorno no provedor."
+    )
+    amount_cents: int = Field(description="Valor deste estorno em centavos.")
+    refunded_cents: int = Field(
+        description="Total já estornado da cobrança, em centavos."
+    )
+    status: PixRefundStatusEnum = Field(description="Estado canônico do estorno.")
+    provider_status: str = Field(description="Estado como o provedor o nomeia, cru.")
+    end_to_end_id: str | None = Field(
+        default=None, description="Identificador fim-a-fim do estorno."
+    )
+    raw: dict[str, Any] = Field(
+        default_factory=dict, description="Registro cru do estorno no provedor."
+    )
+
+
+class PixRefundProvider(PixProvider, Protocol):
+    """A :class:`PixProvider` that can also give money back, idempotently.
+
+    Separate from :class:`PixProvider` so a provider without a refund still
+    satisfies the base contract; a service that refunds depends on this one
+    instead.
+
+    The contract is what makes a retried refund safe without a lease of the
+    service's own:
+
+    * ``refund_reference`` is the refund's idempotency key. Repeating a
+      refund with the same reference answers the refund that already exists
+      instead of giving the money back twice — including when the first
+      call's answer was lost to a timeout after the provider applied it.
+    * Repeating it with the same reference and **another** amount raises
+      :class:`~tempest_fastapi_sdk.exceptions.PixRefundReferenceConflictException`.
+    * Asking for more than is left raises
+      :class:`~tempest_fastapi_sdk.exceptions.PixRefundExceedsBalanceException`
+      — a full refund (``amount_cents=None``) of a charge with nothing left
+      included.
+    * :meth:`get_refunded_cents` answers the total the provider lists, so a
+      service can reconcile what it recorded against what really happened.
+
+    Use one reference per refund, unique across the account: OpenPix keys
+    the refund by it as a ``correlationID``.
+
+    Attributes:
+        provider_name (str): Copied into :attr:`PixRefund.provider`.
+    """
+
+    async def refund_pix_charge(
+        self,
+        charge_id: str,
+        amount_cents: int | None = None,
+        *,
+        refund_reference: str,
+    ) -> PixRefund:
+        """Give a paid charge's money back, in full or in part.
+
+        Args:
+            charge_id (str): :attr:`PixCharge.provider_charge_id`.
+            amount_cents (int | None): How much to refund. ``None`` refunds
+                whatever is left.
+            refund_reference (str): The service's identifier for this
+                refund, and its idempotency key.
+
+        Returns:
+            PixRefund: The refund — the existing one when the reference was
+            already used on this charge.
+        """
+        ...
+
+    async def get_refunded_cents(self, charge_id: str) -> int:
+        """Answer how much of a charge has been refunded, in cents.
+
+        Args:
+            charge_id (str): :attr:`PixCharge.provider_charge_id`.
+
+        Returns:
+            int: The sum of every refund the provider lists for the charge
+            except the ones in :attr:`PixRefundStatusEnum.FAILED`. A refund
+            still in flight counts: treating it as money owed is what lets a
+            second refund go out while the first settles. ``0`` when there
+            is none.
+        """
+        ...
+
+
 class CardChargeRequest(BaseSchema):
     """What a service asks for when it charges a card.
 
@@ -663,4 +803,7 @@ __all__: list[str] = [
     "PixPayer",
     "PixPaymentEvent",
     "PixProvider",
+    "PixRefund",
+    "PixRefundProvider",
+    "PixRefundStatusEnum",
 ]

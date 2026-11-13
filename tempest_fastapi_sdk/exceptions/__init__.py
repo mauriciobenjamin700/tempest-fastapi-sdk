@@ -117,6 +117,12 @@ from tempest_fastapi_sdk.exceptions.oauth import (
 from tempest_fastapi_sdk.exceptions.oauth import (
     OAuthTokenRejectedException as OAuthTokenRejectedException,
 )
+from tempest_fastapi_sdk.exceptions.payment import (
+    PixRefundExceedsBalanceException as PixRefundExceedsBalanceException,
+)
+from tempest_fastapi_sdk.exceptions.payment import (
+    PixRefundReferenceConflictException as PixRefundReferenceConflictException,
+)
 from tempest_fastapi_sdk.exceptions.signed_url import (
     ExpiredSignedURLException as ExpiredSignedURLException,
 )
@@ -224,6 +230,8 @@ __all__: list[str] = [
     "PageSizeTooLargeException",
     "PayoutRejectedException",
     "PayoutUncertainException",
+    "PixRefundExceedsBalanceException",
+    "PixRefundReferenceConflictException",
     "PushEndpointNotPublicException",
     "StorageIntegrityException",
     "TooManyRequestsException",

@@ -239,6 +239,11 @@ What the adapters decide for you, each item measured in the sandbox:
   `refund_pix_charge` find the second on their own. Without an amount, they
   refund what is left. On a card, `refunded_cents` sums the processed
   refunds; on a Pix, they are under `raw["transactions"]["refunds"]`.
+- **Idempotent Pix refunds.** With `refund_reference=`,
+  `refund_pix_charge` derives the `X-Idempotency-Key` from the reference and
+  returns a `PixRefund`; repeating it with the same reference does not refund
+  again. Without it, the old form stays: a `PixCharge` and a fresh key per
+  call. See [Pix refunds (idempotent)](pix-refund.md).
 - **A Pix is refunded only once paid.** Measured on 2026-10-10: a partial
   refund leaves the charge `PAID` (the `partially_refunded` `status_detail` stays in `raw`), the rest makes it
   `REFUNDED`. On an unpaid Pix the answer is `409 cannot_refund_order`: it

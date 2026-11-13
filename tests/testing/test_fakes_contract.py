@@ -27,6 +27,7 @@ from tempest_fastapi_sdk.integrations.payment import (
     CardProvider,
     PayoutProvider,
     PixProvider,
+    PixRefundProvider,
 )
 from tempest_fastapi_sdk.integrations.subscriptions.revenuecat import RevenueCatClient
 from tempest_fastapi_sdk.privacy import SubjectStorageClient
@@ -50,6 +51,7 @@ from tempest_fastapi_sdk.utils.email import EmailUtils
 
 SEAMS: list[tuple[type[Any], type[Any]]] = [
     (FakePixProvider, PixProvider),
+    (FakePixProvider, PixRefundProvider),
     (FakeCardProvider, CardProvider),
     (FakePayoutProvider, PayoutProvider),
     (FakeTextBackend, TextBackend),

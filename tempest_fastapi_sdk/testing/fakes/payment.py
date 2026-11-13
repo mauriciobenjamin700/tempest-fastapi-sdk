@@ -16,6 +16,10 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
+from tempest_fastapi_sdk.exceptions.payment import (
+    PixRefundExceedsBalanceException,
+    PixRefundReferenceConflictException,
+)
 from tempest_fastapi_sdk.integrations.payment.base import (
     CardCharge,
     CardChargeRequest,
@@ -27,6 +31,8 @@ from tempest_fastapi_sdk.integrations.payment.base import (
     PixChargeRequest,
     PixEventTypeEnum,
     PixPaymentEvent,
+    PixRefund,
+    PixRefundStatusEnum,
 )
 from tempest_fastapi_sdk.testing.fakes._control import _Steerable
 
@@ -39,7 +45,16 @@ _STATUS_EVENTS: dict[PaymentStatusEnum, PixEventTypeEnum] = {
 
 
 class FakePixProvider(_Steerable):
-    """A ``PixProvider`` that keeps charges in a dict.
+    """A ``PixRefundProvider`` that keeps charges and refunds in dicts.
+
+    Refunds follow the contract the real adapters keep: idempotent on
+    ``refund_reference`` per charge, partial refunds summed, a refund above
+    what is left refused with
+    :class:`~tempest_fastapi_sdk.exceptions.PixRefundExceedsBalanceException`.
+    Only a ``PAID`` charge (or a ``REFUNDED`` one, for the replay and the
+    balance error) can be refunded; anything else raises ``ValueError``.
+    :meth:`fail_after_next_refund` reproduces the case idempotency exists
+    for: the refund lands and the answer is lost.
 
     Example:
 
@@ -68,8 +83,11 @@ class FakePixProvider(_Steerable):
         super().__init__()
         self.provider_name = provider_name
         self._charges: dict[str, PixCharge] = {}
+        self._refunds: dict[str, list[PixRefund]] = {}
+        self._lost_refund_answers: deque[BaseException] = deque()
         self._by_reference: dict[str, str] = {}
         self._next_id: int = 1
+        self._next_refund_id: int = 1
 
     @property
     def charges(self) -> Mapping[str, PixCharge]:
@@ -80,6 +98,33 @@ class FakePixProvider(_Steerable):
             without being able to corrupt it by accident.
         """
         return MappingProxyType(self._charges)
+
+    @property
+    def refunds(self) -> Mapping[str, tuple[PixRefund, ...]]:
+        """Every refund applied, keyed by the charge's provider-side id.
+
+        Returns:
+            Mapping[str, tuple[PixRefund, ...]]: A read-only view, oldest
+            refund first. A replayed reference does not add an entry, which
+            is what a test asserts to prove a retry did not refund twice.
+        """
+        return MappingProxyType(
+            {charge_id: tuple(items) for charge_id, items in self._refunds.items()}
+        )
+
+    def fail_after_next_refund(self, error: BaseException) -> None:
+        """Make the next refund **apply**, then raise ``error``.
+
+        Args:
+            error (BaseException): What the caller sees instead of the
+                answer — say ``TimeoutError``.
+
+        Unlike :meth:`fail_next`, which fails before anything happens, this
+        is the lost answer: the money went back, the caller does not know.
+        A retry with the same ``refund_reference`` must answer that refund
+        and not apply a second one. Replays do not consume it.
+        """
+        self._lost_refund_answers.append(error)
 
     async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge:
         """Issue a pending charge, or answer the one the reference already has.
@@ -149,6 +194,97 @@ class FakePixProvider(_Steerable):
         """
         self._record("cancel_pix_charge")
         return self._transition(charge_id, PaymentStatusEnum.CANCELLED)
+
+    async def refund_pix_charge(
+        self,
+        charge_id: str,
+        amount_cents: int | None = None,
+        *,
+        refund_reference: str,
+    ) -> PixRefund:
+        """Refund a paid charge, idempotently on ``refund_reference``.
+
+        Args:
+            charge_id (str): The provider-side id.
+            amount_cents (int | None): How much to refund; ``None`` refunds
+                what is left.
+            refund_reference (str): The refund's idempotency key, scoped to
+                the charge.
+
+        Returns:
+            PixRefund: The refund, ``COMPLETED`` — the existing one when the
+            reference was used before, with ``refunded_cents`` current.
+
+        Raises:
+            KeyError: When no charge carries that id.
+            ValueError: When ``amount_cents`` is not positive, or the charge
+                was never paid.
+            PixRefundReferenceConflictException: When the reference names a
+                refund of another amount.
+            PixRefundExceedsBalanceException: When less is left than asked.
+            BaseException: Whatever :meth:`fail_next` queued (nothing is
+                applied), or :meth:`fail_after_next_refund` queued (the
+                refund is applied first).
+        """
+        self._record("refund_pix_charge")
+        if amount_cents is not None and amount_cents <= 0:
+            raise ValueError(f"amount_cents must be positive: {amount_cents!r}")
+        charge = self._charges[charge_id]
+        applied = self._refunds.setdefault(charge_id, [])
+        refunded = sum(refund.amount_cents for refund in applied)
+        for refund in applied:
+            if refund.refund_reference != refund_reference:
+                continue
+            if amount_cents is not None and amount_cents != refund.amount_cents:
+                raise PixRefundReferenceConflictException(
+                    charge_id, refund_reference=refund_reference
+                )
+            return refund.model_copy(update={"refunded_cents": refunded})
+        if charge.status not in (PaymentStatusEnum.PAID, PaymentStatusEnum.REFUNDED):
+            raise ValueError(
+                f"Cannot refund {charge_id!r}: it is {charge.status.value}, not paid."
+            )
+        left = charge.amount_cents - refunded
+        amount = left if amount_cents is None else amount_cents
+        if amount <= 0 or amount > left:
+            raise PixRefundExceedsBalanceException(
+                charge_id, requested_cents=amount_cents, refundable_cents=left
+            )
+        refund = PixRefund(
+            provider=self.provider_name,
+            provider_charge_id=charge_id,
+            refund_reference=refund_reference,
+            provider_refund_id=f"{self.provider_name}-refund-{self._next_refund_id}",
+            amount_cents=amount,
+            refunded_cents=refunded + amount,
+            status=PixRefundStatusEnum.COMPLETED,
+            provider_status=PixRefundStatusEnum.COMPLETED.value,
+        )
+        self._next_refund_id += 1
+        applied.append(refund)
+        if refund.refunded_cents == charge.amount_cents:
+            self._transition(charge_id, PaymentStatusEnum.REFUNDED)
+        if self._lost_refund_answers:
+            raise self._lost_refund_answers.popleft()
+        return refund
+
+    async def get_refunded_cents(self, charge_id: str) -> int:
+        """Sum the refunds applied to a charge.
+
+        Args:
+            charge_id (str): The provider-side id.
+
+        Returns:
+            int: Cents refunded; ``0`` with no refund.
+
+        Raises:
+            KeyError: When no charge carries that id.
+            BaseException: Whatever :meth:`fail_next` queued.
+        """
+        self._record("get_refunded_cents")
+        if charge_id not in self._charges:
+            raise KeyError(charge_id)
+        return sum(refund.amount_cents for refund in self._refunds.get(charge_id, []))
 
     def parse_webhook(self, event: Any) -> PixPaymentEvent:
         """Turn this fake's delivery shape into a canonical event.
