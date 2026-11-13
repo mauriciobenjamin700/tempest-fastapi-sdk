@@ -386,6 +386,45 @@ class AsyncMinIOClient:
         """Return ``bucket`` when provided, else ``default_bucket``."""
         return bucket or self.default_bucket
 
+    def _client_for(self, bucket: str) -> Minio:
+        """Return the ``minio`` client that talks to ``bucket``.
+
+        Every bucket-scoped operation resolves its client here, so a
+        subclass that holds one credential per bucket
+        (:class:`~tempest_fastapi_sdk.storage.BucketRoutedMinIOClient`)
+        only overrides this method and :meth:`_presign_client_for`. This
+        class has a single credential and returns :attr:`client` for any
+        bucket.
+
+        Args:
+            bucket (str): The resolved bucket of the operation.
+
+        Returns:
+            Minio: The client signed with the credential of ``bucket``.
+
+        Raises:
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        del bucket
+        return self.client
+
+    def _presign_client_for(self, bucket: str) -> Minio:
+        """Return the client that signs presigned URLs for ``bucket``.
+
+        Args:
+            bucket (str): The resolved bucket of the operation.
+
+        Returns:
+            Minio: :attr:`_presign_client` in this class.
+
+        Raises:
+            IntegrationDisabledException: When the client was built with
+                ``enabled=False``.
+        """
+        del bucket
+        return self._presign_client
+
     # ------------------------------------------------------------------
     # Bucket lifecycle
     # ------------------------------------------------------------------
@@ -402,7 +441,7 @@ class AsyncMinIOClient:
             with the configured credentials.
         """
         target = self._bucket(bucket)
-        return await asyncio.to_thread(self.client.bucket_exists, target)
+        return await asyncio.to_thread(self._client_for(target).bucket_exists, target)
 
     async def ensure_bucket(self, bucket: str | None = None) -> bool:
         """Create the bucket if it does not exist yet.
@@ -418,9 +457,9 @@ class AsyncMinIOClient:
         target = self._bucket(bucket)
 
         def _ensure() -> bool:
-            if self.client.bucket_exists(target):
+            if self._client_for(target).bucket_exists(target):
                 return False
-            self.client.make_bucket(target, location=self.region)
+            self._client_for(target).make_bucket(target, location=self.region)
             return True
 
         return await asyncio.to_thread(_ensure)
@@ -448,7 +487,7 @@ class AsyncMinIOClient:
             S3Error: When the bucket is missing or non-empty.
         """
         target = self._bucket(bucket)
-        await asyncio.to_thread(self.client.remove_bucket, target)
+        await asyncio.to_thread(self._client_for(target).remove_bucket, target)
 
     # ------------------------------------------------------------------
     # Object I/O
@@ -511,7 +550,7 @@ class AsyncMinIOClient:
             payload_length = length
 
         def _put() -> str:
-            result = self.client.put_object(
+            result = self._client_for(target_bucket).put_object(
                 target_bucket,
                 key,
                 stream,
@@ -553,7 +592,7 @@ class AsyncMinIOClient:
         path = Path(file_path)
 
         def _fput() -> str:
-            result = self.client.fput_object(
+            result = self._client_for(target_bucket).fput_object(
                 target_bucket,
                 key,
                 str(path),
@@ -589,7 +628,7 @@ class AsyncMinIOClient:
         target = self._bucket(bucket)
 
         def _get() -> bytes:
-            response = self.client.get_object(target, key)
+            response = self._client_for(target).get_object(target, key)
             try:
                 return response.read()
             finally:
@@ -624,7 +663,7 @@ class AsyncMinIOClient:
         path = Path(file_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(
-            self.client.fget_object,
+            self._client_for(target).fget_object,
             target,
             key,
             str(path),
@@ -667,8 +706,8 @@ class AsyncMinIOClient:
             until the stream ends.
 
         Raises:
-            ValueError: When ``offset`` is negative or ``length`` is not
-                positive.
+            ValueError: When ``offset`` is negative, or ``length`` or
+                ``chunk_size`` is not positive.
             S3Error: When the object is missing or the request
                 fails.
         """
@@ -676,12 +715,16 @@ class AsyncMinIOClient:
             raise ValueError("offset must be zero or positive")
         if length is not None and length < 1:
             raise ValueError("length must be at least 1; pass None to read to the end")
+        if chunk_size < 1:
+            raise ValueError("chunk_size must be at least 1")
         target = self._bucket(bucket)
         if offset == 0 and length is None:
-            response = await asyncio.to_thread(self.client.get_object, target, key)
+            response = await asyncio.to_thread(
+                self._client_for(target).get_object, target, key
+            )
         else:
             response = await asyncio.to_thread(
-                self.client.get_object,
+                self._client_for(target).get_object,
                 target,
                 key,
                 offset=offset,
@@ -909,7 +952,7 @@ class AsyncMinIOClient:
             overrides["response-cache-control"] = cache_control
         target = self._bucket(bucket)
         url = await asyncio.to_thread(
-            self.client.presigned_get_object,
+            self._client_for(target).presigned_get_object,
             target,
             key,
             expires,
@@ -1015,7 +1058,7 @@ class AsyncMinIOClient:
             S3Error: When the object is missing.
         """
         target = self._bucket(bucket)
-        raw = await asyncio.to_thread(self.client.stat_object, target, key)
+        raw = await asyncio.to_thread(self._client_for(target).stat_object, target, key)
         metadata: dict[str, str] = {
             k.removeprefix("x-amz-meta-"): v
             for k, v in (raw.metadata or {}).items()
@@ -1058,7 +1101,7 @@ class AsyncMinIOClient:
         def _list() -> list[str]:
             return [
                 obj.object_name or ""
-                for obj in self.client.list_objects(
+                for obj in self._client_for(target).list_objects(
                     target,
                     prefix=prefix,
                     recursive=recursive,
@@ -1088,7 +1131,7 @@ class AsyncMinIOClient:
         """
         target = self._bucket(bucket)
         await asyncio.to_thread(
-            self.client.remove_object,
+            self._client_for(target).remove_object,
             target,
             key,
             version_id=version_id,
@@ -1133,7 +1176,7 @@ class AsyncMinIOClient:
                     code=error.code or "",
                     message=error.message or "",
                 )
-                for error in self.client.remove_objects(
+                for error in self._client_for(target).remove_objects(
                     target,
                     [DeleteObject(key) for key in unique],
                 )
@@ -1171,7 +1214,7 @@ class AsyncMinIOClient:
         dst_bucket = dest_bucket or self.default_bucket
 
         def _copy() -> str:
-            result = self.client.copy_object(
+            result = self._client_for(dst_bucket).copy_object(
                 dst_bucket,
                 dest_key,
                 CopySource(src_bucket, source_key),
@@ -1235,14 +1278,14 @@ class AsyncMinIOClient:
         )
         if not overrides:
             return await asyncio.to_thread(
-                self._presign_client.presigned_get_object,
+                self._presign_client_for(target).presigned_get_object,
                 target,
                 key,
                 expires,
             )
         response_headers: dict[str, str | list[str] | tuple[str]] = dict(overrides)
         return await asyncio.to_thread(
-            self._presign_client.presigned_get_object,
+            self._presign_client_for(target).presigned_get_object,
             target,
             key,
             expires,
@@ -1273,7 +1316,7 @@ class AsyncMinIOClient:
         """
         target = self._bucket(bucket)
         return await asyncio.to_thread(
-            self._presign_client.presigned_put_object,
+            self._presign_client_for(target).presigned_put_object,
             target,
             key,
             expires,
@@ -1328,7 +1371,7 @@ class AsyncMinIOClient:
             IntegrationDisabledException: When the client was built with
                 ``enabled=False``.
         """
-        signer = self._presign_client
+        signer = self._presign_client_for(self._bucket(bucket))
         from minio.datatypes import PostPolicy
 
         from tempest_fastapi_sdk.storage.presign import (

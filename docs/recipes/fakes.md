@@ -276,6 +276,60 @@ Duas decisões que valem explicar:
 coordenada exata: um serviço reverte uma leitura de GPS, e leitura de GPS não
 cai em cima do decimal que você guardou.
 
+## Arquivo: download sem MinIO
+
+`FakeObjectStorageClient` serve download pelo mesmo
+`object_download_response` que o `AsyncMinIOClient` e o
+`LocalObjectStorageClient` usam: `Range`, `206`, `416` e os headers saem
+iguais, e os chunks têm o tamanho do `chunk_size` pedido.
+
+```python
+import asyncio
+
+from starlette.requests import Request
+
+from tempest_fastapi_sdk.storage import object_download_response
+from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
+
+
+async def main() -> None:
+    """Serve a stored object whole, then one byte range of it."""
+    storage = FakeObjectStorageClient()
+    await storage.put_object("docs/report.txt", b"0123456789" * 3)
+
+    whole = await object_download_response(storage, "docs/report.txt", chunk_size=8)
+    print(whole.status_code, [chunk async for chunk in whole.body_iterator])
+
+    ranged = Request(
+        {"type": "http", "method": "GET", "headers": [(b"range", b"bytes=5-14")]}
+    )
+    partial = await object_download_response(
+        storage, "docs/report.txt", request=ranged, chunk_size=4
+    )
+    print(partial.status_code, partial.headers["content-range"])
+    print([chunk async for chunk in partial.body_iterator])
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Saída:
+
+```text
+200 [b'01234567', b'89012345', b'67890123', b'456789']
+206 bytes 5-14/30
+[b'5678', b'9012', b'34']
+```
+
+!!! note "Os três clientes passam pelo mesmo teste"
+    `tests/storage/test_download_contract.py` roda o download, com e sem
+    `Range`, contra MinIO (com um `minio.Minio` falso), disco local e o fake.
+    `tests/test_storage_client_signature_guard.py` compara a assinatura de
+    cada método dos protocolos de storage com a dos três clientes — foi a
+    ausência de `chunk_size` no fake que derrubava esse exemplo com
+    `TypeError` até a #757.
+
 ## Ligando no serviço
 
 O fake entra onde o real entrava — no `Depends`:

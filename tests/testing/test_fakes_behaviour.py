@@ -244,6 +244,94 @@ class TestFakePixProvider:
             await provider.get_pix_charge(charge.provider_charge_id)
 
 
+class TestFakePixRefunds:
+    """The refund half of ``FakePixProvider``: what the contract leaves to it."""
+
+    @staticmethod
+    async def _paid(provider: FakePixProvider) -> str:
+        """Create a paid R$ 10,00 charge.
+
+        Args:
+            provider (FakePixProvider): The fake.
+
+        Returns:
+            str: The charge's provider-side id.
+        """
+        charge = await provider.create_pix_charge(
+            PixChargeRequest(amount_cents=1000, reference="order-r"),
+        )
+        provider.advance(charge.provider_charge_id, PaymentStatusEnum.PAID)
+        return charge.provider_charge_id
+
+    async def test_fail_next_applies_nothing(self) -> None:
+        """A failure queued with ``fail_next`` fires before the refund."""
+        provider = FakePixProvider()
+        charge_id = await self._paid(provider)
+        provider.fail_next(RuntimeError("provider down"))
+
+        with pytest.raises(RuntimeError, match="provider down"):
+            await provider.refund_pix_charge(charge_id, 100, refund_reference="r-1")
+
+        assert provider.refunds.get(charge_id, ()) == ()
+        assert await provider.get_refunded_cents(charge_id) == 0
+
+    async def test_fail_after_next_refund_applies_then_raises(self) -> None:
+        """The lost answer: the money moved, the caller saw a timeout."""
+        provider = FakePixProvider()
+        charge_id = await self._paid(provider)
+        provider.fail_after_next_refund(TimeoutError("lost"))
+
+        with pytest.raises(TimeoutError):
+            await provider.refund_pix_charge(charge_id, 100, refund_reference="r-1")
+
+        assert len(provider.refunds[charge_id]) == 1
+        replay = await provider.refund_pix_charge(
+            charge_id, 100, refund_reference="r-1"
+        )
+        assert replay.refunded_cents == 100
+        assert len(provider.refunds[charge_id]) == 1
+
+    async def test_the_last_refund_marks_the_charge_refunded(self) -> None:
+        """Partial keeps ``PAID``; emptying it moves to ``REFUNDED``."""
+        provider = FakePixProvider()
+        charge_id = await self._paid(provider)
+
+        await provider.refund_pix_charge(charge_id, 400, refund_reference="r-1")
+        assert provider.charges[charge_id].status is PaymentStatusEnum.PAID
+
+        await provider.refund_pix_charge(charge_id, refund_reference="r-2")
+        assert provider.charges[charge_id].status is PaymentStatusEnum.REFUNDED
+
+    async def test_an_unpaid_charge_cannot_be_refunded(self) -> None:
+        """A pending charge is cancelled, not refunded."""
+        provider = FakePixProvider()
+        charge = await provider.create_pix_charge(
+            PixChargeRequest(amount_cents=1000, reference="order-u"),
+        )
+
+        with pytest.raises(ValueError, match="not paid"):
+            await provider.refund_pix_charge(
+                charge.provider_charge_id, refund_reference="r-1"
+            )
+
+    async def test_the_same_reference_on_two_charges_is_two_refunds(self) -> None:
+        """The reference is scoped to the charge, as Mercado Pago's key is."""
+        provider = FakePixProvider()
+        first = await self._paid(provider)
+        second = await self._paid(provider)
+
+        await provider.refund_pix_charge(first, 100, refund_reference="r-1")
+        await provider.refund_pix_charge(second, 100, refund_reference="r-1")
+
+        assert await provider.get_refunded_cents(first) == 100
+        assert await provider.get_refunded_cents(second) == 100
+
+    async def test_an_unknown_charge_is_a_key_error(self) -> None:
+        """Same as every other read of the fake."""
+        with pytest.raises(KeyError):
+            await FakePixProvider().get_refunded_cents("nope")
+
+
 class TestFakeTextBackend:
     async def test_queued_replies_come_back_in_order(self) -> None:
         backend = FakeTextBackend()

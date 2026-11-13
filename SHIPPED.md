@@ -1601,6 +1601,36 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Mastercard de teste antigo. Evidência §9.6. Testes:
   `test_mercado_pago_adapter.py`, `test_contract.py`,
   `tests/testing/test_fakes_*.py`.
+- **Estorno de Pix no protocolo, idempotente (Unreleased)** — issue #755.
+  `PixRefundProvider` (estende `PixProvider`: `refund_pix_charge(charge_id,
+  amount_cents=None, *, refund_reference)` → `PixRefund` e
+  `get_refunded_cents`), `PixRefundStatusEnum`,
+  `PixRefundExceedsBalanceException` / `PixRefundReferenceConflictException`
+  (409). Mercado Pago: `X-Idempotency-Key` = UUID5(order id, referência), saldo
+  conferido antes mas o pedido sai mesmo assim para o retry receber o replay;
+  forma antiga sem referência mantida por `@overload` (devolve `PixCharge`).
+  OpenPix: `correlationID` do estorno = referência, lista antes do `POST` e
+  relista depois de falha. `FakePixProvider`: estornos por cobrança,
+  `fail_after_next_refund`, `refunds`. `PixProviderRouter.refund_pix_charge`
+  / `get_refunded_cents`. Receita `pix-refund.md`. Testes:
+  `test_refund_contract.py` (os três provedores contra o mesmo contrato,
+  adapters sobre simuladores), `test_contract.py`, `test_routing.py`,
+  `test_mercado_pago_adapter.py`, `tests/testing/test_fakes_*.py`.
+- **Webhook de Orders verificando e Pix idempotente por `reference` no
+  Mercado Pago (Unreleased)** — issues #753 e #754. `build_manifest` (e por
+  ele `sign_manifest` / `verify_signature`) assina o `data.id` em
+  minúsculas: toda entrega real de Orders (`ORD01…`) voltava `401`. Diverge
+  do `sdk-nodejs` no `99857f33` (que parou de passar para minúsculas no
+  `ac20999a`); a evidência é a entrega real de 2026-11-13 na #498.
+  `MercadoPagoWebhookEvent.data_id` guarda o id original.
+  `MercadoPagoEventEnum.ORDER`. `MercadoPagoPixProvider` deriva a
+  `X-Idempotency-Key` da `reference` (`reference_idempotency_key`, UUID5 sob
+  `PIX_IDEMPOTENCY_NAMESPACE`); o cartão segue com UUID4 por chamada; `409
+  idempotency_key_already_used` sai como `httpx.HTTPStatusError`.
+  `FakePixProvider` devolve a cobrança existente para a mesma `reference`.
+  Testes: `test_mercado_pago.py`, `test_webhook_dependency.py`,
+  `test_mercado_pago_adapter.py`, `test_contract.py` (mesma `reference` →
+  mesmo `provider_charge_id` em OpenPix, Mercado Pago e fake).
 - **Busca de chargebacks do Mercado Pago tipada (v0.312.0)** — issue #226.
   `search_chargebacks(payment_id=...)` → `ChargebackSearchResponse` /
   `ChargebackSearchPaging`, do `200` observado com a vendedora de teste; sem
@@ -2176,6 +2206,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   and needs `media_type=` for inline; its security headers live in the
   nginx internal location (`add_header ... always`), since nginx drops the
   app's (measured, `tests/storage/test_accel_redirect_live.py`).
+  **(unreleased, #756)** One key per bucket: `STORAGE_BUCKET_CREDENTIALS`
+  (JSON `bucket → {access_key, secret_key}`, `StorageBucketCredential` with
+  `SecretStr`, half credential refused at boot) makes `build_storage_client()`
+  return `BucketRoutedMinIOClient`, an `AsyncMinIOClient` subclass that
+  resolves each call's Minio through the `_client_for(bucket)` /
+  `_presign_client_for(bucket)` hooks, falling back on the primary key.
+  Cross-credential `copy_object` reads through a temp file; the CLI builds
+  the same client. Tests: `tests/storage/test_bucket_router.py`.
 - **Signed app URLs** — **(v0.302.0, #363)** `sign_path` /
   `verify_path` in `utils.signed_url` (stdlib only): HMAC-SHA256 over
   `expires LF decoded-path`, key derived from the secret and `purpose`
@@ -2512,6 +2550,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tests/testing/test_fakes_contract.py` compara assinatura por
   `inspect.signature`, exige `async` onde a costura é `async`, e falha quando um
   fake novo entra sem cobertura.
+  O `FakeObjectStorageClient` serve download pelo `object_download_response`
+  (com `chunk_size` e `Range`) desde a #757; `tests/storage/test_download_contract.py`
+  roda o download contra MinIO, disco local e o fake, e
+  `tests/test_storage_client_signature_guard.py` confere que os três clientes
+  aceitam toda chamada de `DownloadableStore`, `SubjectStorageClient` e
+  `AdminStorageClient`.
 - **Helpers de banco de teste (`tempest_fastapi_sdk.testing`)** —
   `create_test_engine`, `create_test_session_factory`, `init_test_metadata`,
   `drop_test_metadata`, `make_test_database` e `make_test_session` (#450,

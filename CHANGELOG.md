@@ -25,6 +25,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vocabulário ao Whisper"): o faster-whisper 1.2.1 guarda os **últimos** 223
   tokens do prompt (medido no `get_prompt` dele) e os **primeiros** 223 de
   `hotwords`; a OpenAI documenta 224 tokens para o `whisper-1`.
+- Uma chave por bucket no storage S3 (#756): `STORAGE_BUCKET_CREDENTIALS`
+  (JSON `{"bucket": {"access_key": ..., "secret_key": ...}}`) dá a cada
+  bucket a sua credencial, para storage que amarra a chave a um bucket só.
+  Preenchido, `build_storage_client()` devolve o `BucketRoutedMinIOClient`,
+  subclasse de `AsyncMinIOClient` que assina cada operação — URL pré-assinada
+  inclusive — com a chave do bucket dela e cai na `STORAGE_ACCESS_KEY` para
+  os outros; o código do serviço não muda. `copy_object` entre credenciais
+  diferentes baixa com a chave da origem e envia com a do destino. O segredo
+  é `SecretStr` (`StorageBucketCredential`), credencial pela metade recusa o
+  boot sem ecoar o valor, e `ENV=production` recusa o segredo `minioadmin`
+  num bucket e o campo preenchido com `STORAGE_BACKEND=local`. O
+  `tempest storage` monta o mesmo cliente. Receita: "Uma chave por bucket"
+  em `recipes/storage`.
+- Estorno de Pix no protocolo (#755): `PixRefundProvider` estende
+  `PixProvider` com `refund_pix_charge(charge_id, amount_cents=None, *,
+  refund_reference)` → `PixRefund` e `get_refunded_cents(charge_id)`. A mesma
+  `refund_reference` não estorna duas vezes — nem no retry depois de uma
+  resposta perdida —, a mesma referência com outro valor levanta
+  `PixRefundReferenceConflictException` e um valor acima do que sobrou,
+  `PixRefundExceedsBalanceException` (as duas `409`). Implementado no
+  `MercadoPagoPixProvider` (`X-Idempotency-Key` derivada da referência), no
+  `OpenPixPixProvider` (referência como `correlationID` do estorno, conferida
+  na lista de estornos antes e depois do `POST`) e no `FakePixProvider`
+  (`fail_after_next_refund` estorna e depois falha; `refunds` lista o que foi
+  aplicado). `PixProviderRouter.refund_pix_charge` e `get_refunded_cents`
+  roteiam pelo provedor guardado. Receita nova: "Estorno de Pix
+  (idempotente)".
+
+### Changed
+
+- `MercadoPagoPixProvider.refund_pix_charge` sem `refund_reference` continua
+  como antes (devolve `PixCharge`, chave nova por chamada); com ela, devolve
+  `PixRefund`. Os dois retornos estão tipados por `@overload`. Um
+  `amount_cents` zero ou negativo agora levanta `ValueError` antes da
+  requisição, nas duas formas.
+
+### Fixed
+
+- Mercado Pago: toda entrega real de webhook da API de Orders voltava
+  `401 Invalid Mercado Pago webhook signature` (#753). O provedor assina o
+  `data.id` em minúsculas e os ids de order chegam em maiúsculas (`ORD01…`);
+  `build_manifest`, `sign_manifest` e `verify_signature` passam o id para
+  minúsculas. `MercadoPagoWebhookEvent.data_id` mantém o valor original, que
+  é o que o `GET /v1/orders/{id}` aceita. A regra diverge do `sdk-nodejs` do
+  provedor na versão atual, que deixou de passar para minúsculas em
+  2026-06-17; a evidência é a entrega real observada em 2026-11-13 (#498).
+- Mercado Pago: `MercadoPagoEventEnum.ORDER` (`"order"`); a entrega de
+  Orders virava `UNKNOWN` (#753).
+- Mercado Pago: `MercadoPagoPixProvider` sem `idempotency_key` usava um UUID4
+  novo por chamada, e repetir o `create_pix_charge` da mesma `reference`
+  abria uma segunda order, contra o contrato de `PixChargeRequest.reference`
+  (#754). O padrão agora deriva a chave da `reference`
+  (`reference_idempotency_key`, UUID5 sob `PIX_IDEMPOTENCY_NAMESPACE`). Mesma
+  `reference` com outro corpo volta `409 idempotency_key_already_used`, que
+  sai como `httpx.HTTPStatusError`. O `MercadoPagoCardProvider` continua com
+  uma chave por chamada.
+- `FakePixProvider.create_pix_charge` com uma `reference` já usada devolve a
+  cobrança existente em vez de abrir outra, como o contrato promete (#754).
+
+- `FakeObjectStorageClient.stream_object` aceita `chunk_size` (#757). O
+  `object_download_response` sempre passa esse argumento, então servir um
+  arquivo do fake por ele levantava `TypeError`; agora os chunks saem do tamanho pedido, como nos
+  clientes reais. `SubjectStorageClient.stream_object` ganha o mesmo
+  `chunk_size` — era dele que o fake copiava a assinatura — e passa a ter os
+  parâmetros do `DownloadableStore`. Quem implementa o protocolo à mão precisa
+  aceitar `chunk_size: int = 64 * 1024`.
+- `AsyncMinIOClient.stream_object` recusa `chunk_size < 1` com `ValueError`,
+  como o `LocalObjectStorageClient` e o fake já faziam. Antes, `0` respondia
+  `200` com `content-length` do objeto inteiro e corpo vazio, e `-1` lia o
+  objeto inteiro num chunk só.
 
 ## [0.357.0] — 2026-11-13
 

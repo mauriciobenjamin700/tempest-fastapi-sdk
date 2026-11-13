@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from tempest_fastapi_sdk import HTTPClient, register_exception_handlers
+from tempest_fastapi_sdk.exceptions import PixRefundReferenceConflictException
 from tempest_fastapi_sdk.integrations.payment import (
     CardChargeRequest,
     PaymentStatusEnum,
@@ -33,13 +35,17 @@ from tempest_fastapi_sdk.integrations.payment import (
     PixConfirmationOutcomeEnum,
     PixEventTypeEnum,
     PixPayer,
+    PixRefundStatusEnum,
     confirm_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+    PIX_IDEMPOTENCY_NAMESPACE,
+    REFUND_IDEMPOTENCY_NAMESPACE,
     MercadoPagoCardProvider,
     MercadoPagoOrderDelivery,
     MercadoPagoPixProvider,
     make_mercado_pago_webhook_delivery_dependency,
+    reference_idempotency_key,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     DEFAULT_BASE_URL,
@@ -259,22 +265,81 @@ class TestPix:
         assert len(recorder.requests) == 2
         assert len(keys) == 1
 
-    async def test_two_creates_get_two_keys_unless_told_otherwise(self) -> None:
-        """Default: one key per call. Opt-in: the key follows the reference."""
+    async def test_the_key_follows_the_reference_by_default(self) -> None:
+        """Pix default: one key per reference, a UUID5, stable across calls (#754).
+
+        The card adapter keeps one key per call, and a builder passed in wins
+        over either default.
+        """
         recorder = Recorder(response("pix_create"))
         default = MercadoPagoPixProvider(_http(recorder))
         by_reference = MercadoPagoPixProvider(
             _http(recorder), idempotency_key=lambda reference: reference
         )
         request = PixChargeRequest(amount_cents=1990, reference="order-9", payer=BUYER)
+        other = PixChargeRequest(amount_cents=1990, reference="order-10", payer=BUYER)
 
         await default.create_pix_charge(request)
         await default.create_pix_charge(request)
+        await default.create_pix_charge(other)
         await by_reference.create_pix_charge(request)
 
         keys = [r.headers["X-Idempotency-Key"] for r in recorder.requests]
+        assert keys[0] == keys[1] == reference_idempotency_key("order-9")
+        assert keys[2] != keys[0]
+        assert keys[3] == "order-9"
+
+    def test_the_key_derivation_is_pinned(self) -> None:
+        """Moving the namespace would reopen every order across an upgrade."""
+        assert (
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                "https://pypi.org/project/tempest-fastapi-sdk/#mercado-pago-pix-idempotency",
+            )
+            == PIX_IDEMPOTENCY_NAMESPACE
+        )
+        assert (
+            reference_idempotency_key("order-1")
+            == "a1c2bf84-4a98-52ab-b269-ee96e863f408"
+        )
+        assert uuid.UUID(reference_idempotency_key("pedido com espaço")).version == 5
+
+    async def test_a_reused_reference_with_another_body_raises_409(self) -> None:
+        """``idempotency_key_already_used`` reaches the caller, nothing re-read."""
+        recorder = Recorder(
+            httpx.Response(
+                409,
+                json={
+                    "errors": [
+                        {
+                            "code": "idempotency_key_already_used",
+                            "message": "Idempotency key already used.",
+                        }
+                    ]
+                },
+            )
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        with pytest.raises(httpx.HTTPStatusError) as raised:
+            await provider.create_pix_charge(
+                PixChargeRequest(amount_cents=2990, reference="order-9", payer=BUYER)
+            )
+
+        assert raised.value.response.status_code == 409
+        assert len(recorder.requests) == 1
+
+    async def test_card_creates_get_a_key_per_call(self) -> None:
+        """A declined card is retried with a new token under the same reference."""
+        recorder = Recorder(response("card_approved"))
+        provider = MercadoPagoCardProvider(_http(recorder))
+        request = _card(reference="order-9")
+
+        await provider.create_card_charge(request)
+        await provider.create_card_charge(request)
+
+        keys = [r.headers["X-Idempotency-Key"] for r in recorder.requests]
         assert keys[0] != keys[1]
-        assert keys[2] == "order-9"
 
     @pytest.mark.parametrize(
         "patch",
@@ -402,6 +467,100 @@ class TestPix:
         assert len(posts) == 2
         assert len({r.headers["X-Idempotency-Key"] for r in posts}) == 1
         assert charge.status is PaymentStatusEnum.REFUNDED
+
+    async def test_a_keyed_refund_reads_the_sandbox_answer(self) -> None:
+        """With a reference: read, refund under a derived key, read back.
+
+        The bodies are the sandbox's (``pix_refund_partial`` and the reads
+        around it). The key is a UUID5 of the order id and the reference,
+        so it is the same on every call and different from the reference.
+        """
+        recorder = Recorder(
+            response("pix_get_paid"),
+            response("pix_refund_partial"),
+            response("pix_get_after_partial_refund"),
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
+        _, paid = fixture("pix_get_paid")
+
+        refund = await provider.refund_pix_charge(
+            paid["id"], 500, refund_reference="ticket-1"
+        )
+
+        post = recorder.requests[1]
+        key = post.headers["X-Idempotency-Key"]
+        assert [r.method for r in recorder.requests] == ["GET", "POST", "GET"]
+        assert key == str(
+            uuid.uuid5(REFUND_IDEMPOTENCY_NAMESPACE, f"{paid['id']}\nticket-1")
+        )
+        assert refund.amount_cents == 500
+        assert refund.refunded_cents == 500
+        assert refund.provider_refund_id == "REF00000000000000000000000003"
+        assert refund.status is PixRefundStatusEnum.COMPLETED
+        assert refund.provider_status == "processed"
+        assert refund.end_to_end_id is None
+        assert refund.raw["transaction_id"] == "PAY00000000000000000000000002"
+
+    async def test_a_keyed_rest_refund_is_the_last_entry(self) -> None:
+        """The answer lists both refunds; the one this call made is the last."""
+        recorder = Recorder(
+            response("pix_get_after_partial_refund"),
+            response("pix_refund_rest"),
+            response("pix_get_after_refund"),
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        refund = await provider.refund_pix_charge(
+            "ORDTST00000000000000000000000001", refund_reference="ticket-2"
+        )
+
+        assert recorder.requests[1].content == b""
+        assert refund.amount_cents == 1490
+        assert refund.refunded_cents == 1990
+        assert refund.provider_refund_id == "REF00000000000000000000000004"
+
+    async def test_get_refunded_cents_sums_the_listed_refunds(self) -> None:
+        """Both sandbox refunds count: 5,00 + 14,90."""
+        provider = MercadoPagoPixProvider(
+            _http(Recorder(response("pix_get_after_refund")))
+        )
+
+        assert await provider.get_refunded_cents("ORD1") == 1990
+
+    async def test_an_unknown_refund_status_counts_as_refunded(self) -> None:
+        """Only a failed refund is left out; an unclassified one is money gone."""
+        _, order = fixture("pix_get_after_partial_refund")
+        order["transactions"]["refunds"][0]["status"] = "in_process"
+        provider = MercadoPagoPixProvider(
+            _http(Recorder(httpx.Response(200, json=order)))
+        )
+
+        assert await provider.get_refunded_cents("ORD1") == 500
+
+    async def test_a_reused_key_is_a_reference_conflict(self) -> None:
+        """``409 idempotency_key_already_used`` becomes the typed conflict."""
+        recorder = Recorder(
+            response("pix_get_paid"),
+            httpx.Response(
+                409, json={"errors": [{"code": "idempotency_key_already_used"}]}
+            ),
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        with pytest.raises(PixRefundReferenceConflictException):
+            await provider.refund_pix_charge("ORD1", 300, refund_reference="t-1")
+
+    async def test_a_keyed_refund_of_an_unpaid_pix_still_raises_the_409(
+        self,
+    ) -> None:
+        """Not over the balance, so the provider's refusal passes through."""
+        recorder = Recorder(response("pix_get"), response("pix_refund_unpaid"))
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        with pytest.raises(httpx.HTTPStatusError) as caught:
+            await provider.refund_pix_charge("ORD1", refund_reference="t-1")
+
+        assert caught.value.response.status_code == 409
 
     async def test_an_unpaid_pix_cannot_be_refunded(self) -> None:
         """Observed: `409 cannot_refund_order`, raised at once."""

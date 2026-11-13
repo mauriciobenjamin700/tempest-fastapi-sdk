@@ -275,6 +275,59 @@ Two decisions worth explaining:
 match: a service reverse-geocodes a GPS reading, and a GPS reading never lands
 on the decimal you stored.
 
+## File: download without MinIO
+
+`FakeObjectStorageClient` serves a download through the same
+`object_download_response` that `AsyncMinIOClient` and
+`LocalObjectStorageClient` use: `Range`, `206`, `416` and the headers come out
+the same, and the chunks have the `chunk_size` you asked for.
+
+```python
+import asyncio
+
+from starlette.requests import Request
+
+from tempest_fastapi_sdk.storage import object_download_response
+from tempest_fastapi_sdk.testing.fakes import FakeObjectStorageClient
+
+
+async def main() -> None:
+    """Serve a stored object whole, then one byte range of it."""
+    storage = FakeObjectStorageClient()
+    await storage.put_object("docs/report.txt", b"0123456789" * 3)
+
+    whole = await object_download_response(storage, "docs/report.txt", chunk_size=8)
+    print(whole.status_code, [chunk async for chunk in whole.body_iterator])
+
+    ranged = Request(
+        {"type": "http", "method": "GET", "headers": [(b"range", b"bytes=5-14")]}
+    )
+    partial = await object_download_response(
+        storage, "docs/report.txt", request=ranged, chunk_size=4
+    )
+    print(partial.status_code, partial.headers["content-range"])
+    print([chunk async for chunk in partial.body_iterator])
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Output:
+
+```text
+200 [b'01234567', b'89012345', b'67890123', b'456789']
+206 bytes 5-14/30
+[b'5678', b'9012', b'34']
+```
+
+!!! note "The three clients go through the same test"
+    `tests/storage/test_download_contract.py` runs the download, with and
+    without `Range`, against MinIO (with a fake `minio.Minio`), local disk and
+    the fake. `tests/test_storage_client_signature_guard.py` compares every
+    storage protocol method's signature with the three clients' — a missing
+    `chunk_size` on the fake made this example raise `TypeError` until #757.
+
 ## Wiring it into the service
 
 The fake goes where the real one went — into the `Depends`:

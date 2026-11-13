@@ -72,6 +72,9 @@ from tempest_fastapi_sdk.settings.mixins import TokenSettings as TokenSettings
 from tempest_fastapi_sdk.settings.mixins import UploadSettings as UploadSettings
 from tempest_fastapi_sdk.settings.mixins import WebPushSettings as WebPushSettings
 from tempest_fastapi_sdk.settings.mixins import WebSocketSettings as WebSocketSettings
+from tempest_fastapi_sdk.settings.storage_credential import (
+    StorageBucketCredential as StorageBucketCredential,
+)
 from tempest_fastapi_sdk.settings.version import (
     read_project_version as read_project_version,
 )
@@ -108,6 +111,7 @@ __all__: list[str] = [
     "SessionCookieKwargs",
     "SessionCookieSameSite",
     "SessionSettings",
+    "StorageBucketCredential",
     "StorageSettings",
     "TaskIQSettings",
     "TokenSettings",

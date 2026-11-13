@@ -103,9 +103,24 @@ nada — a mesma costura que o SDK usa em `RateLimitStore`, `QuotaStore`,
     `create_pix_charge` com o mesmo `reference`, volta a cobrança que já
     existe, não uma segunda. Na OpenPix isso é o `?return_existing=true`,
     que o adapter manda desde a v0.346.0 (a spec da Woovi o descreve como
-    "make the endpoint idempotent"); no Mercado Pago, o `X-Idempotency-Key`.
-    O SDK testa o request que sai, não a resposta do provedor: a repetição
-    contra o sandbox ainda não foi medida.
+    "make the endpoint idempotent"); no Mercado Pago, um `X-Idempotency-Key`
+    derivado da `reference` (um UUID5), o padrão desde a release seguinte à
+    v0.357.0 — antes dela, cada chamada levava uma chave nova e a repetição
+    abria uma segunda order. O `FakePixProvider` também devolve a cobrança
+    existente, então o teste sobre o fake vê o mesmo contrato.
+
+    Até onde isso está medido: no Mercado Pago, a mesma chave com o mesmo
+    corpo devolveu a mesma order no sandbox (2026-10-10); na OpenPix, o SDK
+    testa o request que sai, e a repetição contra o sandbox ainda não foi
+    medida.
+
+!!! warning "Mesma `reference`, outra cobrança: `409` no Mercado Pago"
+    A chave colapsa **o mesmo** pedido. Repetir uma `reference` com outro
+    valor, pagador, descrição ou prazo faz o Mercado Pago responder
+    `409 idempotency_key_already_used`, que o adapter levanta como
+    `httpx.HTTPStatusError` — ele não relê a order antiga, porque ela é de um
+    valor que ninguém pediu agora. Nova cobrança para a mesma compra precisa
+    de outra `reference`.
 
 ### O que sai: `PixCharge`
 
@@ -240,6 +255,13 @@ async def cobrar_e_acompanhar(provider: PixProvider) -> PixCharge:
     só consulta paga latência em cada pedido. A receita
     [OpenPix »](openpix.md) mostra os dois lados montados — webhook para
     reagir, conferência para reconciliar.
+
+!!! tip "E o estorno?"
+    Estornar não está no `PixProvider`: está no `PixRefundProvider`, que o
+    estende com `refund_pix_charge(..., refund_reference=)` e
+    `get_refunded_cents`. Os três provedores do SDK (OpenPix, Mercado Pago e
+    `FakePixProvider`) implementam, e o retry com a mesma referência não
+    estorna duas vezes. Veja [Estorno de Pix (idempotente)](pix-refund.md).
 
 ## Trocando de provedor
 
