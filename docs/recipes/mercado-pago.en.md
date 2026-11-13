@@ -265,11 +265,23 @@ What the adapters decide for you, each item measured in the sandbox:
   (measured with `PT60S`).
 - **The payer is required.** An order without `payer` comes back
   `400 '$.payer' - minimum 1 properties allowed`.
-- **One idempotency key per call**, which the `HTTPClient` reuses across its
-  own retries. The provider honours the key (measured on 2026-10-10): the
-  same key with the same body returns the **same** order, and with another
-  body answers `409 idempotency_key_already_used`. To collapse two calls for
-  the same order, pass `idempotency_key=lambda reference: reference`.
+- **Pix: the reference is the idempotency key.** `MercadoPagoPixProvider`
+  derives the `X-Idempotency-Key` from `reference`
+  (`reference_idempotency_key`, a UUID5 — the specification declares the
+  header `format: uuid`), so repeating `create_pix_charge` with the same
+  request answers the order the first call opened, as the
+  [Pix contract](pix-protocol.md) promises. The provider honours the key
+  (measured on 2026-10-10): the same key with the same body returns the
+  **same** order, and with another body answers
+  `409 idempotency_key_already_used`. The adapter lets that `409` out as
+  `httpx.HTTPStatusError`: reusing a reference for a different amount is a
+  bug in the caller, and answering the old order would hand over a charge
+  for the wrong amount. Through v0.357.0 the default was a new UUID4 per
+  call, and a repeated create opened a second order.
+- **Card: one key per call**, which the `HTTPClient` reuses across its own
+  retries. A declined card is retried with a new token under the same
+  reference — another body, so a key derived from the reference would
+  answer `409`. Pass `idempotency_key=` to either adapter to choose.
 - **Installments depend on the card and the amount.** The installment
   options (`get_installments`) answer by BIN: the test Visa (`423564`)
   offers only 1x, for the test seller and for a real account, and asking for
@@ -339,14 +351,15 @@ you do not decide what to do with a `False`:
   that is not JSON does not either: `payload` stays empty and `body` carries
   the bytes.
 
-- An Orders notification should arrive with the `order` topic or an
-  `order.*` action: the provider's document lists `order.created` and
-  `order.updated`, but a live Orders delivery **has not been observed** here
-  yet. `MercadoPagoEventEnum` only names the topics the spec declares
-  (`payment`, `merchant_order`, `point_integration_wh`), so for Orders
-  `event.event` is `UNKNOWN` — which is why the example decides on the
-  `topic` and the action, as `make_mercado_pago_webhook_delivery_dependency`
-  (next section) does, which also re-reads the order.
+- An Orders notification arrives with the `order` topic and an `order.*`
+  action: the provider's document lists `order.created` and
+  `order.updated`, and a live delivery a production service received on
+  2026-11-13 carried `type=order` and `action: "order.canceled"`
+  ([#498](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/498)).
+  `event.event` is `MercadoPagoEventEnum.ORDER` since that release; through
+  v0.357.0 it was `UNKNOWN`. The example decides on the `topic` and the
+  action, as `make_mercado_pago_webhook_delivery_dependency` (next section)
+  does, which also re-reads the order.
 
 !!! warning "The signature does not cover the body"
     The signed manifest is `data.id`, `x-request-id` and `ts` — the body is
@@ -370,6 +383,22 @@ everything present   id:<data.id>;request-id:<x-request-id>;ts:<ts>;
 no data.id           request-id:<x-request-id>;ts:<ts>;
 neither one          ts:<ts>;
 ```
+
+And the **`data.id` is signed in lowercase**. An Orders id arrives as
+`ORD01M7B5HWREYRJCAPJ61QTF1SRW` and the provider signs
+`id:ord01m7b5hwreyrjcapj61qtf1srw;...`. `build_manifest` (and so
+`sign_manifest` and `verify_signature`) lowercases it; `event.data_id` keeps
+the id as delivered, which is what `GET /v1/orders/{id}` answers to.
+
+!!! warning "Every Orders delivery was a 401 until this release"
+    Through v0.357.0 the manifest carried the id as delivered, so **every**
+    live Orders notification was refused with
+    `401 Invalid Mercado Pago webhook signature`
+    ([#753](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/753)).
+    This rule departs from the upstream file at `99857f33`: their validator
+    lowercased the id when it shipped and stopped in `ac20999a`
+    (2026-06-17). The live deliveries verify only lowercased — the evidence
+    beats the port.
 
 !!! warning "This was a defect until v0.250.0"
     Until then this module rendered a fixed template, so a delivery without
@@ -421,16 +450,15 @@ def manifest_of_delivery(data_id: str, request_id: str, ts: str) -> str:
     one before this package changes. The default is `("v1",)` — failing closed
     is the right behaviour for a version the provider has not sent yet.
 
-!!! danger "Still not measured against a live delivery"
-    Ported from the provider's implementation is not the same as verified
-    against a notification the provider sent. What is measured: the manifests,
-    byte for byte, against the rules upstream encodes; and the digests,
+!!! warning "One live topic observed, not every topic"
+    Measured in this package: the manifests, byte for byte, and the digests,
     against vectors computed with `openssl dgst -sha256 -hmac`, a different
     HMAC implementation than Python's.
 
-    What is still unmeasured: whether the live deliveries follow their own
-    SDK. Run **one** real notification through `verify_signature` before this
-    guards money, and open an issue if it is rejected.
+    Observed by a consumer in production on 2026-11-13: live `order`
+    deliveries, which verify only with the `data.id` lowercased. Other topics
+    have not been run through `verify_signature` against a live delivery;
+    open an issue if one is rejected.
 
 !!! warning "QR Code notifications are not signed"
     Upstream states it outright: those deliveries carry no signature and will
@@ -512,8 +540,8 @@ What the dependency does, in this order:
    no request to Mercado Pago.
 2. **Decides whether the notification is about an order**: topic `order`, or
    an action starting with `order.`. The provider's document lists
-   `order.created` and `order.updated`; a live Orders delivery has not been
-   observed here yet.
+   `order.created` and `order.updated`, and the live delivery observed on
+   2026-11-13 carried `type=order`.
 3. **Checks the id's shape** (`[A-Za-z0-9]+`) before putting it in a path.
 4. **Re-reads the order** by that id. `404` is an answer, not a failure: the
    dashboard's "simulate notification" signs a made-up id, and raising there

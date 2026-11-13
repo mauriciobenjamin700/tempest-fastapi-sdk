@@ -39,11 +39,13 @@ from tempest_fastapi_sdk.integrations.payment import (
     confirm_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
+    PIX_IDEMPOTENCY_NAMESPACE,
     REFUND_IDEMPOTENCY_NAMESPACE,
     MercadoPagoCardProvider,
     MercadoPagoOrderDelivery,
     MercadoPagoPixProvider,
     make_mercado_pago_webhook_delivery_dependency,
+    reference_idempotency_key,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
     DEFAULT_BASE_URL,
@@ -263,22 +265,81 @@ class TestPix:
         assert len(recorder.requests) == 2
         assert len(keys) == 1
 
-    async def test_two_creates_get_two_keys_unless_told_otherwise(self) -> None:
-        """Default: one key per call. Opt-in: the key follows the reference."""
+    async def test_the_key_follows_the_reference_by_default(self) -> None:
+        """Pix default: one key per reference, a UUID5, stable across calls (#754).
+
+        The card adapter keeps one key per call, and a builder passed in wins
+        over either default.
+        """
         recorder = Recorder(response("pix_create"))
         default = MercadoPagoPixProvider(_http(recorder))
         by_reference = MercadoPagoPixProvider(
             _http(recorder), idempotency_key=lambda reference: reference
         )
         request = PixChargeRequest(amount_cents=1990, reference="order-9", payer=BUYER)
+        other = PixChargeRequest(amount_cents=1990, reference="order-10", payer=BUYER)
 
         await default.create_pix_charge(request)
         await default.create_pix_charge(request)
+        await default.create_pix_charge(other)
         await by_reference.create_pix_charge(request)
 
         keys = [r.headers["X-Idempotency-Key"] for r in recorder.requests]
+        assert keys[0] == keys[1] == reference_idempotency_key("order-9")
+        assert keys[2] != keys[0]
+        assert keys[3] == "order-9"
+
+    def test_the_key_derivation_is_pinned(self) -> None:
+        """Moving the namespace would reopen every order across an upgrade."""
+        assert (
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                "https://pypi.org/project/tempest-fastapi-sdk/#mercado-pago-pix-idempotency",
+            )
+            == PIX_IDEMPOTENCY_NAMESPACE
+        )
+        assert (
+            reference_idempotency_key("order-1")
+            == "a1c2bf84-4a98-52ab-b269-ee96e863f408"
+        )
+        assert uuid.UUID(reference_idempotency_key("pedido com espaço")).version == 5
+
+    async def test_a_reused_reference_with_another_body_raises_409(self) -> None:
+        """``idempotency_key_already_used`` reaches the caller, nothing re-read."""
+        recorder = Recorder(
+            httpx.Response(
+                409,
+                json={
+                    "errors": [
+                        {
+                            "code": "idempotency_key_already_used",
+                            "message": "Idempotency key already used.",
+                        }
+                    ]
+                },
+            )
+        )
+        provider = MercadoPagoPixProvider(_http(recorder))
+
+        with pytest.raises(httpx.HTTPStatusError) as raised:
+            await provider.create_pix_charge(
+                PixChargeRequest(amount_cents=2990, reference="order-9", payer=BUYER)
+            )
+
+        assert raised.value.response.status_code == 409
+        assert len(recorder.requests) == 1
+
+    async def test_card_creates_get_a_key_per_call(self) -> None:
+        """A declined card is retried with a new token under the same reference."""
+        recorder = Recorder(response("card_approved"))
+        provider = MercadoPagoCardProvider(_http(recorder))
+        request = _card(reference="order-9")
+
+        await provider.create_card_charge(request)
+        await provider.create_card_charge(request)
+
+        keys = [r.headers["X-Idempotency-Key"] for r in recorder.requests]
         assert keys[0] != keys[1]
-        assert keys[2] == "order-9"
 
     @pytest.mark.parametrize(
         "patch",

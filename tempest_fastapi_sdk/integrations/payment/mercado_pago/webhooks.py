@@ -17,6 +17,18 @@ as deliveries that quietly stop verifying.
 
 The rules, in the order they bite:
 
+- **The ``data.id`` is signed in lowercase.** Ids of the Orders API are
+  uppercase (``ORD01M7B5HWREYRJCAPJ61QTF1SRW``), and the provider signs the
+  manifest with the id lowercased. This is the one rule that does **not**
+  come from the upstream file at ``99857f33``: their validator lowercased
+  the id when it shipped (``d06d5e42``, 2026-05-13) and stopped doing so in
+  ``ac20999a`` (2026-06-17, *"preserve data.id case"*). A live delivery
+  says otherwise — every real Orders notification a production service
+  received on 2026-11-13 failed against the id as delivered and verified
+  against it lowercased (issues #498 and #753). Numeric ids are unchanged
+  by lowercasing, so the rule is applied to every id.
+  :attr:`MercadoPagoWebhookEvent.data_id` keeps the id as delivered, which
+  is the spelling ``GET /v1/orders/{id}`` answers to.
 - **The manifest omits absent pairs.** It is not a fixed template. Present
   values are joined with ``;`` and the whole string ends with one:
   ``id:<data.id>;request-id:<x-request-id>;ts:<ts>;``. A delivery without
@@ -33,16 +45,16 @@ The rules, in the order they bite:
   not a mismatch to investigate.
 - **HMAC-SHA256, hex, compared in constant time.**
 
-!!! danger "Still not measured against a live delivery"
-    Ported from the provider's implementation is not the same as verified
-    against a notification the provider actually sent. What is measured here:
-    the manifest strings, byte for byte, against the rules upstream encodes;
+!!! warning "One live topic observed, not every topic"
+    What is measured in this package: the manifest strings, byte for byte,
     and the digests, against vectors computed by ``openssl dgst -sha256
     -hmac`` — a different implementation than Python's :mod:`hmac`.
 
-    What is still unmeasured: whether Mercado Pago's live deliveries follow
-    their own SDK. Run one real notification through :func:`verify_signature`
-    before this guards production money, and report a rejection.
+    What a consumer observed in production (issue #498, 2026-11-13): live
+    ``order`` deliveries, whose signature verifies only with the ``data.id``
+    lowercased. Other topics have not been run through
+    :func:`verify_signature` against a live delivery here; report a
+    rejection.
 
 !!! warning "QR Code notifications are not signed"
     Upstream states it outright: those deliveries carry no signature and will
@@ -115,7 +127,10 @@ class MercadoPagoWebhookEvent:
             topic at all.
         data_id (str): The resource id the notification points at, read
             from the ``data.id`` query parameter — the value the signature
-            covers. It is what you re-read from the API before acting.
+            covers. Kept as delivered, uppercase for an order
+            (``ORD01...``), even though the signature covers it lowercased:
+            it is what you re-read from the API before acting, and
+            ``GET /v1/orders/{id}`` answers to the delivered spelling.
         payload (dict[str, Any]): The decoded body. **Not covered by the
             signature**: the manifest signs ``data.id``, ``x-request-id``
             and ``ts``, never the body.
@@ -252,7 +267,8 @@ def build_manifest(
     """Build the string Mercado Pago signs, omitting the pairs it omits.
 
     Args:
-        data_id (str): The ``data.id`` query parameter of the delivery.
+        data_id (str): The ``data.id`` query parameter of the delivery, in
+            any case — it enters the manifest lowercased.
         request_id (str): The ``x-request-id`` header.
         timestamp (str): The ``ts`` component of ``x-signature``.
 
@@ -263,15 +279,20 @@ def build_manifest(
         ``data.id`` it is ``request-id:<request_id>;ts:<ts>;``, and the
         empty ``id:`` is **not** there.
 
-    The omission rule is the whole reason this function exists instead of a
+    The omission rule is the reason this function exists instead of a
     format string: a fixed template turns an absent ``data.id`` into
     ``id:;``, which hashes to something the provider never signed. Ported
     from ``mercadopago/sdk-nodejs``, ``src/utils/webhook/index.ts``
     (``buildManifest``) at commit ``99857f33``.
+
+    The ``data.id`` is lowercased, which that commit no longer does. Live
+    Orders deliveries are signed over the lowercased id (``ORD01...`` arrives,
+    ``ord01...`` is signed), so a manifest with the id as delivered rejected
+    every one of them; the module docstring has the history.
     """
     parts: list[str] = []
     if _normalize(data_id):
-        parts.append(f"id:{_normalize(data_id)}")
+        parts.append(f"id:{_normalize(data_id).lower()}")
     if _normalize(request_id):
         parts.append(f"request-id:{_normalize(request_id)}")
     parts.append(f"ts:{timestamp}")
@@ -297,7 +318,10 @@ def sign_manifest(
         str: The lowercase hex digest.
 
     Exposed publicly because a test — yours or this package's — needs to
-    produce a valid signature without duplicating the manifest rules.
+    produce a valid signature without duplicating the manifest rules. The
+    ``data_id`` is lowercased by :func:`build_manifest`, as the provider
+    does, so passing the id exactly as a delivery carries it signs what the
+    provider would sign.
     """
     manifest = build_manifest(
         data_id=data_id,
@@ -324,8 +348,10 @@ def verify_signature(
     Args:
         secret (str): The webhook secret from the dashboard.
         signature_header (str): The raw ``x-signature`` value.
-        data_id (str): The ``data.id`` query parameter. Absent for the
-            topics that carry none, and then it is left out of the manifest.
+        data_id (str): The ``data.id`` query parameter, as delivered —
+            it is lowercased into the manifest, never by the caller. Absent
+            for the topics that carry none, and then it is left out of the
+            manifest.
         request_id (str): The ``x-request-id`` header, same rule.
         versions (Sequence[str]): Hash versions to accept, in preference
             order. Defaults to :data:`DEFAULT_SIGNATURE_VERSIONS`.

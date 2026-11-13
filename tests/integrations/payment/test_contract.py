@@ -14,13 +14,19 @@ inside ``integrations/payment/`` at all.
 
 from __future__ import annotations
 
+import copy
 import inspect
+import json
 import subprocess
 import sys
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any, get_overloads, get_type_hints
 
+import httpx
 import pytest
 
+from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment import (
     CardProvider,
     PaymentStatusEnum,
@@ -28,6 +34,7 @@ from tempest_fastapi_sdk.integrations.payment import (
     PixCharge,
     PixChargeRequest,
     PixEventTypeEnum,
+    PixPayer,
     PixProvider,
     PixRefundProvider,
 )
@@ -46,10 +53,15 @@ from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
     OpenPixPayoutProvider,
     OpenPixPixProvider,
 )
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import OrderStatus
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    DEFAULT_BASE_URL,
+    OrderStatus,
+)
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     ChargeRefundStatus,
     ChargeStatus,
+    OpenPixClient,
+    OpenPixEnvironmentEnum,
 )
 from tempest_fastapi_sdk.testing.fakes import (
     FakeCardProvider,
@@ -352,3 +364,156 @@ def test_importing_the_contract_does_not_build_provider_schemas() -> None:
     )
 
     assert result.stdout.strip() == "False", result.stdout
+
+
+MERCADO_PAGO_PIX_CREATE: Path = (
+    Path(__file__).parent
+    / "adapters"
+    / "fixtures"
+    / "mercado_pago_orders"
+    / "pix_create.json"
+)
+"""A Pix order the sandbox created on 2026-10-09, redacted."""
+
+
+class MercadoPagoOrders:
+    """Mercado Pago's measured idempotency rule, as a transport.
+
+    Same ``X-Idempotency-Key``, same order — what the sandbox answered on
+    2026-10-10 (``vendor/mercadopago-evidence.md`` section 9.6). A new key
+    opens a new order with a new id.
+
+    Attributes:
+        orders (dict[str, dict[str, Any]]): Orders by idempotency key.
+    """
+
+    def __init__(self) -> None:
+        """Start with no orders."""
+        self.orders: dict[str, dict[str, Any]] = {}
+        self._template: dict[str, Any] = json.loads(
+            MERCADO_PAGO_PIX_CREATE.read_text(encoding="utf-8")
+        )["body"]
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        """Answer a create, honouring the idempotency key.
+
+        Args:
+            request (httpx.Request): The ``POST /v1/orders``.
+
+        Returns:
+            httpx.Response: ``201`` with the order the key maps to.
+        """
+        key = request.headers["X-Idempotency-Key"]
+        if key not in self.orders:
+            order = copy.deepcopy(self._template)
+            order["id"] = f"ORDTST{len(self.orders) + 1:04d}"
+            self.orders[key] = order
+        return httpx.Response(201, json=self.orders[key])
+
+
+class OpenPixCharges:
+    """OpenPix's documented rule for ``return_existing``, as a transport.
+
+    With ``?return_existing=true`` a create for a ``correlationID`` that
+    already has a charge answers that charge; without it, every create is a
+    new charge.
+
+    Attributes:
+        charges (dict[str, dict[str, Any]]): Charges by correlation id.
+    """
+
+    def __init__(self) -> None:
+        """Start with no charges."""
+        self.charges: dict[str, dict[str, Any]] = {}
+        self._created: int = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        """Answer a create, honouring ``return_existing``.
+
+        Args:
+            request (httpx.Request): The ``POST /api/v1/charge``.
+
+        Returns:
+            httpx.Response: ``200`` with the charge.
+        """
+        sent: dict[str, Any] = json.loads(request.content)
+        reference = str(sent["correlationID"])
+        existing = self.charges.get(reference)
+        if existing is None or request.url.params.get("return_existing") != "true":
+            self._created += 1
+            existing = {
+                "value": sent["value"],
+                "identifier": f"charge{self._created:04d}",
+                "correlationID": reference,
+                "status": "ACTIVE",
+                "brCode": "00020101021226980014br.gov.bcb.pix",
+            }
+            self.charges[reference] = existing
+        return httpx.Response(200, json={"charge": existing})
+
+
+def _mercado_pago() -> PixProvider:
+    """Build the Mercado Pago adapter over :class:`MercadoPagoOrders`.
+
+    Returns:
+        PixProvider: The adapter, with its default idempotency key.
+    """
+    return MercadoPagoPixProvider(
+        HTTPClient(
+            base_url=DEFAULT_BASE_URL,
+            transport=httpx.MockTransport(MercadoPagoOrders()),
+        )
+    )
+
+
+def _openpix() -> PixProvider:
+    """Build the OpenPix adapter over :class:`OpenPixCharges`.
+
+    Returns:
+        PixProvider: The adapter, over the generated client.
+    """
+    return OpenPixPixProvider(
+        OpenPixClient(
+            HTTPClient(
+                base_url=OpenPixEnvironmentEnum.SANDBOX.base_url,
+                transport=httpx.MockTransport(OpenPixCharges()),
+            )
+        )
+    )
+
+
+PIX_PROVIDER_FACTORIES: list[Callable[[], PixProvider]] = [
+    _openpix,
+    _mercado_pago,
+    FakePixProvider,
+]
+"""Every Pix provider, each over a stand-in that applies its provider's rule."""
+
+
+@pytest.mark.parametrize(
+    "build", PIX_PROVIDER_FACTORIES, ids=["openpix", "mercado_pago", "fake"]
+)
+async def test_the_same_reference_answers_the_same_charge(
+    build: Callable[[], PixProvider],
+) -> None:
+    """``reference`` is the create's idempotency key, with no configuration.
+
+    The promise :attr:`PixChargeRequest.reference` makes (#754). A retry
+    after a timeout, a double click or a reprocess must not open a second
+    charge, and swapping providers must not change that. A different
+    reference still opens a different charge, so the assertion cannot pass
+    on a provider that answers one fixed charge.
+    """
+    provider = build()
+    request = PixChargeRequest(
+        amount_cents=1990, reference="order-754", payer=PixPayer(email="a@b.co")
+    )
+
+    first = await provider.create_pix_charge(request)
+    again = await provider.create_pix_charge(request)
+    other = await provider.create_pix_charge(
+        request.model_copy(update={"reference": "order-755"})
+    )
+
+    assert again.provider_charge_id == first.provider_charge_id
+    assert other.provider_charge_id != first.provider_charge_id

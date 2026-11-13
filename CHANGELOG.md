@@ -32,6 +32,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `amount_cents` zero ou negativo agora levanta `ValueError` antes da
   requisição, nas duas formas.
 
+### Fixed
+
+- Mercado Pago: toda entrega real de webhook da API de Orders voltava
+  `401 Invalid Mercado Pago webhook signature` (#753). O provedor assina o
+  `data.id` em minúsculas e os ids de order chegam em maiúsculas (`ORD01…`);
+  `build_manifest`, `sign_manifest` e `verify_signature` passam o id para
+  minúsculas. `MercadoPagoWebhookEvent.data_id` mantém o valor original, que
+  é o que o `GET /v1/orders/{id}` aceita. A regra diverge do `sdk-nodejs` do
+  provedor na versão atual, que deixou de passar para minúsculas em
+  2026-06-17; a evidência é a entrega real observada em 2026-11-13 (#498).
+- Mercado Pago: `MercadoPagoEventEnum.ORDER` (`"order"`); a entrega de
+  Orders virava `UNKNOWN` (#753).
+- Mercado Pago: `MercadoPagoPixProvider` sem `idempotency_key` usava um UUID4
+  novo por chamada, e repetir o `create_pix_charge` da mesma `reference`
+  abria uma segunda order, contra o contrato de `PixChargeRequest.reference`
+  (#754). O padrão agora deriva a chave da `reference`
+  (`reference_idempotency_key`, UUID5 sob `PIX_IDEMPOTENCY_NAMESPACE`). Mesma
+  `reference` com outro corpo volta `409 idempotency_key_already_used`, que
+  sai como `httpx.HTTPStatusError`. O `MercadoPagoCardProvider` continua com
+  uma chave por chamada.
+- `FakePixProvider.create_pix_charge` com uma `reference` já usada devolve a
+  cobrança existente em vez de abrir outra, como o contrato promete (#754).
+
+- `FakeObjectStorageClient.stream_object` aceita `chunk_size` (#757). O
+  `object_download_response` sempre passa esse argumento, então servir um
+  arquivo do fake por ele levantava `TypeError`; agora os chunks saem do tamanho pedido, como nos
+  clientes reais. `SubjectStorageClient.stream_object` ganha o mesmo
+  `chunk_size` — era dele que o fake copiava a assinatura — e passa a ter os
+  parâmetros do `DownloadableStore`. Quem implementa o protocolo à mão precisa
+  aceitar `chunk_size: int = 64 * 1024`.
+- `AsyncMinIOClient.stream_object` recusa `chunk_size < 1` com `ValueError`,
+  como o `LocalObjectStorageClient` e o fake já faziam. Antes, `0` respondia
+  `200` com `content-length` do objeto inteiro e corpo vazio, e `-1` lia o
+  objeto inteiro num chunk só.
+
 ## [0.357.0] — 2026-11-13
 
 ### Added
