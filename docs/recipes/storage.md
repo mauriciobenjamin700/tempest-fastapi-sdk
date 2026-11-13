@@ -1022,6 +1022,115 @@ server {
     o caminho de admin do servidor (`/minio/` no MinIO e compatíveis) e
     nunca publique a porta do console.
 
+## Uma chave por bucket
+
+Alguns storages S3-compatíveis amarram cada chave de acesso a **um** bucket:
+a chave criada para as imagens públicas não lê nem grava os documentos
+privados. Com uma credencial só, todo upload, URL pré-assinada, listagem e
+limpeza no segundo bucket responde `AccessDenied`.
+
+`STORAGE_BUCKET_CREDENTIALS` dá a cada bucket a sua chave. É um JSON de
+`bucket → {"access_key", "secret_key"}`; os buckets que não estão nele
+continuam com `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
+
+`.env`:
+
+```bash
+STORAGE_ENDPOINT=storage.example.com
+STORAGE_SECURE=true
+STORAGE_DEFAULT_BUCKET=images
+STORAGE_ACCESS_KEY=images-key
+STORAGE_SECRET_KEY=images-secret
+STORAGE_BUCKET_CREDENTIALS='{"documents": {"access_key": "documents-key", "secret_key": "documents-secret"}}'
+```
+
+Com ele preenchido, `build_storage_client()` devolve um
+`BucketRoutedMinIOClient` — subclasse de `AsyncMinIOClient`, então a
+anotação e as chamadas do serviço não mudam. Cada operação que recebe
+`bucket` é assinada com a chave daquele bucket, URL pré-assinada inclusive:
+
+```python
+import asyncio
+from urllib.parse import parse_qs, urlsplit
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    BucketRoutedMinIOClient,
+    StorageSettings,
+)
+
+
+class Settings(StorageSettings, BaseAppSettings):
+    """Dois buckets, uma chave para cada."""
+
+
+async def main() -> None:
+    """Assina um link em cada bucket e mostra qual chave assinou."""
+    settings = Settings()
+    print(settings.STORAGE_BUCKET_CREDENTIALS)
+    storage = settings.build_storage_client()
+    assert isinstance(storage, BucketRoutedMinIOClient)
+    print(sorted(storage.routed_buckets))
+    for bucket in ("images", "documents"):
+        url = await storage.presigned_get_url("contrato.pdf", bucket=bucket)
+        credential = parse_qs(urlsplit(url).query)["X-Amz-Credential"][0]
+        print(bucket, "->", credential.split("/")[0])
+
+
+asyncio.run(main())
+```
+
+A assinatura é local (o `minio` não consulta o servidor para assinar com
+`STORAGE_REGION` definido), então isto roda sem bucket nenhum no ar:
+
+```text
+{'documents': StorageBucketCredential(access_key='documents-key', secret_key=SecretStr('**********'))}
+['documents']
+images -> images-key
+documents -> documents-key
+```
+
+O segredo é `SecretStr`: sai mascarado no `repr`, no `str` e no
+`model_dump()`.
+
+As regras do roteamento:
+
+- **Bucket listado** usa a chave dele; **bucket fora da lista** usa a
+  principal. A chamada sem `bucket` vai para `STORAGE_DEFAULT_BUCKET`, que é
+  roteado como qualquer outro.
+- **`list_buckets()` e o atributo `client`** não nomeiam bucket e ficam na
+  credencial principal.
+- **`copy_object` com os dois buckets na mesma credencial** é a cópia do
+  próprio servidor, como antes. **Com credenciais diferentes**, nenhuma chave
+  lê a origem e grava o destino ao mesmo tempo, então o objeto é baixado com
+  a chave da origem para um arquivo temporário (apagado no fim) e enviado com
+  a chave do destino, levando `Content-Type` e metadados de usuário. Os bytes
+  passam pelo app nesse caminho, e outros headers gravados
+  (`Cache-Control`, `Content-Disposition`) não são copiados.
+- **`tempest storage`** monta o mesmo cliente, então
+  `tempest storage ls --bucket documents` assina com a chave dos documentos.
+
+O boot recusa credencial pela metade — chave sem segredo, segredo sem
+chave, valor vazio ou campo com nome errado (`"secret"` no lugar de
+`"secret_key"`) —, e o erro não ecoa o valor:
+
+```text
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+STORAGE_BUCKET_CREDENTIALS.documents.secret_key
+  Field required [type=missing]
+```
+
+Em `ENV=production` o guard também recusa um bucket cujo segredo ainda é o
+`minioadmin` do MinIO local, e `STORAGE_BUCKET_CREDENTIALS` preenchido com
+`STORAGE_BACKEND=local`, que nunca o lê.
+
+!!! tip "Quem monta o cliente na mão"
+    `storage_kwargs()` não muda: `AsyncMinIOClient(**settings.storage_kwargs())`
+    continua com uma credencial só. Para o roteamento, use
+    `settings.build_storage_client()` ou passe
+    `bucket_credentials=settings.STORAGE_BUCKET_CREDENTIALS` para
+    `BucketRoutedMinIOClient`.
+
 ## Storage desligado (`STORAGE_ENABLED=false`)
 
 Subindo para produção antes de o bucket existir? `STORAGE_ENABLED=false`
@@ -1055,6 +1164,9 @@ enquanto a integração estiver desligada. O exemplo completo está em
   path no mapper com `sign_path` e proteja a rota com
   `make_signed_path_dependency`: a assinatura cobre path, `expires` e
   `purpose`, e a recusa é `403` (`SIGNED_URL_INVALID` ou `SIGNED_URL_EXPIRED`).
+- Storage que amarra cada chave a um bucket: `STORAGE_BUCKET_CREDENTIALS`
+  faz o `build_storage_client()` devolver o `BucketRoutedMinIOClient`, que
+  assina cada chamada com a chave do bucket dela e cai na principal.
 - Operação fora da fachada não é bloqueada: chame `storage.client.<método>` e
   use o `minio-py` direto, em vez de esperar que a fachada cresça.
 - Para alternar disco local e MinIO por configuração, o backend pluggável de

@@ -414,3 +414,32 @@ class TestStorage:
             result = runner.invoke(app, ["storage", "check"])
         assert result.exit_code == 0, result.stdout + result.stderr
         assert "legacy exists" in result.stdout
+
+    def test_bucket_credentials_build_the_routed_client(
+        self,
+        minio_project: Path,
+        store: type[_FakeStore],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With per-bucket keys the CLI signs like the service does."""
+        built: list[_FakeStore] = []
+
+        class _RoutedStore(_FakeStore):
+            """Records that the routed client was the one built."""
+
+            def __init__(self, **kwargs: Any) -> None:
+                """Record the construction kwargs and the instance."""
+                super().__init__(**kwargs)
+                built.append(self)
+
+        monkeypatch.setattr(
+            "tempest_fastapi_sdk.storage.BucketRoutedMinIOClient", _RoutedStore
+        )
+        monkeypatch.setenv(
+            "STORAGE_BUCKET_CREDENTIALS",
+            '{"documents": {"access_key": "DOCS", "secret_key": "docs-secret"}}',
+        )
+        result = runner.invoke(app, ["storage", "check"])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert len(built) == 1
+        assert set(built[0].kwargs["bucket_credentials"]) == {"documents"}

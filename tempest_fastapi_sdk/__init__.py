@@ -1830,6 +1830,9 @@ if TYPE_CHECKING:
         AsyncMinIOClient as AsyncMinIOClient,
     )
     from tempest_fastapi_sdk.storage import (
+        BucketRoutedMinIOClient as BucketRoutedMinIOClient,
+    )
+    from tempest_fastapi_sdk.storage import (
         LocalObjectNotFoundError as LocalObjectNotFoundError,
     )
     from tempest_fastapi_sdk.storage import (
@@ -1846,6 +1849,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.storage import (
         PutObjectItem as PutObjectItem,
+    )
+    from tempest_fastapi_sdk.storage import (
+        StorageBucketCredential as StorageBucketCredential,
     )
     from tempest_fastapi_sdk.storage import (
         make_local_storage_router as make_local_storage_router,
@@ -2987,6 +2993,8 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "SSEData": "tempest_fastapi_sdk.sse",
     "sse_response": "tempest_fastapi_sdk.sse",
     "AsyncMinIOClient": "tempest_fastapi_sdk.storage",
+    "BucketRoutedMinIOClient": "tempest_fastapi_sdk.storage",
+    "StorageBucketCredential": "tempest_fastapi_sdk.storage",
     "ObjectDeleteError": "tempest_fastapi_sdk.storage",
     "ObjectStat": "tempest_fastapi_sdk.storage",
     "PutObjectItem": "tempest_fastapi_sdk.storage",
@@ -3420,6 +3428,7 @@ __all__: list[str] = [
     "BaseWebPushSubscriptionModel",
     "BaseWebhookEventModel",
     "BodySizeLimitMiddleware",
+    "BucketRoutedMinIOClient",
     "BulkEmailReport",
     "BusinessMetrics",
     "CEPField",
@@ -3753,6 +3762,7 @@ __all__: list[str] = [
     "StateBR",
     "StaticCredentialAuthenticator",
     "StaticRateLimitPolicy",
+    "StorageBucketCredential",
     "StorageIntegrityException",
     "StorageSettings",
     "StoredFileServiceMixin",

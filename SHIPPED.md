@@ -2199,6 +2199,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   and needs `media_type=` for inline; its security headers live in the
   nginx internal location (`add_header ... always`), since nginx drops the
   app's (measured, `tests/storage/test_accel_redirect_live.py`).
+  **(unreleased, #756)** One key per bucket: `STORAGE_BUCKET_CREDENTIALS`
+  (JSON `bucket → {access_key, secret_key}`, `StorageBucketCredential` with
+  `SecretStr`, half credential refused at boot) makes `build_storage_client()`
+  return `BucketRoutedMinIOClient`, an `AsyncMinIOClient` subclass that
+  resolves each call's Minio through the `_client_for(bucket)` /
+  `_presign_client_for(bucket)` hooks, falling back on the primary key.
+  Cross-credential `copy_object` reads through a temp file; the CLI builds
+  the same client. Tests: `tests/storage/test_bucket_router.py`.
 - **Signed app URLs** — **(v0.302.0, #363)** `sign_path` /
   `verify_path` in `utils.signed_url` (stdlib only): HMAC-SHA256 over
   `expires LF decoded-path`, key derived from the secret and `purpose`

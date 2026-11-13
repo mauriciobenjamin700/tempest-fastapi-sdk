@@ -4,7 +4,10 @@ Everything here goes through ``AsyncMinIOClient(**settings.storage_kwargs())``,
 so the endpoint, credentials, region and — importantly — the *public*
 endpoint used to sign URLs are the ones the service uses. A presigned URL
 produced with the internal endpoint is valid and useless: the browser it
-is handed to cannot resolve ``minio:9000``.
+is handed to cannot resolve ``minio:9000``. With
+``STORAGE_BUCKET_CREDENTIALS`` set the client is the
+``BucketRoutedMinIOClient`` the service builds, so ``--bucket documents``
+is signed with the documents key.
 
 ``encrypt-local`` and ``reencrypt-local`` act on the local backend instead,
 through ``LocalObjectStorageClient(**settings.local_storage_kwargs())``: they
@@ -43,7 +46,9 @@ def _client_kwargs() -> dict[str, Any]:
     """Read the object-store kwargs off the project's settings.
 
     Returns:
-        dict[str, Any]: Arguments for ``AsyncMinIOClient``.
+        dict[str, Any]: Arguments for ``AsyncMinIOClient``, plus
+        ``bucket_credentials`` when ``STORAGE_BUCKET_CREDENTIALS`` is set
+        (the arguments of ``BucketRoutedMinIOClient`` then).
 
     Raises:
         typer.Exit: Exit code 2 when the project composes no
@@ -66,6 +71,9 @@ def _client_kwargs() -> dict[str, Any]:
             err=True,
         )
         raise typer.Exit(2)
+    bucket_credentials = getattr(settings, "STORAGE_BUCKET_CREDENTIALS", None)
+    if bucket_credentials:
+        kwargs["bucket_credentials"] = bucket_credentials
     return kwargs
 
 
@@ -87,9 +95,17 @@ def _run(operation: Callable[[Any], Awaitable[Any]]) -> Any:
     kwargs = _client_kwargs()
 
     async def _call() -> Any:
-        from tempest_fastapi_sdk.storage import AsyncMinIOClient
+        from tempest_fastapi_sdk.storage import (
+            AsyncMinIOClient,
+            BucketRoutedMinIOClient,
+        )
 
-        async with AsyncMinIOClient(**kwargs) as client:
+        client_class: type[AsyncMinIOClient] = (
+            BucketRoutedMinIOClient
+            if "bucket_credentials" in kwargs
+            else AsyncMinIOClient
+        )
+        async with client_class(**kwargs) as client:
             return await operation(client)
 
     try:
