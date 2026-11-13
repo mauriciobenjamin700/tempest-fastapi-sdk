@@ -877,8 +877,9 @@ Three differences that need more than a rename:
    you stored the payment id as an integer, the column becomes text.
 2. **The webhook points at another resource.** The notification should now
    name the order — that is what the provider's document describes
-   (`order.created` / `order.updated` actions); a live Orders delivery has
-   not been observed here yet. Replace manual reads of `data.id` with
+   (`order.created` / `order.updated` actions); the live delivery observed on
+   2026-11-13 carried `type=order`, and `event.event` is `ORDER` since
+   v0.358.0. Replace manual reads of `data.id` with
    `make_mercado_pago_webhook_delivery_dependency`, and tick the Order event
    in the application's webhook settings.
 3. **The credential must come from an "Orders API" application.** Measured:

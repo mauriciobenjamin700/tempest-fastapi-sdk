@@ -864,7 +864,8 @@ Três diferenças que pedem ajuste além do nome:
    Se você guardava o id do pagamento como inteiro, a coluna vira texto.
 2. **O webhook muda de recurso.** A notificação deve passar a apontar para a
    order — é o que o documento do provedor descreve (ações `order.created` /
-   `order.updated`); uma entrega real de Orders ainda não foi observada aqui.
+   `order.updated`); a entrega real observada em 2026-11-13 trazia
+   `type=order`, e `event.event` é `ORDER` desde a v0.358.0.
    Troque a leitura manual de `data.id` por
    `make_mercado_pago_webhook_delivery_dependency`, e marque o evento de
    Order na configuração de webhooks da aplicação.

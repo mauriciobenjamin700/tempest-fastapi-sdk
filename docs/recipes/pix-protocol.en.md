@@ -105,8 +105,8 @@ nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
     a second one. On OpenPix that is `?return_existing=true`, which the
     adapter sends since v0.346.0 (Woovi's spec describes it as "make the
     endpoint idempotent"); on Mercado Pago, an `X-Idempotency-Key` derived
-    from the `reference` (a UUID5), the default since the release after
-    v0.357.0 — before it, each call carried a new key and a repeat opened a
+    from the `reference` (a UUID5), the default since
+    v0.358.0 — before it, each call carried a new key and a repeat opened a
     second order. `FakePixProvider` answers the existing charge too, so a
     test over the fake sees the same contract.
 

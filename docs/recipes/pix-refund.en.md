@@ -154,7 +154,8 @@ comparing totals. The reference does that work.
     The guarantee above is about calls **in sequence** (the retry). Two
     concurrent calls with the same reference can both reach the provider
     before either has finished. At Mercado Pago, the `X-Idempotency-Key`
-    covers that case on their side; at OpenPix, no document says a repeated
+    should cover that case on their side, but concurrency was not
+    measured; at OpenPix, no document says a repeated
     `correlationID` is refused. If your job can fire the same refund in
     parallel (two workers picking up the same task), serialize per
     reference — a queue with one consumer per key, or `claim_once` before

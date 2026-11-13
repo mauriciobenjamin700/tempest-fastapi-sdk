@@ -21,6 +21,7 @@ use, so importing this module costs nothing.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -448,7 +449,10 @@ def make_genai_router(
 
             ``prompt`` is forwarded only when the request carries one, so a
             backend written against the protocol before it had ``prompt``
-            still serves every request that does not use it.
+            still serves every request that does not use it. A request that
+            does carry one to such a backend is refused with ``422``
+            (``details={"field": "prompt"}``) instead of failing inside the
+            call.
 
             Args:
                 file (UploadFile): The audio file to transcribe.
@@ -462,6 +466,11 @@ def make_genai_router(
             """
             if prompt is not None:
                 _check_prompt(prompt, bounds)
+                if not _accepts_keyword(stt.transcribe, "prompt"):
+                    raise ValidationException(
+                        message="This transcription backend does not accept a prompt",
+                        details={"field": "prompt"},
+                    )
             audio = await read_upload_capped(
                 file,
                 max_bytes=bounds.max_upload_bytes,
@@ -623,6 +632,33 @@ def _check_at_most(field: str, value: float, limit: float) -> None:
             message=f"{field} exceeds the limit of {limit}",
             details={"field": field, "limit": limit},
         )
+
+
+def _accepts_keyword(function: Any, name: str) -> bool:
+    """Tell whether ``function`` can be called with the keyword ``name``.
+
+    Args:
+        function (Any): The callable to inspect.
+        name (str): The keyword argument.
+
+    Returns:
+        bool: ``True`` when ``function`` declares ``name`` as a keyword
+        parameter or takes ``**kwargs``; ``True`` as well when its signature
+        cannot be read, so an opaque callable is not refused up front.
+    """
+    try:
+        parameters = inspect.signature(function).parameters
+    except (TypeError, ValueError):
+        return True
+    for parameter in parameters.values():
+        if parameter.kind is inspect.Parameter.VAR_KEYWORD:
+            return True
+        if parameter.name == name and parameter.kind in (
+            inspect.Parameter.KEYWORD_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            return True
+    return False
 
 
 def _check_prompt(prompt: str, bounds: GenAIRequestLimits) -> None:

@@ -152,7 +152,8 @@ cobrança, nenhuma comparação de total. A referência faz esse trabalho.
     A garantia acima é sobre chamadas **em sequência** (o retry). Duas
     chamadas concorrentes com a mesma referência podem chegar as duas ao
     provedor antes de qualquer uma ter terminado. No Mercado Pago, a
-    `X-Idempotency-Key` cobre esse caso do lado de lá; na OpenPix, nenhum
+    `X-Idempotency-Key` deveria cobrir esse caso do lado de lá, mas a
+    concorrência não foi medida; na OpenPix, nenhum
     documento diz que um `correlationID` repetido é recusado. Se a sua
     rotina pode disparar o mesmo estorno em paralelo (dois workers pegando a
     mesma tarefa), serialize por referência — uma fila com um consumidor por

@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.358.0] — 2026-11-13
 
 ### Added
 
@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   já faz com `language`, porque não foi medido se o daemon os respeita. O
   `/transcribe` do `make_genai_router` aceita `prompt` como campo do form,
   limitado por `max_prompt_chars`, e só o repassa quando presente, então um
-  backend escrito antes do parâmetro continua servindo pedidos sem ele;
+  backend escrito antes do parâmetro continua servindo pedidos sem ele (e
+  recusa com `422` o pedido que traz `prompt`, em vez de um `500`);
   `temperature` não é exposto na rota. Receita em `recipes/genai.md` ("Dar
   vocabulário ao Whisper"): o faster-whisper 1.2.1 guarda os **últimos** 223
   tokens do prompt (medido no `get_prompt` dele) e os **primeiros** 223 de

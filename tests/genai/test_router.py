@@ -166,6 +166,17 @@ class TestOtherEndpoints:
         )
         assert resp.status_code == 200
 
+    def test_transcribe_with_prompt_to_an_older_backend_is_a_422(self) -> None:
+        """A prompt sent to a backend without the keyword is refused, not a 500."""
+        client = _client(speech_to_text=_FakeSTT())
+        resp = client.post(
+            "/api/genai/transcribe",
+            files={"file": ("clip.wav", b"1234", "audio/wav")},
+            data={"prompt": "Picos"},
+        )
+        assert resp.status_code == 422
+        assert resp.json()["details"] == {"field": "prompt"}
+
     def test_tts(self) -> None:
         client = _client(text_to_speech=_FakeTTS())
         resp = client.post("/api/genai/tts", json={"text": "oi"})

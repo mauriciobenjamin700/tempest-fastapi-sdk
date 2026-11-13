@@ -1470,7 +1470,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   par ausente (era template fixo, e por isso **nenhuma** entrega sem `data.id`
   verificava), chave de header é case-insensitive, valor só-espaço é ausente,
   `ts` não-numérico é rejeitado. Portado de `mercadopago/sdk-nodejs` commit
-  `99857f33`, com digests conferidos contra `openssl`. Falta uma entrega real.
+  `99857f33`, com digests conferidos contra `openssl`. Entrega real do tópico
+  `order` observada em 2026-11-13 (#498) — ver a entrada da v0.358.0.
   Receita: `docs/recipes/mercado-pago.md`.
 - **Guard de tipo nos exemplos da doc (v0.257.0)** —
   `tests/test_docs_type_guard.py` escreve os 1999 blocos parseáveis dos 226
@@ -1601,7 +1602,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Mastercard de teste antigo. Evidência §9.6. Testes:
   `test_mercado_pago_adapter.py`, `test_contract.py`,
   `tests/testing/test_fakes_*.py`.
-- **Estorno de Pix no protocolo, idempotente (Unreleased)** — issue #755.
+- **Estorno de Pix no protocolo, idempotente (0.358.0)** — issue #755.
   `PixRefundProvider` (estende `PixProvider`: `refund_pix_charge(charge_id,
   amount_cents=None, *, refund_reference)` → `PixRefund` e
   `get_refunded_cents`), `PixRefundStatusEnum`,
@@ -1617,7 +1618,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   adapters sobre simuladores), `test_contract.py`, `test_routing.py`,
   `test_mercado_pago_adapter.py`, `tests/testing/test_fakes_*.py`.
 - **Webhook de Orders verificando e Pix idempotente por `reference` no
-  Mercado Pago (Unreleased)** — issues #753 e #754. `build_manifest` (e por
+  Mercado Pago (0.358.0)** — issues #753 e #754. `build_manifest` (e por
   ele `sign_manifest` / `verify_signature`) assina o `data.id` em
   minúsculas: toda entrega real de Orders (`ORD01…`) voltava `401`. Diverge
   do `sdk-nodejs` no `99857f33` (que parou de passar para minúsculas no
@@ -2206,7 +2207,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   and needs `media_type=` for inline; its security headers live in the
   nginx internal location (`add_header ... always`), since nginx drops the
   app's (measured, `tests/storage/test_accel_redirect_live.py`).
-  **(unreleased, #756)** One key per bucket: `STORAGE_BUCKET_CREDENTIALS`
+  **(0.358.0, #756)** One key per bucket: `STORAGE_BUCKET_CREDENTIALS`
   (JSON `bucket → {access_key, secret_key}`, `StorageBucketCredential` with
   `SecretStr`, half credential refused at boot) makes `build_storage_client()`
   return `BucketRoutedMinIOClient`, an `AsyncMinIOClient` subclass that

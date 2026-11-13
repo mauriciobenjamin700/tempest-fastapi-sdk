@@ -104,8 +104,8 @@ nada — a mesma costura que o SDK usa em `RateLimitStore`, `QuotaStore`,
     existe, não uma segunda. Na OpenPix isso é o `?return_existing=true`,
     que o adapter manda desde a v0.346.0 (a spec da Woovi o descreve como
     "make the endpoint idempotent"); no Mercado Pago, um `X-Idempotency-Key`
-    derivado da `reference` (um UUID5), o padrão desde a release seguinte à
-    v0.357.0 — antes dela, cada chamada levava uma chave nova e a repetição
+    derivado da `reference` (um UUID5), o padrão desde a
+    v0.358.0 — antes dela, cada chamada levava uma chave nova e a repetição
     abria uma segunda order. O `FakePixProvider` também devolve a cobrança
     existente, então o teste sobre o fake vê o mesmo contrato.
 

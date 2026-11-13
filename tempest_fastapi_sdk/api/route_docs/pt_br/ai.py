@@ -107,9 +107,9 @@ AI_ROUTES: dict[str, RouteDoc] = {
             "o idioma é detectado. ``prompt`` (campo do form) passa "
             "vocabulário ao modelo, como nomes de cidades ou produtos; "
             "acima de ``max_prompt_chars`` responde **422**, e um backend "
-            "que não repassa o campo também responde **422**. Upload acima "
-            "do limite responde "
-            "**422** antes de ser lido inteiro na memória."
+            "que não aceita o campo (como o ``OllamaSpeech``) também "
+            "responde **422**. Upload acima do limite responde "
+            "**413** antes de ser lido inteiro na memória."
         ),
     ),
     "genai.synthesize": RouteDoc(
