@@ -445,6 +445,52 @@ revocations: with the default `InMemoryThrottleBackend` it holds per
 process; behind more than one worker, pass the Redis client to
 `AdminSessionRevocations` so the resubmission is refused on any of them.
 
+## A choice field on a `String` column (`choices=`)
+
+A `Mapped[MyEnum]` column already shows up in the form as a `<select>`. A
+`String` column that stores an enum's value, or a vocabulary the panel should
+restrict, shows up as free text, because the admin has no way to know the
+values. That is the wallet's `kind`: the column is `String(64)` because the
+application writes its own kinds ("SALE", "TIP") next to the SDK's.
+
+`choices=` tells the admin which values to accept, without changing the
+column:
+
+```python
+from tempest_fastapi_sdk import AdminModel, AdminSite
+from tempest_fastapi_sdk.wallet.models import make_wallet_entry_model
+from tempest_fastapi_sdk.wallet.schemas import WalletEntryKindEnum
+
+WalletEntryModel = make_wallet_entry_model()
+
+site = AdminSite(title="Carteira")
+site.register(
+    AdminModel(
+        WalletEntryModel,
+        choices={
+            "kind": WalletEntryKindEnum,
+            "reference_type": [("order", "Order"), ("payout", "Payout")],
+        },
+    )
+)
+```
+
+- **Each entry** is an `Enum` class (each member's value, its humanized name
+  as the label), a list of strings, or of `(value, label)` pairs.
+- **The form becomes a `<select>`**: "Kind" shows Withdraw, Withdraw refund,
+  Reversal and Opening balance; "Reference type", being optional, gets
+  "— none —" first.
+- **The server checks.** A POST with a value outside the list comes back
+  `400` with "Choose one of the listed values for Kind." and saves nothing;
+  the select is not the only barrier.
+- **A name that is not a column** (a typo) raises `ValueError` at
+  construction, and so does an empty list.
+
+!!! tip "Open vocabulary"
+    If the application writes its own kinds into `kind`, join them with the
+    SDK's in a list: `choices={"kind": [*WalletEntryKindEnum, "SALE", "TIP"]}`
+    becomes the six options, each labelled with its own value.
+
 ## File / image upload field
 
 A `String` column that stores a file's path/key can render as a **file

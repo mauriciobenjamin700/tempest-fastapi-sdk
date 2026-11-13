@@ -425,6 +425,52 @@ o `InMemoryThrottleBackend` padrão ele vale por processo; atrás de mais de um
 worker, passe o cliente Redis em `AdminSessionRevocations` para o reenvio ser
 recusado em qualquer um.
 
+## Campo de escolha numa coluna `String` (`choices=`)
+
+Uma coluna `Mapped[MeuEnum]` já aparece no form como `<select>`. Uma coluna
+`String` que guarda o valor de um enum, ou um vocabulário que o painel deve
+restringir, aparece como texto livre, porque o admin não tem como saber dos
+valores. É o caso do `kind` da carteira: a coluna é `String(64)` porque a
+aplicação grava os próprios tipos ("SALE", "TIP") ao lado dos do SDK.
+
+`choices=` diz ao admin quais valores aceitar, sem mudar a coluna:
+
+```python
+from tempest_fastapi_sdk import AdminModel, AdminSite
+from tempest_fastapi_sdk.wallet.models import make_wallet_entry_model
+from tempest_fastapi_sdk.wallet.schemas import WalletEntryKindEnum
+
+WalletEntryModel = make_wallet_entry_model()
+
+site = AdminSite(title="Carteira")
+site.register(
+    AdminModel(
+        WalletEntryModel,
+        choices={
+            "kind": WalletEntryKindEnum,
+            "reference_type": [("order", "Pedido"), ("payout", "Saque")],
+        },
+    )
+)
+```
+
+- **Cada entrada** é uma classe `Enum` (o valor de cada membro, com o nome
+  humanizado como rótulo), uma lista de strings, ou de pares
+  `(valor, rótulo)`.
+- **O form vira `<select>`**: "Kind" mostra Withdraw, Withdraw refund,
+  Reversal e Opening balance; "Reference type", sendo opcional, ganha
+  "— none —" na frente.
+- **O servidor confere.** Um POST com valor fora da lista volta `400` com
+  "Choose one of the listed values for Kind." e não grava nada; o select não
+  é a única barreira.
+- **Nome que não é coluna** (um typo) levanta `ValueError` na construção, e
+  lista vazia também.
+
+!!! tip "Vocabulário aberto"
+    Se a aplicação grava tipos próprios no `kind`, junte-os aos do SDK numa
+    lista: `choices={"kind": [*WalletEntryKindEnum, "SALE", "TIP"]}` vira as
+    seis opções, cada uma com o próprio valor como rótulo.
+
 ## Campo de upload de arquivo / imagem
 
 Uma coluna `String` que guarda o caminho/chave de um arquivo pode virar um
