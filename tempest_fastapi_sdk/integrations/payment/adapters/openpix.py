@@ -13,6 +13,10 @@ from typing import Any, Final
 
 import httpx
 
+from tempest_fastapi_sdk.exceptions.payment import (
+    PixRefundExceedsBalanceException,
+    PixRefundReferenceConflictException,
+)
 from tempest_fastapi_sdk.exceptions.wallet import PayoutRejectedException
 from tempest_fastapi_sdk.integrations.payment.base import (
     PaymentStatusEnum,
@@ -23,9 +27,12 @@ from tempest_fastapi_sdk.integrations.payment.base import (
     PixChargeRequest,
     PixEventTypeEnum,
     PixPaymentEvent,
+    PixRefund,
+    PixRefundStatusEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     ChargePayload,
+    ChargeRefundPayload,
     ChargeStatus,
     CreatePaymentBodyPixKey,
     CustomerPayload,
@@ -90,6 +97,18 @@ mapping it.
 ``CHARGE_COMPLETED_NOT_SAME_CUSTOMER_PAYER`` is settlement too: the money
 arrived, by someone other than the registered customer. Treating it as
 anything but paid would leave a settled charge open.
+"""
+
+
+REFUND_STATUS_MAP: Final[dict[str, PixRefundStatusEnum]] = {
+    "IN_PROCESSING": PixRefundStatusEnum.PENDING,
+    "CONFIRMED": PixRefundStatusEnum.COMPLETED,
+    "REJECTED": PixRefundStatusEnum.FAILED,
+}
+"""Every value of OpenPix's ``ChargeRefundStatus``, mapped to the canonical one.
+
+Keyed by the wire string; ``tests/integrations/payment/test_contract.py``
+walks the generated enum and fails on a member missing here.
 """
 
 
@@ -328,6 +347,240 @@ class OpenPixPixProvider:
             status=PaymentStatusEnum.CANCELLED,
             provider_status=response.status or "",
             raw=response.model_dump(mode="json"),
+        )
+
+    async def refund_pix_charge(
+        self,
+        charge_id: str,
+        amount_cents: int | None = None,
+        *,
+        refund_reference: str,
+    ) -> PixRefund:
+        """Refund a paid charge, idempotently on ``refund_reference``.
+
+        OpenPix keys a charge refund by a ``correlationID`` of the caller's
+        and lists the charge's refunds with it
+        (``GET /api/v1/charge/{id}/refund``), so idempotency is checked here
+        rather than trusted to the provider: the charge's refunds are read
+        first, and a refund already carrying ``refund_reference`` is
+        answered as it is, without a second ``POST``. Whether OpenPix itself
+        refuses a repeated refund ``correlationID`` is not documented in its
+        specification and was not measured; what is guaranteed is the read
+        before the write, and the read after a failed write: when the
+        ``POST`` raises, the refunds are read again and a refund carrying
+        the reference is answered instead of the error — the answer was
+        lost, not the refund. Two calls racing on the same reference can
+        still both reach the ``POST``; the recipe serializes per reference.
+
+        The charge is read first because the refund route is addressed by
+        the charge's ``correlationID`` (the route's ``id`` parameter, per
+        the specification) while :attr:`PixCharge.provider_charge_id` is
+        OpenPix's own id. The amount always goes out explicit — what is
+        left, for a full refund — so a retry carries the same body.
+
+        Args:
+            charge_id (str): :attr:`PixCharge.provider_charge_id`.
+            amount_cents (int | None): How much to refund; ``None`` refunds
+                what is left.
+            refund_reference (str): The refund's ``correlationID``.
+
+        Returns:
+            PixRefund: The refund — the existing one when the reference was
+            already used on this charge.
+
+        Raises:
+            PixRefundExceedsBalanceException: When the charge has less left
+                than asked, counting every refund not ``REJECTED``.
+            PixRefundReferenceConflictException: When the reference names an
+                existing refund of another amount.
+            httpx.HTTPStatusError: For any non-2xx answer from OpenPix.
+            ValueError: If ``amount_cents`` is not positive, or the charge
+                cannot be read.
+        """
+        if amount_cents is not None and amount_cents <= 0:
+            raise ValueError(f"amount_cents must be positive: {amount_cents!r}")
+        response = await self._client.get_charge(charge_id)
+        charge = response.charge
+        if charge is None or not charge.correlation_id:
+            raise ValueError(f"OpenPix returned no charge for {charge_id!r}.")
+        correlation_id = charge.correlation_id
+        total = to_cents(charge.value) if charge.value else 0
+        refunds = await self._refunds(correlation_id)
+        existing = self._find_refund(charge_id, refunds, refund_reference, amount_cents)
+        if existing is not None:
+            return existing
+        refundable = total - self._counted_cents(refunds)
+        amount = refundable if amount_cents is None else amount_cents
+        if amount <= 0 or amount > refundable:
+            raise PixRefundExceedsBalanceException(
+                charge_id,
+                requested_cents=amount_cents,
+                refundable_cents=max(refundable, 0),
+            )
+        try:
+            created = await self._client.refund_charge(
+                correlation_id,
+                body=ChargeRefundPayload(correlation_id=refund_reference, value=amount),
+            )
+        except (httpx.HTTPError, ValueError):
+            landed = self._find_refund(
+                charge_id,
+                await self._refunds(correlation_id),
+                refund_reference,
+                amount,
+            )
+            if landed is None:
+                raise
+            return landed
+        refund = (
+            created.refund.model_dump(mode="json", by_alias=True)
+            if created.refund is not None
+            else {"correlationID": refund_reference, "value": amount}
+        )
+        return self._to_refund(
+            charge_id,
+            refund,
+            refund_reference,
+            refunded_cents=total - refundable + amount,
+        )
+
+    async def get_refunded_cents(self, charge_id: str) -> int:
+        """Sum the charge's refunds that are not ``REJECTED``.
+
+        Args:
+            charge_id (str): :attr:`PixCharge.provider_charge_id`.
+
+        Returns:
+            int: Cents refunded or in flight; ``0`` with no refund.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx answer from OpenPix.
+            ValueError: If the charge cannot be read.
+        """
+        response = await self._client.get_charge(charge_id)
+        charge = response.charge
+        if charge is None or not charge.correlation_id:
+            raise ValueError(f"OpenPix returned no charge for {charge_id!r}.")
+        return self._counted_cents(await self._refunds(charge.correlation_id))
+
+    async def _refunds(self, correlation_id: str) -> list[dict[str, Any]]:
+        """List a charge's refunds in their wire spelling.
+
+        Args:
+            correlation_id (str): The charge's ``correlationID``.
+
+        Returns:
+            list[dict[str, Any]]: Each refund dumped ``by_alias``.
+        """
+        listed = await self._client.list_charge_refunds(correlation_id)
+        return [
+            refund.model_dump(mode="json", by_alias=True) for refund in listed.refunds
+        ]
+
+    @staticmethod
+    def _refund_status(refund: dict[str, Any]) -> PixRefundStatusEnum:
+        """Read a refund's ``status`` into the canonical state.
+
+        Args:
+            refund (dict[str, Any]): A refund in wire spelling.
+
+        Returns:
+            PixRefundStatusEnum: The mapped state, or ``UNKNOWN``.
+        """
+        raw = refund.get("status")
+        if not isinstance(raw, str):
+            return PixRefundStatusEnum.UNKNOWN
+        return REFUND_STATUS_MAP.get(raw, PixRefundStatusEnum.UNKNOWN)
+
+    @classmethod
+    def _counted_cents(cls, refunds: list[dict[str, Any]]) -> int:
+        """Sum the refunds that are not failed.
+
+        Args:
+            refunds (list[dict[str, Any]]): Refunds in wire spelling.
+
+        Returns:
+            int: Cents refunded or in flight.
+        """
+        return sum(
+            to_cents(refund.get("value") or 0)
+            for refund in refunds
+            if cls._refund_status(refund) is not PixRefundStatusEnum.FAILED
+        )
+
+    @classmethod
+    def _find_refund(
+        cls,
+        charge_id: str,
+        refunds: list[dict[str, Any]],
+        refund_reference: str,
+        amount_cents: int | None,
+    ) -> PixRefund | None:
+        """Return the refund already carrying ``refund_reference``, if any.
+
+        Args:
+            charge_id (str): The charge, for the result and the error.
+            refunds (list[dict[str, Any]]): The charge's refunds.
+            refund_reference (str): The reference being looked up.
+            amount_cents (int | None): The amount asked for; ``None`` accepts
+                whatever the existing refund gave back.
+
+        Returns:
+            PixRefund | None: The existing refund, or ``None``.
+
+        Raises:
+            PixRefundReferenceConflictException: When it exists with another
+                amount.
+        """
+        for refund in refunds:
+            if refund.get("correlationID") != refund_reference:
+                continue
+            if amount_cents is not None and to_cents(refund.get("value") or 0) != (
+                amount_cents
+            ):
+                raise PixRefundReferenceConflictException(
+                    charge_id, refund_reference=refund_reference
+                )
+            return cls._to_refund(
+                charge_id,
+                refund,
+                refund_reference,
+                refunded_cents=cls._counted_cents(refunds),
+            )
+        return None
+
+    @classmethod
+    def _to_refund(
+        cls,
+        charge_id: str,
+        refund: dict[str, Any],
+        refund_reference: str,
+        *,
+        refunded_cents: int,
+    ) -> PixRefund:
+        """Map an OpenPix refund onto the canonical shape.
+
+        Args:
+            charge_id (str): The charge the refund belongs to.
+            refund (dict[str, Any]): The refund in wire spelling.
+            refund_reference (str): The reference it was made with.
+            refunded_cents (int): The charge's refunded total with it.
+
+        Returns:
+            PixRefund: The canonical refund.
+        """
+        raw_status = refund.get("status")
+        return PixRefund(
+            provider=PROVIDER_NAME,
+            provider_charge_id=charge_id,
+            refund_reference=refund_reference,
+            provider_refund_id=_as_optional_str(refund.get("refundId")),
+            amount_cents=to_cents(refund.get("value") or 0),
+            refunded_cents=refunded_cents,
+            status=cls._refund_status(refund),
+            provider_status=raw_status if isinstance(raw_status, str) else "",
+            end_to_end_id=_as_optional_str(refund.get("endToEndId")),
+            raw=refund,
         )
 
     def parse_webhook(self, event: Any) -> PixPaymentEvent:
@@ -624,6 +877,7 @@ __all__: list[str] = [
     "EVENT_MAP",
     "PAYOUT_REJECTED_STATUSES",
     "PROVIDER_NAME",
+    "REFUND_STATUS_MAP",
     "STATUS_MAP",
     "OpenPixPayoutProvider",
     "OpenPixPixProvider",

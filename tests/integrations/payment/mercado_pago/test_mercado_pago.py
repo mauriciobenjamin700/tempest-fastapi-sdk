@@ -193,15 +193,86 @@ class TestManifest:
             == f"ts:{TIMESTAMP};"
         )
 
-    def test_case_of_the_data_id_is_preserved(self) -> None:
-        """Upstream signs what it was given; it does not lowercase.
+    def test_the_data_id_is_signed_in_lowercase(self) -> None:
+        """An Orders id arrives uppercase and is signed lowercase (#753).
 
-        Their test suite pins both directions — an uppercase ``data.id``
-        verifies against a manifest built with the uppercase value.
+        Upstream stopped lowercasing in ``ac20999a``; live ``order``
+        deliveries on 2026-11-13 verified only against the lowercased id.
         """
-        assert "ORD01JQ4S4KY8HWQ6NA5PXB65B3D3" in build_manifest(
-            data_id="ORD01JQ4S4KY8HWQ6NA5PXB65B3D3", timestamp=TIMESTAMP
+        assert (
+            build_manifest(data_id="ORD01JQ4S4KY8HWQ6NA5PXB65B3D3", timestamp=TIMESTAMP)
+            == f"id:ord01jq4s4ky8hwq6na5pxb65b3d3;ts:{TIMESTAMP};"
         )
+
+    def test_a_numeric_data_id_is_unchanged(self) -> None:
+        """Lowercasing a numeric id is the identity, so it applies to all."""
+        assert build_manifest(data_id=DATA_ID, timestamp=TIMESTAMP).startswith(
+            f"id:{DATA_ID};"
+        )
+
+
+class TestOrdersDeliverySignature:
+    """Regression for #753: an ``ORD01...`` delivery, signed the provider's way.
+
+    The provider's digest is computed here with :mod:`hmac` over the manifest
+    written out by hand, lowercased id and all, so the expected value does
+    not come from :func:`build_manifest` — the function under test.
+    """
+
+    ORDER_ID: str = "ORD01M7B5HWREYRJCAPJ61QTF1SRW"
+
+    def _provider_digest(self, data_id: str) -> str:
+        """Sign a manifest the way a caller writes it out by hand.
+
+        Args:
+            data_id (str): The id to put in the manifest, verbatim.
+
+        Returns:
+            str: The hex HMAC-SHA256 digest.
+        """
+        manifest = f"id:{data_id};request-id:{REQUEST_ID};ts:{TIMESTAMP};"
+        return hmac.new(
+            SECRET.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+
+    def _verify(self, digest: str) -> bool:
+        """Verify ``digest`` against the uppercase id as delivered.
+
+        Args:
+            digest (str): The ``v1`` digest.
+
+        Returns:
+            bool: What :func:`verify_signature` answers.
+        """
+        return verify_signature(
+            secret=SECRET,
+            signature_header=f"ts={TIMESTAMP},v1={digest}",
+            data_id=self.ORDER_ID,
+            request_id=REQUEST_ID,
+            now=_at_signing,
+        )
+
+    def test_signed_over_the_lowercased_id_verifies(self) -> None:
+        """What the provider sends: the uppercase id, a lowercase signature."""
+        assert self._verify(self._provider_digest(self.ORDER_ID.lower()))
+
+    def test_signed_over_the_uppercase_id_is_refused(self) -> None:
+        """A digest over the id as delivered is not what the provider signs."""
+        assert not self._verify(self._provider_digest(self.ORDER_ID))
+
+    def test_sign_manifest_signs_what_the_provider_signs(self) -> None:
+        """The helper a test signs with lowercases too, from either spelling."""
+        expected = self._provider_digest(self.ORDER_ID.lower())
+        for data_id in (self.ORDER_ID, self.ORDER_ID.lower()):
+            assert (
+                sign_manifest(
+                    secret=SECRET,
+                    data_id=data_id,
+                    request_id=REQUEST_ID,
+                    timestamp=TIMESTAMP,
+                )
+                == expected
+            )
 
 
 class TestGoldenDigests:
@@ -588,3 +659,8 @@ class TestEnvironmentAndEvents:
         assert MercadoPagoEventEnum.MERCHANT_ORDER == "merchant_order"
         assert MercadoPagoEventEnum.POINT_INTEGRATION == "point_integration_wh"
         assert MercadoPagoEventEnum.UNKNOWN == "unknown"
+
+    def test_an_orders_delivery_has_its_own_topic(self) -> None:
+        """``type=order``, seen live on 2026-11-13, is not ``UNKNOWN`` (#753)."""
+        assert MercadoPagoEventEnum.has_value("order")
+        assert MercadoPagoEventEnum.from_value("order") is MercadoPagoEventEnum.ORDER

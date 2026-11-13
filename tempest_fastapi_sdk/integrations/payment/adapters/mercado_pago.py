@@ -34,11 +34,15 @@ from collections.abc import Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
-from typing import Any, Final
+from typing import Any, Final, overload
 
 import httpx
 from fastapi import Depends
 
+from tempest_fastapi_sdk.exceptions.payment import (
+    PixRefundExceedsBalanceException,
+    PixRefundReferenceConflictException,
+)
 from tempest_fastapi_sdk.integrations.payment.base import (
     CardCharge,
     CardChargeRequest,
@@ -48,6 +52,8 @@ from tempest_fastapi_sdk.integrations.payment.base import (
     PixEventTypeEnum,
     PixPayer,
     PixPaymentEvent,
+    PixRefund,
+    PixRefundStatusEnum,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
     from_cents,
@@ -170,15 +176,82 @@ Three retries over seven seconds; the measured recoveries all happened by
 about five seconds.
 """
 
+REFUND_STATUS_MAP: Final[dict[str, PixRefundStatusEnum]] = {
+    "processed": PixRefundStatusEnum.COMPLETED,
+}
+"""A ``transactions.refunds[].status``, mapped to the canonical refund state.
+
+Only ``processed`` was observed (every refund in the sandbox fixtures, card
+and Pix). Anything else becomes :attr:`PixRefundStatusEnum.UNKNOWN` and is
+**counted** by :meth:`MercadoPagoPixProvider.get_refunded_cents`: no failed
+refund has been observed, so no string is trusted to mean one.
+"""
+
+REFUND_IDEMPOTENCY_NAMESPACE: Final[uuid.UUID] = uuid.UUID(
+    "6f1b0d2e-4a57-5c3e-9b1d-7d2f0e8a4c61"
+)
+"""Namespace of the UUID5 a refund's ``X-Idempotency-Key`` is derived from.
+
+Fixed forever: changing it changes every key, and a refund retried across
+the change would go out under a new one.
+"""
+
+IDEMPOTENCY_KEY_REUSED_CODE: Final[str] = "idempotency_key_already_used"
+"""Error code Mercado Pago answers for a key reused with another body.
+
+Measured on the create (2026-10-10, ``vendor/mercadopago-evidence.md``
+section 9.6): same key, other body, ``409`` with this code. A refund reusing
+its reference for another amount is expected to answer the same way; that
+was not measured on the refund route.
+"""
+
+
 ORDER_TOPIC: Final[str] = "order"
-"""Notification topic an Orders delivery is expected to carry.
+"""Notification topic an Orders delivery carries.
 
 The vendored document lists ``order.created`` / ``order.updated`` as
-notification actions; a live Orders delivery has not been observed here.
-:meth:`MercadoPagoPixProvider.read_delivery` therefore accepts either the
-topic or an ``order.``-prefixed action, and still only acts on the signed
-id.
+notification actions, and a live delivery a production service received on
+2026-11-13 carried ``type=order`` (issue #498).
+:meth:`MercadoPagoPixProvider.read_delivery` accepts either the topic or an
+``order.``-prefixed action, and still only acts on the signed id.
 """
+
+PIX_IDEMPOTENCY_NAMESPACE: Final[uuid.UUID] = uuid.UUID(
+    "df785527-7cac-5f33-aae2-6dd6500fcd9b"
+)
+"""Namespace :func:`reference_idempotency_key` derives Pix keys under.
+
+``uuid.uuid5(uuid.NAMESPACE_URL,
+"https://pypi.org/project/tempest-fastapi-sdk/#mercado-pago-pix-idempotency")``,
+written out so the value cannot move: changing it changes the key of every
+reference, and a create retried across an upgrade would open a second order.
+A test pins it.
+"""
+
+
+def reference_idempotency_key(reference: str) -> str:
+    """Derive the ``X-Idempotency-Key`` of a Pix create from its reference.
+
+    The default of :class:`MercadoPagoPixProvider`. The same ``reference``
+    always yields the same key, which is what makes
+    :attr:`PixChargeRequest.reference` the create's idempotency key: a create
+    repeated after a timeout, a double click or a reprocess answers the order
+    the first one opened. Measured on 2026-10-10
+    (``vendor/mercadopago-evidence.md`` section 9.6): the same key with the
+    same body returned the same order.
+
+    A UUID5 rather than the reference itself because the vendored
+    specification declares the header ``format: uuid``, and a reference is
+    any non-empty string.
+
+    Args:
+        reference (str): :attr:`PixChargeRequest.reference`.
+
+    Returns:
+        str: A UUID5 under :data:`PIX_IDEMPOTENCY_NAMESPACE`, in canonical
+        hyphenated form.
+    """
+    return str(uuid.uuid5(PIX_IDEMPOTENCY_NAMESPACE, reference))
 
 
 def _as_optional_str(value: object) -> str | None:
@@ -336,6 +409,101 @@ def _refunded_cents(order: Mapping[str, Any]) -> int:
         for refund in refunds
         if isinstance(refund, Mapping) and refund.get("status") == "processed"
     )
+
+
+def _refund_entries(order: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return ``transactions.refunds``, or an empty list.
+
+    Args:
+        order (Mapping[str, Any]): An order, or a refund action's answer.
+
+    Returns:
+        list[Mapping[str, Any]]: The refund entries, in the order listed.
+    """
+    transactions = order.get("transactions")
+    refunds = transactions.get("refunds") if isinstance(transactions, Mapping) else None
+    if not isinstance(refunds, list):
+        return []
+    return [refund for refund in refunds if isinstance(refund, Mapping)]
+
+
+def _refund_status(entry: Mapping[str, Any]) -> PixRefundStatusEnum:
+    """Read a refund entry's state into the canonical one.
+
+    Args:
+        entry (Mapping[str, Any]): One ``transactions.refunds`` entry.
+
+    Returns:
+        PixRefundStatusEnum: The mapped state, or ``UNKNOWN``.
+    """
+    raw = entry.get("status")
+    if not isinstance(raw, str):
+        return PixRefundStatusEnum.UNKNOWN
+    return REFUND_STATUS_MAP.get(raw, PixRefundStatusEnum.UNKNOWN)
+
+
+def _counted_refund_cents(order: Mapping[str, Any]) -> int:
+    """Sum every refund the order lists that is not failed.
+
+    Different from :func:`_refunded_cents`, which feeds
+    :attr:`CardCharge.refunded_cents` and counts ``processed`` only: this
+    one guards against refunding twice, so a refund in a state the SDK does
+    not classify counts as money already given back.
+
+    Args:
+        order (Mapping[str, Any]): The order.
+
+    Returns:
+        int: Cents refunded or in flight.
+    """
+    return sum(
+        _cents(entry, "amount")
+        for entry in _refund_entries(order)
+        if _refund_status(entry) is not PixRefundStatusEnum.FAILED
+    )
+
+
+def _refund_idempotency_key(charge_id: str, refund_reference: str) -> str:
+    """Derive a refund's ``X-Idempotency-Key`` from its reference.
+
+    A UUID5 of the order id and the reference: the same pair always yields
+    the same key, so a retry replays the refund instead of applying it
+    again, and the key never collides with a create key the service built
+    from its own references.
+
+    Args:
+        charge_id (str): The order id.
+        refund_reference (str): The service's refund reference.
+
+    Returns:
+        str: The key.
+    """
+    return str(
+        uuid.uuid5(REFUND_IDEMPOTENCY_NAMESPACE, f"{charge_id}\n{refund_reference}")
+    )
+
+
+def _error_codes(response: httpx.Response) -> set[str]:
+    """Collect the ``errors[].code`` values of an error answer.
+
+    Args:
+        response (httpx.Response): The provider's answer.
+
+    Returns:
+        set[str]: The codes; empty when the body carries none.
+    """
+    try:
+        decoded = response.json()
+    except ValueError:
+        return set()
+    errors = decoded.get("errors") if isinstance(decoded, Mapping) else None
+    if not isinstance(errors, list):
+        return set()
+    return {
+        str(error["code"])
+        for error in errors
+        if isinstance(error, Mapping) and isinstance(error.get("code"), str)
+    }
 
 
 def _payer(payer: PixPayer | None) -> dict[str, Any]:
@@ -560,13 +728,16 @@ class _OrdersClient:
                 ``Authorization: Bearer <access token>``.
             idempotency_key (Callable[[str], str] | None): Builds the
                 ``X-Idempotency-Key`` for a create from the charge's
-                ``reference``. The default is a fresh UUID4 per call, which
-                the ``HTTPClient`` reuses across its own retries (headers are
-                merged once, before the retry loop). Pass
-                ``lambda reference: reference`` to make two creates for the
-                same reference one order. Measured on 2026-10-10: the same
-                key with the same body returned the same order; with another
-                body, ``409 idempotency_key_already_used``.
+                ``reference``. ``None`` takes the adapter's default: on
+                :class:`MercadoPagoPixProvider`,
+                :func:`reference_idempotency_key`, so two creates for the
+                same reference are one order; on
+                :class:`MercadoPagoCardProvider`, a fresh UUID4 per call.
+                Either way the ``HTTPClient`` reuses the key across its own
+                retries (headers are merged once, before the retry loop).
+                Measured on 2026-10-10: the same key with the same body
+                returned the same order; with another body,
+                ``409 idempotency_key_already_used``.
             action_retry_delays (Sequence[float]): Waits, in seconds, before
                 retrying a capture, cancel or refund the provider answered
                 with one of :data:`RETRYABLE_ACTION_ERRORS` (or, on a refund,
@@ -574,9 +745,25 @@ class _OrdersClient:
         """
         self._http: HTTPClient = http
         self._action_retry_delays: tuple[float, ...] = tuple(action_retry_delays)
-        self._idempotency_key: Callable[[str], str] = idempotency_key or (
-            lambda _reference: str(uuid.uuid4())
+        self._idempotency_key: Callable[[str], str] = (
+            idempotency_key or self._default_idempotency_key
         )
+
+    def _default_idempotency_key(self, reference: str) -> str:
+        """Build the key a create uses when the caller passed no builder.
+
+        A fresh UUID4 per call: the card adapter's default. A declined card
+        is retried with a new token under the same reference, and the same
+        key with another body answers ``409 idempotency_key_already_used``
+        rather than a charge. :class:`MercadoPagoPixProvider` overrides it.
+
+        Args:
+            reference (str): The charge's reference, unused here.
+
+        Returns:
+            str: A random UUID4.
+        """
+        return str(uuid.uuid4())
 
     async def _create(self, body: dict[str, Any], reference: str) -> Mapping[str, Any]:
         """Create an order.
@@ -630,6 +817,7 @@ class _OrdersClient:
         body: dict[str, Any] | None = None,
         *,
         retryable: Mapping[int, frozenset[str]] = RETRYABLE_ACTION_ERRORS,
+        idempotency_key: str | None = None,
     ) -> Mapping[str, Any]:
         """Post an action (``cancel``, ``capture``, ``refund``) to an order.
 
@@ -639,6 +827,9 @@ class _OrdersClient:
             body (dict[str, Any] | None): The request body, if any.
             retryable (Mapping[int, frozenset[str]]): Status and error codes
                 that mean "not yet" for this action.
+            idempotency_key (str | None): The ``X-Idempotency-Key``. ``None``
+                draws a fresh UUID4, which only protects this call's own
+                retries.
 
         Returns:
             Mapping[str, Any]: What the provider answered.
@@ -651,7 +842,7 @@ class _OrdersClient:
         ``action_retry_delays``, with the **same** idempotency key, so a
         retry cannot apply the action twice. Any other error raises at once.
         """
-        headers = {"X-Idempotency-Key": str(uuid.uuid4())}
+        headers = {"X-Idempotency-Key": idempotency_key or str(uuid.uuid4())}
         delays = iter(self._action_retry_delays)
         while True:
             response = await self._http.request(
@@ -751,9 +942,27 @@ class _OrdersClient:
 class MercadoPagoPixProvider(_OrdersClient):
     """Mercado Pago Pix as a :class:`~...payment.base.PixProvider`, over Orders.
 
+    A create is idempotent on :attr:`PixChargeRequest.reference` by default,
+    as the contract promises and as :class:`OpenPixPixProvider` behaves: the
+    ``X-Idempotency-Key`` is :func:`reference_idempotency_key` of the
+    reference, so repeating a create answers the order that already exists.
+    Through v0.357.0 the default was a fresh UUID4 per call, and a repeated
+    create opened a second order with the same ``external_reference``.
+
     Attributes:
         provider_name (str): Always ``"mercado_pago"``.
     """
+
+    def _default_idempotency_key(self, reference: str) -> str:
+        """Derive the create's key from the reference.
+
+        Args:
+            reference (str): :attr:`PixChargeRequest.reference`.
+
+        Returns:
+            str: :func:`reference_idempotency_key` of the reference.
+        """
+        return reference_idempotency_key(reference)
 
     async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge:
         """Create a Pix order.
@@ -771,8 +980,17 @@ class MercadoPagoPixProvider(_OrdersClient):
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx answer — including ``400``
-                for an order without a payer.
+                for an order without a payer, and ``409``
+                ``idempotency_key_already_used`` when the reference was
+                already used for a create with another body (another amount,
+                payer, description or expiry). That ``409`` is a conflict in
+                the caller's data, not a transient failure: the existing
+                order is not read back on its behalf, because answering it
+                would hand over a charge for an amount nobody asked for.
             ValueError: If the answer is not an order with an id and amount.
+
+        Repeating the create with the same request answers the order the
+        first call opened — see :func:`reference_idempotency_key`.
         """
         amount = str(from_cents(request.amount_cents))
         payment: dict[str, Any] = {
@@ -815,34 +1033,183 @@ class MercadoPagoPixProvider(_OrdersClient):
         """
         return _to_pix_charge(await self._action(charge_id, "cancel"))
 
+    @overload
     async def refund_pix_charge(
-        self, charge_id: str, amount_cents: int | None = None
-    ) -> PixCharge:
-        """Refund a paid Pix order in full or in part, then read it back.
+        self,
+        charge_id: str,
+        amount_cents: int | None = None,
+        *,
+        refund_reference: None = None,
+    ) -> PixCharge: ...
 
-        Not part of :class:`~...payment.base.PixProvider`: the OpenPix adapter
-        has no refund, and a member there would break every implementation
-        of the contract.
+    @overload
+    async def refund_pix_charge(
+        self,
+        charge_id: str,
+        amount_cents: int | None = None,
+        *,
+        refund_reference: str,
+    ) -> PixRefund: ...
+
+    async def refund_pix_charge(
+        self,
+        charge_id: str,
+        amount_cents: int | None = None,
+        *,
+        refund_reference: str | None = None,
+    ) -> PixCharge | PixRefund:
+        """Refund a paid Pix order in full or in part.
+
+        Two forms, told apart by ``refund_reference``:
+
+        * **With** it — the :class:`~...payment.base.PixRefundProvider`
+          form. The ``X-Idempotency-Key`` is derived from the order id and
+          the reference (:func:`_refund_idempotency_key`), so repeating the
+          call replays the refund instead of applying it twice. The order is
+          read first: asking for more than is left raises
+          :class:`~tempest_fastapi_sdk.exceptions.PixRefundExceedsBalanceException`
+          — after the request still goes out under the derived key, so a
+          retry of a refund that already landed (which is why nothing is
+          left) gets the provider's replay instead of the exception. Returns
+          a :class:`PixRefund`.
+        * **Without** it — the form this method had before the refund
+          contract existed, kept unchanged: a fresh key per call (retries of
+          that one call are still safe, a second call is a second refund),
+          no balance check, and a :class:`PixCharge` back.
+
+        Mercado Pago's refund entries carry no reference of the caller's,
+        so the refund this call made is read as the **last** entry of the
+        action's answer — in the sandbox fixtures the answer lists every
+        refund of the order, oldest first (``pix_refund_rest.json``). That
+        a replayed answer is byte-for-byte the first one was measured on the
+        create (``vendor/mercadopago-evidence.md`` section 9.6), not on the
+        refund route.
 
         Args:
             charge_id (str): :attr:`PixCharge.provider_charge_id`.
             amount_cents (int | None): How much to refund; ``None`` refunds
                 what is left.
+            refund_reference (str | None): The refund's idempotency key.
 
         Returns:
-            PixCharge: The order after the refund. Observed on 2026-10-10:
-            ``PAID`` with ``provider_status`` ``processed`` and the refund
-            under ``raw["transactions"]["refunds"]`` after a partial one,
+            PixCharge | PixRefund: A :class:`PixRefund` when
+            ``refund_reference`` is given; otherwise the order after the
+            refund, as before. Observed on 2026-10-10: ``PAID`` with
+            ``provider_status`` ``processed`` and the refund under
+            ``raw["transactions"]["refunds"]`` after a partial one,
             ``REFUNDED`` after the rest.
 
         Raises:
-            httpx.HTTPStatusError: For any non-2xx answer — ``409
+            PixRefundExceedsBalanceException: With a reference, when the
+                order has less left than asked and Mercado Pago refuses.
+            PixRefundReferenceConflictException: With a reference, when
+                Mercado Pago answers ``409 idempotency_key_already_used`` —
+                the reference went out before with another amount.
+            httpx.HTTPStatusError: For any other non-2xx answer — ``409
                 cannot_refund_order`` for an unpaid order, which is cancelled,
                 not refunded.
+            ValueError: If ``amount_cents`` is not positive, or a partial
+                refund is asked of an order with no payment to address.
+        """
+        if amount_cents is not None and amount_cents <= 0:
+            raise ValueError(f"amount_cents must be positive: {amount_cents!r}")
+        if refund_reference is None:
+            return _to_pix_charge(await self._refund(charge_id, amount_cents))
+        return await self._idempotent_refund(charge_id, amount_cents, refund_reference)
+
+    async def _idempotent_refund(
+        self, charge_id: str, amount_cents: int | None, refund_reference: str
+    ) -> PixRefund:
+        """Run the keyed refund behind :meth:`refund_pix_charge`.
+
+        Args:
+            charge_id (str): The order id.
+            amount_cents (int | None): How much to refund; ``None`` refunds
+                what is left.
+            refund_reference (str): The refund's idempotency key.
+
+        Returns:
+            PixRefund: The refund this reference names.
+
+        Raises:
+            PixRefundExceedsBalanceException: When the order has less left
+                than asked and Mercado Pago refuses.
+            PixRefundReferenceConflictException: When the key was used
+                before with another body.
+            httpx.HTTPStatusError: For any other non-2xx answer.
             ValueError: If a partial refund is asked of an order with no
                 payment to address.
         """
-        return _to_pix_charge(await self._refund(charge_id, amount_cents))
+        order = await self._get(charge_id)
+        refundable = _cents(order, "total_amount") - _counted_refund_cents(order)
+        exceeds = refundable <= 0 if amount_cents is None else amount_cents > refundable
+        body: dict[str, Any] | None = None
+        if amount_cents is not None:
+            payment_id = _as_optional_str(_first_payment(order).get("id"))
+            if payment_id is None:
+                raise ValueError(f"Order {charge_id!r} has no payment to refund.")
+            body = {
+                "transactions": [
+                    {"id": payment_id, "amount": str(from_cents(amount_cents))}
+                ]
+            }
+        try:
+            answer = await self._action(
+                charge_id,
+                "refund",
+                body,
+                retryable={**RETRYABLE_ACTION_ERRORS, **REFUND_RETRYABLE_ERRORS},
+                idempotency_key=_refund_idempotency_key(charge_id, refund_reference),
+            )
+        except httpx.HTTPStatusError as error:
+            if IDEMPOTENCY_KEY_REUSED_CODE in _error_codes(error.response):
+                raise PixRefundReferenceConflictException(
+                    charge_id, refund_reference=refund_reference
+                ) from error
+            if exceeds:
+                raise PixRefundExceedsBalanceException(
+                    charge_id,
+                    requested_cents=amount_cents,
+                    refundable_cents=max(refundable, 0),
+                ) from error
+            raise
+        entries = _refund_entries(answer)
+        if not entries:
+            raise ValueError(
+                f"Mercado Pago answered the refund of {charge_id!r} without "
+                "listing a refund."
+            )
+        entry = entries[-1]
+        raw_status = entry.get("status")
+        refunded = _counted_refund_cents(await self._get(charge_id))
+        return PixRefund(
+            provider=PROVIDER_NAME,
+            provider_charge_id=charge_id,
+            refund_reference=refund_reference,
+            provider_refund_id=_as_optional_str(entry.get("id")),
+            amount_cents=_cents(entry, "amount"),
+            refunded_cents=refunded,
+            status=_refund_status(entry),
+            provider_status=raw_status if isinstance(raw_status, str) else "",
+            raw=dict(entry),
+        )
+
+    async def get_refunded_cents(self, charge_id: str) -> int:
+        """Sum the refunds the order lists, failed ones left out.
+
+        Reads ``transactions.refunds`` of ``GET /v1/orders/{id}``. A refund
+        in a state :data:`REFUND_STATUS_MAP` does not name counts.
+
+        Args:
+            charge_id (str): :attr:`PixCharge.provider_charge_id`.
+
+        Returns:
+            int: Cents refunded or in flight; ``0`` with no refund.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx answer.
+        """
+        return _counted_refund_cents(await self._get(charge_id))
 
     def parse_webhook(self, event: Any) -> PixPaymentEvent:
         """Turn a verified, re-read delivery into a canonical Pix event.
@@ -1085,11 +1452,15 @@ def make_mercado_pago_webhook_delivery_dependency(
 __all__: list[str] = [
     "AUTHORIZED_STATUS_DETAIL",
     "DEFAULT_ACTION_RETRY_DELAYS",
+    "IDEMPOTENCY_KEY_REUSED_CODE",
     "ORDERS_PATH",
     "ORDER_ID_PATTERN",
     "ORDER_TOPIC",
+    "PIX_IDEMPOTENCY_NAMESPACE",
     "PROVIDER_NAME",
+    "REFUND_IDEMPOTENCY_NAMESPACE",
     "REFUND_RETRYABLE_ERRORS",
+    "REFUND_STATUS_MAP",
     "RETRYABLE_ACTION_ERRORS",
     "STATUS_EVENT_MAP",
     "STATUS_MAP",
@@ -1097,4 +1468,5 @@ __all__: list[str] = [
     "MercadoPagoOrderDelivery",
     "MercadoPagoPixProvider",
     "make_mercado_pago_webhook_delivery_dependency",
+    "reference_idempotency_key",
 ]

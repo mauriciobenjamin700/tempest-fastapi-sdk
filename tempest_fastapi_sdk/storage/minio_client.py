@@ -706,8 +706,8 @@ class AsyncMinIOClient:
             until the stream ends.
 
         Raises:
-            ValueError: When ``offset`` is negative or ``length`` is not
-                positive.
+            ValueError: When ``offset`` is negative, or ``length`` or
+                ``chunk_size`` is not positive.
             S3Error: When the object is missing or the request
                 fails.
         """
@@ -715,6 +715,8 @@ class AsyncMinIOClient:
             raise ValueError("offset must be zero or positive")
         if length is not None and length < 1:
             raise ValueError("length must be at least 1; pass None to read to the end")
+        if chunk_size < 1:
+            raise ValueError("chunk_size must be at least 1")
         target = self._bucket(bucket)
         if offset == 0 and length is None:
             response = await asyncio.to_thread(

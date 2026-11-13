@@ -149,14 +149,21 @@ class SubjectStorageClient(Protocol):
         key: str,
         *,
         bucket: str | None = None,
+        chunk_size: int = 64 * 1024,
         offset: int = 0,
         length: int | None = None,
     ) -> AsyncIterator[bytes]:
         """Open an object, or one byte range of it, as a chunk stream.
 
+        Same parameters as
+        :class:`~tempest_fastapi_sdk.storage.DownloadableStore`, so a client
+        that satisfies this protocol can also be served by
+        :func:`~tempest_fastapi_sdk.storage.object_download_response`.
+
         Args:
             key (str): Object key.
             bucket (str | None): Override source bucket.
+            chunk_size (int): Bytes per chunk.
             offset (int): First byte to read.
             length (int | None): How many bytes to read from ``offset``;
                 ``None`` reads to the end.

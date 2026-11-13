@@ -237,6 +237,11 @@ O que os adapters decidem por você, cada item medido no sandbox:
   `refund_pix_charge` acham o segundo sozinhos. Sem valor, reembolsam o que
   sobrou. No cartão, `refunded_cents` soma os reembolsos processados; no Pix,
   eles ficam em `raw["transactions"]["refunds"]`.
+- **Estorno de Pix idempotente.** Com `refund_reference=`,
+  `refund_pix_charge` deriva a `X-Idempotency-Key` da referência e devolve um
+  `PixRefund`; repetir com a mesma referência não estorna de novo. Sem ela, a
+  forma antiga continua: um `PixCharge` e uma chave nova por chamada. Veja
+  [Estorno de Pix (idempotente)](pix-refund.md).
 - **Pix só se estorna depois de pago.** Medido em 2026-10-10: o parcial
   deixa a cobrança `PAID` (o `status_detail` `partially_refunded` fica em `raw`), o resto a deixa
   `REFUNDED`. Num Pix ainda não pago, a resposta é
@@ -258,11 +263,22 @@ O que os adapters decidem por você, cada item medido no sandbox:
   (medido com `PT60S`).
 - **Pagador é obrigatório.** Order sem `payer` volta
   `400 '$.payer' - minimum 1 properties allowed`.
-- **Uma chave de idempotência por chamada**, que o `HTTPClient` reaproveita
-  nos próprios retries. O provedor honra a chave (medido em 2026-10-10): a
-  mesma chave com o mesmo corpo devolve a **mesma** order, e com outro corpo
-  volta `409 idempotency_key_already_used`. Para colapsar duas chamadas do
-  mesmo pedido, passe `idempotency_key=lambda reference: reference`.
+- **Pix: a reference é a chave de idempotência.** O `MercadoPagoPixProvider`
+  deriva a `X-Idempotency-Key` da `reference`
+  (`reference_idempotency_key`, um UUID5 — a especificação declara o header
+  `format: uuid`), então repetir o `create_pix_charge` com o mesmo pedido
+  devolve a order que a primeira chamada abriu, como o
+  [contrato Pix](pix-protocol.md) promete. O provedor honra a chave (medido
+  em 2026-10-10): a mesma chave com o mesmo corpo devolve a **mesma** order,
+  e com outro corpo volta `409 idempotency_key_already_used`. O adapter deixa
+  esse `409` sair como `httpx.HTTPStatusError`: reusar uma reference com
+  outro valor é defeito de quem chama, e devolver a order antiga entregaria
+  uma cobrança de valor errado. Até a v0.357.0 o padrão era um UUID4 novo por
+  chamada, e um create repetido abria uma segunda order.
+- **Cartão: uma chave por chamada**, que o `HTTPClient` reaproveita nos
+  próprios retries. Cartão recusado é refeito com outro token sob a mesma
+  reference — outro corpo, então uma chave derivada da reference voltaria
+  `409`. Passe `idempotency_key=` a qualquer um dos adapters para escolher.
 - **Parcelas dependem do cartão e do valor.** A consulta de parcelas
   (`get_installments`) responde pelo BIN: o Visa de teste (`423564`) oferece
   só 1x, na vendedora de teste e na conta real, e pedir 3x volta
@@ -329,14 +345,15 @@ não extrai nada do request à mão, e não decide o que fazer com um `False`:
   `MercadoPagoEventEnum.UNKNOWN` e `topic` guarda a string. Corpo que não é JSON
   também não: `payload` fica vazio e `body` traz os bytes.
 
-- Notificação de Orders deve chegar com o tópico `order` ou uma ação
-  `order.*`: o documento do provedor lista `order.created` e
-  `order.updated`, mas uma entrega real de Orders **ainda não foi observada**
-  aqui. `MercadoPagoEventEnum` só nomeia os tópicos que a spec declara
-  (`payment`, `merchant_order`, `point_integration_wh`), então para Orders
-  `event.event` é `UNKNOWN` — por isso o exemplo decide pelo `topic` e pela
-  ação, como faz `make_mercado_pago_webhook_delivery_dependency` (seção
-  seguinte), que além disso relê a order.
+- Notificação de Orders chega com o tópico `order` e uma ação `order.*`: o
+  documento do provedor lista `order.created` e `order.updated`, e uma
+  entrega real que um serviço em produção recebeu em 2026-11-13 trazia
+  `type=order` e `action: "order.canceled"`
+  ([#498](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/498)).
+  `event.event` é `MercadoPagoEventEnum.ORDER` desde esta release; até a
+  v0.357.0 era `UNKNOWN`. O exemplo decide pelo `topic` e pela ação, como faz
+  `make_mercado_pago_webhook_delivery_dependency` (seção seguinte), que além
+  disso relê a order.
 
 !!! warning "A assinatura não cobre o corpo"
     O manifesto assinado é `data.id`, `x-request-id` e `ts` — o corpo fica
@@ -360,6 +377,23 @@ tudo presente     id:<data.id>;request-id:<x-request-id>;ts:<ts>;
 sem data.id       request-id:<x-request-id>;ts:<ts>;
 sem os dois       ts:<ts>;
 ```
+
+E o **`data.id` é assinado em minúsculas**. Um id de Orders chega como
+`ORD01M7B5HWREYRJCAPJ61QTF1SRW` e o provedor assina
+`id:ord01m7b5hwreyrjcapj61qtf1srw;...`. O `build_manifest` (e por ele o
+`sign_manifest` e o `verify_signature`) passa o id para minúsculas; o
+`event.data_id` guarda o id como chegou, que é o que o
+`GET /v1/orders/{id}` aceita.
+
+!!! warning "Toda entrega de Orders era 401 até esta release"
+    Até a v0.357.0 o manifesto levava o id como chegou, então **toda**
+    notificação real de Orders era recusada com
+    `401 Invalid Mercado Pago webhook signature`
+    ([#753](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/753)).
+    Esta regra diverge do arquivo upstream no `99857f33`: o validador deles
+    passava o id para minúsculas quando saiu e deixou de passar no `ac20999a`
+    (2026-06-17). As entregas reais só verificam em minúsculas — a evidência
+    vence o port.
 
 !!! warning "Isto era um defeito até a v0.250.0"
     Até então este módulo renderizava um template fixo, então uma entrega sem
@@ -412,16 +446,15 @@ def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
     é `("v1",)` — falhar fechado é o comportamento certo para versão que o
     provedor ainda não mandou.
 
-!!! danger "Ainda não foi medido contra uma entrega real"
-    Portado da implementação do provedor não é o mesmo que verificado contra
-    notificação que o provedor mandou. O que está medido: os manifestos, byte
-    a byte, contra as regras que o upstream codifica; e os digests, contra
+!!! warning "Um tópico real observado, não todos"
+    Medido neste pacote: os manifestos, byte a byte, e os digests, contra
     vetores calculados com `openssl dgst -sha256 -hmac`, que é outra
     implementação de HMAC que não a do Python.
 
-    O que continua sem medição: se as entregas reais seguem o SDK deles. Passe
-    **uma** notificação real por `verify_signature` antes de isso guardar
-    dinheiro, e abra uma issue se ela for rejeitada.
+    Observado por um consumidor em produção em 2026-11-13: entregas reais do
+    tópico `order`, que só verificam com o `data.id` em minúsculas. Os outros
+    tópicos não passaram por `verify_signature` contra uma entrega real; abra
+    uma issue se algum for rejeitado.
 
 !!! warning "Notificação de QR Code não é assinada"
     O upstream diz isso explicitamente: essas entregas não carregam
@@ -502,7 +535,8 @@ O que a dependency faz, nesta ordem:
    nenhuma requisição ao Mercado Pago.
 2. **Decide se a notificação é de uma order**: tópico `order`, ou ação
    começando com `order.`. O documento do provedor lista `order.created` e
-   `order.updated`; uma entrega real de Orders ainda não foi observada aqui.
+   `order.updated`, e a entrega real observada em 2026-11-13 trazia
+   `type=order`.
 3. **Confere o formato do id** (`[A-Za-z0-9]+`) antes de pôr no path.
 4. **Relê a order** por esse id. `404` é resposta, não falha: a
    "simulação de notificação" do painel assina um id inventado, e levantar

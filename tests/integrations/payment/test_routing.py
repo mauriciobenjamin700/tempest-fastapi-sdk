@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatusEnum,
     PixChargeRequest,
     PixProviderRouter,
 )
@@ -177,3 +178,48 @@ class TestConfiguration:
                 candidate=candidate,
                 candidate_percent=percent,
             )
+
+
+class TestRefundRouting:
+    """Refunds go where the charge was born, like reads and cancellations."""
+
+    async def test_a_refund_reaches_the_provider_that_created_the_charge(
+        self,
+    ) -> None:
+        """The stored provider name decides, not the rollout."""
+        primary, candidate = _fakes()
+        router = PixProviderRouter(
+            [primary, candidate],
+            primary="openpix",
+            candidate="mercado_pago",
+            candidate_percent=100,
+        )
+        charge = await primary.create_pix_charge(_request("order-1"))
+        primary.advance(charge.provider_charge_id, PaymentStatusEnum.PAID)
+
+        refund = await router.refund_pix_charge(
+            "openpix", charge.provider_charge_id, 40, refund_reference="r-1"
+        )
+        again = await router.refund_pix_charge(
+            "openpix", charge.provider_charge_id, 40, refund_reference="r-1"
+        )
+
+        assert refund.provider == "openpix"
+        assert again.provider_refund_id == refund.provider_refund_id
+        assert (
+            await router.get_refunded_cents("openpix", charge.provider_charge_id) == 40
+        )
+        assert "refund_pix_charge" not in candidate.calls
+
+    async def test_a_provider_without_refund_is_a_clear_error(self) -> None:
+        """A bare ``PixProvider`` raises ``TypeError`` naming what is missing."""
+
+        class NoRefund:
+            """A provider that only satisfies ``PixProvider``."""
+
+            provider_name: str = "legacy"
+
+        router = PixProviderRouter({"legacy": NoRefund()}, primary="legacy")  # type: ignore[dict-item]
+
+        with pytest.raises(TypeError, match="refund_pix_charge, get_refunded_cents"):
+            await router.refund_pix_charge("legacy", "c-1", refund_reference="r-1")
