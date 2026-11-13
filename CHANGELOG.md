@@ -97,6 +97,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `200` com `content-length` do objeto inteiro e corpo vazio, e `-1` lia o
   objeto inteiro num chunk só.
 
+### Security
+
+- `uv.lock`: `dnspython` 2.9.0 → 2.9.2 (CVE-2026-128089). Só o lock
+  muda; nenhum piso declarado mudou.
+
 ## [0.357.0] — 2026-11-13
 
 ### Added
