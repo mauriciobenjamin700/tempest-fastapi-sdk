@@ -9,13 +9,23 @@ conventions without forking the wire protocol. Install with the
 of the server and signs links to the app's own routes, which
 :func:`make_local_storage_router` serves. It needs no extra, except
 ``[storage-encryption]`` to encrypt the files at rest (``encryption_keys``).
+
+:class:`BucketRoutedMinIOClient` is the S3 client for a store that binds each
+access key to one bucket: every call is signed with the credential of the
+bucket it names.
 """
 
+from tempest_fastapi_sdk.settings.storage_credential import (
+    StorageBucketCredential as StorageBucketCredential,
+)
 from tempest_fastapi_sdk.storage._download import (
     DownloadableStore as DownloadableStore,
 )
 from tempest_fastapi_sdk.storage._download import (
     object_download_response as object_download_response,
+)
+from tempest_fastapi_sdk.storage.bucket_router import (
+    BucketRoutedMinIOClient as BucketRoutedMinIOClient,
 )
 from tempest_fastapi_sdk.storage.local_client import (
     DEFAULT_LOCAL_MAX_UPLOAD_BYTES as DEFAULT_LOCAL_MAX_UPLOAD_BYTES,
@@ -99,6 +109,7 @@ __all__: list[str] = [
     "LOCAL_STORAGE_PUT_PURPOSE",
     "POST_FILE_FIELD",
     "AsyncMinIOClient",
+    "BucketRoutedMinIOClient",
     "DownloadableStore",
     "LocalObjectCipher",
     "LocalObjectNotFoundError",
@@ -107,6 +118,7 @@ __all__: list[str] = [
     "ObjectStat",
     "PresignedPost",
     "PutObjectItem",
+    "StorageBucketCredential",
     "make_local_storage_router",
     "object_download_response",
 ]

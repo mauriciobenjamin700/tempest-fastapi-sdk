@@ -63,6 +63,7 @@ from tempest_fastapi_sdk.settings.base import (
     BaseAppSettings,
     reject_conflicting_env_aliases,
 )
+from tempest_fastapi_sdk.settings.storage_credential import StorageBucketCredential
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.storage import (
@@ -3800,6 +3801,16 @@ class StorageSettings(BaseAppSettings):
         STORAGE_LOCAL_ALLOW_PLAINTEXT_READ (bool): With keys, serve a file
             written before encryption as plaintext until it is migrated.
             Default: ``False``.
+        STORAGE_BUCKET_CREDENTIALS (dict[str, StorageBucketCredential]):
+            Bucket name to ``{"access_key": ..., "secret_key": ...}``, as
+            JSON, for a store that binds each key to one bucket. Set,
+            :meth:`build_storage_client` returns a
+            :class:`~tempest_fastapi_sdk.storage.BucketRoutedMinIOClient`
+            that signs each call with the credential of the bucket it
+            names, and ``STORAGE_ACCESS_KEY`` / ``STORAGE_SECRET_KEY``
+            answer every other bucket. A credential missing either key, or
+            with an empty one, refuses to build. The secrets are
+            ``SecretStr``. Default: ``{}``.
     """
 
     DEPRECATED_ENV_ALIASES: ClassVar[Mapping[str, str]] = {
@@ -4021,6 +4032,46 @@ class StorageSettings(BaseAppSettings):
         examples=[False, True],
     )
 
+    STORAGE_BUCKET_CREDENTIALS: dict[str, StorageBucketCredential] = Field(
+        default_factory=dict,
+        title="Credential of each bucket",
+        description=(
+            'JSON object of bucket name to ``{"access_key": ..., '
+            '"secret_key": ...}``, for an S3-compatible store whose keys '
+            "each reach one bucket only. A listed bucket is signed with its "
+            "own credential; every other bucket keeps ``STORAGE_ACCESS_KEY`` "
+            "/ ``STORAGE_SECRET_KEY``. Both keys are required and non-empty. "
+            "The secret is held as ``SecretStr``, masked in ``repr``."
+        ),
+        examples=[
+            {},
+            {"documents": {"access_key": "DOCSKEY", "secret_key": "docs-secret"}},
+        ],
+    )
+
+    @field_validator("STORAGE_BUCKET_CREDENTIALS")
+    @classmethod
+    def _check_bucket_credentials(
+        cls, value: dict[str, StorageBucketCredential]
+    ) -> dict[str, StorageBucketCredential]:
+        """Refuse an empty bucket name.
+
+        Each credential already refuses a missing or empty key on its own
+        (:class:`~tempest_fastapi_sdk.storage.StorageBucketCredential`).
+
+        Args:
+            value (dict[str, StorageBucketCredential]): Bucket to credential.
+
+        Returns:
+            dict[str, StorageBucketCredential]: ``value`` unchanged.
+
+        Raises:
+            ValueError: When a bucket name is empty.
+        """
+        if any(not bucket.strip() for bucket in value):
+            raise ValueError("STORAGE_BUCKET_CREDENTIALS has an empty bucket name")
+        return value
+
     @field_validator("STORAGE_LOCAL_ENCRYPTION_KEYS")
     @classmethod
     def _check_local_encryption_keys(cls, value: dict[str, str]) -> dict[str, str]:
@@ -4106,6 +4157,11 @@ class StorageSettings(BaseAppSettings):
         mount :func:`~tempest_fastapi_sdk.storage.make_local_storage_router`
         so the links it signs have a route to land on.
 
+        With ``s3`` and ``STORAGE_BUCKET_CREDENTIALS`` set, the client is a
+        :class:`~tempest_fastapi_sdk.storage.BucketRoutedMinIOClient` — a
+        subclass of :class:`AsyncMinIOClient`, so the annotation and every
+        call site stay the same — that signs each bucket with its own key.
+
         Returns:
             AsyncMinIOClient | LocalObjectStorageClient: The client, built
             from :meth:`storage_kwargs` or :meth:`local_storage_kwargs`.
@@ -4115,11 +4171,17 @@ class StorageSettings(BaseAppSettings):
         """
         from tempest_fastapi_sdk.storage import (
             AsyncMinIOClient,
+            BucketRoutedMinIOClient,
             LocalObjectStorageClient,
         )
 
         if self.STORAGE_BACKEND == "local":
             return LocalObjectStorageClient(**self.local_storage_kwargs())
+        if self.STORAGE_BUCKET_CREDENTIALS:
+            return BucketRoutedMinIOClient(
+                **self.storage_kwargs(),
+                bucket_credentials=self.STORAGE_BUCKET_CREDENTIALS,
+            )
         return AsyncMinIOClient(**self.storage_kwargs())
 
     def storage_kwargs(self) -> dict[str, Any]:
@@ -4177,6 +4239,11 @@ class StorageSettings(BaseAppSettings):
         ``STORAGE_BACKEND=local`` the S3 fields are not checked — nothing
         reads them — and :meth:`local_storage_violations` runs instead.
 
+        Each ``STORAGE_BUCKET_CREDENTIALS`` entry whose secret is still the
+        MinIO default is refused like ``STORAGE_SECRET_KEY``; with
+        ``STORAGE_BACKEND=local`` a non-empty ``STORAGE_BUCKET_CREDENTIALS``
+        is refused, because nothing would read it.
+
         A local store without ``STORAGE_LOCAL_ENCRYPTION_KEYS`` is **not** a
         violation: refusing it would stop, on upgrade and without notice,
         every service that already runs the local backend in production. It
@@ -4191,6 +4258,11 @@ class StorageSettings(BaseAppSettings):
             return violations
         if self.STORAGE_BACKEND == "local":
             violations.extend(self.local_storage_violations())
+            if self.STORAGE_BUCKET_CREDENTIALS:
+                violations.append(
+                    "STORAGE_BUCKET_CREDENTIALS: set, but STORAGE_BACKEND=local "
+                    "never reads it"
+                )
             if not self.STORAGE_LOCAL_ENCRYPTION_KEYS:
                 _settings_logger.warning(
                     "STORAGE_BACKEND=local in production without "
@@ -4203,6 +4275,15 @@ class StorageSettings(BaseAppSettings):
             violations.append("STORAGE_ACCESS_KEY: still the MinIO default credential")
         if fields["STORAGE_SECRET_KEY"].default == self.STORAGE_SECRET_KEY:
             violations.append("STORAGE_SECRET_KEY: still the MinIO default credential")
+        for bucket, credential in self.STORAGE_BUCKET_CREDENTIALS.items():
+            if (
+                credential.secret_key.get_secret_value()
+                == fields["STORAGE_SECRET_KEY"].default
+            ):
+                violations.append(
+                    f"STORAGE_BUCKET_CREDENTIALS[{bucket!r}]: still the MinIO "
+                    "default credential"
+                )
         if not self.STORAGE_SECURE and not self.private_plain_http_allowed():
             violations.append(
                 "STORAGE_SECURE: storage traffic over plain HTTP (allowed only "

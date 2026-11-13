@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Uma chave por bucket no storage S3 (#756): `STORAGE_BUCKET_CREDENTIALS`
+  (JSON `{"bucket": {"access_key": ..., "secret_key": ...}}`) dá a cada
+  bucket a sua credencial, para storage que amarra a chave a um bucket só.
+  Preenchido, `build_storage_client()` devolve o `BucketRoutedMinIOClient`,
+  subclasse de `AsyncMinIOClient` que assina cada operação — URL pré-assinada
+  inclusive — com a chave do bucket dela e cai na `STORAGE_ACCESS_KEY` para
+  os outros; o código do serviço não muda. `copy_object` entre credenciais
+  diferentes baixa com a chave da origem e envia com a do destino. O segredo
+  é `SecretStr` (`StorageBucketCredential`), credencial pela metade recusa o
+  boot sem ecoar o valor, e `ENV=production` recusa o segredo `minioadmin`
+  num bucket e o campo preenchido com `STORAGE_BACKEND=local`. O
+  `tempest storage` monta o mesmo cliente. Receita: "Uma chave por bucket"
+  em `recipes/storage`.
+
 ## [0.357.0] — 2026-11-13
 
 ### Added

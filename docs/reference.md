@@ -1319,6 +1319,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectDeleteError
+::: tempest_fastapi_sdk.storage.bucket_router.BucketRoutedMinIOClient
+::: tempest_fastapi_sdk.settings.storage_credential.StorageBucketCredential
 ::: tempest_fastapi_sdk.storage.local_client.LocalObjectStorageClient
 ::: tempest_fastapi_sdk.storage.local_client.bound_purpose
 ::: tempest_fastapi_sdk.storage.presign.PresignedPost
