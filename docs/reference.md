@@ -46,6 +46,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.admin.site.AdminSite
 ::: tempest_fastapi_sdk.admin.config.AdminModel
+::: tempest_fastapi_sdk.admin.config.ChoiceSource
 ::: tempest_fastapi_sdk.admin.config.Inline
 ::: tempest_fastapi_sdk.admin.config.Lens
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum

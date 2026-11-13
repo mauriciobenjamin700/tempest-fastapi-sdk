@@ -4424,3 +4424,12 @@ determinístico de conceitos: `tests/genai/test_name_search.py`,
 `tests/agents/test_search_tools.py`. Empilhado sobre o PR da busca em texto
 (#749).
 
+## Escolhas em coluna String no admin (2026-11-13)
+
+`AdminModel(choices=)` em `admin/config.py` (`ChoiceSource`,
+`_normalize_choices`, `_choice_options`), select em `build_form_fields` e
+recusa em `parse_submission` (`admin/forms.py`). Motivo: o `kind` da
+`WalletEntryModel` é `String(64)` (vocabulário aberto) e aparecia como texto
+livre. Validado no browser com a `WalletEntryModel` real. Testes:
+`tests/admin/test_choices.py`.
+

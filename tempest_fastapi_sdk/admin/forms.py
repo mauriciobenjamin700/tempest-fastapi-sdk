@@ -364,6 +364,9 @@ def build_form_fields(
         elif name in fk_options:
             widget = "select"
             options = list(fk_options[name])
+        elif name in admin.choices:
+            widget = "select"
+            options = list(admin.choices[name])
         is_upload = name in admin.upload_fields
         if is_upload:
             widget = "file"
@@ -504,6 +507,11 @@ def parse_submission(
                     data[name] = None
             else:
                 errors[name] = "This field is required."
+            continue
+        allowed = admin.choices.get(name)
+        if allowed is not None and str(raw) not in {value for value, _ in allowed}:
+            label = humanize_field(name)
+            errors[name] = f"Choose one of the listed values for {label}."
             continue
         if widget == "json":
             try:

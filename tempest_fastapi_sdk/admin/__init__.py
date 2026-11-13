@@ -23,6 +23,7 @@ from tempest_fastapi_sdk.admin.auth import AdminAuthBackend as AdminAuthBackend
 from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
 from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
+from tempest_fastapi_sdk.admin.config import ChoiceSource as ChoiceSource
 from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
 from tempest_fastapi_sdk.admin.config import Inline as Inline
 from tempest_fastapi_sdk.admin.config import Lens as Lens
@@ -143,6 +144,7 @@ __all__: list[str] = [
     "AdminSurfaceEnum",
     "AdminSurfacePolicy",
     "AdminTheme",
+    "ChoiceSource",
     "CreateHandlerFunc",
     "FieldRef",
     "Inline",

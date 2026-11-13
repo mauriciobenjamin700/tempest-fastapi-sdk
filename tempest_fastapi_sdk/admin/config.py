@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -40,6 +41,10 @@ OrderRef = InstrumentedAttribute[Any] | UnaryExpression[Any] | str
 """An ordering reference: a column (``Model.created_at``, ascending), a
 direction-wrapped column (``desc(Model.created_at)``), or a Django-style
 string (``"created_at"`` / ``"-created_at"``)."""
+
+ChoiceSource = type[Enum] | Sequence[str | tuple[str, str]]
+"""The fixed values of a ``choices`` field: an ``Enum`` class, or a sequence
+of strings or ``(value, label)`` pairs."""
 
 
 class Inline:
@@ -278,6 +283,15 @@ class AdminModel(Generic[ModelT]):
             ``add_audited`` / ``update_audited`` / ``delete_audited`` so the
             history is actually written. ``None`` (default) shows only the
             ``created_by`` / ``updated_by`` stamps.
+        choices (Mapping[FieldRef, ChoiceSource]): Columns rendered as a
+            ``<select>`` of fixed values although the column itself is a
+            plain ``String`` — an enum stored as text, or an open
+            vocabulary the admin should still restrict. Each value is an
+            ``Enum`` class (its values, labelled from the member names), a
+            sequence of strings, or of ``(value, label)`` pairs. The form
+            shows the select and the submission is refused with a field
+            error when the value is not in the list. A real enum column
+            (``Mapped[MyEnum]``) is a select already and needs no entry.
         autocomplete_fields (Sequence[FieldRef]): Foreign-key columns
             rendered as a typed search box (HTMX) instead of a
             ``<select>`` of every related row — removing the 1000-row cap
@@ -387,6 +401,7 @@ class AdminModel(Generic[ModelT]):
         password_policy: PasswordPolicy | None = None,
         exclude_fields: Sequence[FieldRef] = (),
         create_handler: AdminCreateHandler | None = None,
+        choices: Mapping[FieldRef, ChoiceSource] | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -444,6 +459,9 @@ class AdminModel(Generic[ModelT]):
             )
         self.audit_model: type[BaseAuditLogModel] | None = audit_model
         self.autocomplete_fields: list[str] = _normalize_fields(autocomplete_fields)
+        self.choices: dict[str, list[tuple[str, str]]] = _normalize_choices(
+            self.model, choices or {}
+        )
         self.inlines: list[Inline] = list(inlines)
         self.lenses: list[Lens] = list(lenses)
         self.password_fields: list[str] = _normalize_fields(password_fields)
@@ -844,6 +862,66 @@ def _field_key(ref: FieldRef) -> str:
     return key
 
 
+def _choice_options(source: ChoiceSource) -> list[tuple[str, str]]:
+    """Turn one ``choices`` entry into ``(value, label)`` pairs.
+
+    Args:
+        source (ChoiceSource): An ``Enum`` class, or a sequence of strings
+            or ``(value, label)`` pairs.
+
+    Returns:
+        list[tuple[str, str]]: The options, in declaration order.
+
+    Raises:
+        ValueError: When the source is empty.
+    """
+    from tempest_fastapi_sdk.admin.display import humanize_field
+
+    if isinstance(source, type) and issubclass(source, Enum):
+        options = [
+            (str(member.value), humanize_field(member.name)) for member in source
+        ]
+    else:
+        options = [
+            (str(item[0]), str(item[1]))
+            if isinstance(item, tuple)
+            else (str(item), str(item))
+            for item in source
+        ]
+    if not options:
+        raise ValueError("AdminModel `choices` entries need at least one value")
+    return options
+
+
+def _normalize_choices(
+    model: type[BaseModel], choices: Mapping[FieldRef, ChoiceSource]
+) -> dict[str, list[tuple[str, str]]]:
+    """Resolve the ``choices`` mapping to column keys and option lists.
+
+    Args:
+        model (type[BaseModel]): The admin's model.
+        choices (Mapping[FieldRef, ChoiceSource]): As passed by the caller.
+
+    Returns:
+        dict[str, list[tuple[str, str]]]: Column key to options.
+
+    Raises:
+        ValueError: When a key is not a column of ``model``, or an entry
+            is empty.
+    """
+    columns = inspect(model).columns
+    resolved: dict[str, list[tuple[str, str]]] = {}
+    for ref, source in choices.items():
+        key = _field_key(ref)
+        if key not in columns:
+            raise ValueError(
+                f"AdminModel `choices` names {key!r}, which is not a column of "
+                f"{model.__name__}"
+            )
+        resolved[key] = _choice_options(source)
+    return resolved
+
+
 def _normalize_fields(refs: Sequence[FieldRef]) -> list[str]:
     """Resolve a sequence of field references to column keys.
 
@@ -930,6 +1008,7 @@ def _pluralize_name(name: str) -> str:
 
 __all__: list[str] = [
     "AdminModel",
+    "ChoiceSource",
     "FieldRef",
     "Inline",
     "Lens",

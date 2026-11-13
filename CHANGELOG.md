@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AdminModel(choices={campo: Enum | lista})`: uma coluna `String` aparece no
+  form do admin como `<select>` com valores fixos (um `Enum`, strings ou pares
+  `(valor, rótulo)`), e o POST com valor fora da lista volta `400` com erro no
+  campo. Para enum guardado como texto e vocabulário aberto, como o `kind` da
+  carteira (`choices={"kind": WalletEntryKindEnum}`). Coluna
+  `Mapped[MeuEnum]` já era select. `ChoiceSource` exportado.
+
 ## [0.356.0] — 2026-11-12
 
 ### Added
