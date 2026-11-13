@@ -22,7 +22,7 @@ What it handles, each case fixed by a test:
 * **Leaving now**: ``"agora"``, ``"já"``, ``"o quanto antes"`` and the
   rest of :data:`~tempest_fastapi_sdk.geo.trip_vocabulary.NOW_PHRASES` set
   the date to today and :attr:`TripIntent.departure_now`; an explicit date
-  in the phrase wins.
+  in the phrase wins, and the flag stays set only when that date is today.
 * **A city the user said but nothing matched** comes back in
   ``unrecognized`` with what was said, instead of disappearing.
 * **Restriction**: pass ``municipalities=`` (the cities a service actually
@@ -317,8 +317,9 @@ class TripIntent:
             and ``departure_date`` is ``today``. The parser receives a date,
             not a clock, so it sets no time: the caller keeps only the trips
             that leave from its own current time on. An explicit date in the
-            phrase (``"agora ... amanhã"``) or one said that does not exist
-            wins, and then this is ``False``.
+            phrase wins: one other than today (``"agora ... amanhã"``) or one
+            that does not exist makes this ``False``, while one that falls
+            on today (``"hoje agora"``) keeps it ``True``.
     """
 
     origin: CityMention | None = None

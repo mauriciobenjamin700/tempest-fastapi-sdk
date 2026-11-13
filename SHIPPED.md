@@ -4492,7 +4492,8 @@ livre. Validado no browser com a `WalletEntryModel` real. Testes:
 imediatamente, o quanto antes, o mais rápido possível, neste/nesse momento,
 por token inteiro) e `TripIntent.departure_now` em `geo/trip_intent.py`: sem
 outra data, a frase vira `departure_date=today`; data dita (ou impossível)
-vence e `departure_now` fica `False`. Sem hora: o parser recebe `date`, e o
+vence, e `departure_now` só fica `True` quando a data final é hoje ("hoje
+agora", "sexta" numa sexta). Sem hora: o parser recebe `date`, e o
 "a partir de agora" é do caller. "picos teresina agora mesmo" não precisou de
 fallback novo: tirado o "agora mesmo", a regra de cidades em ordem que já
 existia (`_fill_without_markers`, só cidades na frase) resolve. Testes:

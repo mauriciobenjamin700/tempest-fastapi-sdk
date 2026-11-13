@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `departure_date=today` quando a frase não diz outra data, e ligam o campo
   novo `TripIntent.departure_now: bool` (default `False`; os campos antigos não
   mudam). Data dita vence ("agora ... amanhã" é amanhã, com
-  `departure_now=False`), e data impossível também (fica `None` para o app
+  `departure_now=False`; `departure_now` só fica `True` quando a data final é
+  hoje, como em "hoje agora" ou "sexta" numa sexta), e data impossível também (fica `None` para o app
   perguntar). O parser recebe `date`, não relógio, então não inventa hora: o
   filtro "só o que ainda vai sair" é de quem chama. Com isso, "picos teresina
   agora mesmo" passa a ler Picos -> Teresina pela regra de cidades em ordem

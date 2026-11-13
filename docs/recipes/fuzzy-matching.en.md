@@ -248,8 +248,10 @@ agora quero ver de picos pra teresina amanhã -> 2026-11-14 False
 
 - **Whole words**: "agorafobia" and "Jaqueira" (the town in PE) do not count,
   regardless of case and accents ("JÁ!" counts).
-- **A date said wins**: with "amanhã", "sexta" or "20/10" in the phrase, the
-  date is the one said and `departure_now` is `False`. A date that does not
+- **A date said wins**: with "amanhã", "sábado" or "20/10" in the phrase, the
+  date is the one said and `departure_now` is `False`. Only a date said that
+  falls on today ("hoje agora", or "sexta" on a Friday) keeps
+  `departure_now=True`. A date that does not
   exist ("dia 31 de fevereiro") wins too: the date stays `None` for the app to
   ask.
 - **No prepositions**: "picos teresina agora mesmo" falls into the

@@ -248,8 +248,9 @@ agora quero ver de picos pra teresina amanhã -> 2026-11-14 False
 
 - **Palavra inteira**: "agorafobia" e "Jaqueira" (a cidade de PE) não contam,
   sem caixa nem acento ("JÁ!" conta).
-- **Data dita vence**: com "amanhã", "sexta" ou "20/10" na frase, a data é a
-  dita e `departure_now` é `False`. Data que não existe ("dia 31 de
+- **Data dita vence**: com "amanhã", "sábado" ou "20/10" na frase, a data é a
+  dita e `departure_now` é `False`. Só a data dita que cai em hoje ("hoje
+  agora", ou "sexta" numa sexta) mantém `departure_now=True`. Data que não existe ("dia 31 de
   fevereiro") também vence: a data fica `None` para o app perguntar.
 - **Sem preposição**: "picos teresina agora mesmo" cai na regra das cidades
   em ordem (primeira origem, segunda destino), porque o "agora mesmo" sai da
