@@ -5,11 +5,11 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.358.0] — 2026-11-13
+## [0.359.0] — 2026-11-13
 
 ### Added
 
-- "Sair agora" no `parse_trip_intent` (#759). `agora`, `agora mesmo`, `já`,
+- "Sair agora" no `parse_trip_intent` (#759, #765). `agora`, `agora mesmo`, `já`,
   `imediatamente`, `o quanto antes`, `o mais rápido possível`, `neste
   momento` e `nesse momento` (`NOW_PHRASES`, por palavra inteira, sem caixa
   nem acento: "agorafobia" e "Jaqueira" não contam) viram
@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agora mesmo" passa a ler Picos -> Teresina pela regra de cidades em ordem
   que já existia, porque só sobram cidades na frase. Receita: "Sair agora" em
   `recipes/fuzzy-matching`.
+
+## [0.358.0] — 2026-11-13
+
+### Added
+
 - `prompt` e `temperature` na transcrição (#758). `OpenAICompatSpeech.transcribe`
   manda os dois como campos do form do `POST /audio/transcriptions`, só quando
   informados; `SpeechToText.transcribe` repassa ao faster-whisper como
