@@ -28,7 +28,7 @@ DEFAULT_FAKE_BUCKET: str = "fake-bucket"
 """Bucket an operation lands in when it passes no ``bucket``."""
 
 FAKE_STREAM_CHUNK_SIZE: int = 64 * 1024
-"""Chunk size of ``stream_object``, the ``AsyncMinIOClient`` default."""
+"""Default ``chunk_size`` of ``stream_object``, the ``AsyncMinIOClient`` default."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,6 +348,7 @@ class FakeObjectStorageClient(_Steerable):
         key: str,
         *,
         bucket: str | None = None,
+        chunk_size: int = FAKE_STREAM_CHUNK_SIZE,
         offset: int = 0,
         length: int | None = None,
     ) -> AsyncIterator[bytes]:
@@ -355,22 +356,26 @@ class FakeObjectStorageClient(_Steerable):
 
         The range is cut before streaming, the way a ``Range`` request makes
         the store send only that slice: a ``length`` past the end yields what
-        exists.
+        exists. The slice is then cut in ``chunk_size`` pieces, so a test that
+        asks for small chunks sees the same pagination the real clients
+        produce — which is what
+        :func:`~tempest_fastapi_sdk.storage.object_download_response` streams.
 
         Args:
             key (str): Object key.
             bucket (str | None): Source bucket.
+            chunk_size (int): Bytes per chunk; the last one may be shorter.
             offset (int): First byte to read.
             length (int | None): How many bytes to read from ``offset``;
                 ``None`` reads to the end.
 
         Returns:
-            AsyncIterator[bytes]: Chunks of at most
-            :data:`FAKE_STREAM_CHUNK_SIZE` bytes.
+            AsyncIterator[bytes]: Chunks of at most ``chunk_size`` bytes.
 
         Raises:
-            ValueError: When ``offset`` is negative or ``length`` is not
-                positive, as ``AsyncMinIOClient.stream_object`` refuses them.
+            ValueError: When ``offset`` is negative, or ``length`` or
+                ``chunk_size`` is not positive, as the real clients refuse
+                them.
             FileNotFoundError: When ``key`` is not stored.
             BaseException: Whatever :meth:`fail_next` queued.
         """
@@ -379,22 +384,25 @@ class FakeObjectStorageClient(_Steerable):
             raise ValueError("offset must be zero or positive")
         if length is not None and length < 1:
             raise ValueError("length must be at least 1; pass None to read to the end")
+        if chunk_size < 1:
+            raise ValueError("chunk_size must be at least 1")
         payload = self._payload(key, bucket)
         end = len(payload) if length is None else offset + length
-        return self._chunks(payload[offset:end])
+        return self._chunks(payload[offset:end], chunk_size)
 
     @staticmethod
-    async def _chunks(payload: bytes) -> AsyncIterator[bytes]:
-        """Yield ``payload`` in :data:`FAKE_STREAM_CHUNK_SIZE` pieces.
+    async def _chunks(payload: bytes, chunk_size: int) -> AsyncIterator[bytes]:
+        """Yield ``payload`` in ``chunk_size`` pieces.
 
         Args:
             payload (bytes): The bytes to stream.
+            chunk_size (int): Bytes per piece.
 
         Yields:
             bytes: The next chunk.
         """
-        for start in range(0, len(payload), FAKE_STREAM_CHUNK_SIZE):
-            yield payload[start : start + FAKE_STREAM_CHUNK_SIZE]
+        for start in range(0, len(payload), chunk_size):
+            yield payload[start : start + chunk_size]
 
     async def list_objects(
         self,

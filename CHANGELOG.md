@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FakePixProvider.create_pix_charge` com uma `reference` já usada devolve a
   cobrança existente em vez de abrir outra, como o contrato promete (#754).
 
+- `FakeObjectStorageClient.stream_object` aceita `chunk_size` (#757). O
+  `object_download_response` sempre passa esse argumento, então servir um
+  arquivo do fake por ele levantava `TypeError`; agora os chunks saem do tamanho pedido, como nos
+  clientes reais. `SubjectStorageClient.stream_object` ganha o mesmo
+  `chunk_size` — era dele que o fake copiava a assinatura — e passa a ter os
+  parâmetros do `DownloadableStore`. Quem implementa o protocolo à mão precisa
+  aceitar `chunk_size: int = 64 * 1024`.
+- `AsyncMinIOClient.stream_object` recusa `chunk_size < 1` com `ValueError`,
+  como o `LocalObjectStorageClient` e o fake já faziam. Antes, `0` respondia
+  `200` com `content-length` do objeto inteiro e corpo vazio, e `-1` lia o
+  objeto inteiro num chunk só.
+
 ## [0.357.0] — 2026-11-13
 
 ### Added
