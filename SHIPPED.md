@@ -1594,6 +1594,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Mastercard de teste antigo. Evidência §9.6. Testes:
   `test_mercado_pago_adapter.py`, `test_contract.py`,
   `tests/testing/test_fakes_*.py`.
+- **Webhook de Orders verificando e Pix idempotente por `reference` no
+  Mercado Pago (Unreleased)** — issues #753 e #754. `build_manifest` (e por
+  ele `sign_manifest` / `verify_signature`) assina o `data.id` em
+  minúsculas: toda entrega real de Orders (`ORD01…`) voltava `401`. Diverge
+  do `sdk-nodejs` no `99857f33` (que parou de passar para minúsculas no
+  `ac20999a`); a evidência é a entrega real de 2026-11-13 na #498.
+  `MercadoPagoWebhookEvent.data_id` guarda o id original.
+  `MercadoPagoEventEnum.ORDER`. `MercadoPagoPixProvider` deriva a
+  `X-Idempotency-Key` da `reference` (`reference_idempotency_key`, UUID5 sob
+  `PIX_IDEMPOTENCY_NAMESPACE`); o cartão segue com UUID4 por chamada; `409
+  idempotency_key_already_used` sai como `httpx.HTTPStatusError`.
+  `FakePixProvider` devolve a cobrança existente para a mesma `reference`.
+  Testes: `test_mercado_pago.py`, `test_webhook_dependency.py`,
+  `test_mercado_pago_adapter.py`, `test_contract.py` (mesma `reference` →
+  mesmo `provider_charge_id` em OpenPix, Mercado Pago e fake).
 - **Busca de chargebacks do Mercado Pago tipada (v0.312.0)** — issue #226.
   `search_chargebacks(payment_id=...)` → `ChargebackSearchResponse` /
   `ChargebackSearchPaging`, do `200` observado com a vendedora de teste; sem

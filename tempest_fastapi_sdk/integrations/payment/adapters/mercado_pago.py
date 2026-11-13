@@ -171,14 +171,51 @@ about five seconds.
 """
 
 ORDER_TOPIC: Final[str] = "order"
-"""Notification topic an Orders delivery is expected to carry.
+"""Notification topic an Orders delivery carries.
 
 The vendored document lists ``order.created`` / ``order.updated`` as
-notification actions; a live Orders delivery has not been observed here.
-:meth:`MercadoPagoPixProvider.read_delivery` therefore accepts either the
-topic or an ``order.``-prefixed action, and still only acts on the signed
-id.
+notification actions, and a live delivery a production service received on
+2026-11-13 carried ``type=order`` (issue #498).
+:meth:`MercadoPagoPixProvider.read_delivery` accepts either the topic or an
+``order.``-prefixed action, and still only acts on the signed id.
 """
+
+PIX_IDEMPOTENCY_NAMESPACE: Final[uuid.UUID] = uuid.UUID(
+    "df785527-7cac-5f33-aae2-6dd6500fcd9b"
+)
+"""Namespace :func:`reference_idempotency_key` derives Pix keys under.
+
+``uuid.uuid5(uuid.NAMESPACE_URL,
+"https://pypi.org/project/tempest-fastapi-sdk/#mercado-pago-pix-idempotency")``,
+written out so the value cannot move: changing it changes the key of every
+reference, and a create retried across an upgrade would open a second order.
+A test pins it.
+"""
+
+
+def reference_idempotency_key(reference: str) -> str:
+    """Derive the ``X-Idempotency-Key`` of a Pix create from its reference.
+
+    The default of :class:`MercadoPagoPixProvider`. The same ``reference``
+    always yields the same key, which is what makes
+    :attr:`PixChargeRequest.reference` the create's idempotency key: a create
+    repeated after a timeout, a double click or a reprocess answers the order
+    the first one opened. Measured on 2026-10-10
+    (``vendor/mercadopago-evidence.md`` section 9.6): the same key with the
+    same body returned the same order.
+
+    A UUID5 rather than the reference itself because the vendored
+    specification declares the header ``format: uuid``, and a reference is
+    any non-empty string.
+
+    Args:
+        reference (str): :attr:`PixChargeRequest.reference`.
+
+    Returns:
+        str: A UUID5 under :data:`PIX_IDEMPOTENCY_NAMESPACE`, in canonical
+        hyphenated form.
+    """
+    return str(uuid.uuid5(PIX_IDEMPOTENCY_NAMESPACE, reference))
 
 
 def _as_optional_str(value: object) -> str | None:
@@ -560,13 +597,16 @@ class _OrdersClient:
                 ``Authorization: Bearer <access token>``.
             idempotency_key (Callable[[str], str] | None): Builds the
                 ``X-Idempotency-Key`` for a create from the charge's
-                ``reference``. The default is a fresh UUID4 per call, which
-                the ``HTTPClient`` reuses across its own retries (headers are
-                merged once, before the retry loop). Pass
-                ``lambda reference: reference`` to make two creates for the
-                same reference one order. Measured on 2026-10-10: the same
-                key with the same body returned the same order; with another
-                body, ``409 idempotency_key_already_used``.
+                ``reference``. ``None`` takes the adapter's default: on
+                :class:`MercadoPagoPixProvider`,
+                :func:`reference_idempotency_key`, so two creates for the
+                same reference are one order; on
+                :class:`MercadoPagoCardProvider`, a fresh UUID4 per call.
+                Either way the ``HTTPClient`` reuses the key across its own
+                retries (headers are merged once, before the retry loop).
+                Measured on 2026-10-10: the same key with the same body
+                returned the same order; with another body,
+                ``409 idempotency_key_already_used``.
             action_retry_delays (Sequence[float]): Waits, in seconds, before
                 retrying a capture, cancel or refund the provider answered
                 with one of :data:`RETRYABLE_ACTION_ERRORS` (or, on a refund,
@@ -574,9 +614,25 @@ class _OrdersClient:
         """
         self._http: HTTPClient = http
         self._action_retry_delays: tuple[float, ...] = tuple(action_retry_delays)
-        self._idempotency_key: Callable[[str], str] = idempotency_key or (
-            lambda _reference: str(uuid.uuid4())
+        self._idempotency_key: Callable[[str], str] = (
+            idempotency_key or self._default_idempotency_key
         )
+
+    def _default_idempotency_key(self, reference: str) -> str:
+        """Build the key a create uses when the caller passed no builder.
+
+        A fresh UUID4 per call: the card adapter's default. A declined card
+        is retried with a new token under the same reference, and the same
+        key with another body answers ``409 idempotency_key_already_used``
+        rather than a charge. :class:`MercadoPagoPixProvider` overrides it.
+
+        Args:
+            reference (str): The charge's reference, unused here.
+
+        Returns:
+            str: A random UUID4.
+        """
+        return str(uuid.uuid4())
 
     async def _create(self, body: dict[str, Any], reference: str) -> Mapping[str, Any]:
         """Create an order.
@@ -751,9 +807,27 @@ class _OrdersClient:
 class MercadoPagoPixProvider(_OrdersClient):
     """Mercado Pago Pix as a :class:`~...payment.base.PixProvider`, over Orders.
 
+    A create is idempotent on :attr:`PixChargeRequest.reference` by default,
+    as the contract promises and as :class:`OpenPixPixProvider` behaves: the
+    ``X-Idempotency-Key`` is :func:`reference_idempotency_key` of the
+    reference, so repeating a create answers the order that already exists.
+    Through v0.357.0 the default was a fresh UUID4 per call, and a repeated
+    create opened a second order with the same ``external_reference``.
+
     Attributes:
         provider_name (str): Always ``"mercado_pago"``.
     """
+
+    def _default_idempotency_key(self, reference: str) -> str:
+        """Derive the create's key from the reference.
+
+        Args:
+            reference (str): :attr:`PixChargeRequest.reference`.
+
+        Returns:
+            str: :func:`reference_idempotency_key` of the reference.
+        """
+        return reference_idempotency_key(reference)
 
     async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge:
         """Create a Pix order.
@@ -771,8 +845,17 @@ class MercadoPagoPixProvider(_OrdersClient):
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx answer — including ``400``
-                for an order without a payer.
+                for an order without a payer, and ``409``
+                ``idempotency_key_already_used`` when the reference was
+                already used for a create with another body (another amount,
+                payer, description or expiry). That ``409`` is a conflict in
+                the caller's data, not a transient failure: the existing
+                order is not read back on its behalf, because answering it
+                would hand over a charge for an amount nobody asked for.
             ValueError: If the answer is not an order with an id and amount.
+
+        Repeating the create with the same request answers the order the
+        first call opened — see :func:`reference_idempotency_key`.
         """
         amount = str(from_cents(request.amount_cents))
         payment: dict[str, Any] = {
@@ -1088,6 +1171,7 @@ __all__: list[str] = [
     "ORDERS_PATH",
     "ORDER_ID_PATTERN",
     "ORDER_TOPIC",
+    "PIX_IDEMPOTENCY_NAMESPACE",
     "PROVIDER_NAME",
     "REFUND_RETRYABLE_ERRORS",
     "RETRYABLE_ACTION_ERRORS",
@@ -1097,4 +1181,5 @@ __all__: list[str] = [
     "MercadoPagoOrderDelivery",
     "MercadoPagoPixProvider",
     "make_mercado_pago_webhook_delivery_dependency",
+    "reference_idempotency_key",
 ]

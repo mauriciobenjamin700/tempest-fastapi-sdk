@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Mercado Pago: toda entrega real de webhook da API de Orders voltava
+  `401 Invalid Mercado Pago webhook signature` (#753). O provedor assina o
+  `data.id` em minúsculas e os ids de order chegam em maiúsculas (`ORD01…`);
+  `build_manifest`, `sign_manifest` e `verify_signature` passam o id para
+  minúsculas. `MercadoPagoWebhookEvent.data_id` mantém o valor original, que
+  é o que o `GET /v1/orders/{id}` aceita. A regra diverge do `sdk-nodejs` do
+  provedor na versão atual, que deixou de passar para minúsculas em
+  2026-06-17; a evidência é a entrega real observada em 2026-11-13 (#498).
+- Mercado Pago: `MercadoPagoEventEnum.ORDER` (`"order"`); a entrega de
+  Orders virava `UNKNOWN` (#753).
+- Mercado Pago: `MercadoPagoPixProvider` sem `idempotency_key` usava um UUID4
+  novo por chamada, e repetir o `create_pix_charge` da mesma `reference`
+  abria uma segunda order, contra o contrato de `PixChargeRequest.reference`
+  (#754). O padrão agora deriva a chave da `reference`
+  (`reference_idempotency_key`, UUID5 sob `PIX_IDEMPOTENCY_NAMESPACE`). Mesma
+  `reference` com outro corpo volta `409 idempotency_key_already_used`, que
+  sai como `httpx.HTTPStatusError`. O `MercadoPagoCardProvider` continua com
+  uma chave por chamada.
+- `FakePixProvider.create_pix_charge` com uma `reference` já usada devolve a
+  cobrança existente em vez de abrir outra, como o contrato promete (#754).
+
 ## [0.357.0] — 2026-11-13
 
 ### Added

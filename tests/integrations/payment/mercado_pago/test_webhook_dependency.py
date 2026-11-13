@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import time
 from typing import Any
@@ -175,6 +177,37 @@ class TestDependency:
         assert event.event is MercadoPagoEventEnum.PAYMENT
         assert event.payload["action"] == "payment.updated"
         assert event.body == BODY
+
+    def test_a_live_orders_delivery_verifies_and_keeps_its_id(self) -> None:
+        """The delivery #753 saw rejected with 401, now through the route.
+
+        ``data.id`` arrives uppercase, the provider signs it lowercase. The
+        digest is written out with :mod:`hmac`, not with ``sign_manifest``,
+        so the expected value does not come from the code under test.
+        """
+        app, calls = self._app()
+        order_id = "ORD01M7B5HWREYRJCAPJ61QTF1SRW"
+        timestamp = str(int(time.time()))
+        manifest = f"id:{order_id.lower()};request-id:{REQUEST_ID};ts:{timestamp};"
+        digest = hmac.new(
+            SECRET.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+
+        response = self._post(
+            app,
+            params={MERCADO_PAGO_DATA_ID_QUERY: order_id, "type": "order"},
+            headers={
+                MERCADO_PAGO_SIGNATURE_HEADER: f"ts={timestamp},v1={digest}",
+                MERCADO_PAGO_REQUEST_ID_HEADER: REQUEST_ID,
+            },
+            body=json.dumps(
+                {"action": "order.canceled", "type": "order", "data": {"id": order_id}}
+            ).encode(),
+        )
+
+        assert response.status_code == 200
+        assert calls[0].data_id == order_id
+        assert calls[0].event is MercadoPagoEventEnum.ORDER
 
     def test_wrong_secret_is_401_and_handler_never_runs(self) -> None:
         """A signature from another secret is refused before the handler."""
