@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `prompt` e `temperature` na transcrição (#758). `OpenAICompatSpeech.transcribe`
+  manda os dois como campos do form do `POST /audio/transcriptions`, só quando
+  informados; `SpeechToText.transcribe` repassa ao faster-whisper como
+  `initial_prompt` e `temperature`, e ganha também `hotwords` (presente desde o
+  piso `faster-whisper>=1.2.1`, no `WhisperModel` e no
+  `BatchedInferencePipeline`). O protocolo `SpeechTranscriber` passa a ter
+  `prompt` e `temperature`; o `OllamaSpeech` aceita os dois só como `None` e
+  recusa outro valor com `ValidationException` (`details={"field": ...}`), como
+  já faz com `language`, porque não foi medido se o daemon os respeita. O
+  `/transcribe` do `make_genai_router` aceita `prompt` como campo do form,
+  limitado por `max_prompt_chars`, e só o repassa quando presente, então um
+  backend escrito antes do parâmetro continua servindo pedidos sem ele;
+  `temperature` não é exposto na rota. Receita em `recipes/genai.md` ("Dar
+  vocabulário ao Whisper"): o faster-whisper 1.2.1 guarda os **últimos** 223
+  tokens do prompt (medido no `get_prompt` dele) e os **primeiros** 223 de
+  `hotwords`; a OpenAI documenta 224 tokens para o `whisper-1`.
 - Uma chave por bucket no storage S3 (#756): `STORAGE_BUCKET_CREDENTIALS`
   (JSON `{"bucket": {"access_key": ..., "secret_key": ...}}`) dá a cada
   bucket a sua credencial, para storage que amarra a chave a um bucket só.

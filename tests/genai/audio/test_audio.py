@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import inspect
 import wave
 from pathlib import Path
 from types import SimpleNamespace
@@ -164,6 +165,49 @@ class TestSpeechToText:
         await stt.transcribe("clip.wav", beam_size=1, vad_filter=False)
         assert stt._model.calls[0]["beam_size"] == 1
         assert stt._model.calls[0]["vad_filter"] is False
+
+    async def test_prompt_temperature_and_hotwords_reach_faster_whisper(self) -> None:
+        stt = SpeechToText(device="cpu")
+        stt._model = _FakeWhisperModel()
+        await stt.transcribe(
+            "clip.wav",
+            prompt="Picos, Teresina",
+            temperature=0.0,
+            hotwords="Parnaíba",
+        )
+        call = stt._model.calls[0]
+        assert call["initial_prompt"] == "Picos, Teresina"
+        assert call["temperature"] == 0.0
+        assert call["hotwords"] == "Parnaíba"
+
+    async def test_unset_hints_keep_faster_whisper_defaults(self) -> None:
+        """Unset hints are not sent, so the temperature ladder stays."""
+        stt = SpeechToText(device="cpu")
+        stt._model = _FakeWhisperModel()
+        await stt.transcribe("clip.wav")
+        call = stt._model.calls[0]
+        assert "initial_prompt" not in call
+        assert "temperature" not in call
+        assert "hotwords" not in call
+
+    async def test_prompt_reaches_the_batched_pipeline(self) -> None:
+        stt = SpeechToText(device="cpu", batch_size=4)
+        pipeline = _FakeWhisperModel()
+        stt._model = _FakeWhisperModel()
+        stt._pipeline = pipeline
+        await stt.transcribe("clip.wav", prompt="Picos")
+        assert pipeline.calls[0]["initial_prompt"] == "Picos"
+
+    def test_hint_names_exist_on_the_installed_faster_whisper(self) -> None:
+        """The keywords are real parameters of both faster-whisper engines."""
+        faster_whisper = pytest.importorskip("faster_whisper")
+        for engine in (
+            faster_whisper.WhisperModel,
+            faster_whisper.BatchedInferencePipeline,
+        ):
+            parameters = inspect.signature(engine.transcribe).parameters
+            for name in ("initial_prompt", "temperature", "hotwords"):
+                assert name in parameters
 
     async def test_condition_on_previous_text_is_forwarded_when_off(self) -> None:
         """Turning it off reaches faster-whisper, it is not just stored."""

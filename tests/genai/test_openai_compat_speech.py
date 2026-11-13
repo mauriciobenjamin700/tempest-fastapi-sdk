@@ -155,6 +155,34 @@ class TestRequestShape:
         await _speech(handler).transcribe(AUDIO)
         assert _field(seen[0], "language") is None
 
+    async def test_prompt_and_temperature_are_form_fields(self) -> None:
+        seen: list[bytes] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.content)
+            return httpx.Response(200, json=VERBOSE)
+
+        await _speech(handler).transcribe(
+            AUDIO,
+            prompt="Picos, Teresina, Parnaíba",
+            temperature=0.0,
+        )
+        assert _field(seen[0], "prompt") == "Picos, Teresina, Parnaíba"
+        assert _field(seen[0], "temperature") == "0.0"
+
+    async def test_no_prompt_or_temperature_means_the_fields_are_absent(
+        self,
+    ) -> None:
+        seen: list[bytes] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.content)
+            return httpx.Response(200, json=VERBOSE)
+
+        await _speech(handler).transcribe(AUDIO)
+        assert _field(seen[0], "prompt") is None
+        assert _field(seen[0], "temperature") is None
+
     async def test_language_enum_resolves_to_the_iso_code(self) -> None:
         seen: list[bytes] = []
 
@@ -369,6 +397,41 @@ class TestRouter:
         )
         assert resp.status_code == 200
         assert resp.json()["text"] == "Olá, tudo bem?"
+
+
+class TestRouterPrompt:
+    def _client(self, handler: Any) -> TestClient:
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(make_genai_router(speech_to_text=_speech(handler)))
+        return TestClient(app)
+
+    def test_prompt_form_field_reaches_the_server(self) -> None:
+        seen: list[bytes] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.content)
+            return httpx.Response(200, json=VERBOSE)
+
+        resp = self._client(handler).post(
+            "/api/genai/transcribe",
+            files={"file": ("clip.wav", AUDIO, "audio/wav")},
+            data={"prompt": "Picos, Teresina"},
+        )
+        assert resp.status_code == 200
+        assert _field(seen[0], "prompt") == "Picos, Teresina"
+
+    def test_prompt_over_the_limit_is_a_422_without_a_request(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no request expected")
+
+        resp = self._client(handler).post(
+            "/api/genai/transcribe",
+            files={"file": ("clip.wav", AUDIO, "audio/wav")},
+            data={"prompt": "x" * 100_001},
+        )
+        assert resp.status_code == 422
+        assert resp.json()["details"]["field"] == "prompt"
 
 
 class TestClientLifecycle:

@@ -4,7 +4,8 @@
 OpenAI transcription endpoint, so a service transcribes without running
 Whisper in its own process. It satisfies
 :class:`~tempest_fastapi_sdk.genai.audio.SpeechTranscriber` and takes the
-same ``language`` / ``with_segments`` keywords as the local
+same ``language`` / ``with_segments`` / ``prompt`` / ``temperature``
+keywords as the local
 :class:`~tempest_fastapi_sdk.genai.audio.SpeechToText`, so swapping one for
 the other changes the line that builds the backend and nothing else.
 
@@ -17,8 +18,9 @@ closed by :meth:`OpenAICompatSpeech.aclose`.
 
 The request is the multipart form of the ``CreateTranscriptionRequest``
 schema of the official OpenAPI document
-(https://github.com/openai/openai-openapi): ``file``, ``model``, an optional
-``language`` (ISO-639-1) and ``response_format=verbose_json``, the format
+(https://github.com/openai/openai-openapi): ``file``, ``model``, the optional
+``language`` (ISO-639-1), ``prompt`` and ``temperature`` (each sent only
+when given) and ``response_format=verbose_json``, the format
 that carries ``duration`` and ``segments``. The tests drive an
 ``httpx.MockTransport``, so what they pin is the request built here and the
 response read here, not any live server.
@@ -284,6 +286,8 @@ class OpenAICompatSpeech:
         *,
         language: LanguageEnum | str | None = None,
         with_segments: bool = True,
+        prompt: str | None = None,
+        temperature: float | None = None,
     ) -> Transcription:
         """Transcribe ``audio`` on the remote server.
 
@@ -298,6 +302,14 @@ class OpenAICompatSpeech:
             with_segments (bool): Keep the per-span timestamps. ``False``
                 returns ``segments=[]``; the request is the same either way,
                 so ``duration`` and ``language`` are still filled.
+            prompt (str | None): Sent as the ``prompt`` form field: text the
+                model reads as preceding the audio, the way to hand it the
+                vocabulary of the domain (city names, product names).
+                ``None`` leaves the field out. Whisper keeps only the end of
+                a long prompt (the recipe has the numbers), and whether a
+                given server honours the field is up to that server.
+            temperature (float | None): Sent as the ``temperature`` form
+                field. ``None`` leaves the field out and the server picks.
 
         Returns:
             Transcription: ``text`` and ``duration`` from the response,
@@ -336,6 +348,10 @@ class OpenAICompatSpeech:
         }
         if code:
             form["language"] = code
+        if prompt is not None:
+            form["prompt"] = prompt
+        if temperature is not None:
+            form["temperature"] = str(temperature)
         async with genai_span("transcribe", self.model):
             response = await self._http().post(
                 f"{self.base_url}/audio/transcriptions",

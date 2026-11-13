@@ -1956,6 +1956,84 @@ stt = SpeechToText(
     O callback roda **na worker thread**, não no event loop: não toque em
     corotina lá dentro sem `loop.call_soon_threadsafe`.
 
+#### Dar vocabulário ao Whisper: `prompt` e `hotwords`
+
+Nome próprio é onde o Whisper mais erra: numa busca de passagens por voz,
+"de Picos para Parnaíba amanhã" pode sair com o destino irreconhecível. O
+serviço já sabe quais nomes são prováveis — as cidades das próprias rotas,
+os produtos do catálogo — e o `prompt` é como entregá-los ao modelo:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import SpeechToText, Transcription
+
+stt: SpeechToText = SpeechToText("base", device="cpu")
+
+CIDADES: list[str] = ["Picos", "Teresina", "Parnaíba", "Floriano", "Oeiras"]
+
+
+def prompt_de_dominio(nomes: list[str], limite: int = 60) -> str:
+    """Monta o prompt com os nomes mais frequentes primeiro.
+
+    Args:
+        nomes (list[str]): Nomes do domínio, do mais ao menos frequente.
+        limite (int): Quantos nomes entram no prompt.
+
+    Returns:
+        str: Uma frase curta citando os nomes.
+    """
+    return "Viagens entre " + ", ".join(nomes[:limite]) + "."
+
+
+async def main() -> None:
+    """Run this example."""
+    result: Transcription = await stt.transcribe(
+        "pedido.wav",
+        language="pt",
+        prompt=prompt_de_dominio(CIDADES),
+    )
+    print(result.text)
+
+
+asyncio.run(main())
+```
+
+- **`prompt`** vira o `initial_prompt` do faster-whisper: texto que o
+  modelo lê como se viesse **antes** do áudio. Escreva como frase do
+  próprio domínio, com a grafia que você quer de volta (acento, maiúscula);
+  o Whisper não segue instruções ("transcreva os nomes de cidade") como um
+  modelo de chat.
+- **O limite é de tokens, e o começo é o que se perde.** No faster-whisper
+  1.2.1 o contexto anterior guarda os **últimos** 223 tokens
+  (`max_length // 2 - 1`, com `max_length = 448`) — medido chamando o
+  `get_prompt` dele com 400 tokens de contexto: entram 223, a partir do
+  178º. A documentação da OpenAI fala em 224 tokens para o `whisper-1`
+  ([guia de speech-to-text](https://developers.openai.com/api/docs/guides/speech-to-text)).
+  Por isso a receita põe os nomes **mais frequentes** num prompt curto,
+  em vez de despejar a lista inteira: o que passa do limite cai em
+  silêncio. Quantos nomes cabem depende do tokenizer do modelo; com lista
+  longa, conte os tokens antes em vez de estimar.
+- **`hotwords`** (só no `SpeechToText`) entra no prompt de **toda** janela,
+  com ou sem `condition_on_previous_text`; no faster-whisper 1.2.1 ficam os
+  **primeiros** 223 tokens dele. Já o `prompt` condiciona a primeira janela
+  do modelo sequencial e só segue adiante enquanto
+  `condition_on_previous_text=True`; no `batch_size` ele vai na frente de
+  cada lote. Para áudio curto (um pedido de voz) os dois chegam ao mesmo
+  lugar; para uma reunião longa, `hotwords` é o que continua valendo.
+- **`temperature`** fixa uma temperatura para o decode. `None` mantém o
+  default do faster-whisper, a escada `0.0, 0.2, …, 1.0` que ele sobe quando
+  uma janela reprova nos checks de compressão/log-probabilidade; um `float`
+  troca a escada por esse valor só.
+- O piso do extra (`faster-whisper>=1.2.1`) já tem os três parâmetros, no
+  `WhisperModel` e no `BatchedInferencePipeline` — um teste da suíte confere
+  a assinatura instalada.
+
+!!! note "Quanto o prompt melhora é medida sua, não nossa"
+    O SDK garante que o texto chega ao decoder; o ganho de acerto depende do
+    modelo, do áudio e da lista. Meça com gravações do seu domínio antes de
+    contar com ele.
+
 !!! info "Uma instância compartilhada carrega o modelo uma vez só"
     `load()` é protegido por um `threading.Lock`, e não pelo semáforo de
     concorrência — o semáforo admite `max_concurrent` chamadas por
@@ -2241,7 +2319,10 @@ O que o `OllamaSpeech` faz por você:
   inglês, marcado `"portuguese"`), e na fala a língua vem da voz. Por isso
   `transcribe` e `synthesize` aceitam `language` só como `None`: qualquer
   valor levanta `ValidationException` com `details={"field": "language"}`,
-  antes de ir à rede. `Transcription.language` fica vazio. Também não há
+  antes de ir à rede. `Transcription.language` fica vazio. `prompt` e
+  `temperature` também só entram como `None` (`details={"field": "prompt"}`
+  ou `"temperature"`): se o daemon os respeita não foi medido, então não são
+  enviados nem descartados em silêncio. Também não há
   `keep_alive`, que esses endpoints ignoram.
 - **Caminho é caminho.** `transcribe("https://...")` levanta
   `FileNotFoundError` sem ir à rede, como o `SpeechToText`.
@@ -3822,7 +3903,7 @@ app.include_router(
 | `text_generator` | `POST /generate`, `POST /generate/stream` (SSE token a token), `POST /chat` |
 | `embedder` | `POST /embed` |
 | `retriever` | `POST /rag` (query → bloco de contexto) |
-| `speech_to_text` | `POST /transcribe` (upload de áudio; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` ou qualquer `SpeechTranscriber`) |
+| `speech_to_text` | `POST /transcribe` (upload de áudio + campo opcional `prompt` no form, limitado por `max_prompt_chars`; `SpeechToText`, `OllamaSpeech`, `OpenAICompatSpeech` ou qualquer `SpeechTranscriber`) |
 | `text_to_speech` | `POST /tts` (devolve `audio/wav`; `TextToSpeech`, `OllamaSpeech` ou qualquer `SpeechSynthesizer`) |
 
 !!! tip "Streaming"

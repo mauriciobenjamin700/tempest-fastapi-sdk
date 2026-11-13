@@ -126,6 +126,36 @@ def _refuse_language(language: str | None) -> None:
         )
 
 
+def _refuse_transcription_hints(
+    prompt: str | None,
+    temperature: float | None,
+) -> None:
+    """Refuse a transcription hint this backend does not forward.
+
+    Whether the daemon honours ``prompt`` or ``temperature`` on
+    ``/v1/audio/transcriptions`` has not been measured, so they are not
+    sent. Accepting them and dropping them would hand back a transcript
+    that looks conditioned on a vocabulary it never saw.
+
+    Args:
+        prompt (str | None): The requested prompt.
+        temperature (float | None): The requested temperature.
+
+    Raises:
+        ValidationException: When either is not ``None`` (``422``,
+            ``details={"field": "prompt"}`` or ``{"field": "temperature"}``).
+    """
+    for field, value in (("prompt", prompt), ("temperature", temperature)):
+        if value is not None:
+            raise ValidationException(
+                message=(
+                    f"This Ollama speech backend does not forward {field} to "
+                    "the transcription endpoint"
+                ),
+                details={"field": field},
+            )
+
+
 def _raise_for_response(model: str, response: httpx.Response) -> None:
     """Raise the right error for a non-success daemon response.
 
@@ -519,6 +549,8 @@ class OllamaSpeech(_OllamaClientMixin):
         /,
         *,
         language: str | None = None,
+        prompt: str | None = None,
+        temperature: float | None = None,
     ) -> Transcription:
         """Transcribe speech with a model that has the ``audio`` capability.
 
@@ -533,15 +565,19 @@ class OllamaSpeech(_OllamaClientMixin):
             language (str | None): Must stay ``None``; present so this class
                 satisfies
                 :class:`~tempest_fastapi_sdk.genai.audio.SpeechTranscriber`.
+            prompt (str | None): Must stay ``None``, for the same reason.
+            temperature (float | None): Must stay ``None``, for the same
+                reason.
 
         Returns:
             Transcription: The text, the duration the daemon measured, and
                 its segments.
 
         Raises:
-            ValidationException: When ``language`` is given, or when the
-                daemon refuses the request with ``400`` (audio that does not
-                decode, model without audio input).
+            ValidationException: When ``language``, ``prompt`` or
+                ``temperature`` is given, or when the daemon refuses the
+                request with ``400`` (audio that does not decode, model
+                without audio input).
             FileNotFoundError: When ``audio`` is not an existing regular
                 file. The message carries the file name only, never the full
                 path, since the string may come from a form field.
@@ -551,6 +587,7 @@ class OllamaSpeech(_OllamaClientMixin):
                 answer in time.
         """
         _refuse_language(language)
+        _refuse_transcription_hints(prompt, temperature)
         if isinstance(audio, bytes):
             content, filename = audio, "audio"
         else:

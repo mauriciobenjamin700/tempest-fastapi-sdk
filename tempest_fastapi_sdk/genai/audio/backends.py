@@ -6,7 +6,12 @@ the local engines (:class:`~tempest_fastapi_sdk.genai.audio.SpeechToText`,
 :class:`~tempest_fastapi_sdk.genai.audio.TextToSpeech`) and the daemon-backed
 :class:`~tempest_fastapi_sdk.genai.OllamaSpeech` plug into the same router.
 The required argument is positional-only so an implementation may name it
-freely; the keywords are what the router passes.
+freely; the keywords are what the router passes. ``prompt`` and
+``temperature`` are part of the transcription shape so code typed against
+the protocol can hand a vocabulary hint to whichever backend it holds; the
+router itself forwards ``prompt`` only when the request carries one, so a
+backend written before those keywords existed still serves requests that do
+not use them.
 """
 
 from __future__ import annotations
@@ -27,6 +32,8 @@ class SpeechTranscriber(Protocol):
         /,
         *,
         language: str | None = None,
+        prompt: str | None = None,
+        temperature: float | None = None,
     ) -> Awaitable[Transcription]:
         """Transcribe ``audio``.
 
@@ -34,6 +41,11 @@ class SpeechTranscriber(Protocol):
             audio (bytes): The uploaded audio.
             language (str | None): A language the caller asked for, or
                 ``None`` to let the backend decide.
+            prompt (str | None): Text the decoder reads as preceding the
+                audio, used to bias vocabulary and spelling (domain names,
+                proper nouns), or ``None`` for no prompt.
+            temperature (float | None): One sampling temperature for the
+                decode, or ``None`` for the backend default.
 
         Returns:
             Awaitable[Transcription]: The transcript.
