@@ -503,11 +503,66 @@ site.register(AdminModel(
 - O form vira `multipart/form-data` automaticamente quando há `upload_fields`.
 - **Create**: arquivo obrigatório só se a coluna for `NOT NULL` e sem default.
 - **Edit**: sem arquivo novo → mantém o valor atual (mostra "Current: …"); com arquivo → substitui.
-- A coluna guarda a **chave** do storage (`<slug>/<campo>/<uuid>.<ext>`); use o `upload_storage` (ou `UploadUtils`) pra servir/baixar depois.
+- A coluna guarda a **chave** do storage (`<slug>/<campo>/<uuid>.<ext>`); a página do registro tem o link **Download** dela.
 
 !!! warning "`upload_fields` exige `upload_storage`"
     Registrar `upload_fields` sem `upload_storage` levanta `ValueError` na
     construção do `AdminModel` — sem storage não há onde gravar o arquivo.
+
+### Só um tipo de arquivo (`upload_accept=`)
+
+`upload_accept` diz que tipos um campo de upload aceita. O input ganha
+`accept=` (o seletor de arquivos do browser já filtra) e o servidor confere
+antes de gravar: o tipo declarado tem de estar na lista **e**, para um tipo
+que o `sniff_mime` reconhece pelos bytes (PDF, PNG, JPEG, GIF, BMP, WebP,
+HEIC), o começo do arquivo tem de ser desse tipo. Um PNG renomeado para
+`.pdf` é recusado com erro no campo, e nada vai para o storage.
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import AdminModel, BaseModel
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+
+
+class InvoiceModel(BaseModel):
+    """An invoice with its PDF."""
+
+    __tablename__ = "invoices"
+
+    pdf_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+invoices: AdminModel[InvoiceModel] = AdminModel(
+    InvoiceModel,
+    upload_fields=["pdf_key"],
+    upload_storage=LocalUploadStorage("media/"),
+    upload_accept={"pdf_key": ["application/pdf"]},
+)
+```
+
+Na página do registro, cada campo de upload preenchido mostra o link
+**Download**: o storage que gera URL temporária (`MinIOUploadStorage`)
+redireciona para ela; o `LocalUploadStorage` entrega o arquivo como anexo,
+com `X-Content-Type-Options: nosniff`.
+
+### Regra que depende da linha (`validate_edit=`)
+
+`validate_edit(row, form)` roda no submit da edição, antes de qualquer
+upload ser gravado. Devolver `{"campo": "mensagem"}` recusa a edição com
+esses erros — é o lugar de uma regra como "o comprovante de um registro
+finalizado não muda". O preset abaixo usa exatamente isso.
+
+### Preset: saque manual (`manual_payout_admin`)
+
+`manual_payout_admin(ManualPayoutModel, upload_storage=...)` devolve o
+`AdminModel` da tabela de saques pagos à mão (`make_manual_payout_model`):
+valores só leitura, comprovante só em PDF, link de download e a ação
+**Marcar como pago**, que só conclui linha `PENDING` com comprovante. O
+fluxo inteiro — o saque que grava a linha e manda o e-mail ao
+administrador — está em
+[Mercado Pago: testando webhooks » Saque manual](mercado-pago-webhooks.md#saque-manual).
 
 !!! tip "Navegação por sidebar + burger"
     Toda página autenticada tem uma **sidebar** persistente: Dashboard, um

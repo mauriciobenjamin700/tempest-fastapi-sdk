@@ -312,6 +312,27 @@ payout: OpenPixPayoutProvider = OpenPixPayoutProvider(http)
     `OpenPixPayoutProvider` raises `ValueError` in its constructor when the
     `HTTPClient` can retry.
 
+## Withdrawing by hand (`ManualPayoutProvider`)
+
+With no automated payout — Mercado Pago's is not enabled for the account
+(#499) —, `ManualPayoutProvider` implements the same `PayoutProvider` by
+e-mailing the administrator the Pix to send: amount in reais, key and type,
+`user_id` (from `PayoutRequest.payee_id`, which `withdraw` fills),
+`correlation_id` and comment. It returns `PayoutStatusEnum.PENDING` with
+`provider_status="manual_review"`, and the debit follows the usual rule:
+
+- the mailer raises `EmailDeliveryException` or
+  `IntegrationDisabledException` → `PayoutRejectedException`: no
+  administrator got the order, so nobody will pay, and the debit comes back;
+- any other error propagates, and the debit stays (`PayoutUncertainException`).
+
+The log carries the key masked (`mask_pix_key`), never whole. With
+`records=` (a `BaseRepository` of the `make_manual_payout_model` table),
+each withdrawal also becomes a `PENDING` row the administrator completes in
+the panel with the PDF receipt. The ready-made route that ties it together —
+a withdrawal that empties the wallet, the row, the e-mail and the panel — is
+in [Mercado Pago: testing webhooks » Manual withdrawal](mercado-pago-webhooks.md#manual-withdrawal).
+
 ## Fees and splits
 
 `openpix_fee_cents()` computes the OpenPix fee, and `split_net()` divides the

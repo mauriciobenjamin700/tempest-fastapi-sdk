@@ -4519,3 +4519,23 @@ promovidos a este fake. Testes: `tests/testing/test_fake_mercado_pago.py`,
 `tests/settings/test_mercado_pago_base_url.py`. Receita: nível 1 de
 `docs/recipes/mercado-pago-webhooks.md`.
 
+### A rota pronta, a simulação para o front e o saque manual (2026-11-14)
+
+`integrations/payment/adapters/mercado_pago_router.py`:
+`make_mercado_pago_router` (webhook sobre a dependência existente, rotas
+`/dev/mercado-pago/...` com `simulate=True`, saque com `withdraw=`) e
+`MercadoPagoWithdrawConfig`. `mercado_pago_simulation.py`:
+`mercado_pago_provider_for`, `simulation_api_for`, o gate de `ENV`
+(`ensure_simulation_allowed`) e as rotas de simulação, que entregam o webhook
+pela rota do próprio app (`httpx.ASGITransport`). `wallet/manual_payout.py`:
+`ManualPayoutProvider` (e-mail ao administrador, chave mascarada no log,
+`format_brl`, `mask_pix_key`); `wallet/manual_payout_models.py`:
+`BaseManualPayoutModel`, `ManualPayoutStatusEnum`, `make_manual_payout_model`.
+`admin/manual_payout.py`: `manual_payout_admin` e a ação "Marcar como pago";
+no admin genérico, `upload_accept`, `validate_edit` e a rota de download de
+upload. `PayoutRequest.payee_id`. Testes:
+`tests/integrations/payment/adapters/test_mercado_pago_router.py`,
+`tests/wallet/test_manual_payout.py`, `tests/admin/test_manual_payout_admin.py`.
+Receitas: `mercado-pago-webhooks` (rota pronta, front em desenvolvimento,
+saque manual), `admin` (`upload_accept`, `validate_edit`, preset), `wallet`
+(`ManualPayoutProvider`).

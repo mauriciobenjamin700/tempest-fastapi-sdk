@@ -33,6 +33,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   para ele, e outro host entra em `production_violations()`, o que derruba a
   construção do `Settings` com `ENV=production`. Receita: nível 1 de
   `recipes/mercado-pago-webhooks`.
+- `make_mercado_pago_router(provider, on_delivery=..., simulate=...)`
+  (`integrations.payment.adapters`): monta `POST /webhooks/mercado-pago` sobre
+  `make_mercado_pago_webhook_delivery_dependency` e chama `on_delivery` com a
+  entrega relida (`200` com `MercadoPagoWebhookAckSchema`, `401` com
+  assinatura errada, `500` quando o handler levanta). O segredo vem de
+  `secret=` ou de `MERCADOPAGO_WEBHOOK_SECRET`; vazio é recusado. Com
+  `simulate=True`, monta `GET /dev/mercado-pago/orders[/{id}]` e
+  `POST /dev/mercado-pago/orders/{id}/{pay|expire|fail|cancel|capture|refund}`
+  (tag `mercado-pago (dev)`), que movem a order no simulador e entregam o
+  webhook assinado à rota de webhook do próprio app via
+  `httpx.ASGITransport` (`409` para transição que o estado não permite).
+  `simulate=True` só constrói com `ENV=development`/`test` — `ENV` ausente
+  conta como produção. `mercado_pago_provider_for(settings, simulate=...)`
+  devolve o adapter real sobre o host do Mercado Pago ou sobre o simulador em
+  memória, que o router acha por `simulation_api_for`.
+- Saque manual: `make_mercado_pago_router(withdraw=MercadoPagoWithdrawConfig(...))`
+  monta `POST /api/mercado-pago/withdraw`, sem corpo, que saca todo o saldo
+  disponível pelo `WalletService.withdraw` e paga por `ManualPayoutProvider`
+  (`wallet`): grava a linha `PENDING` de `make_manual_payout_model` (chave
+  mascarada) e manda ao administrador o e-mail com valor, chave, `user_id`,
+  `correlation_id` e o link da linha no painel; falha do e-mail recusa o saque
+  (`PayoutRejectedException`, débito devolvido, linha `CANCELED`).
+  `PayoutRequest.payee_id` (opcional) leva o `user_id` ao provedor.
+- Admin: `manual_payout_admin(model, upload_storage=...)` (comprovante só PDF,
+  ação "Marcar como pago" só para `PENDING` com comprovante, comprovante
+  travado depois de concluído); `AdminModel(upload_accept=...)` restringe o
+  tipo de um campo de upload pelo tipo declarado **e** pelos bytes
+  (`sniff_mime`), com `accept=` no input; `AdminModel(validate_edit=...)`
+  recusa uma edição por regra da linha; a página do registro ganhou o link
+  **Download** de cada upload (`GET {prefix}/m/{slug}/{id}/upload/{field}`);
+  `LocalUploadStorage.local_path(key)`.
 
 ## [0.359.0] — 2026-11-13
 

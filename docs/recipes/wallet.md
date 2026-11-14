@@ -307,6 +307,27 @@ payout: OpenPixPayoutProvider = OpenPixPayoutProvider(http)
     `OpenPixPayoutProvider` levanta `ValueError` no construtor se o
     `HTTPClient` puder refazer a requisição.
 
+## Sacar à mão (`ManualPayoutProvider`)
+
+Sem payout automático — o do Mercado Pago não está liberado para a conta
+(#499) —, `ManualPayoutProvider` implementa o mesmo `PayoutProvider`
+mandando ao administrador um e-mail com o Pix a fazer: valor em reais, chave
+e tipo, `user_id` (de `PayoutRequest.payee_id`, que o `withdraw` preenche),
+`correlation_id` e comentário. Devolve `PayoutStatusEnum.PENDING` com
+`provider_status="manual_review"`, e o débito segue a regra de sempre:
+
+- o mailer levanta `EmailDeliveryException` ou `IntegrationDisabledException`
+  → `PayoutRejectedException`: nenhum administrador recebeu o pedido, então
+  ninguém vai pagar, e o débito volta;
+- qualquer outro erro propaga, e o débito fica (`PayoutUncertainException`).
+
+O log traz a chave mascarada (`mask_pix_key`), nunca inteira. Com
+`records=` (um `BaseRepository` da tabela `make_manual_payout_model`), cada
+saque também vira uma linha `PENDING` que o administrador conclui no painel
+com o comprovante em PDF. A rota pronta que junta tudo — saque que zera a
+carteira, linha, e-mail e painel — está em
+[Mercado Pago: testando webhooks » Saque manual](mercado-pago-webhooks.md#saque-manual).
+
 ## Taxa e divisão
 
 `openpix_fee_cents()` calcula a taxa da OpenPix, e `split_net()` divide o

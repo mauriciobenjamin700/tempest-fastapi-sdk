@@ -319,6 +319,402 @@ order from a file (`--order-json`). Against a service that re-reads the order
 from the real Mercado Pago, a made-up id gets `404` on the re-read — the
 `simulated` case above.
 
+### The ready-made route: `make_mercado_pago_router`
+
+The webhook route above is the same in every service: verify, re-read, hand
+over to your code, answer `200`. `make_mercado_pago_router` mounts that route
+on top of the `make_mercado_pago_webhook_delivery_dependency` dependency — the
+verification and the re-read are the same — and you write only the handler:
+
+`app.include_router(make_mercado_pago_router(provider, on_delivery=handle, settings=settings, simulate=settings.ENV == "development"))` — the complete service is in the *Front end in development* example, right below.
+
+- `on_delivery(delivery: MercadoPagoOrderDelivery) -> Awaitable[None]`
+  receives the verified delivery with the order re-read. It returns: the
+  route answers `200` with `{"ok": true, "data_id": ..., "order_status": ...}`.
+  It raises: the answer is `500` and Mercado Pago delivers again.
+- The secret comes from `secret=`; without it, from
+  `settings.MERCADOPAGO_WEBHOOK_SECRET` (or from the environment and `.env`
+  when `settings` is missing too). An empty secret is refused at construction
+  (`ValueError`): it would reject every delivery.
+- `webhook_path` defaults to `/webhooks/mercado-pago` — the URL you register
+  in the dashboard.
+- A service that already writes the route by hand with the dependency keeps
+  working: nothing changed in it.
+
+#### Front end in development: `simulate=True`
+
+With `simulate=True`, the router also mounts the routes a front end uses to
+do what only Mercado Pago does — pay, expire, fail, cancel, capture, refund:
+
+| Route | What it does |
+| --- | --- |
+| `GET /dev/mercado-pago/orders` | every order of the simulator |
+| `GET /dev/mercado-pago/orders/{order_id}` | one order; `404` when unknown |
+| `POST /dev/mercado-pago/orders/{order_id}/{transition}` | `pay`, `expire`, `fail`, `cancel`, `capture`, `refund` (`?amount_cents=` for a partial refund) |
+
+Each transition moves the order in the **in-memory**
+`FakeMercadoPagoOrdersAPI` your provider runs over, signs the notification
+with the route's secret and delivers it to **the service's own webhook
+route**, through the whole app (`httpx.ASGITransport(request.app)`):
+middleware, signature check, re-read and `on_delivery` all run for real. The
+answer carries the order after the transition and what the webhook route
+answered. A transition the state does not allow (refund before payment) is
+`409`; an unknown order, `404`; an unknown transition, `422`. In Swagger these
+routes show under the `mercado-pago (dev)` tag.
+
+The provider is tied to the simulator by `mercado_pago_provider_for`: with
+`simulate=False` it returns the `MercadoPagoPixProvider` over
+`settings.mercado_pago_kwargs()`; with `simulate=True`, the **same** adapter
+over an in-memory `FakeMercadoPagoOrdersAPI`, and the router finds the
+simulator on its own (`simulation_api_for(provider)`). For cards,
+`provider_class=MercadoPagoCardProvider`; for another simulator,
+`simulation_api=`.
+
+```python
+from typing import Any
+
+import uvicorn
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.integrations.payment import PixChargeRequest, PixPayer
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    make_mercado_pago_router,
+    mercado_pago_provider_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+settings = Settings()
+simulate: bool = settings.ENV == "development"
+provider = mercado_pago_provider_for(settings, simulate=simulate)
+
+
+async def handle(delivery: MercadoPagoOrderDelivery) -> None:
+    """Release or revert the order the delivery is about."""
+    event = provider.parse_webhook(delivery)
+    status = event.charge.status.value if event.charge else None
+    print(f"on_delivery: {event.type.value} {status}", flush=True)
+
+
+app = FastAPI()
+app.include_router(
+    make_mercado_pago_router(
+        provider,
+        on_delivery=handle,
+        settings=settings,
+        simulate=simulate,
+    )
+)
+
+
+@app.post("/charges")
+async def create_charge(reference: str) -> dict[str, Any]:
+    """Create a R$ 19,90 Pix charge — the service's normal flow."""
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference=reference,
+            payer=PixPayer(email="comprador@example.com"),
+        )
+    )
+    return {"order_id": charge.provider_charge_id, "status": charge.status.value}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8001)
+```
+
+```bash
+ENV=development MERCADOPAGO_WEBHOOK_SECRET=segredo-local-de-teste python servico.py
+```
+
+The front end creates the Pix through the normal flow and calls "pay". Output
+measured on 2026-11-14 (the answer's `order` cut down to `id`, `status` and
+`status_detail`; the full answer carries the whole order):
+
+```text
+$ curl -s -X POST "http://127.0.0.1:8001/charges?reference=pedido-42"
+{"order_id":"ORDFAKE4CE323A800000000000002","status":"pending"}
+
+$ curl -s -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/ORDFAKE4CE323A800000000000002/pay
+{"order": {"id": "ORDFAKE4CE323A800000000000002", "status": "processed", "status_detail": "accredited"}, "delivery": {"action": "order.processed", "status_code": 200, "body": {"ok": true, "data_id": "ORDFAKE4CE323A800000000000002", "order_status": "processed"}}}
+
+$ curl -s -X POST "http://127.0.0.1:8001/dev/mercado-pago/orders/ORDFAKE4CE323A800000000000002/refund?amount_cents=500"
+{"order": {"id": "ORDFAKE4CE323A800000000000002", "status": "processed", "status_detail": "partially_refunded"}, "delivery": {"action": "order.processed", "status_code": 200, "body": {"ok": true, "data_id": "ORDFAKE4CE323A800000000000002", "order_status": "processed"}}}
+
+$ curl -s -w "\nHTTP %{http_code}\n" -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/ORDFAKE4CE323A800000000000002/cancel
+{"detail":"409 cannot_cancel_order: The order cannot be canceled in status 'processed'."}
+HTTP 409
+```
+
+And in the service's log, `on_delivery` called by the webhook route:
+
+```text
+on_delivery: charge_paid paid
+on_delivery: charge_paid paid
+```
+
+!!! danger "Simulation never starts in production"
+    `simulate=True` — on the router and on `mercado_pago_provider_for` — only
+    builds with `ENV=development` or `ENV=test`. `ENV` comes from
+    `settings.ENV` (a `Settings` composing `EnvironmentSettings`) or from the
+    environment variable; **a missing `ENV` counts as production**. Anywhere
+    else, construction raises and the service does not start:
+
+    ```text
+    RuntimeError: mercado_pago_provider_for with simulate=True needs ENV=development or ENV=test (got 'production'); the simulation routes mark orders paid and must never reach production.
+    ```
+
+    With `simulate=False` the simulation routes are not mounted, and the
+    simulator module is not even imported.
+
+#### Manual withdrawal
+
+Mercado Pago's payout is not enabled for the account (#499). Meanwhile, the
+router pays withdrawals through an administrator: with `withdraw=`, it mounts
+`POST /api/mercado-pago/withdraw`, which:
+
+1. debits the user's **whole** available balance through
+   `WalletService.withdraw` — the route takes no amount, the wallet ends at
+   zero;
+2. writes the `PENDING` row of the manual payout table
+   (`make_manual_payout_model`), with the key **masked**;
+3. e-mails the administrator the amount, Pix key and type, `user_id`,
+   `correlation_id` and the link to the row in the panel.
+
+The user and the key come from the same dependencies as `make_wallet_router`
+(`current_user_id`, `pix_destination` — the key comes from the profile, never
+from the body). The e-mail goes through `ManualPayoutProvider`, which takes
+any object with `EmailUtils`' `send(to, subject, body)`: in production,
+`EmailUtils(**settings.email_kwargs())`; in development, `FakeEmailUtils`
+keeps the message in `outbox`.
+
+```python
+import asyncio
+from collections.abc import AsyncIterator
+from uuid import UUID
+
+import httpx
+from fastapi import FastAPI, Header
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseRepository,
+    BaseUserModel,
+    PixKeyType,
+    UserModelAuthBackend,
+    register_exception_handlers,
+)
+from tempest_fastapi_sdk.admin import AdminSite, make_admin_router, manual_payout_admin
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    MercadoPagoWithdrawConfig,
+    make_mercado_pago_router,
+    mercado_pago_provider_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+from tempest_fastapi_sdk.wallet import (
+    PixDestinationSchema,
+    WalletBalanceMixin,
+    WalletService,
+    make_manual_payout_model,
+    make_wallet_entry_model,
+)
+
+
+class UserModel(BaseUserModel, WalletBalanceMixin):
+    """The service's user, with a wallet."""
+
+    __tablename__ = "users"
+
+
+WalletEntryModel = make_wallet_entry_model(user_table="users")
+ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+settings = Settings()
+db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+mailer = FakeEmailUtils()
+provider = mercado_pago_provider_for(settings, simulate=settings.ENV == "development")
+
+
+def wallet_service(session: AsyncSession) -> WalletService:
+    """Build the request's wallet service."""
+    return WalletService(
+        balances=BaseRepository(session, model=UserModel),
+        entries=BaseRepository(session, model=WalletEntryModel),
+    )
+
+
+async def sessions() -> AsyncIterator[AsyncSession]:
+    """Yield the request's session."""
+    async with db.get_session_context() as session:
+        yield session
+
+
+def current_user_id(x_user_id: UUID = Header()) -> UUID:
+    """Stand-in for the service's auth dependency."""
+    return x_user_id
+
+
+def pix_destination() -> PixDestinationSchema:
+    """Stand-in for reading the key from the user's profile."""
+    return PixDestinationSchema(
+        pix_key="motorista@example.com", pix_key_type=PixKeyType.EMAIL
+    )
+
+
+async def handle(delivery: MercadoPagoOrderDelivery) -> None:
+    """Credit the seller's wallet when an order is paid (omitted here)."""
+
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_mercado_pago_router(
+        provider,
+        on_delivery=handle,
+        settings=settings,
+        simulate=settings.ENV == "development",
+        withdraw=MercadoPagoWithdrawConfig(
+            service_factory=wallet_service,
+            session_factory=sessions,
+            current_user_id=current_user_id,
+            pix_destination=pix_destination,
+            mailer=mailer,
+            admin_emails=["financeiro@example.com"],
+            record_model=ManualPayoutModel,
+            record_url="http://127.0.0.1:8000/admin/m/manual_payouts/{id}",
+        ),
+    )
+)
+site = AdminSite(title="Admin")
+site.register(
+    manual_payout_admin(ManualPayoutModel, upload_storage=LocalUploadStorage("receipts"))
+)
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key="troque-por-um-segredo-de-32-bytes-ou-mais",
+    )
+)
+
+
+async def main() -> None:
+    """Fund a wallet, withdraw twice, and show what the admin received."""
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        user = UserModel(email="motorista@example.com", hashed_password="x")
+        session.add(user)
+        await session.commit()
+        await wallet_service(session).credit(user.id, 12_345, kind="SALE")
+        user_id = str(user.id)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://local"
+    ) as client:
+        headers = {"X-User-Id": user_id}
+        first = await client.post("/api/mercado-pago/withdraw", headers=headers)
+        print("saque     ", first.status_code, first.json()["payout"])
+        second = await client.post("/api/mercado-pago/withdraw", headers=headers)
+        print("de novo   ", second.status_code, second.json()["code"])
+    async with db.get_session_context() as session:
+        row = (await session.execute(select(ManualPayoutModel))).scalar_one()
+        print("registro  ", row.status, row.amount_cents, row.pix_key_masked)
+    print(mailer.outbox[0].subject)
+    print(mailer.outbox[0].body)
+
+
+asyncio.run(main())
+```
+
+```bash
+ENV=development MERCADOPAGO_WEBHOOK_SECRET=segredo-local-de-teste python saque_manual.py
+```
+
+Output measured on 2026-11-14 (the e-mail is in Portuguese, as the SDK writes
+it):
+
+```text
+saque      200 {'correlation_id': 'fee3bada-4405-4265-91d5-ad5d28127a94', 'status': 'pending', 'provider': 'manual', 'provider_status': 'manual_review'}
+de novo    409 WALLET_INSUFFICIENT_BALANCE
+registro   pending 12345 mo***om
+[Saque manual] R$ 123,45 para chave Pix
+Um usuário pediu um saque e o valor já foi debitado da carteira.
+Faça o Pix manualmente a partir da conta da plataforma:
+
+Valor: R$ 123,45
+Chave Pix: motorista@example.com
+Tipo da chave: email
+Usuário (user_id): 8016e5b7-2036-452a-b503-cfa5cd08ff7f
+Identificador (correlation_id): fee3bada-4405-4265-91d5-ad5d28127a94
+Comentário: Saque Pix
+
+Use o identificador acima como descrição do Pix, para conciliar.
+Se não for possível pagar, estorne o débito na carteira do usuário com o mesmo identificador.
+
+Depois de pagar, anexe o comprovante e marque como pago: http://127.0.0.1:8000/admin/m/manual_payouts/4bcf96aa-c394-45fb-9e88-42e8cbbf3ba7
+```
+
+What goes wrong, and what the route answers:
+
+| Case | Answer | The wallet |
+| --- | --- | --- |
+| nothing available (the second withdrawal included) | `409 WALLET_INSUFFICIENT_BALANCE` | untouched |
+| the e-mail to the administrator failed (`EmailDeliveryException`, `IntegrationDisabledException`) | `502 WALLET_PAYOUT_REJECTED`; the row turns `CANCELED` | debit given back |
+| the row could not be written | `502 WALLET_PAYOUT_REJECTED`; no e-mail | debit given back |
+| any other error while sending | `502 WALLET_PAYOUT_UNCERTAIN`; the row stays `PENDING` | debit kept, `CRITICAL` log |
+| user without a Pix key | whatever your `pix_destination` raises | untouched |
+
+!!! note "The row is written after the debit, before the e-mail"
+    `WalletService.withdraw` commits the debit before calling the provider —
+    that is what stops two concurrent withdrawals from spending the same
+    balance. `ManualPayoutProvider` writes the row right after and only then
+    sends the e-mail; if the write fails, it refuses and the debit comes
+    back. The only window without a row is the process dying between the
+    debit and the write: then the ledger's `WITHDRAW` line, whose
+    `reference_id` is the `correlation_id`, is what reconciles it.
+
+##### In the panel: attach the receipt and mark as paid
+
+`manual_payout_admin(ManualPayoutModel, upload_storage=...)` registers the
+table in the panel the way the job needs:
+
+- list filtered by `status` and searchable by `correlation_id`;
+- amount, user, key, type, `correlation_id`, status and who completed it are
+  read-only; no create, delete or import;
+- `receipt_key` is an upload that takes **PDF only**: the declared type must
+  be `application/pdf` **and** the bytes must start with `%PDF-` — a PNG
+  renamed `.pdf` is refused with a field error, and nothing is stored;
+- the row's page has the receipt's **Download** link;
+- the **Marcar como pago** ("mark as paid") action completes only `PENDING`
+  rows with a receipt, writing `completed_at` and `completed_by` (the
+  signed-in administrator); a row without a receipt stays `PENDING` and the
+  message lists its `correlation_id`;
+- a `COMPLETED` row never goes back, and its receipt can no longer be
+  replaced (the upload is refused with a field error).
+
+!!! info "Canceling a withdrawal from the panel does not exist"
+    Canceling a `PENDING` row would have to give the debit back through the
+    wallet, and the panel action does not do that. `CANCELED` only appears
+    when the e-mail failed and the withdrawal itself already gave the debit
+    back.
+
 ## Level 2 — signed simulation over the sandbox
 
 Mercado Pago's signature is an HMAC-SHA256 over `data.id`, `x-request-id`
@@ -501,6 +897,11 @@ Pago calls the route with `data.id` equal to the order id.
 - `FakeMercadoPagoOrdersAPI` plus the real adapter test payment, refund,
   cancellation and expiry with no network; `tempest mercado-pago fake-api`
   and `simulate-webhook` do the same with the service running.
+- `make_mercado_pago_router` mounts the webhook route; with `simulate=True`
+  (`development`/`test` only), the front end pays and refunds through the
+  `/dev/mercado-pago/...` routes, which deliver the webhook to the real
+  route; with `withdraw=`, a withdrawal empties the wallet and becomes a
+  manual Pix the administrator completes in the panel, with the PDF receipt.
 - `sign_manifest` produces a notification your route accepts: test the whole
   path without a public URL.
 - A wrong signature is `401` before any call; an unknown id is `200` with no
