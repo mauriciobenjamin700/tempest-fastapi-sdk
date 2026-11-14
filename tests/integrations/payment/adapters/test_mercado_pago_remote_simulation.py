@@ -357,6 +357,101 @@ class TestRemoteSimulationClient:
             await remote.find_order("nao-existe")
 
 
+HTML_PAGE: str = "<html><body>502 Bad Gateway</body></html>"
+"""What a proxy or an unrelated service answers in place of the fake-api."""
+
+WRONG_URL: str = "http://not-the-fake-api:8090"
+"""A ``simulation_url`` that reaches something other than the fake-api."""
+
+
+def _answering(status_code: int, content_type: str, body: str) -> httpx.AsyncClient:
+    """Build a client whose every request gets the same canned answer.
+
+    Args:
+        status_code (int): The status of the answer.
+        content_type (str): Its ``content-type``.
+        body (str): Its body.
+
+    Returns:
+        httpx.AsyncClient: The client, over an :class:`httpx.MockTransport`.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Answer any request with the canned response.
+
+        Args:
+            request (httpx.Request): The request, ignored.
+
+        Returns:
+            httpx.Response: The canned answer.
+        """
+        return httpx.Response(
+            status_code, headers={"content-type": content_type}, text=body
+        )
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+class TestNonJsonAnswer:
+    """A ``simulation_url`` that answers ``200`` with HTML is a bad gateway."""
+
+    async def _call(
+        self, remote: httpx.AsyncClient
+    ) -> tuple[httpx.Response, httpx.Response, httpx.Response]:
+        """Hit the list, lookup and transition routes through ``remote``.
+
+        Args:
+            remote (httpx.AsyncClient): The client the router sends with.
+
+        Returns:
+            tuple[httpx.Response, httpx.Response, httpx.Response]: The
+            listing, the lookup and the transition answers.
+        """
+        app, _ = _service(
+            _settings(WRONG_URL), _Inbox(), simulation_url=WRONG_URL, client=remote
+        )
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://service"
+        ) as client:
+            listed = await client.get("/dev/mercado-pago/orders")
+            found = await client.get("/dev/mercado-pago/orders/ORDX")
+            moved = await client.post("/dev/mercado-pago/orders/ORDX/pay")
+        return listed, found, moved
+
+    async def test_html_body_is_502_naming_the_simulation_url(self) -> None:
+        async with _answering(200, "text/html", HTML_PAGE) as remote:
+            answers = await self._call(remote)
+        assert [answer.status_code for answer in answers] == [502, 502, 502]
+        for answer in answers:
+            assert WRONG_URL in answer.json()["detail"]
+            assert "not JSON" in answer.json()["detail"]
+
+    async def test_html_conflict_is_still_409(self) -> None:
+        async with _answering(409, "text/html", HTML_PAGE) as remote:
+            _, _, moved = await self._call(remote)
+        assert moved.status_code == 409
+        assert moved.json()["detail"] == HTML_PAGE
+
+    async def test_json_without_the_fake_api_keys_is_502(self) -> None:
+        async with _answering(200, "application/json", "{}") as remote:
+            listed, _, moved = await self._call(remote)
+        assert [listed.status_code, moved.status_code] == [502, 502]
+        assert "without 'orders'" in listed.json()["detail"]
+        assert "without 'order'" in moved.json()["detail"]
+        assert WRONG_URL in moved.json()["detail"]
+
+    async def test_client_raises_decoding_error(self) -> None:
+        async with _answering(200, "text/html", HTML_PAGE) as remote:
+            simulation = RemoteMercadoPagoSimulation(WRONG_URL, client=remote)
+            with pytest.raises(httpx.DecodingError, match="not JSON"):
+                await simulation.find_order("ORDX")
+            with pytest.raises(httpx.DecodingError, match="not JSON"):
+                await simulation.apply("ORDX", "pay")
+            with pytest.raises(httpx.DecodingError, match="not JSON"):
+                await simulation.list_orders()
+
+
 class TestRouterArguments:
     """``simulation_url`` and ``simulation_client`` combinations."""
 

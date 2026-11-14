@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `RemoteMercadoPagoSimulation` (`make_mercado_pago_router(simulate=True,
+  simulation_url=...)`): um `simulation_url` que responde `200` com corpo que
+  não é JSON (proxy, página de erro de load balancer, outro serviço na porta)
+  agora vira `httpx.DecodingError`, e as rotas de simulação respondem `502`
+  com mensagem que nomeia a URL — como quando o `fake-api` está fora do ar.
+  Antes, o `JSONDecodeError` (subclasse de `ValueError`) virava `409` na
+  transição e `500` na listagem e na busca. Um JSON sem as chaves do
+  `fake-api` (`orders`, `order`, `action`) também responde `502`, em vez de
+  `500` na listagem e `404` na transição. Um `409` de verdade continua `409`
+  (#773).
+
 ## [0.361.0] — 2026-11-14
 
 ### Added
