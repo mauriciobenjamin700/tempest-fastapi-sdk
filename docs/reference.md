@@ -47,6 +47,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.site.AdminSite
 ::: tempest_fastapi_sdk.admin.config.AdminModel
 ::: tempest_fastapi_sdk.admin.config.ChoiceSource
+::: tempest_fastapi_sdk.admin.config.EditValidator
 ::: tempest_fastapi_sdk.admin.config.Inline
 ::: tempest_fastapi_sdk.admin.config.Lens
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum
@@ -67,6 +68,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.actions.AdminSecret
 ::: tempest_fastapi_sdk.admin.actions.AdminCreateHandler
 ::: tempest_fastapi_sdk.admin.actions.CreateHandlerFunc
+::: tempest_fastapi_sdk.admin.manual_payout.manual_payout_admin
+::: tempest_fastapi_sdk.admin.manual_payout.make_mark_paid_action
+::: tempest_fastapi_sdk.admin.manual_payout.MARK_PAID_ACTION
+::: tempest_fastapi_sdk.admin.manual_payout.RECEIPT_CONTENT_TYPES
+::: tempest_fastapi_sdk.admin.manual_payout.STATUS_LABELS
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router
@@ -887,6 +893,17 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.MercadoPagoCardProvider
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.MercadoPagoOrderDelivery
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago.make_mercado_pago_webhook_delivery_dependency
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_router.make_mercado_pago_router
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_router.MercadoPagoWithdrawConfig
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_router.MercadoPagoWebhookAckSchema
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_router.MercadoPagoDeliveryHandler
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_router.DEFAULT_WEBHOOK_PATH
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_router.DEFAULT_WITHDRAW_PATH
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.mercado_pago_provider_for
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.simulation_api_for
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.MercadoPagoSimulationResultSchema
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.MercadoPagoSimulatedDeliverySchema
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.SIMULATION_TAG
 
 ## WhatsApp (zap-api)
 
@@ -1529,6 +1546,12 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.testing.fakes.geo.FakeGeocodingBackend
 ::: tempest_fastapi_sdk.testing.fakes.geo.FakeRoutingBackend
 ::: tempest_fastapi_sdk.testing.fakes.search.FakeWebSearchBackend
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.orders_api.FakeMercadoPagoOrdersAPI
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.MercadoPagoDelivery
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.build_mercado_pago_delivery
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.order_action
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.FAKE_WEBHOOK_SECRET
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.server.make_fake_orders_app
 
 ---
 

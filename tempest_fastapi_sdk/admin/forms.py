@@ -69,6 +69,8 @@ class FormField:
             ``<input type="datetime-local">`` carries no offset and the
             operator has no other way to know which zone the value
             means.
+        accept (str | None): For a ``file`` widget, the ``accept=`` value
+            (comma-joined ``AdminModel.upload_accept`` types).
     """
 
     name: str
@@ -83,6 +85,7 @@ class FormField:
     timezone: str | None = None
     autocomplete_url: str | None = None
     display_label: str = ""
+    accept: str | None = None
 
 
 def _password_label(name: str) -> str:
@@ -425,6 +428,11 @@ def build_form_fields(
                 options=options,
                 error=errors.get(name),
                 timezone=(admin.display_timezone if widget == "datetime" else None),
+                accept=(
+                    ",".join(admin.upload_accept[name])
+                    if is_upload and name in admin.upload_accept
+                    else None
+                ),
             )
         )
     return fields

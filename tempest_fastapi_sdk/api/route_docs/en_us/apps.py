@@ -48,6 +48,11 @@ APPS_ROUTES: dict[str, RouteDoc] = {
     "hostbridge.logoff": RouteDoc(),
     "htmx.htmx_js": RouteDoc(),
     "htmx.confirm_js": RouteDoc(),
+    "mercado_pago.receive_mercado_pago_webhook": RouteDoc(),
+    "mercado_pago.list_simulated_orders": RouteDoc(),
+    "mercado_pago.get_simulated_order": RouteDoc(),
+    "mercado_pago.simulate_order_transition": RouteDoc(),
+    "mercado_pago.withdraw_wallet": RouteDoc(),
     "revenuecat.receive_revenuecat_webhook": RouteDoc(
         summary="Receive a RevenueCat webhook",
     ),

@@ -47,6 +47,11 @@ from tempest_fastapi_sdk.genai import make_ai_chat_router, make_genai_router
 from tempest_fastapi_sdk.genai.audio import make_voice_router
 from tempest_fastapi_sdk.hostbridge import make_hostbridge_router
 from tempest_fastapi_sdk.integrations.messaging.zap import make_zap_webhook_router
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoWithdrawConfig,
+    make_mercado_pago_router,
+    mercado_pago_provider_for,
+)
 from tempest_fastapi_sdk.integrations.subscriptions.revenuecat import (
     make_revenuecat_webhook_router,
 )
@@ -278,6 +283,20 @@ ROUTER_BUILDERS: dict[str, Callable[[dict[str, Any]], APIRouter]] = {
         **kw,
     ),
     "htmx": lambda kw: make_htmx_router(**kw),
+    "mercado_pago": lambda kw: make_mercado_pago_router(
+        mercado_pago_provider_for(simulate=True),
+        on_delivery=_anything,
+        secret="secret",
+        simulate=True,
+        withdraw=MercadoPagoWithdrawConfig(
+            service_factory=_anything,
+            session_factory=_session_factory,
+            current_user_id=_current_user,
+            pix_destination=_current_user,
+            payout=SimpleNamespace(),  # type: ignore[arg-type]
+        ),
+        **kw,
+    ),
     "prediction": lambda kw: make_prediction_router(
         SimpleNamespace(),  # type: ignore[arg-type]
         source=SimpleNamespace(),  # type: ignore[arg-type]

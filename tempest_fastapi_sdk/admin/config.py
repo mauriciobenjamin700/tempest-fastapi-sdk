@@ -42,6 +42,9 @@ OrderRef = InstrumentedAttribute[Any] | UnaryExpression[Any] | str
 direction-wrapped column (``desc(Model.created_at)``), or a Django-style
 string (``"created_at"`` / ``"-created_at"``)."""
 
+EditValidator = Callable[[Any, Mapping[str, Any]], Mapping[str, str]]
+"""``(row, posted_form) -> {field: message}``; empty accepts the edit."""
+
 ChoiceSource = type[Enum] | Sequence[str | tuple[str, str]]
 """The fixed values of a ``choices`` field: an ``Enum`` class, or a sequence
 of strings or ``(value, label)`` pairs."""
@@ -259,6 +262,11 @@ class AdminModel(Generic[ModelT]):
             endpoint. Default ``True``.
         can_delete (bool): Whether the admin exposes the delete action.
             Default ``True``.
+        can_toggle_active (bool): Whether the list view offers the
+            built-in "Activate" / "Deactivate" bulk actions (they also need
+            ``can_edit``). ``False`` hides them and refuses a forged
+            submission — for tables where ``is_active`` carries no meaning,
+            such as a payout ledger. Default ``True``.
         can_import (bool): Whether the admin exposes a CSV import page
             (``GET/POST {prefix}/m/{slug}/import``) that bulk-creates
             rows from an uploaded CSV. Default ``False`` (opt-in); also
@@ -275,6 +283,18 @@ class AdminModel(Generic[ModelT]):
         upload_storage (UploadStorage | None): Backend used to persist
             uploaded files (``LocalUploadStorage`` / ``MinIOUploadStorage``).
             Required when ``upload_fields`` is non-empty.
+        upload_accept (Mapping[FieldRef, Sequence[str]] | None): MIME types
+            an upload field takes (``{"receipt_key": ["application/pdf"]}``).
+            The input gets ``accept=``, and a submission is refused with a
+            field error unless the declared type is listed **and**, for a
+            type :func:`~tempest_fastapi_sdk.sniff_mime` recognises, the
+            leading bytes are that type — a PNG renamed ``.pdf`` is refused.
+            A field left out accepts anything, as before.
+        validate_edit (EditValidator | None): Called on an edit submission
+            with the stored row and the posted form, before any upload is
+            written; a non-empty ``{field: message}`` refuses the save with
+            those errors. For a rule that depends on the row's state, such
+            as a receipt that cannot change once the row is final.
         audit_model (type[BaseAuditLogModel] | None): When set, the detail
             view renders a per-row change timeline read from this audit
             table (matched on ``entity`` = the model name and
@@ -290,8 +310,11 @@ class AdminModel(Generic[ModelT]):
             ``Enum`` class (its values, labelled from the member names), a
             sequence of strings, or of ``(value, label)`` pairs. The form
             shows the select and the submission is refused with a field
-            error when the value is not in the list. A real enum column
-            (``Mapped[MyEnum]``) is a select already and needs no entry.
+            error when the value is not in the list. A column that is also
+            in ``list_filter`` gets the same select (with the same labels)
+            as its list filter instead of a free-text box. A real enum
+            column (``Mapped[MyEnum]``) is a select already and needs no
+            entry.
         autocomplete_fields (Sequence[FieldRef]): Foreign-key columns
             rendered as a typed search box (HTMX) instead of a
             ``<select>`` of every related row — removing the 1000-row cap
@@ -389,6 +412,7 @@ class AdminModel(Generic[ModelT]):
         can_edit: bool = True,
         can_delete: bool = True,
         can_import: bool = False,
+        can_toggle_active: bool = True,
         actions: Sequence[ActionHandler] = (),
         upload_fields: Sequence[FieldRef] = (),
         upload_storage: UploadStorage | None = None,
@@ -402,6 +426,8 @@ class AdminModel(Generic[ModelT]):
         exclude_fields: Sequence[FieldRef] = (),
         create_handler: AdminCreateHandler | None = None,
         choices: Mapping[FieldRef, ChoiceSource] | None = None,
+        upload_accept: Mapping[FieldRef, Sequence[str]] | None = None,
+        validate_edit: EditValidator | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -435,6 +461,7 @@ class AdminModel(Generic[ModelT]):
         self.can_edit: bool = can_edit
         self.can_delete: bool = can_delete
         self.can_import: bool = can_import
+        self.can_toggle_active: bool = can_toggle_active
         self._actions: dict[str, AdminAction] = {}
         for func in actions:
             action = resolve_admin_action(func)
@@ -450,6 +477,16 @@ class AdminModel(Generic[ModelT]):
                 "AdminModel `upload_fields` requires an `upload_storage` "
                 "(e.g. LocalUploadStorage / MinIOUploadStorage).",
             )
+        self.upload_accept: dict[str, list[str]] = {
+            _field_key(ref): list(types) for ref, types in (upload_accept or {}).items()
+        }
+        stray = sorted(set(self.upload_accept) - set(self.upload_fields))
+        if stray:
+            raise ValueError(
+                f"AdminModel `upload_accept` names fields that are not "
+                f"`upload_fields`: {', '.join(stray)}",
+            )
+        self.validate_edit: EditValidator | None = validate_edit
         if audit_model is not None and (
             not isinstance(audit_model, type)
             or not issubclass(audit_model, BaseAuditLogModel)
@@ -1009,6 +1046,7 @@ def _pluralize_name(name: str) -> str:
 __all__: list[str] = [
     "AdminModel",
     "ChoiceSource",
+    "EditValidator",
     "FieldRef",
     "Inline",
     "Lens",

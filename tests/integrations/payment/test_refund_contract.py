@@ -28,7 +28,6 @@ import contextlib
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -42,6 +41,7 @@ from tempest_fastapi_sdk.exceptions import (
 from tempest_fastapi_sdk.integrations.payment import (
     PaymentStatusEnum,
     PixChargeRequest,
+    PixPayer,
     PixRefund,
     PixRefundProvider,
     PixRefundStatusEnum,
@@ -52,135 +52,18 @@ from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
 from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
     OpenPixPixProvider,
 )
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     OpenPixClient,
     OpenPixEnvironmentEnum,
 )
-from tempest_fastapi_sdk.testing.fakes import FakePixProvider
+from tempest_fastapi_sdk.testing.fakes import (
+    FakeMercadoPagoOrdersAPI,
+    FakePixProvider,
+)
 from tempest_fastapi_sdk.utils.retry import RetryPolicy
 
 TOTAL_CENTS: int = 1990
 """Every harness starts from one paid charge of R$ 19,90."""
-
-
-def _reais(cents: int) -> str:
-    """Write cents the way Mercado Pago writes an amount.
-
-    Args:
-        cents (int): The amount in cents.
-
-    Returns:
-        str: A two-decimal string, ``"19.90"``.
-    """
-    return f"{Decimal(cents) / 100:.2f}"
-
-
-class MercadoPagoSimulator:
-    """A paid Pix order behind ``/v1/orders``, with keyed refunds.
-
-    Modelled on what was measured (``vendor/mercadopago-evidence.md`` 9.6):
-    the refund answer lists every refund of the order, oldest first; the
-    same ``X-Idempotency-Key`` with the same body answers the first answer
-    again, and with another body ``409 idempotency_key_already_used`` —
-    measured on the create, assumed here for the refund. The refusal of a
-    refund above the balance is **not** known; the simulator answers ``400
-    invalid_refund_amount`` and the adapter is written not to depend on
-    the code.
-
-    Attributes:
-        order_id (str): The order's id.
-        refunds (list[dict[str, Any]]): The refund entries applied.
-        lose_next_answer (bool): Apply the next refund, then time out.
-    """
-
-    def __init__(self) -> None:
-        """Start with one paid order and no refund."""
-        self.order_id: str = "ORDTST00000000000000000000000001"
-        self.refunds: list[dict[str, Any]] = []
-        self.lose_next_answer: bool = False
-        self._replies: dict[str, tuple[bytes, dict[str, Any]]] = {}
-
-    def _order(self) -> dict[str, Any]:
-        """Build the order as ``GET`` answers it.
-
-        Returns:
-            dict[str, Any]: The order.
-        """
-        refunded = sum(int(Decimal(r["amount"]) * 100) for r in self.refunds)
-        done = refunded == TOTAL_CENTS
-        return {
-            "id": self.order_id,
-            "external_reference": "order-1",
-            "total_amount": _reais(TOTAL_CENTS),
-            "status": "refunded" if done else "processed",
-            "status_detail": "refunded" if done else "accredited",
-            "transactions": {
-                "payments": [
-                    {
-                        "id": "PAY00000000000000000000000002",
-                        "amount": _reais(TOTAL_CENTS),
-                        "payment_method": {"id": "pix", "type": "bank_transfer"},
-                    }
-                ],
-                "refunds": list(self.refunds),
-            },
-        }
-
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        """Answer one request.
-
-        Args:
-            request (httpx.Request): The request.
-
-        Returns:
-            httpx.Response: The answer.
-
-        Raises:
-            httpx.ReadTimeout: After applying a refund, when asked to lose
-                the answer.
-        """
-        if request.method == "GET":
-            return httpx.Response(200, json=self._order())
-        key = request.headers["X-Idempotency-Key"]
-        if key in self._replies:
-            body, reply = self._replies[key]
-            if body != request.content:
-                return httpx.Response(
-                    409, json={"errors": [{"code": "idempotency_key_already_used"}]}
-                )
-            return httpx.Response(201, json=reply)
-        refunded = sum(int(Decimal(r["amount"]) * 100) for r in self.refunds)
-        left = TOTAL_CENTS - refunded
-        if request.content:
-            amount = int(
-                Decimal(json.loads(request.content)["transactions"][0]["amount"]) * 100
-            )
-        else:
-            amount = left
-        if amount <= 0 or amount > left:
-            return httpx.Response(
-                400, json={"errors": [{"code": "invalid_refund_amount"}]}
-            )
-        self.refunds.append(
-            {
-                "id": f"REF{len(self.refunds) + 1:026d}",
-                "transaction_id": "PAY00000000000000000000000002",
-                "amount": _reais(amount),
-                "status": "processed",
-            }
-        )
-        order = self._order()
-        reply = {
-            "id": self.order_id,
-            "status": order["status"],
-            "transactions": {"refunds": list(self.refunds)},
-        }
-        self._replies[key] = (request.content, reply)
-        if self.lose_next_answer:
-            self.lose_next_answer = False
-            raise httpx.ReadTimeout("answer lost", request=request)
-        return httpx.Response(201, json=reply)
 
 
 class OpenPixSimulator:
@@ -318,24 +201,37 @@ async def _fake() -> Harness:
 
 
 async def _mercado_pago() -> Harness:
-    """Build the Mercado Pago adapter over its simulator.
+    """Build the Mercado Pago adapter over :class:`FakeMercadoPagoOrdersAPI`.
+
+    The simulator replays a refund under a used ``X-Idempotency-Key`` and
+    answers ``409 idempotency_key_already_used`` for another body — measured
+    on the create, assumed for the refund. Its refusal of a refund above the
+    balance (``400 invalid_refund_amount``) is **not** known; the adapter is
+    written not to depend on the code.
 
     Returns:
         Harness: The harness.
     """
-    simulator = MercadoPagoSimulator()
-
-    def lose() -> None:
-        """Lose the next refund's answer."""
-        simulator.lose_next_answer = True
-
+    api = FakeMercadoPagoOrdersAPI()
+    provider = MercadoPagoPixProvider(
+        api.http_client(retry_policy=RetryPolicy(max_attempts=1)),
+        action_retry_delays=(),
+    )
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=TOTAL_CENTS,
+            reference="order-1",
+            payer=PixPayer(email="comprador@example.com"),
+        )
+    )
+    api.pay(charge.provider_charge_id)
     return Harness(
-        provider=MercadoPagoPixProvider(
-            _no_retry_http(DEFAULT_BASE_URL, simulator), action_retry_delays=()
+        provider=provider,
+        charge_id=charge.provider_charge_id,
+        applied=lambda: len(
+            api.order(charge.provider_charge_id)["transactions"].get("refunds", [])
         ),
-        charge_id=simulator.order_id,
-        applied=lambda: len(simulator.refunds),
-        lose_next_answer=lose,
+        lose_next_answer=api.lose_next_answer,
     )
 
 

@@ -39,6 +39,7 @@ from tempest_fastapi_sdk.cli.layer_lint import (
     run_lint_layers,
     run_lint_layers_with_options,
 )
+from tempest_fastapi_sdk.cli.mercado_pago import mercado_pago_app
 from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.openapi_export import openapi_export_command
 from tempest_fastapi_sdk.cli.pdf import pdf_app
@@ -190,6 +191,7 @@ app.add_typer(storage_app, name="storage")
 app.add_typer(queue_app, name="queue")
 app.add_typer(tasks_app, name="tasks")
 app.add_typer(integrations_app, name="integrations")
+app.add_typer(mercado_pago_app, name="mercado-pago")
 app.add_typer(agents_app, name="agents")
 app.add_typer(model_app, name="model")
 app.add_typer(pdf_app, name="pdf")

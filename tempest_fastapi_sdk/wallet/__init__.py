@@ -21,6 +21,27 @@ here once:
 """
 
 from tempest_fastapi_sdk.wallet.ledger import WalletLedger as WalletLedger
+from tempest_fastapi_sdk.wallet.manual_payout import (
+    MANUAL_PAYOUT_PROVIDER as MANUAL_PAYOUT_PROVIDER,
+)
+from tempest_fastapi_sdk.wallet.manual_payout import (
+    MANUAL_REVIEW_STATUS as MANUAL_REVIEW_STATUS,
+)
+from tempest_fastapi_sdk.wallet.manual_payout import AdminMailer as AdminMailer
+from tempest_fastapi_sdk.wallet.manual_payout import (
+    ManualPayoutProvider as ManualPayoutProvider,
+)
+from tempest_fastapi_sdk.wallet.manual_payout import format_brl as format_brl
+from tempest_fastapi_sdk.wallet.manual_payout import mask_pix_key as mask_pix_key
+from tempest_fastapi_sdk.wallet.manual_payout_models import (
+    BaseManualPayoutModel as BaseManualPayoutModel,
+)
+from tempest_fastapi_sdk.wallet.manual_payout_models import (
+    ManualPayoutStatusEnum as ManualPayoutStatusEnum,
+)
+from tempest_fastapi_sdk.wallet.manual_payout_models import (
+    make_manual_payout_model as make_manual_payout_model,
+)
 from tempest_fastapi_sdk.wallet.models import (
     BaseWalletEntryModel as BaseWalletEntryModel,
 )
@@ -71,9 +92,15 @@ from tempest_fastapi_sdk.wallet.service import claim_once as claim_once
 
 __all__: list[str] = [
     "BASIS_POINTS_PER_UNIT",
+    "MANUAL_PAYOUT_PROVIDER",
+    "MANUAL_REVIEW_STATUS",
     "OPENPIX_FEE_TIERS",
     "PAYOUT_REFERENCE_TYPE",
+    "AdminMailer",
+    "BaseManualPayoutModel",
     "BaseWalletEntryModel",
+    "ManualPayoutProvider",
+    "ManualPayoutStatusEnum",
     "NetSplit",
     "OpenPixFeeTiers",
     "PixDestinationSchema",
@@ -86,8 +113,11 @@ __all__: list[str] = [
     "WithdrawRequestSchema",
     "WithdrawalSchema",
     "claim_once",
+    "format_brl",
+    "make_manual_payout_model",
     "make_wallet_entry_model",
     "make_wallet_router",
+    "mask_pix_key",
     "openpix_fee_cents",
     "split_net",
 ]

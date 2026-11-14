@@ -24,6 +24,7 @@ from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
 from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
 from tempest_fastapi_sdk.admin.config import ChoiceSource as ChoiceSource
+from tempest_fastapi_sdk.admin.config import EditValidator as EditValidator
 from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
 from tempest_fastapi_sdk.admin.config import Inline as Inline
 from tempest_fastapi_sdk.admin.config import Lens as Lens
@@ -33,6 +34,21 @@ from tempest_fastapi_sdk.admin.dashboard import MetricPartition as MetricPartiti
 from tempest_fastapi_sdk.admin.dashboard import MetricTrend as MetricTrend
 from tempest_fastapi_sdk.admin.dashboard import MetricValue as MetricValue
 from tempest_fastapi_sdk.admin.discovery import discover_models as discover_models
+from tempest_fastapi_sdk.admin.manual_payout import (
+    MARK_PAID_ACTION as MARK_PAID_ACTION,
+)
+from tempest_fastapi_sdk.admin.manual_payout import (
+    RECEIPT_CONTENT_TYPES as RECEIPT_CONTENT_TYPES,
+)
+from tempest_fastapi_sdk.admin.manual_payout import (
+    STATUS_LABELS as STATUS_LABELS,
+)
+from tempest_fastapi_sdk.admin.manual_payout import (
+    make_mark_paid_action as make_mark_paid_action,
+)
+from tempest_fastapi_sdk.admin.manual_payout import (
+    manual_payout_admin as manual_payout_admin,
+)
 from tempest_fastapi_sdk.admin.metrics import MetricLevelEnum as MetricLevelEnum
 from tempest_fastapi_sdk.admin.metrics import MetricsArea as MetricsArea
 from tempest_fastapi_sdk.admin.metrics import MetricsProvider as MetricsProvider
@@ -121,6 +137,9 @@ __all__: list[str] = [
     "DEFAULT_STORAGE_MAX_TEXT_BYTES",
     "DEFAULT_STORAGE_MAX_UPLOAD_BYTES",
     "DEFAULT_STORAGE_PAGE_SIZE",
+    "MARK_PAID_ACTION",
+    "RECEIPT_CONTENT_TYPES",
+    "STATUS_LABELS",
     "STORAGE_KEY_MAX_BYTES",
     "STORAGE_SPOOL_BYTES",
     "STORAGE_STAT_CONCURRENCY",
@@ -146,6 +165,7 @@ __all__: list[str] = [
     "AdminTheme",
     "ChoiceSource",
     "CreateHandlerFunc",
+    "EditValidator",
     "FieldRef",
     "Inline",
     "Lens",
@@ -188,6 +208,8 @@ __all__: list[str] = [
     "discover_models",
     "guess_storage_content_type",
     "make_admin_router",
+    "make_mark_paid_action",
+    "manual_payout_admin",
     "normalize_storage_prefix",
     "storage_preview_for",
 ]

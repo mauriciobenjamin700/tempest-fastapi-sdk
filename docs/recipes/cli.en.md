@@ -1954,6 +1954,24 @@ The two providers the SDK ships no settings mixin for behave differently:
     error: stripe exposes no cheap authenticated read, so there is nothing the CLI can call without spending money or creating a record. Construct the client in your service.
     ```
 
+### Simulated Mercado Pago — `tempest mercado-pago`
+
+```bash
+tempest mercado-pago fake-api                # simulated Orders API on 127.0.0.1:8090
+tempest mercado-pago simulate-webhook --fake-api http://127.0.0.1:8090 \
+    --order-id ORDFAKE… --transition pay     # moves the order and delivers the signed notification
+```
+
+`fake-api` serves `FakeMercadoPagoOrdersAPI` (state in memory); the service
+points at it with `MERCADOPAGO_BASE_URL=http://127.0.0.1:8090`.
+`simulate-webhook` signs the notification with the secret read from
+`--secret-env` (default `MERCADOPAGO_WEBHOOK_SECRET`) or `--secret-file` —
+never from an argument —, posts it to the route (`--url`, default
+`http://127.0.0.1:8000/webhooks/mercado-pago`) and prints the response's
+status and body. It exits with `1` when the route does not answer 2xx and
+with `2` on a usage error. Step by step, with measured output:
+[Mercado Pago: testing webhooks »](mercado-pago-webhooks.md#manual-testing-the-service-running-mercado-pago-simulated).
+
 ### Agents — `tempest agents`
 
 ```bash

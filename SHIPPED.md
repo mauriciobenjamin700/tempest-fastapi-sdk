@@ -4499,3 +4499,43 @@ fallback novo: tirado o "agora mesmo", a regra de cidades em ordem que já
 existia (`_fill_without_markers`, só cidades na frase) resolve. Testes:
 `tests/geo/test_trip_intent.py` (4 linhas na tabela, agora 65, e
 `NOW_CASES`). Receita: "Sair agora" em `docs/recipes/fuzzy-matching.md`.
+
+## Mercado Pago simulado, offline (2026-11-14)
+
+`testing/fakes/mercado_pago/`: `FakeMercadoPagoOrdersAPI` (`orders_api.py`,
+handler do `httpx` com estado para `/v1/orders` — create idempotente, read,
+cancel, capture, refund — e transições `pay`/`expire`/`fail`/... que devolvem
+a entrega assinada), `build_mercado_pago_delivery` / `MercadoPagoDelivery`
+(`delivery.py`, assina por `sign_manifest`, sem segunda cópia da regra) e
+`make_fake_orders_app` (`server.py`, o mesmo handler sobre HTTP com rotas de
+controle em `/_fake`). O adapter real roda sobre o fake sem mudança: ele já
+recebia `HTTPClient`, e `HTTPClient` recebe `transport`. Para o teste manual,
+`MERCADOPAGO_BASE_URL` no `MercadoPagoSettings` e o CLI
+`tempest mercado-pago fake-api` / `simulate-webhook` (`cli/mercado_pago.py`).
+Os simuladores de `test_contract.py` e `test_refund_contract.py` foram
+promovidos a este fake. Testes: `tests/testing/test_fake_mercado_pago.py`,
+`tests/integrations/payment/adapters/test_mercado_pago_simulated_flow.py`,
+`tests/cli/test_mercado_pago.py` (dois uvicorn reais no loopback),
+`tests/settings/test_mercado_pago_base_url.py`. Receita: nível 1 de
+`docs/recipes/mercado-pago-webhooks.md`.
+
+### A rota pronta, a simulação para o front e o saque manual (2026-11-14)
+
+`integrations/payment/adapters/mercado_pago_router.py`:
+`make_mercado_pago_router` (webhook sobre a dependência existente, rotas
+`/dev/mercado-pago/...` com `simulate=True`, saque com `withdraw=`) e
+`MercadoPagoWithdrawConfig`. `mercado_pago_simulation.py`:
+`mercado_pago_provider_for`, `simulation_api_for`, o gate de `ENV`
+(`ensure_simulation_allowed`) e as rotas de simulação, que entregam o webhook
+pela rota do próprio app (`httpx.ASGITransport`). `wallet/manual_payout.py`:
+`ManualPayoutProvider` (e-mail ao administrador, chave mascarada no log,
+`format_brl`, `mask_pix_key`); `wallet/manual_payout_models.py`:
+`BaseManualPayoutModel`, `ManualPayoutStatusEnum`, `make_manual_payout_model`.
+`admin/manual_payout.py`: `manual_payout_admin` e a ação "Marcar como pago";
+no admin genérico, `upload_accept`, `validate_edit` e a rota de download de
+upload. `PayoutRequest.payee_id`. Testes:
+`tests/integrations/payment/adapters/test_mercado_pago_router.py`,
+`tests/wallet/test_manual_payout.py`, `tests/admin/test_manual_payout_admin.py`.
+Receitas: `mercado-pago-webhooks` (rota pronta, front em desenvolvimento,
+saque manual), `admin` (`upload_accept`, `validate_edit`, preset), `wallet`
+(`ManualPayoutProvider`).

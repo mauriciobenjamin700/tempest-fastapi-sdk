@@ -485,6 +485,13 @@ site.register(
   the select is not the only barrier.
 - **A name that is not a column** (a typo) raises `ValueError` at
   construction, and so does an empty list.
+- **In the list filter**: a column that is also in `list_filter` gets the
+  same `<select>`, with the same labels, instead of a free-text box.
+
+!!! tip "No Activate / Deactivate"
+    On a table where `is_active` means nothing (a financial record, say),
+    `AdminModel(can_toggle_active=False)` drops both bulk actions from the
+    list and refuses a hand-built `action=deactivate` with `400`.
 
 !!! tip "Open vocabulary"
     If the application writes its own kinds into `kind`, join them with the
@@ -523,12 +530,67 @@ site.register(AdminModel(
 - The form becomes `multipart/form-data` automatically when `upload_fields` is set.
 - **Create**: a file is required only when the column is `NOT NULL` with no default.
 - **Edit**: no new file → keeps the current value (shows "Current: …"); a file → replaces it.
-- The column stores the storage **key** (`<slug>/<field>/<uuid>.<ext>`); use `upload_storage` (or `UploadUtils`) to serve/download it later.
+- The column stores the storage **key** (`<slug>/<field>/<uuid>.<ext>`); the record's page has a **Download** link for it.
 
 !!! warning "`upload_fields` requires `upload_storage`"
     Registering `upload_fields` without `upload_storage` raises
     `ValueError` at `AdminModel` construction — without storage there's
     nowhere to write the file.
+
+### One kind of file only (`upload_accept=`)
+
+`upload_accept` says which types an upload field takes. The input gets
+`accept=` (the browser's file picker already filters) and the server checks
+before writing: the declared type must be listed **and**, for a type
+`sniff_mime` recognises by its bytes (PDF, PNG, JPEG, GIF, BMP, WebP, HEIC),
+the file must start as that type. A PNG renamed `.pdf` is refused with a
+field error, and nothing reaches the storage.
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import AdminModel, BaseModel
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+
+
+class InvoiceModel(BaseModel):
+    """An invoice with its PDF."""
+
+    __tablename__ = "invoices"
+
+    pdf_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+invoices: AdminModel[InvoiceModel] = AdminModel(
+    InvoiceModel,
+    upload_fields=["pdf_key"],
+    upload_storage=LocalUploadStorage("media/"),
+    upload_accept={"pdf_key": ["application/pdf"]},
+)
+```
+
+On the record's page, each filled upload field shows a **Download** link: a
+storage that mints temporary URLs (`MinIOUploadStorage`) redirects to one;
+`LocalUploadStorage` serves the file as an attachment, with
+`X-Content-Type-Options: nosniff`.
+
+### A rule that depends on the row (`validate_edit=`)
+
+`validate_edit(row, form)` runs on an edit submission, before any upload is
+written. Returning `{"field": "message"}` refuses the edit with those errors
+— the place for a rule like "a finished record's receipt does not change".
+The preset below uses exactly that.
+
+### Preset: manual payout (`manual_payout_admin`)
+
+`manual_payout_admin(ManualPayoutModel, upload_storage=...)` returns the
+`AdminModel` of the table of withdrawals paid by hand
+(`make_manual_payout_model`): read-only amounts, PDF-only receipt, download
+link and the **Marcar como pago** ("mark as paid") action, which completes
+only a `PENDING` row with a receipt. The whole flow — the withdrawal that
+writes the row and e-mails the administrator — is in
+[Mercado Pago: testing webhooks » Manual withdrawal](mercado-pago-webhooks.md#manual-withdrawal).
 
 !!! tip "Sidebar + burger navigation"
     Every authenticated page has a persistent **sidebar**: Dashboard, one
