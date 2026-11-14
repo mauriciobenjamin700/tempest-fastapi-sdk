@@ -31,8 +31,9 @@ class ManualPayoutStatusEnum(BaseStrEnum):
 
     Attributes:
         PENDING: Debited and e-mailed; nobody has marked it paid yet.
-        COMPLETED: An administrator attached the receipt and marked it paid.
-            Final.
+        COMPLETED: An administrator marked it paid (the admin panel requires
+            the receipt first; the service does so only with
+            ``require_receipt=True``). Final.
         CANCELED: The e-mail to the administrators failed, so the payout was
             refused and the wallet debit given back. Final.
         REJECTED: An administrator refused the payout

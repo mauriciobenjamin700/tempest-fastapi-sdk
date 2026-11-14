@@ -2,6 +2,44 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.361.0 — saque manual ganha quatro colunas
+
+O `BaseManualPayoutModel` (e o `make_manual_payout_model`) ganhou quatro colunas anuláveis, usadas pelo `ManualPayoutService` para registrar o pagamento e a recusa. Uma tabela criada na 0.360.0 não as tem, e qualquer `select` do modelo novo falha — em SQLite com `OperationalError: no such column: manual_payouts.end_to_end_id`.
+
+| Coluna | Tipo | Para quê |
+| --- | --- | --- |
+| `end_to_end_id` | `String(64)`, anulável | id fim a fim do Pix, gravado por `mark_paid(..., end_to_end_id=...)` |
+| `rejection_reason` | `String(512)`, anulável | motivo da recusa |
+| `rejected_at` | `UtcDateTime`, anulável | quando foi recusado |
+| `rejected_by` | `String(128)`, anulável | quem recusou |
+
+O status `REJECTED` (`"rejected"`) cabe no `String(16)` que já existe, então não pede migration.
+
+Gere a revisão com `alembic revision --autogenerate` ou escreva à mão:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+from tempest_fastapi_sdk.db import UtcDateTime
+
+
+def upgrade() -> None:
+    """Add the 0.361.0 manual payout columns."""
+    op.add_column("manual_payouts", sa.Column("end_to_end_id", sa.String(64), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejection_reason", sa.String(512), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejected_at", UtcDateTime(), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejected_by", sa.String(128), nullable=True))
+
+
+def downgrade() -> None:
+    """Drop the 0.361.0 manual payout columns."""
+    for column in ("rejected_by", "rejected_at", "rejection_reason", "end_to_end_id"):
+        op.drop_column("manual_payouts", column)
+```
+
+Troque `"manual_payouts"` se você passou outro `tablename=` ao `make_manual_payout_model`.
+
 ## 0.353.0 — `google_kwargs()` do Gemini vira `gemini_kwargs()`
 
 `HostedGenAISettings.google_kwargs()` (Gemini) e `OAuthSettings.google_kwargs(prefix=...)` (login Google) tinham o mesmo nome. Um `Settings` que compunha os dois ficava com o primeiro da MRO, e o login Google quebrava com `TypeError` no `prefix`. O do Gemini mudou de nome, sem alias (um alias manteria o conflito).

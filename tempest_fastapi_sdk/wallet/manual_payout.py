@@ -137,8 +137,12 @@ class ManualPayoutProvider:
 
     ``hooks`` (:class:`~tempest_fastapi_sdk.wallet.ManualPayoutHooks`) runs
     ``on_requested`` in the transaction that writes the row, and
-    ``on_canceled`` in the one that cancels it; a hook that raises counts as
-    a row that cannot be written. Settling the row afterwards is
+    ``on_canceled`` in the one that cancels it. An ``on_requested`` that
+    raises counts as a row that cannot be written (the payout is refused and
+    the debit returned); an ``on_canceled`` that raises leaves the row
+    ``PENDING`` and the debit held, and the withdrawal answers
+    :class:`~tempest_fastapi_sdk.exceptions.PayoutUncertainException`.
+    Settling the row afterwards is
     :class:`~tempest_fastapi_sdk.wallet.ManualPayoutService`'s job.
 
     Attributes:

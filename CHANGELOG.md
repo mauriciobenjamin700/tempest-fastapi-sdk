@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.361.0] — 2026-11-14
 
 ### Added
 
@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   valor postado para ele é ignorado no salvamento. `AdminModel` ganhou
   `readonly_field_names_for(row)` e `editable_field_names(instance=...)`. O
   preset de saque manual usa isso para tirar `rejection_reason` do formulário
-  de linha finalizada (antes o campo aparecia e o salvamento dava `400`).
+  de linha finalizada.
 - Simulação do Mercado Pago compartilhada entre a API e o worker (#767):
   `make_mercado_pago_router(simulate=True, simulation_url="http://mp-fake:8090")`
   monta as rotas `/dev/mercado-pago/orders/...` sobre um
@@ -72,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BaseManualPayoutModel` ganhou as colunas anuláveis `end_to_end_id`,
   `rejection_reason`, `rejected_at` e `rejected_by`, e
   `ManualPayoutStatusEnum` ganhou `REJECTED` (`"rejected"`). **Tabela criada
-  na 0.360.0 precisa de migration** que adicione as quatro colunas.
+  na 0.360.0 precisa de migration** que adicione as quatro colunas — passo a passo no guia de migração.
 
 ### Fixed
 

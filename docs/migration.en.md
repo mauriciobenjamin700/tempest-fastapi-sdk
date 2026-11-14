@@ -2,6 +2,44 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.361.0 — manual payout gains four columns
+
+`BaseManualPayoutModel` (and `make_manual_payout_model`) gained four nullable columns, which `ManualPayoutService` uses to record the payment and the refusal. A table created on 0.360.0 lacks them, and any `select` of the new model fails — on SQLite with `OperationalError: no such column: manual_payouts.end_to_end_id`.
+
+| Column | Type | What for |
+| --- | --- | --- |
+| `end_to_end_id` | `String(64)`, nullable | Pix end-to-end id, written by `mark_paid(..., end_to_end_id=...)` |
+| `rejection_reason` | `String(512)`, nullable | why it was refused |
+| `rejected_at` | `UtcDateTime`, nullable | when it was refused |
+| `rejected_by` | `String(128)`, nullable | who refused it |
+
+The `REJECTED` status (`"rejected"`) fits the existing `String(16)`, so it needs no migration.
+
+Generate the revision with `alembic revision --autogenerate` or write it by hand:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+from tempest_fastapi_sdk.db import UtcDateTime
+
+
+def upgrade() -> None:
+    """Add the 0.361.0 manual payout columns."""
+    op.add_column("manual_payouts", sa.Column("end_to_end_id", sa.String(64), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejection_reason", sa.String(512), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejected_at", UtcDateTime(), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejected_by", sa.String(128), nullable=True))
+
+
+def downgrade() -> None:
+    """Drop the 0.361.0 manual payout columns."""
+    for column in ("rejected_by", "rejected_at", "rejection_reason", "end_to_end_id"):
+        op.drop_column("manual_payouts", column)
+```
+
+Replace `"manual_payouts"` if you passed another `tablename=` to `make_manual_payout_model`.
+
 ## 0.353.0 — Gemini's `google_kwargs()` becomes `gemini_kwargs()`
 
 `HostedGenAISettings.google_kwargs()` (Gemini) and `OAuthSettings.google_kwargs(prefix=...)` (Google login) shared a name. A `Settings` composing both kept the first one in the MRO, and Google login broke with `TypeError` on `prefix`. The Gemini one was renamed, with no alias (an alias would keep the clash).

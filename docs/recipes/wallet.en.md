@@ -338,7 +338,7 @@ in [Mercado Pago: testing webhooks » Manual withdrawal](mercado-pago-webhooks.m
 The `PENDING` row leaves that state in two ways, and both live in
 `ManualPayoutService` — the same class the panel's actions call, so a
 service that exposes the queue through its own API
-(`PATCH /api/admin/withdrawals`) does not reimplement the rule:
+(for example, `PATCH /api/admin/withdrawals`) does not reimplement the rule:
 
 - `mark_paid(row_id, end_to_end_id=None, *, actor=None, require_receipt=False)`
   → `COMPLETED`, with `completed_at`, `completed_by` and the Pix

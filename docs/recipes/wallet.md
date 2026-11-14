@@ -332,7 +332,7 @@ carteira, linha, e-mail e painel — está em
 
 A linha `PENDING` sai desse estado de duas formas, e as duas moram em
 `ManualPayoutService` — a mesma classe que as ações do painel chamam, para o
-serviço que expõe a fila pela própria API (`PATCH /api/admin/withdrawals`)
+serviço que expõe a fila pela própria API (por exemplo, `PATCH /api/admin/withdrawals`)
 não reimplementar a regra:
 
 - `mark_paid(row_id, end_to_end_id=None, *, actor=None, require_receipt=False)`
