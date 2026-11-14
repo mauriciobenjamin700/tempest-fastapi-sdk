@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `MercadoPagoWithdrawConfig(hooks=...)`: o `ManualPayoutHooks` é repassado ao
+  `ManualPayoutProvider` que a rota de saque monta, então quem usa
+  `make_mercado_pago_router(withdraw=...)` grava o histórico do usuário no
+  mesmo commit da linha `PENDING`. Um `on_requested` que levanta recusa o
+  saque (`502 WALLET_PAYOUT_REJECTED`), devolve o débito e não grava nem a
+  linha nem o histórico. `hooks` sem `record_model` é recusado com
+  `ValueError`, porque sem linha os callbacks nunca rodariam (#771).
+
+### Changed
+
+- O e-mail do `ManualPayoutProvider` ao administrador agora termina com
+  "Se não for possível pagar, recuse o saque pelo painel (ação “Recusar e
+  devolver”) ou estorne o débito na carteira do usuário com o mesmo
+  identificador." — antes mandava só estornar à mão, mesmo quando o painel
+  tem a ação atômica (#772).
+
 ### Fixed
 
 - `RemoteMercadoPagoSimulation` (`make_mercado_pago_router(simulate=True,

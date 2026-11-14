@@ -679,18 +679,32 @@ com o `send(to, subject, body)` do `EmailUtils`: em produção,
 `EmailUtils(**settings.email_kwargs())`; em desenvolvimento, o
 `FakeEmailUtils` guarda a mensagem em `outbox`.
 
+O histórico que o usuário vê no app ("SAQUE SOLICITADO") é do serviço. Para
+ele entrar no mesmo commit da linha, passe `hooks=ManualPayoutHooks(...)` ao
+`MercadoPagoWithdrawConfig`: o `on_requested` recebe a sessão e a linha
+`PENDING` dentro da transação que a grava. Se ele levantar, nada é gravado —
+nem a linha, nem o histórico —, nenhum e-mail sai e a rota responde `502
+WALLET_PAYOUT_REJECTED` com o débito devolvido. `hooks` exige `record_model`:
+sem linha, não há transação para o callback entrar, e o config recusa com
+`ValueError`. A mesma instância vai ao `ManualPayoutService` para `on_paid` e
+`on_rejected` — veja
+[Carteira » Concluir ou recusar o saque à mão](wallet.md#concluir-ou-recusar-o-saque-a-mao-manualpayoutservice).
+
 ```python
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Any
 from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header
-from sqlalchemy import select
+from sqlalchemy import String, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
+    BaseModel,
     BaseRepository,
     BaseUserModel,
     PixKeyType,
@@ -708,6 +722,7 @@ from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSetting
 from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
 from tempest_fastapi_sdk.utils import LocalUploadStorage
 from tempest_fastapi_sdk.wallet import (
+    ManualPayoutHooks,
     PixDestinationSchema,
     WalletBalanceMixin,
     WalletService,
@@ -724,6 +739,15 @@ class UserModel(BaseUserModel, WalletBalanceMixin):
 
 WalletEntryModel = make_wallet_entry_model(user_table="users")
 ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+class WithdrawHistoryModel(BaseModel):
+    """The statement line the user sees in the app."""
+
+    __tablename__ = "withdraw_history"
+
+    label: Mapped[str] = mapped_column(String(64))
+    correlation_id: Mapped[str] = mapped_column(String(128))
 
 
 class Settings(EnvironmentSettings, MercadoPagoSettings):
@@ -762,6 +786,13 @@ def pix_destination() -> PixDestinationSchema:
     )
 
 
+async def on_requested(session: AsyncSession, row: Any) -> None:
+    """Write the user's history line in the same commit as the payout row."""
+    session.add(
+        WithdrawHistoryModel(label="SAQUE SOLICITADO", correlation_id=row.correlation_id)
+    )
+
+
 async def handle(delivery: MercadoPagoOrderDelivery) -> None:
     """Credit the seller's wallet when an order is paid (omitted here)."""
 
@@ -783,6 +814,7 @@ app.include_router(
             admin_emails=["financeiro@example.com"],
             record_model=ManualPayoutModel,
             record_url="http://127.0.0.1:8000/admin/m/manual_payouts/{id}",
+            hooks=ManualPayoutHooks(on_requested=on_requested),
         ),
     )
 )
@@ -821,6 +853,8 @@ async def main() -> None:
     async with db.get_session_context() as session:
         row = (await session.execute(select(ManualPayoutModel))).scalar_one()
         print("registro  ", row.status, row.amount_cents, row.pix_key_masked)
+        history = (await session.execute(select(WithdrawHistoryModel))).scalar_one()
+        print("histórico ", history.label, history.correlation_id == row.correlation_id)
     print(mailer.outbox[0].subject)
     print(mailer.outbox[0].body)
 
@@ -835,9 +869,10 @@ ENV=development MERCADOPAGO_WEBHOOK_SECRET=segredo-local-de-teste python saque_m
 Saída medida em 2026-11-14:
 
 ```text
-saque      200 {'correlation_id': 'fee3bada-4405-4265-91d5-ad5d28127a94', 'status': 'pending', 'provider': 'manual', 'provider_status': 'manual_review'}
+saque      200 {'correlation_id': '318427c6-7f81-4a83-a85b-d6dbbba1e12f', 'status': 'pending', 'provider': 'manual', 'provider_status': 'manual_review'}
 de novo    409 WALLET_INSUFFICIENT_BALANCE
 registro   pending 12345 mo***om
+histórico  SAQUE SOLICITADO True
 [Saque manual] R$ 123,45 para chave Pix
 Um usuário pediu um saque e o valor já foi debitado da carteira.
 Faça o Pix manualmente a partir da conta da plataforma:
@@ -845,14 +880,14 @@ Faça o Pix manualmente a partir da conta da plataforma:
 Valor: R$ 123,45
 Chave Pix: motorista@example.com
 Tipo da chave: email
-Usuário (user_id): 8016e5b7-2036-452a-b503-cfa5cd08ff7f
-Identificador (correlation_id): fee3bada-4405-4265-91d5-ad5d28127a94
+Usuário (user_id): 163a0510-89d3-4928-9c31-ca08cb48d16a
+Identificador (correlation_id): 318427c6-7f81-4a83-a85b-d6dbbba1e12f
 Comentário: Saque Pix
 
 Use o identificador acima como descrição do Pix, para conciliar.
-Se não for possível pagar, estorne o débito na carteira do usuário com o mesmo identificador.
+Se não for possível pagar, recuse o saque pelo painel (ação “Recusar e devolver”) ou estorne o débito na carteira do usuário com o mesmo identificador.
 
-Depois de pagar, anexe o comprovante e marque como pago: http://127.0.0.1:8000/admin/m/manual_payouts/4bcf96aa-c394-45fb-9e88-42e8cbbf3ba7
+Depois de pagar, anexe o comprovante e marque como pago: http://127.0.0.1:8000/admin/m/manual_payouts/0ad594f3-c33f-4c74-8cd0-6b9794e3bafd
 ```
 
 O que dá errado, e o que a rota responde:
@@ -861,7 +896,7 @@ O que dá errado, e o que a rota responde:
 | --- | --- | --- |
 | nada disponível (inclusive o segundo saque) | `409 WALLET_INSUFFICIENT_BALANCE` | intocada |
 | e-mail ao administrador falhou (`EmailDeliveryException`, `IntegrationDisabledException`) | `502 WALLET_PAYOUT_REJECTED`; a linha vira `CANCELED` | débito devolvido |
-| a linha não pôde ser gravada | `502 WALLET_PAYOUT_REJECTED`; nenhum e-mail | débito devolvido |
+| a linha não pôde ser gravada, ou o `on_requested` levantou | `502 WALLET_PAYOUT_REJECTED`; nenhum e-mail | débito devolvido |
 | qualquer outro erro no envio | `502 WALLET_PAYOUT_UNCERTAIN`; a linha fica `PENDING` | débito mantido, log `CRITICAL` |
 | usuário sem chave Pix | o que o seu `pix_destination` levantar | intocada |
 

@@ -687,18 +687,33 @@ any object with `EmailUtils`' `send(to, subject, body)`: in production,
 `EmailUtils(**settings.email_kwargs())`; in development, `FakeEmailUtils`
 keeps the message in `outbox`.
 
+The history the user sees in the app ("SAQUE SOLICITADO") belongs to the
+service. To write it in the same commit as the row, pass
+`hooks=ManualPayoutHooks(...)` to `MercadoPagoWithdrawConfig`: `on_requested`
+receives the session and the `PENDING` row inside the transaction that writes
+it. If it raises, nothing is written — neither the row nor the history —, no
+e-mail goes out and the route answers `502 WALLET_PAYOUT_REJECTED` with the
+debit given back. `hooks` requires `record_model`: without a row there is no
+transaction for the callback to join, and the config refuses with
+`ValueError`. The same instance goes to `ManualPayoutService` for `on_paid`
+and `on_rejected` — see
+[Wallet » Completing or refusing a withdrawal by hand](wallet.md#completing-or-refusing-a-withdrawal-by-hand-manualpayoutservice).
+
 ```python
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Any
 from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header
-from sqlalchemy import select
+from sqlalchemy import String, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
+    BaseModel,
     BaseRepository,
     BaseUserModel,
     PixKeyType,
@@ -716,6 +731,7 @@ from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSetting
 from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
 from tempest_fastapi_sdk.utils import LocalUploadStorage
 from tempest_fastapi_sdk.wallet import (
+    ManualPayoutHooks,
     PixDestinationSchema,
     WalletBalanceMixin,
     WalletService,
@@ -732,6 +748,15 @@ class UserModel(BaseUserModel, WalletBalanceMixin):
 
 WalletEntryModel = make_wallet_entry_model(user_table="users")
 ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+class WithdrawHistoryModel(BaseModel):
+    """The statement line the user sees in the app."""
+
+    __tablename__ = "withdraw_history"
+
+    label: Mapped[str] = mapped_column(String(64))
+    correlation_id: Mapped[str] = mapped_column(String(128))
 
 
 class Settings(EnvironmentSettings, MercadoPagoSettings):
@@ -770,6 +795,13 @@ def pix_destination() -> PixDestinationSchema:
     )
 
 
+async def on_requested(session: AsyncSession, row: Any) -> None:
+    """Write the user's history line in the same commit as the payout row."""
+    session.add(
+        WithdrawHistoryModel(label="SAQUE SOLICITADO", correlation_id=row.correlation_id)
+    )
+
+
 async def handle(delivery: MercadoPagoOrderDelivery) -> None:
     """Credit the seller's wallet when an order is paid (omitted here)."""
 
@@ -791,6 +823,7 @@ app.include_router(
             admin_emails=["financeiro@example.com"],
             record_model=ManualPayoutModel,
             record_url="http://127.0.0.1:8000/admin/m/manual_payouts/{id}",
+            hooks=ManualPayoutHooks(on_requested=on_requested),
         ),
     )
 )
@@ -829,6 +862,8 @@ async def main() -> None:
     async with db.get_session_context() as session:
         row = (await session.execute(select(ManualPayoutModel))).scalar_one()
         print("registro  ", row.status, row.amount_cents, row.pix_key_masked)
+        history = (await session.execute(select(WithdrawHistoryModel))).scalar_one()
+        print("histórico ", history.label, history.correlation_id == row.correlation_id)
     print(mailer.outbox[0].subject)
     print(mailer.outbox[0].body)
 
@@ -844,9 +879,10 @@ Output measured on 2026-11-14 (the e-mail is in Portuguese, as the SDK writes
 it):
 
 ```text
-saque      200 {'correlation_id': 'fee3bada-4405-4265-91d5-ad5d28127a94', 'status': 'pending', 'provider': 'manual', 'provider_status': 'manual_review'}
+saque      200 {'correlation_id': '318427c6-7f81-4a83-a85b-d6dbbba1e12f', 'status': 'pending', 'provider': 'manual', 'provider_status': 'manual_review'}
 de novo    409 WALLET_INSUFFICIENT_BALANCE
 registro   pending 12345 mo***om
+histórico  SAQUE SOLICITADO True
 [Saque manual] R$ 123,45 para chave Pix
 Um usuário pediu um saque e o valor já foi debitado da carteira.
 Faça o Pix manualmente a partir da conta da plataforma:
@@ -854,14 +890,14 @@ Faça o Pix manualmente a partir da conta da plataforma:
 Valor: R$ 123,45
 Chave Pix: motorista@example.com
 Tipo da chave: email
-Usuário (user_id): 8016e5b7-2036-452a-b503-cfa5cd08ff7f
-Identificador (correlation_id): fee3bada-4405-4265-91d5-ad5d28127a94
+Usuário (user_id): 163a0510-89d3-4928-9c31-ca08cb48d16a
+Identificador (correlation_id): 318427c6-7f81-4a83-a85b-d6dbbba1e12f
 Comentário: Saque Pix
 
 Use o identificador acima como descrição do Pix, para conciliar.
-Se não for possível pagar, estorne o débito na carteira do usuário com o mesmo identificador.
+Se não for possível pagar, recuse o saque pelo painel (ação “Recusar e devolver”) ou estorne o débito na carteira do usuário com o mesmo identificador.
 
-Depois de pagar, anexe o comprovante e marque como pago: http://127.0.0.1:8000/admin/m/manual_payouts/4bcf96aa-c394-45fb-9e88-42e8cbbf3ba7
+Depois de pagar, anexe o comprovante e marque como pago: http://127.0.0.1:8000/admin/m/manual_payouts/0ad594f3-c33f-4c74-8cd0-6b9794e3bafd
 ```
 
 What goes wrong, and what the route answers:
@@ -870,7 +906,7 @@ What goes wrong, and what the route answers:
 | --- | --- | --- |
 | nothing available (the second withdrawal included) | `409 WALLET_INSUFFICIENT_BALANCE` | untouched |
 | the e-mail to the administrator failed (`EmailDeliveryException`, `IntegrationDisabledException`) | `502 WALLET_PAYOUT_REJECTED`; the row turns `CANCELED` | debit given back |
-| the row could not be written | `502 WALLET_PAYOUT_REJECTED`; no e-mail | debit given back |
+| the row could not be written, or `on_requested` raised | `502 WALLET_PAYOUT_REJECTED`; no e-mail | debit given back |
 | any other error while sending | `502 WALLET_PAYOUT_UNCERTAIN`; the row stays `PENDING` | debit kept, `CRITICAL` log |
 | user without a Pix key | whatever your `pix_destination` raises | untouched |
 

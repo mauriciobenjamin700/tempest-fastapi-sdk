@@ -4587,3 +4587,13 @@ campo por linha no formulário e no salvamento; e o confirm das ações em massa
 por opção (`data-confirm`), com texto forte para `dangerous=True` e Delete.
 Testes: `tests/admin/test_readonly_fields_for.py`, `TestBulkConfirm` em
 `tests/admin/test_actions.py`.
+
+### Saque pela rota pronta com hooks, e o e-mail que cita a recusa (#771, #772, 2026-11-14)
+
+`integrations/payment/adapters/mercado_pago_router.py`:
+`MercadoPagoWithdrawConfig.hooks` (`ManualPayoutHooks | None`) repassado ao
+`ManualPayoutProvider`; exige `record_model`. `wallet/manual_payout.py`: a
+última instrução do e-mail cita a ação "Recusar e devolver" do painel e o
+estorno à mão. Testes: `TestConfigHooks` e `test_body_names_both_ways_to_refuse`
+em `tests/wallet/test_manual_payout.py`. Receita: `mercado-pago-webhooks`
+(saque manual com `hooks=`, saída medida de novo).

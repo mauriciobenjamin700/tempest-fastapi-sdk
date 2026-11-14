@@ -59,6 +59,7 @@ from tempest_fastapi_sdk.schemas import BaseSchema
 from tempest_fastapi_sdk.utils.regex import PixKeyType
 from tempest_fastapi_sdk.wallet.manual_payout import AdminMailer, ManualPayoutProvider
 from tempest_fastapi_sdk.wallet.manual_payout_models import BaseManualPayoutModel
+from tempest_fastapi_sdk.wallet.manual_payout_service import ManualPayoutHooks
 from tempest_fastapi_sdk.wallet.schemas import PixDestinationSchema, WithdrawalSchema
 from tempest_fastapi_sdk.wallet.service import WalletService
 
@@ -130,6 +131,15 @@ class MercadoPagoWithdrawConfig:
             admin panel completes.
         record_url (str | None): Link to a row in the panel, ``{id}`` for
             the row id, written into the e-mail.
+        hooks (ManualPayoutHooks | None): Transition callbacks handed to the
+            :class:`~tempest_fastapi_sdk.wallet.ManualPayoutProvider`:
+            ``on_requested`` runs in the transaction that writes the row
+            (raising refuses the withdrawal and returns the debit), and
+            ``on_canceled`` in the one that cancels it when the e-mail fails.
+            Needs ``record_model`` — without a row there is no transaction
+            for them to join. Pass the same instance to
+            :class:`~tempest_fastapi_sdk.wallet.ManualPayoutService` for
+            ``on_paid`` / ``on_rejected``.
         path (str): The route's path.
     """
 
@@ -142,6 +152,7 @@ class MercadoPagoWithdrawConfig:
     admin_emails: Sequence[str] = ()
     record_model: type[BaseManualPayoutModel] | None = None
     record_url: str | None = None
+    hooks: ManualPayoutHooks | None = None
     path: str = DEFAULT_WITHDRAW_PATH
 
     def __post_init__(self) -> None:
@@ -150,7 +161,9 @@ class MercadoPagoWithdrawConfig:
         Raises:
             ValueError: If neither or both of ``payout`` and ``mailer`` are
                 given, ``mailer`` comes without ``admin_emails``, or
-                ``record_model`` comes with an automated ``payout``.
+                ``record_model`` comes with an automated ``payout``, or
+                ``hooks`` comes without ``record_model`` (they would never
+                run).
         """
         if (self.payout is None) == (self.mailer is None):
             raise ValueError("pass `payout` or `mailer` (with `admin_emails`)")
@@ -158,6 +171,8 @@ class MercadoPagoWithdrawConfig:
             raise ValueError("`mailer` needs at least one entry in `admin_emails`")
         if self.payout is not None and self.record_model is not None:
             raise ValueError("`record_model` is written by the manual payout only")
+        if self.hooks is not None and self.record_model is None:
+            raise ValueError("`hooks` run on the manual payout row: pass record_model")
 
     def provider(self, session: AsyncSession) -> PayoutProvider:
         """Build the payout provider for one request.
@@ -183,6 +198,7 @@ class MercadoPagoWithdrawConfig:
             admin_emails=self.admin_emails,
             records=records,
             record_url=self.record_url,
+            hooks=self.hooks,
         )
 
 
