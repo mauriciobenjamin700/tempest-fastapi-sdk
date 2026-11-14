@@ -229,6 +229,47 @@ APPS_ROUTES: dict[str, RouteDoc] = {
             "atributo ``data-confirm``, como ``application/javascript``."
         ),
     ),
+    "mercado_pago.receive_mercado_pago_webhook": RouteDoc(
+        summary="Receber um webhook do Mercado Pago",
+        description=(
+            "Confere a assinatura ``x-signature``, relê a order pelo "
+            "``data.id`` assinado e entrega ao ``on_delivery``. Responde "
+            "``200`` quando o handler termina, **401** quando a assinatura "
+            "não confere e ``500`` quando o handler levanta."
+        ),
+    ),
+    "mercado_pago.list_simulated_orders": RouteDoc(
+        summary="Listar as orders do simulador",
+        description=(
+            "Só em desenvolvimento. Devolve todas as orders do simulador "
+            "em memória, da mais antiga para a mais nova."
+        ),
+    ),
+    "mercado_pago.get_simulated_order": RouteDoc(
+        summary="Ler uma order do simulador",
+        description=(
+            "Só em desenvolvimento. Devolve a order como "
+            "``GET /v1/orders/{id}`` responderia; **404** se ela não existe."
+        ),
+    ),
+    "mercado_pago.simulate_order_transition": RouteDoc(
+        summary="Simular pagamento, cancelamento ou estorno de uma order",
+        description=(
+            "Só em desenvolvimento. Aplica a transição na order do "
+            "simulador e entrega o webhook assinado à rota de webhook do "
+            "próprio serviço. Responde a order e o status da entrega; "
+            "**404** para order desconhecida, **409** para transição que o "
+            "estado não permite."
+        ),
+    ),
+    "mercado_pago.withdraw_wallet": RouteDoc(
+        summary="Sacar todo o saldo para a chave Pix",
+        description=(
+            "Debita todo o saldo disponível de quem chama e pede o Pix para "
+            "a chave cadastrada no perfil. Sem corpo: a carteira fica "
+            "zerada. **409** sem saldo disponível."
+        ),
+    ),
     "revenuecat.receive_revenuecat_webhook": RouteDoc(
         summary="Receber um webhook da RevenueCat",
         description=(
