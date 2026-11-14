@@ -334,6 +334,7 @@ class WalletService:
                     pix_key_type=pix_key_type,
                     correlation_id=correlation,
                     comment=description,
+                    payee_id=str(user_id),
                 )
             )
         except PayoutRejectedException:

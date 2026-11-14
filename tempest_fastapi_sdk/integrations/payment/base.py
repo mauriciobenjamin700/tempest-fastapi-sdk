@@ -731,6 +731,10 @@ class PayoutRequest(BaseSchema):
         correlation_id (str): The service's id for this payout. Providers
             use it to make a retried request idempotent.
         comment (str | None): Text that travels with the transfer.
+        payee_id (str | None): The service's id of whoever is paid — the
+            wallet owner on a withdrawal. Automated providers ignore it;
+            :class:`~tempest_fastapi_sdk.wallet.ManualPayoutProvider` puts it
+            in the e-mail, so the administrator knows whose withdrawal it is.
     """
 
     amount_cents: int = Field(gt=0, description="Valor do saque em centavos.")
@@ -740,6 +744,9 @@ class PayoutRequest(BaseSchema):
         min_length=1, description="Identificador do saque no lado do serviço."
     )
     comment: str | None = Field(default=None, description="Texto do saque.")
+    payee_id: str | None = Field(
+        default=None, description="Identificador de quem recebe, no serviço."
+    )
 
 
 class PayoutResult(_EnumSafeSchema):
