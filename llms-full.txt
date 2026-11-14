@@ -72996,19 +72996,26 @@ Logado como **vendedora de teste**, na aplicação dela:
 O esperado é a sua rota responder `200` sem cobrança: a simulação traz um id
 que não é de nenhuma order sua, e o nível 1 mostrou o que acontece nesse caso.
 
-!!! warning "Não validado aqui"
+!!! warning "O painel não foi validado aqui"
     Os passos deste nível descrevem o painel como ele costuma ser; este
-    repositório ainda não observou uma notificação vinda do painel nem de uma
-    entrega real. A tabela do nível 1 é medida; os níveis 2 e 3 são o que se
-    espera, a confirmar na sua primeira entrega. Se a assinatura de uma
-    entrega real for recusada, abra uma issue com os headers (sem o segredo).
+    repositório ainda não observou o que o **Simular notificação** manda. Uma
+    entrega real foi observada em produção em 2026-11-13 (nível 3). Se a
+    assinatura de uma entrega for recusada, abra uma issue com os headers (sem
+    o segredo).
 
 ## Nível 3 — entrega real
 
 Com o túnel e o webhook configurados, crie uma order (o script de
 [contas e credenciais de teste](mercado-pago-sandbox.md#passo-6-conferir-que-deu-certo)
 serve) e acompanhe o log do seu serviço. A cada mudança da order, o Mercado
-Pago deve chamar a rota com `data.id` igual ao id da order.
+Pago chama a rota com `data.id` igual ao id da order.
+
+!!! check "Observado em 2026-11-13"
+    Uma entrega real em produção chegou como
+    `POST …?data.id=ORD01…&type=order`, com `"action": "order.canceled"` no
+    corpo, e só verificou com o `data.id` em minúsculas no manifesto, que é o
+    que o SDK faz desde a v0.358.0. Ainda não observadas: as ações
+    `order.updated` / `order.processed` de uma order paga.
 
 ## Recapitulando
 

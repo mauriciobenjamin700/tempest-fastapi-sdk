@@ -5351,18 +5351,26 @@ local.</p>
 <p>O esperado é a sua rota responder <code>200</code> sem cobrança: a simulação traz um id
 que não é de nenhuma order sua, e o nível 1 mostrou o que acontece nesse caso.</p>
 <div class="admonition warning">
-<p class="admonition-title">Não validado aqui</p>
+<p class="admonition-title">O painel não foi validado aqui</p>
 <p>Os passos deste nível descrevem o painel como ele costuma ser; este
-repositório ainda não observou uma notificação vinda do painel nem de uma
-entrega real. A tabela do nível 1 é medida; os níveis 2 e 3 são o que se
-espera, a confirmar na sua primeira entrega. Se a assinatura de uma
-entrega real for recusada, abra uma issue com os headers (sem o segredo).</p>
+repositório ainda não observou o que o <strong>Simular notificação</strong> manda. Uma
+entrega real foi observada em produção em 2026-11-13 (nível 3). Se a
+assinatura de uma entrega for recusada, abra uma issue com os headers (sem
+o segredo).</p>
 </div>
 <h2 id="nivel-3-entrega-real">Nível 3 — entrega real<a class="headerlink" href="#nivel-3-entrega-real" title="Permanent link">&para;</a></h2>
 <p>Com o túnel e o webhook configurados, crie uma order (o script de
 <a href="../mercado-pago-sandbox/#passo-6-conferir-que-deu-certo">contas e credenciais de teste</a>
 serve) e acompanhe o log do seu serviço. A cada mudança da order, o Mercado
-Pago deve chamar a rota com <code>data.id</code> igual ao id da order.</p>
+Pago chama a rota com <code>data.id</code> igual ao id da order.</p>
+<div class="admonition check">
+<p class="admonition-title">Observado em 2026-11-13</p>
+<p>Uma entrega real em produção chegou como
+<code>POST …?data.id=ORD01…&amp;type=order</code>, com <code>"action": "order.canceled"</code> no
+corpo, e só verificou com o <code>data.id</code> em minúsculas no manifesto, que é o
+que o SDK faz desde a v0.358.0. Ainda não observadas: as ações
+<code>order.updated</code> / <code>order.processed</code> de uma order paga.</p>
+</div>
 <h2 id="recapitulando">Recapitulando<a class="headerlink" href="#recapitulando" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A notificação só diz <strong>qual</strong> order mudou; a rota relê para saber <strong>o

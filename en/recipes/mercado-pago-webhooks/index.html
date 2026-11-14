@@ -5357,19 +5357,26 @@ prints an <code>https://…</code> URL pointing at your local server.</p>
 simulation carries an id that is none of your orders, and level 1 showed
 what happens then.</p>
 <div class="admonition warning">
-<p class="admonition-title">Not validated here</p>
+<p class="admonition-title">The dashboard was not validated here</p>
 <p>This level's steps describe the dashboard as it usually is; this
-repository has not yet observed a notification from the dashboard or a
-real delivery. The level 1 table is measured; levels 2 and 3 are what is
-expected, to be confirmed on your first delivery. If a real delivery's
-signature is refused, open an issue with the headers (without the
-secret).</p>
+repository has not yet observed what <strong>Simulate notification</strong> sends. A
+real delivery was observed in production on 2026-11-13 (level 3). If a
+delivery's signature is refused, open an issue with the headers (without
+the secret).</p>
 </div>
 <h2 id="level-3-real-delivery">Level 3 — real delivery<a class="headerlink" href="#level-3-real-delivery" title="Permanent link">&para;</a></h2>
 <p>With the tunnel and the webhook configured, create an order (the script in
 <a href="../mercado-pago-sandbox/#step-6-check-it-worked">test accounts and credentials</a>
 works) and watch your service's log. On every change to the order, Mercado
-Pago should call the route with <code>data.id</code> equal to the order id.</p>
+Pago calls the route with <code>data.id</code> equal to the order id.</p>
+<div class="admonition check">
+<p class="admonition-title">Observed on 2026-11-13</p>
+<p>A real production delivery arrived as
+<code>POST …?data.id=ORD01…&amp;type=order</code>, with <code>"action": "order.canceled"</code> in
+the body, and only verified with the <code>data.id</code> lowercased in the
+manifest, which is what the SDK does since v0.358.0. Not yet observed:
+the <code>order.updated</code> / <code>order.processed</code> actions of a paid order.</p>
+</div>
 <h2 id="recap">Recap<a class="headerlink" href="#recap" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A notification only says <strong>which</strong> order changed; the route re-reads to
