@@ -94,6 +94,25 @@ Todos expõem `fail_next(erro)`. Todos menos o `FakeEmailUtils` expõem também
 registro é o próprio `outbox`, porque `send` é o único método que ele
 substitui.
 
+### Um fake de API HTTP: `FakeMercadoPagoOrdersAPI`
+
+Os fakes da tabela ficam **no lugar** do adapter. O
+`FakeMercadoPagoOrdersAPI` fica um nível abaixo: ele é a API de Orders do
+Mercado Pago, como handler do `httpx`, e o `MercadoPagoPixProvider` /
+`MercadoPagoCardProvider` **de verdade** rodam sobre ele —
+`MercadoPagoPixProvider(api.http_client())`. Assim o que fica testado é o seu
+serviço **e** o adapter: idempotência pela referência, estorno parcial,
+recusa de cartão (`402`), releitura da order no webhook.
+
+O steering é o que só o provedor faz: `pay`, `expire`, `fail`, `cancel`,
+`capture`, `refund`, `decline_next_card()` e `lose_next_answer()`. Cada
+movimento devolve a notificação **assinada** que o anuncia, pronta para a sua
+rota de webhook. Ele não tem `fail_next`, e `calls` guarda `(método, path)` de
+cada requisição em vez de nomes de método. Receita completa, com o teste
+manual contra o serviço rodando (`tempest mercado-pago fake-api` e
+`simulate-webhook`):
+[Mercado Pago: testando webhooks »](mercado-pago-webhooks.md#nivel-1-simulado-pelo-sdk-sem-rede).
+
 ## Cartão: recusa é resultado, não exceção
 
 `FakeCardProvider` segue o contrato `CardProvider`. A cobrança é aprovada,

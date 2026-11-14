@@ -1945,6 +1945,24 @@ Os dois provedores sem mixin de settings no SDK se comportam diferente:
     error: stripe exposes no cheap authenticated read, so there is nothing the CLI can call without spending money or creating a record. Construct the client in your service.
     ```
 
+### Mercado Pago simulado — `tempest mercado-pago`
+
+```bash
+tempest mercado-pago fake-api                # API de Orders simulada em 127.0.0.1:8090
+tempest mercado-pago simulate-webhook --fake-api http://127.0.0.1:8090 \
+    --order-id ORDFAKE… --transition pay     # move a order e entrega a notificação assinada
+```
+
+O `fake-api` serve a `FakeMercadoPagoOrdersAPI` (estado em memória); o
+serviço aponta para ela com `MERCADOPAGO_BASE_URL=http://127.0.0.1:8090`. O
+`simulate-webhook` assina a notificação com o segredo lido de
+`--secret-env` (default `MERCADOPAGO_WEBHOOK_SECRET`) ou `--secret-file` —
+nunca de um argumento —, posta na rota (`--url`, default
+`http://127.0.0.1:8000/webhooks/mercado-pago`) e imprime o status e o corpo
+da resposta. Sai com `1` quando a rota não responde 2xx e com `2` em erro de
+uso. Passo a passo com a saída medida:
+[Mercado Pago: testando webhooks »](mercado-pago-webhooks.md#teste-manual-o-servico-rodando-o-mercado-pago-simulado).
+
 ### Agentes — `tempest agents`
 
 ```bash

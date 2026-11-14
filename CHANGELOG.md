@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Mercado Pago simulado inteiro, offline, para testar o fluxo de Pix/cartão
+  sem o provedor (`tempest_fastapi_sdk.testing.fakes`):
+  `FakeMercadoPagoOrdersAPI` responde `/v1/orders` com estado (create
+  idempotente pela `X-Idempotency-Key` — mesma chave e corpo, mesma order;
+  outro corpo, `409 idempotency_key_already_used` —, `GET` com `404` para id
+  desconhecido, cancel, capture, refund parcial e total) e é um handler do
+  `httpx`, então o `MercadoPagoPixProvider` / `MercadoPagoCardProvider` de
+  verdade rodam sobre ele sem mudança (`api.http_client()`). Transições do
+  provedor (`pay`, `expire`, `fail`, `cancel`, `capture`, `refund`) devolvem
+  a notificação assinada; `decline_next_card` e `lose_next_answer` cobrem a
+  recusa (`402`) e a resposta perdida. `build_mercado_pago_delivery` /
+  `MercadoPagoDelivery` montam a entrega no formato da observada em produção,
+  assinada por `sign_manifest`. Só a ação `order.canceled` foi observada; as
+  demais (`order.<status>`) são nomeadas pelo simulador (`order_action`). Os
+  simuladores dos testes de contrato passaram a usar o fake público.
+- `tempest mercado-pago fake-api` (serve o simulador em `127.0.0.1:8090`) e
+  `tempest mercado-pago simulate-webhook` (assina com o segredo de
+  `--secret-env`/`--secret-file`, nunca de argumento, e posta na rota;
+  `--fake-api` + `--transition` move a order antes).
+- `MercadoPagoSettings.MERCADOPAGO_BASE_URL` (default
+  `https://api.mercadopago.com`): `mercado_pago_kwargs()` aponta o cliente
+  para ele, e outro host entra em `production_violations()`, o que derruba a
+  construção do `Settings` com `ENV=production`. Receita: nível 1 de
+  `recipes/mercado-pago-webhooks`.
+
 ## [0.359.0] — 2026-11-13
 
 ### Added

@@ -1529,6 +1529,12 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.testing.fakes.geo.FakeGeocodingBackend
 ::: tempest_fastapi_sdk.testing.fakes.geo.FakeRoutingBackend
 ::: tempest_fastapi_sdk.testing.fakes.search.FakeWebSearchBackend
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.orders_api.FakeMercadoPagoOrdersAPI
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.MercadoPagoDelivery
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.build_mercado_pago_delivery
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.order_action
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.delivery.FAKE_WEBHOOK_SECRET
+::: tempest_fastapi_sdk.testing.fakes.mercado_pago.server.make_fake_orders_app
 
 ---
 

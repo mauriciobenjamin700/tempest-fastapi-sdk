@@ -94,6 +94,25 @@ All of them expose `fail_next(error)`. All but `FakeEmailUtils` also expose
 record is the `outbox` itself, because `send` is the only method it
 replaces.
 
+### A fake of an HTTP API: `FakeMercadoPagoOrdersAPI`
+
+The fakes in the table stand **in place of** the adapter.
+`FakeMercadoPagoOrdersAPI` sits one level below: it is Mercado Pago's Orders
+API, as an `httpx` handler, and the **real** `MercadoPagoPixProvider` /
+`MercadoPagoCardProvider` run over it —
+`MercadoPagoPixProvider(api.http_client())`. What gets tested is your service
+**and** the adapter: idempotency on the reference, partial refunds, a card
+decline (`402`), the order re-read on the webhook.
+
+Its steering is what only the provider does: `pay`, `expire`, `fail`,
+`cancel`, `capture`, `refund`, `decline_next_card()` and
+`lose_next_answer()`. Each move returns the **signed** notification
+announcing it, ready for your webhook route. It has no `fail_next`, and
+`calls` records `(method, path)` of each request instead of method names. The
+full recipe, with manual testing against the running service
+(`tempest mercado-pago fake-api` and `simulate-webhook`):
+[Mercado Pago: testing webhooks »](mercado-pago-webhooks.md#level-1-simulated-by-the-sdk-no-network).
+
 ## Card: a decline is a result, not an exception
 
 `FakeCardProvider` follows the `CardProvider` contract. A charge is
