@@ -4561,3 +4561,29 @@ Testes: `tests/integrations/payment/adapters/test_mercado_pago_remote_simulation
 mais casos em `test_mercado_pago_router.py`, `test_fake_mercado_pago.py`,
 `tests/cli/test_mercado_pago.py` e `test_mercado_pago_base_url.py`. Receita:
 "API e worker em processos separados" em `mercado-pago-webhooks`.
+
+### Saque manual: recusar com devolução e hooks de histórico (#768, 2026-11-14)
+
+`wallet/manual_payout_service.py`: `ManualPayoutService` com `mark_paid(row_id,
+end_to_end_id=None, *, actor, require_receipt)` e `reject(row_id, reason, *,
+actor)`, os dois atômicos sobre `PENDING` (`UPDATE ... WHERE status =
+'pending'`); `reject` devolve o valor numa linha `WITHDRAW_REFUND` pelo
+`WalletLedger` no mesmo commit. `ManualPayoutHooks` (`on_requested`,
+`on_canceled`, `on_paid`, `on_rejected`, protocolo `ManualPayoutHook`) roda
+dentro da transação de cada transição — o `ManualPayoutProvider` aceita
+`hooks=` para os dois primeiros. `ManualPayoutStatusEnum.REJECTED` e as colunas
+`end_to_end_id`, `rejection_reason`, `rejected_at`, `rejected_by`. Exceções
+`ManualPayoutNotFoundException` (404), `ManualPayoutNotPendingException` (409),
+`ManualPayoutReceiptMissingException` (409). `admin/manual_payout.py`: as ações
+chamam o service; `manual_payout_admin(ledger_factory=..., hooks=...)` ganha
+"Recusar e devolver" (`make_reject_action`, `REJECT_ACTION`), com o motivo
+editável só enquanto `PENDING`. Testes: `tests/wallet/test_manual_payout_service.py`,
+`tests/admin/test_manual_payout_admin.py`. Receitas: `wallet` (concluir ou
+recusar o saque à mão), `admin` (preset), `mercado-pago-webhooks` (aviso de
+cancelamento atualizado).
+No mesmo PR: `AdminModel(readonly_fields_for=...)` (`ReadonlyFieldsFor`,
+`readonly_field_names_for`, `editable_field_names(instance=...)`), trava de
+campo por linha no formulário e no salvamento; e o confirm das ações em massa
+por opção (`data-confirm`), com texto forte para `dangerous=True` e Delete.
+Testes: `tests/admin/test_readonly_fields_for.py`, `TestBulkConfirm` em
+`tests/admin/test_actions.py`.

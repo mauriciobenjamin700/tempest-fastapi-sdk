@@ -273,6 +273,14 @@ função fica **diretamente chamável/testável** — o decorator só anexa
 metadados. Use `name=` pra fixar o identificador (default: nome da função)
 e `dangerous=True` pra marcar ação destrutiva.
 
+Cada opção do select de ações em massa leva o próprio texto de confirmação.
+Ação comum (e Activate/Deactivate) pergunta "Apply the selected action to the
+checked rows?"; ação `dangerous=True` (e o Delete embutido) nomeia a ação e
+avisa que não tem volta — `Run "Recusar e devolver" on the checked rows? This
+cannot be undone.`. O rótulo vai num atributo `data-confirm` escapado pelo
+template, nunca interpolado no JavaScript, então aspas ou `<` no rótulo não
+quebram a página.
+
 ### Mostrar um segredo uma vez (`secrets=`)
 
 Algumas ações **criam uma credencial**: uma chave de API, um token de
@@ -569,13 +577,106 @@ upload ser gravado. Devolver `{"campo": "mensagem"}` recusa a edição com
 esses erros — é o lugar de uma regra como "o comprovante de um registro
 finalizado não muda". O preset abaixo usa exatamente isso.
 
+### Campo trancado por linha (`readonly_fields_for=`)
+
+`readonly_fields` tranca o mesmo campo em toda linha. Quando o campo só pode
+mudar enquanto a linha está num estado — o motivo de uma recusa, editável
+até o registro ser finalizado —, passe `readonly_fields_for(row)`: ele
+recebe a linha guardada e devolve os campos a trancar **nela**, somados aos
+de `readonly_fields`. A trava vale nos dois lados, do mesmo jeito que a
+estática: o campo sai do formulário de edição daquela linha, e um valor
+postado para ele à mão é ignorado no salvamento (a resposta é o `303` de
+sempre, e o valor guardado não muda).
+
+```python
+from collections.abc import Sequence
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import AdminModel, BaseModel
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets"
+
+    status: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+def note_locked_when_closed(row: TicketModel) -> Sequence[str]:
+    return ["note"] if row.status == "closed" else []
+
+
+tickets: AdminModel[TicketModel] = AdminModel(
+    TicketModel,
+    readonly_fields=["status"],
+    readonly_fields_for=note_locked_when_closed,
+)
+```
+
+!!! note "O que ele não cobre"
+    Campo de upload e de senha é tratado à parte no formulário, então
+    tranque-o com `validate_edit`. E o gancho vale para o formulário de
+    edição da própria linha, não para o formset inline do pai.
+
 ### Preset: saque manual (`manual_payout_admin`)
 
 `manual_payout_admin(ManualPayoutModel, upload_storage=...)` devolve o
 `AdminModel` da tabela de saques pagos à mão (`make_manual_payout_model`):
 valores só leitura, comprovante só em PDF, link de download e a ação
-**Marcar como pago**, que só conclui linha `PENDING` com comprovante. O
-fluxo inteiro — o saque que grava a linha e manda o e-mail ao
+**Marcar como pago**, que só conclui linha `PENDING` com comprovante.
+
+Com `ledger_factory=` (uma função que recebe a sessão do painel e devolve o
+`WalletLedger` sobre ela), entra também **Recusar e devolver**: o
+administrador escreve o motivo no campo `rejection_reason` da linha e roda a
+ação, que deixa a linha `REJECTED` e devolve o valor à carteira numa linha
+`WITHDRAW_REFUND`, no mesmo commit. Linha sem motivo fica `PENDING` e a
+mensagem lista o `correlation_id` dela; linha que já saiu de `PENDING` não
+muda, e o campo do motivo sai do formulário de edição dela
+(`readonly_fields_for`). As duas ações chamam
+`ManualPayoutService` e rodam os `hooks=` que você passar — veja
+[Carteira » Concluir ou recusar o saque à mão](wallet.md#concluir-ou-recusar-o-saque-a-mao-manualpayoutservice).
+
+```python
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository, BaseUserModel
+from tempest_fastapi_sdk.admin import AdminModel, manual_payout_admin
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+from tempest_fastapi_sdk.wallet import (
+    WalletBalanceMixin,
+    WalletLedger,
+    make_manual_payout_model,
+    make_wallet_entry_model,
+)
+
+
+class UserModel(BaseUserModel, WalletBalanceMixin):
+    __tablename__ = "users"
+
+
+WalletEntryModel = make_wallet_entry_model(user_table="users")
+ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+def ledger(session: AsyncSession) -> WalletLedger:
+    return WalletLedger(
+        balances=BaseRepository(session, model=UserModel),
+        entries=BaseRepository(session, model=WalletEntryModel),
+    )
+
+
+payouts: AdminModel[Any] = manual_payout_admin(
+    ManualPayoutModel,
+    upload_storage=LocalUploadStorage("receipts"),
+    ledger_factory=ledger,
+)
+```
+
+O fluxo inteiro — o saque que grava a linha e manda o e-mail ao
 administrador — está em
 [Mercado Pago: testando webhooks » Saque manual](mercado-pago-webhooks.md#saque-manual).
 

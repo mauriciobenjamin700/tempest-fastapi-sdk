@@ -48,6 +48,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.AdminModel
 ::: tempest_fastapi_sdk.admin.config.ChoiceSource
 ::: tempest_fastapi_sdk.admin.config.EditValidator
+::: tempest_fastapi_sdk.admin.config.ReadonlyFieldsFor
 ::: tempest_fastapi_sdk.admin.config.Inline
 ::: tempest_fastapi_sdk.admin.config.Lens
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum
@@ -70,8 +71,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.actions.CreateHandlerFunc
 ::: tempest_fastapi_sdk.admin.manual_payout.manual_payout_admin
 ::: tempest_fastapi_sdk.admin.manual_payout.make_mark_paid_action
+::: tempest_fastapi_sdk.admin.manual_payout.make_reject_action
 ::: tempest_fastapi_sdk.admin.manual_payout.MARK_PAID_ACTION
 ::: tempest_fastapi_sdk.admin.manual_payout.RECEIPT_CONTENT_TYPES
+::: tempest_fastapi_sdk.admin.manual_payout.REJECT_ACTION
 ::: tempest_fastapi_sdk.admin.manual_payout.STATUS_LABELS
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
@@ -607,6 +610,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.image.ImageFormatUnsupportedException
 ::: tempest_fastapi_sdk.exceptions.image.ImageTooLargeException
 ::: tempest_fastapi_sdk.exceptions.wallet.InsufficientBalanceException
+::: tempest_fastapi_sdk.exceptions.wallet.ManualPayoutNotFoundException
+::: tempest_fastapi_sdk.exceptions.wallet.ManualPayoutNotPendingException
+::: tempest_fastapi_sdk.exceptions.wallet.ManualPayoutReceiptMissingException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutRejectedException
 ::: tempest_fastapi_sdk.exceptions.wallet.PayoutUncertainException
 ::: tempest_fastapi_sdk.exceptions.payment.PixRefundExceedsBalanceException

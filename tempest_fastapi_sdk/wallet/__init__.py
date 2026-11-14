@@ -42,6 +42,21 @@ from tempest_fastapi_sdk.wallet.manual_payout_models import (
 from tempest_fastapi_sdk.wallet.manual_payout_models import (
     make_manual_payout_model as make_manual_payout_model,
 )
+from tempest_fastapi_sdk.wallet.manual_payout_service import (
+    DEFAULT_REFUND_DESCRIPTION as DEFAULT_REFUND_DESCRIPTION,
+)
+from tempest_fastapi_sdk.wallet.manual_payout_service import (
+    MAX_REJECTION_REASON_LENGTH as MAX_REJECTION_REASON_LENGTH,
+)
+from tempest_fastapi_sdk.wallet.manual_payout_service import (
+    ManualPayoutHook as ManualPayoutHook,
+)
+from tempest_fastapi_sdk.wallet.manual_payout_service import (
+    ManualPayoutHooks as ManualPayoutHooks,
+)
+from tempest_fastapi_sdk.wallet.manual_payout_service import (
+    ManualPayoutService as ManualPayoutService,
+)
 from tempest_fastapi_sdk.wallet.models import (
     BaseWalletEntryModel as BaseWalletEntryModel,
 )
@@ -92,14 +107,19 @@ from tempest_fastapi_sdk.wallet.service import claim_once as claim_once
 
 __all__: list[str] = [
     "BASIS_POINTS_PER_UNIT",
+    "DEFAULT_REFUND_DESCRIPTION",
     "MANUAL_PAYOUT_PROVIDER",
     "MANUAL_REVIEW_STATUS",
+    "MAX_REJECTION_REASON_LENGTH",
     "OPENPIX_FEE_TIERS",
     "PAYOUT_REFERENCE_TYPE",
     "AdminMailer",
     "BaseManualPayoutModel",
     "BaseWalletEntryModel",
+    "ManualPayoutHook",
+    "ManualPayoutHooks",
     "ManualPayoutProvider",
+    "ManualPayoutService",
     "ManualPayoutStatusEnum",
     "NetSplit",
     "OpenPixFeeTiers",

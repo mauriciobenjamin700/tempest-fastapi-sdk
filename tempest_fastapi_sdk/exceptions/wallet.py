@@ -43,8 +43,41 @@ class PayoutUncertainException(AppException):
     code: str = "WALLET_PAYOUT_UNCERTAIN"
 
 
+class ManualPayoutNotFoundException(AppException):
+    """Raised when no manual payout row has the given id."""
+
+    status_code: int = 404
+    message: str = "Manual payout not found"
+    code: str = "WALLET_MANUAL_PAYOUT_NOT_FOUND"
+
+
+class ManualPayoutNotPendingException(AppException):
+    """Raised when a manual payout is no longer ``PENDING``.
+
+    Another administrator (or a retry of the same request) already marked
+    it paid or refused it, or the e-mail to the administrators failed and
+    it was canceled. Nothing changed: the status, the wallet and the hooks
+    were left as they were.
+    """
+
+    status_code: int = 409
+    message: str = "Manual payout is no longer pending"
+    code: str = "WALLET_MANUAL_PAYOUT_NOT_PENDING"
+
+
+class ManualPayoutReceiptMissingException(AppException):
+    """Raised when a payout must carry a receipt to be marked paid and has none."""
+
+    status_code: int = 409
+    message: str = "Manual payout has no receipt attached"
+    code: str = "WALLET_MANUAL_PAYOUT_RECEIPT_MISSING"
+
+
 __all__: list[str] = [
     "InsufficientBalanceException",
+    "ManualPayoutNotFoundException",
+    "ManualPayoutNotPendingException",
+    "ManualPayoutReceiptMissingException",
     "PayoutRejectedException",
     "PayoutUncertainException",
 ]

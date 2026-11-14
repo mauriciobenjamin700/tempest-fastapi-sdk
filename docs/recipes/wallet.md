@@ -328,6 +328,201 @@ com o comprovante em PDF. A rota pronta que junta tudo — saque que zera a
 carteira, linha, e-mail e painel — está em
 [Mercado Pago: testando webhooks » Saque manual](mercado-pago-webhooks.md#saque-manual).
 
+## Concluir ou recusar o saque à mão (`ManualPayoutService`)
+
+A linha `PENDING` sai desse estado de duas formas, e as duas moram em
+`ManualPayoutService` — a mesma classe que as ações do painel chamam, para o
+serviço que expõe a fila pela própria API (`PATCH /api/admin/withdrawals`)
+não reimplementar a regra:
+
+- `mark_paid(row_id, end_to_end_id=None, *, actor=None, require_receipt=False)`
+  → `COMPLETED`, com `completed_at`, `completed_by` e o `end_to_end_id` do
+  Pix;
+- `reject(row_id, reason, *, actor=None)` → `REJECTED`, com
+  `rejection_reason`, `rejected_at` e `rejected_by`, **e** uma linha
+  `WITHDRAW_REFUND` do valor na carteira (`reference_id` é o
+  `correlation_id`, o mesmo da linha `WITHDRAW`), no mesmo commit.
+
+Os dois mudam o status com um `UPDATE ... WHERE id = :id AND status =
+'pending'`: dois administradores na mesma linha a movem uma vez, e o segundo
+recebe `ManualPayoutNotPendingException` (`409
+WALLET_MANUAL_PAYOUT_NOT_PENDING`) sem nada alterado — nem status, nem
+carteira, nem hook. Id que não existe é `ManualPayoutNotFoundException`
+(`404`); `require_receipt=True` sem comprovante é
+`ManualPayoutReceiptMissingException` (`409`).
+
+O histórico que o usuário vê no app é do serviço, não do SDK. Para ele
+andar junto com o saque, `ManualPayoutHooks` recebe um callback por transição
+— `on_requested`, `on_canceled`, `on_paid`, `on_rejected` —, cada um chamado
+com a sessão e a linha **dentro** da transação da transição. Passe a mesma
+instância ao `ManualPayoutProvider` (que roda `on_requested` e `on_canceled`)
+e ao `ManualPayoutService` (`on_paid` e `on_rejected`):
+
+```python
+import asyncio
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import String, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseModel,
+    BaseRepository,
+    BaseUserModel,
+    PixKeyType,
+)
+from tempest_fastapi_sdk.exceptions import ManualPayoutNotPendingException
+from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
+from tempest_fastapi_sdk.wallet import (
+    ManualPayoutHooks,
+    ManualPayoutProvider,
+    ManualPayoutService,
+    WalletBalanceMixin,
+    WalletService,
+    make_manual_payout_model,
+    make_wallet_entry_model,
+)
+
+
+class UserModel(BaseUserModel, WalletBalanceMixin):
+    __tablename__ = "users"
+
+
+WalletEntryModel = make_wallet_entry_model(user_table="users")
+ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+class WithdrawalHistoryModel(BaseModel):
+    """The line the user sees in the app's history."""
+
+    __tablename__ = "withdrawal_history"
+
+    correlation_id: Mapped[str] = mapped_column(String(128), unique=True)
+    label: Mapped[str] = mapped_column(String(32))
+
+
+async def on_requested(session: AsyncSession, row: Any) -> None:
+    session.add(
+        WithdrawalHistoryModel(
+            correlation_id=row.correlation_id, label="SAQUE SOLICITADO"
+        )
+    )
+
+
+async def _relabel(session: AsyncSession, row: Any, label: str) -> None:
+    line = (
+        await session.execute(
+            select(WithdrawalHistoryModel).where(
+                WithdrawalHistoryModel.correlation_id == row.correlation_id
+            )
+        )
+    ).scalar_one()
+    line.label = label
+
+
+async def on_paid(session: AsyncSession, row: Any) -> None:
+    await _relabel(session, row, "SAQUE REALIZADO")
+
+
+async def on_rejected(session: AsyncSession, row: Any) -> None:
+    await _relabel(session, row, "SAQUE RECUSADO")
+
+
+HOOKS = ManualPayoutHooks(
+    on_requested=on_requested, on_paid=on_paid, on_rejected=on_rejected
+)
+
+
+def wallet(session: AsyncSession) -> WalletService:
+    return WalletService(
+        balances=BaseRepository(session, model=UserModel),
+        entries=BaseRepository(session, model=WalletEntryModel),
+    )
+
+
+def payouts(session: AsyncSession) -> ManualPayoutService:
+    return ManualPayoutService(
+        records=BaseRepository(session, model=ManualPayoutModel),
+        ledger=wallet(session).ledger,
+        hooks=HOOKS,
+    )
+
+
+async def main() -> None:
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        user = UserModel(email="motorista@example.com", hashed_password="x")
+        session.add(user)
+        await session.commit()
+        user_id: UUID = user.id
+        await wallet(session).credit(user_id, 12_345, kind="SALE")
+        provider = ManualPayoutProvider(
+            FakeEmailUtils(),
+            admin_emails=["financeiro@example.com"],
+            records=BaseRepository(session, model=ManualPayoutModel),
+            hooks=HOOKS,
+        )
+        await wallet(session).withdraw(
+            user_id,
+            payout=provider,
+            pix_key="motorista@example.com",
+            pix_key_type=PixKeyType.EMAIL,
+            correlation_id="saque-1",
+        )
+        row = (await session.execute(select(ManualPayoutModel))).scalar_one()
+        print("depois do saque  ", (await wallet(session).balance(user_id)).total_cents)
+
+    async with db.get_session_context() as session:
+        rejected = await payouts(session).reject(
+            row.id, "chave Pix de outra pessoa", actor="admin-1"
+        )
+        print("status           ", rejected.status)
+        print("depois da recusa ", (await wallet(session).balance(user_id)).total_cents)
+        history = (await session.execute(select(WithdrawalHistoryModel))).scalar_one()
+        print("histórico        ", history.label)
+
+    async with db.get_session_context() as session:
+        try:
+            await payouts(session).mark_paid(row.id, actor="admin-2")
+        except ManualPayoutNotPendingException as error:
+            print("segundo admin    ", error.code)
+
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Rodando:
+
+```text
+depois do saque   0
+status            rejected
+depois da recusa  12345
+histórico         SAQUE RECUSADO
+segundo admin     WALLET_MANUAL_PAYOUT_NOT_PENDING
+```
+
+!!! check "Hook que levanta desfaz a transição inteira"
+    Se `on_rejected` levanta, o status continua `PENDING`, a linha
+    `WITHDRAW_REFUND` não existe e o saldo não mudou — os testes de
+    `tests/wallet/test_manual_payout_service.py` conferem os três. Em
+    `on_requested`, levantar é recusar o saque: a linha não é gravada, o
+    e-mail não sai e o débito volta. Em `on_canceled` (o e-mail falhou),
+    levantar deixa a linha `PENDING` e o débito guardado
+    (`PayoutUncertainException`), o mesmo de um erro desconhecido.
+
+O `reject` precisa do `ledger` (o `WalletService.ledger` já serve) na mesma
+sessão do repositório — sessão diferente é `ValueError` no construtor, porque
+a devolução e o status commitariam separados. Sem `ledger`, só `mark_paid`
+funciona. O painel monta tudo isso sozinho: veja
+[Painel admin » Preset: saque manual](admin.md#preset-saque-manual-manual_payout_admin).
+
 ## Taxa e divisão
 
 `openpix_fee_cents()` calcula a taxa da OpenPix, e `split_net()` divide o
@@ -634,5 +829,8 @@ saldo.
 - Saque debita antes, devolve só na recusa definitiva e guarda o débito
   quando o desfecho é incerto.
 - `split_net` em basis points nunca perde nem inventa centavo.
+- Saque manual sai de `PENDING` por `ManualPayoutService`: `mark_paid` ou
+  `reject`, que devolve à carteira no mesmo commit; hooks gravam o
+  histórico do usuário na mesma transação.
 - Para testar sem credencial, use `FakePayoutProvider` (veja
   [Fakes](fakes.md)).

@@ -9,12 +9,12 @@ import io
 import json
 import logging
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import UTC, date, datetime, time, tzinfo
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
@@ -1276,6 +1276,7 @@ def make_admin_router(
         submitted: Any | None = None,
         errors: Any | None = None,
         creating: bool = False,
+        only: Collection[str] | None = None,
     ) -> Any:
         """Resolve FK options then build the form-field descriptors.
 
@@ -1289,6 +1290,10 @@ def make_admin_router(
             submitted (Any | None): Rejected submission to re-render.
             errors (Any | None): Per-field error messages.
             creating (bool): Whether this is the create form.
+            only (Collection[str] | None): Restrict to these fields — the
+                edit form passes the row's
+                :meth:`AdminModel.editable_field_names`, which honours
+                ``readonly_fields_for``.
 
         Returns:
             Any: The list of form-field descriptors.
@@ -1301,6 +1306,7 @@ def make_admin_router(
             errors=errors,
             fk_options=fk_options,
             creating=creating,
+            only=only,
         )
         if admin.autocomplete_fields:
             await _decorate_autocomplete_fields(admin, fields, db_session, principal)
@@ -2741,7 +2747,7 @@ def make_admin_router(
             form's JSON widget does, so the two views read the same.
         """
         columns = admin.column_names()
-        readonly = set(admin.readonly_fields)
+        readonly = admin.readonly_field_names_for(instance)
         model_columns = sa_inspect(admin.model).columns
         json_columns: set[str] = set()
         fields: list[tuple[str, Any]] = []
@@ -3094,7 +3100,11 @@ def make_admin_router(
                 "mode": "edit",
                 "identity": identity,
                 "form_fields": await _form_fields(
-                    admin, db_session, principal, instance=instance
+                    admin,
+                    db_session,
+                    principal,
+                    instance=instance,
+                    only=admin.editable_field_names(instance=instance),
                 ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
@@ -3136,7 +3146,8 @@ def make_admin_router(
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         form = await request.form()
-        data, errors = parse_submission(admin, form)
+        editable = admin.editable_field_names(instance=instance)
+        data, errors = parse_submission(admin, form, only=editable)
         if admin.validate_edit is not None:
             errors.update(admin.validate_edit(instance, form))
         if not errors:
@@ -3174,7 +3185,12 @@ def make_admin_router(
                 "mode": "edit",
                 "identity": identity,
                 "form_fields": await _form_fields(
-                    admin, db_session, principal, submitted=form, errors=errors
+                    admin,
+                    db_session,
+                    principal,
+                    submitted=form,
+                    errors=errors,
+                    only=editable,
                 ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
@@ -4394,8 +4410,30 @@ def _upload_refusal(
     return None
 
 
-def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
-    """Return the bulk actions available for ``admin`` as ``(value, label)``.
+_BULK_CONFIRM: Final[str] = "Apply the selected action to the checked rows?"
+"""Confirm prompt of a bulk action that is not ``dangerous``."""
+
+
+def _bulk_confirm_text(label: str, *, dangerous: bool) -> str:
+    """Write the confirm prompt the list shows before running a bulk action.
+
+    Args:
+        label (str): The action's label.
+        dangerous (bool): Whether the action is destructive
+            (:attr:`~tempest_fastapi_sdk.admin.actions.AdminAction.dangerous`,
+            and the built-in delete).
+
+    Returns:
+        str: :data:`_BULK_CONFIRM` for a plain action; for a dangerous one, a
+        prompt that names the action and says it cannot be undone.
+    """
+    if not dangerous:
+        return _BULK_CONFIRM
+    return f'Run "{label}" on the checked rows? This cannot be undone.'
+
+
+def _bulk_actions(admin: Any) -> list[tuple[str, str, str]]:
+    """Return the bulk actions available for ``admin``.
 
     Activation toggles need ``can_edit`` (every model carries the
     ``is_active`` flag from ``BaseModel``); delete needs ``can_delete``.
@@ -4404,21 +4442,30 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
         admin (Any): The admin configuration.
 
     Returns:
-        list[tuple[str, str]]: Action option pairs (empty when no
-        mutation is permitted).
+        list[tuple[str, str, str]]: ``(value, label, confirm)`` per action
+        (empty when no mutation is permitted); ``confirm`` is the prompt
+        the list shows before submitting it (:func:`_bulk_confirm_text`).
 
     Notes:
         Custom actions are namespaced as ``custom:<name>`` so their values
         can never collide with the built-in ones.
     """
-    actions: list[tuple[str, str]] = []
+    actions: list[tuple[str, str, str]] = []
     if admin.can_edit and admin.can_toggle_active:
-        actions.append(("activate", "Activate"))
-        actions.append(("deactivate", "Deactivate"))
+        actions.append(("activate", "Activate", _BULK_CONFIRM))
+        actions.append(("deactivate", "Deactivate", _BULK_CONFIRM))
     if admin.can_delete:
-        actions.append(("delete", "Delete"))
+        actions.append(
+            ("delete", "Delete", _bulk_confirm_text("Delete", dangerous=True))
+        )
     for action in admin.custom_actions():
-        actions.append((f"custom:{action.name}", action.label))
+        actions.append(
+            (
+                f"custom:{action.name}",
+                action.label,
+                _bulk_confirm_text(action.label, dangerous=action.dangerous),
+            )
+        )
     return actions
 
 

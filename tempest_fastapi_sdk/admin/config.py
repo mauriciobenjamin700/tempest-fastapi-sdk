@@ -45,6 +45,10 @@ string (``"created_at"`` / ``"-created_at"``)."""
 EditValidator = Callable[[Any, Mapping[str, Any]], Mapping[str, str]]
 """``(row, posted_form) -> {field: message}``; empty accepts the edit."""
 
+ReadonlyFieldsFor = Callable[[Any], Sequence[FieldRef]]
+"""``(row) -> fields``: the columns locked on this row's edit form, on top of
+``readonly_fields``."""
+
 ChoiceSource = type[Enum] | Sequence[str | tuple[str, str]]
 """The fixed values of a ``choices`` field: an ``Enum`` class, or a sequence
 of strings or ``(value, label)`` pairs."""
@@ -299,6 +303,16 @@ class AdminModel(Generic[ModelT]):
             written; a non-empty ``{field: message}`` refuses the save with
             those errors. For a rule that depends on the row's state, such
             as a receipt that cannot change once the row is final.
+        readonly_fields_for (ReadonlyFieldsFor | None): Called with the
+            stored row when its edit form is rendered and when it is
+            submitted; the columns it returns are locked for that row on
+            top of ``readonly_fields``, the same way: left out of the edit
+            form, and a value posted for them is ignored on save. For a
+            column editable only while the row is in some state, such as a
+            reason that freezes once the row is final. It covers the
+            columns the form parses — upload and password fields are
+            handled apart, so lock those with ``validate_edit`` — and the
+            row's own edit form, not an inline formset.
         audit_model (type[BaseAuditLogModel] | None): When set, the detail
             view renders a per-row change timeline read from this audit
             table (matched on ``entity`` = the model name and
@@ -432,6 +446,7 @@ class AdminModel(Generic[ModelT]):
         choices: Mapping[FieldRef, ChoiceSource] | None = None,
         upload_accept: Mapping[FieldRef, Sequence[str]] | None = None,
         validate_edit: EditValidator | None = None,
+        readonly_fields_for: ReadonlyFieldsFor | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -491,6 +506,7 @@ class AdminModel(Generic[ModelT]):
                 f"`upload_fields`: {', '.join(stray)}",
             )
         self.validate_edit: EditValidator | None = validate_edit
+        self.readonly_fields_for: ReadonlyFieldsFor | None = readonly_fields_for
         if audit_model is not None and (
             not isinstance(audit_model, type)
             or not issubclass(audit_model, BaseAuditLogModel)
@@ -765,7 +781,24 @@ class AdminModel(Generic[ModelT]):
             return [name for name in self.list_display if name not in hidden]
         return [name for name in self.column_names() if name not in hidden]
 
-    def editable_field_names(self, *, creating: bool = False) -> list[str]:
+    def readonly_field_names_for(self, instance: Any) -> set[str]:
+        """Return the columns locked on one row's edit form.
+
+        Args:
+            instance (Any): The stored row.
+
+        Returns:
+            set[str]: ``readonly_fields`` plus what ``readonly_fields_for``
+            returns for ``instance``.
+        """
+        names = set(self.readonly_fields)
+        if self.readonly_fields_for is not None:
+            names |= set(_normalize_fields(self.readonly_fields_for(instance)))
+        return names
+
+    def editable_field_names(
+        self, *, creating: bool = False, instance: Any | None = None
+    ) -> list[str]:
         """Return the columns a create/edit form should expose.
 
         Excludes the primary key, the audit timestamps
@@ -791,6 +824,9 @@ class AdminModel(Generic[ModelT]):
         Args:
             creating (bool): Whether the form is the create form, which
                 takes the required secret columns as blank inputs.
+            instance (Any | None): The row being edited; when given, the
+                columns ``readonly_fields_for`` locks for it are left out
+                too (:meth:`readonly_field_names_for`).
 
         Returns:
             list[str]: Editable column keys in declaration order.
@@ -798,9 +834,14 @@ class AdminModel(Generic[ModelT]):
         secrets = set(self.model.get_secret_columns())
         if creating:
             secrets -= self.insertable_secret_names()
+        locked = (
+            self.readonly_field_names_for(instance)
+            if instance is not None
+            else set(self.readonly_fields)
+        )
         skip = (
             (
-                set(self.readonly_fields)
+                locked
                 | {
                     "id",
                     "created_at",
@@ -1055,4 +1096,5 @@ __all__: list[str] = [
     "Inline",
     "Lens",
     "OrderRef",
+    "ReadonlyFieldsFor",
 ]

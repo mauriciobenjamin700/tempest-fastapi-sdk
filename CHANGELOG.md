@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ManualPayoutService` (`tempest_fastapi_sdk.wallet`): `mark_paid(row_id,
+  end_to_end_id=None, *, actor=None, require_receipt=False)` e
+  `reject(row_id, reason, *, actor=None)` tiram o saque manual de `PENDING`
+  com um `UPDATE ... WHERE status = 'pending'` — dois administradores na
+  mesma linha a movem uma vez, e o segundo recebe
+  `ManualPayoutNotPendingException` (`409 WALLET_MANUAL_PAYOUT_NOT_PENDING`)
+  sem nada alterado. `reject` grava o motivo e devolve o valor à carteira
+  numa linha `WITHDRAW_REFUND` (`reference_id` = `correlation_id`) pelo
+  `WalletLedger`, no mesmo commit. Novas exceções
+  `ManualPayoutNotFoundException` (`404`) e
+  `ManualPayoutReceiptMissingException` (`409`), com mensagem nas duas
+  línguas (#768).
+- `ManualPayoutHooks` (`on_requested`, `on_canceled`, `on_paid`,
+  `on_rejected`): cada callback recebe a sessão e a linha dentro da
+  transação da transição, para o serviço gravar o histórico que o usuário vê
+  no mesmo commit; hook que levanta desfaz a transição (e, no `reject`, a
+  devolução). `ManualPayoutProvider(hooks=...)` roda `on_requested` na
+  transação que grava a linha e `on_canceled` na que a cancela.
+- `manual_payout_admin(ledger_factory=..., hooks=...)`: com
+  `ledger_factory`, a ação **Recusar e devolver** (`make_reject_action`,
+  `REJECT_ACTION`) recusa as linhas `PENDING` que têm motivo em
+  `rejection_reason` e devolve o valor; o motivo só é editável enquanto a
+  linha está `PENDING`. **Marcar como pago** passou a chamar
+  `ManualPayoutService.mark_paid(require_receipt=True)`, uma transação por
+  linha.
+- `AdminModel(readonly_fields_for=...)` (tipo `ReadonlyFieldsFor`): recebe a
+  linha guardada e devolve campos a trancar só nela, somados a
+  `readonly_fields`. O campo sai do formulário de edição daquela linha e um
+  valor postado para ele é ignorado no salvamento. `AdminModel` ganhou
+  `readonly_field_names_for(row)` e `editable_field_names(instance=...)`. O
+  preset de saque manual usa isso para tirar `rejection_reason` do formulário
+  de linha finalizada (antes o campo aparecia e o salvamento dava `400`).
 - Simulação do Mercado Pago compartilhada entre a API e o worker (#767):
   `make_mercado_pago_router(simulate=True, simulation_url="http://mp-fake:8090")`
   monta as rotas `/dev/mercado-pago/orders/...` sobre um
@@ -28,6 +60,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--fake-api` aceitam o id `ORD…` **ou** o `external_reference` da criação
   (o `correlation_id` do serviço); com várias orders na mesma referência, vale
   a mais recente. `FakeMercadoPagoOrdersAPI.find_order_id(reference)`.
+
+### Changed
+
+- Admin: o confirm das ações em massa passou a respeitar
+  `AdminAction.dangerous`, documentado como "confirm mais forte" e nunca
+  implementado. Cada `<option>` leva o texto em `data-confirm`: ação comum
+  mantém "Apply the selected action to the checked rows?"; ação perigosa e o
+  Delete embutido mostram `Run "<rótulo>" on the checked rows? This cannot be
+  undone.`, com o rótulo escapado pelo template.
+- `BaseManualPayoutModel` ganhou as colunas anuláveis `end_to_end_id`,
+  `rejection_reason`, `rejected_at` e `rejected_by`, e
+  `ManualPayoutStatusEnum` ganhou `REJECTED` (`"rejected"`). **Tabela criada
+  na 0.360.0 precisa de migration** que adicione as quatro colunas.
 
 ### Fixed
 
