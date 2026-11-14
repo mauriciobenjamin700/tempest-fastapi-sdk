@@ -1226,6 +1226,9 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -1758,6 +1761,9 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -2030,6 +2036,8 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -3292,6 +3300,44 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/
 # Guia de migração
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
+
+## 0.361.0 — saque manual ganha quatro colunas
+
+O `BaseManualPayoutModel` (e o `make_manual_payout_model`) ganhou quatro colunas anuláveis, usadas pelo `ManualPayoutService` para registrar o pagamento e a recusa. Uma tabela criada na 0.360.0 não as tem, e qualquer `select` do modelo novo falha — em SQLite com `OperationalError: no such column: manual_payouts.end_to_end_id`.
+
+| Coluna | Tipo | Para quê |
+| --- | --- | --- |
+| `end_to_end_id` | `String(64)`, anulável | id fim a fim do Pix, gravado por `mark_paid(..., end_to_end_id=...)` |
+| `rejection_reason` | `String(512)`, anulável | motivo da recusa |
+| `rejected_at` | `UtcDateTime`, anulável | quando foi recusado |
+| `rejected_by` | `String(128)`, anulável | quem recusou |
+
+O status `REJECTED` (`"rejected"`) cabe no `String(16)` que já existe, então não pede migration.
+
+Gere a revisão com `alembic revision --autogenerate` ou escreva à mão:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+from tempest_fastapi_sdk.db import UtcDateTime
+
+
+def upgrade() -> None:
+    """Add the 0.361.0 manual payout columns."""
+    op.add_column("manual_payouts", sa.Column("end_to_end_id", sa.String(64), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejection_reason", sa.String(512), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejected_at", UtcDateTime(), nullable=True))
+    op.add_column("manual_payouts", sa.Column("rejected_by", sa.String(128), nullable=True))
+
+
+def downgrade() -> None:
+    """Drop the 0.361.0 manual payout columns."""
+    for column in ("rejected_by", "rejected_at", "rejection_reason", "end_to_end_id"):
+        op.drop_column("manual_payouts", column)
+```
+
+Troque `"manual_payouts"` se você passou outro `tablename=` ao `make_manual_payout_model`.
 
 ## 0.353.0 — `google_kwargs()` do Gemini vira `gemini_kwargs()`
 
@@ -6549,6 +6595,84 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.361.0] — 2026-11-14
+
+### Added
+
+- `ManualPayoutService` (`tempest_fastapi_sdk.wallet`): `mark_paid(row_id,
+  end_to_end_id=None, *, actor=None, require_receipt=False)` e
+  `reject(row_id, reason, *, actor=None)` tiram o saque manual de `PENDING`
+  com um `UPDATE ... WHERE status = 'pending'` — dois administradores na
+  mesma linha a movem uma vez, e o segundo recebe
+  `ManualPayoutNotPendingException` (`409 WALLET_MANUAL_PAYOUT_NOT_PENDING`)
+  sem nada alterado. `reject` grava o motivo e devolve o valor à carteira
+  numa linha `WITHDRAW_REFUND` (`reference_id` = `correlation_id`) pelo
+  `WalletLedger`, no mesmo commit. Novas exceções
+  `ManualPayoutNotFoundException` (`404`) e
+  `ManualPayoutReceiptMissingException` (`409`), com mensagem nas duas
+  línguas (#768).
+- `ManualPayoutHooks` (`on_requested`, `on_canceled`, `on_paid`,
+  `on_rejected`): cada callback recebe a sessão e a linha dentro da
+  transação da transição, para o serviço gravar o histórico que o usuário vê
+  no mesmo commit; hook que levanta desfaz a transição (e, no `reject`, a
+  devolução). `ManualPayoutProvider(hooks=...)` roda `on_requested` na
+  transação que grava a linha e `on_canceled` na que a cancela.
+- `manual_payout_admin(ledger_factory=..., hooks=...)`: com
+  `ledger_factory`, a ação **Recusar e devolver** (`make_reject_action`,
+  `REJECT_ACTION`) recusa as linhas `PENDING` que têm motivo em
+  `rejection_reason` e devolve o valor; o motivo só é editável enquanto a
+  linha está `PENDING`. **Marcar como pago** passou a chamar
+  `ManualPayoutService.mark_paid(require_receipt=True)`, uma transação por
+  linha.
+- `AdminModel(readonly_fields_for=...)` (tipo `ReadonlyFieldsFor`): recebe a
+  linha guardada e devolve campos a trancar só nela, somados a
+  `readonly_fields`. O campo sai do formulário de edição daquela linha e um
+  valor postado para ele é ignorado no salvamento. `AdminModel` ganhou
+  `readonly_field_names_for(row)` e `editable_field_names(instance=...)`. O
+  preset de saque manual usa isso para tirar `rejection_reason` do formulário
+  de linha finalizada.
+- Simulação do Mercado Pago compartilhada entre a API e o worker (#767):
+  `make_mercado_pago_router(simulate=True, simulation_url="http://mp-fake:8090")`
+  monta as rotas `/dev/mercado-pago/orders/...` sobre um
+  `tempest mercado-pago fake-api` em outro processo — a transição roda no
+  prefixo de controle do `fake-api` e o webhook, assinado pelo router, é
+  entregue à rota do próprio app, como no modo em memória. Cliente HTTP
+  injetável em `simulation_client=`; `fake-api` fora do ar responde `502`.
+  A peça é `RemoteMercadoPagoSimulation`, e as duas implementações (em
+  memória e remota) satisfazem `MercadoPagoSimulationBackend`
+  (`integrations.payment.adapters`). `simulation_url` sem `simulate=True`,
+  junto com `simulation_api`, ou `simulation_client` sem `simulation_url` são
+  recusados na construção (`ValueError`).
+- Busca por `external_reference`: as rotas de simulação do router
+  (`GET`/`POST /dev/mercado-pago/orders/{order_id}...`), o prefixo de controle
+  do `fake-api` (novo `GET /_fake/orders/{reference}`; o `POST` de transição
+  aceita a referência) e o `--order-id` do `simulate-webhook` com
+  `--fake-api` aceitam o id `ORD…` **ou** o `external_reference` da criação
+  (o `correlation_id` do serviço); com várias orders na mesma referência, vale
+  a mais recente. `FakeMercadoPagoOrdersAPI.find_order_id(reference)`.
+
+### Changed
+
+- Admin: o confirm das ações em massa passou a respeitar
+  `AdminAction.dangerous`, documentado como "confirm mais forte" e nunca
+  implementado. Cada `<option>` leva o texto em `data-confirm`: ação comum
+  mantém "Apply the selected action to the checked rows?"; ação perigosa e o
+  Delete embutido mostram `Run "<rótulo>" on the checked rows? This cannot be
+  undone.`, com o rótulo escapado pelo template.
+- `BaseManualPayoutModel` ganhou as colunas anuláveis `end_to_end_id`,
+  `rejection_reason`, `rejected_at` e `rejected_by`, e
+  `ManualPayoutStatusEnum` ganhou `REJECTED` (`"rejected"`). **Tabela criada
+  na 0.360.0 precisa de migration** que adicione as quatro colunas — passo a passo no guia de migração.
+
+### Fixed
+
+- `MercadoPagoSettings.mercado_pago_kwargs()` com
+  `MERCADOPAGO_ACCESS_TOKEN` vazio não manda mais `Authorization: Bearer `
+  — valor de header que o `httpx` recusa antes de enviar
+  (`httpx.LocalProtocolError: Illegal header value b'Bearer '`), o que
+  quebrava toda chamada de um serviço de desenvolvimento apontado para o
+  `fake-api` sem token. Agora o header é omitido.
 
 ## [0.360.0] — 2026-11-14
 
@@ -33905,6 +34029,14 @@ função fica **diretamente chamável/testável** — o decorator só anexa
 metadados. Use `name=` pra fixar o identificador (default: nome da função)
 e `dangerous=True` pra marcar ação destrutiva.
 
+Cada opção do select de ações em massa leva o próprio texto de confirmação.
+Ação comum (e Activate/Deactivate) pergunta "Apply the selected action to the
+checked rows?"; ação `dangerous=True` (e o Delete embutido) nomeia a ação e
+avisa que não tem volta — `Run "Recusar e devolver" on the checked rows? This
+cannot be undone.`. O rótulo vai num atributo `data-confirm` escapado pelo
+template, nunca interpolado no JavaScript, então aspas ou `<` no rótulo não
+quebram a página.
+
 ### Mostrar um segredo uma vez (`secrets=`)
 
 Algumas ações **criam uma credencial**: uma chave de API, um token de
@@ -34201,13 +34333,106 @@ upload ser gravado. Devolver `{"campo": "mensagem"}` recusa a edição com
 esses erros — é o lugar de uma regra como "o comprovante de um registro
 finalizado não muda". O preset abaixo usa exatamente isso.
 
+### Campo trancado por linha (`readonly_fields_for=`)
+
+`readonly_fields` tranca o mesmo campo em toda linha. Quando o campo só pode
+mudar enquanto a linha está num estado — o motivo de uma recusa, editável
+até o registro ser finalizado —, passe `readonly_fields_for(row)`: ele
+recebe a linha guardada e devolve os campos a trancar **nela**, somados aos
+de `readonly_fields`. A trava vale nos dois lados, do mesmo jeito que a
+estática: o campo sai do formulário de edição daquela linha, e um valor
+postado para ele à mão é ignorado no salvamento (a resposta é o `303` de
+sempre, e o valor guardado não muda).
+
+```python
+from collections.abc import Sequence
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import AdminModel, BaseModel
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets"
+
+    status: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+def note_locked_when_closed(row: TicketModel) -> Sequence[str]:
+    return ["note"] if row.status == "closed" else []
+
+
+tickets: AdminModel[TicketModel] = AdminModel(
+    TicketModel,
+    readonly_fields=["status"],
+    readonly_fields_for=note_locked_when_closed,
+)
+```
+
+!!! note "O que ele não cobre"
+    Campo de upload e de senha é tratado à parte no formulário, então
+    tranque-o com `validate_edit`. E o gancho vale para o formulário de
+    edição da própria linha, não para o formset inline do pai.
+
 ### Preset: saque manual (`manual_payout_admin`)
 
 `manual_payout_admin(ManualPayoutModel, upload_storage=...)` devolve o
 `AdminModel` da tabela de saques pagos à mão (`make_manual_payout_model`):
 valores só leitura, comprovante só em PDF, link de download e a ação
-**Marcar como pago**, que só conclui linha `PENDING` com comprovante. O
-fluxo inteiro — o saque que grava a linha e manda o e-mail ao
+**Marcar como pago**, que só conclui linha `PENDING` com comprovante.
+
+Com `ledger_factory=` (uma função que recebe a sessão do painel e devolve o
+`WalletLedger` sobre ela), entra também **Recusar e devolver**: o
+administrador escreve o motivo no campo `rejection_reason` da linha e roda a
+ação, que deixa a linha `REJECTED` e devolve o valor à carteira numa linha
+`WITHDRAW_REFUND`, no mesmo commit. Linha sem motivo fica `PENDING` e a
+mensagem lista o `correlation_id` dela; linha que já saiu de `PENDING` não
+muda, e o campo do motivo sai do formulário de edição dela
+(`readonly_fields_for`). As duas ações chamam
+`ManualPayoutService` e rodam os `hooks=` que você passar — veja
+[Carteira » Concluir ou recusar o saque à mão](wallet.md#concluir-ou-recusar-o-saque-a-mao-manualpayoutservice).
+
+```python
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository, BaseUserModel
+from tempest_fastapi_sdk.admin import AdminModel, manual_payout_admin
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+from tempest_fastapi_sdk.wallet import (
+    WalletBalanceMixin,
+    WalletLedger,
+    make_manual_payout_model,
+    make_wallet_entry_model,
+)
+
+
+class UserModel(BaseUserModel, WalletBalanceMixin):
+    __tablename__ = "users"
+
+
+WalletEntryModel = make_wallet_entry_model(user_table="users")
+ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+def ledger(session: AsyncSession) -> WalletLedger:
+    return WalletLedger(
+        balances=BaseRepository(session, model=UserModel),
+        entries=BaseRepository(session, model=WalletEntryModel),
+    )
+
+
+payouts: AdminModel[Any] = manual_payout_admin(
+    ManualPayoutModel,
+    upload_storage=LocalUploadStorage("receipts"),
+    ledger_factory=ledger,
+)
+```
+
+O fluxo inteiro — o saque que grava a linha e manda o e-mail ao
 administrador — está em
 [Mercado Pago: testando webhooks » Saque manual](mercado-pago-webhooks.md#saque-manual).
 
@@ -49550,7 +49775,8 @@ serviço aponta para ela com `MERCADOPAGO_BASE_URL=http://127.0.0.1:8090`. O
 nunca de um argumento —, posta na rota (`--url`, default
 `http://127.0.0.1:8000/webhooks/mercado-pago`) e imprime o status e o corpo
 da resposta. Sai com `1` quando a rota não responde 2xx e com `2` em erro de
-uso. Passo a passo com a saída medida:
+uso. Com `--fake-api`, o `--order-id` aceita também o `external_reference`
+da criação (o `correlation_id` do serviço). Passo a passo com a saída medida:
 [Mercado Pago: testando webhooks »](mercado-pago-webhooks.md#teste-manual-o-servico-rodando-o-mercado-pago-simulado).
 
 ### Agentes — `tempest agents`
@@ -73385,6 +73611,12 @@ permite (estornar antes de pagar) é `409`; order desconhecida, `404`;
 transição desconhecida, `422`. No Swagger, essas rotas aparecem sob a tag
 `mercado-pago (dev)`.
 
+`{order_id}` aceita também o **`external_reference`** que você mandou na
+criação — o `reference` do `PixChargeRequest`, em geral o seu
+`correlation_id`, que é o que a sua tela e o seu log mostram. Quando várias
+orders compartilham o mesmo, a mais recente é a movida: cobrar de novo a
+mesma referência depois de um vencimento quer dizer a order nova.
+
 O provider se liga ao simulador por `mercado_pago_provider_for`: com
 `simulate=False` ele devolve o `MercadoPagoPixProvider` sobre
 `settings.mercado_pago_kwargs()`; com `simulate=True`, o **mesmo** adapter
@@ -73495,6 +73727,173 @@ on_delivery: charge_paid paid
 
     Com `simulate=False` as rotas de simulação não são montadas, e o módulo
     do simulador nem é importado.
+
+#### API e worker em processos separados: `simulation_url`
+
+O simulador do `simulate=True` vive na memória **de um processo**. Se o seu
+serviço tem um worker (TaskIQ, cron) que relê a order — a varredura de
+cobranças pendentes, o job de estornos —, o pedido criado na request da API
+não existe para ele.
+
+A saída é um simulador só, fora dos dois: rode `tempest mercado-pago
+fake-api`, aponte o `MERCADOPAGO_BASE_URL` da API **e** do worker para ele, e
+passe a mesma URL ao router em `simulation_url=`. As rotas
+`/dev/mercado-pago/orders/...` passam a mover a order **no `fake-api`**, pelo
+prefixo de controle dele (`FAKE_CONTROL_PREFIX`, `/_fake`), e entregam o
+webhook assinado à rota do próprio serviço, como no modo em memória. O
+`fake-api` nunca recebe o segredo: quem assina é o router.
+
+```python hl_lines="21 38"
+from typing import Any
+
+import uvicorn
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.integrations.payment import PixChargeRequest, PixPayer
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    make_mercado_pago_router,
+    mercado_pago_provider_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+settings = Settings()
+simulate: bool = settings.ENV == "development"
+provider = mercado_pago_provider_for(settings)
+
+
+async def handle(delivery: MercadoPagoOrderDelivery) -> None:
+    """Release or revert the order the delivery is about."""
+    event = provider.parse_webhook(delivery)
+    status = event.charge.status.value if event.charge else None
+    print(f"on_delivery: {event.type.value} {status}", flush=True)
+
+
+app = FastAPI()
+app.include_router(
+    make_mercado_pago_router(
+        provider,
+        on_delivery=handle,
+        settings=settings,
+        simulate=simulate,
+        simulation_url=settings.MERCADOPAGO_BASE_URL if simulate else None,
+    )
+)
+
+
+@app.post("/charges")
+async def create_charge(reference: str) -> dict[str, Any]:
+    """Create a R$ 19,90 Pix charge — the service's normal flow."""
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference=reference,
+            payer=PixPayer(email="comprador@example.com"),
+        )
+    )
+    return {"order_id": charge.provider_charge_id, "status": charge.status.value}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8001)
+```
+
+Duas linhas mudaram em relação ao exemplo anterior: o provider é o adapter
+**real** (`mercado_pago_provider_for(settings)`, sem `simulate`), que fala
+com o host de `MERCADOPAGO_BASE_URL` — o `fake-api`; e o router recebe essa
+mesma URL em `simulation_url`. O worker não precisa de nada do simulador:
+
+```python
+import asyncio
+import sys
+
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    mercado_pago_provider_for,
+)
+
+
+async def main(order_id: str) -> None:
+    """Re-read a charge, as a sweep of pending charges does."""
+    provider = mercado_pago_provider_for()
+    charge = await provider.get_pix_charge(order_id)
+    print(f"worker: {charge.provider_charge_id} {charge.status.value}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main(sys.argv[1]))
+```
+
+Em três terminais, todos com o mesmo ambiente:
+
+```bash
+tempest mercado-pago fake-api            # http://127.0.0.1:8090
+
+export ENV=development
+export MERCADOPAGO_BASE_URL=http://127.0.0.1:8090
+export MERCADOPAGO_WEBHOOK_SECRET=segredo-local-de-teste
+python servico.py                        # http://127.0.0.1:8001
+
+python worker.py <order_id>              # mesmo ambiente
+```
+
+Saída medida em 2026-11-14 — o Pix criado pela API, o worker lendo a order
+em outro processo, e pagar e estornar **pelo `correlation_id`** (o `order`
+da resposta cortado em `id`, `status` e `status_detail`):
+
+```text
+$ curl -s -X POST "http://127.0.0.1:8001/charges?reference=compra-7f3a"
+{"order_id":"ORDFAKE4627FF3D00000000000002","status":"pending"}
+$ python worker.py ORDFAKE4627FF3D00000000000002
+worker: ORDFAKE4627FF3D00000000000002 pending
+$ curl -s -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/pay
+{"order": {"id": "ORDFAKE4627FF3D00000000000002", "status": "processed", "status_detail": "accredited"}, "delivery": {"action": "order.processed", "status_code": 200, "body": {"ok": true, "data_id": "ORDFAKE4627FF3D00000000000002", "order_status": "processed"}}}
+$ python worker.py ORDFAKE4627FF3D00000000000002
+worker: ORDFAKE4627FF3D00000000000002 paid
+$ curl -s -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/refund
+{"order": {"id": "ORDFAKE4627FF3D00000000000002", "status": "refunded", "status_detail": "refunded"}, "delivery": {"action": "order.refunded", "status_code": 200, "body": {"ok": true, "data_id": "ORDFAKE4627FF3D00000000000002", "order_status": "refunded"}}}
+$ python worker.py ORDFAKE4627FF3D00000000000002
+worker: ORDFAKE4627FF3D00000000000002 refunded
+$ curl -s -w "\nHTTP %{http_code}\n" -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-404/pay
+{"detail":"order compra-404 not found"}
+HTTP 404
+```
+
+E no log do serviço, `on_delivery: charge_paid paid` e
+`on_delivery: charge_refunded refunded` — a entrega assinada passou pela
+verificação e pela releitura no `fake-api`. Com o `fake-api` parado, a rota
+responde `502`:
+
+```text
+{"detail":"simulator unavailable: ConnectError('All connection attempts failed')"}
+HTTP 502
+```
+
+!!! tip "Cliente HTTP injetado"
+    Sem `simulation_client=`, cada chamada ao `fake-api` abre e fecha um
+    `httpx.AsyncClient`. Para reaproveitar conexão, passe o seu
+    (`simulation_client=client`); o ciclo de vida dele continua com você. A
+    peça que o router monta é `RemoteMercadoPagoSimulation`, que você também
+    pode usar direto num teste (`await remote.apply("compra-7f3a", "pay")`).
+
+!!! note "`MERCADOPAGO_ACCESS_TOKEN` pode ficar vazio contra o `fake-api`"
+    Com token vazio, `mercado_pago_kwargs()` não manda o header
+    `Authorization` — `Bearer ` sem nada depois é um valor de header que o
+    `httpx` recusa antes de enviar (`httpx.LocalProtocolError`), e era o que
+    acontecia em toda chamada até a 0.360.0.
+
+!!! warning "O estado do `fake-api` ainda é de memória"
+    Reiniciar o `tempest mercado-pago fake-api` no meio de um teste manual
+    perde as orders. Um store persistente (Redis) para o simulador ainda não
+    existe.
+
+O prefixo de controle também acha a order pelo `external_reference`, então o
+`simulate-webhook` aceita o `correlation_id` em `--order-id` quando há
+`--fake-api`.
 
 #### Saque manual
 
@@ -73730,10 +74129,13 @@ tabela no painel do jeito que o trabalho pede:
 - linha `COMPLETED` não volta, e o comprovante dela não pode mais ser
   trocado (o envio é recusado com erro no campo).
 
-!!! info "Cancelar um saque pelo painel não existe"
-    Cancelar um `PENDING` teria de devolver o débito pela carteira, e a ação
-    do painel não faz isso. `CANCELED` só aparece quando o e-mail falhou e o
-    próprio saque já devolveu o débito.
+!!! info "Recusar um saque devolve o valor à carteira"
+    `CANCELED` só aparece quando o e-mail falhou e o próprio saque já
+    devolveu o débito. Para o administrador recusar um `PENDING`, passe
+    `ledger_factory=` ao `manual_payout_admin`: a ação **Recusar e devolver**
+    deixa a linha `REJECTED` e credita o valor numa linha `WITHDRAW_REFUND`,
+    no mesmo commit — veja
+    [Carteira » Concluir ou recusar o saque à mão](wallet.md#concluir-ou-recusar-o-saque-a-mao-manualpayoutservice).
 
 ## Nível 2 — simulação assinada sobre o sandbox
 
@@ -109959,6 +110361,201 @@ com o comprovante em PDF. A rota pronta que junta tudo — saque que zera a
 carteira, linha, e-mail e painel — está em
 [Mercado Pago: testando webhooks » Saque manual](mercado-pago-webhooks.md#saque-manual).
 
+## Concluir ou recusar o saque à mão (`ManualPayoutService`)
+
+A linha `PENDING` sai desse estado de duas formas, e as duas moram em
+`ManualPayoutService` — a mesma classe que as ações do painel chamam, para o
+serviço que expõe a fila pela própria API (por exemplo, `PATCH /api/admin/withdrawals`)
+não reimplementar a regra:
+
+- `mark_paid(row_id, end_to_end_id=None, *, actor=None, require_receipt=False)`
+  → `COMPLETED`, com `completed_at`, `completed_by` e o `end_to_end_id` do
+  Pix;
+- `reject(row_id, reason, *, actor=None)` → `REJECTED`, com
+  `rejection_reason`, `rejected_at` e `rejected_by`, **e** uma linha
+  `WITHDRAW_REFUND` do valor na carteira (`reference_id` é o
+  `correlation_id`, o mesmo da linha `WITHDRAW`), no mesmo commit.
+
+Os dois mudam o status com um `UPDATE ... WHERE id = :id AND status =
+'pending'`: dois administradores na mesma linha a movem uma vez, e o segundo
+recebe `ManualPayoutNotPendingException` (`409
+WALLET_MANUAL_PAYOUT_NOT_PENDING`) sem nada alterado — nem status, nem
+carteira, nem hook. Id que não existe é `ManualPayoutNotFoundException`
+(`404`); `require_receipt=True` sem comprovante é
+`ManualPayoutReceiptMissingException` (`409`).
+
+O histórico que o usuário vê no app é do serviço, não do SDK. Para ele
+andar junto com o saque, `ManualPayoutHooks` recebe um callback por transição
+— `on_requested`, `on_canceled`, `on_paid`, `on_rejected` —, cada um chamado
+com a sessão e a linha **dentro** da transação da transição. Passe a mesma
+instância ao `ManualPayoutProvider` (que roda `on_requested` e `on_canceled`)
+e ao `ManualPayoutService` (`on_paid` e `on_rejected`):
+
+```python
+import asyncio
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import String, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    BaseModel,
+    BaseRepository,
+    BaseUserModel,
+    PixKeyType,
+)
+from tempest_fastapi_sdk.exceptions import ManualPayoutNotPendingException
+from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils
+from tempest_fastapi_sdk.wallet import (
+    ManualPayoutHooks,
+    ManualPayoutProvider,
+    ManualPayoutService,
+    WalletBalanceMixin,
+    WalletService,
+    make_manual_payout_model,
+    make_wallet_entry_model,
+)
+
+
+class UserModel(BaseUserModel, WalletBalanceMixin):
+    __tablename__ = "users"
+
+
+WalletEntryModel = make_wallet_entry_model(user_table="users")
+ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+class WithdrawalHistoryModel(BaseModel):
+    """The line the user sees in the app's history."""
+
+    __tablename__ = "withdrawal_history"
+
+    correlation_id: Mapped[str] = mapped_column(String(128), unique=True)
+    label: Mapped[str] = mapped_column(String(32))
+
+
+async def on_requested(session: AsyncSession, row: Any) -> None:
+    session.add(
+        WithdrawalHistoryModel(
+            correlation_id=row.correlation_id, label="SAQUE SOLICITADO"
+        )
+    )
+
+
+async def _relabel(session: AsyncSession, row: Any, label: str) -> None:
+    line = (
+        await session.execute(
+            select(WithdrawalHistoryModel).where(
+                WithdrawalHistoryModel.correlation_id == row.correlation_id
+            )
+        )
+    ).scalar_one()
+    line.label = label
+
+
+async def on_paid(session: AsyncSession, row: Any) -> None:
+    await _relabel(session, row, "SAQUE REALIZADO")
+
+
+async def on_rejected(session: AsyncSession, row: Any) -> None:
+    await _relabel(session, row, "SAQUE RECUSADO")
+
+
+HOOKS = ManualPayoutHooks(
+    on_requested=on_requested, on_paid=on_paid, on_rejected=on_rejected
+)
+
+
+def wallet(session: AsyncSession) -> WalletService:
+    return WalletService(
+        balances=BaseRepository(session, model=UserModel),
+        entries=BaseRepository(session, model=WalletEntryModel),
+    )
+
+
+def payouts(session: AsyncSession) -> ManualPayoutService:
+    return ManualPayoutService(
+        records=BaseRepository(session, model=ManualPayoutModel),
+        ledger=wallet(session).ledger,
+        hooks=HOOKS,
+    )
+
+
+async def main() -> None:
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        user = UserModel(email="motorista@example.com", hashed_password="x")
+        session.add(user)
+        await session.commit()
+        user_id: UUID = user.id
+        await wallet(session).credit(user_id, 12_345, kind="SALE")
+        provider = ManualPayoutProvider(
+            FakeEmailUtils(),
+            admin_emails=["financeiro@example.com"],
+            records=BaseRepository(session, model=ManualPayoutModel),
+            hooks=HOOKS,
+        )
+        await wallet(session).withdraw(
+            user_id,
+            payout=provider,
+            pix_key="motorista@example.com",
+            pix_key_type=PixKeyType.EMAIL,
+            correlation_id="saque-1",
+        )
+        row = (await session.execute(select(ManualPayoutModel))).scalar_one()
+        print("depois do saque  ", (await wallet(session).balance(user_id)).total_cents)
+
+    async with db.get_session_context() as session:
+        rejected = await payouts(session).reject(
+            row.id, "chave Pix de outra pessoa", actor="admin-1"
+        )
+        print("status           ", rejected.status)
+        print("depois da recusa ", (await wallet(session).balance(user_id)).total_cents)
+        history = (await session.execute(select(WithdrawalHistoryModel))).scalar_one()
+        print("histórico        ", history.label)
+
+    async with db.get_session_context() as session:
+        try:
+            await payouts(session).mark_paid(row.id, actor="admin-2")
+        except ManualPayoutNotPendingException as error:
+            print("segundo admin    ", error.code)
+
+    await db.disconnect()
+
+
+asyncio.run(main())
+```
+
+Rodando:
+
+```text
+depois do saque   0
+status            rejected
+depois da recusa  12345
+histórico         SAQUE RECUSADO
+segundo admin     WALLET_MANUAL_PAYOUT_NOT_PENDING
+```
+
+!!! check "Hook que levanta desfaz a transição inteira"
+    Se `on_rejected` levanta, o status continua `PENDING`, a linha
+    `WITHDRAW_REFUND` não existe e o saldo não mudou — os testes de
+    `tests/wallet/test_manual_payout_service.py` conferem os três. Em
+    `on_requested`, levantar é recusar o saque: a linha não é gravada, o
+    e-mail não sai e o débito volta. Em `on_canceled` (o e-mail falhou),
+    levantar deixa a linha `PENDING` e o débito guardado
+    (`PayoutUncertainException`), o mesmo de um erro desconhecido.
+
+O `reject` precisa do `ledger` (o `WalletService.ledger` já serve) na mesma
+sessão do repositório — sessão diferente é `ValueError` no construtor, porque
+a devolução e o status commitariam separados. Sem `ledger`, só `mark_paid`
+funciona. O painel monta tudo isso sozinho: veja
+[Painel admin » Preset: saque manual](admin.md#preset-saque-manual-manual_payout_admin).
+
 ## Taxa e divisão
 
 `openpix_fee_cents()` calcula a taxa da OpenPix, e `split_net()` divide o
@@ -110265,6 +110862,9 @@ saldo.
 - Saque debita antes, devolve só na recusa definitiva e guarda o débito
   quando o desfecho é incerto.
 - `split_net` em basis points nunca perde nem inventa centavo.
+- Saque manual sai de `PENDING` por `ManualPayoutService`: `mark_paid` ou
+  `reject`, que devolve à carteira no mesmo commit; hooks gravam o
+  histórico do usuário na mesma transação.
 - Para testar sem credencial, use `FakePayoutProvider` (veja
   [Fakes](fakes.md)).
 

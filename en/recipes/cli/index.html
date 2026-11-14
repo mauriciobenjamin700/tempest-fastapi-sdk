@@ -7723,7 +7723,9 @@ points at it with <code>MERCADOPAGO_BASE_URL=http://127.0.0.1:8090</code>.
 never from an argument —, posts it to the route (<code>--url</code>, default
 <code>http://127.0.0.1:8000/webhooks/mercado-pago</code>) and prints the response's
 status and body. It exits with <code>1</code> when the route does not answer 2xx and
-with <code>2</code> on a usage error. Step by step, with measured output:
+with <code>2</code> on a usage error. With <code>--fake-api</code>, <code>--order-id</code> also takes the
+create's <code>external_reference</code> (the service's <code>correlation_id</code>). Step by
+step, with measured output:
 <a href="../mercado-pago-webhooks/#manual-testing-the-service-running-mercado-pago-simulated">Mercado Pago: testing webhooks »</a>.</p>
 <h3 id="agents-tempest-agents">Agents — <code>tempest agents</code><a class="headerlink" href="#agents-tempest-agents" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-92-1"><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a>tempest<span class="w"> </span>agents<span class="w"> </span>tools<span class="w"> </span>--agent<span class="w"> </span>src.agents:agent<span class="w">     </span><span class="c1"># which tools it holds</span>

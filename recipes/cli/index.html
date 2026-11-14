@@ -7712,7 +7712,8 @@ serviço aponta para ela com <code>MERCADOPAGO_BASE_URL=http://127.0.0.1:8090</c
 nunca de um argumento —, posta na rota (<code>--url</code>, default
 <code>http://127.0.0.1:8000/webhooks/mercado-pago</code>) e imprime o status e o corpo
 da resposta. Sai com <code>1</code> quando a rota não responde 2xx e com <code>2</code> em erro de
-uso. Passo a passo com a saída medida:
+uso. Com <code>--fake-api</code>, o <code>--order-id</code> aceita também o <code>external_reference</code>
+da criação (o <code>correlation_id</code> do serviço). Passo a passo com a saída medida:
 <a href="../mercado-pago-webhooks/#teste-manual-o-servico-rodando-o-mercado-pago-simulado">Mercado Pago: testando webhooks »</a>.</p>
 <h3 id="agentes-tempest-agents">Agentes — <code>tempest agents</code><a class="headerlink" href="#agentes-tempest-agents" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-92-1"><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a>tempest<span class="w"> </span>agents<span class="w"> </span>tools<span class="w"> </span>--agent<span class="w"> </span>src.agents:agent<span class="w">     </span><span class="c1"># que ferramentas ele tem</span>
