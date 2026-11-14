@@ -186,6 +186,24 @@ class LocalUploadStorage:
             )
         return candidate
 
+    def local_path(self, key: str) -> Path:
+        """Return where ``key`` lives on disk, refusing a key that escapes.
+
+        What a download route serves the file from, since a local disk
+        cannot mint a URL (:meth:`presigned_url` is always ``None``).
+
+        Args:
+            key (str): Storage key.
+
+        Returns:
+            Path: The resolved path under ``base_dir``; it may not exist.
+
+        Raises:
+            InvalidFileTypeException: When ``key`` resolves outside
+                ``base_dir``.
+        """
+        return self._resolve(key)
+
     async def write_stream(
         self,
         key: str,

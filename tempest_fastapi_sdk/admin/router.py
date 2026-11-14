@@ -106,11 +106,13 @@ from tempest_fastapi_sdk.tasks.jobs import (
     JobStatusEnum,
 )
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
+from tempest_fastapi_sdk.utils.storage_backends import LocalUploadStorage
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
     login_throttle_key,
 )
+from tempest_fastapi_sdk.utils.upload import SNIFFABLE_MIMETYPES, sniff_mime
 
 if TYPE_CHECKING:
     from sqlalchemy import ColumnElement
@@ -2580,6 +2582,62 @@ def make_admin_router(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    @router.get("/m/{slug}/{identity}/upload/{field}", name="admin_upload_download")
+    async def upload_download(
+        request: Request,
+        slug: str,
+        identity: str,
+        field: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Download the file an upload field of one row points at.
+
+        A backend that mints a temporary URL (MinIO) answers a redirect to
+        it; :class:`~tempest_fastapi_sdk.utils.LocalUploadStorage` streams
+        the file from disk as an attachment, with ``nosniff``.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The primary-key value from the URL.
+            field (str): An ``upload_fields`` column.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: The redirect or the file.
+
+        Raises:
+            HTTPException: ``404`` for an unknown admin, row or field, a row
+                with no file, or a backend that can serve neither.
+        """
+        admin = site.get(slug)
+        if admin is None or field not in admin.upload_fields:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown upload field")
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermissionEnum.VIEW)
+        instance = await admin.build_repository(db_session).get_or_none(
+            {admin.identity_field: _identity_value(identity)}
+        )
+        key = None if instance is None else getattr(instance, field, None)
+        if not key:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no file")
+        storage = admin.upload_storage
+        assert storage is not None, "upload_fields require upload_storage"
+        url = await storage.presigned_url(key)
+        if url:
+            return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+        if isinstance(storage, LocalUploadStorage):
+            path = storage.local_path(key)
+            if path.is_file():
+                return FileResponse(
+                    path,
+                    filename=path.name,
+                    headers={"X-Content-Type-Options": "nosniff"},
+                )
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "file not available")
+
     @router.get("/m/{slug}/{identity}", name="admin_detail")
     async def detail_view(
         request: Request,
@@ -2755,6 +2813,11 @@ def make_admin_router(
                 "identity": identity,
                 "fields": fields,
                 "json_columns": json_columns,
+                "upload_urls": {
+                    name: f"{prefix}/m/{slug}/{identity}/upload/{name}"
+                    for name in admin.upload_fields
+                    if getattr(instance, name, None)
+                },
                 "readonly": readonly,
                 "audit": audit,
                 "history": history,
@@ -3057,7 +3120,10 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         form = await request.form()
         data, errors = parse_submission(admin, form)
-        errors.update(await _save_uploads(admin, form, data, creating=False))
+        if admin.validate_edit is not None:
+            errors.update(admin.validate_edit(instance, form))
+        if not errors:
+            errors.update(await _save_uploads(admin, form, data, creating=False))
         passwords, password_errors = parse_password_submission(
             admin,
             form,
@@ -4232,6 +4298,12 @@ async def _save_uploads(
     (so an edit keeps its current value); on create, a missing file for a
     non-nullable column is reported as a required-field error.
 
+    A field listed in ``admin.upload_accept`` is checked before anything is
+    written: the declared content type must be listed and, when a listed
+    type is one :func:`~tempest_fastapi_sdk.sniff_mime` recognises, the
+    first bytes must sniff as a listed type. A refused file is a field
+    error and is never stored.
+
     Args:
         admin (Any): The admin configuration.
         form (Any): The parsed multipart form (Starlette ``FormData``).
@@ -4239,7 +4311,7 @@ async def _save_uploads(
         creating (bool): Whether this is a create (vs edit) submission.
 
     Returns:
-        dict[str, str]: Field → error message for missing required files.
+        dict[str, str]: Field → error message for missing or refused files.
     """
     errors: dict[str, str] = {}
     if not admin.upload_fields:
@@ -4249,8 +4321,20 @@ async def _save_uploads(
         upload = form.get(name)
         filename = getattr(upload, "filename", None)
         if upload is not None and filename:
+            content_type = (
+                getattr(upload, "content_type", None) or "application/octet-stream"
+            )
+            first: bytes = await upload.read(_UPLOAD_CHUNK_BYTES)
+            refusal = _upload_refusal(
+                admin.upload_accept.get(name), content_type, first
+            )
+            if refusal is not None:
+                errors[name] = refusal
+                continue
 
-            async def _chunks(source: Any = upload) -> Any:
+            async def _chunks(source: Any = upload, head: bytes = first) -> Any:
+                if head:
+                    yield head
                 while True:
                     chunk = await source.read(_UPLOAD_CHUNK_BYTES)
                     if not chunk:
@@ -4258,9 +4342,6 @@ async def _save_uploads(
                     yield chunk
 
             key = f"{admin.get_slug()}/{name}/{uuid4().hex}{Path(filename).suffix}"
-            content_type = (
-                getattr(upload, "content_type", None) or "application/octet-stream"
-            )
             result = await admin.upload_storage.write_stream(
                 key, _chunks(), content_type=content_type
             )
@@ -4270,6 +4351,30 @@ async def _save_uploads(
             if column is not None and not column.nullable:
                 errors[name] = "This field is required."
     return errors
+
+
+def _upload_refusal(
+    accept: list[str] | None, content_type: str, head: bytes
+) -> str | None:
+    """Tell why an upload is refused by its field's accepted types.
+
+    Args:
+        accept (list[str] | None): The field's ``upload_accept`` entry;
+            ``None`` accepts anything.
+        content_type (str): The type the browser declared.
+        head (bytes): The file's first bytes.
+
+    Returns:
+        str | None: The field error, or ``None`` when the file is accepted.
+    """
+    if accept is None:
+        return None
+    message = f"Only {', '.join(accept)} files are accepted."
+    if content_type.split(";")[0].strip().lower() not in accept:
+        return message
+    if set(accept) & SNIFFABLE_MIMETYPES and sniff_mime(head) not in accept:
+        return message
+    return None
 
 
 def _bulk_actions(admin: Any) -> list[tuple[str, str]]:

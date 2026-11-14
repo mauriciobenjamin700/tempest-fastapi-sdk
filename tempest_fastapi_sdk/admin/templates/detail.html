@@ -22,7 +22,7 @@
     {% for column, value in fields %}
     <dt>{{ column | field_label }}</dt>
     <dd>
-      {% if value is not none and column in json_columns %}<pre class="tempest-admin-detail__json">{{ value }}</pre>{% else %}{{ cell(value, full=true) }}{% endif %}
+      {% if value is not none and column in json_columns %}<pre class="tempest-admin-detail__json">{{ value }}</pre>{% elif column in upload_urls %}<a href="{{ upload_urls[column] }}" download>Download</a> <code class="tempest-admin-form__hint">{{ value }}</code>{% else %}{{ cell(value, full=true) }}{% endif %}
     </dd>
     {% endfor %}
   </dl>
