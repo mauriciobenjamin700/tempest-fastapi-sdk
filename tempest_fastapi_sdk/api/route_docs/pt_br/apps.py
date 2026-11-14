@@ -242,24 +242,29 @@ APPS_ROUTES: dict[str, RouteDoc] = {
         summary="Listar as orders do simulador",
         description=(
             "Só em desenvolvimento. Devolve todas as orders do simulador "
-            "em memória, da mais antiga para a mais nova."
+            "(em memória ou o ``fake-api`` de ``simulation_url``), da mais "
+            "antiga para a mais nova."
         ),
     ),
     "mercado_pago.get_simulated_order": RouteDoc(
         summary="Ler uma order do simulador",
         description=(
-            "Só em desenvolvimento. Devolve a order como "
-            "``GET /v1/orders/{id}`` responderia; **404** se ela não existe."
+            "Só em desenvolvimento. ``order_id`` aceita o id ``ORD…`` ou o "
+            "``external_reference`` enviado na criação (a order mais recente "
+            "vence). Devolve a order como ``GET /v1/orders/{id}`` "
+            "responderia; **404** se ela não existe."
         ),
     ),
     "mercado_pago.simulate_order_transition": RouteDoc(
         summary="Simular pagamento, cancelamento ou estorno de uma order",
         description=(
-            "Só em desenvolvimento. Aplica a transição na order do "
-            "simulador e entrega o webhook assinado à rota de webhook do "
-            "próprio serviço. Responde a order e o status da entrega; "
-            "**404** para order desconhecida, **409** para transição que o "
-            "estado não permite."
+            "Só em desenvolvimento. ``order_id`` aceita o id ``ORD…`` ou o "
+            "``external_reference`` enviado na criação. Aplica a transição "
+            "na order do simulador e entrega o webhook assinado à rota de "
+            "webhook do próprio serviço. Responde a order e o status da "
+            "entrega; **404** para order desconhecida, **409** para "
+            "transição que o estado não permite, **502** quando o "
+            "``fake-api`` não responde."
         ),
     ),
     "mercado_pago.withdraw_wallet": RouteDoc(

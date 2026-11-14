@@ -5540,16 +5540,22 @@ class MercadoPagoSettings(BaseAppSettings):
         Note the ``Bearer`` prefix — the opposite of OpenPix, which takes
         its AppID raw. Getting that backwards is a 401 on every call, and
         it is exactly the kind of thing this method exists to settle once.
+
+        An empty ``MERCADOPAGO_ACCESS_TOKEN`` sends no ``Authorization``
+        header at all: ``Bearer `` with nothing after it is an illegal header
+        value that ``httpx`` refuses before sending
+        (``httpx.LocalProtocolError``), which made a development service
+        pointed at ``tempest mercado-pago fake-api`` fail on every call until
+        it set a placeholder token the fake-api never reads.
         """
         from tempest_fastapi_sdk.integrations.payment.mercado_pago.environment import (
             DEFAULT_BASE_URL,
         )
 
+        token = self.MERCADOPAGO_ACCESS_TOKEN
         return {
             "base_url": self.MERCADOPAGO_BASE_URL or DEFAULT_BASE_URL,
-            "default_headers": {
-                "Authorization": f"Bearer {self.MERCADOPAGO_ACCESS_TOKEN}"
-            },
+            "default_headers": {"Authorization": f"Bearer {token}"} if token else {},
         }
 
 

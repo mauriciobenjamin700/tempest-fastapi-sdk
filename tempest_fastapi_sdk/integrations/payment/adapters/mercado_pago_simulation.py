@@ -14,6 +14,12 @@ end testing in development:
   only the provider can (pay, expire, fail, cancel, capture, refund) and
   deliver the signed notification to the service's own webhook route.
 
+The in-memory simulator lives in one process. A service whose worker
+re-reads orders runs ``tempest mercado-pago fake-api`` instead, points every
+process's ``MERCADOPAGO_BASE_URL`` at it, and mounts the routes over a
+:class:`RemoteMercadoPagoSimulation` — both satisfy
+:class:`MercadoPagoSimulationBackend`.
+
 Simulation is refused outside ``ENV=development`` and ``ENV=test`` — see
 :func:`ensure_simulation_allowed`. The simulator module is imported only when
 a simulation is built, so a production process never loads it.
@@ -24,7 +30,8 @@ from __future__ import annotations
 import os
 import weakref
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Final, Literal, overload
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, overload
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -209,6 +216,287 @@ def simulation_api_for(
     return _SIMULATIONS.get(provider)
 
 
+class MercadoPagoSimulationBackend(Protocol):
+    """Where the simulation routes read and move orders.
+
+    Two implementations ship: the in-memory
+    :class:`~tempest_fastapi_sdk.testing.fakes.FakeMercadoPagoOrdersAPI`
+    (wrapped by :func:`add_simulation_routes`) and
+    :class:`RemoteMercadoPagoSimulation`, which drives a
+    ``tempest mercado-pago fake-api`` over HTTP so an API and a worker in
+    separate processes see the same orders.
+
+    ``reference`` is an order id or the ``external_reference`` the service
+    sent on create; when several orders share an ``external_reference`` the
+    most recent one is meant.
+    """
+
+    async def list_orders(self) -> list[dict[str, Any]]:
+        """List every order, oldest first.
+
+        Returns:
+            list[dict[str, Any]]: The orders, as ``GET /v1/orders/{id}``
+            answers each.
+        """
+        ...
+
+    async def find_order(self, reference: str, /) -> dict[str, Any]:
+        """Read one order by id or by ``external_reference``.
+
+        Args:
+            reference (str): The order id or its ``external_reference``.
+
+        Returns:
+            dict[str, Any]: The order.
+
+        Raises:
+            KeyError: If no order matches.
+        """
+        ...
+
+    async def apply(
+        self, reference: str, transition: str, /, amount_cents: int | None = None
+    ) -> tuple[dict[str, Any], str]:
+        """Apply a transition to an order.
+
+        Args:
+            reference (str): The order id or its ``external_reference``.
+            transition (str): ``pay``, ``expire``, ``fail``, ``cancel``,
+                ``capture`` or ``refund``.
+            amount_cents (int | None): For ``refund``: a partial amount.
+
+        Returns:
+            tuple[dict[str, Any], str]: The order after the move and the
+            delivery ``action`` announcing it.
+
+        Raises:
+            KeyError: If no order matches.
+            ValueError: If the move does not apply to the order's state.
+        """
+        ...
+
+
+class _InMemorySimulation:
+    """:class:`MercadoPagoSimulationBackend` over a simulator in this process.
+
+    Attributes:
+        api (FakeMercadoPagoOrdersAPI): The simulator.
+    """
+
+    def __init__(self, api: FakeMercadoPagoOrdersAPI) -> None:
+        """Wrap a simulator.
+
+        Args:
+            api (FakeMercadoPagoOrdersAPI): The simulator.
+        """
+        self.api: FakeMercadoPagoOrdersAPI = api
+
+    async def list_orders(self) -> list[dict[str, Any]]:
+        """List every order, oldest first.
+
+        Returns:
+            list[dict[str, Any]]: The orders.
+        """
+        return [self.api.order(order_id) for order_id in self.api.order_ids]
+
+    async def find_order(self, reference: str, /) -> dict[str, Any]:
+        """Read one order by id or by ``external_reference``.
+
+        Args:
+            reference (str): The order id or its ``external_reference``.
+
+        Returns:
+            dict[str, Any]: The order.
+
+        Raises:
+            KeyError: If no order matches.
+        """
+        return self.api.order(self.api.find_order_id(reference))
+
+    async def apply(
+        self, reference: str, transition: str, /, amount_cents: int | None = None
+    ) -> tuple[dict[str, Any], str]:
+        """Apply a transition to an order.
+
+        Args:
+            reference (str): The order id or its ``external_reference``.
+            transition (str): The transition name.
+            amount_cents (int | None): For ``refund``: a partial amount.
+
+        Returns:
+            tuple[dict[str, Any], str]: The order and the delivery action.
+
+        Raises:
+            KeyError: If no order matches.
+            ValueError: If the move does not apply to the order's state.
+        """
+        order_id = self.api.find_order_id(reference)
+        moved = self.api.apply(order_id, transition, amount_cents)
+        return self.api.order(order_id), str(moved.payload["action"])
+
+
+class RemoteMercadoPagoSimulation:
+    """Drive a ``tempest mercado-pago fake-api`` running in another process.
+
+    The in-memory simulator lives in one process, so a worker that re-reads
+    an order (a sweep of pending charges, a refund cron) cannot see what the
+    API process created. Run ``tempest mercado-pago fake-api`` once, point
+    every process's ``MERCADOPAGO_BASE_URL`` at it, and give
+    ``make_mercado_pago_router(simulate=True, simulation_url=...)`` the same
+    URL: the simulation routes then move the order **on the fake-api**,
+    through its control prefix
+    (:data:`~tempest_fastapi_sdk.testing.fakes.FAKE_CONTROL_PREFIX`), and
+    deliver the signed webhook to the service's own route, as the in-memory
+    mode does.
+
+    Attributes:
+        base_url (str): The fake-api's base URL, without a trailing ``/``.
+        timeout (float): Seconds per request when no client is injected.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        client: httpx.AsyncClient | None = None,
+        timeout: float = 10.0,
+    ) -> None:
+        """Point at a running fake-api.
+
+        Args:
+            base_url (str): Where the fake-api answers, e.g.
+                ``"http://mp-fake:8090"``.
+            client (httpx.AsyncClient | None): The client to send with; its
+                lifecycle stays with the caller. ``None`` opens a short-lived
+                client per call.
+            timeout (float): Seconds per request when ``client`` is ``None``.
+        """
+        from tempest_fastapi_sdk.testing.fakes.mercado_pago import (
+            FAKE_CONTROL_PREFIX,
+        )
+
+        self.base_url: str = base_url.rstrip("/")
+        self.timeout: float = timeout
+        self._client: httpx.AsyncClient | None = client
+        self._control: str = f"{self.base_url}{FAKE_CONTROL_PREFIX}/orders"
+
+    async def _send(
+        self, method: str, url: str, params: dict[str, int] | None = None
+    ) -> httpx.Response:
+        """Send one request to the fake-api.
+
+        Args:
+            method (str): ``GET`` or ``POST``.
+            url (str): The absolute URL.
+            params (dict[str, int] | None): Query parameters.
+
+        Returns:
+            httpx.Response: The answer, whatever its status.
+
+        Raises:
+            httpx.HTTPError: When the fake-api cannot be reached.
+        """
+        if self._client is not None:
+            return await self._client.request(method, url, params=params)
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            return await client.request(method, url, params=params)
+
+    @staticmethod
+    def _error(response: httpx.Response) -> str:
+        """Read the fake-api's error message.
+
+        Args:
+            response (httpx.Response): An error answer.
+
+        Returns:
+            str: Its ``error`` field, or the raw text.
+        """
+        try:
+            body: Any = response.json()
+        except ValueError:
+            return response.text
+        return str(body.get("error", body)) if isinstance(body, dict) else str(body)
+
+    def _checked(self, response: httpx.Response, reference: str) -> Any:
+        """Turn an answer into its JSON body, or the protocol's exceptions.
+
+        Args:
+            response (httpx.Response): The fake-api's answer.
+            reference (str): What was looked up, for the ``KeyError``.
+
+        Returns:
+            Any: The decoded body of a ``200``.
+
+        Raises:
+            KeyError: On ``404``.
+            ValueError: On ``409``.
+            httpx.HTTPStatusError: On any other non-``200`` status.
+        """
+        if response.status_code == 404:
+            raise KeyError(reference)
+        if response.status_code == 409:
+            raise ValueError(self._error(response))
+        response.raise_for_status()
+        return response.json()
+
+    async def list_orders(self) -> list[dict[str, Any]]:
+        """List every order on the fake-api, oldest first.
+
+        Returns:
+            list[dict[str, Any]]: The orders; one request per order after the
+            listing of ids.
+
+        Raises:
+            httpx.HTTPError: When the fake-api cannot be reached or answers
+                an unexpected status.
+        """
+        listed = self._checked(await self._send("GET", self._control), "")
+        return [await self.find_order(str(order_id)) for order_id in listed["orders"]]
+
+    async def find_order(self, reference: str, /) -> dict[str, Any]:
+        """Read one order by id or by ``external_reference``.
+
+        Args:
+            reference (str): The order id or its ``external_reference``.
+
+        Returns:
+            dict[str, Any]: The order.
+
+        Raises:
+            KeyError: If no order matches.
+            httpx.HTTPError: When the fake-api cannot be reached or answers
+                an unexpected status.
+        """
+        url = f"{self._control}/{quote(reference, safe='')}"
+        found: dict[str, Any] = self._checked(await self._send("GET", url), reference)
+        return found
+
+    async def apply(
+        self, reference: str, transition: str, /, amount_cents: int | None = None
+    ) -> tuple[dict[str, Any], str]:
+        """Apply a transition on the fake-api.
+
+        Args:
+            reference (str): The order id or its ``external_reference``.
+            transition (str): The transition name.
+            amount_cents (int | None): For ``refund``: a partial amount.
+
+        Returns:
+            tuple[dict[str, Any], str]: The order and the delivery action.
+
+        Raises:
+            KeyError: If no order matches.
+            ValueError: If the move does not apply to the order's state.
+            httpx.HTTPError: When the fake-api cannot be reached or answers
+                an unexpected status.
+        """
+        url = f"{self._control}/{quote(reference, safe='')}/{transition}"
+        params = None if amount_cents is None else {"amount_cents": amount_cents}
+        moved = self._checked(await self._send("POST", url, params), reference)
+        order: dict[str, Any] = moved["order"]
+        return order, str(moved["action"])
+
+
 class MercadoPagoSimulatedDeliverySchema(BaseSchema):
     """What the service's webhook route answered to a simulated delivery.
 
@@ -270,7 +558,7 @@ async def _deliver(
 def add_simulation_routes(
     router: APIRouter,
     *,
-    api: FakeMercadoPagoOrdersAPI,
+    api: FakeMercadoPagoOrdersAPI | MercadoPagoSimulationBackend,
     secret: str,
     webhook_route: str,
     prefix: str,
@@ -279,16 +567,24 @@ def add_simulation_routes(
 ) -> None:
     """Mount the simulation routes on a router.
 
+    ``{order_id}`` below accepts the order id **or** the
+    ``external_reference`` the service sent on create (the most recent order
+    wins when several share it), so a developer can simulate by the
+    service's own ``correlation_id``.
+
     - ``GET {prefix}/orders`` — every order, oldest first.
     - ``GET {prefix}/orders/{order_id}`` — one order; ``404`` when unknown.
     - ``POST {prefix}/orders/{order_id}/{transition}`` — apply the move,
       sign the delivery with ``secret`` and post it to the webhook route;
       ``404`` for an unknown order, ``409`` for a move the order's state does
-      not allow (a refund before payment), ``422`` for an unknown move.
+      not allow (a refund before payment), ``422`` for an unknown move,
+      ``502`` when a remote simulator cannot be reached.
 
     Args:
         router (APIRouter): Where to mount.
-        api (FakeMercadoPagoOrdersAPI): The simulator the provider runs over.
+        api (FakeMercadoPagoOrdersAPI | MercadoPagoSimulationBackend): The
+            in-memory simulator the provider runs over, or a backend such as
+            :class:`RemoteMercadoPagoSimulation`.
         secret (str): The secret the webhook route verifies with.
         webhook_route (str): Name of the webhook route.
         prefix (str): Path prefix.
@@ -296,27 +592,25 @@ def add_simulation_routes(
         include_in_schema (bool): Whether the routes appear in OpenAPI.
     """
     from tempest_fastapi_sdk.testing.fakes.mercado_pago import (
+        FakeMercadoPagoOrdersAPI,
         build_mercado_pago_delivery,
     )
 
+    backend: MercadoPagoSimulationBackend = (
+        _InMemorySimulation(api) if isinstance(api, FakeMercadoPagoOrdersAPI) else api
+    )
     tags: list[str | Enum] = [SIMULATION_TAG]
 
-    def _order(order_id: str) -> dict[str, Any]:
-        """Read an order or answer 404.
+    def _unreachable(error: httpx.HTTPError) -> HTTPException:
+        """Build the answer for a simulator that could not be asked.
 
         Args:
-            order_id (str): The order id.
+            error (httpx.HTTPError): What the HTTP client raised.
 
         Returns:
-            dict[str, Any]: The order.
-
-        Raises:
-            HTTPException: ``404`` for an id the simulator never created.
+            HTTPException: ``502`` naming the error.
         """
-        try:
-            return api.order(order_id)
-        except KeyError:
-            raise HTTPException(404, f"order {order_id} not found") from None
+        return HTTPException(502, f"simulator unavailable: {error!r}")
 
     @router.get(
         f"{prefix}/orders",
@@ -330,8 +624,14 @@ def add_simulation_routes(
 
         Returns:
             list[dict[str, Any]]: Every order, oldest first.
+
+        Raises:
+            HTTPException: ``502`` when a remote simulator cannot be reached.
         """
-        return [api.order(order_id) for order_id in api.order_ids]
+        try:
+            return await backend.list_orders()
+        except httpx.HTTPError as error:
+            raise _unreachable(error) from None
 
     @router.get(
         f"{prefix}/orders/{{order_id}}",
@@ -344,12 +644,21 @@ def add_simulation_routes(
         """Read one simulated order.
 
         Args:
-            order_id (str): The order id.
+            order_id (str): The order id or its ``external_reference``.
 
         Returns:
             dict[str, Any]: The order.
+
+        Raises:
+            HTTPException: ``404`` for an unknown order, ``502`` when a
+                remote simulator cannot be reached.
         """
-        return _order(order_id)
+        try:
+            return await backend.find_order(order_id)
+        except KeyError:
+            raise HTTPException(404, f"order {order_id} not found") from None
+        except httpx.HTTPError as error:
+            raise _unreachable(error) from None
 
     @router.post(
         f"{prefix}/orders/{{order_id}}/{{transition}}",
@@ -369,7 +678,7 @@ def add_simulation_routes(
 
         Args:
             request (Request): The request, whose app receives the delivery.
-            order_id (str): The order id.
+            order_id (str): The order id or its ``external_reference``.
             transition (MercadoPagoTransition): The move.
             amount_cents (int | None): For ``refund``: a partial amount.
 
@@ -378,15 +687,17 @@ def add_simulation_routes(
 
         Raises:
             HTTPException: ``404`` for an unknown order, ``409`` for a move
-                the order's state does not allow.
+                the order's state does not allow, ``502`` when a remote
+                simulator cannot be reached.
         """
-        _order(order_id)
         try:
-            moved = api.apply(order_id, transition, amount_cents)
+            order, action = await backend.apply(order_id, transition, amount_cents)
+        except KeyError:
+            raise HTTPException(404, f"order {order_id} not found") from None
         except ValueError as error:
             raise HTTPException(409, str(error)) from None
-        order = api.order(order_id)
-        action = str(moved.payload["action"])
+        except httpx.HTTPError as error:
+            raise _unreachable(error) from None
         delivery = build_mercado_pago_delivery(order, secret=secret, action=action)
         response = await _deliver(request, webhook_route, delivery)
         try:
@@ -406,8 +717,10 @@ __all__: list[str] = [
     "SIMULATION_ENVIRONMENTS",
     "SIMULATION_TAG",
     "MercadoPagoSimulatedDeliverySchema",
+    "MercadoPagoSimulationBackend",
     "MercadoPagoSimulationResultSchema",
     "MercadoPagoTransition",
+    "RemoteMercadoPagoSimulation",
     "add_simulation_routes",
     "ensure_simulation_allowed",
     "mercado_pago_provider_for",

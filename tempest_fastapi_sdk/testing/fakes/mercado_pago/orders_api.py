@@ -217,6 +217,34 @@ class FakeMercadoPagoOrdersAPI:
         """
         return copy.deepcopy(self._orders[order_id])
 
+    def find_order_id(self, reference: str) -> str:
+        """Resolve an order id or an ``external_reference`` to an order id.
+
+        A service shows its own reference (the ``external_reference`` it sent
+        on create, usually a ``correlation_id``) in its screens and logs; the
+        ``ORD…`` id only appears in the provider's answer. This accepts
+        either.
+
+        Args:
+            reference (str): An order id, or the ``external_reference`` of an
+                order.
+
+        Returns:
+            str: ``reference`` itself when it is an order id; otherwise the id
+            of the **most recent** order created with that
+            ``external_reference`` — a service that charges the same
+            reference again after an expiry means the new order.
+
+        Raises:
+            KeyError: If no order has that id or that ``external_reference``.
+        """
+        if reference in self._orders:
+            return reference
+        for order_id in reversed(self._orders):
+            if self._orders[order_id].get("external_reference") == reference:
+                return order_id
+        raise KeyError(reference)
+
     def decline_next_card(self, status_detail: str = "rejected_by_issuer") -> None:
         """Make the next card create answer ``402`` with a failed order.
 

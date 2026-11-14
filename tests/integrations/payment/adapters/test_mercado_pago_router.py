@@ -271,6 +271,20 @@ class TestSimulation:
         assert bad.status_code == 422
         assert inbox.deliveries == []
 
+    async def test_routes_accept_the_external_reference(self) -> None:
+        provider = mercado_pago_provider_for(_settings("development"), simulate=True)
+        order_id = await _pix(provider, "compra-123")
+        inbox = _Inbox()
+        with TestClient(_app(provider, inbox, simulate=True)) as client:
+            found = client.get("/dev/mercado-pago/orders/compra-123")
+            paid = client.post("/dev/mercado-pago/orders/compra-123/pay")
+            missing = client.get("/dev/mercado-pago/orders/compra-404")
+        assert found.json()["id"] == order_id
+        assert paid.json()["order"]["id"] == order_id
+        assert paid.json()["delivery"]["body"]["data_id"] == order_id
+        assert missing.status_code == 404
+        assert [d.order["status"] for d in inbox.deliveries if d.order] == ["processed"]
+
     async def test_signature_is_the_routes_secret_not_the_simulators(self) -> None:
         api = FakeMercadoPagoOrdersAPI(webhook_secret="segredo-do-simulador")
         provider = mercado_pago_provider_for(

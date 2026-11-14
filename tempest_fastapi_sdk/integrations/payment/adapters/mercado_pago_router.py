@@ -7,8 +7,10 @@ hand around :func:`make_mercado_pago_webhook_delivery_dependency`:
   awaits ``on_delivery`` with the :class:`MercadoPagoOrderDelivery`;
 - with ``simulate=True`` (development and test only), the routes a front end
   uses to pay, expire, fail, cancel, capture and refund an order of the
-  in-memory simulator — each delivering the signed webhook **to the route
-  above**, through the whole application;
+  in-memory simulator — or, with ``simulation_url=``, of a
+  ``tempest mercado-pago fake-api`` shared by the API and its workers — each
+  delivering the signed webhook **to the route above**, through the whole
+  application;
 - with ``withdraw=``, ``POST {withdraw.path}``: the user's whole available
   balance is debited and paid out by a
   :class:`~tempest_fastapi_sdk.integrations.payment.PayoutProvider` —
@@ -28,6 +30,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +45,7 @@ from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
 )
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (
     DEFAULT_SIMULATION_PREFIX,
+    RemoteMercadoPagoSimulation,
     add_simulation_routes,
     ambient_settings,
     ensure_simulation_allowed,
@@ -226,6 +230,8 @@ def make_mercado_pago_router(
     settings: MercadoPagoSettings | None = None,
     simulate: bool = False,
     simulation_api: FakeMercadoPagoOrdersAPI | None = None,
+    simulation_url: str | None = None,
+    simulation_client: httpx.AsyncClient | None = None,
     withdraw: MercadoPagoWithdrawConfig | None = None,
     webhook_path: str = DEFAULT_WEBHOOK_PATH,
     simulation_prefix: str = DEFAULT_SIMULATION_PREFIX,
@@ -252,6 +258,17 @@ def make_mercado_pago_router(
         simulation_api (FakeMercadoPagoOrdersAPI | None): The simulator
             ``provider`` runs over. ``None`` takes the one
             :func:`mercado_pago_provider_for` registered for ``provider``.
+        simulation_url (str | None): Base URL of a running
+            ``tempest mercado-pago fake-api`` (e.g.
+            ``"http://mp-fake:8090"``). The simulation routes then move
+            orders on it, through :class:`RemoteMercadoPagoSimulation`, so a
+            worker in another process — its provider pointed at the same
+            fake-api by ``MERCADOPAGO_BASE_URL`` — reads what they moved.
+            Needs ``simulate=True``; excludes ``simulation_api``.
+        simulation_client (httpx.AsyncClient | None): The client the remote
+            simulation sends with; its lifecycle stays with the caller.
+            ``None`` opens a short-lived client per call. Needs
+            ``simulation_url``.
         withdraw (MercadoPagoWithdrawConfig | None): Mounts the withdrawal
             route. ``None`` mounts none.
         webhook_path (str): Path of the webhook route — the URL registered
@@ -272,18 +289,34 @@ def make_mercado_pago_router(
         RuntimeError: If ``simulate`` is ``True`` outside development and
             test.
         ValueError: If ``simulate`` is ``True`` and no simulator is found
-            for ``provider``, or no webhook secret is configured.
+            for ``provider``, no webhook secret is configured,
+            ``simulation_url`` comes without ``simulate=True`` or together
+            with ``simulation_api``, or ``simulation_client`` comes without
+            ``simulation_url``.
     """
+    if simulation_client is not None and simulation_url is None:
+        raise ValueError("`simulation_client` needs `simulation_url`")
+    if simulation_url is not None and not simulate:
+        raise ValueError("`simulation_url` needs simulate=True")
+    if simulation_url is not None and simulation_api is not None:
+        raise ValueError("pass `simulation_api` or `simulation_url`, not both")
     api: FakeMercadoPagoOrdersAPI | None = None
+    remote: RemoteMercadoPagoSimulation | None = None
     if simulate:
         ensure_simulation_allowed(settings, "make_mercado_pago_router")
-        api = simulation_api or simulation_api_for(provider)
-        if api is None:
-            raise ValueError(
-                "simulate=True needs the simulator the provider runs over: build "
-                "the provider with mercado_pago_provider_for(settings, "
-                "simulate=True), or pass simulation_api=."
+        if simulation_url is not None:
+            remote = RemoteMercadoPagoSimulation(
+                simulation_url, client=simulation_client
             )
+        else:
+            api = simulation_api or simulation_api_for(provider)
+            if api is None:
+                raise ValueError(
+                    "simulate=True needs the simulator the provider runs over: "
+                    "build the provider with mercado_pago_provider_for(settings, "
+                    "simulate=True), pass simulation_api=, or pass "
+                    "simulation_url= for a running fake-api."
+                )
     resolved_secret = _resolve_secret(secret, settings, api)
     verify = make_mercado_pago_webhook_delivery_dependency(
         resolved_secret, provider, tolerance_seconds=tolerance_seconds
@@ -320,10 +353,11 @@ def make_mercado_pago_router(
             order_status=status if isinstance(status, str) else None,
         )
 
-    if api is not None:
+    backend = api if api is not None else remote
+    if backend is not None:
         add_simulation_routes(
             router,
-            api=api,
+            api=backend,
             secret=resolved_secret,
             webhook_route=WEBHOOK_ROUTE_NAME,
             prefix=simulation_prefix,

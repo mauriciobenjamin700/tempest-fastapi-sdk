@@ -52,7 +52,13 @@ if TYPE_CHECKING:
         MercadoPagoSimulatedDeliverySchema as MercadoPagoSimulatedDeliverySchema,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
+        MercadoPagoSimulationBackend as MercadoPagoSimulationBackend,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
         MercadoPagoSimulationResultSchema as MercadoPagoSimulationResultSchema,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
+        RemoteMercadoPagoSimulation as RemoteMercadoPagoSimulation,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
         mercado_pago_provider_for as mercado_pago_provider_for,
@@ -80,7 +86,9 @@ _EXPORTS: dict[str, str] = {
     "make_mercado_pago_router": "mercado_pago_router",
     "SIMULATION_TAG": "mercado_pago_simulation",
     "MercadoPagoSimulatedDeliverySchema": "mercado_pago_simulation",
+    "MercadoPagoSimulationBackend": "mercado_pago_simulation",
     "MercadoPagoSimulationResultSchema": "mercado_pago_simulation",
+    "RemoteMercadoPagoSimulation": "mercado_pago_simulation",
     "mercado_pago_provider_for": "mercado_pago_simulation",
     "simulation_api_for": "mercado_pago_simulation",
     "OpenPixPayoutProvider": "openpix",
@@ -133,11 +141,13 @@ __all__: list[str] = [
     "MercadoPagoOrderDelivery",
     "MercadoPagoPixProvider",
     "MercadoPagoSimulatedDeliverySchema",
+    "MercadoPagoSimulationBackend",
     "MercadoPagoSimulationResultSchema",
     "MercadoPagoWebhookAckSchema",
     "MercadoPagoWithdrawConfig",
     "OpenPixPayoutProvider",
     "OpenPixPixProvider",
+    "RemoteMercadoPagoSimulation",
     "make_mercado_pago_router",
     "make_mercado_pago_webhook_delivery_dependency",
     "mercado_pago_provider_for",
