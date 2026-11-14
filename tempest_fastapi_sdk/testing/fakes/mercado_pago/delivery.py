@@ -83,10 +83,18 @@ def order_action(order: Mapping[str, Any]) -> str:
 def _summary(order: Mapping[str, Any]) -> dict[str, Any]:
     """Cut an order down to what a delivery's ``data`` carried.
 
-    Observed in production: ``id``, ``external_reference``, ``status``,
+    Observed in the one real delivery (``vendor/mercadopago-evidence.md``
+    section 11): ``id``, ``external_reference``, ``status``,
     ``status_detail``, ``total_amount``, ``total_paid_amount``, ``type``,
-    ``version`` and ``transactions.payments[]`` with the payment method.
-    Keys the order lacks are left out rather than invented.
+    ``version`` and ``transactions.payments[]`` with ``payment_method.id``.
+
+    Filled by the simulator beyond that, not observed: each payment's
+    ``id``, ``amount``, ``status`` and ``status_detail``, and
+    ``payment_method.type``. Outside ``data``, the delivery built by
+    :func:`build_mercado_pago_delivery` also fills values the evidence
+    redacted or did not record: the ``x-request-id`` and ``content-type``
+    headers and the payload's ``application_id`` / ``user_id`` (fake
+    values). Keys the order lacks are left out rather than invented.
 
     Args:
         order (Mapping[str, Any]): The full order.

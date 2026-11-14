@@ -543,10 +543,12 @@ What the dependency does, in this order:
    `order.created` and `order.updated`, and the live delivery observed on
    2026-11-13 carried `type=order`.
 3. **Checks the id's shape** (`[A-Za-z0-9]+`) before putting it in a path.
-4. **Re-reads the order** by that id. `404` is an answer, not a failure: the
-   dashboard's "simulate notification" signs a made-up id, and raising there
-   would make Mercado Pago resend forever. Other errors propagate, the route
-   answers 5xx and Mercado Pago tries again.
+4. **Re-reads the order** by that id. `404` is an answer, not a failure: it
+   is an id the API does not know (probably what the dashboard's "simulate
+   notification" sends; not yet observed), and raising there would make
+   Mercado Pago resend, per the provider's documentation. Other errors
+   propagate and the route answers 5xx (the provider's redelivery is
+   expected, not observed here).
 
 Then `parse_webhook` takes the event type from the **re-read state**
 (`processed` → `CHARGE_PAID`, `canceled` → `CHARGE_CANCELLED`, `refunded` →

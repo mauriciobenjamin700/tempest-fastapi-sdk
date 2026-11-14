@@ -520,10 +520,18 @@ site.register(AdminModel(
 
 `upload_accept` diz que tipos um campo de upload aceita. O input ganha
 `accept=` (o seletor de arquivos do browser já filtra) e o servidor confere
-antes de gravar: o tipo declarado tem de estar na lista **e**, para um tipo
-que o `sniff_mime` reconhece pelos bytes (PDF, PNG, JPEG, GIF, BMP, WebP,
-HEIC), o começo do arquivo tem de ser desse tipo. Um PNG renomeado para
-`.pdf` é recusado com erro no campo, e nada vai para o storage.
+antes de gravar: o tipo declarado tem de estar na lista **e**, quando a
+lista tem algum tipo que o `sniff_mime` reconhece pelos bytes
+(`SNIFFABLE_MIMETYPES`: PDF, PNG, JPEG, GIF, BMP, WebP, HEIC), o começo do
+arquivo tem de ser de um tipo da lista. Um PNG renomeado para `.pdf` é
+recusado com erro no campo, e nada vai para o storage.
+
+!!! warning "A conferência é da lista, não de cada tipo"
+    Misturar um tipo sem assinatura com um que tem — `["text/plain",
+    "application/pdf"]` — recusa texto puro: texto não tem bytes mágicos,
+    então nunca "sniffa" para um tipo da lista. Medido chamando a checagem do
+    router: `text/plain` com `hello world` é recusado nessa lista e aceito
+    em `["text/plain"]` sozinho.
 
 ```python
 from sqlalchemy import String

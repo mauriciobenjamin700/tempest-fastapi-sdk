@@ -444,7 +444,9 @@ O adapter repete essas respostas, e só essas (`RETRYABLE_ACTION_ERRORS`,
 `REFUND_RETRYABLE_ERRORS`), com a mesma chave, após 1, 2 e 4 s. Repetir com a
 mesma chave não "envenenou" a chave: as repetições acima reembolsaram.
 O mesmo levantamento achou o `GET /v1/orders/<id inexistente>` respondendo
-`404`, que é o que a simulação de notificação do painel produz na releitura.
+`404`. É provavelmente o que a simulação de notificação do painel produz na
+releitura, se ela mandar um id que a API não conhece — ainda não observado
+(§11).
 
 ### 9.5 Pagador e credencial na API de Orders (2026-10-10)
 

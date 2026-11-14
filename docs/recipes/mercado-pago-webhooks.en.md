@@ -162,7 +162,7 @@ simulated  (200, {'type': 'unknown', 'status': None})
 | `cancelled` | cancelled through the adapter → `charge_cancelled` | |
 | `expired` | `api.expire` → `canceled` / `expired` → `charge_expired` | expiring is not cancelling: two events in the contract |
 | `forged` | another secret → `401`, no call to the API | without the secret, nobody reaches the re-read |
-| `simulated` | an id the API does not know → `404` on the re-read → `200` with no charge | the case of an id that is not yours, like the one the dashboard signs (level 3) |
+| `simulated` | an id the API does not know → `404` on the re-read → `200` with no charge | probably what the dashboard sends at level 3 (not yet observed) |
 
 !!! tip "In your test suite"
     The same code becomes a test: swap the `print`s for `assert`s. The SDK's
@@ -182,6 +182,13 @@ simulated  (200, {'type': 'unknown', 'status': None})
     the order's status. The SDK's route does not decide on the action — it
     re-reads the order — so this does not change the outcome; it only matters
     if **your** code reads `action`.
+
+    Assumed, not copied: `409 cannot_cancel_order` (and its message *"The
+    order cannot be canceled in status …"*), the code and message of the
+    `404` for an unknown order (`order_not_found`, *"Order … not found"* —
+    only the `404` status was measured) and the `400 invalid_refund_amount`
+    for a refund above the balance, with its message. If your code reads
+    `code` or `message` from these answers, check them in the sandbox.
 
 ### Manual testing: the service running, Mercado Pago simulated
 
@@ -331,7 +338,8 @@ verification and the re-read are the same — and you write only the handler:
 - `on_delivery(delivery: MercadoPagoOrderDelivery) -> Awaitable[None]`
   receives the verified delivery with the order re-read. It returns: the
   route answers `200` with `{"ok": true, "data_id": ..., "order_status": ...}`.
-  It raises: the answer is `500` and Mercado Pago delivers again.
+  It raises: the answer is `500` — and, per the provider's documentation,
+  Mercado Pago delivers again (redelivery expected, not observed here).
 - The secret comes from `secret=`; without it, from
   `settings.MERCADOPAGO_WEBHOOK_SECRET` (or from the environment and `.env`
   when `settings` is missing too). An empty secret is refused at construction
@@ -843,7 +851,7 @@ Each line is a case the route must get right:
 | `pending` | valid signature, order re-read as `action_required` → `charge_created` | the event type comes from the **re-read**, not from the body |
 | `cancelled` | the same notification after cancelling → `charge_cancelled` | same body, another re-read state, another event |
 | `forged` | wrong signature → `401`, with no call to Mercado Pago | without the secret, nobody reaches the re-read |
-| `simulated` | an order id that does not exist → Mercado Pago answers `404` on the re-read, the route answers `200` with no charge | that is what the dashboard's simulation sends; answering an error would make Mercado Pago resend forever |
+| `simulated` | an order id that does not exist → Mercado Pago answers `404` on the re-read, the route answers `200` with no charge | an id the API does not know (probably what the dashboard's simulation sends; not yet observed); answering an error would make Mercado Pago resend, per the provider's documentation (not observed here) |
 
 !!! tip "Take this into your test suite"
     For the suite, swap the sandbox for level 1: `FakeMercadoPagoOrdersAPI`
@@ -866,8 +874,8 @@ Logged in as the **test seller**, in its application:
 4. Use **Simulate notification**.
 
 The expected result is your route answering `200` with no charge: the
-simulation carries an id that is none of your orders, and levels 1 and 2
-showed what happens then.
+simulation probably carries an id the API does not know (not yet observed),
+and levels 1 and 2 showed what happens then.
 
 !!! warning "The dashboard was not validated here"
     This level's steps describe the dashboard as it usually is; this
@@ -905,6 +913,8 @@ Pago calls the route with `data.id` equal to the order id.
 - `sign_manifest` produces a notification your route accepts: test the whole
   path without a public URL.
 - A wrong signature is `401` before any call; an unknown id is `200` with no
-  charge, so Mercado Pago does not resend forever.
+  charge, because answering an error would make Mercado Pago resend — that is
+  what the provider's documentation describes; the redelivery was not
+  observed here.
 - For the dashboard and a real delivery, a tunnel (`cloudflared`, `ngrok`)
   gives the public URL.

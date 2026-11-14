@@ -538,10 +538,11 @@ O que a dependency faz, nesta ordem:
    `order.updated`, e a entrega real observada em 2026-11-13 trazia
    `type=order`.
 3. **Confere o formato do id** (`[A-Za-z0-9]+`) antes de pôr no path.
-4. **Relê a order** por esse id. `404` é resposta, não falha: a
-   "simulação de notificação" do painel assina um id inventado, e levantar
-   ali faria o Mercado Pago reenviar para sempre. Outros erros sobem, a rota
-   responde 5xx e o Mercado Pago tenta de novo.
+4. **Relê a order** por esse id. `404` é resposta, não falha: é um
+   id que a API não conhece (provavelmente o que a "simulação de notificação"
+   do painel manda; ainda não observado), e levantar ali faria o Mercado Pago
+   reenviar, segundo a documentação do provedor. Outros erros sobem e a rota
+   responde 5xx (o reenvio do provedor é o esperado, não observado aqui).
 
 Depois, `parse_webhook` tira o tipo do evento do **estado relido**
 (`processed` → `CHARGE_PAID`, `canceled` → `CHARGE_CANCELLED`, `refunded` →

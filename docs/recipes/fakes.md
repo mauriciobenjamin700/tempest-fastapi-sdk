@@ -59,7 +59,8 @@ sandbox exige alguém escaneando um QR code; chegar a `CHARGED_BACK` exige
 alguém abrindo uma disputa. Aqui é uma chamada.
 
 !!! tip "O ramo que vale testar é o que falha"
-    Todo fake aceita `fail_next(erro)`: a próxima chamada levanta, e só ela.
+    Todo fake de adapter da tabela abaixo aceita `fail_next(erro)`: a
+    próxima chamada levanta, e só ela.
 
     ```python
     from tempest_fastapi_sdk.push.dispatcher import PushDeviceGoneError
@@ -89,7 +90,7 @@ alguém abrindo uma disputa. Aqui é uma chamada.
 | `FakeRoutingBackend` | `RoutingBackend` (OSRM) | `add_route(...)`, `routes` |
 | `FakeWebSearchBackend` | `WebSearchBackend` (Searxng) | `add_results(...)`, `queries` |
 
-Todos expõem `fail_next(erro)`. Todos menos o `FakeEmailUtils` expõem também
+Todos os da tabela expõem `fail_next(erro)`. Todos menos o `FakeEmailUtils` expõem também
 `calls` — a lista de métodos que rodaram, em ordem; no `FakeEmailUtils` o
 registro é o próprio `outbox`, porque `send` é o único método que ele
 substitui.
@@ -429,8 +430,9 @@ falha com `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
   credencial e sem rede.
 - Fake não é mock: guarda estado, e você **move** esse estado
   (`advance`, `flag`, `add_place`, `queue`).
-- `fail_next(erro)` alcança o ramo que falha, com a exceção que o cliente
-  real levanta.
+- `fail_next(erro)` — em todo fake da tabela, não no
+  `FakeMercadoPagoOrdersAPI` — alcança o ramo que falha, com a exceção que o
+  cliente real levanta.
 - `calls`, `outbox`, `sent`, `prompts`, `charges`, `queries`: o que aconteceu
   fica inspecionável.
 - Resolução é lazy: pedir um fake de Pix não importa genai nem geo — nem

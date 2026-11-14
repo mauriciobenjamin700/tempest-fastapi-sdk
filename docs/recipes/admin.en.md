@@ -541,10 +541,18 @@ site.register(AdminModel(
 
 `upload_accept` says which types an upload field takes. The input gets
 `accept=` (the browser's file picker already filters) and the server checks
-before writing: the declared type must be listed **and**, for a type
-`sniff_mime` recognises by its bytes (PDF, PNG, JPEG, GIF, BMP, WebP, HEIC),
-the file must start as that type. A PNG renamed `.pdf` is refused with a
-field error, and nothing reaches the storage.
+before writing: the declared type must be listed **and**, when the list
+holds any type `sniff_mime` recognises by its bytes (`SNIFFABLE_MIMETYPES`:
+PDF, PNG, JPEG, GIF, BMP, WebP, HEIC), the file must start as a listed type.
+A PNG renamed `.pdf` is refused with a field error, and nothing reaches the
+storage.
+
+!!! warning "The check is per list, not per type"
+    Mixing a type with no signature and one with a signature —
+    `["text/plain", "application/pdf"]` — refuses plain text: text has no
+    magic bytes, so it never sniffs as a listed type. Measured by calling the
+    router's check: `text/plain` with `hello world` is refused under that
+    list and accepted under `["text/plain"]` alone.
 
 ```python
 from sqlalchemy import String

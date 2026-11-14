@@ -4500,7 +4500,7 @@ existia (`_fill_without_markers`, só cidades na frase) resolve. Testes:
 `tests/geo/test_trip_intent.py` (4 linhas na tabela, agora 65, e
 `NOW_CASES`). Receita: "Sair agora" em `docs/recipes/fuzzy-matching.md`.
 
-## Mercado Pago simulado, offline (2026-11-14)
+## Mercado Pago simulado, offline (0.360.0, 2026-11-14)
 
 `testing/fakes/mercado_pago/`: `FakeMercadoPagoOrdersAPI` (`orders_api.py`,
 handler do `httpx` com estado para `/v1/orders` — create idempotente, read,

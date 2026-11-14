@@ -865,7 +865,9 @@ class FakeMercadoPagoOrdersAPI:
             order_id (str): An order in ``action_required``.
 
         Returns:
-            MercadoPagoDelivery: ``order.canceled`` (observed live).
+            MercadoPagoDelivery: ``order.canceled``, the action name observed
+            live (on an order whose cause — cancel or expiry — the evidence
+            does not record).
 
         Raises:
             KeyError: If no such order was created.

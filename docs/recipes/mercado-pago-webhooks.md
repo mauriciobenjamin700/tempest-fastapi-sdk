@@ -158,7 +158,7 @@ simulada   (200, {'type': 'unknown', 'status': None})
 | `cancelada` | cancelada pelo adapter → `charge_cancelled` | |
 | `vencida` | `api.expire` → `canceled` / `expired` → `charge_expired` | vencer não é cancelar: são eventos distintos no contrato |
 | `forjada` | outro segredo → `401`, sem chamada à API | quem não tem o segredo não chega na releitura |
-| `simulada` | id que a API não conhece → `404` na releitura → `200` sem cobrança | é o caso de um id que não é seu, como o que o painel assina (nível 3) |
+| `simulada` | id que a API não conhece → `404` na releitura → `200` sem cobrança | é provavelmente o que o painel manda no nível 3 (ainda não observado) |
 
 !!! tip "Na sua suíte"
     O mesmo código vira teste: troque os `print` por `assert`. A suíte do SDK
@@ -178,6 +178,13 @@ simulada   (200, {'type': 'unknown', 'status': None})
     lista `order.created` / `order.updated`: o simulador as nomeia pelo
     status da order. A rota do SDK não decide pela ação — relê a order —, então
     isso não muda o resultado; muda só se o **seu** código ler `action`.
+
+    Supostos, não copiados: o `409 cannot_cancel_order` (e a mensagem *"The
+    order cannot be canceled in status …"*), o código e a mensagem do `404`
+    de order inexistente (`order_not_found`, *"Order … not found"* — só o
+    status `404` foi medido) e o `400 invalid_refund_amount` do estorno acima
+    do saldo, com a mensagem dele. Se o seu código lê `code` ou `message`
+    dessas respostas, confira no sandbox.
 
 ### Teste manual: o serviço rodando, o Mercado Pago simulado
 
@@ -325,7 +332,8 @@ verificação e a releitura são as mesmas — e você escreve só o handler:
 - `on_delivery(delivery: MercadoPagoOrderDelivery) -> Awaitable[None]` recebe
   a entrega já verificada, com a order relida. Retornou: a rota responde
   `200` com `{"ok": true, "data_id": ..., "order_status": ...}`. Levantou: a
-  resposta é `500` e o Mercado Pago entrega de novo.
+  resposta é `500` — e, pela documentação do provedor, o Mercado Pago
+  entrega de novo (reenvio esperado, não observado aqui).
 - O segredo vem de `secret=`; sem ele, de `settings.MERCADOPAGO_WEBHOOK_SECRET`
   (ou do ambiente e do `.env`, quando `settings` também falta). Segredo vazio
   é recusado na construção (`ValueError`): ele recusaria toda entrega.
@@ -833,7 +841,7 @@ Cada linha é um caso que a rota precisa acertar:
 | `pendente` | assinatura válida, order relida `action_required` → `charge_created` | o tipo do evento sai da **releitura**, não do corpo |
 | `cancelada` | a mesma notificação depois de cancelar → `charge_cancelled` | o mesmo corpo, outro estado relido, outro evento |
 | `forjada` | assinatura errada → `401`, sem nenhuma chamada ao Mercado Pago | quem não tem o segredo não chega na releitura |
-| `simulada` | id de order que não existe → o Mercado Pago responde `404` na releitura, a rota responde `200` sem cobrança | é o que a simulação do painel manda; responder erro faria o Mercado Pago reenviar para sempre |
+| `simulada` | id de order que não existe → o Mercado Pago responde `404` na releitura, a rota responde `200` sem cobrança | um id que a API não conhece (provavelmente o que a simulação do painel manda; ainda não observado); responder erro faria o Mercado Pago reenviar, segundo a documentação do provedor (não observado aqui) |
 
 !!! tip "Leve isto para a sua suíte"
     Para a suíte, troque o sandbox pelo nível 1: `FakeMercadoPagoOrdersAPI`
@@ -856,9 +864,9 @@ Logado como **vendedora de teste**, na aplicação dela:
    `MERCADO_PAGO_WEBHOOK_SECRET` no seu serviço.
 4. Use **Simular notificação**.
 
-O esperado é a sua rota responder `200` sem cobrança: a simulação traz um id
-que não é de nenhuma order sua, e os níveis 1 e 2 mostraram o que acontece
-nesse caso.
+O esperado é a sua rota responder `200` sem cobrança: a simulação
+provavelmente traz um id que a API não conhece (ainda não observado), e os
+níveis 1 e 2 mostraram o que acontece nesse caso.
 
 !!! warning "O painel não foi validado aqui"
     Os passos deste nível descrevem o painel como ele costuma ser; este
@@ -896,6 +904,8 @@ Pago chama a rota com `data.id` igual ao id da order.
 - `sign_manifest` produz uma notificação que a sua rota aceita: teste o
   caminho inteiro sem URL pública.
 - Assinatura errada é `401` antes de qualquer chamada; id inexistente é
-  `200` sem cobrança, para o Mercado Pago não reenviar para sempre.
+  `200` sem cobrança, porque responder erro faria o Mercado Pago reenviar —
+  é o que a documentação do provedor descreve; o reenvio não foi observado
+  aqui.
 - Para o painel e para a entrega real, um túnel (`cloudflared`, `ngrok`) dá a
   URL pública.

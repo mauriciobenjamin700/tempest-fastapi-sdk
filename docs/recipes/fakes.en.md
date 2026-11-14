@@ -59,7 +59,8 @@ a sandbox takes someone scanning a QR code; reaching `CHARGED_BACK` takes
 someone opening a dispute. Here it is one call.
 
 !!! tip "The branch worth testing is the failing one"
-    Every fake takes `fail_next(error)`: the next call raises, and only it.
+    Every adapter fake in the table below takes `fail_next(error)`: the next
+    call raises, and only it.
 
     ```python
     from tempest_fastapi_sdk.push.dispatcher import PushDeviceGoneError
@@ -89,7 +90,7 @@ someone opening a dispute. Here it is one call.
 | `FakeRoutingBackend` | `RoutingBackend` (OSRM) | `add_route(...)`, `routes` |
 | `FakeWebSearchBackend` | `WebSearchBackend` (Searxng) | `add_results(...)`, `queries` |
 
-All of them expose `fail_next(error)`. All but `FakeEmailUtils` also expose
+All of the table's fakes expose `fail_next(error)`. All but `FakeEmailUtils` also expose
 `calls` — the list of methods that ran, in order; on `FakeEmailUtils` the
 record is the `outbox` itself, because `send` is the only method it
 replaces.
@@ -427,8 +428,9 @@ fails with `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
   credentials and no network.
 - A fake is not a mock: it holds state, and you **move** that state
   (`advance`, `flag`, `add_place`, `queue`).
-- `fail_next(error)` reaches the failing branch, with the exception the real
-  client raises.
+- `fail_next(error)` — on every fake in the table, not on
+  `FakeMercadoPagoOrdersAPI` — reaches the failing branch, with the exception
+  the real client raises.
 - `calls`, `outbox`, `sent`, `prompts`, `charges`, `queries`: what happened
   stays inspectable.
 - Resolution is lazy: asking for a Pix fake imports neither genai nor geo —

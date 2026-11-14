@@ -286,10 +286,14 @@ class AdminModel(Generic[ModelT]):
         upload_accept (Mapping[FieldRef, Sequence[str]] | None): MIME types
             an upload field takes (``{"receipt_key": ["application/pdf"]}``).
             The input gets ``accept=``, and a submission is refused with a
-            field error unless the declared type is listed **and**, for a
-            type :func:`~tempest_fastapi_sdk.sniff_mime` recognises, the
-            leading bytes are that type — a PNG renamed ``.pdf`` is refused.
-            A field left out accepts anything, as before.
+            field error unless the declared type is listed **and**, when the
+            list holds any type :func:`~tempest_fastapi_sdk.sniff_mime`
+            recognises (:data:`~tempest_fastapi_sdk.utils.SNIFFABLE_MIMETYPES`),
+            the leading bytes sniff as a listed type — a PNG renamed ``.pdf``
+            is refused. The check is per list, not per type: mixing
+            ``text/plain`` with ``application/pdf`` refuses plain text, since
+            text has no signature to sniff. A field left out accepts
+            anything, as before.
         validate_edit (EditValidator | None): Called on an edit submission
             with the stored row and the posted form, before any upload is
             written; a non-empty ``{field: message}`` refuses the save with
