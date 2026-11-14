@@ -5465,6 +5465,13 @@ class MercadoPagoSettings(BaseAppSettings):
             notifications. Default: ``""`` — and an empty secret makes
             ``verify_signature`` return ``False`` for everything, rather
             than accepting everything.
+        MERCADOPAGO_BASE_URL (str): The host :meth:`mercado_pago_kwargs`
+            points the client at. Default: ``DEFAULT_BASE_URL``
+            (``https://api.mercadopago.com``). Change it only to aim a
+            development service at the simulator
+            (``tempest mercado-pago fake-api``); anything else in production
+            is reported by :meth:`production_violations`, because the access
+            token travels to whatever host this names.
     """
 
     MERCADOPAGO_ACCESS_TOKEN: str = Field(
@@ -5487,6 +5494,37 @@ class MercadoPagoSettings(BaseAppSettings):
         ),
         examples=[""],
     )
+    MERCADOPAGO_BASE_URL: str = Field(
+        default="https://api.mercadopago.com",
+        title="Mercado Pago API base URL",
+        description=(
+            "Host the Mercado Pago client calls. Leave the default in "
+            "production; point it at ``tempest mercado-pago fake-api`` "
+            "(``http://127.0.0.1:8090``) to run a development service "
+            "against the offline simulator."
+        ),
+        examples=["https://api.mercadopago.com", "http://127.0.0.1:8090"],
+    )
+
+    def production_violations(self) -> list[str]:
+        """Refuse a Mercado Pago host other than the provider's in production.
+
+        Returns:
+            list[str]: The parent's entries plus one when
+            ``MERCADOPAGO_BASE_URL`` is not ``DEFAULT_BASE_URL`` — the
+            access token is sent to that host on every call.
+        """
+        from tempest_fastapi_sdk.integrations.payment.mercado_pago.environment import (
+            DEFAULT_BASE_URL,
+        )
+
+        violations: list[str] = super().production_violations()
+        if self.MERCADOPAGO_BASE_URL.rstrip("/") != DEFAULT_BASE_URL.rstrip("/"):
+            violations.append(
+                "MERCADOPAGO_BASE_URL: not the Mercado Pago API host "
+                "(the access token is sent there)"
+            )
+        return violations
 
     def mercado_pago_kwargs(self) -> dict[str, Any]:
         """Map these settings onto the ``HTTPClient`` the client wraps.
@@ -5508,7 +5546,7 @@ class MercadoPagoSettings(BaseAppSettings):
         )
 
         return {
-            "base_url": DEFAULT_BASE_URL,
+            "base_url": self.MERCADOPAGO_BASE_URL or DEFAULT_BASE_URL,
             "default_headers": {
                 "Authorization": f"Bearer {self.MERCADOPAGO_ACCESS_TOKEN}"
             },
