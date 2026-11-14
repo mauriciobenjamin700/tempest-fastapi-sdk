@@ -97,7 +97,8 @@ def _load_order(
     """Find the order the delivery is about.
 
     Args:
-        order_id (str): The order id, when not taken from ``order_json``.
+        order_id (str): The order id, when not taken from ``order_json``;
+            with ``fake_api``, also its ``external_reference``.
         order_json (Path | None): A file holding the order as JSON.
         fake_api (str): Base URL of a running ``fake-api``.
         transition (str): A transition to apply on ``fake_api`` first.
@@ -142,7 +143,7 @@ def _load_order(
                 raise _fail(f"fake-api refused {transition}: {answer.text}")
             moved: dict[str, Any] = answer.json()
             return moved["order"], str(moved["action"])
-        answer = client.get(f"{base}/v1/orders/{order_id}")
+        answer = client.get(f"{base}{FAKE_CONTROL_PREFIX}/orders/{order_id}")
         if answer.status_code != 200:
             raise _fail(f"fake-api has no order {order_id}: {answer.status_code}")
         found: dict[str, Any] = answer.json()
@@ -164,7 +165,14 @@ def simulate_webhook_command(
         "--secret-file",
         help="File holding the webhook secret; wins over --secret-env.",
     ),
-    order_id: str = typer.Option("", "--order-id", help="The order id (ORD…)."),
+    order_id: str = typer.Option(
+        "",
+        "--order-id",
+        help=(
+            "The order id (ORD…); with --fake-api, also the external_reference "
+            "the service sent on create."
+        ),
+    ),
     action: str = typer.Option(
         "",
         "--action",

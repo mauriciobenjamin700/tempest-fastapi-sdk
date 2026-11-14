@@ -1969,7 +1969,9 @@ points at it with `MERCADOPAGO_BASE_URL=http://127.0.0.1:8090`.
 never from an argument —, posts it to the route (`--url`, default
 `http://127.0.0.1:8000/webhooks/mercado-pago`) and prints the response's
 status and body. It exits with `1` when the route does not answer 2xx and
-with `2` on a usage error. Step by step, with measured output:
+with `2` on a usage error. With `--fake-api`, `--order-id` also takes the
+create's `external_reference` (the service's `correlation_id`). Step by
+step, with measured output:
 [Mercado Pago: testing webhooks »](mercado-pago-webhooks.md#manual-testing-the-service-running-mercado-pago-simulated).
 
 ### Agents — `tempest agents`

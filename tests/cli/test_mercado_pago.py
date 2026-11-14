@@ -206,6 +206,42 @@ class TestSimulateWebhook:
         assert '"order_status":"processed"' in result.output
         assert SECRET not in result.output
 
+    def test_order_id_accepts_the_external_reference(
+        self, running: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``--order-id pedido-cli`` resolves on the fake-api, with and without a move.
+
+        Args:
+            running (tuple[str, str]): The two servers.
+            monkeypatch (pytest.MonkeyPatch): Sets the secret variable.
+        """
+        fake_url, webhook_url = running
+        order_id = _create_pix(fake_url)
+        monkeypatch.setenv(SECRET_ENV, SECRET)
+        base = [
+            "mercado-pago",
+            "simulate-webhook",
+            "--url",
+            webhook_url,
+            "--secret-env",
+            SECRET_ENV,
+            "--fake-api",
+            fake_url,
+            "--order-id",
+            "pedido-cli",
+        ]
+
+        read = runner.invoke(app, base)
+        moved = runner.invoke(app, [*base, "--transition", "expire"])
+
+        assert read.exit_code == 0, read.output
+        assert order_id in read.output
+        assert "action: order.action_required" in read.output
+        assert moved.exit_code == 0, moved.output
+        assert order_id in moved.output
+        assert "action: order.canceled" in moved.output
+        assert '"order_status":"canceled"' in moved.output
+
     def test_another_secret_is_401_and_exit_1(
         self, running: tuple[str, str], tmp_path: Path
     ) -> None:

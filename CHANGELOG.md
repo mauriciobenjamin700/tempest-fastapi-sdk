@@ -41,6 +41,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `readonly_field_names_for(row)` e `editable_field_names(instance=...)`. O
   preset de saque manual usa isso para tirar `rejection_reason` do formulário
   de linha finalizada (antes o campo aparecia e o salvamento dava `400`).
+- Simulação do Mercado Pago compartilhada entre a API e o worker (#767):
+  `make_mercado_pago_router(simulate=True, simulation_url="http://mp-fake:8090")`
+  monta as rotas `/dev/mercado-pago/orders/...` sobre um
+  `tempest mercado-pago fake-api` em outro processo — a transição roda no
+  prefixo de controle do `fake-api` e o webhook, assinado pelo router, é
+  entregue à rota do próprio app, como no modo em memória. Cliente HTTP
+  injetável em `simulation_client=`; `fake-api` fora do ar responde `502`.
+  A peça é `RemoteMercadoPagoSimulation`, e as duas implementações (em
+  memória e remota) satisfazem `MercadoPagoSimulationBackend`
+  (`integrations.payment.adapters`). `simulation_url` sem `simulate=True`,
+  junto com `simulation_api`, ou `simulation_client` sem `simulation_url` são
+  recusados na construção (`ValueError`).
+- Busca por `external_reference`: as rotas de simulação do router
+  (`GET`/`POST /dev/mercado-pago/orders/{order_id}...`), o prefixo de controle
+  do `fake-api` (novo `GET /_fake/orders/{reference}`; o `POST` de transição
+  aceita a referência) e o `--order-id` do `simulate-webhook` com
+  `--fake-api` aceitam o id `ORD…` **ou** o `external_reference` da criação
+  (o `correlation_id` do serviço); com várias orders na mesma referência, vale
+  a mais recente. `FakeMercadoPagoOrdersAPI.find_order_id(reference)`.
 
 ### Changed
 
@@ -54,6 +73,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rejection_reason`, `rejected_at` e `rejected_by`, e
   `ManualPayoutStatusEnum` ganhou `REJECTED` (`"rejected"`). **Tabela criada
   na 0.360.0 precisa de migration** que adicione as quatro colunas.
+
+### Fixed
+
+- `MercadoPagoSettings.mercado_pago_kwargs()` com
+  `MERCADOPAGO_ACCESS_TOKEN` vazio não manda mais `Authorization: Bearer `
+  — valor de header que o `httpx` recusa antes de enviar
+  (`httpx.LocalProtocolError: Illegal header value b'Bearer '`), o que
+  quebrava toda chamada de um serviço de desenvolvimento apontado para o
+  `fake-api` sem token. Agora o header é omitido.
 
 ## [0.360.0] — 2026-11-14
 

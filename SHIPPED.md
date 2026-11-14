@@ -4540,7 +4540,29 @@ Receitas: `mercado-pago-webhooks` (rota pronta, front em desenvolvimento,
 saque manual), `admin` (`upload_accept`, `validate_edit`, preset), `wallet`
 (`ManualPayoutProvider`).
 
-## Saque manual: recusar com devolução e hooks de histórico (#768)
+### Simulação remota e busca por `external_reference` (#767, 2026-11-14)
+
+`mercado_pago_simulation.py`: `MercadoPagoSimulationBackend` (protocolo:
+`list_orders`, `find_order`, `apply`), o adaptador em memória sobre
+`FakeMercadoPagoOrdersAPI` e `RemoteMercadoPagoSimulation`, que fala com o
+prefixo de controle de um `tempest mercado-pago fake-api` (cliente
+`httpx.AsyncClient` injetável). `make_mercado_pago_router` ganhou
+`simulation_url=` e `simulation_client=`: API e worker em processos
+diferentes, ambos com `MERCADOPAGO_BASE_URL` no `fake-api`, veem a mesma order
+e o dev simula pay/expire/refund pelo `correlation_id`.
+`FakeMercadoPagoOrdersAPI.find_order_id` resolve id ou `external_reference`
+(a mais recente vence); `make_fake_orders_app` ganhou
+`GET /_fake/orders/{reference}` e o `POST` de transição aceita a referência;
+`simulate-webhook --order-id` também. `mercado_pago_kwargs()` omite o
+`Authorization` com token vazio. **Não entregue**: store persistente (Redis)
+para o estado do `fake-api` — reiniciar o processo ainda perde as orders.
+Testes: `tests/integrations/payment/adapters/test_mercado_pago_remote_simulation.py`
+(`fake-api` em subprocesso pelo CLI real, worker em outro subprocesso),
+mais casos em `test_mercado_pago_router.py`, `test_fake_mercado_pago.py`,
+`tests/cli/test_mercado_pago.py` e `test_mercado_pago_base_url.py`. Receita:
+"API e worker em processos separados" em `mercado-pago-webhooks`.
+
+### Saque manual: recusar com devolução e hooks de histórico (#768, 2026-11-14)
 
 `wallet/manual_payout_service.py`: `ManualPayoutService` com `mark_paid(row_id,
 end_to_end_id=None, *, actor, require_receipt)` e `reject(row_id, reason, *,

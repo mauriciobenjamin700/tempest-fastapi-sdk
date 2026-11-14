@@ -1960,7 +1960,8 @@ serviço aponta para ela com `MERCADOPAGO_BASE_URL=http://127.0.0.1:8090`. O
 nunca de um argumento —, posta na rota (`--url`, default
 `http://127.0.0.1:8000/webhooks/mercado-pago`) e imprime o status e o corpo
 da resposta. Sai com `1` quando a rota não responde 2xx e com `2` em erro de
-uso. Passo a passo com a saída medida:
+uso. Com `--fake-api`, o `--order-id` aceita também o `external_reference`
+da criação (o `correlation_id` do serviço). Passo a passo com a saída medida:
 [Mercado Pago: testando webhooks »](mercado-pago-webhooks.md#teste-manual-o-servico-rodando-o-mercado-pago-simulado).
 
 ### Agentes — `tempest agents`
