@@ -633,6 +633,17 @@ the route answers `502`:
 HTTP 502
 ```
 
+The same `502` comes back when `simulation_url` reaches something other than
+the fake-api — a proxy, a load balancer's error page, another service on that
+port — and the answer is not its JSON. The message names the URL, and a
+transition no longer turns into a wrong `409` (up to 0.361.0, a `200` with
+HTML gave `409` on a transition and `500` on the listing and the lookup):
+
+```text
+{"detail":"simulator unavailable: DecodingError('http://not-the-fake-api:8090 answered 200 (text/html) with a body that is not JSON; is simulation_url the fake-api?')"}
+HTTP 502
+```
+
 !!! tip "Injected HTTP client"
     Without `simulation_client=`, each call to the fake-api opens and closes
     an `httpx.AsyncClient`. To reuse connections, pass yours

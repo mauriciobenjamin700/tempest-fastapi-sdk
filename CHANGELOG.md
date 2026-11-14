@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   identificador." — antes mandava só estornar à mão, mesmo quando o painel
   tem a ação atômica (#772).
 
+### Fixed
+
+- `RemoteMercadoPagoSimulation` (`make_mercado_pago_router(simulate=True,
+  simulation_url=...)`): um `simulation_url` que responde `200` com corpo que
+  não é JSON (proxy, página de erro de load balancer, outro serviço na porta)
+  agora vira `httpx.DecodingError`, e as rotas de simulação respondem `502`
+  com mensagem que nomeia a URL — como quando o `fake-api` está fora do ar.
+  Antes, o `JSONDecodeError` (subclasse de `ValueError`) virava `409` na
+  transição e `500` na listagem e na busca. Um JSON sem as chaves do
+  `fake-api` (`orders`, `order`, `action`) também responde `502`, em vez de
+  `500` na listagem e `404` na transição. Um `409` de verdade continua `409`
+  (#773).
+
 ## [0.361.0] — 2026-11-14
 
 ### Added
@@ -10999,7 +11012,6 @@ assinatura. Por isso **não há seção de migração** para esta release.
   from tempest_fastapi_sdk import WebSocketSettings
   from tempest_fastapi_sdk.websockets import heartbeat
 
-
   async def relay(ws: WebSocket, settings: WebSocketSettings) -> None:
       """Sala anônima, sem auth e sem hub."""
       await ws.accept()
@@ -13578,7 +13590,6 @@ Closes #156.
   firebase = FirebaseAuth(credentials_path="credentials.json")
   router = APIRouter()
 
-
   @router.get("/me")
   async def me(
       identity: FirebaseIdentity = Depends(firebase.get_identity),
@@ -13973,7 +13984,6 @@ Three defects an application only meets on the day it grows a worker.
 
   ```python
   app.include_router(make_css_router(app_stylesheet()))
-
 
   class HomePage(BasePage):
       total: int
@@ -15766,7 +15776,6 @@ passing `--no-format`.
   class UserResponseSchema(AuthUserSchema):
       name: str | None = None
 
-
   app.include_router(
       make_auth_router(
           auth_service,
@@ -17132,7 +17141,6 @@ hardening items around them. None of these needed a valid session to hit.
 - `ResponseCacheMiddleware` emits `X-Cache` only when a `store=` is configured.
   It previously reported `MISS` in ETag-only mode, where there is no cache to
   miss.
-
 
 ## [0.172.1] — 2026-07-30
 

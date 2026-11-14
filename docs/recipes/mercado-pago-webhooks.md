@@ -626,6 +626,17 @@ responde `502`:
 HTTP 502
 ```
 
+O mesmo `502` sai quando o `simulation_url` alcança outra coisa que não o
+`fake-api` — um proxy, a página de erro de um load balancer, outro serviço
+naquela porta — e a resposta não é o JSON dele. A mensagem nomeia a URL, e
+uma transição deixa de virar `409` por engano (até a 0.361.0, um `200` com
+HTML dava `409` na transição e `500` na listagem e na busca):
+
+```text
+{"detail":"simulator unavailable: DecodingError('http://not-the-fake-api:8090 answered 200 (text/html) with a body that is not JSON; is simulation_url the fake-api?')"}
+HTTP 502
+```
+
 !!! tip "Cliente HTTP injetado"
     Sem `simulation_client=`, cada chamada ao `fake-api` abre e fecha um
     `httpx.AsyncClient`. Para reaproveitar conexão, passe o seu
