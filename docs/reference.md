@@ -904,6 +904,8 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.MercadoPagoSimulationResultSchema
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.MercadoPagoSimulatedDeliverySchema
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.SIMULATION_TAG
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.RemoteMercadoPagoSimulation
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.MercadoPagoSimulationBackend
 
 ## WhatsApp (zap-api)
 

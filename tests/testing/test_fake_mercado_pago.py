@@ -358,3 +358,41 @@ class TestServer:
         assert listed.json() == {"orders": [created["id"]]}
         assert missing.status_code == 404
         assert twice.status_code == 409
+
+    async def test_control_routes_find_the_order_by_external_reference(
+        self,
+    ) -> None:
+        """``pedido-1`` reads and moves the most recent order created with it."""
+        api = FakeMercadoPagoOrdersAPI()
+        app = make_fake_orders_app(api)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://fake"
+        ) as client:
+            first = (await client.post("/v1/orders", json=_pix_body())).json()
+            second = (await client.post("/v1/orders", json=_pix_body())).json()
+            found = await client.get(f"{FAKE_CONTROL_PREFIX}/orders/pedido-1")
+            by_id = await client.get(f"{FAKE_CONTROL_PREFIX}/orders/{first['id']}")
+            paid = await client.post(f"{FAKE_CONTROL_PREFIX}/orders/pedido-1/pay")
+            missing = await client.get(f"{FAKE_CONTROL_PREFIX}/orders/pedido-2")
+
+        assert found.json()["id"] == second["id"]
+        assert by_id.json()["id"] == first["id"]
+        assert paid.json()["order"]["id"] == second["id"]
+        assert api.order(first["id"])["status"] == "action_required"
+        assert missing.status_code == 404
+
+
+class TestFindOrderId:
+    """:meth:`FakeMercadoPagoOrdersAPI.find_order_id`."""
+
+    def test_an_id_wins_then_the_newest_reference(self) -> None:
+        """The id itself, else the newest order with that reference."""
+        api = FakeMercadoPagoOrdersAPI()
+        with httpx.Client(transport=api.transport()) as client:
+            first = client.post("https://api/v1/orders", json=_pix_body()).json()
+            second = client.post("https://api/v1/orders", json=_pix_body()).json()
+
+        assert api.find_order_id(first["id"]) == first["id"]
+        assert api.find_order_id("pedido-1") == second["id"]
+        with pytest.raises(KeyError):
+            api.find_order_id("pedido-404")

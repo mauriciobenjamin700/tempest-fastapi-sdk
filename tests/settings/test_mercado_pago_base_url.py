@@ -64,3 +64,19 @@ def test_production_refuses_another_host(monkeypatch: pytest.MonkeyPatch) -> Non
 
     with pytest.raises(ValidationError, match="MERCADOPAGO_BASE_URL"):
         Settings(_env_file=None)
+
+
+def test_an_empty_token_sends_no_authorization_header() -> None:
+    """``Bearer `` alone is an illegal header value; it is not sent at all."""
+    settings = MercadoPagoSettings(_env_file=None, MERCADOPAGO_ACCESS_TOKEN="")
+
+    assert settings.mercado_pago_kwargs()["default_headers"] == {}
+
+
+def test_a_token_is_sent_as_bearer() -> None:
+    """A set token keeps the ``Bearer`` header."""
+    settings = MercadoPagoSettings(_env_file=None, MERCADOPAGO_ACCESS_TOKEN="TEST-1")
+
+    assert settings.mercado_pago_kwargs()["default_headers"] == {
+        "Authorization": "Bearer TEST-1"
+    }

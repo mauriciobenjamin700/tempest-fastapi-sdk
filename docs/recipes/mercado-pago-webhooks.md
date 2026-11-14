@@ -364,6 +364,12 @@ permite (estornar antes de pagar) é `409`; order desconhecida, `404`;
 transição desconhecida, `422`. No Swagger, essas rotas aparecem sob a tag
 `mercado-pago (dev)`.
 
+`{order_id}` aceita também o **`external_reference`** que você mandou na
+criação — o `reference` do `PixChargeRequest`, em geral o seu
+`correlation_id`, que é o que a sua tela e o seu log mostram. Quando várias
+orders compartilham o mesmo, a mais recente é a movida: cobrar de novo a
+mesma referência depois de um vencimento quer dizer a order nova.
+
 O provider se liga ao simulador por `mercado_pago_provider_for`: com
 `simulate=False` ele devolve o `MercadoPagoPixProvider` sobre
 `settings.mercado_pago_kwargs()`; com `simulate=True`, o **mesmo** adapter
@@ -474,6 +480,173 @@ on_delivery: charge_paid paid
 
     Com `simulate=False` as rotas de simulação não são montadas, e o módulo
     do simulador nem é importado.
+
+#### API e worker em processos separados: `simulation_url`
+
+O simulador do `simulate=True` vive na memória **de um processo**. Se o seu
+serviço tem um worker (TaskIQ, cron) que relê a order — a varredura de
+cobranças pendentes, o job de estornos —, o pedido criado na request da API
+não existe para ele.
+
+A saída é um simulador só, fora dos dois: rode `tempest mercado-pago
+fake-api`, aponte o `MERCADOPAGO_BASE_URL` da API **e** do worker para ele, e
+passe a mesma URL ao router em `simulation_url=`. As rotas
+`/dev/mercado-pago/orders/...` passam a mover a order **no `fake-api`**, pelo
+prefixo de controle dele (`FAKE_CONTROL_PREFIX`, `/_fake`), e entregam o
+webhook assinado à rota do próprio serviço, como no modo em memória. O
+`fake-api` nunca recebe o segredo: quem assina é o router.
+
+```python hl_lines="21 38"
+from typing import Any
+
+import uvicorn
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.integrations.payment import PixChargeRequest, PixPayer
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    make_mercado_pago_router,
+    mercado_pago_provider_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+settings = Settings()
+simulate: bool = settings.ENV == "development"
+provider = mercado_pago_provider_for(settings)
+
+
+async def handle(delivery: MercadoPagoOrderDelivery) -> None:
+    """Release or revert the order the delivery is about."""
+    event = provider.parse_webhook(delivery)
+    status = event.charge.status.value if event.charge else None
+    print(f"on_delivery: {event.type.value} {status}", flush=True)
+
+
+app = FastAPI()
+app.include_router(
+    make_mercado_pago_router(
+        provider,
+        on_delivery=handle,
+        settings=settings,
+        simulate=simulate,
+        simulation_url=settings.MERCADOPAGO_BASE_URL if simulate else None,
+    )
+)
+
+
+@app.post("/charges")
+async def create_charge(reference: str) -> dict[str, Any]:
+    """Create a R$ 19,90 Pix charge — the service's normal flow."""
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference=reference,
+            payer=PixPayer(email="comprador@example.com"),
+        )
+    )
+    return {"order_id": charge.provider_charge_id, "status": charge.status.value}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8001)
+```
+
+Duas linhas mudaram em relação ao exemplo anterior: o provider é o adapter
+**real** (`mercado_pago_provider_for(settings)`, sem `simulate`), que fala
+com o host de `MERCADOPAGO_BASE_URL` — o `fake-api`; e o router recebe essa
+mesma URL em `simulation_url`. O worker não precisa de nada do simulador:
+
+```python
+import asyncio
+import sys
+
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    mercado_pago_provider_for,
+)
+
+
+async def main(order_id: str) -> None:
+    """Re-read a charge, as a sweep of pending charges does."""
+    provider = mercado_pago_provider_for()
+    charge = await provider.get_pix_charge(order_id)
+    print(f"worker: {charge.provider_charge_id} {charge.status.value}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main(sys.argv[1]))
+```
+
+Em três terminais, todos com o mesmo ambiente:
+
+```bash
+tempest mercado-pago fake-api            # http://127.0.0.1:8090
+
+export ENV=development
+export MERCADOPAGO_BASE_URL=http://127.0.0.1:8090
+export MERCADOPAGO_WEBHOOK_SECRET=segredo-local-de-teste
+python servico.py                        # http://127.0.0.1:8001
+
+python worker.py <order_id>              # mesmo ambiente
+```
+
+Saída medida em 2026-11-14 — o Pix criado pela API, o worker lendo a order
+em outro processo, e pagar e estornar **pelo `correlation_id`** (o `order`
+da resposta cortado em `id`, `status` e `status_detail`):
+
+```text
+$ curl -s -X POST "http://127.0.0.1:8001/charges?reference=compra-7f3a"
+{"order_id":"ORDFAKE4627FF3D00000000000002","status":"pending"}
+$ python worker.py ORDFAKE4627FF3D00000000000002
+worker: ORDFAKE4627FF3D00000000000002 pending
+$ curl -s -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/pay
+{"order": {"id": "ORDFAKE4627FF3D00000000000002", "status": "processed", "status_detail": "accredited"}, "delivery": {"action": "order.processed", "status_code": 200, "body": {"ok": true, "data_id": "ORDFAKE4627FF3D00000000000002", "order_status": "processed"}}}
+$ python worker.py ORDFAKE4627FF3D00000000000002
+worker: ORDFAKE4627FF3D00000000000002 paid
+$ curl -s -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/refund
+{"order": {"id": "ORDFAKE4627FF3D00000000000002", "status": "refunded", "status_detail": "refunded"}, "delivery": {"action": "order.refunded", "status_code": 200, "body": {"ok": true, "data_id": "ORDFAKE4627FF3D00000000000002", "order_status": "refunded"}}}
+$ python worker.py ORDFAKE4627FF3D00000000000002
+worker: ORDFAKE4627FF3D00000000000002 refunded
+$ curl -s -w "\nHTTP %{http_code}\n" -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-404/pay
+{"detail":"order compra-404 not found"}
+HTTP 404
+```
+
+E no log do serviço, `on_delivery: charge_paid paid` e
+`on_delivery: charge_refunded refunded` — a entrega assinada passou pela
+verificação e pela releitura no `fake-api`. Com o `fake-api` parado, a rota
+responde `502`:
+
+```text
+{"detail":"simulator unavailable: ConnectError('All connection attempts failed')"}
+HTTP 502
+```
+
+!!! tip "Cliente HTTP injetado"
+    Sem `simulation_client=`, cada chamada ao `fake-api` abre e fecha um
+    `httpx.AsyncClient`. Para reaproveitar conexão, passe o seu
+    (`simulation_client=client`); o ciclo de vida dele continua com você. A
+    peça que o router monta é `RemoteMercadoPagoSimulation`, que você também
+    pode usar direto num teste (`await remote.apply("compra-7f3a", "pay")`).
+
+!!! note "`MERCADOPAGO_ACCESS_TOKEN` pode ficar vazio contra o `fake-api`"
+    Com token vazio, `mercado_pago_kwargs()` não manda o header
+    `Authorization` — `Bearer ` sem nada depois é um valor de header que o
+    `httpx` recusa antes de enviar (`httpx.LocalProtocolError`), e era o que
+    acontecia em toda chamada até a 0.360.0.
+
+!!! warning "O estado do `fake-api` ainda é de memória"
+    Reiniciar o `tempest mercado-pago fake-api` no meio de um teste manual
+    perde as orders. Um store persistente (Redis) para o simulador ainda não
+    existe.
+
+O prefixo de controle também acha a order pelo `external_reference`, então o
+`simulate-webhook` aceita o `correlation_id` em `--order-id` quando há
+`--fake-api`.
 
 #### Saque manual
 
