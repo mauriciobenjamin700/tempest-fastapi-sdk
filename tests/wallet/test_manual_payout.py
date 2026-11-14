@@ -10,16 +10,19 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import String, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
+    BaseModel,
     BaseRepository,
     BaseUserModel,
     PixKeyType,
@@ -37,6 +40,7 @@ from tempest_fastapi_sdk.integrations.payment.adapters import (
 )
 from tempest_fastapi_sdk.testing.fakes import FakeEmailUtils, FakeMercadoPagoOrdersAPI
 from tempest_fastapi_sdk.wallet import (
+    ManualPayoutHooks,
     ManualPayoutProvider,
     ManualPayoutStatusEnum,
     PixDestinationSchema,
@@ -72,6 +76,15 @@ _ManualPayout = make_manual_payout_model(
 )
 
 
+class _PayoutHistory(BaseModel):
+    """The user-visible line a service writes from ``on_requested``."""
+
+    __tablename__ = "manual_payout_history"
+
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
 def _service(session: AsyncSession) -> WalletService:
     return WalletService(
         balances=BaseRepository(session, model=_PayoutUser),
@@ -90,7 +103,11 @@ class _Harness:
 
 
 async def _harness(
-    db: AsyncDatabaseManager, *, withdraw: bool = True, cents: int = 12_345
+    db: AsyncDatabaseManager,
+    *,
+    withdraw: bool = True,
+    cents: int = 12_345,
+    hooks: ManualPayoutHooks | None = None,
 ) -> AsyncIterator[_Harness]:
     """Build a service with one funded user and the Mercado Pago router.
 
@@ -98,6 +115,7 @@ async def _harness(
         db (AsyncDatabaseManager): The in-memory database.
         withdraw (bool): Mount the withdrawal route.
         cents (int): The user's starting balance.
+        hooks (ManualPayoutHooks | None): Handed to the withdrawal config.
 
     Yields:
         _Harness: Client, database, user id and mailer.
@@ -139,6 +157,7 @@ async def _harness(
                 admin_emails=[ADMIN],
                 record_model=_ManualPayout,
                 record_url="https://api.example.com/admin/m/manual_payouts/{id}",
+                hooks=hooks,
             )
             if withdraw
             else None,
@@ -290,6 +309,79 @@ def test_without_config_the_route_is_absent() -> None:
     assert "/webhooks/mercado-pago" in app.openapi()["paths"]
 
 
+def _on_requested(*, fail: bool) -> Any:
+    """Build an ``on_requested`` that writes the history line.
+
+    Args:
+        fail (bool): Raise after writing it, as a broken hook would.
+
+    Returns:
+        Any: The hook.
+    """
+
+    async def run(session: AsyncSession, row: Any) -> None:
+        session.add(
+            _PayoutHistory(label="SAQUE SOLICITADO", correlation_id=row.correlation_id)
+        )
+        await session.flush()
+        if fail:
+            raise RuntimeError("history hook failed")
+
+    return run
+
+
+async def _history(h: _Harness) -> list[tuple[str, str]]:
+    async with h.db.get_session_context() as session:
+        rows = await session.execute(
+            select(_PayoutHistory.label, _PayoutHistory.correlation_id)
+        )
+        return [(label, correlation) for label, correlation in rows.all()]
+
+
+class TestConfigHooks:
+    """``MercadoPagoWithdrawConfig(hooks=...)`` through the real route."""
+
+    async def test_on_requested_writes_history_with_the_record(
+        self, db: AsyncDatabaseManager
+    ) -> None:
+        hooks = ManualPayoutHooks(on_requested=_on_requested(fail=False))
+        async for h in _harness(db, hooks=hooks):
+            response = await h.client.post("/api/mercado-pago/withdraw")
+
+            assert response.status_code == 200
+            correlation = response.json()["payout"]["correlation_id"]
+            [record] = await _records(h)
+            assert record.status == ManualPayoutStatusEnum.PENDING.value
+            assert await _history(h) == [("SAQUE SOLICITADO", correlation)]
+            assert len(h.mailer.outbox) == 1
+
+    async def test_failing_on_requested_refuses_and_returns_the_debit(
+        self, db: AsyncDatabaseManager
+    ) -> None:
+        hooks = ManualPayoutHooks(on_requested=_on_requested(fail=True))
+        async for h in _harness(db, hooks=hooks):
+            response = await h.client.post("/api/mercado-pago/withdraw")
+
+            assert response.status_code == 502
+            assert response.json()["code"] == "WALLET_PAYOUT_REJECTED"
+            assert await _balance(h) == 12_345
+            assert await _records(h) == []
+            assert await _history(h) == []
+            assert h.mailer.outbox == []
+
+    def test_hooks_without_a_record_model_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="pass record_model"):
+            MercadoPagoWithdrawConfig(
+                service_factory=_service,
+                session_factory=lambda: None,  # type: ignore[arg-type,return-value]
+                current_user_id=uuid4,
+                pix_destination=uuid4,
+                mailer=FakeEmailUtils(),
+                admin_emails=[ADMIN],
+                hooks=ManualPayoutHooks(on_requested=_on_requested(fail=False)),
+            )
+
+
 def test_config_needs_exactly_one_way_to_pay() -> None:
     with pytest.raises(ValueError, match="`payout` or `mailer`"):
         MercadoPagoWithdrawConfig(
@@ -323,6 +415,44 @@ class TestManualPayoutProvider:
         assert mask_pix_key("12345678909") in caplog.text
         assert "R$ 100.000,00" in mailer.outbox[0].body
         assert "usuario-1" in mailer.outbox[0].body
+
+    def test_body_names_both_ways_to_refuse(self) -> None:
+        provider = ManualPayoutProvider(FakeEmailUtils(), admin_emails=[ADMIN])
+
+        subject, body = provider.render(
+            PayoutRequest(
+                amount_cents=12_345,
+                pix_key=PIX_KEY,
+                pix_key_type=PixKeyType.EMAIL,
+                correlation_id="saque-1",
+                payee_id="usuario-1",
+                comment="Saque Pix",
+            ),
+            "https://api.example.com/admin/m/manual_payouts/1",
+        )
+
+        assert subject == "[Saque manual] R$ 123,45 para chave Pix"
+        assert body == "\n".join(
+            [
+                "Um usuário pediu um saque e o valor já foi debitado da carteira.",
+                "Faça o Pix manualmente a partir da conta da plataforma:",
+                "",
+                "Valor: R$ 123,45",
+                f"Chave Pix: {PIX_KEY}",
+                "Tipo da chave: email",
+                "Usuário (user_id): usuario-1",
+                "Identificador (correlation_id): saque-1",
+                "Comentário: Saque Pix",
+                "",
+                "Use o identificador acima como descrição do Pix, para conciliar.",
+                "Se não for possível pagar, recuse o saque pelo painel (ação "
+                "“Recusar e devolver”) ou estorne o débito na carteira do "
+                "usuário com o mesmo identificador.",
+                "",
+                "Depois de pagar, anexe o comprovante e marque como pago: "
+                "https://api.example.com/admin/m/manual_payouts/1",
+            ]
+        )
 
     def test_refuses_no_admin(self) -> None:
         with pytest.raises(ValueError, match="admin e-mail"):

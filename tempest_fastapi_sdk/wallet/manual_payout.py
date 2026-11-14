@@ -205,6 +205,13 @@ class ManualPayoutProvider:
     ) -> tuple[str, str]:
         """Write the subject and body of the order for one payout.
 
+        The last instruction names both ways out of a payout the
+        administrator cannot make — the panel's "Recusar e devolver" action
+        and a refund by hand — because the provider cannot tell which one
+        the service has: the action exists only when
+        :func:`~tempest_fastapi_sdk.admin.manual_payout_admin` was given a
+        ``ledger_factory``.
+
         Args:
             request (PayoutRequest): The transfer to make.
             link (str | None): The row in the admin panel, when known.
@@ -227,7 +234,8 @@ class ManualPayoutProvider:
                 f"Comentário: {request.comment or '-'}",
                 "",
                 "Use o identificador acima como descrição do Pix, para conciliar.",
-                "Se não for possível pagar, estorne o débito na carteira do "
+                "Se não for possível pagar, recuse o saque pelo painel (ação "
+                "“Recusar e devolver”) ou estorne o débito na carteira do "
                 "usuário com o mesmo identificador.",
             ]
             + (
