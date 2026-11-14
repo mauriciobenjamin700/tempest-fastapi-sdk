@@ -4524,6 +4524,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#withdrawing-by-hand-manualpayoutprovider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Withdrawing by hand (ManualPayoutProvider)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#fees-and-splits" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5564,6 +5575,25 @@ wallet would give back money that already left. That is why
 <code>OpenPixPayoutProvider</code> raises <code>ValueError</code> in its constructor when the
 <code>HTTPClient</code> can retry.</p>
 </div>
+<h2 id="withdrawing-by-hand-manualpayoutprovider">Withdrawing by hand (<code>ManualPayoutProvider</code>)<a class="headerlink" href="#withdrawing-by-hand-manualpayoutprovider" title="Permanent link">&para;</a></h2>
+<p>With no automated payout — Mercado Pago's is not enabled for the account
+(<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/499" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #499">#499</a>) —, <code>ManualPayoutProvider</code> implements the same <code>PayoutProvider</code> by
+e-mailing the administrator the Pix to send: amount in reais, key and type,
+<code>user_id</code> (from <code>PayoutRequest.payee_id</code>, which <code>withdraw</code> fills),
+<code>correlation_id</code> and comment. It returns <code>PayoutStatusEnum.PENDING</code> with
+<code>provider_status="manual_review"</code>, and the debit follows the usual rule:</p>
+<ul>
+<li>the mailer raises <code>EmailDeliveryException</code> or
+  <code>IntegrationDisabledException</code> → <code>PayoutRejectedException</code>: no
+  administrator got the order, so nobody will pay, and the debit comes back;</li>
+<li>any other error propagates, and the debit stays (<code>PayoutUncertainException</code>).</li>
+</ul>
+<p>The log carries the key masked (<code>mask_pix_key</code>), never whole. With
+<code>records=</code> (a <code>BaseRepository</code> of the <code>make_manual_payout_model</code> table),
+each withdrawal also becomes a <code>PENDING</code> row the administrator completes in
+the panel with the PDF receipt. The ready-made route that ties it together —
+a withdrawal that empties the wallet, the row, the e-mail and the panel — is
+in <a href="../mercado-pago-webhooks/#manual-withdrawal">Mercado Pago: testing webhooks » Manual withdrawal</a>.</p>
 <h2 id="fees-and-splits">Fees and splits<a class="headerlink" href="#fees-and-splits" title="Permanent link">&para;</a></h2>
 <p><code>openpix_fee_cents()</code> computes the OpenPix fee, and <code>split_net()</code> divides the
 total between platform, gateway and payees:</p>

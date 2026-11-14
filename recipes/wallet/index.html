@@ -1981,6 +1981,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sacar-a-mao-manualpayoutprovider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sacar à mão (ManualPayoutProvider)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#taxa-e-divisao" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5557,6 +5568,25 @@ carteira devolveria dinheiro que já saiu. Por isso
 <code>OpenPixPayoutProvider</code> levanta <code>ValueError</code> no construtor se o
 <code>HTTPClient</code> puder refazer a requisição.</p>
 </div>
+<h2 id="sacar-a-mao-manualpayoutprovider">Sacar à mão (<code>ManualPayoutProvider</code>)<a class="headerlink" href="#sacar-a-mao-manualpayoutprovider" title="Permanent link">&para;</a></h2>
+<p>Sem payout automático — o do Mercado Pago não está liberado para a conta
+(<a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/499" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #499">#499</a>) —, <code>ManualPayoutProvider</code> implementa o mesmo <code>PayoutProvider</code>
+mandando ao administrador um e-mail com o Pix a fazer: valor em reais, chave
+e tipo, <code>user_id</code> (de <code>PayoutRequest.payee_id</code>, que o <code>withdraw</code> preenche),
+<code>correlation_id</code> e comentário. Devolve <code>PayoutStatusEnum.PENDING</code> com
+<code>provider_status="manual_review"</code>, e o débito segue a regra de sempre:</p>
+<ul>
+<li>o mailer levanta <code>EmailDeliveryException</code> ou <code>IntegrationDisabledException</code>
+  → <code>PayoutRejectedException</code>: nenhum administrador recebeu o pedido, então
+  ninguém vai pagar, e o débito volta;</li>
+<li>qualquer outro erro propaga, e o débito fica (<code>PayoutUncertainException</code>).</li>
+</ul>
+<p>O log traz a chave mascarada (<code>mask_pix_key</code>), nunca inteira. Com
+<code>records=</code> (um <code>BaseRepository</code> da tabela <code>make_manual_payout_model</code>), cada
+saque também vira uma linha <code>PENDING</code> que o administrador conclui no painel
+com o comprovante em PDF. A rota pronta que junta tudo — saque que zera a
+carteira, linha, e-mail e painel — está em
+<a href="../mercado-pago-webhooks/#saque-manual">Mercado Pago: testando webhooks » Saque manual</a>.</p>
 <h2 id="taxa-e-divisao">Taxa e divisão<a class="headerlink" href="#taxa-e-divisao" title="Permanent link">&para;</a></h2>
 <p><code>openpix_fee_cents()</code> calcula a taxa da OpenPix, e <code>split_net()</code> divide o
 total entre plataforma, gateway e quem recebe:</p>

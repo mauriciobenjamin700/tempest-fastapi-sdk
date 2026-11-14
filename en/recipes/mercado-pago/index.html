@@ -5750,10 +5750,12 @@ builds the full service.</p>
    <code>order.created</code> and <code>order.updated</code>, and the live delivery observed on
    2026-11-13 carried <code>type=order</code>.</li>
 <li><strong>Checks the id's shape</strong> (<code>[A-Za-z0-9]+</code>) before putting it in a path.</li>
-<li><strong>Re-reads the order</strong> by that id. <code>404</code> is an answer, not a failure: the
-   dashboard's "simulate notification" signs a made-up id, and raising there
-   would make Mercado Pago resend forever. Other errors propagate, the route
-   answers 5xx and Mercado Pago tries again.</li>
+<li><strong>Re-reads the order</strong> by that id. <code>404</code> is an answer, not a failure: it
+   is an id the API does not know (probably what the dashboard's "simulate
+   notification" sends; not yet observed), and raising there would make
+   Mercado Pago resend, per the provider's documentation. Other errors
+   propagate and the route answers 5xx (the provider's redelivery is
+   expected, not observed here).</li>
 </ol>
 <p>Then <code>parse_webhook</code> takes the event type from the <strong>re-read state</strong>
 (<code>processed</code> → <code>CHARGE_PAID</code>, <code>canceled</code> → <code>CHARGE_CANCELLED</code>, <code>refunded</code> →

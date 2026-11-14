@@ -5743,10 +5743,11 @@ monta o service completo.</p>
    <code>order.updated</code>, e a entrega real observada em 2026-11-13 trazia
    <code>type=order</code>.</li>
 <li><strong>Confere o formato do id</strong> (<code>[A-Za-z0-9]+</code>) antes de pôr no path.</li>
-<li><strong>Relê a order</strong> por esse id. <code>404</code> é resposta, não falha: a
-   "simulação de notificação" do painel assina um id inventado, e levantar
-   ali faria o Mercado Pago reenviar para sempre. Outros erros sobem, a rota
-   responde 5xx e o Mercado Pago tenta de novo.</li>
+<li><strong>Relê a order</strong> por esse id. <code>404</code> é resposta, não falha: é um
+   id que a API não conhece (provavelmente o que a "simulação de notificação"
+   do painel manda; ainda não observado), e levantar ali faria o Mercado Pago
+   reenviar, segundo a documentação do provedor. Outros erros sobem e a rota
+   responde 5xx (o reenvio do provedor é o esperado, não observado aqui).</li>
 </ol>
 <p>Depois, <code>parse_webhook</code> tira o tipo do evento do <strong>estado relido</strong>
 (<code>processed</code> → <code>CHARGE_PAID</code>, <code>canceled</code> → <code>CHARGE_CANCELLED</code>, <code>refunded</code> →

@@ -2315,6 +2315,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What exists">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-fake-of-an-http-api-fakemercadopagoordersapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A fake of an HTTP API: FakeMercadoPagoOrdersAPI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -5284,7 +5301,8 @@ a sandbox takes someone scanning a QR code; reaching <code>CHARGED_BACK</code> t
 someone opening a dispute. Here it is one call.</p>
 <div class="admonition tip">
 <p class="admonition-title">The branch worth testing is the failing one</p>
-<p>Every fake takes <code>fail_next(error)</code>: the next call raises, and only it.</p>
+<p>Every adapter fake in the table below takes <code>fail_next(error)</code>: the next
+call raises, and only it.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.push.dispatcher</span><span class="w"> </span><span class="kn">import</span> <span class="n">PushDeviceGoneError</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing.fakes</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakePushDispatcher</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
@@ -5362,10 +5380,26 @@ calls, in order.</p>
 </tr>
 </tbody>
 </table>
-<p>All of them expose <code>fail_next(error)</code>. All but <code>FakeEmailUtils</code> also expose
+<p>All of the table's fakes expose <code>fail_next(error)</code>. All but <code>FakeEmailUtils</code> also expose
 <code>calls</code> — the list of methods that ran, in order; on <code>FakeEmailUtils</code> the
 record is the <code>outbox</code> itself, because <code>send</code> is the only method it
 replaces.</p>
+<h3 id="a-fake-of-an-http-api-fakemercadopagoordersapi">A fake of an HTTP API: <code>FakeMercadoPagoOrdersAPI</code><a class="headerlink" href="#a-fake-of-an-http-api-fakemercadopagoordersapi" title="Permanent link">&para;</a></h3>
+<p>The fakes in the table stand <strong>in place of</strong> the adapter.
+<code>FakeMercadoPagoOrdersAPI</code> sits one level below: it is Mercado Pago's Orders
+API, as an <code>httpx</code> handler, and the <strong>real</strong> <code>MercadoPagoPixProvider</code> /
+<code>MercadoPagoCardProvider</code> run over it —
+<code>MercadoPagoPixProvider(api.http_client())</code>. What gets tested is your service
+<strong>and</strong> the adapter: idempotency on the reference, partial refunds, a card
+decline (<code>402</code>), the order re-read on the webhook.</p>
+<p>Its steering is what only the provider does: <code>pay</code>, <code>expire</code>, <code>fail</code>,
+<code>cancel</code>, <code>capture</code>, <code>refund</code>, <code>decline_next_card()</code> and
+<code>lose_next_answer()</code>. Each move returns the <strong>signed</strong> notification
+announcing it, ready for your webhook route. It has no <code>fail_next</code>, and
+<code>calls</code> records <code>(method, path)</code> of each request instead of method names. The
+full recipe, with manual testing against the running service
+(<code>tempest mercado-pago fake-api</code> and <code>simulate-webhook</code>):
+<a href="../mercado-pago-webhooks/#level-1-simulated-by-the-sdk-no-network">Mercado Pago: testing webhooks »</a>.</p>
 <h2 id="card-a-decline-is-a-result-not-an-exception">Card: a decline is a result, not an exception<a class="headerlink" href="#card-a-decline-is-a-result-not-an-exception" title="Permanent link">&para;</a></h2>
 <p><code>FakeCardProvider</code> follows the <code>CardProvider</code> contract. A charge is
 approved, unless <code>decline_next(reason)</code> queued a decline — which comes back
@@ -5637,8 +5671,9 @@ fails with <code>['self', 'query', 'limit'] == ['self', 'query', 'max_results']<
   credentials and no network.</li>
 <li>A fake is not a mock: it holds state, and you <strong>move</strong> that state
   (<code>advance</code>, <code>flag</code>, <code>add_place</code>, <code>queue</code>).</li>
-<li><code>fail_next(error)</code> reaches the failing branch, with the exception the real
-  client raises.</li>
+<li><code>fail_next(error)</code> — on every fake in the table, not on
+  <code>FakeMercadoPagoOrdersAPI</code> — reaches the failing branch, with the exception
+  the real client raises.</li>
 <li><code>calls</code>, <code>outbox</code>, <code>sent</code>, <code>prompts</code>, <code>charges</code>, <code>queries</code>: what happened
   stays inspectable.</li>
 <li>Resolution is lazy: asking for a Pix fake imports neither genai nor geo —
