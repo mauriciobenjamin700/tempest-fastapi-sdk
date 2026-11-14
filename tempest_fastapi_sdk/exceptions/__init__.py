@@ -178,6 +178,15 @@ from tempest_fastapi_sdk.exceptions.wallet import (
     InsufficientBalanceException as InsufficientBalanceException,
 )
 from tempest_fastapi_sdk.exceptions.wallet import (
+    ManualPayoutNotFoundException as ManualPayoutNotFoundException,
+)
+from tempest_fastapi_sdk.exceptions.wallet import (
+    ManualPayoutNotPendingException as ManualPayoutNotPendingException,
+)
+from tempest_fastapi_sdk.exceptions.wallet import (
+    ManualPayoutReceiptMissingException as ManualPayoutReceiptMissingException,
+)
+from tempest_fastapi_sdk.exceptions.wallet import (
     PayoutRejectedException as PayoutRejectedException,
 )
 from tempest_fastapi_sdk.exceptions.wallet import (
@@ -211,6 +220,9 @@ __all__: list[str] = [
     "InvalidSignedURLException",
     "InvalidTokenException",
     "MFARequiredException",
+    "ManualPayoutNotFoundException",
+    "ManualPayoutNotPendingException",
+    "ManualPayoutReceiptMissingException",
     "MessageCatalog",
     "NotFoundException",
     "OAuthAccountInactiveException",

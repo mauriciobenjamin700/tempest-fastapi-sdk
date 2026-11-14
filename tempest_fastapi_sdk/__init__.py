@@ -1494,6 +1494,15 @@ if TYPE_CHECKING:
         InsufficientBalanceException as InsufficientBalanceException,
     )
     from tempest_fastapi_sdk.exceptions.wallet import (
+        ManualPayoutNotFoundException as ManualPayoutNotFoundException,
+    )
+    from tempest_fastapi_sdk.exceptions.wallet import (
+        ManualPayoutNotPendingException as ManualPayoutNotPendingException,
+    )
+    from tempest_fastapi_sdk.exceptions.wallet import (
+        ManualPayoutReceiptMissingException as ManualPayoutReceiptMissingException,
+    )
+    from tempest_fastapi_sdk.exceptions.wallet import (
         PayoutRejectedException as PayoutRejectedException,
     )
     from tempest_fastapi_sdk.exceptions.wallet import (
@@ -2882,6 +2891,9 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PixRefundExceedsBalanceException": "tempest_fastapi_sdk.exceptions.payment",
     "PixRefundReferenceConflictException": ("tempest_fastapi_sdk.exceptions.payment"),
     "InsufficientBalanceException": "tempest_fastapi_sdk.exceptions.wallet",
+    "ManualPayoutNotFoundException": "tempest_fastapi_sdk.exceptions.wallet",
+    "ManualPayoutNotPendingException": "tempest_fastapi_sdk.exceptions.wallet",
+    "ManualPayoutReceiptMissingException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutRejectedException": "tempest_fastapi_sdk.exceptions.wallet",
     "PayoutUncertainException": "tempest_fastapi_sdk.exceptions.wallet",
     "CompositeFeatureFlagBackend": "tempest_fastapi_sdk.flags",
@@ -3585,6 +3597,9 @@ __all__: list[str] = [
     "MFANotEnrolledException",
     "MFARequiredException",
     "MFAVerifySchema",
+    "ManualPayoutNotFoundException",
+    "ManualPayoutNotPendingException",
+    "ManualPayoutReceiptMissingException",
     "MemoryBanStore",
     "MemoryFeatureFlagBackend",
     "MemoryIdempotencyStore",

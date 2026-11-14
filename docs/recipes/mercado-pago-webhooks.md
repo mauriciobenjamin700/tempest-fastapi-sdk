@@ -709,10 +709,13 @@ tabela no painel do jeito que o trabalho pede:
 - linha `COMPLETED` não volta, e o comprovante dela não pode mais ser
   trocado (o envio é recusado com erro no campo).
 
-!!! info "Cancelar um saque pelo painel não existe"
-    Cancelar um `PENDING` teria de devolver o débito pela carteira, e a ação
-    do painel não faz isso. `CANCELED` só aparece quando o e-mail falhou e o
-    próprio saque já devolveu o débito.
+!!! info "Recusar um saque devolve o valor à carteira"
+    `CANCELED` só aparece quando o e-mail falhou e o próprio saque já
+    devolveu o débito. Para o administrador recusar um `PENDING`, passe
+    `ledger_factory=` ao `manual_payout_admin`: a ação **Recusar e devolver**
+    deixa a linha `REJECTED` e credita o valor numa linha `WITHDRAW_REFUND`,
+    no mesmo commit — veja
+    [Carteira » Concluir ou recusar o saque à mão](wallet.md#concluir-ou-recusar-o-saque-a-mao-manualpayoutservice).
 
 ## Nível 2 — simulação assinada sobre o sandbox
 

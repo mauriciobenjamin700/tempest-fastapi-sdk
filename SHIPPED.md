@@ -4539,3 +4539,23 @@ upload. `PayoutRequest.payee_id`. Testes:
 Receitas: `mercado-pago-webhooks` (rota pronta, front em desenvolvimento,
 saque manual), `admin` (`upload_accept`, `validate_edit`, preset), `wallet`
 (`ManualPayoutProvider`).
+
+## Saque manual: recusar com devolução e hooks de histórico (#768)
+
+`wallet/manual_payout_service.py`: `ManualPayoutService` com `mark_paid(row_id,
+end_to_end_id=None, *, actor, require_receipt)` e `reject(row_id, reason, *,
+actor)`, os dois atômicos sobre `PENDING` (`UPDATE ... WHERE status =
+'pending'`); `reject` devolve o valor numa linha `WITHDRAW_REFUND` pelo
+`WalletLedger` no mesmo commit. `ManualPayoutHooks` (`on_requested`,
+`on_canceled`, `on_paid`, `on_rejected`, protocolo `ManualPayoutHook`) roda
+dentro da transação de cada transição — o `ManualPayoutProvider` aceita
+`hooks=` para os dois primeiros. `ManualPayoutStatusEnum.REJECTED` e as colunas
+`end_to_end_id`, `rejection_reason`, `rejected_at`, `rejected_by`. Exceções
+`ManualPayoutNotFoundException` (404), `ManualPayoutNotPendingException` (409),
+`ManualPayoutReceiptMissingException` (409). `admin/manual_payout.py`: as ações
+chamam o service; `manual_payout_admin(ledger_factory=..., hooks=...)` ganha
+"Recusar e devolver" (`make_reject_action`, `REJECT_ACTION`), com o motivo
+editável só enquanto `PENDING`. Testes: `tests/wallet/test_manual_payout_service.py`,
+`tests/admin/test_manual_payout_admin.py`. Receitas: `wallet` (concluir ou
+recusar o saque à mão), `admin` (preset), `mercado-pago-webhooks` (aviso de
+cancelamento atualizado).

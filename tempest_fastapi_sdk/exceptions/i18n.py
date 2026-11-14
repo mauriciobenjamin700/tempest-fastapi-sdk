@@ -515,6 +515,11 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "WALLET_PAYOUT_UNCERTAIN": (
             "Não foi possível confirmar a transferência; ela será conferida"
         ),
+        "WALLET_MANUAL_PAYOUT_NOT_FOUND": "Saque manual não encontrado",
+        "WALLET_MANUAL_PAYOUT_NOT_PENDING": "Este saque manual não está mais pendente",
+        "WALLET_MANUAL_PAYOUT_RECEIPT_MISSING": (
+            "Anexe o comprovante antes de marcar o saque como pago"
+        ),
         "ACCOUNT_INACTIVE": (
             "Esta conta está desativada — reative-a pelo link de ativação"
         ),
@@ -674,6 +679,11 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "WALLET_PAYOUT_REJECTED": "The provider rejected the transfer",
         "WALLET_PAYOUT_UNCERTAIN": (
             "The transfer could not be confirmed; it will be reconciled"
+        ),
+        "WALLET_MANUAL_PAYOUT_NOT_FOUND": "Manual payout not found",
+        "WALLET_MANUAL_PAYOUT_NOT_PENDING": "This manual payout is no longer pending",
+        "WALLET_MANUAL_PAYOUT_RECEIPT_MISSING": (
+            "Attach the receipt before marking the payout as paid"
         ),
         "ACCOUNT_INACTIVE": (
             "This account is deactivated — reactivate it through the activation link"

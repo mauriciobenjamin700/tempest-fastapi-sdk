@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `ManualPayoutService` (`tempest_fastapi_sdk.wallet`): `mark_paid(row_id,
+  end_to_end_id=None, *, actor=None, require_receipt=False)` e
+  `reject(row_id, reason, *, actor=None)` tiram o saque manual de `PENDING`
+  com um `UPDATE ... WHERE status = 'pending'` — dois administradores na
+  mesma linha a movem uma vez, e o segundo recebe
+  `ManualPayoutNotPendingException` (`409 WALLET_MANUAL_PAYOUT_NOT_PENDING`)
+  sem nada alterado. `reject` grava o motivo e devolve o valor à carteira
+  numa linha `WITHDRAW_REFUND` (`reference_id` = `correlation_id`) pelo
+  `WalletLedger`, no mesmo commit. Novas exceções
+  `ManualPayoutNotFoundException` (`404`) e
+  `ManualPayoutReceiptMissingException` (`409`), com mensagem nas duas
+  línguas (#768).
+- `ManualPayoutHooks` (`on_requested`, `on_canceled`, `on_paid`,
+  `on_rejected`): cada callback recebe a sessão e a linha dentro da
+  transação da transição, para o serviço gravar o histórico que o usuário vê
+  no mesmo commit; hook que levanta desfaz a transição (e, no `reject`, a
+  devolução). `ManualPayoutProvider(hooks=...)` roda `on_requested` na
+  transação que grava a linha e `on_canceled` na que a cancela.
+- `manual_payout_admin(ledger_factory=..., hooks=...)`: com
+  `ledger_factory`, a ação **Recusar e devolver** (`make_reject_action`,
+  `REJECT_ACTION`) recusa as linhas `PENDING` que têm motivo em
+  `rejection_reason` e devolve o valor; o motivo só é editável enquanto a
+  linha está `PENDING`. **Marcar como pago** passou a chamar
+  `ManualPayoutService.mark_paid(require_receipt=True)`, uma transação por
+  linha.
+
+### Changed
+
+- `BaseManualPayoutModel` ganhou as colunas anuláveis `end_to_end_id`,
+  `rejection_reason`, `rejected_at` e `rejected_by`, e
+  `ManualPayoutStatusEnum` ganhou `REJECTED` (`"rejected"`). **Tabela criada
+  na 0.360.0 precisa de migration** que adicione as quatro colunas.
+
 ## [0.360.0] — 2026-11-14
 
 ### Added

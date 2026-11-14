@@ -35,6 +35,7 @@ from tempest_fastapi_sdk.integrations.payment.base import (
 )
 from tempest_fastapi_sdk.utils.regex import PixKeyType
 from tempest_fastapi_sdk.wallet.manual_payout_models import ManualPayoutStatusEnum
+from tempest_fastapi_sdk.wallet.manual_payout_service import ManualPayoutHooks
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.repository import BaseRepository
@@ -134,6 +135,12 @@ class ManualPayoutProvider:
     line, whose ``reference_id`` is the correlation id, is what reconciles
     that case.
 
+    ``hooks`` (:class:`~tempest_fastapi_sdk.wallet.ManualPayoutHooks`) runs
+    ``on_requested`` in the transaction that writes the row, and
+    ``on_canceled`` in the one that cancels it; a hook that raises counts as
+    a row that cannot be written. Settling the row afterwards is
+    :class:`~tempest_fastapi_sdk.wallet.ManualPayoutService`'s job.
+
     Attributes:
         provider_name (str): Copied into :attr:`PayoutResult.provider`.
         admin_emails (tuple[str, ...]): Who receives the order.
@@ -148,6 +155,7 @@ class ManualPayoutProvider:
         subject_prefix: str = "[Saque manual]",
         records: BaseRepository[Any] | None = None,
         record_url: str | None = None,
+        hooks: ManualPayoutHooks | None = None,
     ) -> None:
         """Store the mailer and the recipients.
 
@@ -166,6 +174,9 @@ class ManualPayoutProvider:
                 with ``{id}`` where the row id goes
                 (``"https://api.example.com/admin/m/manual_payouts/{id}"``).
                 Written into the e-mail when ``records`` is set.
+            hooks (ManualPayoutHooks | None): Transition callbacks; only
+                ``on_requested`` and ``on_canceled`` run here, and only with
+                ``records``.
 
         Raises:
             ValueError: If ``admin_emails`` is empty or holds an empty
@@ -183,6 +194,7 @@ class ManualPayoutProvider:
         self._subject_prefix: str = subject_prefix
         self._records: BaseRepository[Any] | None = records
         self._record_url: str | None = record_url
+        self._hooks: ManualPayoutHooks = hooks or ManualPayoutHooks()
 
     def render(
         self, request: PayoutRequest, link: str | None = None
@@ -232,22 +244,28 @@ class ManualPayoutProvider:
             Any: The row, or ``None`` without ``records``.
 
         Raises:
-            PayoutRejectedException: If the row cannot be written — no
-                e-mail is sent and the wallet gets its debit back.
+            PayoutRejectedException: If the row cannot be written, or
+                ``on_requested`` raised — no e-mail is sent and the wallet
+                gets its debit back.
         """
         if self._records is None:
             return None
+        records = self._records
         try:
-            return await self._records.add(
-                self._records.model(
-                    user_id=UUID(str(request.payee_id)),
-                    amount_cents=request.amount_cents,
-                    pix_key_masked=mask_pix_key(request.pix_key),
-                    pix_key_type=PixKeyType(request.pix_key_type).value,
-                    correlation_id=request.correlation_id,
-                    status=ManualPayoutStatusEnum.PENDING.value,
+            async with records.transaction() as session:
+                row = await records.add(
+                    records.model(
+                        user_id=UUID(str(request.payee_id)),
+                        amount_cents=request.amount_cents,
+                        pix_key_masked=mask_pix_key(request.pix_key),
+                        pix_key_type=PixKeyType(request.pix_key_type).value,
+                        correlation_id=request.correlation_id,
+                        status=ManualPayoutStatusEnum.PENDING.value,
+                    )
                 )
-            )
+                if self._hooks.on_requested is not None:
+                    await self._hooks.on_requested(session, row)
+            return row
         except Exception as error:
             logger.error(
                 "manual payout %s not recorded (%s); refusing it",
@@ -280,8 +298,11 @@ class ManualPayoutProvider:
             await self._mailer.send(list(self.admin_emails), subject, body)
         except (EmailDeliveryException, IntegrationDisabledException) as error:
             if row is not None and self._records is not None:
-                row.status = ManualPayoutStatusEnum.CANCELED.value
-                await self._records.update(row)
+                async with self._records.transaction() as session:
+                    row.status = ManualPayoutStatusEnum.CANCELED.value
+                    await self._records.update(row)
+                    if self._hooks.on_canceled is not None:
+                        await self._hooks.on_canceled(session, row)
             logger.error(
                 "manual payout %s not sent to the admins (%s); key %s",
                 request.correlation_id,

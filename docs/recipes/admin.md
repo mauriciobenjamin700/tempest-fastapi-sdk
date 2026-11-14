@@ -574,8 +574,57 @@ finalizado não muda". O preset abaixo usa exatamente isso.
 `manual_payout_admin(ManualPayoutModel, upload_storage=...)` devolve o
 `AdminModel` da tabela de saques pagos à mão (`make_manual_payout_model`):
 valores só leitura, comprovante só em PDF, link de download e a ação
-**Marcar como pago**, que só conclui linha `PENDING` com comprovante. O
-fluxo inteiro — o saque que grava a linha e manda o e-mail ao
+**Marcar como pago**, que só conclui linha `PENDING` com comprovante.
+
+Com `ledger_factory=` (uma função que recebe a sessão do painel e devolve o
+`WalletLedger` sobre ela), entra também **Recusar e devolver**: o
+administrador escreve o motivo no campo `rejection_reason` da linha e roda a
+ação, que deixa a linha `REJECTED` e devolve o valor à carteira numa linha
+`WITHDRAW_REFUND`, no mesmo commit. Linha sem motivo fica `PENDING` e a
+mensagem lista o `correlation_id` dela; linha que já saiu de `PENDING` não
+muda, e o motivo dela não pode mais ser editado. As duas ações chamam
+`ManualPayoutService` e rodam os `hooks=` que você passar — veja
+[Carteira » Concluir ou recusar o saque à mão](wallet.md#concluir-ou-recusar-o-saque-a-mao-manualpayoutservice).
+
+```python
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository, BaseUserModel
+from tempest_fastapi_sdk.admin import AdminModel, manual_payout_admin
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+from tempest_fastapi_sdk.wallet import (
+    WalletBalanceMixin,
+    WalletLedger,
+    make_manual_payout_model,
+    make_wallet_entry_model,
+)
+
+
+class UserModel(BaseUserModel, WalletBalanceMixin):
+    __tablename__ = "users"
+
+
+WalletEntryModel = make_wallet_entry_model(user_table="users")
+ManualPayoutModel = make_manual_payout_model(user_table="users")
+
+
+def ledger(session: AsyncSession) -> WalletLedger:
+    return WalletLedger(
+        balances=BaseRepository(session, model=UserModel),
+        entries=BaseRepository(session, model=WalletEntryModel),
+    )
+
+
+payouts: AdminModel[Any] = manual_payout_admin(
+    ManualPayoutModel,
+    upload_storage=LocalUploadStorage("receipts"),
+    ledger_factory=ledger,
+)
+```
+
+O fluxo inteiro — o saque que grava a linha e manda o e-mail ao
 administrador — está em
 [Mercado Pago: testando webhooks » Saque manual](mercado-pago-webhooks.md#saque-manual).
 

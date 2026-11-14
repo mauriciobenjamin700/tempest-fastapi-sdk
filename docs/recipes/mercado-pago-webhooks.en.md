@@ -717,11 +717,13 @@ table in the panel the way the job needs:
 - a `COMPLETED` row never goes back, and its receipt can no longer be
   replaced (the upload is refused with a field error).
 
-!!! info "Canceling a withdrawal from the panel does not exist"
-    Canceling a `PENDING` row would have to give the debit back through the
-    wallet, and the panel action does not do that. `CANCELED` only appears
-    when the e-mail failed and the withdrawal itself already gave the debit
-    back.
+!!! info "Refusing a withdrawal gives the amount back to the wallet"
+    `CANCELED` only appears when the e-mail failed and the withdrawal itself
+    already gave the debit back. For the administrator to refuse a `PENDING`
+    row, pass `ledger_factory=` to `manual_payout_admin`: the **Recusar e
+    devolver** ("refuse and refund") action turns the row `REJECTED` and
+    credits the amount in a `WITHDRAW_REFUND` line, in the same commit — see
+    [Wallet » Completing or refusing a withdrawal by hand](wallet.md#completing-or-refusing-a-withdrawal-by-hand-manualpayoutservice).
 
 ## Level 2 — signed simulation over the sandbox
 

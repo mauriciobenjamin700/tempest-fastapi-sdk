@@ -1,4 +1,4 @@
-"""manual_payout_admin: attach the PDF receipt, mark paid, download it back."""
+"""manual_payout_admin: attach the PDF receipt, mark paid, refuse and refund."""
 
 from __future__ import annotations
 
@@ -13,18 +13,33 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import (
     AdminSite,
     AsyncDatabaseManager,
+    BaseRepository,
     BaseUserModel,
     UserModelAuthBackend,
     make_admin_router,
 )
-from tempest_fastapi_sdk.admin import STATUS_LABELS, AdminModel, manual_payout_admin
+from tempest_fastapi_sdk.admin import (
+    REJECT_ACTION,
+    STATUS_LABELS,
+    AdminModel,
+    manual_payout_admin,
+)
 from tempest_fastapi_sdk.testing import admin_login
 from tempest_fastapi_sdk.utils import LocalUploadStorage
-from tempest_fastapi_sdk.wallet import ManualPayoutStatusEnum, make_manual_payout_model
+from tempest_fastapi_sdk.wallet import (
+    ManualPayoutHooks,
+    ManualPayoutStatusEnum,
+    WalletBalanceMixin,
+    WalletEntryKindEnum,
+    WalletLedger,
+    make_manual_payout_model,
+    make_wallet_entry_model,
+)
 
 SECRET: str = "x" * 48
 """Admin session secret."""
@@ -36,8 +51,42 @@ PNG: bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 """A PNG header."""
 
 
-class _AdminUser(BaseUserModel):
+class _AdminUser(BaseUserModel, WalletBalanceMixin):
     __tablename__ = "manual_payout_admin_users"
+
+
+_AdminEntry = make_wallet_entry_model(
+    user_table="manual_payout_admin_users",
+    tablename="manual_payout_admin_entries",
+    class_name="_AdminEntry",
+)
+
+
+def _ledger(session: AsyncSession) -> WalletLedger:
+    return WalletLedger(
+        balances=BaseRepository(session, model=_AdminUser),
+        entries=BaseRepository(session, model=_AdminEntry),
+    )
+
+
+REJECTED_HOOK_CALLS: list[str] = []
+"""Correlation ids the panel's ``on_rejected`` hook saw, in order."""
+
+
+async def _on_rejected(session: AsyncSession, row: object) -> None:
+    """Record the rejection, and fail for a correlation id ending in ``-boom``.
+
+    Args:
+        session (AsyncSession): The transition's session.
+        row (object): The row after the transition.
+
+    Raises:
+        RuntimeError: For a ``-boom`` correlation id.
+    """
+    correlation_id = str(getattr(row, "correlation_id", ""))
+    REJECTED_HOOK_CALLS.append(correlation_id)
+    if correlation_id.endswith("-boom"):
+        raise RuntimeError("hook failed")
 
 
 _Payout = make_manual_payout_model(
@@ -79,7 +128,14 @@ async def _open_panel(storage: LocalUploadStorage, base: Path) -> AsyncIterator[
         await session.commit()
         admin_id = user.id
     site = AdminSite(title="Admin")
-    site.register(manual_payout_admin(_Payout, upload_storage=storage))
+    site.register(
+        manual_payout_admin(
+            _Payout,
+            upload_storage=storage,
+            ledger_factory=_ledger,
+            hooks=ManualPayoutHooks(on_rejected=_on_rejected),
+        )
+    )
     app = FastAPI()
     app.include_router(
         make_admin_router(
@@ -113,12 +169,20 @@ async def panel(tmp_path: Path) -> AsyncIterator[_Panel]:
         yield opened
 
 
-async def _row(p: _Panel, status: str = ManualPayoutStatusEnum.PENDING.value) -> str:
+async def _row(
+    p: _Panel,
+    status: str = ManualPayoutStatusEnum.PENDING.value,
+    *,
+    reason: str | None = None,
+    suffix: str = "",
+) -> str:
     """Insert one manual payout row.
 
     Args:
         p (_Panel): The panel.
         status (str): Its status.
+        reason (str | None): A rejection reason already typed.
+        suffix (str): Appended to the correlation id.
 
     Returns:
         str: Its id.
@@ -129,8 +193,9 @@ async def _row(p: _Panel, status: str = ManualPayoutStatusEnum.PENDING.value) ->
             amount_cents=5_000,
             pix_key_masked="mo***om",
             pix_key_type="email",
-            correlation_id=f"saque-{uuid4().hex[:8]}",
+            correlation_id=f"saque-{uuid4().hex[:8]}{suffix}",
             status=status,
+            rejection_reason=reason,
         )
         session.add(row)
         await session.commit()
@@ -172,7 +237,16 @@ async def _upload(
 
 
 async def _mark_paid(p: _Panel, row_id: str) -> str:
-    """Run the action on one row and return the flash text page.
+    """Run the "mark as paid" action on one row.
+
+    Returns:
+        str: The list page after the redirect.
+    """
+    return await _run(p, "mark_manual_payout_paid", [row_id])
+
+
+async def _run(p: _Panel, action: str, row_ids: list[str]) -> str:
+    """Run a custom action on rows and return the flash text page.
 
     Returns:
         str: The list page after the redirect.
@@ -182,8 +256,8 @@ async def _mark_paid(p: _Panel, row_id: str) -> str:
         f"/admin/m/{_SLUG}/bulk",
         data={
             "csrf_token": token,
-            "action": "custom:mark_manual_payout_paid",
-            "ids": [row_id],
+            "action": f"custom:{action}",
+            "ids": row_ids,
         },
         follow_redirects=False,
     )
@@ -369,3 +443,142 @@ async def test_edit_form_does_not_offer_is_active(panel: _Panel) -> None:
     page = await panel.client.get(f"/admin/m/{_SLUG}/{row_id}/edit")
     assert page.status_code == 200
     assert 'name="is_active"' not in page.text
+
+
+async def _wallet(p: _Panel) -> tuple[int, int]:
+    """Read the administrator's balance and how many refund lines exist.
+
+    Returns:
+        tuple[int, int]: Balance in cents and ``WITHDRAW_REFUND`` lines.
+    """
+    async with p.db.get_session_context() as session:
+        balance = (await _ledger(session).balance(p.admin_id)).total_cents
+        refunds = (
+            await session.execute(
+                select(_AdminEntry).where(
+                    _AdminEntry.kind == WalletEntryKindEnum.WITHDRAW_REFUND.value
+                )
+            )
+        ).all()
+        return balance, len(refunds)
+
+
+async def _type_reason(p: _Panel, row_id: str, reason: str) -> int:
+    """Post a rejection reason through the edit form.
+
+    Returns:
+        int: The status code.
+    """
+    url = f"/admin/m/{_SLUG}/{row_id}/edit"
+    token = await _token(p, url)
+    response = await p.client.post(
+        url,
+        data={"csrf_token": token, "rejection_reason": reason},
+        follow_redirects=False,
+    )
+    return response.status_code
+
+
+async def test_list_offers_the_reject_action(panel: _Panel) -> None:
+    await _row(panel)
+    page = await panel.client.get(f"/admin/m/{_SLUG}/")
+    assert f'value="custom:{REJECT_ACTION}"' in page.text
+    assert "Recusar e devolver" in page.text
+
+
+def test_without_a_ledger_there_is_no_reject_action(tmp_path: Path) -> None:
+    config = manual_payout_admin(_Payout, upload_storage=LocalUploadStorage(tmp_path))
+    assert [action.name for action in config.custom_actions()] == [
+        "mark_manual_payout_paid"
+    ]
+
+
+async def test_reject_with_reason_refunds_and_runs_the_hook(panel: _Panel) -> None:
+    REJECTED_HOOK_CALLS.clear()
+    row_id = await _row(panel)
+    assert await _type_reason(panel, row_id, "chave Pix de outra pessoa") == 303
+
+    page = await _run(panel, REJECT_ACTION, [row_id])
+
+    row = await _stored(panel, row_id)
+    assert "1 recusado(s) e devolvido(s) à carteira." in page
+    assert row.status == ManualPayoutStatusEnum.REJECTED.value
+    assert row.rejection_reason == "chave Pix de outra pessoa"
+    assert row.rejected_by == str(panel.admin_id)
+    assert row.rejected_at is not None
+    assert await _wallet(panel) == (5_000, 1)
+    assert [row.correlation_id] == REJECTED_HOOK_CALLS
+
+
+async def test_reject_without_reason_leaves_the_row(panel: _Panel) -> None:
+    row_id = await _row(panel)
+
+    page = await _run(panel, REJECT_ACTION, [row_id])
+
+    assert "sem motivo da recusa" in page
+    assert (await _stored(panel, row_id)).status == ManualPayoutStatusEnum.PENDING.value
+    assert await _wallet(panel) == (0, 0)
+
+
+async def test_second_reject_refunds_once(panel: _Panel) -> None:
+    row_id = await _row(panel, reason="duplicado")
+
+    await _run(panel, REJECT_ACTION, [row_id])
+    second = await _run(panel, REJECT_ACTION, [row_id])
+
+    assert "já finalizados" in second
+    assert await _wallet(panel) == (5_000, 1)
+
+
+async def test_rejected_row_cannot_be_marked_paid(panel: _Panel) -> None:
+    row_id = await _row(panel)
+    await _upload(panel, row_id, "c.pdf", PDF, "application/pdf")
+    await _type_reason(panel, row_id, "duplicado")
+    await _run(panel, REJECT_ACTION, [row_id])
+
+    page = await _mark_paid(panel, row_id)
+
+    assert "já finalizados" in page
+    row = await _stored(panel, row_id)
+    assert row.status == ManualPayoutStatusEnum.REJECTED.value
+    assert row.completed_at is None
+
+
+async def test_paid_row_cannot_be_rejected(panel: _Panel) -> None:
+    row_id = await _row(panel, reason="tarde demais")
+    await _upload(panel, row_id, "c.pdf", PDF, "application/pdf")
+    await _mark_paid(panel, row_id)
+
+    page = await _run(panel, REJECT_ACTION, [row_id])
+
+    assert "já finalizados" in page
+    assert (await _stored(panel, row_id)).status == (
+        ManualPayoutStatusEnum.COMPLETED.value
+    )
+    assert await _wallet(panel) == (0, 0)
+
+
+async def test_hook_failure_rolls_back_only_its_row(panel: _Panel) -> None:
+    REJECTED_HOOK_CALLS.clear()
+    broken = await _row(panel, reason="motivo", suffix="-boom")
+    fine = await _row(panel, reason="motivo")
+
+    page = await _run(panel, REJECT_ACTION, [broken, fine])
+
+    assert "1 recusado(s)" in page
+    assert "falharam" in page
+    stored_broken = await _stored(panel, broken)
+    assert stored_broken.status == ManualPayoutStatusEnum.PENDING.value
+    assert stored_broken.rejected_at is None
+    stored_fine = await _stored(panel, fine)
+    assert stored_fine.status == ManualPayoutStatusEnum.REJECTED.value
+    assert await _wallet(panel) == (5_000, 1)
+
+
+async def test_reason_of_a_final_row_cannot_change(panel: _Panel) -> None:
+    row_id = await _row(panel, reason="duplicado")
+    await _run(panel, REJECT_ACTION, [row_id])
+
+    assert await _type_reason(panel, row_id, "outro motivo") == 400
+
+    assert (await _stored(panel, row_id)).rejection_reason == "duplicado"

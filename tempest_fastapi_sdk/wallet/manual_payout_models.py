@@ -34,15 +34,17 @@ class ManualPayoutStatusEnum(BaseStrEnum):
         COMPLETED: An administrator attached the receipt and marked it paid.
             Final.
         CANCELED: The e-mail to the administrators failed, so the payout was
-            refused and the wallet debit given back. Final. An administrator
-            cannot cancel a ``PENDING`` row from the panel: that would have
-            to return the debit through the wallet, which the panel action
-            does not do.
+            refused and the wallet debit given back. Final.
+        REJECTED: An administrator refused the payout
+            (:meth:`~tempest_fastapi_sdk.wallet.ManualPayoutService.reject`)
+            and the amount went back to the wallet as a ``WITHDRAW_REFUND``
+            line in the same commit. Final.
     """
 
     PENDING = "pending"
     COMPLETED = "completed"
     CANCELED = "canceled"
+    REJECTED = "rejected"
 
 
 class BaseManualPayoutModel(BaseModel):
@@ -60,6 +62,14 @@ class BaseManualPayoutModel(BaseModel):
         receipt_key (str | None): Storage key of the receipt PDF.
         completed_at (datetime | None): When it was marked paid.
         completed_by (str | None): Who marked it paid (the admin's id).
+        end_to_end_id (str | None): The Pix end-to-end id of the transfer,
+            when whoever marked it paid informed it.
+        rejection_reason (str | None): Why the payout was refused. The
+            panel lets an operator type it while the row is ``PENDING``;
+            :meth:`~tempest_fastapi_sdk.wallet.ManualPayoutService.reject`
+            writes it.
+        rejected_at (datetime | None): When it was refused.
+        rejected_by (str | None): Who refused it (the admin's id).
     """
 
     __abstract__ = True
@@ -96,6 +106,18 @@ class BaseManualPayoutModel(BaseModel):
     )
     completed_by: Mapped[str | None] = mapped_column(
         String(128), nullable=True, default=None, doc="Who marked it paid."
+    )
+    end_to_end_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, default=None, doc="Pix end-to-end id."
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, default=None, doc="Why it was refused."
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime, nullable=True, default=None, doc="When it was refused."
+    )
+    rejected_by: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, default=None, doc="Who refused it."
     )
 
 
