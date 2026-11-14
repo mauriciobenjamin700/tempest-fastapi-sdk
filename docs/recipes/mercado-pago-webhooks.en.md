@@ -176,20 +176,26 @@ The expected result is your route answering `200` with no charge: the
 simulation carries an id that is none of your orders, and level 1 showed
 what happens then.
 
-!!! warning "Not validated here"
+!!! warning "The dashboard was not validated here"
     This level's steps describe the dashboard as it usually is; this
-    repository has not yet observed a notification from the dashboard or a
-    real delivery. The level 1 table is measured; levels 2 and 3 are what is
-    expected, to be confirmed on your first delivery. If a real delivery's
-    signature is refused, open an issue with the headers (without the
-    secret).
+    repository has not yet observed what **Simulate notification** sends. A
+    real delivery was observed in production on 2026-11-13 (level 3). If a
+    delivery's signature is refused, open an issue with the headers (without
+    the secret).
 
 ## Level 3 — real delivery
 
 With the tunnel and the webhook configured, create an order (the script in
 [test accounts and credentials](mercado-pago-sandbox.md#step-6-check-it-worked)
 works) and watch your service's log. On every change to the order, Mercado
-Pago should call the route with `data.id` equal to the order id.
+Pago calls the route with `data.id` equal to the order id.
+
+!!! check "Observed on 2026-11-13"
+    A real production delivery arrived as
+    `POST …?data.id=ORD01…&type=order`, with `"action": "order.canceled"` in
+    the body, and only verified with the `data.id` lowercased in the
+    manifest, which is what the SDK does since v0.358.0. Not yet observed:
+    the `order.updated` / `order.processed` actions of a paid order.
 
 ## Recap
 

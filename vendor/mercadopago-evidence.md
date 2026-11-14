@@ -701,3 +701,30 @@ espelhar todo campo de request, então "não ecoado" não prova "desconhecido".
 Bloqueado: o shape do destino Pix e o algoritmo do `X-Signature` (assinatura
 do corpo com o par de chaves do integrador, obrigatória em produção). Seis
 intents de teste criadas, sem dinheiro.
+
+## 11. Entrega real de Orders (2026-11-13, #498)
+
+Observada em produção por um consumidor (transport-backend sobre o SDK
+0.356.0, `make_mercado_pago_webhook_dependency`). Valores que identificam
+conta estão redigidos.
+
+- **Query:** `POST /api/webhook/mercadopago?data.external_reference=<uuid do serviço>&data.id=ORD01M7B5HWREYRJCAPJ61QTF1SRW&type=order`.
+- **Corpo:** `"action": "order.canceled"`, `"type": "order"`,
+  `"api_version": "v1"`, `"live_mode": true`, `"application_id"` e
+  `"user_id"` (redigidos). `data` traz a order resumida: `id`,
+  `external_reference`, `status: "canceled"`, `status_detail`,
+  `total_amount: "10.00"`, `total_paid_amount: "0.00"`,
+  `transactions.payments[]` com `payment_method.id: "pix"`, `type: "online"`,
+  `version: 2`.
+- **Tópico e ação:** tópico `order` (o SDK até a 0.357.0 não tinha o membro e
+  o classificava como `UNKNOWN`; `MercadoPagoEventEnum.ORDER` desde a
+  0.358.0); ação `order.canceled`. Entregas de outra order do mesmo dia
+  também chegaram com `type=order`.
+- **Assinatura:** toda entrega voltou `401` com o manifesto do SDK 0.356.0,
+  que levava o `data.id` como chegou. Com o id em minúsculas no manifesto, a
+  verificação passa (#753, corrigido na 0.358.0). A releitura da order usa o
+  id original, em maiúsculas.
+
+Confirmado: o tópico `order` e o `read_delivery` relendo a order pelo
+`data.id`. **Ainda não observado:** o que o "Simular notificação" do painel
+manda, e as ações `order.updated` / `order.processed` de uma order paga.
