@@ -66,6 +66,18 @@ SEAMS: list[tuple[type[Any], type[Any]]] = [
 ]
 """Every fake, beside the seam it stands in for."""
 
+HTTP_API_FAKES: dict[str, str] = {
+    "FakeMercadoPagoOrdersAPI": (
+        "tests/integrations/payment/adapters/test_mercado_pago_simulated_flow.py"
+    ),
+}
+"""Fakes that stand in for an HTTP API rather than a Python seam.
+
+There is no protocol to compare signatures against: what such a fake has to
+match is the API the real adapter calls. Each one is covered instead by the
+file named here, which runs the **real** adapter over it.
+"""
+
 
 def _protocol_methods(seam: type[Any]) -> list[str]:
     """List the callables a seam requires.
@@ -91,9 +103,23 @@ def test_every_exported_fake_has_a_seam() -> None:
     someone adds the ninth fake.
     """
     exported = {name for name in fakes.__all__ if name.startswith("Fake")}
-    covered = {fake.__name__ for fake, _ in SEAMS}
+    covered = {fake.__name__ for fake, _ in SEAMS} | set(HTTP_API_FAKES)
 
     assert exported == covered, f"uncovered: {sorted(exported - covered)}"
+
+
+def test_every_http_api_fake_has_its_coverage_file() -> None:
+    """The file named for an HTTP API fake exists and uses the fake.
+
+    Without this, ``HTTP_API_FAKES`` would be a way to exempt a fake from
+    the check above by naming any path.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    for name, relative in HTTP_API_FAKES.items():
+        source = (root / relative).read_text(encoding="utf-8")
+        assert name in source, f"{relative} does not exercise {name}"
 
 
 @pytest.mark.parametrize(

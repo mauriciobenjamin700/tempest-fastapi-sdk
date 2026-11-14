@@ -41,6 +41,15 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.testing.fakes.geo import (
         FakeRoutingBackend as FakeRoutingBackend,
     )
+    from tempest_fastapi_sdk.testing.fakes.mercado_pago import (
+        FakeMercadoPagoOrdersAPI as FakeMercadoPagoOrdersAPI,
+    )
+    from tempest_fastapi_sdk.testing.fakes.mercado_pago import (
+        MercadoPagoDelivery as MercadoPagoDelivery,
+    )
+    from tempest_fastapi_sdk.testing.fakes.mercado_pago import (
+        build_mercado_pago_delivery as build_mercado_pago_delivery,
+    )
     from tempest_fastapi_sdk.testing.fakes.payment import (
         FakeCardProvider as FakeCardProvider,
     )
@@ -68,6 +77,7 @@ _EXPORTS: dict[str, str] = {
     "FakeCardProvider": "payment",
     "FakeEmailUtils": "email",
     "FakeGeocodingBackend": "geo",
+    "FakeMercadoPagoOrdersAPI": "mercado_pago",
     "FakeModerationBackend": "genai",
     "FakeObjectStorageClient": "storage",
     "FakePayoutProvider": "payment",
@@ -77,8 +87,10 @@ _EXPORTS: dict[str, str] = {
     "FakeRoutingBackend": "geo",
     "FakeTextBackend": "genai",
     "FakeWebSearchBackend": "search",
+    "MercadoPagoDelivery": "mercado_pago",
     "SentEmail": "email",
     "SentPush": "push",
+    "build_mercado_pago_delivery": "mercado_pago",
 }
 
 
