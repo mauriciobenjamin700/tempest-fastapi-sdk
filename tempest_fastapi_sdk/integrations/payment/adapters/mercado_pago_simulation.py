@@ -424,6 +424,14 @@ class RemoteMercadoPagoSimulation:
             response (httpx.Response): The fake-api's answer.
             reference (str): What was looked up, for the ``KeyError``.
 
+        A ``200`` whose body is not JSON means ``base_url`` reaches
+        something other than the fake-api (a proxy, a load balancer's error
+        page, another service on that port). The decode error is a
+        ``ValueError``, which the simulation routes read as a move the
+        order's state does not allow, so it is re-raised as
+        :class:`httpx.DecodingError`: an :class:`httpx.HTTPError`, answered
+        ``502`` like an unreachable fake-api.
+
         Returns:
             Any: The decoded body of a ``200``.
 
@@ -431,13 +439,49 @@ class RemoteMercadoPagoSimulation:
             KeyError: On ``404``.
             ValueError: On ``409``.
             httpx.HTTPStatusError: On any other non-``200`` status.
+            httpx.DecodingError: On a success whose body is not JSON.
         """
         if response.status_code == 404:
             raise KeyError(reference)
         if response.status_code == 409:
             raise ValueError(self._error(response))
         response.raise_for_status()
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            content_type = response.headers.get("content-type", "no content-type")
+            raise httpx.DecodingError(
+                f"{self.base_url} answered {response.status_code} "
+                f"({content_type}) with a body that is not JSON; "
+                "is simulation_url the fake-api?",
+                request=response.request,
+            ) from None
+
+    def _member(self, response: httpx.Response, body: Any, key: str) -> Any:
+        """Read one key of a decoded fake-api answer.
+
+        A ``KeyError`` here would reach the simulation routes as an unknown
+        order (``404``), so a body without the key is raised as
+        :class:`httpx.DecodingError` instead, answered ``502``.
+
+        Args:
+            response (httpx.Response): The answer the body came from.
+            body (Any): Its decoded JSON.
+            key (str): The key the fake-api always sends.
+
+        Returns:
+            Any: The key's value.
+
+        Raises:
+            httpx.DecodingError: When the body is not an object with ``key``.
+        """
+        if not isinstance(body, dict) or key not in body:
+            raise httpx.DecodingError(
+                f"{self.base_url} answered {response.status_code} without "
+                f"{key!r}; is simulation_url the fake-api?",
+                request=response.request,
+            )
+        return body[key]
 
     async def list_orders(self) -> list[dict[str, Any]]:
         """List every order on the fake-api, oldest first.
@@ -447,11 +491,13 @@ class RemoteMercadoPagoSimulation:
             listing of ids.
 
         Raises:
-            httpx.HTTPError: When the fake-api cannot be reached or answers
-                an unexpected status.
+            httpx.HTTPError: When the fake-api cannot be reached, answers an
+                unexpected status, or answers a body that is not its JSON
+                (:class:`httpx.DecodingError`).
         """
-        listed = self._checked(await self._send("GET", self._control), "")
-        return [await self.find_order(str(order_id)) for order_id in listed["orders"]]
+        response = await self._send("GET", self._control)
+        listed = self._member(response, self._checked(response, ""), "orders")
+        return [await self.find_order(str(order_id)) for order_id in listed]
 
     async def find_order(self, reference: str, /) -> dict[str, Any]:
         """Read one order by id or by ``external_reference``.
@@ -464,8 +510,9 @@ class RemoteMercadoPagoSimulation:
 
         Raises:
             KeyError: If no order matches.
-            httpx.HTTPError: When the fake-api cannot be reached or answers
-                an unexpected status.
+            httpx.HTTPError: When the fake-api cannot be reached, answers an
+                unexpected status, or answers a body that is not its JSON
+                (:class:`httpx.DecodingError`).
         """
         url = f"{self._control}/{quote(reference, safe='')}"
         found: dict[str, Any] = self._checked(await self._send("GET", url), reference)
@@ -487,14 +534,16 @@ class RemoteMercadoPagoSimulation:
         Raises:
             KeyError: If no order matches.
             ValueError: If the move does not apply to the order's state.
-            httpx.HTTPError: When the fake-api cannot be reached or answers
-                an unexpected status.
+            httpx.HTTPError: When the fake-api cannot be reached, answers an
+                unexpected status, or answers a body that is not its JSON
+                (:class:`httpx.DecodingError`).
         """
         url = f"{self._control}/{quote(reference, safe='')}/{transition}"
         params = None if amount_cents is None else {"amount_cents": amount_cents}
-        moved = self._checked(await self._send("POST", url, params), reference)
-        order: dict[str, Any] = moved["order"]
-        return order, str(moved["action"])
+        response = await self._send("POST", url, params)
+        moved = self._checked(response, reference)
+        order: dict[str, Any] = self._member(response, moved, "order")
+        return order, str(self._member(response, moved, "action"))
 
 
 class MercadoPagoSimulatedDeliverySchema(BaseSchema):
@@ -578,7 +627,9 @@ def add_simulation_routes(
       sign the delivery with ``secret`` and post it to the webhook route;
       ``404`` for an unknown order, ``409`` for a move the order's state does
       not allow (a refund before payment), ``422`` for an unknown move,
-      ``502`` when a remote simulator cannot be reached.
+      ``502`` when a remote simulator cannot be reached or answers something
+      that is not its JSON (a ``simulation_url`` pointing at another
+      service).
 
     Args:
         router (APIRouter): Where to mount.
@@ -626,7 +677,8 @@ def add_simulation_routes(
             list[dict[str, Any]]: Every order, oldest first.
 
         Raises:
-            HTTPException: ``502`` when a remote simulator cannot be reached.
+            HTTPException: ``502`` when a remote simulator cannot be reached
+                or answers something that is not its JSON.
         """
         try:
             return await backend.list_orders()
