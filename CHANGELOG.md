@@ -34,9 +34,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   linha está `PENDING`. **Marcar como pago** passou a chamar
   `ManualPayoutService.mark_paid(require_receipt=True)`, uma transação por
   linha.
+- `AdminModel(readonly_fields_for=...)` (tipo `ReadonlyFieldsFor`): recebe a
+  linha guardada e devolve campos a trancar só nela, somados a
+  `readonly_fields`. O campo sai do formulário de edição daquela linha e um
+  valor postado para ele é ignorado no salvamento. `AdminModel` ganhou
+  `readonly_field_names_for(row)` e `editable_field_names(instance=...)`. O
+  preset de saque manual usa isso para tirar `rejection_reason` do formulário
+  de linha finalizada (antes o campo aparecia e o salvamento dava `400`).
 
 ### Changed
 
+- Admin: o confirm das ações em massa passou a respeitar
+  `AdminAction.dangerous`, documentado como "confirm mais forte" e nunca
+  implementado. Cada `<option>` leva o texto em `data-confirm`: ação comum
+  mantém "Apply the selected action to the checked rows?"; ação perigosa e o
+  Delete embutido mostram `Run "<rótulo>" on the checked rows? This cannot be
+  undone.`, com o rótulo escapado pelo template.
 - `BaseManualPayoutModel` ganhou as colunas anuláveis `end_to_end_id`,
   `rejection_reason`, `rejected_at` e `rejected_by`, e
   `ManualPayoutStatusEnum` ganhou `REJECTED` (`"rejected"`). **Tabela criada

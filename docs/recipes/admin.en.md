@@ -290,6 +290,14 @@ function stays **directly callable/testable** — the decorator only
 attaches metadata. Use `name=` to pin the identifier (default: the
 function name) and `dangerous=True` to mark a destructive action.
 
+Each option of the bulk-action select carries its own confirm prompt. A
+plain action (and Activate/Deactivate) asks "Apply the selected action to the
+checked rows?"; a `dangerous=True` action (and the built-in Delete) names the
+action and warns there is no way back — `Run "Recusar e devolver" on the
+checked rows? This cannot be undone.`. The label goes in a `data-confirm`
+attribute escaped by the template, never interpolated into JavaScript, so
+quotes or `<` in the label do not break the page.
+
 ### Show a secret once (`secrets=`)
 
 Some actions **create a credential**: an API key, an integration token, a
@@ -590,6 +598,49 @@ written. Returning `{"field": "message"}` refuses the edit with those errors
 — the place for a rule like "a finished record's receipt does not change".
 The preset below uses exactly that.
 
+### A field locked per row (`readonly_fields_for=`)
+
+`readonly_fields` locks the same field on every row. When a field may only
+change while the row is in some state — the reason for a refusal, editable
+until the record is final —, pass `readonly_fields_for(row)`: it takes the
+stored row and returns the fields to lock **on it**, on top of
+`readonly_fields`. The lock holds on both sides, the same way the static one
+does: the field leaves that row's edit form, and a value posted for it by
+hand is ignored on save (the answer is the usual `303`, and the stored value
+does not change).
+
+```python
+from collections.abc import Sequence
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import AdminModel, BaseModel
+
+
+class TicketModel(BaseModel):
+    __tablename__ = "tickets"
+
+    status: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+def note_locked_when_closed(row: TicketModel) -> Sequence[str]:
+    return ["note"] if row.status == "closed" else []
+
+
+tickets: AdminModel[TicketModel] = AdminModel(
+    TicketModel,
+    readonly_fields=["status"],
+    readonly_fields_for=note_locked_when_closed,
+)
+```
+
+!!! note "What it does not cover"
+    Upload and password fields are handled apart by the form, so lock them
+    with `validate_edit`. And the hook applies to the row's own edit form,
+    not to the parent's inline formset.
+
 ### Preset: manual payout (`manual_payout_admin`)
 
 `manual_payout_admin(ManualPayoutModel, upload_storage=...)` returns the
@@ -605,7 +656,8 @@ refund") joins it: the administrator writes the reason in the row's
 `REJECTED` and gives the amount back to the wallet in a `WITHDRAW_REFUND`
 line, in the same commit. A row without a reason stays `PENDING` and the
 message lists its `correlation_id`; a row that already left `PENDING` does
-not change, and its reason can no longer be edited. Both actions call
+not change, and the reason field leaves its edit form
+(`readonly_fields_for`). Both actions call
 `ManualPayoutService` and run the `hooks=` you pass — see
 [Wallet » Completing or refusing a withdrawal by hand](wallet.md#completing-or-refusing-a-withdrawal-by-hand-manualpayoutservice).
 

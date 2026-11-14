@@ -57,6 +57,15 @@ async def issue_token(ctx: AdminActionContext) -> AdminActionResult:
     )
 
 
+@admin_action(label='Wipe "all" <data>', dangerous=True)
+async def wipe_all(ctx: AdminActionContext) -> None:
+    return None
+
+
+GENERIC_CONFIRM = "Apply the selected action to the checked rows?"
+"""The prompt of a bulk action that is not dangerous."""
+
+
 SECRET = "x" * 48
 TOKEN_VALUE = "tok_s3cr3t_value_shown_once"
 ISSUED_NAME = "issued-by-action"
@@ -80,7 +89,7 @@ async def app_with_actions() -> AsyncIterator[FastAPI]:
         AdminModel(
             model=GizmoModel,
             list_display=[GizmoModel.id, GizmoModel.name],
-            actions=[rename_acted, silent_action, issue_token],
+            actions=[rename_acted, silent_action, issue_token, wipe_all],
         )
     )
     app = FastAPI()
@@ -192,6 +201,54 @@ class TestActionEndpoint:
                 follow_redirects=False,
             )
         assert resp.status_code == 400
+
+
+class TestBulkConfirm:
+    """Each option carries its own confirm prompt; dangerous ones say so."""
+
+    async def _list(self, app: FastAPI) -> str:
+        async with _client(app) as client:
+            await _login(client)
+            return (await client.get(f"/admin/m/{_SLUG}/")).text
+
+    @pytest.mark.asyncio
+    async def test_plain_action_keeps_the_generic_prompt(
+        self, app_with_actions: FastAPI
+    ) -> None:
+        page = await self._list(app_with_actions)
+        assert (
+            f'<option value="custom:rename_acted" data-confirm="{GENERIC_CONFIRM}">'
+            in page
+        )
+        assert f'<option value="activate" data-confirm="{GENERIC_CONFIRM}">' in page
+
+    @pytest.mark.asyncio
+    async def test_dangerous_action_names_itself_escaped(
+        self, app_with_actions: FastAPI
+    ) -> None:
+        page = await self._list(app_with_actions)
+        assert (
+            '<option value="custom:wipe_all" data-confirm="Run &#34;Wipe &#34;all&#34;'
+            ' &lt;data&gt;&#34; on the checked rows? This cannot be undone.">' in page
+        )
+        assert "Wipe &#34;all&#34; &lt;data&gt;</option>" in page
+        assert "<data>" not in page
+
+    @pytest.mark.asyncio
+    async def test_builtin_delete_is_dangerous(self, app_with_actions: FastAPI) -> None:
+        page = await self._list(app_with_actions)
+        assert (
+            '<option value="delete" data-confirm="Run &#34;Delete&#34; on the'
+            ' checked rows? This cannot be undone.">' in page
+        )
+
+    @pytest.mark.asyncio
+    async def test_form_confirms_with_the_selected_option(
+        self, app_with_actions: FastAPI
+    ) -> None:
+        page = await self._list(app_with_actions)
+        assert "selectedIndex].dataset.confirm" in page
+        assert f"confirm('{GENERIC_CONFIRM}')" not in page
 
 
 async def _run_action(client: AsyncClient, action: str) -> Response:

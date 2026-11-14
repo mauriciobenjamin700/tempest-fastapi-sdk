@@ -29,6 +29,9 @@ from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
 from tempest_fastapi_sdk.admin.config import Inline as Inline
 from tempest_fastapi_sdk.admin.config import Lens as Lens
 from tempest_fastapi_sdk.admin.config import OrderRef as OrderRef
+from tempest_fastapi_sdk.admin.config import (
+    ReadonlyFieldsFor as ReadonlyFieldsFor,
+)
 from tempest_fastapi_sdk.admin.dashboard import MetricCard as MetricCard
 from tempest_fastapi_sdk.admin.dashboard import MetricPartition as MetricPartition
 from tempest_fastapi_sdk.admin.dashboard import MetricTrend as MetricTrend
@@ -184,6 +187,7 @@ __all__: list[str] = [
     "MetricsArea",
     "MetricsProvider",
     "OrderRef",
+    "ReadonlyFieldsFor",
     "ScheduledTask",
     "SessionStore",
     "SignedCookieSessionStore",

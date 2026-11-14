@@ -579,6 +579,38 @@ async def test_reason_of_a_final_row_cannot_change(panel: _Panel) -> None:
     row_id = await _row(panel, reason="duplicado")
     await _run(panel, REJECT_ACTION, [row_id])
 
-    assert await _type_reason(panel, row_id, "outro motivo") == 400
+    assert await _type_reason(panel, row_id, "outro motivo") == 303
 
     assert (await _stored(panel, row_id)).rejection_reason == "duplicado"
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ManualPayoutStatusEnum.COMPLETED.value, ManualPayoutStatusEnum.REJECTED.value],
+)
+async def test_final_row_edit_form_has_no_reason_input(
+    panel: _Panel, status: str
+) -> None:
+    row_id = await _row(panel, status, reason="motivo")
+    page = await panel.client.get(f"/admin/m/{_SLUG}/{row_id}/edit")
+    assert page.status_code == 200
+    assert 'name="rejection_reason"' not in page.text
+
+
+async def test_pending_row_edit_form_offers_the_reason(panel: _Panel) -> None:
+    row_id = await _row(panel)
+    page = await panel.client.get(f"/admin/m/{_SLUG}/{row_id}/edit")
+    assert 'name="rejection_reason"' in page.text
+
+
+async def test_reject_option_confirms_as_dangerous(panel: _Panel) -> None:
+    await _row(panel)
+    page = await panel.client.get(f"/admin/m/{_SLUG}/")
+    assert (
+        f'<option value="custom:{REJECT_ACTION}" data-confirm="Run &#34;Recusar e'
+        ' devolver&#34; on the checked rows? This cannot be undone.">' in page.text
+    )
+    assert (
+        '<option value="custom:mark_manual_payout_paid" data-confirm="Apply the'
+        ' selected action to the checked rows?">' in page.text
+    )

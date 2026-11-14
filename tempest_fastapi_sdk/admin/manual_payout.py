@@ -271,32 +271,41 @@ def make_reject_action(
     return reject
 
 
-def _locked_once_final(row: Any, form: Mapping[str, Any]) -> Mapping[str, str]:
-    """Refuse a new receipt or reason on a row that is no longer pending.
+def _receipt_locked(row: Any, form: Mapping[str, Any]) -> Mapping[str, str]:
+    """Refuse a new receipt on a row that is no longer pending.
+
+    An upload field is not covered by ``readonly_fields_for`` (the form
+    handles files apart), so the receipt keeps this check.
 
     Args:
         row (Any): The stored row.
         form (Mapping[str, Any]): The posted form.
 
     Returns:
-        Mapping[str, str]: For a row that is not ``PENDING``, a
-        ``receipt_key`` error when a file was posted and a
-        ``rejection_reason`` error when the reason was changed; empty
-        otherwise.
+        Mapping[str, str]: A ``receipt_key`` error when a file was posted
+        for a row that is not ``PENDING``; empty otherwise.
     """
+    upload = form.get("receipt_key")
+    if not getattr(upload, "filename", None):
+        return {}
     if row.status == ManualPayoutStatusEnum.PENDING.value:
         return {}
-    errors: dict[str, str] = {}
-    upload = form.get("receipt_key")
-    if getattr(upload, "filename", None):
-        errors["receipt_key"] = "O comprovante de um saque finalizado não pode mudar."
-    if "rejection_reason" in form:
-        posted = str(form.get("rejection_reason") or "").strip()
-        if posted != (row.rejection_reason or "").strip():
-            errors["rejection_reason"] = (
-                "O motivo de um saque finalizado não pode mudar."
-            )
-    return errors
+    return {"receipt_key": "O comprovante de um saque finalizado não pode mudar."}
+
+
+def _reason_locked(row: Any) -> Sequence[str]:
+    """Lock ``rejection_reason`` once the row is no longer pending.
+
+    Args:
+        row (Any): The stored row.
+
+    Returns:
+        Sequence[str]: ``["rejection_reason"]`` for a final row; empty for
+        a ``PENDING`` one.
+    """
+    if row.status == ManualPayoutStatusEnum.PENDING.value:
+        return []
+    return ["rejection_reason"]
 
 
 def manual_payout_admin(
@@ -324,8 +333,9 @@ def manual_payout_admin(
       ``application/pdf`` **and** bytes starting ``%PDF-``), downloadable
       from the row's page, and refused once the row is no longer
       ``PENDING``;
-    - ``rejection_reason`` editable while the row is ``PENDING`` and locked
-      afterwards;
+    - ``rejection_reason`` editable while the row is ``PENDING``; on a final
+      row it leaves the edit form and a posted value is ignored
+      (``readonly_fields_for``);
     - the "Marcar como pago" action (:func:`make_mark_paid_action`), and,
       with ``ledger_factory``, "Recusar e devolver"
       (:func:`make_reject_action`).
@@ -378,7 +388,8 @@ def manual_payout_admin(
         upload_fields=["receipt_key"],
         upload_storage=upload_storage,
         upload_accept={"receipt_key": list(RECEIPT_CONTENT_TYPES)},
-        validate_edit=_locked_once_final,
+        validate_edit=_receipt_locked,
+        readonly_fields_for=_reason_locked,
         audit_model=audit_model,
         display_timezone=display_timezone,
         verbose_name=verbose_name,

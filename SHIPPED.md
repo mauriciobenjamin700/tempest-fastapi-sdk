@@ -4559,3 +4559,9 @@ editável só enquanto `PENDING`. Testes: `tests/wallet/test_manual_payout_servi
 `tests/admin/test_manual_payout_admin.py`. Receitas: `wallet` (concluir ou
 recusar o saque à mão), `admin` (preset), `mercado-pago-webhooks` (aviso de
 cancelamento atualizado).
+No mesmo PR: `AdminModel(readonly_fields_for=...)` (`ReadonlyFieldsFor`,
+`readonly_field_names_for`, `editable_field_names(instance=...)`), trava de
+campo por linha no formulário e no salvamento; e o confirm das ações em massa
+por opção (`data-confirm`), com texto forte para `dangerous=True` e Delete.
+Testes: `tests/admin/test_readonly_fields_for.py`, `TestBulkConfirm` em
+`tests/admin/test_actions.py`.
