@@ -485,6 +485,13 @@ site.register(
   the select is not the only barrier.
 - **A name that is not a column** (a typo) raises `ValueError` at
   construction, and so does an empty list.
+- **In the list filter**: a column that is also in `list_filter` gets the
+  same `<select>`, with the same labels, instead of a free-text box.
+
+!!! tip "No Activate / Deactivate"
+    On a table where `is_active` means nothing (a financial record, say),
+    `AdminModel(can_toggle_active=False)` drops both bulk actions from the
+    list and refuses a hand-built `action=deactivate` with `400`.
 
 !!! tip "Open vocabulary"
     If the application writes its own kinds into `kind`, join them with the

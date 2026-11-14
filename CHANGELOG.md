@@ -63,7 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`sniff_mime`), com `accept=` no input; `AdminModel(validate_edit=...)`
   recusa uma edição por regra da linha; a página do registro ganhou o link
   **Download** de cada upload (`GET {prefix}/m/{slug}/{id}/upload/{field}`);
-  `LocalUploadStorage.local_path(key)`.
+  `LocalUploadStorage.local_path(key)`; `AdminModel(can_toggle_active=False)`
+  tira as ações em massa "Activate" / "Deactivate" (e recusa com `400` a
+  submissão forjada); coluna com `choices` que está em `list_filter` vira
+  `<select>` no filtro da lista. O preset do saque usa os dois (status
+  Pendente / Pago / Cancelado) e deixa `is_active` só-leitura.
 
 ## [0.359.0] — 2026-11-13
 

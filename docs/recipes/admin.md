@@ -465,6 +465,13 @@ site.register(
   é a única barreira.
 - **Nome que não é coluna** (um typo) levanta `ValueError` na construção, e
   lista vazia também.
+- **No filtro da lista**: a coluna que também está em `list_filter` ganha o
+  mesmo `<select>`, com os mesmos rótulos, em vez de uma caixa de texto livre.
+
+!!! tip "Sem Activate / Deactivate"
+    Em tabela onde `is_active` não significa nada (um registro financeiro,
+    por exemplo), `AdminModel(can_toggle_active=False)` tira as duas ações em
+    massa da lista e recusa com `400` um `action=deactivate` montado à mão.
 
 !!! tip "Vocabulário aberto"
     Se a aplicação grava tipos próprios no `kind`, junte-os aos do SDK numa

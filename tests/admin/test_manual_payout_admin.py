@@ -21,7 +21,7 @@ from tempest_fastapi_sdk import (
     UserModelAuthBackend,
     make_admin_router,
 )
-from tempest_fastapi_sdk.admin import AdminModel, manual_payout_admin
+from tempest_fastapi_sdk.admin import STATUS_LABELS, AdminModel, manual_payout_admin
 from tempest_fastapi_sdk.testing import admin_login
 from tempest_fastapi_sdk.utils import LocalUploadStorage
 from tempest_fastapi_sdk.wallet import ManualPayoutStatusEnum, make_manual_payout_model
@@ -317,3 +317,55 @@ async def test_download_redirects_when_the_storage_mints_a_url(
         )
     assert response.status_code == 303
     assert response.headers["location"] == f"https://storage.example.com/{key}?sig=1"
+
+
+async def test_list_offers_only_the_payout_action_and_a_status_select(
+    panel: _Panel,
+) -> None:
+    """No activate/deactivate; the status filter is a labelled select."""
+    await _row(panel)
+    page = await panel.client.get(f"/admin/m/{_SLUG}/")
+    assert page.status_code == 200
+    assert 'value="activate"' not in page.text
+    assert 'value="deactivate"' not in page.text
+    assert 'value="custom:mark_manual_payout_paid"' in page.text
+    assert '<select name="filter_status">' in page.text
+    assert '<input type="text" name="filter_status"' not in page.text
+    for value, label in STATUS_LABELS.items():
+        assert f'<option value="{value}"' in page.text
+        assert label in page.text
+
+
+async def test_status_select_filters_the_list(panel: _Panel) -> None:
+    """Choosing "Pago" lists only completed payouts."""
+    await _row(panel)
+    done = await _row(panel, ManualPayoutStatusEnum.COMPLETED.value)
+    page = await panel.client.get(
+        f"/admin/m/{_SLUG}/",
+        params={"filter_status": ManualPayoutStatusEnum.COMPLETED.value},
+    )
+    assert page.status_code == 200
+    assert "1 record" in page.text
+    assert done in page.text
+
+
+async def test_forged_deactivate_is_refused(panel: _Panel) -> None:
+    """A hand-built ``action=deactivate`` cannot switch a payout off."""
+    row_id = await _row(panel)
+    token = await _token(panel, f"/admin/m/{_SLUG}/")
+    response = await panel.client.post(
+        f"/admin/m/{_SLUG}/bulk",
+        data={"csrf_token": token, "action": "deactivate", "ids": [row_id]},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    row = await _stored(panel, row_id)
+    assert row.is_active is True
+
+
+async def test_edit_form_does_not_offer_is_active(panel: _Panel) -> None:
+    """``is_active`` is read-only on a payout."""
+    row_id = await _row(panel)
+    page = await panel.client.get(f"/admin/m/{_SLUG}/{row_id}/edit")
+    assert page.status_code == 200
+    assert 'name="is_active"' not in page.text

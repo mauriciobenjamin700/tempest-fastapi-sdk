@@ -72,6 +72,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.manual_payout.make_mark_paid_action
 ::: tempest_fastapi_sdk.admin.manual_payout.MARK_PAID_ACTION
 ::: tempest_fastapi_sdk.admin.manual_payout.RECEIPT_CONTENT_TYPES
+::: tempest_fastapi_sdk.admin.manual_payout.STATUS_LABELS
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router

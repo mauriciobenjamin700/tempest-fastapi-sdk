@@ -1188,7 +1188,8 @@ def make_admin_router(
     ) -> list[dict[str, Any]]:
         """Build the list-view filter widgets for each ``list_filter`` field.
 
-        Each spec is a ``select`` (bool / enum / FK), a ``daterange`` (two
+        Each spec is a ``select`` (bool / enum / FK, or a column listed in
+        ``choices``, which offers exactly those values), a ``daterange`` (two
         date inputs) or a ``text`` input, with the active value(s)
         pre-filled.
 
@@ -1216,6 +1217,20 @@ def make_admin_router(
                             f"filter_{field}_from", ""
                         ),
                         "value_to": request.query_params.get(f"filter_{field}_to", ""),
+                    }
+                )
+                continue
+            if field in admin.choices:
+                active = request.query_params.get(f"filter_{field}", "")
+                specs.append(
+                    {
+                        "field": field,
+                        "label": label,
+                        "type": "select",
+                        "options": [
+                            {"value": v, "label": lbl, "selected": active == v}
+                            for v, lbl in admin.choices[field]
+                        ],
                     }
                 )
                 continue
@@ -2570,8 +2585,10 @@ def make_admin_router(
                     raise HTTPException(status.HTTP_400_BAD_REQUEST, "delete disabled")
                 await repository.delete_batch(ids)
             elif action in ("activate", "deactivate"):
-                if not admin.can_edit:
-                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "edit disabled")
+                if not admin.can_edit or not admin.can_toggle_active:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST, "activate/deactivate disabled"
+                    )
                 await repository.bulk_update(
                     {"id": ids}, {"is_active": action == "activate"}
                 )
@@ -4395,7 +4412,7 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
         can never collide with the built-in ones.
     """
     actions: list[tuple[str, str]] = []
-    if admin.can_edit:
+    if admin.can_edit and admin.can_toggle_active:
         actions.append(("activate", "Activate"))
         actions.append(("deactivate", "Deactivate"))
     if admin.can_delete:

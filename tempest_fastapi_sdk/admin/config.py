@@ -262,6 +262,11 @@ class AdminModel(Generic[ModelT]):
             endpoint. Default ``True``.
         can_delete (bool): Whether the admin exposes the delete action.
             Default ``True``.
+        can_toggle_active (bool): Whether the list view offers the
+            built-in "Activate" / "Deactivate" bulk actions (they also need
+            ``can_edit``). ``False`` hides them and refuses a forged
+            submission — for tables where ``is_active`` carries no meaning,
+            such as a payout ledger. Default ``True``.
         can_import (bool): Whether the admin exposes a CSV import page
             (``GET/POST {prefix}/m/{slug}/import``) that bulk-creates
             rows from an uploaded CSV. Default ``False`` (opt-in); also
@@ -305,8 +310,11 @@ class AdminModel(Generic[ModelT]):
             ``Enum`` class (its values, labelled from the member names), a
             sequence of strings, or of ``(value, label)`` pairs. The form
             shows the select and the submission is refused with a field
-            error when the value is not in the list. A real enum column
-            (``Mapped[MyEnum]``) is a select already and needs no entry.
+            error when the value is not in the list. A column that is also
+            in ``list_filter`` gets the same select (with the same labels)
+            as its list filter instead of a free-text box. A real enum
+            column (``Mapped[MyEnum]``) is a select already and needs no
+            entry.
         autocomplete_fields (Sequence[FieldRef]): Foreign-key columns
             rendered as a typed search box (HTMX) instead of a
             ``<select>`` of every related row — removing the 1000-row cap
@@ -404,6 +412,7 @@ class AdminModel(Generic[ModelT]):
         can_edit: bool = True,
         can_delete: bool = True,
         can_import: bool = False,
+        can_toggle_active: bool = True,
         actions: Sequence[ActionHandler] = (),
         upload_fields: Sequence[FieldRef] = (),
         upload_storage: UploadStorage | None = None,
@@ -452,6 +461,7 @@ class AdminModel(Generic[ModelT]):
         self.can_edit: bool = can_edit
         self.can_delete: bool = can_delete
         self.can_import: bool = can_import
+        self.can_toggle_active: bool = can_toggle_active
         self._actions: dict[str, AdminAction] = {}
         for func in actions:
             action = resolve_admin_action(func)

@@ -41,6 +41,9 @@ from tempest_fastapi_sdk.admin.manual_payout import (
     RECEIPT_CONTENT_TYPES as RECEIPT_CONTENT_TYPES,
 )
 from tempest_fastapi_sdk.admin.manual_payout import (
+    STATUS_LABELS as STATUS_LABELS,
+)
+from tempest_fastapi_sdk.admin.manual_payout import (
     make_mark_paid_action as make_mark_paid_action,
 )
 from tempest_fastapi_sdk.admin.manual_payout import (
@@ -136,6 +139,7 @@ __all__: list[str] = [
     "DEFAULT_STORAGE_PAGE_SIZE",
     "MARK_PAID_ACTION",
     "RECEIPT_CONTENT_TYPES",
+    "STATUS_LABELS",
     "STORAGE_KEY_MAX_BYTES",
     "STORAGE_SPOOL_BYTES",
     "STORAGE_STAT_CONCURRENCY",

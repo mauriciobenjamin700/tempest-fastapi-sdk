@@ -48,6 +48,13 @@ _FINANCIAL_FIELDS: Final[tuple[str, ...]] = (
 )
 """Columns the panel shows and never lets an operator type."""
 
+STATUS_LABELS: Final[dict[str, str]] = {
+    ManualPayoutStatusEnum.PENDING.value: "Pendente",
+    ManualPayoutStatusEnum.COMPLETED.value: "Pago",
+    ManualPayoutStatusEnum.CANCELED.value: "Cancelado",
+}
+"""Portuguese labels for the status filter, keyed by the stored value."""
+
 
 def make_mark_paid_action(model: type[BaseManualPayoutModel]) -> ActionHandler:
     """Build the "mark as paid" action for one concrete model.
@@ -153,7 +160,10 @@ def manual_payout_admin(
 ) -> AdminModel[Any]:
     """Configure the panel for a manual payout table.
 
-    - list filtered by ``status``, searchable by ``correlation_id``;
+    - list filtered by ``status`` (a select labelled Pendente / Pago /
+      Cancelado), searchable by ``correlation_id``;
+    - no "Activate" / "Deactivate" bulk actions, and ``is_active``
+      read-only: a payout is never switched off;
     - every money column read-only — amount, user, key, correlation id,
       status and who completed it; no create, no delete, no import;
     - ``receipt_key`` an upload that takes only a PDF (declared type
@@ -191,10 +201,12 @@ def manual_payout_admin(
         ],
         list_filter=["status"],
         search_fields=["correlation_id"],
-        readonly_fields=list(_FINANCIAL_FIELDS),
+        readonly_fields=[*_FINANCIAL_FIELDS, "is_active"],
+        choices={"status": list(STATUS_LABELS.items())},
         ordering="-created_at",
         can_create=False,
         can_delete=False,
+        can_toggle_active=False,
         actions=[make_mark_paid_action(model), *actions],
         upload_fields=["receipt_key"],
         upload_storage=upload_storage,
@@ -210,6 +222,7 @@ def manual_payout_admin(
 __all__: list[str] = [
     "MARK_PAID_ACTION",
     "RECEIPT_CONTENT_TYPES",
+    "STATUS_LABELS",
     "make_mark_paid_action",
     "manual_payout_admin",
 ]
