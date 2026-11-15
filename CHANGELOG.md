@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `UserAuthService.admin_create_user(session, *, email, password, name=None,
+  fields=None, is_admin=False)`: cria a conta **já ativa**, com a senha
+  escolhida pelo administrador, sem token de ativação e sem e-mail — por isso
+  fora do `require_mail_delivery`, funcionando sem mailer e com `ENV` de
+  produção. Usa o mesmo caminho do `signup` (e-mail normalizado, política de
+  senha, campos protegidos em `fields=`, `ConflictException` para e-mail
+  repetido); `email_verified_at` fica vazio (#778).
+- `UserAuthService.admin_set_password(session, *, user_id, new_password,
+  revoke_sessions=True, revoke_passkeys=True)`: troca a senha com a política
+  do reset e, por default, revoga as sessões e as passkeys da conta, como o
+  `confirm_password_reset`; id inexistente é `NotFoundException` (#778).
+
+### Fixed
+
+- Painel que abria conta ou trocava senha compondo `signup` + `activate` ou
+  `request_password_reset` + `confirm_password_reset` respondia `503
+  INTEGRATION_DISABLED` em produção sem mailer desde a 0.342.0. Os dois
+  métodos novos cobrem esse caminho sem link; a receita `auth-flow` ganhou a
+  seção "Conta criada pelo administrador, sem e-mail" e a nota de migração da
+  0.342.0 aponta para eles (#778).
+
 ## [0.363.0] — 2026-11-15
 
 ### Added
