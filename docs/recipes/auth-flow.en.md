@@ -304,14 +304,212 @@ $ curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/auth/signup \
 
 !!! note "Activation stays mounted — deliberately"
     Turning signup off does **not** unmount `/auth/activate/{token}`. An
-    account created by an administrator still has to be activated, and
-    that endpoint is what consumes the emailed token. Nothing beyond
-    `POST /auth/signup` moves.
+    account opened through a flow with an activation link still needs it,
+    and that endpoint is what consumes the emailed token. Nothing beyond
+    `POST /auth/signup` moves. An account opened from the panel with
+    `admin_create_user` is born active — see the next section.
 
 **Recap.** `AUTH_SIGNUP_ENABLED=false` closes the public door without
 touching any other endpoint; `allow_signup=` overrides per router; and the
 route leaves the OpenAPI schema along with it, which the manual filter never
 delivered.
+
+### Account created by the administrator, no e-mail *(v0.364.0+)*
+
+Closing sign-up solves half of a closed system. The other half is the
+panel: the administrator opens the account with an e-mail and a password,
+and sometimes replaces someone's password. Nobody receives an e-mail on that
+path — which is why it cannot go through the link flows.
+
+Without a mailer in production (an unset `ENV` counts as production),
+`signup` and `request_password_reset` answer `503 INTEGRATION_DISABLED`: the
+account whose activation link never arrives is not created, and the reset
+nobody receives is not issued. That is the right rule for the user, and it
+is why composing `signup` + `activate` or `request_password_reset` +
+`confirm_password_reset` for the panel breaks.
+
+`UserAuthService` has the two panel methods, with no token and no e-mail:
+
+```python
+# main.py
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from uuid import UUID
+
+import uvicorn
+from fastapi import Depends, FastAPI
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AuthSettings,
+    AuthUserSchema,
+    BaseUserModel,
+    DatabaseSettings,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+)
+
+
+class Settings(DatabaseSettings, JWTSettings, AuthSettings):
+    """Settings read from the environment (and the `.env`)."""
+
+
+class UserModel(BaseUserModel):
+    """The accounts table."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+settings: Settings = Settings()
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+auth_service: UserAuthService = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=None,
+)
+get_current_user = auth_service.current_user_dependency()
+
+
+class AccountCreateSchema(BaseModel):
+    """What the administrator fills in to open an account."""
+
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=1)
+    name: str | None = None
+
+
+class PasswordSetSchema(BaseModel):
+    """The new password the administrator sets."""
+
+    new_password: str = Field(min_length=1)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Open the database and create the tables on startup.
+
+    Args:
+        app (FastAPI): The application starting up.
+
+    Yields:
+        None: Hands control back to FastAPI while the app serves.
+    """
+    await db.connect()
+    await db.create_tables()
+    yield
+    await db.disconnect()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        allow_signup=False,
+    ),
+)
+
+
+@app.post("/api/admin/accounts", status_code=201)
+async def create_account(
+    payload: AccountCreateSchema,
+    current: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(db.session_dependency),
+) -> AuthUserSchema:
+    """Open an already active account with the password the administrator chose.
+
+    Args:
+        payload (AccountCreateSchema): E-mail, password and name of the account.
+        current (UserModel): The caller; must be an administrator.
+        session (AsyncSession): The request session.
+
+    Returns:
+        AuthUserSchema: The public view of the created account.
+    """
+    auth_service.require_admin(current)
+    user = await auth_service.admin_create_user(
+        session,
+        email=payload.email,
+        password=payload.password,
+        name=payload.name,
+    )
+    await session.commit()
+    return AuthUserSchema.model_validate(user)
+
+
+@app.put("/api/admin/accounts/{user_id}/password", status_code=204)
+async def set_account_password(
+    user_id: UUID,
+    payload: PasswordSetSchema,
+    current: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(db.session_dependency),
+) -> None:
+    """Replace an account's password and end its sessions.
+
+    Args:
+        user_id (UUID): The account whose password changes.
+        payload (PasswordSetSchema): The new password.
+        current (UserModel): The caller; must be an administrator.
+        session (AsyncSession): The request session.
+    """
+    auth_service.require_admin(current)
+    await auth_service.admin_set_password(
+        session,
+        user_id=user_id,
+        new_password=payload.new_password,
+    )
+    await session.commit()
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+What each route does:
+
+- **`admin_create_user`** creates the account **already active**. The path is
+  `signup`'s: normalized e-mail, the same password policy, the same
+  protected columns in `fields=`, and the same `ConflictException` (`409`)
+  for a taken e-mail. `is_admin=True` is its own parameter, because
+  `fields=` refuses the column. `email_verified_at` stays empty: the
+  administrator typed the address, and nobody proved the mailbox.
+- **`admin_set_password`** replaces the password under the reset's policy
+  and, by default, **revokes the account's sessions and passkeys**, like
+  `confirm_password_reset`: someone else chose the password, so the old
+  access ends. `revoke_sessions=False` and `revoke_passkeys=False` are the
+  explicit opt-out. An unknown id is a `404`.
+- Both only `flush`; the route owns the `commit`.
+
+Running the app above without `ENV` and with `email=None`, with an
+administrator account already logged in:
+
+```console
+POST /api/admin/accounts {"email": "Maria@Example.com", ...}  -> 201, "email": "maria@example.com", "is_active": true
+POST /api/admin/accounts {"email": "maria@example.com", ...}  -> 409
+PUT  /api/admin/accounts/<id>/password                       -> 204
+POST /auth/login with the new password                        -> 200
+POST /auth/signup                                             -> 404
+```
+
+!!! warning "Authorization belongs to the route"
+    The methods trust their caller. Guard the route with
+    `auth_service.require_admin(current)` (or the panel's session), as in the
+    example — without it, any logged-in account opens accounts and replaces
+    passwords.
+
+**Recap.** An account born in the panel uses `admin_create_user`; a password
+replaced by the administrator uses `admin_set_password`. Neither depends on a
+mailer, and both keep the password policy, the e-mail conflict and the
+session revocation of the link flows.
 
 ### An account born with more than email and password *(v0.278.0+)*
 

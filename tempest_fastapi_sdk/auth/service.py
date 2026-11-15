@@ -453,36 +453,14 @@ class UserAuthService:
         """
         if not self.auth_settings.AUTH_AUTO_ACTIVATE:
             self.require_mail_delivery()
-        extra = dict(fields or {})
-        self._check_signup_fields(extra)
-        self._enforce_password_policy(password)
-        normalized = email.strip().lower()
-        existing = await session.execute(
-            select(self.user_model).where(
-                self.user_model.email == normalized,
-            )
-        )
-        if existing.scalar_one_or_none() is not None:
-            raise self.exceptions.email_taken(
-                message="email already in use",
-                details={"email": normalized},
-            )
-
-        user = self.user_model(
-            email=normalized,
+        user = await self._insert_user(
+            session,
+            email=email,
+            password=password,
+            name=name,
+            fields=fields,
             is_active=self.auth_settings.AUTH_AUTO_ACTIVATE,
         )
-        user.hashed_password = self.passwords.hash(password)
-        if name is not None and hasattr(user, "name"):
-            user.name = name
-        for key, value in extra.items():
-            setattr(user, key, value)
-        session.add(user)
-        try:
-            await session.flush()
-        except IntegrityError as error:
-            raise self._signup_integrity_error(error) from error
-        await session.refresh(user)
 
         if self.auth_settings.AUTH_AUTO_ACTIVATE:
             return user, None
@@ -504,6 +482,193 @@ class UserAuthService:
             url=activation[1],
             expires_at=activation[2],
         )
+
+    async def admin_create_user(
+        self,
+        session: AsyncSession,
+        *,
+        email: str,
+        password: str,
+        name: str | None = None,
+        fields: Mapping[str, Any] | None = None,
+        is_admin: bool = False,
+    ) -> BaseUserModel:
+        """Create an active account with a password chosen by an administrator.
+
+        The back-office twin of :meth:`signup`, for a product where accounts
+        are born in an admin panel and nobody receives a link: no activation
+        token is minted, no mail is sent, and therefore
+        :meth:`require_mail_delivery` is not consulted — the call works with
+        the e-mail integration switched off and ``ENV`` unset (production).
+        Everything else is :meth:`signup`'s own path: the e-mail is
+        normalized, ``fields`` is checked against the same protected columns,
+        the password policy is the same, and a taken e-mail or unique column
+        raises the same :class:`ConflictException`.
+
+        ``email_verified_at`` is left unset: the administrator typed the
+        address, and nobody proved control of the mailbox. The
+        ``refuses_email_link`` predicate is not consulted, since no link is
+        involved. The caller is the authority — guard the route that calls
+        this with :meth:`require_admin` or the panel's own session.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The row is
+                flushed, not committed.
+            email (str): Account e-mail — normalized to lowercase.
+            password (str): Plaintext password, checked against the policy.
+            name (str | None): Optional display name; set when the model has
+                a ``name`` column.
+            fields (Mapping[str, Any] | None): Extra column values, with the
+                same rules as ``signup(fields=...)``.
+            is_admin (bool): Whether the new account is an administrator.
+                ``False`` by default; it is a parameter, not a ``fields`` key,
+                because ``is_admin`` is a protected column.
+
+        Returns:
+            BaseUserModel: The persisted user, ``is_active=True``.
+
+        Raises:
+            ValueError: When ``fields`` names a protected column or something
+                that is not a column, or a ``NOT NULL`` column got no value.
+            ValidationException: When the password breaks the policy.
+            ConflictException: When the e-mail, or another unique column, is
+                already taken.
+        """
+        return await self._insert_user(
+            session,
+            email=email,
+            password=password,
+            name=name,
+            fields=fields,
+            is_active=True,
+            is_admin=is_admin,
+        )
+
+    async def admin_set_password(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+        new_password: str,
+        revoke_sessions: bool = True,
+        revoke_passkeys: bool = True,
+    ) -> BaseUserModel:
+        """Replace an account's password on an administrator's authority.
+
+        The back-office twin of :meth:`confirm_password_reset`: no token, no
+        mail, so :meth:`require_mail_delivery` is not consulted. The new
+        password goes through the same policy, and the same defaults apply,
+        because someone other than the owner just chose the password: every
+        refresh token of the user is revoked (:meth:`revoke_user_sessions`)
+        and every passkey is removed (:meth:`revoke_user_passkeys`), in the
+        session the caller commits. Access tokens already issued live until
+        their short TTL ends; stateless refresh tokens (no
+        ``refresh_token_model``) have no row to revoke. An MFA enrollment is
+        kept — reset it with :meth:`mfa_reset` when that is the intent.
+
+        The caller is the authority — guard the route that calls this with
+        :meth:`require_admin` or the panel's own session.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The change is
+                flushed, not committed.
+            user_id (UUID): The account whose password is replaced.
+            new_password (str): Plaintext replacement password.
+            revoke_sessions (bool): Revoke every refresh token of the user
+                (default). ``False`` is the explicit opt-out.
+            revoke_passkeys (bool): Delete every WebAuthn credential of the
+                user (default). ``False`` is the explicit opt-out. Without a
+                ``webauthn_credential_model`` there is nothing to delete.
+
+        Returns:
+            BaseUserModel: The user whose password was replaced.
+
+        Raises:
+            ValidationException: When the new password breaks the policy.
+                Raised before the account is read.
+            NotFoundException: When no user has ``user_id``.
+        """
+        self._enforce_password_policy(new_password)
+        user = await self.get_user(user_id, session)
+        user.hashed_password = self.passwords.hash(new_password)
+        await session.flush()
+        if revoke_passkeys:
+            await self.revoke_user_passkeys(session, user_id=user.id)
+        if revoke_sessions:
+            await self.revoke_user_sessions(session, user_id=user.id)
+        await session.refresh(user)
+        return user
+
+    async def _insert_user(
+        self,
+        session: AsyncSession,
+        *,
+        email: str,
+        password: str,
+        name: str | None,
+        fields: Mapping[str, Any] | None,
+        is_active: bool,
+        is_admin: bool = False,
+    ) -> BaseUserModel:
+        """Insert a user row through the checks every creation path shares.
+
+        :meth:`signup` and :meth:`admin_create_user` differ only in what
+        happens around the insert (a mail gate and an activation token for
+        the first, neither for the second), so the insert itself lives here
+        once: ``fields`` is checked, the password policy is enforced, the
+        e-mail is normalized and looked up, and a refused flush is
+        translated by :meth:`_signup_integrity_error`.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            email (str): Account e-mail, normalized here.
+            password (str): Plaintext password, checked and hashed here.
+            name (str | None): Optional display name.
+            fields (Mapping[str, Any] | None): Extra column values.
+            is_active (bool): The ``is_active`` the row is born with.
+            is_admin (bool): Set ``is_admin=True`` on the row. ``False``
+                leaves the model default.
+
+        Returns:
+            BaseUserModel: The flushed and refreshed user.
+
+        Raises:
+            ValueError: On a protected or unknown ``fields`` key, or a
+                ``NOT NULL`` column without a value.
+            ValidationException: When the password breaks the policy.
+            ConflictException: When the e-mail or another unique column is
+                taken.
+        """
+        extra = dict(fields or {})
+        self._check_signup_fields(extra)
+        self._enforce_password_policy(password)
+        normalized = email.strip().lower()
+        existing = await session.execute(
+            select(self.user_model).where(
+                self.user_model.email == normalized,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise self.exceptions.email_taken(
+                message="email already in use",
+                details={"email": normalized},
+            )
+
+        user = self.user_model(email=normalized, is_active=is_active)
+        if is_admin:
+            user.is_admin = True
+        user.hashed_password = self.passwords.hash(password)
+        if name is not None and hasattr(user, "name"):
+            user.name = name
+        for key, value in extra.items():
+            setattr(user, key, value)
+        session.add(user)
+        try:
+            await session.flush()
+        except IntegrityError as error:
+            raise self._signup_integrity_error(error) from error
+        await session.refresh(user)
+        return user
 
     def signup_column_names(self) -> frozenset[str]:
         """Return the ``user_model`` columns ``signup(fields=...)`` accepts.
