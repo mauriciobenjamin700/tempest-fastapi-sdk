@@ -87,7 +87,9 @@ class WebPushTransport:
 
         ``image`` becomes the notification ``icon``, which is what a
         service worker reads for the small graphic; the ``data`` map is
-        forwarded untouched to the ``notificationclick`` handler.
+        forwarded untouched to the ``notificationclick`` handler. A
+        ``data["url"]`` also becomes the top-level ``url``, which is the key
+        the tempest-react-sdk service worker opens on click.
 
         Args:
             payload (PushPayloadSchema): The unified notification.

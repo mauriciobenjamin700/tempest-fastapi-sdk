@@ -3,6 +3,7 @@
 import pytest
 
 from tempest_fastapi_sdk import (
+    WebPushActionSchema,
     WebPushKeysSchema,
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
@@ -76,7 +77,7 @@ class TestWebPushPayload:
             body="Hello",
             icon="/icon.png",
             data={"chat_id": "abc"},
-            actions=[{"action": "open", "title": "Open"}],
+            actions=[WebPushActionSchema(action="open", title="Open")],
         )
         rendered = payload.model_dump(exclude_none=True)
         assert rendered["title"] == "New message"

@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `WebPushPayloadSchema` ganha os campos do `PushPayload` do
+  tempest-react-sdk: `url` (destino do clique), `image`,
+  `require_interaction` (`requireInteraction` no fio), `vibrate`, `silent`,
+  `renotify`, `timestamp`, `dir` e `lang`. Botão tipado
+  `WebPushActionSchema(action, title, icon, url)`, exportado no topo e em
+  `tempest_fastapi_sdk.webpush`; o `url` de cada botão é o que o service
+  worker abre quando ele é clicado. Teste de contrato em
+  `tests/webpush/test_payload_contract.py` fixa os nomes de fio contra os do
+  React (#776).
+
+### Changed
+
+- `WebPushPayloadSchema.to_json()` (o que o `WebPushDispatcher` envia)
+  serializa pelo alias e **sem** campo `None`: antes saía
+  `{"title": "Oi", "body": null, "icon": null, ...}`, agora `{"title": "Oi"}`.
+  O service worker do React repassa ao `showNotification` toda opção que não
+  é `undefined`, então um `null` chegaria como valor.
+- `WebPushPayloadSchema.actions` é `list[WebPushActionSchema] | None` em vez
+  de `list[dict[str, Any]] | None`. Dict na entrada continua aceito (vira o
+  schema); quem lia `payload.actions[0]["action"]` passa a ler
+  `payload.actions[0].action`.
+
+### Fixed
+
+- Notificação montada com `WebPushPayloadSchema(data={"url": "/x"})`, como o
+  exemplo do campo e a receita ensinavam, abria `/` no clique: o service
+  worker do tempest-react-sdk (desde a 0.82) decide pelo `url` de topo e
+  sobrescreve o `data.url`. O schema agora sobe um `data["url"]` em texto
+  para o `url` quando ele não foi passado — vale também para o
+  `WebPushTransport` do `DeviceService`, que repassa o `data` do payload
+  unificado. Com os dois presentes e diferentes, vale o `url` de topo e sai um
+  aviso no logger `tempest_fastapi_sdk.webpush.schemas` (#776).
+
 ## [0.362.0] — 2026-11-14
 
 ### Added
