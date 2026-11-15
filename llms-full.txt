@@ -2821,6 +2821,7 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -6595,6 +6596,44 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.363.0] — 2026-11-15
+
+### Added
+
+- `WebPushPayloadSchema` ganha os campos do `PushPayload` do
+  tempest-react-sdk: `url` (destino do clique), `image`,
+  `require_interaction` (`requireInteraction` no fio), `vibrate`, `silent`,
+  `renotify`, `timestamp`, `dir` e `lang`. Botão tipado
+  `WebPushActionSchema(action, title, icon, url)`, exportado no topo e em
+  `tempest_fastapi_sdk.webpush`; o `url` de cada botão é o que o service
+  worker abre quando ele é clicado. Teste de contrato em
+  `tests/webpush/test_payload_contract.py` fixa os nomes de fio contra os do
+  React (#776).
+
+### Changed
+
+- `WebPushPayloadSchema.to_json()` (o que o `WebPushDispatcher` envia)
+  serializa pelo alias e **sem** campo `None`: antes saía
+  `{"title": "Oi", "body": null, "icon": null, ...}`, agora `{"title": "Oi"}`.
+  O service worker do React repassa ao `showNotification` toda opção que não
+  é `undefined`, então um `null` chegaria como valor.
+- `WebPushPayloadSchema.actions` é `list[WebPushActionSchema] | None` em vez
+  de `list[dict[str, Any]] | None`. Dict na entrada continua aceito (vira o
+  schema); quem lia `payload.actions[0]["action"]` passa a ler
+  `payload.actions[0].action`.
+
+### Fixed
+
+- Notificação montada com `WebPushPayloadSchema(data={"url": "/x"})`, como o
+  exemplo do campo e a receita ensinavam, abria `/` no clique: o service
+  worker do tempest-react-sdk (desde a 0.82) decide pelo `url` de topo e
+  sobrescreve o `data.url`. O schema agora sobe um `data["url"]` em texto
+  para o `url` quando ele não foi passado ou é `None`, na construção e na
+  atribuição — vale também para o
+  `WebPushTransport` do `DeviceService`, que repassa o `data` do payload
+  unificado. Com os dois presentes e diferentes, vale o `url` de topo e sai um
+  aviso no logger `tempest_fastapi_sdk.webpush.schemas` (#776).
 
 ## [0.362.0] — 2026-11-14
 
@@ -111441,13 +111480,60 @@ async def notify_order_paid(
         title="Pagamento confirmado",
         body=f"Pedido {order_id} aprovado.",
         icon="/static/icons/order.png",
-        data={"orderId": order_id, "url": f"/orders/{order_id}"},
+        url=f"/orders/{order_id}",
+        data={"orderId": order_id},
     )
     try:
         await service.dispatcher.send(subscription, payload)
     except WebPushGoneError:
         await service.unsubscribe(subscription.endpoint)
 ```
+
+### O payload que o service worker lê
+
+O `WebPushPayloadSchema` espelha o `PushPayload` do tempest-react-sdk: o
+`to_json()` que o dispatcher envia usa os nomes que o `installPushHandler`
+lê (`requireInteraction`, não `require_interaction`) e **omite** todo campo
+`None`, para o navegador aplicar o próprio default em vez de receber `null`.
+
+O destino do clique é o **`url` de topo**. O service worker grava
+`data.url` a partir dele depois de espalhar o `data`, justamente para um
+`data` livre — muitas vezes preenchido com o registro que disparou o push —
+não conseguir redirecionar o clique. Cada botão pode ter o próprio `url`.
+O resolver padrão do clique só abre página da própria origem do app, em
+`http(s)`: um `url` de outra origem vira `/`, a não ser que o app instale um
+`resolveUrl` próprio no `installNotificationClickHandler`.
+
+```python
+from tempest_fastapi_sdk import WebPushActionSchema, WebPushPayloadSchema
+
+payload: WebPushPayloadSchema = WebPushPayloadSchema(
+    title="Pagamento confirmado",
+    url="/orders/42",
+    require_interaction=True,
+    actions=[
+        WebPushActionSchema(action="track", title="Rastrear", url="/orders/42/track"),
+    ],
+    data={"orderId": "42"},
+)
+print(payload.to_json())
+```
+
+Saída:
+
+```json
+{"title":"Pagamento confirmado","url":"/orders/42","actions":[{"action":"track","title":"Rastrear","url":"/orders/42/track"}],"requireInteraction":true,"data":{"orderId":"42"}}
+```
+
+!!! info "Migrando de `data={\"url\": ...}`"
+    Versões anteriores desta receita punham o destino em `data`, e o
+    service worker do tempest-react-sdk (desde a 0.82) ignora essa chave: o
+    clique abria `/`, sem erro em nenhum lado. Agora o schema sobe um
+    `data["url"]` em texto para o `url` de topo quando o `url` não foi
+    passado (ou veio `None`; string vazia conta como valor), então o código antigo volta a abrir a página certa sem mudar.
+    Se os dois vierem com valores diferentes, vale o `url` de topo e um
+    aviso sai no logger `tempest_fastapi_sdk.webpush.schemas`. Para código
+    novo, passe `url=` direto.
 
 ### Para onde o envio vai
 
@@ -111675,6 +111761,8 @@ async def broadcast(
 - Aviso global é `notify_all()`: mesma poda do `notify_user`, em lotes
   (`page_size=500`) e com paralelismo limitado (`max_concurrency=32`). O passeio
   é por cursor porque o método apaga enquanto anda.
+- O destino do clique é o `url` de topo do `WebPushPayloadSchema` (cada
+  botão aceita o próprio `url`); `data["url"]` sozinho é promovido a ele.
 - Caminho baixo nível: `send()` para um destino, `send_many()` para uma lista
   pronta (devolve só os mortos, nunca a falha transitória); trate
   `WebPushGoneError` podando o store.
