@@ -16,6 +16,9 @@ from tempest_fastapi_sdk.webpush.router import (
     make_web_push_router as make_web_push_router,
 )
 from tempest_fastapi_sdk.webpush.schemas import (
+    WebPushActionSchema as WebPushActionSchema,
+)
+from tempest_fastapi_sdk.webpush.schemas import (
     WebPushKeysSchema as WebPushKeysSchema,
 )
 from tempest_fastapi_sdk.webpush.schemas import (
@@ -29,6 +32,7 @@ from tempest_fastapi_sdk.webpush.service import (
 )
 
 __all__: list[str] = [
+    "WebPushActionSchema",
     "WebPushDispatcher",
     "WebPushEndpointRefusedError",
     "WebPushError",

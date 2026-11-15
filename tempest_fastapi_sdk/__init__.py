@@ -2370,6 +2370,9 @@ if TYPE_CHECKING:
         verify_path as verify_path,
     )
     from tempest_fastapi_sdk.webpush import (
+        WebPushActionSchema as WebPushActionSchema,
+    )
+    from tempest_fastapi_sdk.webpush import (
         WebPushDispatcher as WebPushDispatcher,
     )
     from tempest_fastapi_sdk.webpush import (
@@ -3182,6 +3185,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "WebPushEndpointRefusedError": "tempest_fastapi_sdk.webpush",
     "WebPushError": "tempest_fastapi_sdk.webpush",
     "WebPushGoneError": "tempest_fastapi_sdk.webpush",
+    "WebPushActionSchema": "tempest_fastapi_sdk.webpush",
     "WebPushKeysSchema": "tempest_fastapi_sdk.webpush",
     "WebPushPayloadSchema": "tempest_fastapi_sdk.webpush",
     "WebPushSubscriptionSchema": "tempest_fastapi_sdk.webpush",
@@ -3829,6 +3833,7 @@ __all__: list[str] = [
     "WebAuthnRegisterBeginSchema",
     "WebAuthnRegisterCompleteSchema",
     "WebAuthnService",
+    "WebPushActionSchema",
     "WebPushDispatcher",
     "WebPushEndpointRefusedError",
     "WebPushError",

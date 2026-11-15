@@ -102,6 +102,7 @@ class TestWebPushTransport:
         assert isinstance(payload, WebPushPayloadSchema)
         assert payload.icon == "https://x/i.png"
         assert payload.data == {"url": "/a"}
+        assert payload.url == "/a"
 
     async def test_gone_becomes_the_unified_prune_signal(self) -> None:
         """404/410 is what tells the service to delete the subscription."""

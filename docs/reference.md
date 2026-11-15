@@ -1678,6 +1678,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.db.webpush_subscription_model.BaseWebPushSubscriptionModel
 ::: tempest_fastapi_sdk.webpush.schemas.WebPushSubscriptionSchema
 ::: tempest_fastapi_sdk.webpush.schemas.WebPushPayloadSchema
+::: tempest_fastapi_sdk.webpush.schemas.WebPushActionSchema
 
 ---
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -89,6 +90,32 @@ async def test_send_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[0]["ttl"] == 42
     assert calls[0]["vapid_claims"]["sub"] == "mailto:ops@x.com"
     assert '"title"' in calls[0]["data"]
+
+
+@pytest.mark.asyncio
+async def test_send_schema_payload_uses_wire_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A schema payload goes out camelCase, without ``null`` fields.
+
+    The tempest-react-sdk service worker reads ``requireInteraction`` and
+    forwards every key that is not ``undefined``.
+    """
+    calls: list[dict[str, Any]] = []
+
+    def fake_webpush(**kwargs: Any) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr(pywebpush, "webpush", fake_webpush)
+
+    dispatcher = WebPushDispatcher("priv", vapid_subject="mailto:ops@x.com")
+    payload = WebPushPayloadSchema(url="/inbox", require_interaction=True)
+    await dispatcher.send(_subscription(), payload)
+
+    assert json.loads(calls[0]["data"]) == {
+        "url": "/inbox",
+        "requireInteraction": True,
+    }
 
 
 @pytest.mark.asyncio

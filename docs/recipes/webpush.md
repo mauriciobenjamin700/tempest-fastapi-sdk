@@ -485,13 +485,57 @@ async def notify_order_paid(
         title="Pagamento confirmado",
         body=f"Pedido {order_id} aprovado.",
         icon="/static/icons/order.png",
-        data={"orderId": order_id, "url": f"/orders/{order_id}"},
+        url=f"/orders/{order_id}",
+        data={"orderId": order_id},
     )
     try:
         await service.dispatcher.send(subscription, payload)
     except WebPushGoneError:
         await service.unsubscribe(subscription.endpoint)
 ```
+
+### O payload que o service worker lê
+
+O `WebPushPayloadSchema` espelha o `PushPayload` do tempest-react-sdk: o
+`to_json()` que o dispatcher envia usa os nomes que o `installPushHandler`
+lê (`requireInteraction`, não `require_interaction`) e **omite** todo campo
+`None`, para o navegador aplicar o próprio default em vez de receber `null`.
+
+O destino do clique é o **`url` de topo**. O service worker grava
+`data.url` a partir dele depois de espalhar o `data`, justamente para um
+`data` livre — muitas vezes preenchido com o registro que disparou o push —
+não conseguir redirecionar o clique. Cada botão pode ter o próprio `url`.
+
+```python
+from tempest_fastapi_sdk import WebPushActionSchema, WebPushPayloadSchema
+
+payload: WebPushPayloadSchema = WebPushPayloadSchema(
+    title="Pagamento confirmado",
+    url="/orders/42",
+    require_interaction=True,
+    actions=[
+        WebPushActionSchema(action="track", title="Rastrear", url="/orders/42/track"),
+    ],
+    data={"orderId": "42"},
+)
+print(payload.to_json())
+```
+
+Saída:
+
+```json
+{"title":"Pagamento confirmado","url":"/orders/42","actions":[{"action":"track","title":"Rastrear","url":"/orders/42/track"}],"requireInteraction":true,"data":{"orderId":"42"}}
+```
+
+!!! info "Migrando de `data={\"url\": ...}`"
+    Versões anteriores desta receita punham o destino em `data`, e o
+    service worker do tempest-react-sdk (desde a 0.82) ignora essa chave: o
+    clique abria `/`, sem erro em nenhum lado. Agora o schema sobe um
+    `data["url"]` em texto para o `url` de topo quando o `url` não foi
+    passado, então o código antigo volta a abrir a página certa sem mudar.
+    Se os dois vierem com valores diferentes, vale o `url` de topo e um
+    aviso sai no logger `tempest_fastapi_sdk.webpush.schemas`. Para código
+    novo, passe `url=` direto.
 
 ### Para onde o envio vai
 
@@ -719,6 +763,8 @@ async def broadcast(
 - Aviso global é `notify_all()`: mesma poda do `notify_user`, em lotes
   (`page_size=500`) e com paralelismo limitado (`max_concurrency=32`). O passeio
   é por cursor porque o método apaga enquanto anda.
+- O destino do clique é o `url` de topo do `WebPushPayloadSchema` (cada
+  botão aceita o próprio `url`); `data["url"]` sozinho é promovido a ele.
 - Caminho baixo nível: `send()` para um destino, `send_many()` para uma lista
   pronta (devolve só os mortos, nunca a falha transitória); trate
   `WebPushGoneError` podando o store.

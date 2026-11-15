@@ -487,13 +487,57 @@ async def notify_order_paid(
         title="Payment confirmed",
         body=f"Order {order_id} approved.",
         icon="/static/icons/order.png",
-        data={"orderId": order_id, "url": f"/orders/{order_id}"},
+        url=f"/orders/{order_id}",
+        data={"orderId": order_id},
     )
     try:
         await service.dispatcher.send(subscription, payload)
     except WebPushGoneError:
         await service.unsubscribe(subscription.endpoint)
 ```
+
+### The payload the service worker reads
+
+`WebPushPayloadSchema` mirrors tempest-react-sdk's `PushPayload`: the
+`to_json()` the dispatcher sends uses the names `installPushHandler` reads
+(`requireInteraction`, not `require_interaction`) and **omits** every `None`
+field, so the browser applies its own default instead of receiving `null`.
+
+The click destination is the **top-level `url`**. The service worker writes
+`data.url` from it after spreading `data`, precisely so a free-form `data`
+bag — often filled from the record that triggered the push — cannot
+redirect the click. Each button may carry its own `url`.
+
+```python
+from tempest_fastapi_sdk import WebPushActionSchema, WebPushPayloadSchema
+
+payload: WebPushPayloadSchema = WebPushPayloadSchema(
+    title="Payment confirmed",
+    url="/orders/42",
+    require_interaction=True,
+    actions=[
+        WebPushActionSchema(action="track", title="Track", url="/orders/42/track"),
+    ],
+    data={"orderId": "42"},
+)
+print(payload.to_json())
+```
+
+Output:
+
+```json
+{"title":"Payment confirmed","url":"/orders/42","actions":[{"action":"track","title":"Track","url":"/orders/42/track"}],"requireInteraction":true,"data":{"orderId":"42"}}
+```
+
+!!! info "Migrating from `data={\"url\": ...}`"
+    Earlier versions of this recipe put the destination in `data`, and the
+    tempest-react-sdk service worker (since 0.82) ignores that key: the click
+    opened `/`, with no error on either side. The schema now lifts a string
+    `data["url"]` into the top-level `url` when `url` was not given, so the
+    old code opens the right page again unchanged. When both carry different
+    values, the top-level `url` wins and a warning goes to the
+    `tempest_fastapi_sdk.webpush.schemas` logger. For new code, pass `url=`
+    directly.
 
 ### Where a dispatch goes
 
@@ -719,6 +763,8 @@ async def broadcast(
 - A global announcement is `notify_all()`: the same pruning as `notify_user`, in
   batches (`page_size=500`) and with a bounded fan-out (`max_concurrency=32`).
   The walk is cursor-based because the method deletes as it goes.
+- The click destination is the top-level `url` of `WebPushPayloadSchema` (each
+  button takes its own `url`); a lone `data["url"]` is promoted to it.
 - Low-level path: `send()` for one target, `send_many()` for a ready list
   (returns only the dead ones, never a transient failure); handle
   `WebPushGoneError` by pruning the store.

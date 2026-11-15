@@ -2963,7 +2963,8 @@ async def notify_order_paid(
         title="Pagamento confirmado",
         body=f"Pedido {order_id} aprovado.",
         icon="/static/icons/order.png",
-        data={"orderId": order_id, "url": f"/orders/{order_id}"},
+        url=f"/orders/{order_id}",
+        data={"orderId": order_id},
     )
     try:
         await dispatcher.send(subscription, payload)

@@ -2246,7 +2246,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   row is left as it is and the route answers as for a new subscription;
   `transfer_ownership=True` (service and both router factories) is the
   opt-in. Tests: `tests/webpush/test_router_ownership.py`,
-  `tests/push/test_router_ownership.py`.
+  `tests/push/test_router_ownership.py`. **(unreleased, #776)**
+  `WebPushPayloadSchema` mirrors tempest-react-sdk's `PushPayload`
+  (top-level `url`, `image`, `require_interaction`/`requireInteraction`,
+  `vibrate`, `silent`, `renotify`, `timestamp`, `dir`, `lang`) with typed
+  `WebPushActionSchema` buttons (own `url`); `to_json()` is by alias and
+  without `None`; a lone `data["url"]` is lifted to `url`. Contract test:
+  `tests/webpush/test_payload_contract.py`.
 - **Cache** — Redis manager + `@cached`.
 - **Queue / tasks** — typed facades hiding FastStream + TaskIQ:
   `MessageBroker` (`.rabbitmq`/`.redis`/`.kafka`/`.nats`, `@mq.on(channel)`
