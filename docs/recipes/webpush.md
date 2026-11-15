@@ -505,6 +505,9 @@ O destino do clique é o **`url` de topo**. O service worker grava
 `data.url` a partir dele depois de espalhar o `data`, justamente para um
 `data` livre — muitas vezes preenchido com o registro que disparou o push —
 não conseguir redirecionar o clique. Cada botão pode ter o próprio `url`.
+O resolver padrão do clique só abre página da própria origem do app, em
+`http(s)`: um `url` de outra origem vira `/`, a não ser que o app instale um
+`resolveUrl` próprio no `installNotificationClickHandler`.
 
 ```python
 from tempest_fastapi_sdk import WebPushActionSchema, WebPushPayloadSchema
@@ -532,7 +535,7 @@ Saída:
     service worker do tempest-react-sdk (desde a 0.82) ignora essa chave: o
     clique abria `/`, sem erro em nenhum lado. Agora o schema sobe um
     `data["url"]` em texto para o `url` de topo quando o `url` não foi
-    passado, então o código antigo volta a abrir a página certa sem mudar.
+    passado (ou veio `None`; string vazia conta como valor), então o código antigo volta a abrir a página certa sem mudar.
     Se os dois vierem com valores diferentes, vale o `url` de topo e um
     aviso sai no logger `tempest_fastapi_sdk.webpush.schemas`. Para código
     novo, passe `url=` direto.

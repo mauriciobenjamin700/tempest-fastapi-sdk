@@ -184,9 +184,16 @@ class WebPushPayloadSchema(BaseSchema):
     writes ``data.url`` **from** it after spreading ``data``, so a free-form
     ``data`` bag cannot redirect the click, and a ``url`` placed only inside
     ``data`` is ignored: every click opens ``/``. Earlier releases of this
-    schema documented ``data={"url": ...}``, so construction lifts a string
-    ``data["url"]`` into ``url`` when ``url`` is absent. When both are given
-    and differ, the top-level ``url`` wins and a warning is logged.
+    schema documented ``data={"url": ...}``, so construction and assignment
+    lift a string ``data["url"]`` into ``url`` when ``url`` is absent or
+    ``None``. An empty string counts as a value and is not replaced. When
+    both are given and differ, the top-level ``url`` wins and a warning is
+    logged.
+
+    The React click handler's default resolver opens only pages of the
+    worker's own origin over ``http(s)``: a ``url`` on another origin, or with
+    another scheme, opens ``/`` unless the app installs its own
+    ``resolveUrl``.
 
     Attributes:
         title (str | None): Notification title shown to the user.
@@ -263,7 +270,8 @@ class WebPushPayloadSchema(BaseSchema):
         title="Click destination",
         description=(
             "Page opened when the notification body is clicked. The "
-            "service worker opens ``/`` when it is absent."
+            "service worker opens ``/`` when it is absent, and its default "
+            "resolver only opens pages of its own origin."
         ),
         examples=[None, "/inbox", "/orders/42"],
     )
@@ -346,9 +354,11 @@ class WebPushPayloadSchema(BaseSchema):
     def _lift_data_url(cls, value: Any) -> Any:
         """Lift a legacy ``data["url"]`` into the top-level ``url``.
 
-        Only a mapping input is inspected; anything else is returned
-        untouched for the regular validation to judge. ``data`` itself is
-        left as given.
+        Runs on construction and, through ``validate_assignment``, on every
+        attribute assignment. Only a mapping input is inspected; anything
+        else is returned untouched for the regular validation to judge.
+        ``data`` itself is left as given, and only a missing or ``None``
+        ``url`` is filled: an empty string counts as a value.
 
         Args:
             value (Any): The raw input handed to the schema.

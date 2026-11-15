@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.363.0] — 2026-11-15
 
 ### Added
 
@@ -37,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exemplo do campo e a receita ensinavam, abria `/` no clique: o service
   worker do tempest-react-sdk (desde a 0.82) decide pelo `url` de topo e
   sobrescreve o `data.url`. O schema agora sobe um `data["url"]` em texto
-  para o `url` quando ele não foi passado — vale também para o
+  para o `url` quando ele não foi passado ou é `None`, na construção e na
+  atribuição — vale também para o
   `WebPushTransport` do `DeviceService`, que repassa o `data` do payload
   unificado. Com os dois presentes e diferentes, vale o `url` de topo e sai um
   aviso no logger `tempest_fastapi_sdk.webpush.schemas` (#776).

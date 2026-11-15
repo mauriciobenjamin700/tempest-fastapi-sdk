@@ -507,6 +507,9 @@ The click destination is the **top-level `url`**. The service worker writes
 `data.url` from it after spreading `data`, precisely so a free-form `data`
 bag — often filled from the record that triggered the push — cannot
 redirect the click. Each button may carry its own `url`.
+The default click resolver only opens pages of the app's own origin over
+`http(s)`: a `url` on another origin becomes `/`, unless the app installs its
+own `resolveUrl` in `installNotificationClickHandler`.
 
 ```python
 from tempest_fastapi_sdk import WebPushActionSchema, WebPushPayloadSchema
@@ -533,7 +536,8 @@ Output:
     Earlier versions of this recipe put the destination in `data`, and the
     tempest-react-sdk service worker (since 0.82) ignores that key: the click
     opened `/`, with no error on either side. The schema now lifts a string
-    `data["url"]` into the top-level `url` when `url` was not given, so the
+    `data["url"]` into the top-level `url` when `url` was not given (or is `None`; an empty
+    string counts as a value), so the
     old code opens the right page again unchanged. When both carry different
     values, the top-level `url` wins and a warning goes to the
     `tempest_fastapi_sdk.webpush.schemas` logger. For new code, pass `url=`

@@ -2246,7 +2246,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   row is left as it is and the route answers as for a new subscription;
   `transfer_ownership=True` (service and both router factories) is the
   opt-in. Tests: `tests/webpush/test_router_ownership.py`,
-  `tests/push/test_router_ownership.py`. **(unreleased, #776)**
+  `tests/push/test_router_ownership.py`. **(0.363.0, #776)**
   `WebPushPayloadSchema` mirrors tempest-react-sdk's `PushPayload`
   (top-level `url`, `image`, `require_interaction`/`requireInteraction`,
   `vibrate`, `silent`, `renotify`, `timestamp`, `dir`, `lang`) with typed
