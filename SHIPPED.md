@@ -75,7 +75,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `legacy_claims` names where else to read the type from (in order, only when
   `typ` is absent); `strict` refuses what stays unclassified, and does **not**
   disable the SDK's own `refresh: True` / `purpose: "mfa_pending"` markers.
-  **(unreleased, #778)** Back-office account management with no link:
+  **(0.364.0, #778)** Back-office account management with no link:
   `UserAuthService.admin_create_user` (active account, signup's policy /
   protected fields / conflict, `email_verified_at` unset) and
   `admin_set_password` (reset's policy, revokes sessions and passkeys by
