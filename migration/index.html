@@ -8123,7 +8123,7 @@ Pago, zap-api, <code>StripeEvent</code>) ficam com o nome da especificação.</p
 <tr>
 <td><code>UserAuthService</code> com <code>AuthSettings</code> sem <code>EnvironmentSettings</code></td>
 <td>Lê <code>ENV</code> do ambiente; <strong>sem <code>ENV</code>, conta como produção</strong>: sem mailer (ou com <code>AUTH_RETURN_TOKEN_IN_RESPONSE</code>), os fluxos com link respondem <code>503 INTEGRATION_DISABLED</code> em vez de devolver o link</td>
-<td>Em dev, <code>ENV=development</code>; em produção, configure o mailer</td>
+<td>Em dev, <code>ENV=development</code>; em produção, configure o mailer. Painel que criava conta ou trocava senha compondo <code>signup</code> + <code>activate</code> ou o reset: use <code>admin_create_user</code> / <code>admin_set_password</code> (0.364.0+), que não passam pelo mailer</td>
 </tr>
 <tr>
 <td><code>make_token_dependency</code>, <code>require_x_token</code></td>

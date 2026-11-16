@@ -8125,7 +8125,7 @@ zap-api, <code>StripeEvent</code>) keep the specification's name.</p>
 <tr>
 <td><code>UserAuthService</code> with <code>AuthSettings</code> but no <code>EnvironmentSettings</code></td>
 <td>Reads <code>ENV</code> from the environment; <strong>an unset <code>ENV</code> counts as production</strong>: without a mailer (or with <code>AUTH_RETURN_TOKEN_IN_RESPONSE</code>), link-carrying flows answer <code>503 INTEGRATION_DISABLED</code> instead of returning the link</td>
-<td>In dev, <code>ENV=development</code>; in production, wire the mailer</td>
+<td>In dev, <code>ENV=development</code>; in production, wire the mailer. A panel that created accounts or replaced passwords by composing <code>signup</code> + <code>activate</code> or the reset: use <code>admin_create_user</code> / <code>admin_set_password</code> (0.364.0+), which skip the mailer</td>
 </tr>
 <tr>
 <td><code>make_token_dependency</code>, <code>require_x_token</code></td>

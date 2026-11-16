@@ -3475,7 +3475,7 @@ Pago, zap-api, `StripeEvent`) ficam com o nome da especificação.
 | Onde | O que muda | O que fazer |
 | --- | --- | --- |
 | `EnvironmentSettings.ENV` | **Sem default** (era `development`): settings que compõe o mixin sem `ENV` no ambiente nem no `.env` levanta `ValidationError` (`ENV Field required`) no boot | Defina `ENV` em todo ambiente — `.env` de dev, container, CI, worker, job de migração. No `conftest.py`, `os.environ["ENV"] = "test"` antes de importar o app |
-| `UserAuthService` com `AuthSettings` sem `EnvironmentSettings` | Lê `ENV` do ambiente; **sem `ENV`, conta como produção**: sem mailer (ou com `AUTH_RETURN_TOKEN_IN_RESPONSE`), os fluxos com link respondem `503 INTEGRATION_DISABLED` em vez de devolver o link | Em dev, `ENV=development`; em produção, configure o mailer |
+| `UserAuthService` com `AuthSettings` sem `EnvironmentSettings` | Lê `ENV` do ambiente; **sem `ENV`, conta como produção**: sem mailer (ou com `AUTH_RETURN_TOKEN_IN_RESPONSE`), os fluxos com link respondem `503 INTEGRATION_DISABLED` em vez de devolver o link | Em dev, `ENV=development`; em produção, configure o mailer. Painel que criava conta ou trocava senha compondo `signup` + `activate` ou o reset: use `admin_create_user` / `admin_set_password` (0.364.0+), que não passam pelo mailer |
 | `make_token_dependency`, `require_x_token` | Segredo vazio (ou só espaço) levanta `ValueError` em vez de desligar a checagem | Configure o segredo (`tempest secrets init`); para rodar local sem gate, passe `allow_unauthenticated=True`. Projeto gerado pelo `tempest new`: troque a linha de `src/api/dependencies/auth.py` por `make_token_dependency(settings.TOKEN_SECRET, allow_unauthenticated=settings.ENV != "production")` |
 
 ## 0.341.0 — webhook do Mercado Pago e fórmula em `.xlsx`
@@ -6596,6 +6596,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.364.0] — 2026-11-15
+
+### Added
+
+- `UserAuthService.admin_create_user(session, *, email, password, name=None,
+  fields=None, is_admin=False)`: cria a conta **já ativa**, com a senha
+  escolhida pelo administrador, sem token de ativação e sem e-mail — por isso
+  fora do `require_mail_delivery`, funcionando sem mailer e com `ENV` de
+  produção. Usa o mesmo caminho do `signup` (e-mail normalizado, política de
+  senha, campos protegidos em `fields=`, `ConflictException` para e-mail
+  repetido); `email_verified_at` fica vazio (#778).
+- `UserAuthService.admin_set_password(session, *, user_id, new_password,
+  revoke_sessions=True, revoke_passkeys=True)`: troca a senha com a política
+  do reset e, por default, revoga as sessões e as passkeys da conta, como o
+  `confirm_password_reset`; id inexistente é `NotFoundException` (#778).
+
+### Fixed
+
+- Painel que abria conta ou trocava senha compondo `signup` + `activate` ou
+  `request_password_reset` + `confirm_password_reset` respondia `503
+  INTEGRATION_DISABLED` em produção sem mailer desde a 0.342.0. Os dois
+  métodos novos cobrem esse caminho sem link; a receita `auth-flow` ganhou a
+  seção "Conta criada pelo administrador, sem e-mail" e a nota de migração da
+  0.342.0 aponta para eles (#778).
 
 ## [0.363.0] — 2026-11-15
 
@@ -42931,13 +42956,210 @@ $ curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/auth/signup \
 
 !!! note "A ativação continua montada — de propósito"
     Desligar o signup **não** desmonta `/auth/activate/{token}`. Conta
-    criada por um administrador também precisa ser ativada, e é esse
+    aberta por um fluxo com link de ativação ainda precisa dele, e é esse
     endpoint que consome o token do e-mail. Nada além de
-    `POST /auth/signup` muda de lugar.
+    `POST /auth/signup` muda de lugar. Conta aberta pelo painel com
+    `admin_create_user` já nasce ativa — veja a próxima seção.
 
 **Recap.** `AUTH_SIGNUP_ENABLED=false` fecha o cadastro público sem tocar em
 nenhum outro endpoint; `allow_signup=` sobrescreve por router; a rota some do
 OpenAPI junto, que é o que o filtro manual nunca entregou.
+
+### Conta criada pelo administrador, sem e-mail *(v0.364.0+)*
+
+Fechar o cadastro resolve metade do sistema fechado. A outra metade é o
+painel: o administrador abre a conta com e-mail e senha, e às vezes troca a
+senha de alguém. Ninguém recebe e-mail nesse caminho — e por isso ele não
+pode passar pelos fluxos de link.
+
+Sem mailer em produção (`ENV` ausente conta como produção), `signup` e
+`request_password_reset` respondem `503 INTEGRATION_DISABLED`: a conta cujo
+link de ativação nunca chega não é criada, e o reset que ninguém recebe não
+é emitido. É a regra certa para o usuário, e é por isso que compor
+`signup` + `activate` ou `request_password_reset` + `confirm_password_reset`
+para o painel quebra.
+
+O `UserAuthService` tem os dois métodos do painel, sem token e sem e-mail:
+
+```python
+# main.py
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from uuid import UUID
+
+import uvicorn
+from fastapi import Depends, FastAPI
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    AuthSettings,
+    AuthUserSchema,
+    BaseUserModel,
+    DatabaseSettings,
+    JWTSettings,
+    UserAuthService,
+    make_auth_router,
+    make_user_token_model,
+)
+
+
+class Settings(DatabaseSettings, JWTSettings, AuthSettings):
+    """Settings lidas do ambiente (e do `.env`)."""
+
+
+class UserModel(BaseUserModel):
+    """A tabela de contas."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+
+settings: Settings = Settings()
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+auth_service: UserAuthService = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=None,
+)
+get_current_user = auth_service.current_user_dependency()
+
+
+class AccountCreateSchema(BaseModel):
+    """O que o administrador preenche para abrir uma conta."""
+
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=1)
+    name: str | None = None
+
+
+class PasswordSetSchema(BaseModel):
+    """A senha nova que o administrador define."""
+
+    new_password: str = Field(min_length=1)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Abre o banco e cria as tabelas no startup.
+
+    Args:
+        app (FastAPI): A aplicação que está subindo.
+
+    Yields:
+        None: Devolve o controle ao FastAPI enquanto o app atende.
+    """
+    await db.connect()
+    await db.create_tables()
+    yield
+    await db.disconnect()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        allow_signup=False,
+    ),
+)
+
+
+@app.post("/api/admin/accounts", status_code=201)
+async def create_account(
+    payload: AccountCreateSchema,
+    current: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(db.session_dependency),
+) -> AuthUserSchema:
+    """Abre uma conta já ativa, com a senha escolhida pelo administrador.
+
+    Args:
+        payload (AccountCreateSchema): E-mail, senha e nome da conta nova.
+        current (UserModel): Quem chama; precisa ser administrador.
+        session (AsyncSession): A sessão da requisição.
+
+    Returns:
+        AuthUserSchema: A visão pública da conta criada.
+    """
+    auth_service.require_admin(current)
+    user = await auth_service.admin_create_user(
+        session,
+        email=payload.email,
+        password=payload.password,
+        name=payload.name,
+    )
+    await session.commit()
+    return AuthUserSchema.model_validate(user)
+
+
+@app.put("/api/admin/accounts/{user_id}/password", status_code=204)
+async def set_account_password(
+    user_id: UUID,
+    payload: PasswordSetSchema,
+    current: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(db.session_dependency),
+) -> None:
+    """Troca a senha de uma conta e encerra as sessões dela.
+
+    Args:
+        user_id (UUID): A conta cuja senha muda.
+        payload (PasswordSetSchema): A senha nova.
+        current (UserModel): Quem chama; precisa ser administrador.
+        session (AsyncSession): A sessão da requisição.
+    """
+    auth_service.require_admin(current)
+    await auth_service.admin_set_password(
+        session,
+        user_id=user_id,
+        new_password=payload.new_password,
+    )
+    await session.commit()
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+O que cada rota faz:
+
+- **`admin_create_user`** cria a conta **já ativa**. O caminho é o do
+  `signup`: e-mail normalizado, a mesma política de senha, os mesmos campos
+  protegidos em `fields=`, e o mesmo `ConflictException` (`409`) para e-mail
+  repetido. `is_admin=True` é parâmetro próprio, porque `fields=` recusa a
+  coluna. `email_verified_at` fica vazio: quem digitou o endereço foi o
+  administrador, e ninguém provou a caixa.
+- **`admin_set_password`** troca a senha com a mesma política do reset e,
+  por default, **revoga as sessões e as passkeys** da conta, como o
+  `confirm_password_reset`: outra pessoa escolheu a senha, então o acesso
+  antigo acaba. `revoke_sessions=False` e `revoke_passkeys=False` são o
+  opt-out explícito. Id inexistente é `404`.
+- Os dois só fazem `flush`; o `commit` é da rota.
+
+Rodando o app acima sem `ENV` e com `email=None`, com uma conta
+administradora já logada:
+
+```console
+POST /api/admin/accounts {"email": "Maria@Example.com", ...}  -> 201, "email": "maria@example.com", "is_active": true
+POST /api/admin/accounts {"email": "maria@example.com", ...}  -> 409
+PUT  /api/admin/accounts/<id>/password                       -> 204
+POST /auth/login com a senha nova                             -> 200
+POST /auth/signup                                             -> 404
+```
+
+!!! warning "A autorização é da rota"
+    Os métodos confiam em quem chama. Proteja a rota com
+    `auth_service.require_admin(current)` (ou a sessão do painel), como no
+    exemplo — sem isso, qualquer conta logada abre conta e troca senha.
+
+**Recap.** Conta nascida no painel usa `admin_create_user`; senha trocada
+pelo administrador usa `admin_set_password`. Nenhum dos dois depende de
+mailer, e os dois mantêm a política de senha, o conflito de e-mail e a
+revogação de sessão dos fluxos de link.
 
 ### Conta que nasce com mais que e-mail e senha *(v0.278.0+)*
 
