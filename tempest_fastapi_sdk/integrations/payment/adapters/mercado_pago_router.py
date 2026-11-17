@@ -46,10 +46,13 @@ from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (
     DEFAULT_SIMULATION_PREFIX,
     RemoteMercadoPagoSimulation,
-    add_simulation_routes,
-    ambient_settings,
     ensure_simulation_allowed,
     simulation_api_for,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulator import (
+    MercadoPagoSimulator,
+    add_simulation_routes,
+    resolve_webhook_secret,
 )
 from tempest_fastapi_sdk.integrations.payment.base import PayoutProvider
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
@@ -202,42 +205,6 @@ class MercadoPagoWithdrawConfig:
         )
 
 
-def _resolve_secret(
-    secret: str | None,
-    settings: MercadoPagoSettings | None,
-    simulation_api: FakeMercadoPagoOrdersAPI | None,
-) -> str:
-    """Pick the webhook secret the route verifies with.
-
-    Args:
-        secret (str | None): The explicit secret.
-        settings (MercadoPagoSettings | None): The service's settings.
-        simulation_api (FakeMercadoPagoOrdersAPI | None): The simulator, in
-            simulation.
-
-    Returns:
-        str: ``secret``, else ``MERCADOPAGO_WEBHOOK_SECRET``, else — in
-        simulation only — the simulator's secret.
-
-    Raises:
-        ValueError: When no non-empty secret is found.
-    """
-    resolved = (
-        secret
-        if secret is not None
-        else ambient_settings(settings).MERCADOPAGO_WEBHOOK_SECRET
-    )
-    if not resolved and simulation_api is not None:
-        resolved = simulation_api.webhook_secret
-    if not resolved:
-        raise ValueError(
-            "make_mercado_pago_router needs a non-empty webhook secret: pass "
-            "`secret=` or set MERCADOPAGO_WEBHOOK_SECRET. An empty secret "
-            "rejects every delivery."
-        )
-    return resolved
-
-
 def make_mercado_pago_router(
     provider: MercadoPagoPixProvider | MercadoPagoCardProvider,
     *,
@@ -319,7 +286,9 @@ def make_mercado_pago_router(
     api: FakeMercadoPagoOrdersAPI | None = None
     remote: RemoteMercadoPagoSimulation | None = None
     if simulate:
-        ensure_simulation_allowed(settings, "make_mercado_pago_router")
+        ensure_simulation_allowed(
+            settings, "make_mercado_pago_router with simulate=True"
+        )
         if simulation_url is not None:
             remote = RemoteMercadoPagoSimulation(
                 simulation_url, client=simulation_client
@@ -333,7 +302,9 @@ def make_mercado_pago_router(
                     "simulate=True), pass simulation_api=, or pass "
                     "simulation_url= for a running fake-api."
                 )
-    resolved_secret = _resolve_secret(secret, settings, api)
+    resolved_secret = resolve_webhook_secret(
+        secret, settings, api, "make_mercado_pago_router"
+    )
     verify = make_mercado_pago_webhook_delivery_dependency(
         resolved_secret, provider, tolerance_seconds=tolerance_seconds
     )
@@ -373,8 +344,9 @@ def make_mercado_pago_router(
     if backend is not None:
         add_simulation_routes(
             router,
-            api=backend,
-            secret=resolved_secret,
+            simulator=MercadoPagoSimulator(
+                backend, secret=resolved_secret, settings=settings
+            ),
             webhook_route=WEBHOOK_ROUTE_NAME,
             prefix=simulation_prefix,
             route_docs=route_docs,
