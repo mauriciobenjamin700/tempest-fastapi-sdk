@@ -1229,6 +1229,11 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -2036,6 +2041,11 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.integrations.payment.adapters`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -6596,6 +6606,44 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.365.0] — 2026-11-16
+
+### Added
+
+- `make_mercado_pago_simulation_router(*, webhook_route, simulation_url=None,
+  simulation_api=None, simulation_client=None, secret=None, settings=None,
+  prefix=..., include_in_schema=True, docs_locale=None)`: só as rotas
+  `/dev/mercado-pago/orders/...`, entregando o webhook assinado à rota de
+  webhook **do serviço** — pelo nome (`name=` do decorator) ou pelo path,
+  quando começa com `/`. Serviço que já tem a rota própria (controller,
+  `BackgroundTasks`) exercita o caminho de produção. Recusado fora de
+  `ENV=development` / `ENV=test` (#780).
+- `MercadoPagoSimulator(backend, *, secret=None, settings=None, app=None,
+  webhook_url=None, client=None, timeout=10.0)`: move a order (simulador em memória ou
+  `RemoteMercadoPagoSimulation`), assina e entrega o webhook. `await
+  apply(reference, transition, *, amount_cents=None)` devolve o
+  `MercadoPagoSimulationResultSchema`; `apply_to(..., client=, endpoint=)`
+  entrega com o cliente dado. Entrega em processo (`app=` + path) ou pela
+  rede (`webhook_url` absoluto); `401`/`500` da rota vêm no resultado, sem
+  exceção. Recusado fora de development/test (#780).
+- `mercado_pago_simulation_actions(simulator, *, reference_field=
+  "correlation_id", transitions=("pay", "expire", "refund"), labels=None)`
+  em `tempest_fastapi_sdk.admin`: "Simular pagamento", "Simular expiração" e
+  "Simular estorno" (este `dangerous`) para o `AdminModel` da tabela de
+  cobranças; cada linha marcada vira `simulator.apply(<reference_field>,
+  <transição>)`, com o resultado de cada uma na mensagem do painel (#780).
+- `DEFAULT_SIMULATION_PREFIX`, `MercadoPagoTransition` e
+  `ensure_simulation_allowed` passam a sair de
+  `integrations.payment.adapters` (#780).
+
+### Changed
+
+- As rotas de simulação do `make_mercado_pago_router(simulate=True)` passam
+  pelo `MercadoPagoSimulator`; a resposta e os status (`404`/`409`/`422`/
+  `502`) não mudam. O helper interno `add_simulation_routes` saiu de
+  `mercado_pago_simulation` e recebe o simulador em vez de `api=`/`secret=`
+  (#780).
 
 ## [0.364.0] — 2026-11-15
 
@@ -74200,6 +74248,322 @@ O prefixo de controle também acha a order pelo `external_reference`, então o
 `simulate-webhook` aceita o `correlation_id` em `--order-id` quando há
 `--fake-api`.
 
+#### Rota de webhook própria: `make_mercado_pago_simulation_router` *(v0.365.0+)*
+
+O `make_mercado_pago_router` sempre monta a rota de webhook **do SDK**. Se o
+seu serviço já tem a dele — controller próprio, `BackgroundTasks`, um worker
+—, a simulação precisa exercitar **essa** rota, que é o caminho de produção.
+O `make_mercado_pago_simulation_router` monta só as rotas
+`/dev/mercado-pago/orders/...` e entrega o webhook assinado à rota que você
+nomear em `webhook_route`:
+
+```python hl_lines="34 47-53"
+from typing import Any
+
+import uvicorn
+from fastapi import BackgroundTasks, Depends, FastAPI
+
+from tempest_fastapi_sdk.integrations.payment import PixChargeRequest, PixPayer
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    make_mercado_pago_simulation_router,
+    make_mercado_pago_webhook_delivery_dependency,
+    mercado_pago_provider_for,
+    simulation_api_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+settings = Settings()
+provider = mercado_pago_provider_for(settings, simulate=True)
+verify = make_mercado_pago_webhook_delivery_dependency(
+    settings.MERCADOPAGO_WEBHOOK_SECRET, provider
+)
+app = FastAPI()
+
+
+def confirm_purchase(reference: str, status: str) -> None:
+    """The service's own confirmation, run after the answer."""
+    print(f"confirm_purchase: {reference} {status}", flush=True)
+
+
+@app.post("/api/webhook/mercadopago", name="mercado_pago_webhook")
+async def receive_webhook(
+    tasks: BackgroundTasks,
+    delivery: MercadoPagoOrderDelivery = Depends(verify),
+) -> dict[str, bool]:
+    """The webhook route the service already had."""
+    order = delivery.order or {}
+    tasks.add_task(
+        confirm_purchase, str(order.get("external_reference")), str(order.get("status"))
+    )
+    return {"received": True}
+
+
+app.include_router(
+    make_mercado_pago_simulation_router(
+        webhook_route="mercado_pago_webhook",
+        simulation_api=simulation_api_for(provider),
+        settings=settings,
+    )
+)
+
+
+@app.post("/charges")
+async def create_charge(reference: str) -> dict[str, Any]:
+    """Create a R$ 19,90 Pix charge — the service's normal flow."""
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference=reference,
+            payer=PixPayer(email="comprador@example.com"),
+        )
+    )
+    return {"order_id": charge.provider_charge_id, "status": charge.status.value}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8001)
+```
+
+`webhook_route` aceita o **nome** da rota (o `name=` do decorator) ou o
+**path**, quando começa com `/` (`"/api/webhook/mercadopago"`). Monte o
+router na **mesma** aplicação da rota de webhook: a entrega passa por ela em
+processo, com middleware e tudo.
+
+Saída medida em 2026-11-16 (`ENV=development`,
+`MERCADOPAGO_WEBHOOK_SECRET=segredo-local-de-teste`; o `order` cortado em
+`id`, `status` e `status_detail`):
+
+```text
+$ curl -s -X POST "http://127.0.0.1:8001/charges?reference=compra-7f3a"
+{"order_id":"ORDFAKE9055F34800000000000002","status":"pending"}
+$ curl -s -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/pay
+{"order": {"id": "ORDFAKE9055F34800000000000002", "status": "processed", "status_detail": "accredited"}, "delivery": {"action": "order.processed", "status_code": 200, "body": {"received": true}}}
+$ curl -s -w "\nHTTP %{http_code}\n" -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/expire
+{"detail":"409 cannot_expire_order: Not a pending Pix order."}
+HTTP 409
+```
+
+O `delivery.body` é o que a **sua** rota respondeu (`{"received": true}`), e
+o log do serviço mostra `confirm_purchase: compra-7f3a processed`, vindo da
+`BackgroundTasks`.
+
+Com API e worker em processos separados, troque duas linhas, como na seção
+anterior: o provider vira `mercado_pago_provider_for(settings)` e o router
+recebe `simulation_url=settings.MERCADOPAGO_BASE_URL` no lugar de
+`simulation_api=`. O router recusa os dois juntos, e nenhum dos dois.
+
+!!! warning "Só em `development` e `test`"
+    Como o `simulate=True`, o router é recusado com `RuntimeError` fora de
+    `ENV=development` / `ENV=test`, e `ENV` ausente conta como produção.
+
+#### Simular de qualquer lugar: `MercadoPagoSimulator` *(v0.365.0+)*
+
+As rotas acima, as ações do painel admin (próxima seção) e um script usam a
+mesma peça: `MercadoPagoSimulator`. Ela move a order no simulador, assina a
+notificação com o segredo do serviço e entrega o `POST` na rota de webhook.
+Nada disso precisa ser reescrito no serviço.
+
+Um script que paga uma compra num serviço já rodando contra o `fake-api`
+(o serviço acima com `simulation_url=`):
+
+```python
+import asyncio
+import sys
+
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoSimulator,
+    RemoteMercadoPagoSimulation,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+async def main(reference: str, transition: str) -> None:
+    """Move an order on the fake-api and deliver the webhook to the service."""
+    settings = Settings()
+    simulator = MercadoPagoSimulator(
+        RemoteMercadoPagoSimulation(settings.MERCADOPAGO_BASE_URL),
+        settings=settings,
+        webhook_url="http://127.0.0.1:8001/api/webhook/mercadopago",
+    )
+    result = await simulator.apply(reference, transition)
+    print(result.order["status"], result.delivery.status_code, result.delivery.body)
+
+
+if __name__ == "__main__":
+    asyncio.run(main(sys.argv[1], sys.argv[2]))
+```
+
+```text
+$ python simular.py compra-9b21 pay
+processed 200 {'received': True}
+$ python simular.py compra-9b21 pay
+ValueError: 409 cannot_pay_order: Not a pending Pix order.
+$ python simular.py compra-404 pay
+KeyError: 'compra-404'
+```
+
+Saída medida em 2026-11-16, com `MERCADOPAGO_BASE_URL` apontando para um
+`tempest mercado-pago fake-api` (só a última linha dos dois tracebacks).
+
+O destino da entrega sai dos argumentos:
+
+| Argumentos | Para onde vai o webhook |
+| --- | --- |
+| `app=` + `webhook_url="/path"` | em processo, pela aplicação inteira (`httpx.ASGITransport`) |
+| só `webhook_url="http://..."` | pela rede, com `client=` ou um cliente por chamada |
+| nenhum | só `apply_to(..., client=, endpoint=)` entrega |
+
+`apply` devolve o `MercadoPagoSimulationResultSchema` (`order` e `delivery`).
+Uma rota que recusou a assinatura (`401`) ou levantou (`500`) aparece em
+`delivery.status_code`, sem exceção; `KeyError` (pedido desconhecido),
+`ValueError` (transição que o estado não permite) e `httpx.HTTPError`
+(simulador fora do ar) sobem.
+
+O segredo vem de `secret=`, senão de `MERCADOPAGO_WEBHOOK_SECRET`, senão do
+simulador em memória. Com `RemoteMercadoPagoSimulation` e nenhum segredo, a
+construção levanta `ValueError`.
+
+#### No painel admin: `mercado_pago_simulation_actions` *(v0.365.0+)*
+
+Para o QA simular o pagamento de uma compra pelo painel, sem Swagger nem
+curl: `mercado_pago_simulation_actions(simulator)` devolve as ações
+"Simular pagamento", "Simular expiração" e "Simular estorno" para pendurar no
+`AdminModel` da tabela de cobranças do serviço.
+
+```python hl_lines="68-82"
+from fastapi import Depends, FastAPI
+from sqlalchemy import String, update
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    AsyncDatabaseManager,
+    BaseModel,
+    BaseUserModel,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import AdminModel, mercado_pago_simulation_actions
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    MercadoPagoSimulator,
+    RemoteMercadoPagoSimulation,
+    make_mercado_pago_webhook_delivery_dependency,
+    mercado_pago_provider_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+class ChargeModel(BaseModel):
+    """One purchase waiting for its Pix."""
+
+    __tablename__ = "charges"
+
+    correlation_id: Mapped[str] = mapped_column(String(64), unique=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+
+
+settings = Settings()
+db = AsyncDatabaseManager("sqlite+aiosqlite:///servico.db")
+provider = mercado_pago_provider_for(settings)
+verify = make_mercado_pago_webhook_delivery_dependency(
+    settings.MERCADOPAGO_WEBHOOK_SECRET, provider
+)
+app = FastAPI()
+
+
+@app.post("/api/webhook/mercadopago")
+async def receive_webhook(
+    delivery: MercadoPagoOrderDelivery = Depends(verify),
+) -> dict[str, bool]:
+    """Confirm the purchase the way production does."""
+    order = delivery.order or {}
+    if order.get("status") == "processed":
+        async with db.get_session_context() as session:
+            await session.execute(
+                update(ChargeModel)
+                .where(ChargeModel.correlation_id == order["external_reference"])
+                .values(status="paid")
+            )
+            await session.commit()
+    return {"received": True}
+
+
+site = AdminSite(title="Admin")
+site.register(
+    AdminModel(
+        ChargeModel,
+        actions=mercado_pago_simulation_actions(
+            MercadoPagoSimulator(
+                RemoteMercadoPagoSimulation(settings.MERCADOPAGO_BASE_URL),
+                settings=settings,
+                app=app,
+                webhook_url="/api/webhook/mercadopago",
+            )
+        )
+        if settings.ENV == "development"
+        else [],
+    )
+)
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key="troque-por-um-segredo-de-32-bytes-ou-mais",
+    )
+)
+```
+
+Cada linha marcada vira `simulator.apply(<correlation_id>, <transição>)`, e o
+resultado de cada uma vai para a mensagem do painel. Medido no
+`tests/admin/test_mercado_pago_simulation_admin.py`, com duas cobranças
+pendentes marcadas:
+
+```text
+Simular pagamento: 2 entregue(s) — compra-a (processed), compra-b (processed).
+```
+
+e as duas linhas viram `paid` pela rota de webhook do serviço. Linha sem
+pedido no simulador, ou cuja transição o estado recusa, é nomeada:
+
+```text
+Simular estorno: 0 entregue(s); falharam — sem-pedido: pedido não encontrado no simulador; compra-c: 409 cannot_refund_order: the order cannot be refunded because the current status, 'action_required', doesn't allow refunds. The order must be in 'processed' status to be refunded.
+```
+
+- `reference_field=` escolhe a coluna lida de cada linha (padrão
+  `"correlation_id"`, o `external_reference` que o serviço mandou ao criar).
+- `transitions=` escolhe as ações e a ordem do menu (`pay`, `expire`, `fail`,
+  `cancel`, `capture`, `refund`); `labels=` troca o texto.
+- "Simular estorno" é `dangerous`: o painel pede a confirmação forte.
+- O simulador precisa entregar sozinho (`app=` + `webhook_url=`, ou
+  `webhook_url` absoluto); sem isso, `mercado_pago_simulation_actions`
+  levanta `ValueError`.
+
+!!! note "Fora de `development` as ações não existem"
+    Quem recusa é o `MercadoPagoSimulator`: ele não é construído fora de
+    `ENV=development` / `ENV=test`. Por isso o exemplo monta as ações só
+    quando `settings.ENV == "development"`; em produção, o `AdminModel`
+    recebe `[]`.
+
 #### Saque manual
 
 O payout do Mercado Pago não está liberado para a conta (#499). Enquanto
@@ -74664,6 +75028,10 @@ Pago chama a rota com `data.id` igual ao id da order.
   `/dev/mercado-pago/...`, que entregam o webhook à rota de verdade; com
   `withdraw=`, o saque zera a carteira e vira um Pix manual que o
   administrador conclui no painel, com o comprovante em PDF.
+- Serviço com rota de webhook própria monta só as rotas de simulação com
+  `make_mercado_pago_simulation_router(webhook_route=...)`;
+  `MercadoPagoSimulator` move, assina e entrega de um script, e
+  `mercado_pago_simulation_actions` põe "Simular pagamento" no painel.
 - `sign_manifest` produz uma notificação que a sua rota aceita: teste o
   caminho inteiro sem URL pública.
 - Assinatura errada é `401` antes de qualquer chamada; id inexistente é
