@@ -5,6 +5,44 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `make_mercado_pago_simulation_router(*, webhook_route, simulation_url=None,
+  simulation_api=None, simulation_client=None, secret=None, settings=None,
+  prefix=..., include_in_schema=True, docs_locale=None)`: só as rotas
+  `/dev/mercado-pago/orders/...`, entregando o webhook assinado à rota de
+  webhook **do serviço** — pelo nome (`name=` do decorator) ou pelo path,
+  quando começa com `/`. Serviço que já tem a rota própria (controller,
+  `BackgroundTasks`) exercita o caminho de produção. Recusado fora de
+  `ENV=development` / `ENV=test` (#780).
+- `MercadoPagoSimulator(backend, *, secret=None, settings=None, app=None,
+  webhook_url=None, client=None, timeout=10.0)`: move a order (simulador em memória ou
+  `RemoteMercadoPagoSimulation`), assina e entrega o webhook. `await
+  apply(reference, transition, *, amount_cents=None)` devolve o
+  `MercadoPagoSimulationResultSchema`; `apply_to(..., client=, endpoint=)`
+  entrega com o cliente dado. Entrega em processo (`app=` + path) ou pela
+  rede (`webhook_url` absoluto); `401`/`500` da rota vêm no resultado, sem
+  exceção. Recusado fora de development/test (#780).
+- `mercado_pago_simulation_actions(simulator, *, reference_field=
+  "correlation_id", transitions=("pay", "expire", "refund"), labels=None)`
+  em `tempest_fastapi_sdk.admin`: "Simular pagamento", "Simular expiração" e
+  "Simular estorno" (este `dangerous`) para o `AdminModel` da tabela de
+  cobranças; cada linha marcada vira `simulator.apply(<reference_field>,
+  <transição>)`, com o resultado de cada uma na mensagem do painel (#780).
+- `DEFAULT_SIMULATION_PREFIX`, `MercadoPagoTransition` e
+  `ensure_simulation_allowed` passam a sair de
+  `integrations.payment.adapters` (#780).
+
+### Changed
+
+- As rotas de simulação do `make_mercado_pago_router(simulate=True)` passam
+  pelo `MercadoPagoSimulator`; a resposta e os status (`404`/`409`/`422`/
+  `502`) não mudam. O helper interno `add_simulation_routes` saiu de
+  `mercado_pago_simulation` e recebe o simulador em vez de `api=`/`secret=`
+  (#780).
+
 ## [0.364.0] — 2026-11-15
 
 ### Added

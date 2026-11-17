@@ -46,6 +46,9 @@ if TYPE_CHECKING:
         make_mercado_pago_router as make_mercado_pago_router,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
+        DEFAULT_SIMULATION_PREFIX as DEFAULT_SIMULATION_PREFIX,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
         SIMULATION_TAG as SIMULATION_TAG,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
@@ -58,13 +61,25 @@ if TYPE_CHECKING:
         MercadoPagoSimulationResultSchema as MercadoPagoSimulationResultSchema,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
+        MercadoPagoTransition as MercadoPagoTransition,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
         RemoteMercadoPagoSimulation as RemoteMercadoPagoSimulation,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
+        ensure_simulation_allowed as ensure_simulation_allowed,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
         mercado_pago_provider_for as mercado_pago_provider_for,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation import (  # noqa: E501
         simulation_api_for as simulation_api_for,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulator import (  # noqa: E501
+        MercadoPagoSimulator as MercadoPagoSimulator,
+    )
+    from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulator import (  # noqa: E501
+        make_mercado_pago_simulation_router as make_mercado_pago_simulation_router,
     )
     from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
         OpenPixPayoutProvider as OpenPixPayoutProvider,
@@ -91,6 +106,11 @@ _EXPORTS: dict[str, str] = {
     "RemoteMercadoPagoSimulation": "mercado_pago_simulation",
     "mercado_pago_provider_for": "mercado_pago_simulation",
     "simulation_api_for": "mercado_pago_simulation",
+    "DEFAULT_SIMULATION_PREFIX": "mercado_pago_simulation",
+    "MercadoPagoTransition": "mercado_pago_simulation",
+    "ensure_simulation_allowed": "mercado_pago_simulation",
+    "MercadoPagoSimulator": "mercado_pago_simulator",
+    "make_mercado_pago_simulation_router": "mercado_pago_simulator",
     "OpenPixPayoutProvider": "openpix",
     "OpenPixPixProvider": "openpix",
     "PAYOUT_REJECTED_STATUSES": "openpix",
@@ -133,6 +153,7 @@ def __dir__() -> list[str]:
 
 
 __all__: list[str] = [
+    "DEFAULT_SIMULATION_PREFIX",
     "DEFAULT_WEBHOOK_PATH",
     "DEFAULT_WITHDRAW_PATH",
     "SIMULATION_TAG",
@@ -143,12 +164,16 @@ __all__: list[str] = [
     "MercadoPagoSimulatedDeliverySchema",
     "MercadoPagoSimulationBackend",
     "MercadoPagoSimulationResultSchema",
+    "MercadoPagoSimulator",
+    "MercadoPagoTransition",
     "MercadoPagoWebhookAckSchema",
     "MercadoPagoWithdrawConfig",
     "OpenPixPayoutProvider",
     "OpenPixPixProvider",
     "RemoteMercadoPagoSimulation",
+    "ensure_simulation_allowed",
     "make_mercado_pago_router",
+    "make_mercado_pago_simulation_router",
     "make_mercado_pago_webhook_delivery_dependency",
     "mercado_pago_provider_for",
     "simulation_api_for",

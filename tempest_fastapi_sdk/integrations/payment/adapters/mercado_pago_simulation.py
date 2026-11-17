@@ -10,9 +10,11 @@ end testing in development:
   :class:`~tempest_fastapi_sdk.testing.fakes.FakeMercadoPagoOrdersAPI` in
   memory, and the simulator is remembered next to the provider so the router
   finds it with :func:`simulation_api_for`.
-- :func:`add_simulation_routes` mounts the routes that move an order the way
-  only the provider can (pay, expire, fail, cancel, capture, refund) and
-  deliver the signed notification to the service's own webhook route.
+- :class:`MercadoPagoSimulationBackend` is where a simulation reads and
+  moves orders the way only the provider can (pay, expire, fail, cancel,
+  capture, refund); ``MercadoPagoSimulator`` (module
+  ``mercado_pago_simulator``) signs and delivers the notification each move
+  produces.
 
 The in-memory simulator lives in one process. A service whose worker
 re-reads orders runs ``tempest mercado-pago fake-api`` instead, points every
@@ -29,15 +31,11 @@ from __future__ import annotations
 
 import os
 import weakref
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, overload
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
-from starlette.routing import NoMatchFound
 
-from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago import (
     MercadoPagoCardProvider,
     MercadoPagoPixProvider,
@@ -107,7 +105,8 @@ def ensure_simulation_allowed(settings: MercadoPagoSettings | None, what: str) -
 
     Args:
         settings (MercadoPagoSettings | None): The service's settings.
-        what (str): What is being built, for the message.
+        what (str): What is being built, for the message
+            (``"make_mercado_pago_router with simulate=True"``).
 
     Raises:
         RuntimeError: When the environment is not ``development`` or
@@ -118,7 +117,7 @@ def ensure_simulation_allowed(settings: MercadoPagoSettings | None, what: str) -
     )
     if environment not in SIMULATION_ENVIRONMENTS:
         raise RuntimeError(
-            f"{what} with simulate=True needs ENV=development or ENV=test "
+            f"{what} needs ENV=development or ENV=test "
             f"(got {environment!r}); the simulation routes mark orders paid "
             "and must never reach production."
         )
@@ -182,7 +181,7 @@ def mercado_pago_provider_for(
     resolved = ambient_settings(settings)
     if not simulate:
         return provider_class(HTTPClient(**resolved.mercado_pago_kwargs()))
-    ensure_simulation_allowed(settings, "mercado_pago_provider_for")
+    ensure_simulation_allowed(settings, "mercado_pago_provider_for with simulate=True")
     from tempest_fastapi_sdk.testing.fakes.mercado_pago import (
         FakeMercadoPagoOrdersAPI,
     )
@@ -221,7 +220,7 @@ class MercadoPagoSimulationBackend(Protocol):
 
     Two implementations ship: the in-memory
     :class:`~tempest_fastapi_sdk.testing.fakes.FakeMercadoPagoOrdersAPI`
-    (wrapped by :func:`add_simulation_routes`) and
+    (wrapped by :class:`MercadoPagoSimulator`) and
     :class:`RemoteMercadoPagoSimulation`, which drives a
     ``tempest mercado-pago fake-api`` over HTTP so an API and a worker in
     separate processes see the same orders.
@@ -575,195 +574,6 @@ class MercadoPagoSimulationResultSchema(BaseSchema):
     delivery: MercadoPagoSimulatedDeliverySchema
 
 
-async def _deliver(
-    request: Request, webhook_route: str, delivery: Any
-) -> httpx.Response:
-    """Post a signed delivery to the service's webhook route, in process.
-
-    Goes through the whole application — middleware, the signature check,
-    the re-read and ``on_delivery`` — over ``httpx.ASGITransport``, with the
-    host the caller used. An exception in the route becomes a ``500``
-    answer rather than escaping into the simulation route.
-
-    Args:
-        request (Request): The simulation request.
-        webhook_route (str): Name of the webhook route.
-        delivery (Any): The ``MercadoPagoDelivery`` to send.
-
-    Returns:
-        httpx.Response: What the webhook route answered.
-    """
-    try:
-        path = str(request.app.url_path_for(webhook_route))
-    except NoMatchFound:
-        path = str(request.url_for(webhook_route).path)
-    transport = httpx.ASGITransport(app=request.app, raise_app_exceptions=False)
-    base_url = str(request.base_url).rstrip("/")
-    async with httpx.AsyncClient(transport=transport, base_url=base_url) as client:
-        response: httpx.Response = await delivery.send(client, path)
-        return response
-
-
-def add_simulation_routes(
-    router: APIRouter,
-    *,
-    api: FakeMercadoPagoOrdersAPI | MercadoPagoSimulationBackend,
-    secret: str,
-    webhook_route: str,
-    prefix: str,
-    route_docs: RouteDocs,
-    include_in_schema: bool = True,
-) -> None:
-    """Mount the simulation routes on a router.
-
-    ``{order_id}`` below accepts the order id **or** the
-    ``external_reference`` the service sent on create (the most recent order
-    wins when several share it), so a developer can simulate by the
-    service's own ``correlation_id``.
-
-    - ``GET {prefix}/orders`` — every order, oldest first.
-    - ``GET {prefix}/orders/{order_id}`` — one order; ``404`` when unknown.
-    - ``POST {prefix}/orders/{order_id}/{transition}`` — apply the move,
-      sign the delivery with ``secret`` and post it to the webhook route;
-      ``404`` for an unknown order, ``409`` for a move the order's state does
-      not allow (a refund before payment), ``422`` for an unknown move,
-      ``502`` when a remote simulator cannot be reached or answers something
-      that is not its JSON (a ``simulation_url`` pointing at another
-      service).
-
-    Args:
-        router (APIRouter): Where to mount.
-        api (FakeMercadoPagoOrdersAPI | MercadoPagoSimulationBackend): The
-            in-memory simulator the provider runs over, or a backend such as
-            :class:`RemoteMercadoPagoSimulation`.
-        secret (str): The secret the webhook route verifies with.
-        webhook_route (str): Name of the webhook route.
-        prefix (str): Path prefix.
-        route_docs (RouteDocs): The operation text.
-        include_in_schema (bool): Whether the routes appear in OpenAPI.
-    """
-    from tempest_fastapi_sdk.testing.fakes.mercado_pago import (
-        FakeMercadoPagoOrdersAPI,
-        build_mercado_pago_delivery,
-    )
-
-    backend: MercadoPagoSimulationBackend = (
-        _InMemorySimulation(api) if isinstance(api, FakeMercadoPagoOrdersAPI) else api
-    )
-    tags: list[str | Enum] = [SIMULATION_TAG]
-
-    def _unreachable(error: httpx.HTTPError) -> HTTPException:
-        """Build the answer for a simulator that could not be asked.
-
-        Args:
-            error (httpx.HTTPError): What the HTTP client raised.
-
-        Returns:
-            HTTPException: ``502`` naming the error.
-        """
-        return HTTPException(502, f"simulator unavailable: {error!r}")
-
-    @router.get(
-        f"{prefix}/orders",
-        tags=tags,
-        include_in_schema=include_in_schema,
-        summary=route_docs.summary("mercado_pago.list_simulated_orders"),
-        description=route_docs.description("mercado_pago.list_simulated_orders"),
-    )
-    async def list_simulated_orders() -> list[dict[str, Any]]:
-        """List the simulated orders.
-
-        Returns:
-            list[dict[str, Any]]: Every order, oldest first.
-
-        Raises:
-            HTTPException: ``502`` when a remote simulator cannot be reached
-                or answers something that is not its JSON.
-        """
-        try:
-            return await backend.list_orders()
-        except httpx.HTTPError as error:
-            raise _unreachable(error) from None
-
-    @router.get(
-        f"{prefix}/orders/{{order_id}}",
-        tags=tags,
-        include_in_schema=include_in_schema,
-        summary=route_docs.summary("mercado_pago.get_simulated_order"),
-        description=route_docs.description("mercado_pago.get_simulated_order"),
-    )
-    async def get_simulated_order(order_id: str) -> dict[str, Any]:
-        """Read one simulated order.
-
-        Args:
-            order_id (str): The order id or its ``external_reference``.
-
-        Returns:
-            dict[str, Any]: The order.
-
-        Raises:
-            HTTPException: ``404`` for an unknown order, ``502`` when a
-                remote simulator cannot be reached.
-        """
-        try:
-            return await backend.find_order(order_id)
-        except KeyError:
-            raise HTTPException(404, f"order {order_id} not found") from None
-        except httpx.HTTPError as error:
-            raise _unreachable(error) from None
-
-    @router.post(
-        f"{prefix}/orders/{{order_id}}/{{transition}}",
-        tags=tags,
-        response_model=MercadoPagoSimulationResultSchema,
-        include_in_schema=include_in_schema,
-        summary=route_docs.summary("mercado_pago.simulate_order_transition"),
-        description=route_docs.description("mercado_pago.simulate_order_transition"),
-    )
-    async def simulate_order_transition(
-        request: Request,
-        order_id: str,
-        transition: MercadoPagoTransition,
-        amount_cents: int | None = Query(default=None, gt=0),
-    ) -> MercadoPagoSimulationResultSchema:
-        """Move an order and deliver the webhook announcing it.
-
-        Args:
-            request (Request): The request, whose app receives the delivery.
-            order_id (str): The order id or its ``external_reference``.
-            transition (MercadoPagoTransition): The move.
-            amount_cents (int | None): For ``refund``: a partial amount.
-
-        Returns:
-            MercadoPagoSimulationResultSchema: The order and the delivery.
-
-        Raises:
-            HTTPException: ``404`` for an unknown order, ``409`` for a move
-                the order's state does not allow, ``502`` when a remote
-                simulator cannot be reached.
-        """
-        try:
-            order, action = await backend.apply(order_id, transition, amount_cents)
-        except KeyError:
-            raise HTTPException(404, f"order {order_id} not found") from None
-        except ValueError as error:
-            raise HTTPException(409, str(error)) from None
-        except httpx.HTTPError as error:
-            raise _unreachable(error) from None
-        delivery = build_mercado_pago_delivery(order, secret=secret, action=action)
-        response = await _deliver(request, webhook_route, delivery)
-        try:
-            body: Any = response.json()
-        except ValueError:
-            body = response.text
-        return MercadoPagoSimulationResultSchema(
-            order=order,
-            delivery=MercadoPagoSimulatedDeliverySchema(
-                action=action, status_code=response.status_code, body=body
-            ),
-        )
-
-
 __all__: list[str] = [
     "DEFAULT_SIMULATION_PREFIX",
     "SIMULATION_ENVIRONMENTS",
@@ -773,7 +583,6 @@ __all__: list[str] = [
     "MercadoPagoSimulationResultSchema",
     "MercadoPagoTransition",
     "RemoteMercadoPagoSimulation",
-    "add_simulation_routes",
     "ensure_simulation_allowed",
     "mercado_pago_provider_for",
     "simulation_api_for",

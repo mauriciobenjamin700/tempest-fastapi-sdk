@@ -76,6 +76,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.manual_payout.RECEIPT_CONTENT_TYPES
 ::: tempest_fastapi_sdk.admin.manual_payout.REJECT_ACTION
 ::: tempest_fastapi_sdk.admin.manual_payout.STATUS_LABELS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.mercado_pago_simulation_actions
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.DANGEROUS_TRANSITIONS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.DEFAULT_SIMULATION_TRANSITIONS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.SIMULATION_ACTION_LABELS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.SIMULATION_ACTION_PREFIX
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router
@@ -912,6 +917,11 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.SIMULATION_TAG
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.RemoteMercadoPagoSimulation
 ::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.MercadoPagoSimulationBackend
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.DEFAULT_SIMULATION_PREFIX
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.MercadoPagoTransition
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulation.ensure_simulation_allowed
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulator.MercadoPagoSimulator
+::: tempest_fastapi_sdk.integrations.payment.adapters.mercado_pago_simulator.make_mercado_pago_simulation_router
 
 ## WhatsApp (zap-api)
 

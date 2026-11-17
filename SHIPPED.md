@@ -4609,3 +4609,26 @@ Testes: `tests/admin/test_readonly_fields_for.py`, `TestBulkConfirm` em
 estorno à mão. Testes: `TestConfigHooks` e `test_body_names_both_ways_to_refuse`
 em `tests/wallet/test_manual_payout.py`. Receita: `mercado-pago-webhooks`
 (saque manual com `hooks=`, saída medida de novo).
+
+### Simulação plugável na rota do serviço, simulador público e ações do admin (#780, 2026-11-16)
+
+`mercado_pago_simulator.py`: `MercadoPagoSimulator(backend, *, secret,
+settings, app, webhook_url, client, timeout)` move a order (em memória ou
+`RemoteMercadoPagoSimulation`), assina e entrega — `apply` com o destino
+configurado (em processo por `app=` + path, ou pela rede com `webhook_url`
+absoluto), `apply_to` com cliente e endpoint dados. É a única peça que
+transiciona, assina e entrega: as rotas `/dev/mercado-pago/...` (agora em
+`add_simulation_routes(router, *, simulator, ...)`) e as ações do admin
+chamam ela. `make_mercado_pago_simulation_router(webhook_route=...)` monta só
+as rotas de simulação, entregando à rota de webhook do serviço (nome ou
+path); `make_mercado_pago_router(simulate=True)` usa as mesmas rotas.
+`resolve_webhook_secret` substitui o `_resolve_secret` do router.
+`admin/mercado_pago_simulation.py`: `mercado_pago_simulation_actions(simulator,
+*, reference_field, transitions, labels)` com "Simular pagamento/expiração/
+estorno" (estorno `dangerous`). Tudo recusado fora de development/test pelo
+`ensure_simulation_allowed`. Testes:
+`tests/integrations/payment/adapters/test_mercado_pago_simulator.py` (rota
+própria com `BackgroundTasks`, por nome e por path, em memória e sobre o
+`fake-api` por ASGI) e `tests/admin/test_mercado_pago_simulation_admin.py`
+(painel real sobre SQLite em arquivo, o webhook do serviço marcando a
+cobrança `paid`). Receita: três seções novas em `mercado-pago-webhooks`.

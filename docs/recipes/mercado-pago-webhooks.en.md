@@ -666,6 +666,323 @@ The control prefix also finds the order by `external_reference`, so
 `simulate-webhook` takes the `correlation_id` in `--order-id` when
 `--fake-api` is given.
 
+#### Your own webhook route: `make_mercado_pago_simulation_router` *(v0.365.0+)*
+
+`make_mercado_pago_router` always mounts **the SDK's** webhook route. If your
+service already has its own — its own controller, `BackgroundTasks`, a
+worker —, the simulation has to exercise **that** route, which is the
+production path. `make_mercado_pago_simulation_router` mounts only the
+`/dev/mercado-pago/orders/...` routes and delivers the signed webhook to the
+route you name in `webhook_route`:
+
+```python hl_lines="34 47-53"
+from typing import Any
+
+import uvicorn
+from fastapi import BackgroundTasks, Depends, FastAPI
+
+from tempest_fastapi_sdk.integrations.payment import PixChargeRequest, PixPayer
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    make_mercado_pago_simulation_router,
+    make_mercado_pago_webhook_delivery_dependency,
+    mercado_pago_provider_for,
+    simulation_api_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+settings = Settings()
+provider = mercado_pago_provider_for(settings, simulate=True)
+verify = make_mercado_pago_webhook_delivery_dependency(
+    settings.MERCADOPAGO_WEBHOOK_SECRET, provider
+)
+app = FastAPI()
+
+
+def confirm_purchase(reference: str, status: str) -> None:
+    """The service's own confirmation, run after the answer."""
+    print(f"confirm_purchase: {reference} {status}", flush=True)
+
+
+@app.post("/api/webhook/mercadopago", name="mercado_pago_webhook")
+async def receive_webhook(
+    tasks: BackgroundTasks,
+    delivery: MercadoPagoOrderDelivery = Depends(verify),
+) -> dict[str, bool]:
+    """The webhook route the service already had."""
+    order = delivery.order or {}
+    tasks.add_task(
+        confirm_purchase, str(order.get("external_reference")), str(order.get("status"))
+    )
+    return {"received": True}
+
+
+app.include_router(
+    make_mercado_pago_simulation_router(
+        webhook_route="mercado_pago_webhook",
+        simulation_api=simulation_api_for(provider),
+        settings=settings,
+    )
+)
+
+
+@app.post("/charges")
+async def create_charge(reference: str) -> dict[str, Any]:
+    """Create a R$ 19,90 Pix charge — the service's normal flow."""
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference=reference,
+            payer=PixPayer(email="comprador@example.com"),
+        )
+    )
+    return {"order_id": charge.provider_charge_id, "status": charge.status.value}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8001)
+```
+
+`webhook_route` takes the route's **name** (the decorator's `name=`) or its
+**path**, when it starts with `/` (`"/api/webhook/mercadopago"`). Mount the
+router on the **same** application as the webhook route: the delivery goes
+through it in process, middleware included.
+
+Output measured on 2026-11-16 (`ENV=development`,
+`MERCADOPAGO_WEBHOOK_SECRET=segredo-local-de-teste`; the `order` cut down to
+`id`, `status` and `status_detail`):
+
+```text
+$ curl -s -X POST "http://127.0.0.1:8001/charges?reference=compra-7f3a"
+{"order_id":"ORDFAKE9055F34800000000000002","status":"pending"}
+$ curl -s -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/pay
+{"order": {"id": "ORDFAKE9055F34800000000000002", "status": "processed", "status_detail": "accredited"}, "delivery": {"action": "order.processed", "status_code": 200, "body": {"received": true}}}
+$ curl -s -w "\nHTTP %{http_code}\n" -X POST http://127.0.0.1:8001/dev/mercado-pago/orders/compra-7f3a/expire
+{"detail":"409 cannot_expire_order: Not a pending Pix order."}
+HTTP 409
+```
+
+`delivery.body` is what **your** route answered (`{"received": true}`), and
+the service's log shows `confirm_purchase: compra-7f3a processed`, from the
+`BackgroundTasks`.
+
+With the API and a worker in separate processes, change two lines, as in the
+previous section: the provider becomes `mercado_pago_provider_for(settings)`
+and the router takes `simulation_url=settings.MERCADOPAGO_BASE_URL` instead
+of `simulation_api=`. The router refuses both together, and neither.
+
+!!! warning "Only in `development` and `test`"
+    Like `simulate=True`, the router is refused with `RuntimeError` outside
+    `ENV=development` / `ENV=test`, and an unset `ENV` counts as production.
+
+#### Simulate from anywhere: `MercadoPagoSimulator` *(v0.365.0+)*
+
+The routes above, the admin panel actions (next section) and a script all
+use the same piece: `MercadoPagoSimulator`. It moves the order on the
+simulator, signs the notification with the service's secret and posts it to
+the webhook route. None of that needs rewriting in the service.
+
+A script that pays a purchase on a service already running against the
+`fake-api` (the service above with `simulation_url=`):
+
+```python
+import asyncio
+import sys
+
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoSimulator,
+    RemoteMercadoPagoSimulation,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+async def main(reference: str, transition: str) -> None:
+    """Move an order on the fake-api and deliver the webhook to the service."""
+    settings = Settings()
+    simulator = MercadoPagoSimulator(
+        RemoteMercadoPagoSimulation(settings.MERCADOPAGO_BASE_URL),
+        settings=settings,
+        webhook_url="http://127.0.0.1:8001/api/webhook/mercadopago",
+    )
+    result = await simulator.apply(reference, transition)
+    print(result.order["status"], result.delivery.status_code, result.delivery.body)
+
+
+if __name__ == "__main__":
+    asyncio.run(main(sys.argv[1], sys.argv[2]))
+```
+
+```text
+$ python simular.py compra-9b21 pay
+processed 200 {'received': True}
+$ python simular.py compra-9b21 pay
+ValueError: 409 cannot_pay_order: Not a pending Pix order.
+$ python simular.py compra-404 pay
+KeyError: 'compra-404'
+```
+
+Output measured on 2026-11-16, with `MERCADOPAGO_BASE_URL` pointing at a
+`tempest mercado-pago fake-api` (only the last line of both tracebacks).
+
+The arguments decide where the delivery goes:
+
+| Arguments | Where the webhook goes |
+| --- | --- |
+| `app=` + `webhook_url="/path"` | in process, through the whole application (`httpx.ASGITransport`) |
+| `webhook_url="http://..."` alone | over the network, with `client=` or one client per call |
+| neither | only `apply_to(..., client=, endpoint=)` delivers |
+
+`apply` returns the `MercadoPagoSimulationResultSchema` (`order` and
+`delivery`). A route that refused the signature (`401`) or raised (`500`)
+shows in `delivery.status_code`, with no exception; `KeyError` (unknown
+order), `ValueError` (a move the state does not allow) and `httpx.HTTPError`
+(simulator down) are raised.
+
+The secret comes from `secret=`, else `MERCADOPAGO_WEBHOOK_SECRET`, else the
+in-memory simulator. With `RemoteMercadoPagoSimulation` and no secret,
+construction raises `ValueError`.
+
+#### In the admin panel: `mercado_pago_simulation_actions` *(v0.365.0+)*
+
+For QA to simulate a purchase's payment from the panel, with no Swagger and
+no curl: `mercado_pago_simulation_actions(simulator)` returns the
+"Simular pagamento", "Simular expiração" and "Simular estorno" actions to
+hang on the `AdminModel` of the service's charge table.
+
+```python hl_lines="68-82"
+from fastapi import Depends, FastAPI
+from sqlalchemy import String, update
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    AsyncDatabaseManager,
+    BaseModel,
+    BaseUserModel,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import AdminModel, mercado_pago_simulation_actions
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoOrderDelivery,
+    MercadoPagoSimulator,
+    RemoteMercadoPagoSimulation,
+    make_mercado_pago_webhook_delivery_dependency,
+    mercado_pago_provider_for,
+)
+from tempest_fastapi_sdk.settings import EnvironmentSettings, MercadoPagoSettings
+
+
+class Settings(EnvironmentSettings, MercadoPagoSettings):
+    """ENV plus the Mercado Pago credentials."""
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+class ChargeModel(BaseModel):
+    """One purchase waiting for its Pix."""
+
+    __tablename__ = "charges"
+
+    correlation_id: Mapped[str] = mapped_column(String(64), unique=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+
+
+settings = Settings()
+db = AsyncDatabaseManager("sqlite+aiosqlite:///servico.db")
+provider = mercado_pago_provider_for(settings)
+verify = make_mercado_pago_webhook_delivery_dependency(
+    settings.MERCADOPAGO_WEBHOOK_SECRET, provider
+)
+app = FastAPI()
+
+
+@app.post("/api/webhook/mercadopago")
+async def receive_webhook(
+    delivery: MercadoPagoOrderDelivery = Depends(verify),
+) -> dict[str, bool]:
+    """Confirm the purchase the way production does."""
+    order = delivery.order or {}
+    if order.get("status") == "processed":
+        async with db.get_session_context() as session:
+            await session.execute(
+                update(ChargeModel)
+                .where(ChargeModel.correlation_id == order["external_reference"])
+                .values(status="paid")
+            )
+            await session.commit()
+    return {"received": True}
+
+
+site = AdminSite(title="Admin")
+site.register(
+    AdminModel(
+        ChargeModel,
+        actions=mercado_pago_simulation_actions(
+            MercadoPagoSimulator(
+                RemoteMercadoPagoSimulation(settings.MERCADOPAGO_BASE_URL),
+                settings=settings,
+                app=app,
+                webhook_url="/api/webhook/mercadopago",
+            )
+        )
+        if settings.ENV == "development"
+        else [],
+    )
+)
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key="troque-por-um-segredo-de-32-bytes-ou-mais",
+    )
+)
+```
+
+Each checked row becomes `simulator.apply(<correlation_id>, <move>)`, and
+each outcome goes into the panel's message. Measured in
+`tests/admin/test_mercado_pago_simulation_admin.py`, with two pending charges
+checked:
+
+```text
+Simular pagamento: 2 entregue(s) — compra-a (processed), compra-b (processed).
+```
+
+and both rows become `paid` through the service's webhook route. A row with
+no order on the simulator, or whose move the state refuses, is named:
+
+```text
+Simular estorno: 0 entregue(s); falharam — sem-pedido: pedido não encontrado no simulador; compra-c: 409 cannot_refund_order: the order cannot be refunded because the current status, 'action_required', doesn't allow refunds. The order must be in 'processed' status to be refunded.
+```
+
+- `reference_field=` picks the column read from each row (default
+  `"correlation_id"`, the `external_reference` the service sent on create).
+- `transitions=` picks the actions and the menu order (`pay`, `expire`,
+  `fail`, `cancel`, `capture`, `refund`); `labels=` changes the text.
+- "Simular estorno" is `dangerous`: the panel asks for the strong
+  confirmation.
+- The simulator must deliver on its own (`app=` + `webhook_url=`, or an
+  absolute `webhook_url`); otherwise `mercado_pago_simulation_actions`
+  raises `ValueError`.
+
+!!! note "Outside `development` the actions do not exist"
+    `MercadoPagoSimulator` is what refuses: it is not built outside
+    `ENV=development` / `ENV=test`. That is why the example mounts the
+    actions only when `settings.ENV == "development"`; in production the
+    `AdminModel` gets `[]`.
+
 #### Manual withdrawal
 
 Mercado Pago's payout is not enabled for the account (#499). Meanwhile, the
@@ -1133,6 +1450,10 @@ Pago calls the route with `data.id` equal to the order id.
   `/dev/mercado-pago/...` routes, which deliver the webhook to the real
   route; with `withdraw=`, a withdrawal empties the wallet and becomes a
   manual Pix the administrator completes in the panel, with the PDF receipt.
+- A service with its own webhook route mounts only the simulation routes
+  with `make_mercado_pago_simulation_router(webhook_route=...)`;
+  `MercadoPagoSimulator` moves, signs and delivers from a script, and
+  `mercado_pago_simulation_actions` puts "Simular pagamento" in the panel.
 - `sign_manifest` produces a notification your route accepts: test the whole
   path without a public URL.
 - A wrong signature is `401` before any call; an unknown id is `200` with no
