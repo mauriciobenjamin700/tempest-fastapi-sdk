@@ -1199,6 +1199,8 @@
       
         
       
+        
+      
     
     
     
@@ -2707,6 +2709,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#route-through-stops-route_through" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Route through stops (route_through)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#geometry-projection-geofence-length" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3060,6 +3073,34 @@
     
   
     Kestra (workflow orchestrator)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../live-location/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live location
   
 
     
@@ -6201,70 +6242,163 @@ returns the route line decoded into <code>TravelEstimate.geometry</code>:</p>
 </span></code></pre></div>
 <p><code>encode_polyline</code> / <code>decode_polyline</code> convert the line to/from the compact
 Google/OSRM format (precision 5 or 6), no dependency.</p>
-<h2 id="geometry-projection-geofence-length">Geometry: projection, geofence, length<a class="headerlink" href="#geometry-projection-geofence-length" title="Permanent link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>    <span class="n">Coordinate</span><span class="p">,</span>
-</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>    <span class="n">bounding_box</span><span class="p">,</span>
-</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>    <span class="n">destination_point</span><span class="p">,</span>
-</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>    <span class="n">initial_bearing</span><span class="p">,</span>
-</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>    <span class="n">path_length_km</span><span class="p">,</span>
-</span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>    <span class="n">point_in_polygon</span><span class="p">,</span>
-</span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>    <span class="n">polygon_area_km2</span><span class="p">,</span>
-</span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="p">)</span>
-</span><span id="__span-23-10"><a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>
-</span><span id="__span-23-11"><a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="n">point</span> <span class="o">=</span> <span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">8.0476</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">34.8770</span><span class="p">)</span>
-</span><span id="__span-23-12"><a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a><span class="n">center</span> <span class="o">=</span> <span class="n">point</span>
-</span><span id="__span-23-13"><a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a>
-</span><span id="__span-23-14"><a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a><span class="n">delivery_zone</span> <span class="o">=</span> <span class="n">bounding_box</span><span class="p">(</span><span class="n">point</span><span class="p">,</span> <span class="n">radius_km</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
-</span><span id="__span-23-15"><a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a>
-</span><span id="__span-23-16"><a id="__codelineno-23-16" name="__codelineno-23-16" href="#__codelineno-23-16"></a><span class="n">zone_polygon</span> <span class="o">=</span> <span class="p">[</span>
-</span><span id="__span-23-17"><a id="__codelineno-23-17" name="__codelineno-23-17" href="#__codelineno-23-17"></a>    <span class="n">Coordinate</span><span class="p">(</span>
-</span><span id="__span-23-18"><a id="__codelineno-23-18" name="__codelineno-23-18" href="#__codelineno-23-18"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_latitude</span><span class="p">,</span>
-</span><span id="__span-23-19"><a id="__codelineno-23-19" name="__codelineno-23-19" href="#__codelineno-23-19"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_longitude</span><span class="p">,</span>
-</span><span id="__span-23-20"><a id="__codelineno-23-20" name="__codelineno-23-20" href="#__codelineno-23-20"></a>    <span class="p">),</span>
-</span><span id="__span-23-21"><a id="__codelineno-23-21" name="__codelineno-23-21" href="#__codelineno-23-21"></a>    <span class="n">Coordinate</span><span class="p">(</span>
-</span><span id="__span-23-22"><a id="__codelineno-23-22" name="__codelineno-23-22" href="#__codelineno-23-22"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_latitude</span><span class="p">,</span>
-</span><span id="__span-23-23"><a id="__codelineno-23-23" name="__codelineno-23-23" href="#__codelineno-23-23"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_longitude</span><span class="p">,</span>
-</span><span id="__span-23-24"><a id="__codelineno-23-24" name="__codelineno-23-24" href="#__codelineno-23-24"></a>    <span class="p">),</span>
-</span><span id="__span-23-25"><a id="__codelineno-23-25" name="__codelineno-23-25" href="#__codelineno-23-25"></a>    <span class="n">Coordinate</span><span class="p">(</span>
-</span><span id="__span-23-26"><a id="__codelineno-23-26" name="__codelineno-23-26" href="#__codelineno-23-26"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_latitude</span><span class="p">,</span>
-</span><span id="__span-23-27"><a id="__codelineno-23-27" name="__codelineno-23-27" href="#__codelineno-23-27"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_longitude</span><span class="p">,</span>
-</span><span id="__span-23-28"><a id="__codelineno-23-28" name="__codelineno-23-28" href="#__codelineno-23-28"></a>    <span class="p">),</span>
-</span><span id="__span-23-29"><a id="__codelineno-23-29" name="__codelineno-23-29" href="#__codelineno-23-29"></a>    <span class="n">Coordinate</span><span class="p">(</span>
-</span><span id="__span-23-30"><a id="__codelineno-23-30" name="__codelineno-23-30" href="#__codelineno-23-30"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_latitude</span><span class="p">,</span>
-</span><span id="__span-23-31"><a id="__codelineno-23-31" name="__codelineno-23-31" href="#__codelineno-23-31"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_longitude</span><span class="p">,</span>
-</span><span id="__span-23-32"><a id="__codelineno-23-32" name="__codelineno-23-32" href="#__codelineno-23-32"></a>    <span class="p">),</span>
-</span><span id="__span-23-33"><a id="__codelineno-23-33" name="__codelineno-23-33" href="#__codelineno-23-33"></a><span class="p">]</span>
-</span><span id="__span-23-34"><a id="__codelineno-23-34" name="__codelineno-23-34" href="#__codelineno-23-34"></a>
-</span><span id="__span-23-35"><a id="__codelineno-23-35" name="__codelineno-23-35" href="#__codelineno-23-35"></a><span class="n">gps_points</span> <span class="o">=</span> <span class="p">[</span><span class="n">point</span><span class="p">,</span> <span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">7.9899</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">34.8386</span><span class="p">)]</span>
-</span><span id="__span-23-36"><a id="__codelineno-23-36" name="__codelineno-23-36" href="#__codelineno-23-36"></a>
+<h2 id="route-through-stops-route_through">Route through stops (<code>route_through</code>)<a class="headerlink" href="#route-through-stops-route_through" title="Permanent link">&para;</a></h2>
+<p><code>route</code> draws origin → destination. A trip with stops (A → B → C) — a bus
+line, a delivery with several pickups — comes out of one call with
+<code>route_through</code>: OSRM gets every point and answers the total <strong>and</strong> one
+stretch (<code>legs</code>) per consecutive pair, with the distance and time of each.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>
+</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>    <span class="n">Coordinate</span><span class="p">,</span>
+</span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>    <span class="n">OSRMBackend</span><span class="p">,</span>
+</span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>    <span class="n">RouteThroughResult</span><span class="p">,</span>
+</span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>    <span class="n">TravelModeEnum</span><span class="p">,</span>
+</span><span id="__span-23-10"><a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>    <span class="n">estimate_route_through</span><span class="p">,</span>
+</span><span id="__span-23-11"><a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="p">)</span>
+</span><span id="__span-23-12"><a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a>
+</span><span id="__span-23-13"><a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a><span class="n">PARADAS</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Coordinate</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-23-14"><a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a>    <span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">5.0892</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">42.8019</span><span class="p">),</span>
+</span><span id="__span-23-15"><a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a>    <span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">5.0381</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">42.4608</span><span class="p">),</span>
+</span><span id="__span-23-16"><a id="__codelineno-23-16" name="__codelineno-23-16" href="#__codelineno-23-16"></a>    <span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">4.8278</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">42.1686</span><span class="p">),</span>
+</span><span id="__span-23-17"><a id="__codelineno-23-17" name="__codelineno-23-17" href="#__codelineno-23-17"></a><span class="p">]</span>
+</span><span id="__span-23-18"><a id="__codelineno-23-18" name="__codelineno-23-18" href="#__codelineno-23-18"></a>
+</span><span id="__span-23-19"><a id="__codelineno-23-19" name="__codelineno-23-19" href="#__codelineno-23-19"></a>
+</span><span id="__span-23-20"><a id="__codelineno-23-20" name="__codelineno-23-20" href="#__codelineno-23-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">rota_com_paradas</span><span class="p">(</span><span class="n">client</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RouteThroughResult</span><span class="p">:</span>
+</span><span id="__span-23-21"><a id="__codelineno-23-21" name="__codelineno-23-21" href="#__codelineno-23-21"></a><span class="w">    </span><span class="sd">"""Traça a rota pelas paradas no OSRM e cai na estimativa offline."""</span>
+</span><span id="__span-23-22"><a id="__codelineno-23-22" name="__codelineno-23-22" href="#__codelineno-23-22"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="n">OSRMBackend</span><span class="p">(</span><span class="n">http_client</span><span class="o">=</span><span class="n">client</span><span class="p">)</span>
+</span><span id="__span-23-23"><a id="__codelineno-23-23" name="__codelineno-23-23" href="#__codelineno-23-23"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-23-24"><a id="__codelineno-23-24" name="__codelineno-23-24" href="#__codelineno-23-24"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">backend</span><span class="o">.</span><span class="n">route_through</span><span class="p">(</span><span class="n">PARADAS</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="n">TravelModeEnum</span><span class="o">.</span><span class="n">BUS</span><span class="p">)</span>
+</span><span id="__span-23-25"><a id="__codelineno-23-25" name="__codelineno-23-25" href="#__codelineno-23-25"></a>    <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+</span><span id="__span-23-26"><a id="__codelineno-23-26" name="__codelineno-23-26" href="#__codelineno-23-26"></a>        <span class="k">return</span> <span class="n">estimate_route_through</span><span class="p">(</span><span class="n">PARADAS</span><span class="p">,</span> <span class="n">TravelModeEnum</span><span class="o">.</span><span class="n">BUS</span><span class="p">)</span>
+</span><span id="__span-23-27"><a id="__codelineno-23-27" name="__codelineno-23-27" href="#__codelineno-23-27"></a>
+</span><span id="__span-23-28"><a id="__codelineno-23-28" name="__codelineno-23-28" href="#__codelineno-23-28"></a>
+</span><span id="__span-23-29"><a id="__codelineno-23-29" name="__codelineno-23-29" href="#__codelineno-23-29"></a><span class="k">def</span><span class="w"> </span><span class="nf">osrm_fake</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+</span><span id="__span-23-30"><a id="__codelineno-23-30" name="__codelineno-23-30" href="#__codelineno-23-30"></a><span class="w">    </span><span class="sd">"""Responde como o OSRM: dois trechos e o total."""</span>
+</span><span id="__span-23-31"><a id="__codelineno-23-31" name="__codelineno-23-31" href="#__codelineno-23-31"></a>    <span class="n">legs</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-23-32"><a id="__codelineno-23-32" name="__codelineno-23-32" href="#__codelineno-23-32"></a>        <span class="p">{</span><span class="s2">"distance"</span><span class="p">:</span> <span class="mf">41_250.0</span><span class="p">,</span> <span class="s2">"duration"</span><span class="p">:</span> <span class="mf">2_100.0</span><span class="p">},</span>
+</span><span id="__span-23-33"><a id="__codelineno-23-33" name="__codelineno-23-33" href="#__codelineno-23-33"></a>        <span class="p">{</span><span class="s2">"distance"</span><span class="p">:</span> <span class="mf">39_800.0</span><span class="p">,</span> <span class="s2">"duration"</span><span class="p">:</span> <span class="mf">1_980.0</span><span class="p">},</span>
+</span><span id="__span-23-34"><a id="__codelineno-23-34" name="__codelineno-23-34" href="#__codelineno-23-34"></a>    <span class="p">]</span>
+</span><span id="__span-23-35"><a id="__codelineno-23-35" name="__codelineno-23-35" href="#__codelineno-23-35"></a>    <span class="n">route</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"distance"</span><span class="p">:</span> <span class="mf">81_050.0</span><span class="p">,</span> <span class="s2">"duration"</span><span class="p">:</span> <span class="mf">4_080.0</span><span class="p">,</span> <span class="s2">"legs"</span><span class="p">:</span> <span class="n">legs</span><span class="p">}</span>
+</span><span id="__span-23-36"><a id="__codelineno-23-36" name="__codelineno-23-36" href="#__codelineno-23-36"></a>    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"Ok"</span><span class="p">,</span> <span class="s2">"routes"</span><span class="p">:</span> <span class="p">[</span><span class="n">route</span><span class="p">]})</span>
 </span><span id="__span-23-37"><a id="__codelineno-23-37" name="__codelineno-23-37" href="#__codelineno-23-37"></a>
-</span><span id="__span-23-38"><a id="__codelineno-23-38" name="__codelineno-23-38" href="#__codelineno-23-38"></a><span class="n">target</span> <span class="o">=</span> <span class="n">destination_point</span><span class="p">(</span><span class="n">center</span><span class="p">,</span> <span class="n">bearing_degrees</span><span class="o">=</span><span class="mf">90.0</span><span class="p">,</span> <span class="n">distance_km</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>  <span class="c1"># 2 km east</span>
-</span><span id="__span-23-39"><a id="__codelineno-23-39" name="__codelineno-23-39" href="#__codelineno-23-39"></a><span class="n">heading</span> <span class="o">=</span> <span class="n">initial_bearing</span><span class="p">(</span><span class="n">center</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>  <span class="c1"># ~90.0</span>
-</span><span id="__span-23-40"><a id="__codelineno-23-40" name="__codelineno-23-40" href="#__codelineno-23-40"></a><span class="n">inside</span> <span class="o">=</span> <span class="n">delivery_zone</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">point</span><span class="p">)</span>  <span class="c1"># geofence: the cheap box test</span>
-</span><span id="__span-23-41"><a id="__codelineno-23-41" name="__codelineno-23-41" href="#__codelineno-23-41"></a><span class="n">in_polygon</span> <span class="o">=</span> <span class="n">point_in_polygon</span><span class="p">(</span><span class="n">point</span><span class="p">,</span> <span class="n">zone_polygon</span><span class="p">)</span>  <span class="c1"># geofence: the ring</span>
-</span><span id="__span-23-42"><a id="__codelineno-23-42" name="__codelineno-23-42" href="#__codelineno-23-42"></a><span class="n">area</span> <span class="o">=</span> <span class="n">polygon_area_km2</span><span class="p">(</span><span class="n">zone_polygon</span><span class="p">)</span>
-</span><span id="__span-23-43"><a id="__codelineno-23-43" name="__codelineno-23-43" href="#__codelineno-23-43"></a><span class="n">travelled</span> <span class="o">=</span> <span class="n">path_length_km</span><span class="p">(</span><span class="n">gps_points</span><span class="p">)</span>
+</span><span id="__span-23-38"><a id="__codelineno-23-38" name="__codelineno-23-38" href="#__codelineno-23-38"></a>
+</span><span id="__span-23-39"><a id="__codelineno-23-39" name="__codelineno-23-39" href="#__codelineno-23-39"></a><span class="k">def</span><span class="w"> </span><span class="nf">osrm_fora_do_ar</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+</span><span id="__span-23-40"><a id="__codelineno-23-40" name="__codelineno-23-40" href="#__codelineno-23-40"></a><span class="w">    </span><span class="sd">"""Simula o servidor indisponível."""</span>
+</span><span id="__span-23-41"><a id="__codelineno-23-41" name="__codelineno-23-41" href="#__codelineno-23-41"></a>    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">503</span><span class="p">)</span>
+</span><span id="__span-23-42"><a id="__codelineno-23-42" name="__codelineno-23-42" href="#__codelineno-23-42"></a>
+</span><span id="__span-23-43"><a id="__codelineno-23-43" name="__codelineno-23-43" href="#__codelineno-23-43"></a>
+</span><span id="__span-23-44"><a id="__codelineno-23-44" name="__codelineno-23-44" href="#__codelineno-23-44"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-23-45"><a id="__codelineno-23-45" name="__codelineno-23-45" href="#__codelineno-23-45"></a><span class="w">    </span><span class="sd">"""Roda a mesma função com o OSRM respondendo e fora do ar."""</span>
+</span><span id="__span-23-46"><a id="__codelineno-23-46" name="__codelineno-23-46" href="#__codelineno-23-46"></a>    <span class="k">for</span> <span class="n">handler</span> <span class="ow">in</span> <span class="p">(</span><span class="n">osrm_fake</span><span class="p">,</span> <span class="n">osrm_fora_do_ar</span><span class="p">):</span>
+</span><span id="__span-23-47"><a id="__codelineno-23-47" name="__codelineno-23-47" href="#__codelineno-23-47"></a>        <span class="n">transport</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
+</span><span id="__span-23-48"><a id="__codelineno-23-48" name="__codelineno-23-48" href="#__codelineno-23-48"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">transport</span><span class="o">=</span><span class="n">transport</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+</span><span id="__span-23-49"><a id="__codelineno-23-49" name="__codelineno-23-49" href="#__codelineno-23-49"></a>            <span class="n">rota</span> <span class="o">=</span> <span class="k">await</span> <span class="n">rota_com_paradas</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+</span><span id="__span-23-50"><a id="__codelineno-23-50" name="__codelineno-23-50" href="#__codelineno-23-50"></a>        <span class="n">trechos</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">leg</span><span class="o">.</span><span class="n">distance_km</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> km"</span> <span class="k">for</span> <span class="n">leg</span> <span class="ow">in</span> <span class="n">rota</span><span class="o">.</span><span class="n">legs</span><span class="p">]</span>
+</span><span id="__span-23-51"><a id="__codelineno-23-51" name="__codelineno-23-51" href="#__codelineno-23-51"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">rota</span><span class="o">.</span><span class="n">source</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">rota</span><span class="o">.</span><span class="n">distance_km</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> km"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">rota</span><span class="o">.</span><span class="n">duration_minutes</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> min"</span><span class="p">,</span> <span class="n">trechos</span><span class="p">)</span>
+</span><span id="__span-23-52"><a id="__codelineno-23-52" name="__codelineno-23-52" href="#__codelineno-23-52"></a>
+</span><span id="__span-23-53"><a id="__codelineno-23-53" name="__codelineno-23-53" href="#__codelineno-23-53"></a>
+</span><span id="__span-23-54"><a id="__codelineno-23-54" name="__codelineno-23-54" href="#__codelineno-23-54"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p>Measured output (the first case is a <strong>fake</strong> OSRM server built with
+<code>httpx.MockTransport</code>, so the example runs offline; the second is the same
+client getting a <code>503</code>):</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>osrm 81.0 km 109 min ['41.2 km', '39.8 km']
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>heuristic 101.6 km 195 min ['49.7 km', '51.9 km']
+</span></code></pre></div>
+<p>What happens there:</p>
+<ul>
+<li><strong>One <code>RouteThroughResult</code></strong>: <code>distance_km</code>, <code>duration_minutes</code>, <code>source</code>,
+  <code>geometry</code> and <code>legs: list[TravelEstimate]</code>. <code>legs[i]</code> goes from
+  <code>PARADAS[i]</code> to <code>PARADAS[i + 1]</code>, so N points give N − 1 legs, and the legs
+  add up to the total.</li>
+<li><strong>The mode factor applies everywhere.</strong> With <code>TravelModeEnum.BUS</code>, the
+  total and every leg get the car duration × 1.6, exactly like <code>route</code>
+  (68 car minutes became 109 minutes in the example).</li>
+<li><strong><code>with_geometry=True</code></strong> decodes the whole route line into <code>geometry</code>. The
+  legs carry no geometry.</li>
+<li><strong>The offline fallback</strong> is <code>estimate_route_through</code>: it sums
+  <code>estimate_travel</code> per leg, with <code>source="heuristic"</code> and, with
+  <code>with_geometry=True</code>, a straight-line geometry (the points themselves).</li>
+</ul>
+<div class="admonition info">
+<p class="admonition-title">Point limit</p>
+<p>The public demo answered <code>"Ok"</code> with 500 coordinates and
+<code>{"code": "TooBig", "message": "Number of entries 501 is higher than
+current maximum (500)"}</code> with 501 (measured on 2026-11-18). That is why
+<code>DEFAULT_OSRM_MAX_POINTS</code> is <code>500</code>, and above it <code>route_through</code> raises
+<code>ValueError</code> <strong>before</strong> any request leaves. Your own server with another
+<code>--max-viaroute-size</code>? Pass <code>OSRMBackend(..., max_points=N)</code>.</p>
+</div>
+<p><code>route_through</code> and <code>matrix</code> are part of the <code>RoutingBackend</code> Protocol as of
+the same release, and <code>FakeRoutingBackend</code> implements both — a backend of
+your own needs all three methods to keep passing the <code>isinstance</code> check.</p>
+<h2 id="geometry-projection-geofence-length">Geometry: projection, geofence, length<a class="headerlink" href="#geometry-projection-geofence-length" title="Permanent link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>    <span class="n">Coordinate</span><span class="p">,</span>
+</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>    <span class="n">bounding_box</span><span class="p">,</span>
+</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>    <span class="n">destination_point</span><span class="p">,</span>
+</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>    <span class="n">initial_bearing</span><span class="p">,</span>
+</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>    <span class="n">path_length_km</span><span class="p">,</span>
+</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>    <span class="n">point_in_polygon</span><span class="p">,</span>
+</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>    <span class="n">polygon_area_km2</span><span class="p">,</span>
+</span><span id="__span-25-9"><a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="p">)</span>
+</span><span id="__span-25-10"><a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a>
+</span><span id="__span-25-11"><a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="n">point</span> <span class="o">=</span> <span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">8.0476</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">34.8770</span><span class="p">)</span>
+</span><span id="__span-25-12"><a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="n">center</span> <span class="o">=</span> <span class="n">point</span>
+</span><span id="__span-25-13"><a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a>
+</span><span id="__span-25-14"><a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a><span class="n">delivery_zone</span> <span class="o">=</span> <span class="n">bounding_box</span><span class="p">(</span><span class="n">point</span><span class="p">,</span> <span class="n">radius_km</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+</span><span id="__span-25-15"><a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a>
+</span><span id="__span-25-16"><a id="__codelineno-25-16" name="__codelineno-25-16" href="#__codelineno-25-16"></a><span class="n">zone_polygon</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-25-17"><a id="__codelineno-25-17" name="__codelineno-25-17" href="#__codelineno-25-17"></a>    <span class="n">Coordinate</span><span class="p">(</span>
+</span><span id="__span-25-18"><a id="__codelineno-25-18" name="__codelineno-25-18" href="#__codelineno-25-18"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_latitude</span><span class="p">,</span>
+</span><span id="__span-25-19"><a id="__codelineno-25-19" name="__codelineno-25-19" href="#__codelineno-25-19"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_longitude</span><span class="p">,</span>
+</span><span id="__span-25-20"><a id="__codelineno-25-20" name="__codelineno-25-20" href="#__codelineno-25-20"></a>    <span class="p">),</span>
+</span><span id="__span-25-21"><a id="__codelineno-25-21" name="__codelineno-25-21" href="#__codelineno-25-21"></a>    <span class="n">Coordinate</span><span class="p">(</span>
+</span><span id="__span-25-22"><a id="__codelineno-25-22" name="__codelineno-25-22" href="#__codelineno-25-22"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_latitude</span><span class="p">,</span>
+</span><span id="__span-25-23"><a id="__codelineno-25-23" name="__codelineno-25-23" href="#__codelineno-25-23"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_longitude</span><span class="p">,</span>
+</span><span id="__span-25-24"><a id="__codelineno-25-24" name="__codelineno-25-24" href="#__codelineno-25-24"></a>    <span class="p">),</span>
+</span><span id="__span-25-25"><a id="__codelineno-25-25" name="__codelineno-25-25" href="#__codelineno-25-25"></a>    <span class="n">Coordinate</span><span class="p">(</span>
+</span><span id="__span-25-26"><a id="__codelineno-25-26" name="__codelineno-25-26" href="#__codelineno-25-26"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_latitude</span><span class="p">,</span>
+</span><span id="__span-25-27"><a id="__codelineno-25-27" name="__codelineno-25-27" href="#__codelineno-25-27"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_longitude</span><span class="p">,</span>
+</span><span id="__span-25-28"><a id="__codelineno-25-28" name="__codelineno-25-28" href="#__codelineno-25-28"></a>    <span class="p">),</span>
+</span><span id="__span-25-29"><a id="__codelineno-25-29" name="__codelineno-25-29" href="#__codelineno-25-29"></a>    <span class="n">Coordinate</span><span class="p">(</span>
+</span><span id="__span-25-30"><a id="__codelineno-25-30" name="__codelineno-25-30" href="#__codelineno-25-30"></a>        <span class="n">latitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">max_latitude</span><span class="p">,</span>
+</span><span id="__span-25-31"><a id="__codelineno-25-31" name="__codelineno-25-31" href="#__codelineno-25-31"></a>        <span class="n">longitude</span><span class="o">=</span><span class="n">delivery_zone</span><span class="o">.</span><span class="n">min_longitude</span><span class="p">,</span>
+</span><span id="__span-25-32"><a id="__codelineno-25-32" name="__codelineno-25-32" href="#__codelineno-25-32"></a>    <span class="p">),</span>
+</span><span id="__span-25-33"><a id="__codelineno-25-33" name="__codelineno-25-33" href="#__codelineno-25-33"></a><span class="p">]</span>
+</span><span id="__span-25-34"><a id="__codelineno-25-34" name="__codelineno-25-34" href="#__codelineno-25-34"></a>
+</span><span id="__span-25-35"><a id="__codelineno-25-35" name="__codelineno-25-35" href="#__codelineno-25-35"></a><span class="n">gps_points</span> <span class="o">=</span> <span class="p">[</span><span class="n">point</span><span class="p">,</span> <span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">7.9899</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">34.8386</span><span class="p">)]</span>
+</span><span id="__span-25-36"><a id="__codelineno-25-36" name="__codelineno-25-36" href="#__codelineno-25-36"></a>
+</span><span id="__span-25-37"><a id="__codelineno-25-37" name="__codelineno-25-37" href="#__codelineno-25-37"></a>
+</span><span id="__span-25-38"><a id="__codelineno-25-38" name="__codelineno-25-38" href="#__codelineno-25-38"></a><span class="n">target</span> <span class="o">=</span> <span class="n">destination_point</span><span class="p">(</span><span class="n">center</span><span class="p">,</span> <span class="n">bearing_degrees</span><span class="o">=</span><span class="mf">90.0</span><span class="p">,</span> <span class="n">distance_km</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>  <span class="c1"># 2 km east</span>
+</span><span id="__span-25-39"><a id="__codelineno-25-39" name="__codelineno-25-39" href="#__codelineno-25-39"></a><span class="n">heading</span> <span class="o">=</span> <span class="n">initial_bearing</span><span class="p">(</span><span class="n">center</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>  <span class="c1"># ~90.0</span>
+</span><span id="__span-25-40"><a id="__codelineno-25-40" name="__codelineno-25-40" href="#__codelineno-25-40"></a><span class="n">inside</span> <span class="o">=</span> <span class="n">delivery_zone</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">point</span><span class="p">)</span>  <span class="c1"># geofence: the cheap box test</span>
+</span><span id="__span-25-41"><a id="__codelineno-25-41" name="__codelineno-25-41" href="#__codelineno-25-41"></a><span class="n">in_polygon</span> <span class="o">=</span> <span class="n">point_in_polygon</span><span class="p">(</span><span class="n">point</span><span class="p">,</span> <span class="n">zone_polygon</span><span class="p">)</span>  <span class="c1"># geofence: the ring</span>
+</span><span id="__span-25-42"><a id="__codelineno-25-42" name="__codelineno-25-42" href="#__codelineno-25-42"></a><span class="n">area</span> <span class="o">=</span> <span class="n">polygon_area_km2</span><span class="p">(</span><span class="n">zone_polygon</span><span class="p">)</span>
+</span><span id="__span-25-43"><a id="__codelineno-25-43" name="__codelineno-25-43" href="#__codelineno-25-43"></a><span class="n">travelled</span> <span class="o">=</span> <span class="n">path_length_km</span><span class="p">(</span><span class="n">gps_points</span><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="brazil-uf-centroid-cep-and-address-coordinate">Brazil: UF centroid, CEP and address → coordinate<a class="headerlink" href="#brazil-uf-centroid-cep-and-address-coordinate" title="Permanent link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>
-</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
-</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>
-</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="n">NominatimBackend</span><span class="p">,</span> <span class="n">cep_to_coordinate</span><span class="p">,</span> <span class="n">uf_centroid</span>
-</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>
-</span><span id="__span-24-7"><a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="n">geocoder</span> <span class="o">=</span> <span class="n">NominatimBackend</span><span class="p">(</span><span class="n">http_client</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">())</span>
-</span><span id="__span-24-8"><a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>
-</span><span id="__span-24-9"><a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>
-</span><span id="__span-24-10"><a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a><span class="n">pin</span> <span class="o">=</span> <span class="n">uf_centroid</span><span class="p">(</span><span class="s2">"SP"</span><span class="p">)</span>  <span class="c1"># approximate state centre, offline</span>
-</span><span id="__span-24-11"><a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>
-</span><span id="__span-24-12"><a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>
-</span><span id="__span-24-13"><a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-24-14"><a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a><span class="w">    </span><span class="sd">"""Run this example."""</span>
-</span><span id="__span-24-15"><a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a>    <span class="n">coord</span> <span class="o">=</span> <span class="k">await</span> <span class="n">cep_to_coordinate</span><span class="p">(</span><span class="s2">"01310-100"</span><span class="p">,</span> <span class="n">geocoder</span><span class="o">=</span><span class="n">geocoder</span><span class="p">)</span>  <span class="c1"># via Nominatim</span>
-</span><span id="__span-24-16"><a id="__codelineno-24-16" name="__codelineno-24-16" href="#__codelineno-24-16"></a>
-</span><span id="__span-24-17"><a id="__codelineno-24-17" name="__codelineno-24-17" href="#__codelineno-24-17"></a>
-</span><span id="__span-24-18"><a id="__codelineno-24-18" name="__codelineno-24-18" href="#__codelineno-24-18"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>
+</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>
+</span><span id="__span-26-5"><a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="n">NominatimBackend</span><span class="p">,</span> <span class="n">cep_to_coordinate</span><span class="p">,</span> <span class="n">uf_centroid</span>
+</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>
+</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="n">geocoder</span> <span class="o">=</span> <span class="n">NominatimBackend</span><span class="p">(</span><span class="n">http_client</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">())</span>
+</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a>
+</span><span id="__span-26-9"><a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a>
+</span><span id="__span-26-10"><a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a><span class="n">pin</span> <span class="o">=</span> <span class="n">uf_centroid</span><span class="p">(</span><span class="s2">"SP"</span><span class="p">)</span>  <span class="c1"># approximate state centre, offline</span>
+</span><span id="__span-26-11"><a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a>
+</span><span id="__span-26-12"><a id="__codelineno-26-12" name="__codelineno-26-12" href="#__codelineno-26-12"></a>
+</span><span id="__span-26-13"><a id="__codelineno-26-13" name="__codelineno-26-13" href="#__codelineno-26-13"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-26-14"><a id="__codelineno-26-14" name="__codelineno-26-14" href="#__codelineno-26-14"></a><span class="w">    </span><span class="sd">"""Run this example."""</span>
+</span><span id="__span-26-15"><a id="__codelineno-26-15" name="__codelineno-26-15" href="#__codelineno-26-15"></a>    <span class="n">coord</span> <span class="o">=</span> <span class="k">await</span> <span class="n">cep_to_coordinate</span><span class="p">(</span><span class="s2">"01310-100"</span><span class="p">,</span> <span class="n">geocoder</span><span class="o">=</span><span class="n">geocoder</span><span class="p">)</span>  <span class="c1"># via Nominatim</span>
+</span><span id="__span-26-16"><a id="__codelineno-26-16" name="__codelineno-26-16" href="#__codelineno-26-16"></a>
+</span><span id="__span-26-17"><a id="__codelineno-26-17" name="__codelineno-26-17" href="#__codelineno-26-17"></a>
+</span><span id="__span-26-18"><a id="__codelineno-26-18" name="__codelineno-26-18" href="#__codelineno-26-18"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <h3 id="free-text-address-resolve_br_coordinate">Free-text address: <code>resolve_br_coordinate</code><a class="headerlink" href="#free-text-address-resolve_br_coordinate" title="Permanent link">&para;</a></h3>
 <p>Brazilian sign-up data often keeps the address in a single field, with the
@@ -6278,31 +6412,31 @@ the first that answers:</p>
    out — geocoded;</li>
 <li>the <strong>state centroid</strong> (<code>uf_centroid</code>), offline.</li>
 </ol>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>
-</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="n">extract_cep</span><span class="p">,</span> <span class="n">resolve_br_coordinate</span>
-</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>
-</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">extract_cep</span><span class="p">(</span><span class="s2">"Av. Frei Serafim, 2280"</span><span class="p">,</span> <span class="s2">"CEP 64001020, sala 4"</span><span class="p">))</span>
-</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>
-</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>
-</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-25-9"><a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="w">    </span><span class="sd">"""Run this example."""</span>
-</span><span id="__span-25-10"><a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a>    <span class="n">point</span> <span class="o">=</span> <span class="k">await</span> <span class="n">resolve_br_coordinate</span><span class="p">(</span>
-</span><span id="__span-25-11"><a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a>        <span class="n">geocoder</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-25-12"><a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a>        <span class="n">uf</span><span class="o">=</span><span class="s2">"pi"</span><span class="p">,</span>
-</span><span id="__span-25-13"><a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a>        <span class="n">address</span><span class="o">=</span><span class="s2">"Av. Frei Serafim, 2280"</span><span class="p">,</span>
-</span><span id="__span-25-14"><a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a>        <span class="n">city</span><span class="o">=</span><span class="s2">"Teresina"</span><span class="p">,</span>
-</span><span id="__span-25-15"><a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a>    <span class="p">)</span>
-</span><span id="__span-25-16"><a id="__codelineno-25-16" name="__codelineno-25-16" href="#__codelineno-25-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">point</span><span class="p">)</span>
-</span><span id="__span-25-17"><a id="__codelineno-25-17" name="__codelineno-25-17" href="#__codelineno-25-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">resolve_br_coordinate</span><span class="p">(</span><span class="n">geocoder</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">uf</span><span class="o">=</span><span class="s2">"ZZ"</span><span class="p">))</span>
-</span><span id="__span-25-18"><a id="__codelineno-25-18" name="__codelineno-25-18" href="#__codelineno-25-18"></a>
-</span><span id="__span-25-19"><a id="__codelineno-25-19" name="__codelineno-25-19" href="#__codelineno-25-19"></a>
-</span><span id="__span-25-20"><a id="__codelineno-25-20" name="__codelineno-25-20" href="#__codelineno-25-20"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>
+</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="n">extract_cep</span><span class="p">,</span> <span class="n">resolve_br_coordinate</span>
+</span><span id="__span-27-4"><a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>
+</span><span id="__span-27-5"><a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">extract_cep</span><span class="p">(</span><span class="s2">"Av. Frei Serafim, 2280"</span><span class="p">,</span> <span class="s2">"CEP 64001020, sala 4"</span><span class="p">))</span>
+</span><span id="__span-27-6"><a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>
+</span><span id="__span-27-7"><a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>
+</span><span id="__span-27-8"><a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-27-9"><a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a><span class="w">    </span><span class="sd">"""Run this example."""</span>
+</span><span id="__span-27-10"><a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>    <span class="n">point</span> <span class="o">=</span> <span class="k">await</span> <span class="n">resolve_br_coordinate</span><span class="p">(</span>
+</span><span id="__span-27-11"><a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a>        <span class="n">geocoder</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-27-12"><a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>        <span class="n">uf</span><span class="o">=</span><span class="s2">"pi"</span><span class="p">,</span>
+</span><span id="__span-27-13"><a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>        <span class="n">address</span><span class="o">=</span><span class="s2">"Av. Frei Serafim, 2280"</span><span class="p">,</span>
+</span><span id="__span-27-14"><a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>        <span class="n">city</span><span class="o">=</span><span class="s2">"Teresina"</span><span class="p">,</span>
+</span><span id="__span-27-15"><a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a>    <span class="p">)</span>
+</span><span id="__span-27-16"><a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">point</span><span class="p">)</span>
+</span><span id="__span-27-17"><a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">resolve_br_coordinate</span><span class="p">(</span><span class="n">geocoder</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">uf</span><span class="o">=</span><span class="s2">"ZZ"</span><span class="p">))</span>
+</span><span id="__span-27-18"><a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a>
+</span><span id="__span-27-19"><a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a>
+</span><span id="__span-27-20"><a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <p>Output:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>64001-020
-</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>latitude=-7.4 longitude=-42.5
-</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>None
+<div class="language-text highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>64001-020
+</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>latitude=-7.4 longitude=-42.5
+</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>None
 </span></code></pre></div>
 <ul>
 <li><code>geocoder=None</code> skips straight to the centroid — the offline path, for tests
@@ -6313,38 +6447,38 @@ the first that answers:</p>
 <li><strong>Retrying belongs to the geocoder you inject.</strong> The function only sees the
   failure after your retries are spent, so wrap <code>geocode</code>:</li>
 </ul>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
-</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">RetryPolicy</span><span class="p">,</span> <span class="n">async_retry</span>
-</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-27-4"><a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>    <span class="n">Coordinate</span><span class="p">,</span>
-</span><span id="__span-27-5"><a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>    <span class="n">GeocodeResult</span><span class="p">,</span>
-</span><span id="__span-27-6"><a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>    <span class="n">GeocodingBackend</span><span class="p">,</span>
-</span><span id="__span-27-7"><a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>    <span class="n">NominatimBackend</span><span class="p">,</span>
-</span><span id="__span-27-8"><a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="p">)</span>
-</span><span id="__span-27-9"><a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>
-</span><span id="__span-27-10"><a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>
-</span><span id="__span-27-11"><a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">RetryingGeocoder</span><span class="p">:</span>
-</span><span id="__span-27-12"><a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a><span class="w">    </span><span class="sd">"""Geocoder that retries transport errors before giving up."""</span>
-</span><span id="__span-27-13"><a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>
-</span><span id="__span-27-14"><a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inner</span><span class="p">:</span> <span class="n">GeocodingBackend</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-27-15"><a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_inner</span> <span class="o">=</span> <span class="n">inner</span>
-</span><span id="__span-27-16"><a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a>
-</span><span id="__span-27-17"><a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>    <span class="nd">@async_retry</span><span class="p">(</span><span class="n">RetryPolicy</span><span class="p">(</span><span class="n">max_attempts</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="n">httpx</span><span class="o">.</span><span class="n">HTTPError</span><span class="p">,))</span>
-</span><span id="__span-27-18"><a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">geocode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">GeocodeResult</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-27-19"><a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a><span class="w">        </span><span class="sd">"""Forward to the wrapped backend, retrying transport errors."""</span>
-</span><span id="__span-27-20"><a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_inner</span><span class="o">.</span><span class="n">geocode</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
-</span><span id="__span-27-21"><a id="__codelineno-27-21" name="__codelineno-27-21" href="#__codelineno-27-21"></a>
-</span><span id="__span-27-22"><a id="__codelineno-27-22" name="__codelineno-27-22" href="#__codelineno-27-22"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">reverse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coordinate</span><span class="p">:</span> <span class="n">Coordinate</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">GeocodeResult</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-27-23"><a id="__codelineno-27-23" name="__codelineno-27-23" href="#__codelineno-27-23"></a><span class="w">        </span><span class="sd">"""Forward reverse geocoding unchanged."""</span>
-</span><span id="__span-27-24"><a id="__codelineno-27-24" name="__codelineno-27-24" href="#__codelineno-27-24"></a>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_inner</span><span class="o">.</span><span class="n">reverse</span><span class="p">(</span><span class="n">coordinate</span><span class="p">)</span>
-</span><span id="__span-27-25"><a id="__codelineno-27-25" name="__codelineno-27-25" href="#__codelineno-27-25"></a>
-</span><span id="__span-27-26"><a id="__codelineno-27-26" name="__codelineno-27-26" href="#__codelineno-27-26"></a>
-</span><span id="__span-27-27"><a id="__codelineno-27-27" name="__codelineno-27-27" href="#__codelineno-27-27"></a><span class="n">geocoder</span> <span class="o">=</span> <span class="n">RetryingGeocoder</span><span class="p">(</span>
-</span><span id="__span-27-28"><a id="__codelineno-27-28" name="__codelineno-27-28" href="#__codelineno-27-28"></a>    <span class="n">NominatimBackend</span><span class="p">(</span>
-</span><span id="__span-27-29"><a id="__codelineno-27-29" name="__codelineno-27-29" href="#__codelineno-27-29"></a>        <span class="n">http_client</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">),</span>
-</span><span id="__span-27-30"><a id="__codelineno-27-30" name="__codelineno-27-30" href="#__codelineno-27-30"></a>        <span class="n">user_agent</span><span class="o">=</span><span class="s2">"my-service/1.0 (ops@example.com)"</span><span class="p">,</span>
-</span><span id="__span-27-31"><a id="__codelineno-27-31" name="__codelineno-27-31" href="#__codelineno-27-31"></a>    <span class="p">),</span>
-</span><span id="__span-27-32"><a id="__codelineno-27-32" name="__codelineno-27-32" href="#__codelineno-27-32"></a><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">RetryPolicy</span><span class="p">,</span> <span class="n">async_retry</span>
+</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>    <span class="n">Coordinate</span><span class="p">,</span>
+</span><span id="__span-29-5"><a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>    <span class="n">GeocodeResult</span><span class="p">,</span>
+</span><span id="__span-29-6"><a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>    <span class="n">GeocodingBackend</span><span class="p">,</span>
+</span><span id="__span-29-7"><a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a>    <span class="n">NominatimBackend</span><span class="p">,</span>
+</span><span id="__span-29-8"><a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a><span class="p">)</span>
+</span><span id="__span-29-9"><a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a>
+</span><span id="__span-29-10"><a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a>
+</span><span id="__span-29-11"><a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">RetryingGeocoder</span><span class="p">:</span>
+</span><span id="__span-29-12"><a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a><span class="w">    </span><span class="sd">"""Geocoder that retries transport errors before giving up."""</span>
+</span><span id="__span-29-13"><a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a>
+</span><span id="__span-29-14"><a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inner</span><span class="p">:</span> <span class="n">GeocodingBackend</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-29-15"><a id="__codelineno-29-15" name="__codelineno-29-15" href="#__codelineno-29-15"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_inner</span> <span class="o">=</span> <span class="n">inner</span>
+</span><span id="__span-29-16"><a id="__codelineno-29-16" name="__codelineno-29-16" href="#__codelineno-29-16"></a>
+</span><span id="__span-29-17"><a id="__codelineno-29-17" name="__codelineno-29-17" href="#__codelineno-29-17"></a>    <span class="nd">@async_retry</span><span class="p">(</span><span class="n">RetryPolicy</span><span class="p">(</span><span class="n">max_attempts</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="n">httpx</span><span class="o">.</span><span class="n">HTTPError</span><span class="p">,))</span>
+</span><span id="__span-29-18"><a id="__codelineno-29-18" name="__codelineno-29-18" href="#__codelineno-29-18"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">geocode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">GeocodeResult</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-29-19"><a id="__codelineno-29-19" name="__codelineno-29-19" href="#__codelineno-29-19"></a><span class="w">        </span><span class="sd">"""Forward to the wrapped backend, retrying transport errors."""</span>
+</span><span id="__span-29-20"><a id="__codelineno-29-20" name="__codelineno-29-20" href="#__codelineno-29-20"></a>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_inner</span><span class="o">.</span><span class="n">geocode</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+</span><span id="__span-29-21"><a id="__codelineno-29-21" name="__codelineno-29-21" href="#__codelineno-29-21"></a>
+</span><span id="__span-29-22"><a id="__codelineno-29-22" name="__codelineno-29-22" href="#__codelineno-29-22"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">reverse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coordinate</span><span class="p">:</span> <span class="n">Coordinate</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">GeocodeResult</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-29-23"><a id="__codelineno-29-23" name="__codelineno-29-23" href="#__codelineno-29-23"></a><span class="w">        </span><span class="sd">"""Forward reverse geocoding unchanged."""</span>
+</span><span id="__span-29-24"><a id="__codelineno-29-24" name="__codelineno-29-24" href="#__codelineno-29-24"></a>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_inner</span><span class="o">.</span><span class="n">reverse</span><span class="p">(</span><span class="n">coordinate</span><span class="p">)</span>
+</span><span id="__span-29-25"><a id="__codelineno-29-25" name="__codelineno-29-25" href="#__codelineno-29-25"></a>
+</span><span id="__span-29-26"><a id="__codelineno-29-26" name="__codelineno-29-26" href="#__codelineno-29-26"></a>
+</span><span id="__span-29-27"><a id="__codelineno-29-27" name="__codelineno-29-27" href="#__codelineno-29-27"></a><span class="n">geocoder</span> <span class="o">=</span> <span class="n">RetryingGeocoder</span><span class="p">(</span>
+</span><span id="__span-29-28"><a id="__codelineno-29-28" name="__codelineno-29-28" href="#__codelineno-29-28"></a>    <span class="n">NominatimBackend</span><span class="p">(</span>
+</span><span id="__span-29-29"><a id="__codelineno-29-29" name="__codelineno-29-29" href="#__codelineno-29-29"></a>        <span class="n">http_client</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">),</span>
+</span><span id="__span-29-30"><a id="__codelineno-29-30" name="__codelineno-29-30" href="#__codelineno-29-30"></a>        <span class="n">user_agent</span><span class="o">=</span><span class="s2">"my-service/1.0 (ops@example.com)"</span><span class="p">,</span>
+</span><span id="__span-29-31"><a id="__codelineno-29-31" name="__codelineno-29-31" href="#__codelineno-29-31"></a>    <span class="p">),</span>
+</span><span id="__span-29-32"><a id="__codelineno-29-32" name="__codelineno-29-32" href="#__codelineno-29-32"></a><span class="p">)</span>
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Keep public Nominatim off the request path</p>
@@ -6360,6 +6494,7 @@ record), not in the user's request.</p>
 <li><code>GeoRepositoryMixin.paginate_nearby</code> — radius, sort, <code>COUNT</code> and page in SQL, no PostGIS; each item is <code>NearbyMatch(row, distance_km)</code>.</li>
 <li><code>NominatimBackend</code> — address&lt;-&gt;coordinate geocoding, free, injected <code>httpx</code>.</li>
 <li><code>OSRMBackend.matrix</code> / <code>route(with_geometry=True)</code> — N×M matrix and route line; <code>encode_polyline</code>/<code>decode_polyline</code>.</li>
+<li><code>OSRMBackend.route_through</code> / <code>estimate_route_through</code> — route through stops in one call, one <code>leg</code> per stretch, offline fallback and point cap (<code>DEFAULT_OSRM_MAX_POINTS</code>).</li>
 <li><code>destination_point</code> / <code>initial_bearing</code> / <code>point_in_polygon</code> / <code>polygon_area_km2</code> / <code>path_length_km</code> — offline geometry.</li>
 <li><code>uf_centroid</code> / <code>cep_to_coordinate</code> — Brazil shortcuts.</li>
 <li><code>extract_cep</code> / <code>resolve_br_coordinate</code> — CEP from free text and the CEP → address → state centroid chain, never raising on a geocoder failure.</li>

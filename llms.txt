@@ -79,6 +79,7 @@
 - [Auth por introspecção (resource server)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/introspection-auth/)
 - [Jobs — trabalho longo com status](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/jobs/)
 - [Kestra (orquestrador de workflows)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/kestra/)
+- [Localização ao vivo](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/live-location/)
 - [Logging](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/logging/)
 - [Management commands (`tempest <cmd>` do projeto)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/management-commands/)
 - [MCP (Model Context Protocol)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mcp/)

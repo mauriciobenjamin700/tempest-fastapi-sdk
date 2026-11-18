@@ -1197,6 +1197,8 @@
       
         
       
+        
+      
     
     
     
@@ -3054,6 +3056,34 @@
     
   
     Kestra (orquestrador de workflows)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="live-location/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localização ao vivo
   
 
     
@@ -5693,6 +5723,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <tr>
 <td><strong><a href="kestra/">Kestra (orquestrador de workflows) »</a></strong></td>
 <td>disparar flow do serviço (<code>HTTPClient</code> + webhook trigger ou API de execução, caminho do tenant medido), flow chamando rota protegida por <code>make_token_dependency</code>, e outbox (<code>OutboxRelay</code>) + <code>WebhookInbox</code> para entrega garantida; executado contra Kestra 2.0.6</td>
+</tr>
+<tr>
+<td><strong><a href="live-location/">Localização ao vivo »</a></strong></td>
+<td><code>LivePositionSchema</code>, <code>LivePositionStore</code> (última posição no Redis com throttle, distância mínima, TTL e <code>clear</code>; entrega por SSE só ao <code>audience</code>; ETA por destinatário) e <code>make_live_position_router</code> (<code>authorize</code> e <code>channel_active</code> obrigatórios)</td>
 </tr>
 <tr>
 <td><strong><a href="logging/">Logging »</a></strong></td>
