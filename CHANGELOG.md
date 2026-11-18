@@ -42,6 +42,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FakeRoutingBackend.route_through` e `FakeRoutingBackend.matrix`, os dois
   passando por `route` — par fixado com `add_route` vale dentro de uma rota
   maior (#785).
+- Localização ao vivo em `tempest_fastapi_sdk.geo` (#786):
+  - `LivePositionSchema` (`lat`, `lng`, `accuracy_m`, `speed_kmh`, `heading`,
+    `recorded_at`): coordenada fora do intervalo, `heading` fora de [0, 360),
+    `recorded_at` sem fuso ou mais de 30 s no futuro
+    (`LIVE_POSITION_MAX_CLOCK_SKEW`) são recusados.
+  - `LivePositionStore(redis, *, key_prefix="geo:live", ttl_seconds=300,
+    min_interval_seconds=5.0, min_distance_m=10.0, broker=None,
+    audience=None, event_name="live_position",
+    cleared_event_name="live_position_cleared", eta_targets=None,
+    routing=None, mode=TravelModeEnum.CAR, clock=time.time)`: guarda só a
+    última posição por canal no Redis com TTL; `publish(channel_id,
+    position) -> bool` recusa posição antiga, dentro do throttle ou perto
+    demais (esta renova o TTL); `latest(channel_id)`; `clear(channel_id)`
+    apaga e avisa o público com `live_position_cleared`. Posição aceita vai
+    pelo `SSEBroker` só para os destinatários do callback `audience` —
+    `broker` sem `audience` (e o inverso) é `ValueError` na construção.
+    Com `eta_targets`, cada destinatário recebe a ETA até o próprio ponto
+    (`LiveEtaSchema`), num `matrix` só do `routing`, com fallback para
+    `estimate_travel` sem backend ou com ele falhando.
+  - `make_live_position_router(store, *, authorize, channel_active,
+    prefix="/live", tag="Live position", docs_locale=None)`: `POST
+    <prefix>/{channel_id}/position`, com `authorize` e `channel_active`
+    obrigatórios (`None` é `ValueError`); canal inativo responde `409` sem
+    guardar nada; a resposta (`LivePositionPublishResponseSchema`) é só
+    `{"accepted": bool}`.
+  - Também: `LivePositionEventSchema`, `AudienceResolver`,
+    `EtaTargetsResolver`, `LIVE_POSITION_INACTIVE_ERROR` e as constantes
+    `DEFAULT_LIVE_POSITION_*`.
 
 ### Changed
 

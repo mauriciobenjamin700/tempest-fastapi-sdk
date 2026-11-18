@@ -735,6 +735,16 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.municipalities.STATE_SEPARATORS
 ::: tempest_fastapi_sdk.geo.municipalities.UNCUED_SINGLE_WORD_FACTOR
 ::: tempest_fastapi_sdk.geo.br.CEP_PATTERN
+::: tempest_fastapi_sdk.geo.live.LIVE_POSITION_MAX_CLOCK_SKEW
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_KEY_PREFIX
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_TTL_SECONDS
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_INTERVAL_SECONDS
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_MIN_DISTANCE_M
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_EVENT
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_CLEARED_EVENT
+::: tempest_fastapi_sdk.geo.live.AudienceResolver
+::: tempest_fastapi_sdk.geo.live.EtaTargetsResolver
+::: tempest_fastapi_sdk.geo.live_router.LIVE_POSITION_INACTIVE_ERROR
 ---
 
 ## Host (controle da máquina)

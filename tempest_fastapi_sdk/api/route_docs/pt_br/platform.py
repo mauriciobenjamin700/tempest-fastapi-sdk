@@ -29,6 +29,16 @@ PLATFORM_ROUTES: dict[str, RouteDoc] = {
             "**422**."
         ),
     ),
+    "geo_live.publish_position": RouteDoc(
+        summary="Publicar uma posição ao vivo",
+        description=(
+            "Envia a posição atual de quem publica no canal. A resposta só "
+            "diz se ela foi aceita (pode ter sido limitada pela frequência, "
+            "estar perto demais da anterior ou ser mais antiga que ela); "
+            "quem acompanha recebe a posição por SSE. `409` enquanto o "
+            "canal não está ativo."
+        ),
+    ),
     "health.liveness": RouteDoc(
         summary="Sonda de liveness",
         description=(

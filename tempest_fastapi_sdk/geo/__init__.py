@@ -18,6 +18,13 @@ Layers, all sharing the same schemas:
   :class:`GeocodingBackend` in front of a pluggable
   :class:`GeocodeCacheStore` — :class:`InMemoryGeocodeCacheStore` for
   tests and dev, :class:`RedisGeocodeCacheStore` for a shared Redis.
+* **Live position**: :class:`LivePositionStore` keeps the latest
+  :class:`LivePositionSchema` per channel in Redis (throttle, least
+  movement, TTL, :meth:`LivePositionStore.clear`) and delivers accepted
+  positions over an SSE broker to the recipients an ``audience`` callback
+  names, optionally with each one's ETA; :func:`make_live_position_router`
+  receives them behind mandatory ``authorize`` and ``channel_active``
+  dependencies.
 * **Database**: :class:`GeoPointMixin` (model) + :class:`GeoRepositoryMixin`
   (portable radius search) / :class:`PostGISRepositoryMixin` (ST_DWithin).
 * **Database**, paginated: :meth:`GeoRepositoryMixin.paginate_nearby`
@@ -103,6 +110,54 @@ from tempest_fastapi_sdk.geo.geometry import path_length_km as path_length_km
 from tempest_fastapi_sdk.geo.geometry import point_in_polygon as point_in_polygon
 from tempest_fastapi_sdk.geo.geometry import polygon_area_km2 as polygon_area_km2
 from tempest_fastapi_sdk.geo.geometry import within_radius as within_radius
+from tempest_fastapi_sdk.geo.live import (
+    DEFAULT_LIVE_POSITION_CLEARED_EVENT as DEFAULT_LIVE_POSITION_CLEARED_EVENT,
+)
+from tempest_fastapi_sdk.geo.live import (
+    DEFAULT_LIVE_POSITION_EVENT as DEFAULT_LIVE_POSITION_EVENT,
+)
+from tempest_fastapi_sdk.geo.live import (
+    DEFAULT_LIVE_POSITION_INTERVAL_SECONDS as DEFAULT_LIVE_POSITION_INTERVAL_SECONDS,
+)
+from tempest_fastapi_sdk.geo.live import (
+    DEFAULT_LIVE_POSITION_KEY_PREFIX as DEFAULT_LIVE_POSITION_KEY_PREFIX,
+)
+from tempest_fastapi_sdk.geo.live import (
+    DEFAULT_LIVE_POSITION_MIN_DISTANCE_M as DEFAULT_LIVE_POSITION_MIN_DISTANCE_M,
+)
+from tempest_fastapi_sdk.geo.live import (
+    DEFAULT_LIVE_POSITION_TTL_SECONDS as DEFAULT_LIVE_POSITION_TTL_SECONDS,
+)
+from tempest_fastapi_sdk.geo.live import (
+    LIVE_POSITION_MAX_CLOCK_SKEW as LIVE_POSITION_MAX_CLOCK_SKEW,
+)
+from tempest_fastapi_sdk.geo.live import (
+    AudienceResolver as AudienceResolver,
+)
+from tempest_fastapi_sdk.geo.live import (
+    EtaTargetsResolver as EtaTargetsResolver,
+)
+from tempest_fastapi_sdk.geo.live import (
+    LiveEtaSchema as LiveEtaSchema,
+)
+from tempest_fastapi_sdk.geo.live import (
+    LivePositionEventSchema as LivePositionEventSchema,
+)
+from tempest_fastapi_sdk.geo.live import (
+    LivePositionSchema as LivePositionSchema,
+)
+from tempest_fastapi_sdk.geo.live import (
+    LivePositionStore as LivePositionStore,
+)
+from tempest_fastapi_sdk.geo.live_router import (
+    LIVE_POSITION_INACTIVE_ERROR as LIVE_POSITION_INACTIVE_ERROR,
+)
+from tempest_fastapi_sdk.geo.live_router import (
+    LivePositionPublishResponseSchema as LivePositionPublishResponseSchema,
+)
+from tempest_fastapi_sdk.geo.live_router import (
+    make_live_position_router as make_live_position_router,
+)
 from tempest_fastapi_sdk.geo.municipalities import (
     BR_CITY_NICKNAMES as BR_CITY_NICKNAMES,
 )
@@ -171,18 +226,28 @@ __all__: list[str] = [
     "DEFAULT_GEOCODE_CACHE_KEY_PREFIX",
     "DEFAULT_GEOCODE_CACHE_PRECISION",
     "DEFAULT_GEOCODE_CACHE_TTL_SECONDS",
+    "DEFAULT_LIVE_POSITION_CLEARED_EVENT",
+    "DEFAULT_LIVE_POSITION_EVENT",
+    "DEFAULT_LIVE_POSITION_INTERVAL_SECONDS",
+    "DEFAULT_LIVE_POSITION_KEY_PREFIX",
+    "DEFAULT_LIVE_POSITION_MIN_DISTANCE_M",
+    "DEFAULT_LIVE_POSITION_TTL_SECONDS",
     "DEFAULT_MODE_DURATION_FACTORS",
     "DEFAULT_MODE_PROFILES",
     "DEFAULT_NOMINATIM_BASE_URL",
     "DEFAULT_OSRM_BASE_URL",
     "DEFAULT_OSRM_MAX_POINTS",
     "EARTH_RADIUS_KM",
+    "LIVE_POSITION_INACTIVE_ERROR",
+    "LIVE_POSITION_MAX_CLOCK_SKEW",
     "UF_CENTROIDS",
+    "AudienceResolver",
     "BoundingBox",
     "CachedGeocodingBackend",
     "CityMention",
     "Coordinate",
     "DistanceMatrix",
+    "EtaTargetsResolver",
     "GeoPointMixin",
     "GeoRepositoryMixin",
     "GeocodeAddress",
@@ -190,6 +255,11 @@ __all__: list[str] = [
     "GeocodeResult",
     "GeocodingBackend",
     "InMemoryGeocodeCacheStore",
+    "LiveEtaSchema",
+    "LivePositionEventSchema",
+    "LivePositionPublishResponseSchema",
+    "LivePositionSchema",
+    "LivePositionStore",
     "Municipality",
     "MunicipalityMatch",
     "NearbyMatch",
@@ -220,6 +290,7 @@ __all__: list[str] = [
     "haversine_km",
     "initial_bearing",
     "make_geo_point_model",
+    "make_live_position_router",
     "municipality_by_ibge_code",
     "municipality_by_name",
     "nearest",
