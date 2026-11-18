@@ -76,6 +76,61 @@ class TravelEstimate(BaseSchema):
     )
 
 
+class RouteThroughResult(BaseSchema):
+    """A road route through two or more points, with one leg per stretch.
+
+    ``legs[i]`` is the trip from ``points[i]`` to ``points[i + 1]``, so a
+    route through ``N`` points has ``N - 1`` legs and their distances and
+    durations add up to the totals (up to the routing server's own rounding).
+
+    Attributes:
+        mode: The travel mode the route was computed for.
+        distance_km: Total road distance in kilometers.
+        duration_minutes: Total travel time in minutes.
+        source: How the route was produced — ``"osrm"`` or ``"heuristic"``
+            (the offline :func:`~tempest_fastapi_sdk.geo.estimate_route_through`).
+        geometry: The whole route as ordered coordinates. Empty unless the
+            caller asked for it; the offline estimate draws straight lines
+            between the points.
+        legs: One :class:`TravelEstimate` per consecutive pair of points.
+    """
+
+    mode: TravelModeEnum = Field(
+        title="Travel mode",
+        description="The travel mode the route was computed for.",
+        examples=[TravelModeEnum.CAR],
+    )
+    distance_km: NonNegativeFloatField = Field(
+        title="Distance (km)",
+        description="Total road distance in kilometers.",
+        examples=[42.7],
+    )
+    duration_minutes: NonNegativeFloatField = Field(
+        title="Duration (min)",
+        description="Total travel time in minutes.",
+        examples=[51.3],
+    )
+    source: str = Field(
+        default="heuristic",
+        title="Route source",
+        description='How the route was produced ("heuristic" or "osrm").',
+        examples=["osrm"],
+    )
+    geometry: list[Coordinate] = Field(
+        default_factory=list,
+        title="Route geometry",
+        description=(
+            "The whole route as ordered coordinates. Empty unless the "
+            "caller asked for the geometry."
+        ),
+    )
+    legs: list[TravelEstimate] = Field(
+        default_factory=list,
+        title="Legs",
+        description="One estimate per consecutive pair of points, in order.",
+    )
+
+
 class BoundingBox(BaseSchema):
     """An axis-aligned latitude/longitude box (a coarse spatial pre-filter).
 
@@ -286,5 +341,6 @@ __all__: list[str] = [
     "DistanceMatrix",
     "GeocodeAddress",
     "GeocodeResult",
+    "RouteThroughResult",
     "TravelEstimate",
 ]

@@ -4651,3 +4651,18 @@ ids ocultos, nonce novo), o envio valida com `parse_schema_submission` e chama
 `form.html` ganhou `hidden_inputs`, `form_intro` e `submit_label`. Testes:
 `tests/admin/test_custom_action_flow.py` (painel real sobre SQLite em
 arquivo). Receita: `admin` (commit, `schema=`, `action_policy=`).
+
+### Rota com paradas no OSRM (#785, 2026-11-18)
+
+`geo/routing.py`: `OSRMBackend.route_through(points, *, mode, with_geometry)`
+manda todos os pontos num `/route` e devolve `RouteThroughResult` (total +
+`legs: list[TravelEstimate]`, `source="osrm"`), com o fator de duração por
+modo no total e nos trechos; `max_points` (default
+`DEFAULT_OSRM_MAX_POINTS = 500`, o limite medido do demo público) recusa com
+`ValueError` antes da requisição; resposta sem um `leg` por trecho vira
+`RuntimeError`. `geo/estimate.py`: `estimate_route_through`, o fallback
+offline (soma de `estimate_travel`, `source="heuristic"`, geometria em linha
+reta). O Protocol `RoutingBackend` ganhou `route_through` e `matrix`, e o
+`FakeRoutingBackend` implementa os dois. Testes:
+`tests/geo/test_route_through.py` (servidor OSRM fake por
+`httpx.MockTransport`). Receita: seção "Rota com paradas" em `geo`.

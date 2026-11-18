@@ -14,6 +14,7 @@ Self-host OSRM with dedicated profiles if you need true per-mode geometry.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.geo.enums import TravelModeEnum
@@ -22,6 +23,7 @@ from tempest_fastapi_sdk.geo.polyline import decode_polyline
 from tempest_fastapi_sdk.geo.schemas import (
     Coordinate,
     DistanceMatrix,
+    RouteThroughResult,
     TravelEstimate,
 )
 
@@ -44,9 +46,26 @@ DEFAULT_MODE_PROFILES: dict[TravelModeEnum, str] = {
 }
 
 
+DEFAULT_OSRM_MAX_POINTS: int = 500
+"""Most points :meth:`OSRMBackend.route_through` sends in one request.
+
+Matches the public demo at ``router.project-osrm.org``, measured on
+2026-11-18: a ``/route`` request with 500 coordinates answered ``"Ok"`` and
+one with 501 answered ``{"code": "TooBig", "message": "Number of entries 501
+is higher than current maximum (500)"}``. A self-hosted ``osrm-routed`` sets
+its own cap with ``--max-viaroute-size``; pass ``max_points`` to
+:class:`OSRMBackend` to match it, so the refusal is a local ``ValueError``
+naming the limit instead of a round trip that fails.
+"""
+
+
 @runtime_checkable
 class RoutingBackend(Protocol):
-    """A source of real road distance and duration between two points."""
+    """A source of real road distance and duration between points.
+
+    :class:`OSRMBackend` implements it against an OSRM server and
+    :class:`~tempest_fastapi_sdk.testing.fakes.FakeRoutingBackend` offline.
+    """
 
     async def route(
         self,
@@ -67,12 +86,53 @@ class RoutingBackend(Protocol):
         """
         ...
 
+    async def route_through(
+        self,
+        points: Sequence[Coordinate],
+        *,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
+        with_geometry: bool = False,
+    ) -> RouteThroughResult:
+        """Return a route through two or more points, with one leg per stretch.
+
+        Args:
+            points (Sequence[Coordinate]): The ordered points (origin, stops,
+                destination).
+            mode (TravelModeEnum): The travel mode to estimate for.
+            with_geometry (bool): Whether to include the route geometry.
+
+        Returns:
+            RouteThroughResult: Totals plus one leg per consecutive pair.
+        """
+        ...
+
+    async def matrix(
+        self,
+        sources: list[Coordinate],
+        destinations: list[Coordinate] | None = None,
+        *,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
+    ) -> DistanceMatrix:
+        """Return a many-to-many distance/duration matrix.
+
+        Args:
+            sources (list[Coordinate]): The origin coordinates (rows).
+            destinations (list[Coordinate] | None): The destination
+                coordinates (columns); ``None`` means ``sources``.
+            mode (TravelModeEnum): The travel mode to estimate for.
+
+        Returns:
+            DistanceMatrix: Distances and durations per pair.
+        """
+        ...
+
 
 class OSRMBackend:
     """Route trips through an OSRM HTTP server.
 
     Attributes:
         base_url: Root URL of the OSRM server (no trailing slash needed).
+        max_points: Most points :meth:`route_through` sends in one request.
     """
 
     def __init__(
@@ -82,6 +142,7 @@ class OSRMBackend:
         base_url: str = DEFAULT_OSRM_BASE_URL,
         mode_duration_factors: dict[TravelModeEnum, float] | None = None,
         mode_profiles: dict[TravelModeEnum, str] | None = None,
+        max_points: int = DEFAULT_OSRM_MAX_POINTS,
     ) -> None:
         """Initialize the backend.
 
@@ -93,13 +154,22 @@ class OSRMBackend:
             mode_profiles: Optional per-mode OSRM profile map (override when
                 self-hosting ``foot``/``bike`` profiles); falls back to
                 :data:`DEFAULT_MODE_PROFILES` (all ``driving``).
+            max_points: Most points :meth:`route_through` accepts; defaults to
+                :data:`DEFAULT_OSRM_MAX_POINTS`. Raise it only when your own
+                server allows more.
+
+        Raises:
+            ValueError: If ``max_points`` is lower than 2.
         """
+        if max_points < 2:
+            raise ValueError("max_points must be at least 2")
         self._http: httpx.AsyncClient = http_client
         self.base_url: str = base_url.rstrip("/")
         self._factors: dict[TravelModeEnum, float] | None = mode_duration_factors
         self._profiles: dict[TravelModeEnum, str] = (
             mode_profiles or DEFAULT_MODE_PROFILES
         )
+        self.max_points: int = max_points
 
     def _profile(self, mode: TravelModeEnum) -> str:
         """Return the OSRM profile for ``mode`` (defaults to ``driving``)."""
@@ -174,6 +244,98 @@ class OSRMBackend:
             duration_minutes=duration_minutes,
             source="osrm",
             geometry=geometry,
+        )
+
+    async def route_through(
+        self,
+        points: Sequence[Coordinate],
+        *,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
+        with_geometry: bool = False,
+    ) -> RouteThroughResult:
+        """Fetch one road route through every point, in order, in one request.
+
+        Sends all points to OSRM's ``/route`` service, which answers the
+        whole route plus one ``leg`` per consecutive pair. Distances are used
+        as-is; every duration (total and per leg) is multiplied by the mode's
+        duration factor, exactly like :meth:`route`. The legs carry no
+        geometry; ``with_geometry=True`` decodes the full route polyline into
+        :attr:`RouteThroughResult.geometry`.
+
+        Args:
+            points: The ordered points (origin, stops, destination). Between
+                2 and :attr:`max_points`.
+            mode: The travel mode to estimate for.
+            with_geometry: Whether to include the decoded route geometry.
+
+        Returns:
+            A :class:`RouteThroughResult` with ``source="osrm"`` and
+            ``len(points) - 1`` legs, each with ``source="osrm"``.
+
+        Raises:
+            ValueError: If fewer than two points, or more than
+                :attr:`max_points`, are given. Raised before any request.
+            RuntimeError: If the request fails, OSRM finds no route, or the
+                answer does not carry one leg per stretch.
+
+        Notes:
+            Any transport or parse failure is normalised into the
+            backend's own error type, so callers branch on one
+            exception instead of on httpx internals.
+        """
+        if len(points) < 2:
+            raise ValueError("a route needs at least two points")
+        if len(points) > self.max_points:
+            raise ValueError(
+                f"route_through got {len(points)} points; this backend "
+                f"accepts at most {self.max_points} (max_points)",
+            )
+        coords = ";".join(f"{p.longitude},{p.latitude}" for p in points)
+        url = f"{self.base_url}/route/v1/{self._profile(mode)}/{coords}"
+        params = {
+            "overview": "full" if with_geometry else "false",
+            "geometries": "polyline",
+        }
+        try:
+            response = await self._http.get(url, params=params)
+            response.raise_for_status()
+            payload: dict[str, Any] = response.json()
+        except Exception as exc:
+            raise RuntimeError(f"OSRM request failed: {exc}") from exc
+
+        if payload.get("code") != "Ok" or not payload.get("routes"):
+            raise RuntimeError(
+                f"OSRM returned no route (code={payload.get('code')!r})",
+            )
+
+        route: dict[str, Any] = payload["routes"][0]
+        raw_legs: list[dict[str, Any]] = route.get("legs") or []
+        if len(raw_legs) != len(points) - 1:
+            raise RuntimeError(
+                f"OSRM returned {len(raw_legs)} legs for {len(points)} points",
+            )
+        factor = duration_factor(mode, self._factors)
+        legs = [
+            TravelEstimate(
+                mode=mode,
+                distance_km=float(leg["distance"]) / 1000.0,
+                duration_minutes=float(leg["duration"]) / 60.0 * factor,
+                source="osrm",
+            )
+            for leg in raw_legs
+        ]
+        geometry = (
+            decode_polyline(route["geometry"])
+            if with_geometry and route.get("geometry")
+            else []
+        )
+        return RouteThroughResult(
+            mode=mode,
+            distance_km=float(route["distance"]) / 1000.0,
+            duration_minutes=float(route["duration"]) / 60.0 * factor,
+            source="osrm",
+            geometry=geometry,
+            legs=legs,
         )
 
     async def matrix(
@@ -257,6 +419,7 @@ class OSRMBackend:
 __all__: list[str] = [
     "DEFAULT_MODE_PROFILES",
     "DEFAULT_OSRM_BASE_URL",
+    "DEFAULT_OSRM_MAX_POINTS",
     "OSRMBackend",
     "RoutingBackend",
 ]

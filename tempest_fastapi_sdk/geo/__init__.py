@@ -9,7 +9,9 @@ Layers, all sharing the same schemas:
   :func:`polygon_area_km2`, :func:`path_length_km`), plus
   :func:`estimate_travel` for a road distance / per-mode time.
 * **Real routing** (free, open-source): :class:`OSRMBackend` for routes,
-  route geometry and distance/duration matrices; :class:`NominatimBackend`
+  routes through stops (:meth:`OSRMBackend.route_through`, with
+  :func:`estimate_route_through` as the offline fallback), route geometry
+  and distance/duration matrices; :class:`NominatimBackend`
   for forward/reverse geocoding. Both take an injected ``httpx.AsyncClient``
   (install the ``[geo]`` extra for ``httpx``); the rest imports without it.
 * **Caching**: :class:`CachedGeocodingBackend` wraps any
@@ -84,6 +86,9 @@ from tempest_fastapi_sdk.geo.estimate import (
     DEFAULT_MODE_DURATION_FACTORS as DEFAULT_MODE_DURATION_FACTORS,
 )
 from tempest_fastapi_sdk.geo.estimate import duration_factor as duration_factor
+from tempest_fastapi_sdk.geo.estimate import (
+    estimate_route_through as estimate_route_through,
+)
 from tempest_fastapi_sdk.geo.estimate import estimate_travel as estimate_travel
 from tempest_fastapi_sdk.geo.geocoding import (
     DEFAULT_NOMINATIM_BASE_URL as DEFAULT_NOMINATIM_BASE_URL,
@@ -133,6 +138,9 @@ from tempest_fastapi_sdk.geo.routing import (
 from tempest_fastapi_sdk.geo.routing import (
     DEFAULT_OSRM_BASE_URL as DEFAULT_OSRM_BASE_URL,
 )
+from tempest_fastapi_sdk.geo.routing import (
+    DEFAULT_OSRM_MAX_POINTS as DEFAULT_OSRM_MAX_POINTS,
+)
 from tempest_fastapi_sdk.geo.routing import OSRMBackend as OSRMBackend
 from tempest_fastapi_sdk.geo.routing import RoutingBackend as RoutingBackend
 from tempest_fastapi_sdk.geo.schemas import BoundingBox as BoundingBox
@@ -140,6 +148,9 @@ from tempest_fastapi_sdk.geo.schemas import Coordinate as Coordinate
 from tempest_fastapi_sdk.geo.schemas import DistanceMatrix as DistanceMatrix
 from tempest_fastapi_sdk.geo.schemas import GeocodeAddress as GeocodeAddress
 from tempest_fastapi_sdk.geo.schemas import GeocodeResult as GeocodeResult
+from tempest_fastapi_sdk.geo.schemas import (
+    RouteThroughResult as RouteThroughResult,
+)
 from tempest_fastapi_sdk.geo.schemas import TravelEstimate as TravelEstimate
 from tempest_fastapi_sdk.geo.trip_intent import CityMention as CityMention
 from tempest_fastapi_sdk.geo.trip_intent import TripCityIndex as TripCityIndex
@@ -164,6 +175,7 @@ __all__: list[str] = [
     "DEFAULT_MODE_PROFILES",
     "DEFAULT_NOMINATIM_BASE_URL",
     "DEFAULT_OSRM_BASE_URL",
+    "DEFAULT_OSRM_MAX_POINTS",
     "EARTH_RADIUS_KM",
     "UF_CENTROIDS",
     "BoundingBox",
@@ -185,6 +197,7 @@ __all__: list[str] = [
     "OSRMBackend",
     "PostGISRepositoryMixin",
     "RedisGeocodeCacheStore",
+    "RouteThroughResult",
     "RoutingBackend",
     "TravelEstimate",
     "TravelModeEnum",
@@ -199,6 +212,7 @@ __all__: list[str] = [
     "destination_point",
     "duration_factor",
     "encode_polyline",
+    "estimate_route_through",
     "estimate_travel",
     "extract_cep",
     "find_municipalities_in_text",

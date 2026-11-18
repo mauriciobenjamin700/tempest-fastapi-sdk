@@ -23,6 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   muda (#783).
 - `resolve_admin_action` e `ActionHandler` exportados em
   `tempest_fastapi_sdk.admin`.
+- `OSRMBackend.route_through(points, *, mode=TravelModeEnum.CAR,
+  with_geometry=False) -> RouteThroughResult`: rota por duas ou mais paradas
+  (A → B → C) numa requisição só ao `/route` do OSRM, com o total e um
+  `TravelEstimate` por trecho em `legs` (a soma dos trechos fecha com o
+  total). O fator de duração por modo vale no total e em cada trecho, como no
+  `route`; `with_geometry=True` decodifica a linha inteira (#785).
+- `RouteThroughResult` (`mode`, `distance_km`, `duration_minutes`, `source`,
+  `geometry`, `legs`) em `tempest_fastapi_sdk.geo` (#785).
+- `estimate_route_through(points, mode=..., *, with_geometry=False,
+  circuity_factor=..., car_speed_kmh=..., mode_duration_factors=None)`: o
+  fallback offline, somando `estimate_travel` por trecho, com
+  `source="heuristic"` e geometria em linha reta (#785).
+- `OSRMBackend(max_points=DEFAULT_OSRM_MAX_POINTS)`: acima do limite,
+  `route_through` levanta `ValueError` antes de qualquer requisição.
+  `DEFAULT_OSRM_MAX_POINTS = 500`, o máximo que o demo público aceitou
+  (501 coordenadas respondem `TooBig`, medido em 2026-11-18) (#785).
+- `FakeRoutingBackend.route_through` e `FakeRoutingBackend.matrix`, os dois
+  passando por `route` — par fixado com `add_route` vale dentro de uma rota
+  maior (#785).
 
 ### Changed
 
@@ -31,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   só com `EDIT`, Delete (de `can_delete`) só com `DELETE`, e cada ação
   customizada conforme a permissão dela; sem nenhuma, o formulário de lote
   some. Antes, o menu oferecia ações cujo `POST` respondia `403` (#783).
+- O Protocol `RoutingBackend` passa a exigir `route_through` e `matrix` além
+  de `route`. Backend próprio que só implementava `route` deixa de passar no
+  `isinstance(..., RoutingBackend)` e no mypy até ganhar os dois métodos; o
+  `OSRMBackend` e o `FakeRoutingBackend` já têm os três (#785).
 
 ### Fixed
 
