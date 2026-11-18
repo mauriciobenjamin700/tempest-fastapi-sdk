@@ -10,9 +10,10 @@ default:
   trip started and has not ended). ``False`` answers ``409`` and stores
   nothing.
 
-The response says only whether the position was accepted. The position
-itself never goes back in a response: it reaches viewers through the store's
-audience, nowhere else.
+A successful response says only whether the position was accepted; the
+position reaches viewers through the store's audience, nowhere else. The
+only answer that repeats part of the body is FastAPI's ``422`` validation
+error, sent to the caller after ``authorize`` passed.
 """
 
 from __future__ import annotations

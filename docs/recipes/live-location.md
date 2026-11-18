@@ -263,22 +263,27 @@ Monta `POST <prefix>/{channel_id}/position`. As duas regras são
 parâmetros **sem default**:
 
 - `authorize` — dependency que levanta (`ForbiddenException` → `403`) quando
-  quem chama não pode publicar naquele canal. Sem ela o router não é
-  montado (`ValueError`).
+  quem chama não pode publicar naquele canal. Omitir o argumento é o
+  `TypeError` do próprio Python, e passar `None` levanta `ValueError`: o
+  router não é montado sem ela.
 - `channel_active` — dependency que responde se o canal aceita posições
   agora. `False` responde `409` e nada é guardado.
 
 As duas são dependencies comuns do FastAPI: declaram `channel_id: str` para
 receber o parâmetro do path e podem depender do seu `current_user`.
 
-A resposta é só `{"accepted": true | false}`. A posição nunca volta numa
-resposta: ela chega a quem acompanha pelo `audience`, e por nenhum outro
-caminho.
+A resposta de sucesso é só `{"accepted": true | false}`: a posição chega a
+quem acompanha pelo `audience`, e por nenhum outro caminho. A única resposta
+que repete parte do body é o `422` de validação do FastAPI (um `recorded_at`
+no futuro, por exemplo), e ela vai só para quem enviou — depois do
+`authorize`, então só ao publicador autorizado.
 
 !!! warning "Vários workers"
     Com mais de um processo, crie o `SSEBroker(redis=..., channel_prefix=...)`
     e rode o `broker.run()` no lifespan, como na receita de [SSE](sse.md). O
-    store não muda.
+    store não muda: ele só chama `broker.publish`. A entrega entre workers é
+    a do `SSEBroker`, coberta na receita de SSE; não foi medida de novo
+    através do store.
 
 ## Recap
 

@@ -200,7 +200,8 @@ class OSRMBackend:
             A :class:`TravelEstimate` with ``source="osrm"``.
 
         Raises:
-            RuntimeError: If the request fails or OSRM finds no route.
+            RuntimeError: If the request fails, OSRM finds no route, or the
+                route lacks its ``distance`` / ``duration``.
 
         Notes:
             Any transport or parse failure is normalised into the
@@ -228,15 +229,18 @@ class OSRMBackend:
                 f"OSRM returned no route (code={payload.get('code')!r})",
             )
 
-        route: dict[str, Any] = payload["routes"][0]
-        distance_km = float(route["distance"]) / 1000.0
-        car_minutes = float(route["duration"]) / 60.0
+        try:
+            route: dict[str, Any] = payload["routes"][0]
+            distance_km = float(route["distance"]) / 1000.0
+            car_minutes = float(route["duration"]) / 60.0
+            geometry = (
+                decode_polyline(route["geometry"])
+                if with_geometry and route.get("geometry")
+                else []
+            )
+        except (KeyError, TypeError, ValueError, IndexError) as exc:
+            raise RuntimeError(f"OSRM answered an unexpected route: {exc!r}") from exc
         duration_minutes = car_minutes * duration_factor(mode, self._factors)
-        geometry = (
-            decode_polyline(route["geometry"])
-            if with_geometry and route.get("geometry")
-            else []
-        )
 
         return TravelEstimate(
             mode=mode,
@@ -275,8 +279,9 @@ class OSRMBackend:
         Raises:
             ValueError: If fewer than two points, or more than
                 :attr:`max_points`, are given. Raised before any request.
-            RuntimeError: If the request fails, OSRM finds no route, or the
-                answer does not carry one leg per stretch.
+            RuntimeError: If the request fails, OSRM finds no route, the
+                answer does not carry one leg per stretch, or a leg or the
+                route lacks its ``distance`` / ``duration``.
 
         Notes:
             Any transport or parse failure is normalised into the
@@ -315,24 +320,29 @@ class OSRMBackend:
                 f"OSRM returned {len(raw_legs)} legs for {len(points)} points",
             )
         factor = duration_factor(mode, self._factors)
-        legs = [
-            TravelEstimate(
-                mode=mode,
-                distance_km=float(leg["distance"]) / 1000.0,
-                duration_minutes=float(leg["duration"]) / 60.0 * factor,
-                source="osrm",
+        try:
+            legs = [
+                TravelEstimate(
+                    mode=mode,
+                    distance_km=float(leg["distance"]) / 1000.0,
+                    duration_minutes=float(leg["duration"]) / 60.0 * factor,
+                    source="osrm",
+                )
+                for leg in raw_legs
+            ]
+            geometry = (
+                decode_polyline(route["geometry"])
+                if with_geometry and route.get("geometry")
+                else []
             )
-            for leg in raw_legs
-        ]
-        geometry = (
-            decode_polyline(route["geometry"])
-            if with_geometry and route.get("geometry")
-            else []
-        )
+            distance_km = float(route["distance"]) / 1000.0
+            duration_minutes = float(route["duration"]) / 60.0 * factor
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(f"OSRM answered an unexpected route: {exc!r}") from exc
         return RouteThroughResult(
             mode=mode,
-            distance_km=float(route["distance"]) / 1000.0,
-            duration_minutes=float(route["duration"]) / 60.0 * factor,
+            distance_km=distance_km,
+            duration_minutes=duration_minutes,
             source="osrm",
             geometry=geometry,
             legs=legs,

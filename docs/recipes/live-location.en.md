@@ -262,21 +262,27 @@ Mounts `POST <prefix>/{channel_id}/position`. The two rules are parameters
 **with no default**:
 
 - `authorize` — a dependency that raises (`ForbiddenException` → `403`) when
-  the caller may not publish on that channel. Without it the router is not
-  built (`ValueError`).
+  the caller may not publish on that channel. Leaving the argument out is
+  Python's own `TypeError`, and passing `None` raises `ValueError`: the
+  router is not built without it.
 - `channel_active` — a dependency answering whether the channel accepts
   positions now. `False` answers `409` and nothing is stored.
 
 Both are ordinary FastAPI dependencies: they declare `channel_id: str` to get
 the path parameter and can depend on your `current_user`.
 
-The response is only `{"accepted": true | false}`. The position never goes
-back in a response: it reaches viewers through `audience`, and no other way.
+The success response is only `{"accepted": true | false}`: the position
+reaches viewers through `audience`, and no other way. The one response that
+repeats part of the body is FastAPI's `422` validation error (a
+`recorded_at` in the future, for instance), and it goes only to the sender —
+after `authorize`, so only to the authorized publisher.
 
 !!! warning "Several workers"
     With more than one process, build `SSEBroker(redis=..., channel_prefix=...)`
     and run `broker.run()` in the lifespan, as in the [SSE](sse.md) recipe.
-    The store does not change.
+    The store does not change: it only calls `broker.publish`. Delivery
+    across workers is the `SSEBroker`'s, covered in the SSE recipe; it was
+    not measured again through the store.
 
 ## Recap
 

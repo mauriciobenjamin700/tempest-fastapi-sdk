@@ -90,6 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository com `autocommit=False`) aparecia como sucesso e se perdia no fim
   do request. O painel agora commita depois de todo handler que retorna e faz
   rollback quando ele levanta, como no `create_handler` (#784).
+- `OSRMBackend.route` levantava `KeyError` quando o OSRM respondia `"Ok"` com
+  uma rota sem `distance`/`duration`, apesar de a docstring prometer só
+  `RuntimeError`; agora levanta `RuntimeError`, como o `route_through` novo
+  (#785).
 
 ## [0.365.0] — 2026-11-16
 

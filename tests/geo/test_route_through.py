@@ -205,6 +205,35 @@ class TestOSRMRouteThrough:
             with pytest.raises(RuntimeError, match="0 legs for 3 points"):
                 await OSRMBackend(http_client=client).route_through(POINTS)
 
+    @pytest.mark.parametrize(
+        "route",
+        [
+            {"legs": [{}, {}]},
+            {"distance": 1.0, "duration": 1.0, "legs": [{"distance": 1.0}, {}]},
+        ],
+    )
+    async def test_ok_answer_missing_fields_is_runtime_error(
+        self, route: dict[str, Any]
+    ) -> None:
+        """An ``"Ok"`` route without distance/duration is the backend's error."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"code": "Ok", "routes": [route]})
+
+        async with _client(handler) as client:
+            with pytest.raises(RuntimeError, match="unexpected route"):
+                await OSRMBackend(http_client=client).route_through(POINTS)
+
+    async def test_route_ok_answer_missing_fields_is_runtime_error(self) -> None:
+        """``route`` normalises the same malformed answer."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"code": "Ok", "routes": [{}]})
+
+        async with _client(handler) as client:
+            with pytest.raises(RuntimeError, match="unexpected route"):
+                await OSRMBackend(http_client=client).route(POINTS[0], POINTS[1])
+
 
 class TestEstimateRouteThrough:
     """Behavior of the offline fallback :func:`estimate_route_through`."""
