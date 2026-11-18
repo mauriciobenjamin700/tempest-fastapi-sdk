@@ -8,12 +8,17 @@
       <h1>{% if form_title %}{{ form_title }}{% elif mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %}</h1>
     </div>
   </header>
+  {% if form_intro %}
+  <p class="tempest-admin-form__intro">{{ form_intro }}</p>
+  {% endif %}
   {% if form_error %}
   <p class="tempest-admin-form__error">{{ form_error }}</p>
   {% endif %}
   <form method="post" action="{{ action_url }}" class="tempest-admin-form__form"{% if admin.upload_fields %} enctype="multipart/form-data"{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     {% if submission_nonce %}<input type="hidden" name="submission_nonce" value="{{ submission_nonce }}">{% endif %}
+    {% for hidden_name, hidden_value in hidden_inputs or [] %}<input type="hidden" name="{{ hidden_name }}" value="{{ hidden_value }}">
+    {% endfor %}
     {% for f in form_fields %}
     <div class="tempest-admin-form__field tempest-admin-form__field--{{ f.widget }}{% if f.error %} tempest-admin-form__field--error{% endif %}">
       {% if f.widget == 'checkbox' %}
@@ -74,7 +79,7 @@
     {% endfor %}
     <div class="tempest-admin-form__actions">
       <a href="{{ back_url }}" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-form__cancel">Cancel</a>
-      <button type="submit" class="tempest-admin-btn">{% if mode == 'create' %}Create{% else %}Save{% endif %}</button>
+      <button type="submit" class="tempest-admin-btn">{% if submit_label %}{{ submit_label }}{% elif mode == 'create' %}Create{% else %}Save{% endif %}</button>
     </div>
   </form>
 </section>

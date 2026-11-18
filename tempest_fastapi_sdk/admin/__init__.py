@@ -12,13 +12,21 @@ Requires the ``[admin]`` optional extra (``jinja2`` +
 ``is_admin=True`` may sign in.
 """
 
+from tempest_fastapi_sdk.admin.actions import ActionHandler as ActionHandler
 from tempest_fastapi_sdk.admin.actions import AdminAction as AdminAction
 from tempest_fastapi_sdk.admin.actions import AdminActionContext as AdminActionContext
 from tempest_fastapi_sdk.admin.actions import AdminActionResult as AdminActionResult
 from tempest_fastapi_sdk.admin.actions import AdminCreateHandler as AdminCreateHandler
 from tempest_fastapi_sdk.admin.actions import AdminSecret as AdminSecret
+from tempest_fastapi_sdk.admin.actions import AnyActionHandler as AnyActionHandler
 from tempest_fastapi_sdk.admin.actions import CreateHandlerFunc as CreateHandlerFunc
+from tempest_fastapi_sdk.admin.actions import (
+    SchemaActionHandler as SchemaActionHandler,
+)
 from tempest_fastapi_sdk.admin.actions import admin_action as admin_action
+from tempest_fastapi_sdk.admin.actions import (
+    resolve_admin_action as resolve_admin_action,
+)
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend as AdminAuthBackend
 from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
@@ -79,6 +87,9 @@ from tempest_fastapi_sdk.admin.metrics import MetricsProvider as MetricsProvider
 from tempest_fastapi_sdk.admin.metrics import Threshold as Threshold
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy as AdminAccessPolicy,
+)
+from tempest_fastapi_sdk.admin.permissions import (
+    AdminActionPolicy as AdminActionPolicy,
 )
 from tempest_fastapi_sdk.admin.permissions import (
     AdminPermissionEnum as AdminPermissionEnum,
@@ -173,9 +184,11 @@ __all__: list[str] = [
     "STORAGE_SPOOL_BYTES",
     "STORAGE_STAT_CONCURRENCY",
     "TEXT_MEDIA_TYPES",
+    "ActionHandler",
     "AdminAccessPolicy",
     "AdminAction",
     "AdminActionContext",
+    "AdminActionPolicy",
     "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
@@ -192,6 +205,7 @@ __all__: list[str] = [
     "AdminSurfaceEnum",
     "AdminSurfacePolicy",
     "AdminTheme",
+    "AnyActionHandler",
     "ChoiceSource",
     "CreateHandlerFunc",
     "EditValidator",
@@ -208,6 +222,7 @@ __all__: list[str] = [
     "OrderRef",
     "ReadonlyFieldsFor",
     "ScheduledTask",
+    "SchemaActionHandler",
     "SessionStore",
     "SignedCookieSessionStore",
     "SqlAudit",
@@ -243,5 +258,6 @@ __all__: list[str] = [
     "manual_payout_admin",
     "mercado_pago_simulation_actions",
     "normalize_storage_prefix",
+    "resolve_admin_action",
     "storage_preview_for",
 ]

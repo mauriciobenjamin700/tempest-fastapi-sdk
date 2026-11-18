@@ -273,6 +273,31 @@ função fica **diretamente chamável/testável** — o decorator só anexa
 metadados. Use `name=` pra fixar o identificador (default: nome da função)
 e `dangerous=True` pra marcar ação destrutiva.
 
+O painel **commita** a sessão do request quando o handler retorna, com ou
+sem `secrets` no resultado, e faz rollback quando ele levanta. Então a ação
+pode mudar a linha direto na sessão, sem commit próprio:
+
+```python
+from tempest_fastapi_sdk import AdminActionContext, AdminActionResult, admin_action
+
+from src.db.models import UserModel
+
+
+@admin_action(label="Confirmar e-mail")
+async def verify_email(ctx: AdminActionContext) -> AdminActionResult:
+    """Marca o e-mail como confirmado; o painel commita no fim."""
+    for user_id in ctx.ids:
+        user = await ctx.db_session.get(UserModel, user_id)
+        if user is not None:
+            user.is_active = True
+    return AdminActionResult(f"{len(ctx.ids)} conta(s) confirmada(s).")
+```
+
+!!! warning "Antes da 0.366.0, a ação sem `secrets` não era commitada"
+    O commit só acontecia no ramo com `secrets`: uma ação que gravava pela
+    sessão mostrava o flash de sucesso e perdia a gravação no fim do request
+    (#784).
+
 Cada opção do select de ações em massa leva o próprio texto de confirmação.
 Ação comum (e Activate/Deactivate) pergunta "Apply the selected action to the
 checked rows?"; ação `dangerous=True` (e o Delete embutido) nomeia a ação e
@@ -346,6 +371,56 @@ que muda em relação ao flash:
     `__secret_columns__`, para nenhuma tela do painel exibi-la.
 
 Ação sem `secrets` continua igual: flash na list view, por redirect.
+
+### Pedir dados antes de rodar (`schema=`) *(v0.366.0+)*
+
+Algumas ações precisam de um dado do operador: o **motivo** de um acesso
+auditado, um valor, uma data. Passe um model Pydantic em `schema=` e o
+handler passa a receber `(data, ctx)`:
+
+```python
+from pydantic import BaseModel, Field
+
+from tempest_fastapi_sdk import AdminActionContext, AdminActionResult, admin_action
+
+from src.db.models import UserModel
+
+
+class VerifyEmailInput(BaseModel):
+    """O que o operador preenche antes da ação rodar."""
+
+    reason: str = Field(min_length=10, max_length=500)
+
+
+@admin_action(label="Confirmar e-mail", schema=VerifyEmailInput)
+async def verify_email(
+    data: VerifyEmailInput, ctx: AdminActionContext
+) -> AdminActionResult:
+    """Confirma as contas marcadas e grava o motivo na trilha."""
+    for user_id in ctx.ids:
+        user = await ctx.db_session.get(UserModel, user_id)
+        if user is not None:
+            user.is_active = True
+    return AdminActionResult(f"{len(ctx.ids)} confirmada(s): {data.reason}")
+```
+
+O fluxo, medido em `tests/admin/test_custom_action_flow.py`:
+
+1. Escolher a ação na lista **não roda nada**: o `POST /m/{slug}/bulk`
+   responde `200` com o formulário gerado do schema (o mesmo gerador do
+   `create_handler=`), o texto `2 row(s) selected.`, os ids em campos ocultos
+   e um nonce de uso único.
+2. Envio inválido responde `400` com o erro no campo
+   (`String should have at least 10 characters`) e o que foi digitado; o
+   handler não roda e o nonce não é gasto.
+3. Envio válido roda o handler com o dado validado e os ids, commita e
+   volta para a lista com o flash (`303`). Reenviar o mesmo formulário não
+   roda de novo: o nonce já foi gasto, e o painel avisa
+   `This form was already submitted; it did not run again.`.
+4. Uma `AppException` do handler faz rollback e re-renderiza o formulário
+   com a mensagem e o que foi digitado, com `400`.
+
+Ação sem `schema=` continua igual: roda direto da lista.
 
 ### Criar por service (`create_handler=`)
 
@@ -1221,6 +1296,71 @@ Vale também para o que a página de um model mostra de **outro** model:
     A policy **soma** aos flags `can_create`/`can_edit`/`can_delete` do
     `AdminModel` — os dois precisam liberar. Sem `access_policy`, nada
     muda (todo admin logado faz tudo). Pode ser sync ou `async`.
+
+### Uma ação sem `EDIT` no model (`action_policy=`) *(v0.366.0+)*
+
+Sem mais nada, toda ação customizada pede `EDIT` no model à `access_policy`.
+Num painel só de leitura, liberar **uma** ação ("Confirmar e-mail") obrigava
+a liberar `EDIT` no model inteiro — e, se alguém ligasse o `can_edit` por
+engano, a mesma permissão abria a edição livre de qualquer campo. Também não
+dava para dar a um papel uma ação sem dar outra.
+
+Passe um `action_policy`: ele é perguntado `(principal, admin, AdminAction)`
+para cada ação customizada, e a ação passa a pedir `VIEW` no model mais a
+aprovação dele, não `EDIT`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminAction,
+    AdminModel,
+    AdminPermissionEnum,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+app = FastAPI()
+
+
+def policy(user: UserModel, admin: AdminModel, action: AdminPermissionEnum) -> bool:
+    """Painel só de leitura: VIEW em todo model, nada mais."""
+    return action is AdminPermissionEnum.VIEW
+
+
+def action_policy(user: UserModel, admin: AdminModel, action: AdminAction) -> bool:
+    """Libera só a ação de confirmar e-mail, só para o suporte."""
+    return user.role == "support" and action.name == "verify_email"
+
+
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.JWT_SECRET,
+        access_policy=policy,
+        action_policy=action_policy,
+    ),
+)
+```
+
+Medido em `tests/admin/test_custom_action_flow.py`:
+
+- a ação liberada roda (`303`) e a negada responde `403`, no mesmo model;
+- o menu da lista só mostra as ações que a política libera — e, de quebra,
+  Activate / Deactivate e Delete só aparecem quando o model os habilita
+  (`can_edit` + `can_toggle_active`, `can_delete`) **e** o principal tem
+  `EDIT` / `DELETE`; sem nenhuma ação permitida, o formulário de lote some;
+- com `EDIT` negado, o formulário de edição continua `403`, mesmo com a ação
+  liberada.
+
+Sem `action_policy`, nada muda: a ação customizada pede `EDIT`, como antes.
 
 ### Console SQL, tasks e logs (`surface_policy=`)
 
@@ -2159,7 +2299,9 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
 - `AdminSite` + `AdminModel` transformam os seus models numa interface de CRUD
   sem você escrever template: a declaração é a tela.
 - `@admin_action` põe operação de domínio na lista, e o retorno
-  `AdminActionResult` é o que o operador lê de volta.
+  `AdminActionResult` é o que o operador lê de volta. O painel commita o que
+  a ação deixou na sessão; `schema=` pede dados antes de rodar, e
+  `action_policy=` libera ação por ação, sem `EDIT` no model.
 - `audit_model=` renderiza a linha do tempo de quem mudou o quê no próprio
   detail, e `inlines=` traz os filhos 1-N para a mesma página.
 - `autocomplete_fields=` troca o `<select>` que não escala por busca HTMX —
