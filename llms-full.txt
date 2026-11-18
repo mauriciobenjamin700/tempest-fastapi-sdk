@@ -6721,6 +6721,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.367.0] — 2026-11-18
+
+### Added
+
+- `BRLocationMixin` em `tempest_fastapi_sdk.geo`: colunas anuláveis `city`
+  (`String(64)`), `state` (`String(2)`, indexada) e `city_ibge_code`
+  (indexada). `set_br_location(cidade, uf, *, typo_cutoff=None)` resolve a
+  cidade nos 5571 municípios do IBGE que o SDK já traz (sem rede, qualquer
+  caixa e acentuação), grava a grafia oficial e o código, e levanta
+  `UnknownMunicipalityError` para cidade que a UF não tem, sem tocar na
+  linha; `clear_br_location()` e `br_municipality()`.
+- `BRLocationSchema(city, state)`: a mesma checagem na borda da API (cidade
+  inexistente na UF responde `422`), devolvendo o nome oficial e o
+  `city_ibge_code`; `resolve_br_municipality(cidade, uf)`.
+- `br_location_distribution(session, model, *, where=None, city_limit=None)`
+  → `BRLocationDistributionSchema` (`total`, `located`, `unlocated`, contagem
+  por estado e por cidade com a coordenada), em três consultas agregadas.
+- Mapa do Brasil offline: `render_br_map_svg(contagens_por_uf, pontos)`
+  desenha os 27 estados num tom por contagem (escala logarítmica,
+  `br_map_legend` com as faixas) e uma bolha por cidade (`BRMapPoint`), só
+  com classes CSS e todo texto escapado; `uf_at(coordenada)`,
+  `project_br`, `br_state_outlines`. Contornos gerados da malha de UFs do
+  IBGE na qualidade mínima por `scripts/regen_br_states_geometry.py`
+  (`geo/_br_states_geometry_data.py`, 86 KB).
+- Admin: `AdminSite(location_maps=[BRLocationMap(titulo, model, *,
+  where=None, city_limit=50, value_label="users")])` monta
+  `/admin/maps/<slug>` com o mapa, a legenda, as tabelas de estados e
+  cidades e os totais, listado em "Maps" na barra lateral; pede `VIEW` no
+  model à `access_policy`. Nenhuma requisição externa: o SVG sai do
+  servidor e as cores do tema (modo escuro incluso).
+
 ## [0.366.0] — 2026-11-18
 
 ### Added
@@ -35305,6 +35336,127 @@ aviso no lugar dos cards, e o traceback vai para o log
 A área é a superfície `AdminSurfaceEnum.METRICS`: com `surface_policy`,
 quem a política nega recebe `403` na página e não vê os links na sidebar.
 
+## Mapa de distribuição geográfica (`location_maps=`) *(v0.367.0+)*
+
+Com o [`BRLocationMixin`](geo.md#cidade-e-estado-do-usuario-brlocationmixin-v03670)
+no model, o painel desenha **onde** estão as linhas: um mapa do Brasil com
+cada estado num tom conforme a contagem e uma bolha por cidade, a legenda,
+as tabelas de estados e cidades e quantas linhas ainda não têm localização.
+Registre um `BRLocationMap` por mapa em `AdminSite(location_maps=[...])`:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    AsyncDatabaseManager,
+    BaseUserModel,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import AdminModel, BRLocationMap
+from tempest_fastapi_sdk.geo import BRLocationMixin
+
+
+class UserModel(BRLocationMixin, BaseUserModel):
+    """Users with the city and state they live in."""
+
+    __tablename__ = "users"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./painel.db")
+site = AdminSite(
+    title="Painel",
+    location_maps=[
+        BRLocationMap("Usuários por região", UserModel, value_label="usuários"),
+        BRLocationMap(
+            "Usuários ativos",
+            UserModel,
+            where=lambda: UserModel.is_active.is_(True),
+            value_label="usuários",
+        ),
+    ],
+)
+site.register(AdminModel(UserModel))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the tables and a few users spread over three cities."""
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        admin = UserModel(email="admin@example.com", hashed_password="", is_admin=True)
+        admin.set_password("troque-esta-senha")
+        session.add(admin)
+        places = [("São Paulo", "SP"), ("São Paulo", "SP"), ("Campinas", "SP")]
+        places.append(("Recife", "PE"))
+        for index, (city, state) in enumerate(places):
+            user = UserModel(email=f"user{index}@example.com", hashed_password="")
+            user.set_br_location(city, state)
+            session.add(user)
+        await session.commit()
+    yield
+    await db.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key="troque-por-um-segredo-de-32-bytes-ou-mais",
+        cookie_secure=False,
+    )
+)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+Cada mapa vira uma entrada na seção **Maps** da barra lateral, em
+`/admin/maps/<slug>` (o slug sai do título, sem acento:
+`usuarios-por-regiao`). Medido com o exemplo, por requisição ao painel:
+
+- a barra lateral lista `/admin/maps/usuarios-por-regiao` e
+  `/admin/maps/usuarios-ativos`;
+- a página responde `200` com Total `5`, With location `4` e No location `1`
+  (o administrador não tem cidade);
+- as bolhas, maior primeiro: `São Paulo (SP): 2 usuários`,
+  `Campinas (SP): 1 usuários`, `Recife (PE): 1 usuários`;
+- a dica de cada estado (`SP: 3 usuários`, `PE: 1 usuários`,
+  `BA: 0 usuários`) e a legenda com as faixas de cada tom.
+
+O que cada argumento faz:
+
+- `where=` recebe uma função que monta o filtro a cada requisição
+  (`lambda: UserModel.is_active.is_(True)`), aplicado a todas as contagens.
+- `city_limit=` (padrão 50) limita as bolhas e a tabela às maiores cidades.
+- `value_label=` é a palavra depois de cada número nas dicas e nas tabelas.
+
+O mapa é um SVG gerado no servidor, com os contornos dos estados embutidos no
+pacote: a página **não faz nenhuma requisição externa** (nem script de mapa,
+nem servidor de tiles). As cores saem das variáveis do tema, então o modo
+escuro (`AdminTheme(dark_mode=True)`) já vale. Validado em browser real a
+1366 px e a 390 px, nos temas claro e escuro: no celular, o mapa ocupa a
+largura toda e as tabelas vão para baixo dele.
+
+!!! info "Quem vê"
+    A página pede `VIEW` no model à `access_policy`, perguntado ao
+    `AdminModel` registrado do model (ou a um `AdminModel(model)` descartável,
+    quando ele não está registrado). Negado, a página responde `403` e some
+    da barra lateral.
+
+!!! note "Quando a contagem falha"
+    Se o `where=` ou o banco levantam, a página renderiza assim mesmo, com o
+    aviso `This map could not be counted` no lugar do mapa e o traceback no
+    log — como nas áreas de indicadores.
+
 ## Import CSV (`can_import=True`)
 
 O admin já exporta a listagem (CSV/JSON). A contraparte: subir um CSV
@@ -36414,6 +36566,7 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
   necessário no instante em que a FK tem milhares de linhas.
 - `dashboard_cards=` são métricas de negócio, não de sistema; `lenses=` são as
   visões salvas que o operador usaria de novo amanhã.
+- `location_maps=[BRLocationMap(...)]` desenha onde estão as linhas de um model com `BRLocationMixin`: mapa do Brasil por estado e cidade, offline.
 - `access_policy=` é RBAC por (principal, ação, model): sem ele, quem entra no
   admin pode tudo.
 - `storage=StorageBrowserService(...)` abre o bucket na tela: lista,
@@ -64106,6 +64259,130 @@ geocoder = RetryingGeocoder(
     Resolva a coordenada em background (depois de gravar o registro), não
     no request do usuário.
 
+## Cidade e estado do usuário (`BRLocationMixin`) *(v0.367.0+)*
+
+Para saber **onde** estão os seus usuários (ou lojas, ou pedidos) no Brasil,
+misture o `BRLocationMixin` no model. Ele adiciona três colunas, todas
+anuláveis (uma tabela existente ganha as três numa migration simples):
+
+| Coluna | Tipo | O que guarda |
+| --- | --- | --- |
+| `city` | `String(64)` | o nome oficial do IBGE (`"São Paulo"`) |
+| `state` | `String(2)`, indexada | a sigla da UF (`"SP"`) |
+| `city_ibge_code` | `Integer`, indexada | o código IBGE de 7 dígitos (`3550308`) |
+
+Grave sempre por `set_br_location(cidade, uf)`: ele procura a cidade nos
+5571 municípios que o SDK já traz, sem rede, aceita qualquer caixa e
+acentuação, e guarda a grafia oficial e o código. Cidade que a UF não tem
+levanta `UnknownMunicipalityError`, e a linha fica como estava.
+
+```python
+import asyncio
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from tempest_fastapi_sdk import BaseUserModel
+from tempest_fastapi_sdk.geo import (
+    BRLocationMixin,
+    BRLocationSchema,
+    Coordinate,
+    UnknownMunicipalityError,
+    br_location_distribution,
+    render_br_map_svg,
+    uf_at,
+)
+
+
+class UserModel(BRLocationMixin, BaseUserModel):
+    """Users with the city and state they live in."""
+
+    __tablename__ = "users"
+
+
+async def main() -> None:
+    """Store three users, refuse a wrong city and count per state and city."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(UserModel.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        await store(session)
+        result = await br_location_distribution(session, UserModel)
+    print(result.total, result.located, result.unlocated)
+    print(result.state_counts())
+    print([(city.city, city.state, city.count) for city in result.cities])
+    print(BRLocationSchema(city="belo horizonte", state="MG"))
+    print(uf_at(Coordinate(latitude=-15.79, longitude=-47.88)))
+    print(render_br_map_svg(result.state_counts())[:60])
+    await engine.dispose()
+
+
+async def store(session: AsyncSession) -> None:
+    """Add the users; the last one has no location yet."""
+    for email, city, state in [
+        ("ana@example.com", "sao paulo", "SP"),
+        ("bia@example.com", "SÃO PAULO", "sp"),
+        ("caio@example.com", "Recife", "PE"),
+    ]:
+        user = UserModel(email=email, hashed_password="")
+        user.set_br_location(city, state)
+        session.add(user)
+    try:
+        UserModel(email="x@example.com", hashed_password="").set_br_location(
+            "Recife", "SP"
+        )
+    except UnknownMunicipalityError as error:
+        print(error)
+    session.add(UserModel(email="dani@example.com", hashed_password=""))
+    await session.commit()
+
+
+asyncio.run(main())
+```
+
+Saída medida:
+
+```text
+SP has no municipality named 'Recife'
+4 3 1
+{'SP': 2, 'PE': 1}
+[('São Paulo', 'SP', 2), ('Recife', 'PE', 1)]
+city='Belo Horizonte' state='MG' city_ibge_code=3106200
+DF
+<svg class="tempest-br-map" viewBox="0 0 1000 969" role="img
+```
+
+Pedaço por pedaço:
+
+- `set_br_location("sao paulo", "SP")` e `set_br_location("SÃO PAULO", "sp")`
+  gravam o mesmo `"São Paulo"`, então a contagem não se divide por grafia.
+- `BRLocationSchema` faz a mesma checagem na borda da API: numa rota FastAPI,
+  cidade inexistente na UF responde `422` antes do handler, e a válida volta
+  com o nome oficial e o `city_ibge_code`.
+- `br_location_distribution(session, Model)` conta em três consultas
+  agregadas (total, `GROUP BY state`, `GROUP BY city_ibge_code`), sem carregar
+  as linhas. `where=` filtra todas elas e `city_limit=` corta as menores
+  cidades.
+- `uf_at(coordenada)` responde em qual UF um ponto cai, pelos contornos dos
+  estados que o SDK também traz (malha do IBGE na qualidade mínima, cerca de
+  5 000 pontos para o país).
+- `render_br_map_svg(contagens, pontos)` desenha o mapa do Brasil com cada UF
+  num tom e uma bolha por cidade — é o que a página do admin usa (veja
+  [Mapa de distribuição](admin.md#mapa-de-distribuicao-geografica-location_maps-v03670)).
+
+!!! note "Os contornos são simplificados"
+    Na malha mínima do IBGE, 52 dos 5571 municípios (0,93%) caem fora do
+    contorno da própria UF: são cidades no litoral ou na divisa. As 27
+    capitais caem dentro. Para o mapa isso não importa, porque a bolha usa a
+    coordenada do município; para decidir a UF de um endereço na divisa, não
+    use `uf_at`.
+
+!!! tip "A escala de tons é logarítmica"
+    Com um estado dominando, a escala linear achata o mapa: na validação em
+    browser (SP com 184 usuários, os demais entre 1 e 40), 22 dos 25 estados
+    com usuários ficavam no tom mais claro, a faixa 1–36. O tom `n`
+    vai até `pico ** (n / 5)`; a legenda (`br_map_legend`) mostra as faixas.
+
 ## Recap
 
 - `haversine_km(a, b)` — distância great-circle, pura, sempre disponível.
@@ -64117,6 +64394,7 @@ geocoder = RetryingGeocoder(
 - `OSRMBackend.route_through` / `estimate_route_through` — rota com paradas numa chamada, um `leg` por trecho, fallback offline e limite de pontos (`DEFAULT_OSRM_MAX_POINTS`).
 - `destination_point` / `initial_bearing` / `point_in_polygon` / `polygon_area_km2` / `path_length_km` — geometria offline.
 - `uf_centroid` / `cep_to_coordinate` — atalhos Brasil.
+- `BRLocationMixin` / `BRLocationSchema` / `br_location_distribution` — cidade e UF validadas contra o IBGE e a contagem por estado e cidade; `render_br_map_svg` / `uf_at` — o mapa do Brasil offline.
 - `extract_cep` / `resolve_br_coordinate` — CEP de texto livre e a cadeia CEP → endereço → centroide da UF, sem levantar em falha do geocoder.
 - `estimate_travel` / `OSRMBackend.route` — distância + tempo (`heuristic`/`osrm`); modos carro/moto/ônibus/bici/pedestre.
 

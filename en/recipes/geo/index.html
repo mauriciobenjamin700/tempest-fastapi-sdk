@@ -2759,6 +2759,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-users-city-and-state-brlocationmixin-v03670" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A user's city and state (BRLocationMixin) (v0.367.0+)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recap_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6486,6 +6497,146 @@ the first that answers:</p>
 <code>User-Agent</code>. Resolve the coordinate in the background (after saving the
 record), not in the user's request.</p>
 </div>
+<h2 id="a-users-city-and-state-brlocationmixin-v03670">A user's city and state (<code>BRLocationMixin</code>) <em>(v0.367.0+)</em><a class="headerlink" href="#a-users-city-and-state-brlocationmixin-v03670" title="Permanent link">&para;</a></h2>
+<p>To know <strong>where</strong> in Brazil your users (or stores, or orders) are, mix
+<code>BRLocationMixin</code> into the model. It adds three columns, all nullable (an
+existing table gains them with a plain migration):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>city</code></td>
+<td><code>String(64)</code></td>
+<td>the official IBGE name (<code>"São Paulo"</code>)</td>
+</tr>
+<tr>
+<td><code>state</code></td>
+<td><code>String(2)</code>, indexed</td>
+<td>the state's acronym (<code>"SP"</code>)</td>
+</tr>
+<tr>
+<td><code>city_ibge_code</code></td>
+<td><code>Integer</code>, indexed</td>
+<td>the seven-digit IBGE code (<code>3550308</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Always write through <code>set_br_location(city, state)</code>: it looks the city up in
+the 5571 municipalities the SDK already ships, with no network, accepts any
+case and accents, and stores the official spelling and the code. A city the
+state does not have raises <code>UnknownMunicipalityError</code>, and the row is left
+as it was.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>
+</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy.ext.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncSession</span><span class="p">,</span> <span class="n">async_sessionmaker</span><span class="p">,</span> <span class="n">create_async_engine</span>
+</span><span id="__span-30-4"><a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a>
+</span><span id="__span-30-5"><a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseUserModel</span>
+</span><span id="__span-30-6"><a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.geo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-30-7"><a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a>    <span class="n">BRLocationMixin</span><span class="p">,</span>
+</span><span id="__span-30-8"><a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>    <span class="n">BRLocationSchema</span><span class="p">,</span>
+</span><span id="__span-30-9"><a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a>    <span class="n">Coordinate</span><span class="p">,</span>
+</span><span id="__span-30-10"><a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a>    <span class="n">UnknownMunicipalityError</span><span class="p">,</span>
+</span><span id="__span-30-11"><a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a>    <span class="n">br_location_distribution</span><span class="p">,</span>
+</span><span id="__span-30-12"><a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a>    <span class="n">render_br_map_svg</span><span class="p">,</span>
+</span><span id="__span-30-13"><a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a>    <span class="n">uf_at</span><span class="p">,</span>
+</span><span id="__span-30-14"><a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a><span class="p">)</span>
+</span><span id="__span-30-15"><a id="__codelineno-30-15" name="__codelineno-30-15" href="#__codelineno-30-15"></a>
+</span><span id="__span-30-16"><a id="__codelineno-30-16" name="__codelineno-30-16" href="#__codelineno-30-16"></a>
+</span><span id="__span-30-17"><a id="__codelineno-30-17" name="__codelineno-30-17" href="#__codelineno-30-17"></a><span class="k">class</span><span class="w"> </span><span class="nc">UserModel</span><span class="p">(</span><span class="n">BRLocationMixin</span><span class="p">,</span> <span class="n">BaseUserModel</span><span class="p">):</span>
+</span><span id="__span-30-18"><a id="__codelineno-30-18" name="__codelineno-30-18" href="#__codelineno-30-18"></a><span class="w">    </span><span class="sd">"""Users with the city and state they live in."""</span>
+</span><span id="__span-30-19"><a id="__codelineno-30-19" name="__codelineno-30-19" href="#__codelineno-30-19"></a>
+</span><span id="__span-30-20"><a id="__codelineno-30-20" name="__codelineno-30-20" href="#__codelineno-30-20"></a>    <span class="n">__tablename__</span> <span class="o">=</span> <span class="s2">"users"</span>
+</span><span id="__span-30-21"><a id="__codelineno-30-21" name="__codelineno-30-21" href="#__codelineno-30-21"></a>
+</span><span id="__span-30-22"><a id="__codelineno-30-22" name="__codelineno-30-22" href="#__codelineno-30-22"></a>
+</span><span id="__span-30-23"><a id="__codelineno-30-23" name="__codelineno-30-23" href="#__codelineno-30-23"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-30-24"><a id="__codelineno-30-24" name="__codelineno-30-24" href="#__codelineno-30-24"></a><span class="w">    </span><span class="sd">"""Store three users, refuse a wrong city and count per state and city."""</span>
+</span><span id="__span-30-25"><a id="__codelineno-30-25" name="__codelineno-30-25" href="#__codelineno-30-25"></a>    <span class="n">engine</span> <span class="o">=</span> <span class="n">create_async_engine</span><span class="p">(</span><span class="s2">"sqlite+aiosqlite:///:memory:"</span><span class="p">)</span>
+</span><span id="__span-30-26"><a id="__codelineno-30-26" name="__codelineno-30-26" href="#__codelineno-30-26"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">engine</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+</span><span id="__span-30-27"><a id="__codelineno-30-27" name="__codelineno-30-27" href="#__codelineno-30-27"></a>        <span class="k">await</span> <span class="n">conn</span><span class="o">.</span><span class="n">run_sync</span><span class="p">(</span><span class="n">UserModel</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">create_all</span><span class="p">)</span>
+</span><span id="__span-30-28"><a id="__codelineno-30-28" name="__codelineno-30-28" href="#__codelineno-30-28"></a>    <span class="n">session_factory</span> <span class="o">=</span> <span class="n">async_sessionmaker</span><span class="p">(</span><span class="n">engine</span><span class="p">,</span> <span class="n">expire_on_commit</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-30-29"><a id="__codelineno-30-29" name="__codelineno-30-29" href="#__codelineno-30-29"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+</span><span id="__span-30-30"><a id="__codelineno-30-30" name="__codelineno-30-30" href="#__codelineno-30-30"></a>        <span class="k">await</span> <span class="n">store</span><span class="p">(</span><span class="n">session</span><span class="p">)</span>
+</span><span id="__span-30-31"><a id="__codelineno-30-31" name="__codelineno-30-31" href="#__codelineno-30-31"></a>        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">br_location_distribution</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">UserModel</span><span class="p">)</span>
+</span><span id="__span-30-32"><a id="__codelineno-30-32" name="__codelineno-30-32" href="#__codelineno-30-32"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">total</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">located</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">unlocated</span><span class="p">)</span>
+</span><span id="__span-30-33"><a id="__codelineno-30-33" name="__codelineno-30-33" href="#__codelineno-30-33"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">state_counts</span><span class="p">())</span>
+</span><span id="__span-30-34"><a id="__codelineno-30-34" name="__codelineno-30-34" href="#__codelineno-30-34"></a>    <span class="nb">print</span><span class="p">([(</span><span class="n">city</span><span class="o">.</span><span class="n">city</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">state</span><span class="p">,</span> <span class="n">city</span><span class="o">.</span><span class="n">count</span><span class="p">)</span> <span class="k">for</span> <span class="n">city</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">cities</span><span class="p">])</span>
+</span><span id="__span-30-35"><a id="__codelineno-30-35" name="__codelineno-30-35" href="#__codelineno-30-35"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">BRLocationSchema</span><span class="p">(</span><span class="n">city</span><span class="o">=</span><span class="s2">"belo horizonte"</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="s2">"MG"</span><span class="p">))</span>
+</span><span id="__span-30-36"><a id="__codelineno-30-36" name="__codelineno-30-36" href="#__codelineno-30-36"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">uf_at</span><span class="p">(</span><span class="n">Coordinate</span><span class="p">(</span><span class="n">latitude</span><span class="o">=-</span><span class="mf">15.79</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">47.88</span><span class="p">)))</span>
+</span><span id="__span-30-37"><a id="__codelineno-30-37" name="__codelineno-30-37" href="#__codelineno-30-37"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">render_br_map_svg</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">state_counts</span><span class="p">())[:</span><span class="mi">60</span><span class="p">])</span>
+</span><span id="__span-30-38"><a id="__codelineno-30-38" name="__codelineno-30-38" href="#__codelineno-30-38"></a>    <span class="k">await</span> <span class="n">engine</span><span class="o">.</span><span class="n">dispose</span><span class="p">()</span>
+</span><span id="__span-30-39"><a id="__codelineno-30-39" name="__codelineno-30-39" href="#__codelineno-30-39"></a>
+</span><span id="__span-30-40"><a id="__codelineno-30-40" name="__codelineno-30-40" href="#__codelineno-30-40"></a>
+</span><span id="__span-30-41"><a id="__codelineno-30-41" name="__codelineno-30-41" href="#__codelineno-30-41"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">store</span><span class="p">(</span><span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-30-42"><a id="__codelineno-30-42" name="__codelineno-30-42" href="#__codelineno-30-42"></a><span class="w">    </span><span class="sd">"""Add the users; the last one has no location yet."""</span>
+</span><span id="__span-30-43"><a id="__codelineno-30-43" name="__codelineno-30-43" href="#__codelineno-30-43"></a>    <span class="k">for</span> <span class="n">email</span><span class="p">,</span> <span class="n">city</span><span class="p">,</span> <span class="n">state</span> <span class="ow">in</span> <span class="p">[</span>
+</span><span id="__span-30-44"><a id="__codelineno-30-44" name="__codelineno-30-44" href="#__codelineno-30-44"></a>        <span class="p">(</span><span class="s2">"ana@example.com"</span><span class="p">,</span> <span class="s2">"sao paulo"</span><span class="p">,</span> <span class="s2">"SP"</span><span class="p">),</span>
+</span><span id="__span-30-45"><a id="__codelineno-30-45" name="__codelineno-30-45" href="#__codelineno-30-45"></a>        <span class="p">(</span><span class="s2">"bia@example.com"</span><span class="p">,</span> <span class="s2">"SÃO PAULO"</span><span class="p">,</span> <span class="s2">"sp"</span><span class="p">),</span>
+</span><span id="__span-30-46"><a id="__codelineno-30-46" name="__codelineno-30-46" href="#__codelineno-30-46"></a>        <span class="p">(</span><span class="s2">"caio@example.com"</span><span class="p">,</span> <span class="s2">"Recife"</span><span class="p">,</span> <span class="s2">"PE"</span><span class="p">),</span>
+</span><span id="__span-30-47"><a id="__codelineno-30-47" name="__codelineno-30-47" href="#__codelineno-30-47"></a>    <span class="p">]:</span>
+</span><span id="__span-30-48"><a id="__codelineno-30-48" name="__codelineno-30-48" href="#__codelineno-30-48"></a>        <span class="n">user</span> <span class="o">=</span> <span class="n">UserModel</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">email</span><span class="p">,</span> <span class="n">hashed_password</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+</span><span id="__span-30-49"><a id="__codelineno-30-49" name="__codelineno-30-49" href="#__codelineno-30-49"></a>        <span class="n">user</span><span class="o">.</span><span class="n">set_br_location</span><span class="p">(</span><span class="n">city</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+</span><span id="__span-30-50"><a id="__codelineno-30-50" name="__codelineno-30-50" href="#__codelineno-30-50"></a>        <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">user</span><span class="p">)</span>
+</span><span id="__span-30-51"><a id="__codelineno-30-51" name="__codelineno-30-51" href="#__codelineno-30-51"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-30-52"><a id="__codelineno-30-52" name="__codelineno-30-52" href="#__codelineno-30-52"></a>        <span class="n">UserModel</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="s2">"x@example.com"</span><span class="p">,</span> <span class="n">hashed_password</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span><span class="o">.</span><span class="n">set_br_location</span><span class="p">(</span>
+</span><span id="__span-30-53"><a id="__codelineno-30-53" name="__codelineno-30-53" href="#__codelineno-30-53"></a>            <span class="s2">"Recife"</span><span class="p">,</span> <span class="s2">"SP"</span>
+</span><span id="__span-30-54"><a id="__codelineno-30-54" name="__codelineno-30-54" href="#__codelineno-30-54"></a>        <span class="p">)</span>
+</span><span id="__span-30-55"><a id="__codelineno-30-55" name="__codelineno-30-55" href="#__codelineno-30-55"></a>    <span class="k">except</span> <span class="n">UnknownMunicipalityError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+</span><span id="__span-30-56"><a id="__codelineno-30-56" name="__codelineno-30-56" href="#__codelineno-30-56"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">error</span><span class="p">)</span>
+</span><span id="__span-30-57"><a id="__codelineno-30-57" name="__codelineno-30-57" href="#__codelineno-30-57"></a>    <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">UserModel</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="s2">"dani@example.com"</span><span class="p">,</span> <span class="n">hashed_password</span><span class="o">=</span><span class="s2">""</span><span class="p">))</span>
+</span><span id="__span-30-58"><a id="__codelineno-30-58" name="__codelineno-30-58" href="#__codelineno-30-58"></a>    <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</span><span id="__span-30-59"><a id="__codelineno-30-59" name="__codelineno-30-59" href="#__codelineno-30-59"></a>
+</span><span id="__span-30-60"><a id="__codelineno-30-60" name="__codelineno-30-60" href="#__codelineno-30-60"></a>
+</span><span id="__span-30-61"><a id="__codelineno-30-61" name="__codelineno-30-61" href="#__codelineno-30-61"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p>Measured output:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>SP has no municipality named 'Recife'
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>4 3 1
+</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>{'SP': 2, 'PE': 1}
+</span><span id="__span-31-4"><a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>[('São Paulo', 'SP', 2), ('Recife', 'PE', 1)]
+</span><span id="__span-31-5"><a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>city='Belo Horizonte' state='MG' city_ibge_code=3106200
+</span><span id="__span-31-6"><a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>DF
+</span><span id="__span-31-7"><a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>&lt;svg class="tempest-br-map" viewBox="0 0 1000 969" role="img
+</span></code></pre></div>
+<p>Piece by piece:</p>
+<ul>
+<li><code>set_br_location("sao paulo", "SP")</code> and <code>set_br_location("SÃO PAULO", "sp")</code>
+  store the same <code>"São Paulo"</code>, so the count does not split by spelling.</li>
+<li><code>BRLocationSchema</code> runs the same check at the API edge: in a FastAPI route,
+  a city the state does not have answers <code>422</code> before the handler, and a
+  valid one comes back with the official name and <code>city_ibge_code</code>.</li>
+<li><code>br_location_distribution(session, Model)</code> counts in three aggregate
+  queries (total, <code>GROUP BY state</code>, <code>GROUP BY city_ibge_code</code>), without
+  loading the rows. <code>where=</code> filters all of them and <code>city_limit=</code> drops the
+  smallest cities.</li>
+<li><code>uf_at(coordinate)</code> answers which state a point falls in, through the
+  state outlines the SDK also ships (the IBGE mesh at its lowest quality,
+  about 5 000 points for the country).</li>
+<li><code>render_br_map_svg(counts, points)</code> draws Brazil with each state in a
+  shade and one bubble per city — what the admin page uses (see
+  <a href="../admin/#geographic-distribution-map-location_maps-v03670">Distribution map</a>).</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">The outlines are simplified</p>
+<p>On the IBGE's lowest-quality mesh, 52 of the 5571 municipalities (0.93%)
+fall outside their own state's outline: towns on the coast or on a
+border. All 27 capitals fall inside. That does not matter for the map,
+since the bubble uses the municipality's coordinate; to decide the state
+of an address on a border, do not use <code>uf_at</code>.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">The shade scale is logarithmic</p>
+<p>With one state dominating, a linear scale flattens the map: in the
+browser validation (184 users in SP, the others between 1 and 40), 22 of
+the 25 states with users sat in the lightest shade, the 1–36 band.
+Shade <code>n</code> goes up to <code>peak ** (n / 5)</code>; the legend (<code>br_map_legend</code>)
+shows the ranges.</p>
+</div>
 <h2 id="recap_1">Recap<a class="headerlink" href="#recap_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>haversine_km(a, b)</code> — great-circle distance, pure, always available.</li>
@@ -6497,6 +6648,7 @@ record), not in the user's request.</p>
 <li><code>OSRMBackend.route_through</code> / <code>estimate_route_through</code> — route through stops in one call, one <code>leg</code> per stretch, offline fallback and point cap (<code>DEFAULT_OSRM_MAX_POINTS</code>).</li>
 <li><code>destination_point</code> / <code>initial_bearing</code> / <code>point_in_polygon</code> / <code>polygon_area_km2</code> / <code>path_length_km</code> — offline geometry.</li>
 <li><code>uf_centroid</code> / <code>cep_to_coordinate</code> — Brazil shortcuts.</li>
+<li><code>BRLocationMixin</code> / <code>BRLocationSchema</code> / <code>br_location_distribution</code> — city and state checked against the IBGE and the count per state and city; <code>render_br_map_svg</code> / <code>uf_at</code> — the offline map of Brazil.</li>
 <li><code>extract_cep</code> / <code>resolve_br_coordinate</code> — CEP from free text and the CEP → address → state centroid chain, never raising on a geocoder failure.</li>
 <li><code>estimate_travel</code> / <code>OSRMBackend.route</code> — distance + time (<code>heuristic</code>/<code>osrm</code>); car/motorcycle/bus/bicycle/pedestrian modes.</li>
 </ul>
