@@ -4684,3 +4684,28 @@ via `eta_targets` + `RoutingBackend.matrix`, fallback `estimate_travel`.
 Testes: `tests/geo/test_live.py`, `tests/geo/test_live_router.py` (fakeredis,
 OSRM fake por `httpx.MockTransport`). Receita nova: `live-location`
 (carona completa, saída medida com Redis 6.2 local e o demo público do OSRM).
+
+### Cidade e estado do usuário e mapa de distribuição no admin (2026-11-18)
+
+`geo/location.py`: `BRLocationMixin` (`city`, `state` e `city_ibge_code`
+anuláveis, `state`/`city_ibge_code` indexadas por `index=True` — sem
+`__table_args__`, para compor com o `GeoPointMixin`), `set_br_location` /
+`clear_br_location` / `br_municipality`, `BRLocationSchema` (422 na borda),
+`resolve_br_municipality`, `UnknownMunicipalityError` e
+`br_location_distribution` (total + `GROUP BY state` + `GROUP BY
+city_ibge_code`). `geo/br_map.py`: contornos das 27 UFs
+(`_br_states_geometry_data.py`, gerado da malha mínima do IBGE por
+`scripts/regen_br_states_geometry.py`; o DF fica dentro do contorno de GO, por
+isso é desenhado por último e testado primeiro), `uf_at`, `project_br`
+(equiretangular com o cosseno da latitude média; o quadro inclui os
+municípios, senão Fernando de Noronha caía fora do `viewBox`),
+`br_map_legend` e `render_br_map_svg` (escala log com aritmética inteira).
+Medido: 52 de 5571 municípios (0,93%) caem fora do contorno da própria UF na
+malha mínima; as 27 capitais caem dentro. `admin/location_map.py`:
+`BRLocationMap` + `AdminSite(location_maps=...)` + rota `/maps/{slug}` +
+seção "Maps" na barra lateral (gated por `VIEW`) + `location_map.html` e o CSS
+`tempest-br-map*` / `tempest-admin-geo*`. Validado em browser real (Playwright)
+a 1366 e 390 px, tema claro e escuro. Testes: `tests/geo/test_br_map.py`,
+`tests/geo/test_location.py`, `tests/admin/test_location_map.py`. Receitas:
+`geo` ("Cidade e estado do usuário") e `admin` ("Mapa de distribuição
+geográfica").

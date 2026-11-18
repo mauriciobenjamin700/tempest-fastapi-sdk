@@ -50,6 +50,19 @@ from tempest_fastapi_sdk.geo.br import (
     resolve_br_coordinate as resolve_br_coordinate,
 )
 from tempest_fastapi_sdk.geo.br import uf_centroid as uf_centroid
+from tempest_fastapi_sdk.geo.br_map import BR_MAP_LEVELS as BR_MAP_LEVELS
+from tempest_fastapi_sdk.geo.br_map import BR_MAP_MAX_RADIUS as BR_MAP_MAX_RADIUS
+from tempest_fastapi_sdk.geo.br_map import BR_MAP_MIN_RADIUS as BR_MAP_MIN_RADIUS
+from tempest_fastapi_sdk.geo.br_map import BR_MAP_PADDING as BR_MAP_PADDING
+from tempest_fastapi_sdk.geo.br_map import BR_MAP_WIDTH as BR_MAP_WIDTH
+from tempest_fastapi_sdk.geo.br_map import BRMapLegendEntry as BRMapLegendEntry
+from tempest_fastapi_sdk.geo.br_map import BRMapPoint as BRMapPoint
+from tempest_fastapi_sdk.geo.br_map import br_map_height as br_map_height
+from tempest_fastapi_sdk.geo.br_map import br_map_legend as br_map_legend
+from tempest_fastapi_sdk.geo.br_map import br_state_outlines as br_state_outlines
+from tempest_fastapi_sdk.geo.br_map import project_br as project_br
+from tempest_fastapi_sdk.geo.br_map import render_br_map_svg as render_br_map_svg
+from tempest_fastapi_sdk.geo.br_map import uf_at as uf_at
 from tempest_fastapi_sdk.geo.cache import (
     DEFAULT_GEOCODE_CACHE_KEY_PREFIX as DEFAULT_GEOCODE_CACHE_KEY_PREFIX,
 )
@@ -158,6 +171,23 @@ from tempest_fastapi_sdk.geo.live_router import (
 from tempest_fastapi_sdk.geo.live_router import (
     make_live_position_router as make_live_position_router,
 )
+from tempest_fastapi_sdk.geo.location import BR_CITY_MAX_LENGTH as BR_CITY_MAX_LENGTH
+from tempest_fastapi_sdk.geo.location import BRCityCountSchema as BRCityCountSchema
+from tempest_fastapi_sdk.geo.location import (
+    BRLocationDistributionSchema as BRLocationDistributionSchema,
+)
+from tempest_fastapi_sdk.geo.location import BRLocationMixin as BRLocationMixin
+from tempest_fastapi_sdk.geo.location import BRLocationSchema as BRLocationSchema
+from tempest_fastapi_sdk.geo.location import BRStateCountSchema as BRStateCountSchema
+from tempest_fastapi_sdk.geo.location import (
+    UnknownMunicipalityError as UnknownMunicipalityError,
+)
+from tempest_fastapi_sdk.geo.location import (
+    br_location_distribution as br_location_distribution,
+)
+from tempest_fastapi_sdk.geo.location import (
+    resolve_br_municipality as resolve_br_municipality,
+)
 from tempest_fastapi_sdk.geo.municipalities import (
     BR_CITY_NICKNAMES as BR_CITY_NICKNAMES,
 )
@@ -219,7 +249,13 @@ from tempest_fastapi_sdk.geo.trip_intent import (
 
 __all__: list[str] = [
     "BRASILIA_IBGE_CODE",
+    "BR_CITY_MAX_LENGTH",
     "BR_CITY_NICKNAMES",
+    "BR_MAP_LEVELS",
+    "BR_MAP_MAX_RADIUS",
+    "BR_MAP_MIN_RADIUS",
+    "BR_MAP_PADDING",
+    "BR_MAP_WIDTH",
     "CEP_PATTERN",
     "DEFAULT_CAR_SPEED_KMH",
     "DEFAULT_CIRCUITY_FACTOR",
@@ -242,6 +278,13 @@ __all__: list[str] = [
     "LIVE_POSITION_MAX_CLOCK_SKEW",
     "UF_CENTROIDS",
     "AudienceResolver",
+    "BRCityCountSchema",
+    "BRLocationDistributionSchema",
+    "BRLocationMixin",
+    "BRLocationSchema",
+    "BRMapLegendEntry",
+    "BRMapPoint",
+    "BRStateCountSchema",
     "BoundingBox",
     "CachedGeocodingBackend",
     "CityMention",
@@ -274,8 +317,13 @@ __all__: list[str] = [
     "TripCityIndex",
     "TripIntent",
     "TripRoleEnum",
+    "UnknownMunicipalityError",
     "bounding_box",
+    "br_location_distribution",
+    "br_map_height",
+    "br_map_legend",
     "br_municipalities",
+    "br_state_outlines",
     "build_trip_city_index",
     "cep_to_coordinate",
     "decode_polyline",
@@ -298,8 +346,12 @@ __all__: list[str] = [
     "path_length_km",
     "point_in_polygon",
     "polygon_area_km2",
+    "project_br",
+    "render_br_map_svg",
     "resolve_br_coordinate",
+    "resolve_br_municipality",
     "search_municipalities",
+    "uf_at",
     "uf_centroid",
     "within_radius",
 ]

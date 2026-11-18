@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from tempest_fastapi_sdk.admin.config import AdminModel
 from tempest_fastapi_sdk.admin.dashboard import MetricCard
+from tempest_fastapi_sdk.admin.location_map import BRLocationMap
 from tempest_fastapi_sdk.admin.metrics import MetricsArea
 from tempest_fastapi_sdk.admin.theme import AdminTheme
 
@@ -55,6 +56,8 @@ class AdminSite:
             the system CPU/RAM/disk panel.
         metrics_areas (list[MetricsArea]): Indicator pages generated from
             a schema and a service, one card per field.
+        location_maps (list[BRLocationMap]): Map pages of where a model's
+            rows are in Brazil.
     """
 
     def __init__(
@@ -68,6 +71,7 @@ class AdminSite:
         dashboard_cards: Sequence[MetricCard] = (),
         display_timezone: str | None = None,
         metrics_areas: Sequence[MetricsArea] = (),
+        location_maps: Sequence[BRLocationMap] = (),
     ) -> None:
         """Initialize the site.
 
@@ -98,11 +102,14 @@ class AdminSite:
                 generated from a schema and a service method with no
                 arguments, listed under "Metrics" in the sidebar. Gated by
                 the ``METRICS`` surface.
+            location_maps (Sequence[BRLocationMap]): Map pages listed under
+                "Maps" in the sidebar, each shading Brazil by a model's row
+                count per state. Gated by ``VIEW`` on that model.
 
         Raises:
             ValueError: When ``display_timezone`` is not a zone the
-                host's tz database knows, or two ``metrics_areas`` share
-                a URL slug.
+                host's tz database knows, or two ``metrics_areas`` (or two
+                ``location_maps``) share a URL slug.
         """
         self.title: str = title
         self.brand: str | None = brand
@@ -117,6 +124,14 @@ class AdminSite:
         if duplicated:
             raise ValueError(
                 f"AdminSite metrics_areas share the URL slug {duplicated}; "
+                "give them distinct titles"
+            )
+        self.location_maps: list[BRLocationMap] = list(location_maps)
+        map_slugs = [entry.slug for entry in self.location_maps]
+        repeated = sorted({slug for slug in map_slugs if map_slugs.count(slug) > 1})
+        if repeated:
+            raise ValueError(
+                f"AdminSite location_maps share the URL slug {repeated}; "
                 "give them distinct titles"
             )
         self.display_tzinfo: ZoneInfo | None = None

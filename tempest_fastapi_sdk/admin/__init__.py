@@ -45,6 +45,7 @@ from tempest_fastapi_sdk.admin.dashboard import MetricPartition as MetricPartiti
 from tempest_fastapi_sdk.admin.dashboard import MetricTrend as MetricTrend
 from tempest_fastapi_sdk.admin.dashboard import MetricValue as MetricValue
 from tempest_fastapi_sdk.admin.discovery import discover_models as discover_models
+from tempest_fastapi_sdk.admin.location_map import BRLocationMap as BRLocationMap
 from tempest_fastapi_sdk.admin.manual_payout import (
     MARK_PAID_ACTION as MARK_PAID_ACTION,
 )
@@ -206,6 +207,7 @@ __all__: list[str] = [
     "AdminSurfacePolicy",
     "AdminTheme",
     "AnyActionHandler",
+    "BRLocationMap",
     "ChoiceSource",
     "CreateHandlerFunc",
     "EditValidator",

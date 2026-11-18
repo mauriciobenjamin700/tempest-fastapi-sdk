@@ -1090,6 +1090,132 @@ geocoder = RetryingGeocoder(
     `User-Agent`. Resolve the coordinate in the background (after saving the
     record), not in the user's request.
 
+## A user's city and state (`BRLocationMixin`) *(v0.367.0+)*
+
+To know **where** in Brazil your users (or stores, or orders) are, mix
+`BRLocationMixin` into the model. It adds three columns, all nullable (an
+existing table gains them with a plain migration):
+
+| Column | Type | What it holds |
+| --- | --- | --- |
+| `city` | `String(64)` | the official IBGE name (`"São Paulo"`) |
+| `state` | `String(2)`, indexed | the state's acronym (`"SP"`) |
+| `city_ibge_code` | `Integer`, indexed | the seven-digit IBGE code (`3550308`) |
+
+Always write through `set_br_location(city, state)`: it looks the city up in
+the 5571 municipalities the SDK already ships, with no network, accepts any
+case and accents, and stores the official spelling and the code. A city the
+state does not have raises `UnknownMunicipalityError`, and the row is left
+as it was.
+
+```python
+import asyncio
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from tempest_fastapi_sdk import BaseUserModel
+from tempest_fastapi_sdk.geo import (
+    BRLocationMixin,
+    BRLocationSchema,
+    Coordinate,
+    UnknownMunicipalityError,
+    br_location_distribution,
+    render_br_map_svg,
+    uf_at,
+)
+
+
+class UserModel(BRLocationMixin, BaseUserModel):
+    """Users with the city and state they live in."""
+
+    __tablename__ = "users"
+
+
+async def main() -> None:
+    """Store three users, refuse a wrong city and count per state and city."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(UserModel.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        await store(session)
+        result = await br_location_distribution(session, UserModel)
+    print(result.total, result.located, result.unlocated)
+    print(result.state_counts())
+    print([(city.city, city.state, city.count) for city in result.cities])
+    print(BRLocationSchema(city="belo horizonte", state="MG"))
+    print(uf_at(Coordinate(latitude=-15.79, longitude=-47.88)))
+    print(render_br_map_svg(result.state_counts())[:60])
+    await engine.dispose()
+
+
+async def store(session: AsyncSession) -> None:
+    """Add the users; the last one has no location yet."""
+    for email, city, state in [
+        ("ana@example.com", "sao paulo", "SP"),
+        ("bia@example.com", "SÃO PAULO", "sp"),
+        ("caio@example.com", "Recife", "PE"),
+    ]:
+        user = UserModel(email=email, hashed_password="")
+        user.set_br_location(city, state)
+        session.add(user)
+    try:
+        UserModel(email="x@example.com", hashed_password="").set_br_location(
+            "Recife", "SP"
+        )
+    except UnknownMunicipalityError as error:
+        print(error)
+    session.add(UserModel(email="dani@example.com", hashed_password=""))
+    await session.commit()
+
+
+asyncio.run(main())
+```
+
+Measured output:
+
+```text
+SP has no municipality named 'Recife'
+4 3 1
+{'SP': 2, 'PE': 1}
+[('São Paulo', 'SP', 2), ('Recife', 'PE', 1)]
+city='Belo Horizonte' state='MG' city_ibge_code=3106200
+DF
+<svg class="tempest-br-map" viewBox="0 0 1000 969" role="img
+```
+
+Piece by piece:
+
+- `set_br_location("sao paulo", "SP")` and `set_br_location("SÃO PAULO", "sp")`
+  store the same `"São Paulo"`, so the count does not split by spelling.
+- `BRLocationSchema` runs the same check at the API edge: in a FastAPI route,
+  a city the state does not have answers `422` before the handler, and a
+  valid one comes back with the official name and `city_ibge_code`.
+- `br_location_distribution(session, Model)` counts in three aggregate
+  queries (total, `GROUP BY state`, `GROUP BY city_ibge_code`), without
+  loading the rows. `where=` filters all of them and `city_limit=` drops the
+  smallest cities.
+- `uf_at(coordinate)` answers which state a point falls in, through the
+  state outlines the SDK also ships (the IBGE mesh at its lowest quality,
+  about 5 000 points for the country).
+- `render_br_map_svg(counts, points)` draws Brazil with each state in a
+  shade and one bubble per city — what the admin page uses (see
+  [Distribution map](admin.md#geographic-distribution-map-location_maps-v03670)).
+
+!!! note "The outlines are simplified"
+    On the IBGE's lowest-quality mesh, 52 of the 5571 municipalities (0.93%)
+    fall outside their own state's outline: towns on the coast or on a
+    border. All 27 capitals fall inside. That does not matter for the map,
+    since the bubble uses the municipality's coordinate; to decide the state
+    of an address on a border, do not use `uf_at`.
+
+!!! tip "The shade scale is logarithmic"
+    With one state dominating, a linear scale flattens the map: in the
+    browser validation (184 users in SP, the others between 1 and 40), 22 of
+    the 25 states with users sat in the lightest shade, the 1–36 band.
+    Shade `n` goes up to `peak ** (n / 5)`; the legend (`br_map_legend`)
+    shows the ranges.
+
 ## Recap
 
 - `haversine_km(a, b)` — great-circle distance, pure, always available.
@@ -1101,5 +1227,6 @@ geocoder = RetryingGeocoder(
 - `OSRMBackend.route_through` / `estimate_route_through` — route through stops in one call, one `leg` per stretch, offline fallback and point cap (`DEFAULT_OSRM_MAX_POINTS`).
 - `destination_point` / `initial_bearing` / `point_in_polygon` / `polygon_area_km2` / `path_length_km` — offline geometry.
 - `uf_centroid` / `cep_to_coordinate` — Brazil shortcuts.
+- `BRLocationMixin` / `BRLocationSchema` / `br_location_distribution` — city and state checked against the IBGE and the count per state and city; `render_br_map_svg` / `uf_at` — the offline map of Brazil.
 - `extract_cep` / `resolve_br_coordinate` — CEP from free text and the CEP → address → state centroid chain, never raising on a geocoder failure.
 - `estimate_travel` / `OSRMBackend.route` — distance + time (`heuristic`/`osrm`); car/motorcycle/bus/bicycle/pedestrian modes.

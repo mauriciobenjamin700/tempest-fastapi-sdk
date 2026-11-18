@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ location_map.title }} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-dashboard tempest-admin-geo">
+  <header class="tempest-admin-dashboard__header">
+    <h1>{{ location_map.title }}</h1>
+  </header>
+  {% if failed %}
+  <div class="tempest-admin-flash tempest-admin-flash--error" role="alert">
+    This map could not be counted. The error is in the server log.
+  </div>
+  {% else %}
+  <div class="tempest-admin-stats">
+    <div class="tempest-admin-stat">
+      <span class="tempest-admin-stat__label">Total</span>
+      <span class="tempest-admin-stat__value">{{ distribution.total }}</span>
+      <span class="tempest-admin-stat__sub">{{ value_label }}</span>
+    </div>
+    <div class="tempest-admin-stat">
+      <span class="tempest-admin-stat__label">With location</span>
+      <span class="tempest-admin-stat__value">{{ distribution.located }}</span>
+      <span class="tempest-admin-stat__sub">{{ distribution.states|length }} state(s), {{ distribution.cities|length }} city(ies) shown</span>
+    </div>
+    <div class="tempest-admin-stat">
+      <span class="tempest-admin-stat__label">No location</span>
+      <span class="tempest-admin-stat__value">{{ distribution.unlocated }}</span>
+      <span class="tempest-admin-stat__sub">{{ value_label }}</span>
+    </div>
+  </div>
+  {% if distribution.located %}
+  <div class="tempest-admin-geo__layout">
+    <figure class="tempest-admin-geo__map">
+      {{ svg|safe }}
+      <figcaption class="tempest-admin-geo__legend">
+        <span class="tempest-admin-geo__legend-title">{{ value_label }} per state</span>
+        <ul>
+          {% for entry in legend %}
+          <li><span class="tempest-admin-geo__swatch tempest-br-map__state--l{{ entry.level }}" aria-hidden="true"></span>{% if entry.low == entry.high %}{{ entry.low }}{% else %}{{ entry.low }}–{{ entry.high }}{% endif %}</li>
+          {% endfor %}
+          <li><span class="tempest-admin-geo__swatch tempest-admin-geo__swatch--point" aria-hidden="true"></span>city (area = {{ value_label }})</li>
+        </ul>
+      </figcaption>
+    </figure>
+    <div class="tempest-admin-geo__tables">
+      <div class="tempest-admin-table-wrap">
+        <table class="tempest-admin-list__table">
+          <caption>States</caption>
+          <thead><tr><th scope="col">State</th><th scope="col" class="tempest-admin-geo__num">{{ value_label }}</th></tr></thead>
+          <tbody>
+            {% for entry in distribution.states %}
+            <tr><td>{{ entry.state }}</td><td class="tempest-admin-geo__num">{{ entry.count }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if distribution.cities %}
+      <div class="tempest-admin-table-wrap">
+        <table class="tempest-admin-list__table">
+          <caption>Cities</caption>
+          <thead><tr><th scope="col">City</th><th scope="col">State</th><th scope="col" class="tempest-admin-geo__num">{{ value_label }}</th></tr></thead>
+          <tbody>
+            {% for entry in distribution.cities %}
+            <tr><td>{{ entry.city }}</td><td>{{ entry.state }}</td><td class="tempest-admin-geo__num">{{ entry.count }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="tempest-admin-empty">No {{ value_label }} with a location yet.</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

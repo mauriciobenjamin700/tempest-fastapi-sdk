@@ -70,6 +70,9 @@ if TYPE_CHECKING:
         AdminTheme as AdminTheme,
     )
     from tempest_fastapi_sdk.admin import (
+        BRLocationMap as BRLocationMap,
+    )
+    from tempest_fastapi_sdk.admin import (
         CreateHandlerFunc as CreateHandlerFunc,
     )
     from tempest_fastapi_sdk.admin import (
@@ -2457,6 +2460,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "MetricTrend": "tempest_fastapi_sdk.admin",
     "MetricValue": "tempest_fastapi_sdk.admin",
     "MetricLevelEnum": "tempest_fastapi_sdk.admin",
+    "BRLocationMap": "tempest_fastapi_sdk.admin",
     "MetricsArea": "tempest_fastapi_sdk.admin",
     "MetricsProvider": "tempest_fastapi_sdk.admin",
     "Threshold": "tempest_fastapi_sdk.admin",
@@ -3422,6 +3426,7 @@ __all__: list[str] = [
     "AuthExceptions",
     "AuthSettings",
     "AuthUserSchema",
+    "BRLocationMap",
     "BackupToolMissingError",
     "BanStore",
     "BaseAppSettings",

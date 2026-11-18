@@ -64,6 +64,7 @@ from tempest_fastapi_sdk.admin.forms import (
     schema_form_fields,
     to_display_timezone,
 )
+from tempest_fastapi_sdk.admin.location_map import BRLocationMap
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy,
     AdminActionPolicy,
@@ -126,6 +127,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
+    from tempest_fastapi_sdk.db.model import BaseModel
 
 
 logger = logging.getLogger(__name__)
@@ -690,6 +692,7 @@ def make_admin_router(
                 allowed.add(mounted)
         request.state.tempest_admin_surfaces = frozenset(allowed)
         request.state.tempest_admin_nav = await _visible_nav(principal)
+        request.state.tempest_admin_maps = await _visible_maps(principal)
         if surface is not None and surface not in allowed:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
         return principal
@@ -760,6 +763,10 @@ def make_admin_router(
         context.setdefault(
             "nav_models",
             getattr(request.state, "tempest_admin_nav", []),
+        )
+        context.setdefault(
+            "nav_location_maps",
+            getattr(request.state, "tempest_admin_maps", []),
         )
         context.setdefault("nav_index_url", f"{prefix}/")
         allowed: frozenset[AdminSurfaceEnum] = getattr(
@@ -1280,6 +1287,40 @@ def make_admin_router(
                         "label": admin.get_verbose_name_plural(),
                         "url": f"{prefix}/m/{admin.get_slug()}/",
                     }
+                )
+        return entries
+
+    def _map_admin(entry: BRLocationMap) -> AdminModel[Any]:
+        """Return the admin a map page asks ``VIEW`` of.
+
+        Args:
+            entry (BRLocationMap): The map.
+
+        Returns:
+            AdminModel[Any]: The model's registered admin, or a throwaway
+            ``AdminModel(model)`` when it is not registered, so a policy
+            that decides by ``admin.model`` answers the same.
+        """
+        registered = site.get(cast("type[BaseModel]", entry.model))
+        if registered is not None:
+            return registered
+        return AdminModel(cast("type[BaseModel]", entry.model))
+
+    async def _visible_maps(principal: Any) -> list[dict[str, str]]:
+        """Return the sidebar entries of the map pages the principal may see.
+
+        Args:
+            principal (Any): The current admin principal.
+
+        Returns:
+            list[dict[str, str]]: ``{title, url}`` for each map whose model
+            the principal may ``VIEW``.
+        """
+        entries: list[dict[str, str]] = []
+        for entry in site.location_maps:
+            if await _allows(principal, _map_admin(entry), AdminPermissionEnum.VIEW):
+                entries.append(
+                    {"title": entry.title, "url": f"{prefix}/maps/{entry.slug}"}
                 )
         return entries
 
@@ -1989,6 +2030,62 @@ def make_admin_router(
                 "area": area,
                 "cards": cards,
                 "failed": failed,
+            },
+        )
+
+    @router.get("/maps/{slug}", name="admin_location_map")
+    async def location_map(
+        request: Request,
+        slug: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Render one location map: Brazil shaded by row count per state.
+
+        When the count raises, the page still renders, with an error in
+        place of the map and the traceback in the module logger, like an
+        indicator area.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The map's URL segment.
+            db_session (AsyncSession): The DB session the counts run on.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The ``location_map.html`` page.
+
+        Raises:
+            HTTPException: ``404`` for an unknown slug; ``403`` when the
+                ``access_policy`` denies ``VIEW`` on the map's model.
+        """
+        entry = next((item for item in site.location_maps if item.slug == slug), None)
+        if entry is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "location map not found")
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, _map_admin(entry), AdminPermissionEnum.VIEW)
+        page: dict[str, Any] = {}
+        failed = False
+        try:
+            distribution = await entry.collect(db_session)
+        except Exception:
+            logger.exception(
+                "Admin location map %r failed to count; rendering the error",
+                entry.title,
+            )
+            failed = True
+        else:
+            page = entry.page_context(distribution)
+        return _render(
+            request,
+            "location_map.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "location_map": entry,
+                "failed": failed,
+                **page,
             },
         )
 
