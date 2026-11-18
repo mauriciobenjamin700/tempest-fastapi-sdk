@@ -2,6 +2,104 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.366.0 — `RoutingBackend` exige `route_through` e `matrix`
+
+O protocolo `RoutingBackend` ganhou dois métodos: `route_through` (rota com
+paradas, #785) e `matrix` (que a ETA da localização ao vivo usa, #786). O
+`OSRMBackend` e o `FakeRoutingBackend` já têm os três. Um backend **seu** que
+só implementava `route` deixa de satisfazer o protocolo: o mypy recusa
+passá-lo onde se pede `RoutingBackend`, e, como o protocolo é
+`@runtime_checkable`, `isinstance(backend, RoutingBackend)` passa a responder
+`False`.
+
+Os dois métodos podem ser escritos sobre o `route` que você já tem:
+
+```python
+import asyncio
+from collections.abc import Sequence
+
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    DistanceMatrix,
+    RouteThroughResult,
+    RoutingBackend,
+    TravelEstimate,
+    TravelModeEnum,
+    estimate_travel,
+)
+
+
+class MyRoutingBackend:
+    """A backend written before 0.366.0, now with the two new methods."""
+
+    async def route(
+        self,
+        origin: Coordinate,
+        destination: Coordinate,
+        *,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
+        with_geometry: bool = False,
+    ) -> TravelEstimate:
+        """The method the backend always had."""
+        return estimate_travel(origin, destination, mode)
+
+    async def route_through(
+        self,
+        points: Sequence[Coordinate],
+        *,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
+        with_geometry: bool = False,
+    ) -> RouteThroughResult:
+        """One leg per consecutive pair, through the existing route."""
+        legs = [
+            await self.route(origin, target, mode=mode)
+            for origin, target in zip(points, points[1:], strict=False)
+        ]
+        return RouteThroughResult(
+            mode=mode,
+            distance_km=sum(leg.distance_km for leg in legs),
+            duration_minutes=sum(leg.duration_minutes for leg in legs),
+            source=legs[0].source,
+            geometry=list(points) if with_geometry else [],
+            legs=legs,
+        )
+
+    async def matrix(
+        self,
+        sources: list[Coordinate],
+        destinations: list[Coordinate] | None = None,
+        *,
+        mode: TravelModeEnum = TravelModeEnum.CAR,
+    ) -> DistanceMatrix:
+        """Every (source, destination) pair, through the existing route."""
+        targets = destinations if destinations is not None else sources
+        rows = [[await self.route(a, b, mode=mode) for b in targets] for a in sources]
+        return DistanceMatrix(
+            sources=sources,
+            destinations=targets,
+            distances_km=[[cell.distance_km for cell in row] for row in rows],
+            durations_minutes=[[cell.duration_minutes for cell in row] for row in rows],
+            mode=mode,
+            source_label=rows[0][0].source,
+        )
+
+
+async def main() -> None:
+    """Check the backend against the protocol and route through a stop."""
+    backend = MyRoutingBackend()
+    a = Coordinate(latitude=-23.5505, longitude=-46.6333)
+    b = Coordinate(latitude=-23.5629, longitude=-46.6544)
+    c = Coordinate(latitude=-23.5874, longitude=-46.6576)
+    result = await backend.route_through([a, b, c])
+    print(isinstance(backend, RoutingBackend), len(result.legs), result.source)
+
+
+asyncio.run(main())
+```
+
+Saída medida: `True 2 heuristic` — o backend volta a passar no `isinstance`
+(e no mypy), e a rota por uma parada tem dois trechos.
+
 ## 0.361.0 — saque manual ganha quatro colunas
 
 O `BaseManualPayoutModel` (e o `make_manual_payout_model`) ganhou quatro colunas anuláveis, usadas pelo `ManualPayoutService` para registrar o pagamento e a recusa. Uma tabela criada na 0.360.0 não as tem, e qualquer `select` do modelo novo falha — em SQLite com `OperationalError: no such column: manual_payouts.end_to_end_id`.
