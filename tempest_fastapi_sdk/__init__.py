@@ -31,6 +31,9 @@ if TYPE_CHECKING:
         AdminActionContext as AdminActionContext,
     )
     from tempest_fastapi_sdk.admin import (
+        AdminActionPolicy as AdminActionPolicy,
+    )
+    from tempest_fastapi_sdk.admin import (
         AdminActionResult as AdminActionResult,
     )
     from tempest_fastapi_sdk.admin import (
@@ -2430,6 +2433,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "AllowedImageMediaTypes": "tempest_fastapi_sdk.utils",
     "image_media_type_field": "tempest_fastapi_sdk.utils",
     "AdminAccessPolicy": "tempest_fastapi_sdk.admin",
+    "AdminActionPolicy": "tempest_fastapi_sdk.admin",
     "AdminAction": "tempest_fastapi_sdk.admin",
     "AdminActionContext": "tempest_fastapi_sdk.admin",
     "AdminActionResult": "tempest_fastapi_sdk.admin",
@@ -3386,6 +3390,7 @@ __all__: list[str] = [
     "AdminAccessPolicy",
     "AdminAction",
     "AdminActionContext",
+    "AdminActionPolicy",
     "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",

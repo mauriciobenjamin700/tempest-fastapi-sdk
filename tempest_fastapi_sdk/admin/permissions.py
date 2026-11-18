@@ -64,6 +64,7 @@ from typing import TYPE_CHECKING, Any
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 if TYPE_CHECKING:
+    from tempest_fastapi_sdk.admin.actions import AdminAction
     from tempest_fastapi_sdk.admin.config import AdminModel
 
 
@@ -107,9 +108,20 @@ AdminSurfacePolicy = Callable[
     bool | Awaitable[bool],
 ]
 
+#: A policy deciding whether ``principal`` may see and run the custom
+#: ``action`` of ``admin``. Sync or ``async``; return truthy to allow.
+#: Passed as ``make_admin_router(action_policy=...)``, it replaces the
+#: ``EDIT`` on the whole model that a custom action otherwise needs, so one
+#: action can be granted without opening the edit form or another action.
+AdminActionPolicy = Callable[
+    [Any, "AdminModel[Any]", "AdminAction"],
+    bool | Awaitable[bool],
+]
+
 
 __all__: list[str] = [
     "AdminAccessPolicy",
+    "AdminActionPolicy",
     "AdminPermissionEnum",
     "AdminSurfaceEnum",
     "AdminSurfacePolicy",

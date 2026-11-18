@@ -13,9 +13,9 @@ from sqlalchemy.sql import operators
 from sqlalchemy.sql.elements import UnaryExpression
 
 from tempest_fastapi_sdk.admin.actions import (
-    ActionHandler,
     AdminAction,
     AdminCreateHandler,
+    AnyActionHandler,
     resolve_admin_action,
 )
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, audit_redacted_columns
@@ -275,11 +275,13 @@ class AdminModel(Generic[ModelT]):
             (``GET/POST {prefix}/m/{slug}/import``) that bulk-creates
             rows from an uploaded CSV. Default ``False`` (opt-in); also
             requires ``can_create``.
-        actions (Sequence[ActionHandler]): Custom bulk actions —
+        actions (Sequence[AnyActionHandler]): Custom bulk actions —
             functions decorated with
             :func:`~tempest_fastapi_sdk.admin.admin_action`. Each appears
             in the list view's bulk-action dropdown alongside the built-in
-            activate / deactivate / delete.
+            activate / deactivate / delete; an ``action_policy`` on
+            :func:`~tempest_fastapi_sdk.admin.make_admin_router` decides,
+            per action, who sees and runs it.
         upload_fields (Sequence[FieldRef]): String columns rendered as
             file inputs in the create/edit form. The uploaded file is
             saved through ``upload_storage`` and the returned storage key
@@ -431,7 +433,7 @@ class AdminModel(Generic[ModelT]):
         can_delete: bool = True,
         can_import: bool = False,
         can_toggle_active: bool = True,
-        actions: Sequence[ActionHandler] = (),
+        actions: Sequence[AnyActionHandler] = (),
         upload_fields: Sequence[FieldRef] = (),
         upload_storage: UploadStorage | None = None,
         audit_model: type[BaseAuditLogModel] | None = None,

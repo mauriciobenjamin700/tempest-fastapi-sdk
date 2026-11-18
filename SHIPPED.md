@@ -4632,3 +4632,22 @@ própria com `BackgroundTasks`, por nome e por path, em memória e sobre o
 `fake-api` por ASGI) e `tests/admin/test_mercado_pago_simulation_admin.py`
 (painel real sobre SQLite em arquivo, o webhook do serviço marcando a
 cobrança `paid`). Receita: três seções novas em `mercado-pago-webhooks`.
+
+### Ações customizadas do admin: commit, permissão por ação e formulário de entrada (#782, #783, #784, 2026-11-18)
+
+`admin/router.py`: o `/bulk` roda a ação customizada por `_call_custom_action`,
+que commita a sessão quando o handler retorna e faz rollback quando levanta
+(#784 — antes só o ramo com `secrets` commitava). `make_admin_router(
+action_policy=...)` (`AdminActionPolicy` em `admin/permissions.py`): com ele, a
+ação pede `VIEW` + a aprovação da política em vez de `EDIT`;
+`_permitted_bulk_actions` filtra o menu da lista pelas permissões (também
+Activate/Deactivate por `EDIT` e Delete por `DELETE`, sobre os flags
+`can_*` que o `_bulk_actions` já aplicava) e esconde o formulário
+de lote vazio (#783). `@admin_action(schema=...)` (`AdminAction.schema`,
+`SchemaActionHandler`, `AnyActionHandler`): o primeiro `POST` responde o
+formulário gerado por `schema_form_fields` (marcador oculto `action_input`,
+ids ocultos, nonce novo), o envio valida com `parse_schema_submission` e chama
+`handler(data, ctx)`; `AppException` re-renderiza com `400` (#782). O
+`form.html` ganhou `hidden_inputs`, `form_intro` e `submit_label`. Testes:
+`tests/admin/test_custom_action_flow.py` (painel real sobre SQLite em
+arquivo). Receita: `admin` (commit, `schema=`, `action_policy=`).

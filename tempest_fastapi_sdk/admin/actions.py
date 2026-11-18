@@ -18,7 +18,12 @@ with :func:`admin_action` and registered on an
 The decorated function receives an :class:`AdminActionContext` (the
 selected row ids, a repository, the request and the admin session) and
 returns an optional :class:`AdminActionResult` whose message is flashed
-back on the list view. An action that creates a credential returns it in
+back on the list view. The panel commits the request session after the
+handler returns and rolls it back when it raises, so a handler may change
+rows through ``ctx.db_session`` or ``ctx.repository`` without committing.
+An action declared with ``schema=`` first asks the operator for input on a
+form generated from that Pydantic model and is called as
+``handler(data, ctx)``. An action that creates a credential returns it in
 ``AdminActionResult.secrets`` (:class:`AdminSecret`), and the panel shows
 it once on the action's own response instead of redirecting.
 """
@@ -27,7 +32,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
     from pydantic import BaseModel as PydanticModel
@@ -108,6 +113,21 @@ class AdminActionResult:
 
 
 ActionHandler = Callable[[AdminActionContext], Awaitable["AdminActionResult | None"]]
+"""An async ``(ctx)`` custom action: the selected rows and the session."""
+
+SchemaActionHandler = Callable[
+    [Any, AdminActionContext], Awaitable["AdminActionResult | None"]
+]
+"""An async ``(data, ctx)`` custom action declared with ``schema=``.
+
+``data`` is an instance of the action's schema, validated from the form the
+operator filled in after picking the action.
+"""
+
+AnyActionHandler = ActionHandler | SchemaActionHandler
+"""Either kind of custom action, as ``AdminModel(actions=...)`` takes them."""
+
+_HandlerT = TypeVar("_HandlerT", ActionHandler, SchemaActionHandler)
 
 
 @dataclass(frozen=True)
@@ -117,15 +137,19 @@ class AdminAction:
     Attributes:
         name (str): Stable identifier (form value); unique per model.
         label (str): Text shown in the bulk-action dropdown.
-        handler (ActionHandler): The async function to run.
+        handler (AnyActionHandler): The async function to run — ``(ctx)``,
+            or ``(data, ctx)`` when ``schema`` is set.
         dangerous (bool): When ``True``, the UI marks it as destructive
             (a stronger confirm prompt).
+        schema (type[PydanticModel] | None): The input the operator fills in
+            before the action runs; ``None`` runs it straight from the list.
     """
 
     name: str
     label: str
-    handler: ActionHandler
+    handler: AnyActionHandler
     dangerous: bool = field(default=False)
+    schema: type[PydanticModel] | None = field(default=None)
 
 
 CreateHandlerFunc = Callable[
@@ -178,7 +202,8 @@ def admin_action(
     label: str,
     name: str | None = None,
     dangerous: bool = False,
-) -> Callable[[ActionHandler], ActionHandler]:
+    schema: type[PydanticModel] | None = None,
+) -> Callable[[_HandlerT], _HandlerT]:
     """Mark an async function as a custom admin action.
 
     The decorated function is registered by passing it to
@@ -186,34 +211,52 @@ def admin_action(
     so the function stays directly callable (and unit-testable) on its
     own.
 
+    The panel commits the request session after the handler returns, with
+    or without ``secrets`` in the result, and rolls it back when the handler
+    raises.
+
+    With ``schema``, picking the action on the list opens a form generated
+    from the model, with the selected ids carried along; the handler runs
+    only on a valid submission, as ``handler(data, ctx)``. An invalid one
+    re-renders the form with ``400``, and an
+    :class:`~tempest_fastapi_sdk.AppException` from the handler rolls the
+    session back and re-renders it with the message. The form carries a
+    single-use nonce, so resubmitting the same form does not run the action
+    again.
+
     Args:
         label (str): Dropdown label shown to the operator.
         name (str | None): Stable identifier (the submitted form value).
             Defaults to the function's ``__name__``.
         dangerous (bool): Flag a destructive action for a stronger UI
             confirm.
+        schema (type[PydanticModel] | None): The input asked before the
+            action runs (a reason, an amount, a date).
 
     Returns:
-        Callable[[ActionHandler], ActionHandler]: The decorator.
+        Callable[[_HandlerT], _HandlerT]: The decorator, returning the
+        function unchanged.
     """
 
-    def decorator(func: ActionHandler) -> ActionHandler:
+    def decorator(func: _HandlerT) -> _HandlerT:
         func.__admin_action__ = AdminAction(  # type: ignore[attr-defined]
             name=name or func.__name__,
             label=label,
             handler=func,
             dangerous=dangerous,
+            schema=schema,
         )
         return func
 
     return decorator
 
 
-def resolve_admin_action(func: ActionHandler) -> AdminAction:
+def resolve_admin_action(func: AnyActionHandler) -> AdminAction:
     """Return the :class:`AdminAction` attached by :func:`admin_action`.
 
     Args:
-        func (ActionHandler): A function passed to ``AdminModel(actions=)``.
+        func (AnyActionHandler): A function passed to
+            ``AdminModel(actions=)``.
 
     Returns:
         AdminAction: The attached metadata + handler.
@@ -232,11 +275,14 @@ def resolve_admin_action(func: ActionHandler) -> AdminAction:
 
 
 __all__: list[str] = [
+    "ActionHandler",
     "AdminAction",
     "AdminActionContext",
     "AdminActionResult",
     "AdminCreateHandler",
+    "AnyActionHandler",
     "CreateHandlerFunc",
+    "SchemaActionHandler",
     "admin_action",
     "resolve_admin_action",
 ]

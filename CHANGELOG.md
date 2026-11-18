@@ -5,6 +5,41 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `@admin_action(..., schema=Model)`: a ação pede dados ao operador antes de
+  rodar. Escolhida na lista, o `POST /m/{slug}/bulk` responde `200` com o
+  formulário gerado do schema, os ids em campos ocultos e um nonce de uso
+  único; envio válido chama `handler(data, ctx)`, inválido responde `400` com
+  o erro no campo, e uma `AppException` do handler faz rollback e
+  re-renderiza com a mensagem. Tipos `SchemaActionHandler` e
+  `AnyActionHandler`; `AdminModel(actions=...)` aceita os dois (#782).
+- `make_admin_router(action_policy=...)` e o tipo `AdminActionPolicy`
+  (`(principal, admin, AdminAction) -> bool`, sync ou async): com ele, a ação
+  customizada pede `VIEW` no model mais a aprovação da política, e não mais
+  `EDIT`; ação negada sai do menu e responde `403`. Sem `action_policy`, nada
+  muda (#783).
+- `resolve_admin_action` e `ActionHandler` exportados em
+  `tempest_fastapi_sdk.admin`.
+
+### Changed
+
+- O menu de ações em massa da lista só mostra o que o principal pode rodar:
+  Activate / Deactivate (já dependentes de `can_edit` + `can_toggle_active`)
+  só com `EDIT`, Delete (de `can_delete`) só com `DELETE`, e cada ação
+  customizada conforme a permissão dela; sem nenhuma, o formulário de lote
+  some. Antes, o menu oferecia ações cujo `POST` respondia `403` (#783).
+
+### Fixed
+
+- Ação customizada que devolvia `AdminActionResult` **sem** `secrets` não era
+  commitada pelo `/bulk`: a gravação feita pela `ctx.db_session` (ou por um
+  repository com `autocommit=False`) aparecia como sucesso e se perdia no fim
+  do request. O painel agora commita depois de todo handler que retorna e faz
+  rollback quando ele levanta, como no `create_handler` (#784).
+
 ## [0.365.0] — 2026-11-16
 
 ### Added

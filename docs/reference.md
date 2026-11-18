@@ -53,6 +53,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.Lens
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum
 ::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
+::: tempest_fastapi_sdk.admin.permissions.AdminActionPolicy
 ::: tempest_fastapi_sdk.admin.permissions.AdminSurfaceEnum
 ::: tempest_fastapi_sdk.admin.permissions.AdminSurfacePolicy
 ::: tempest_fastapi_sdk.admin.dashboard.MetricCard
@@ -64,6 +65,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.metrics.Threshold
 ::: tempest_fastapi_sdk.admin.metrics.MetricLevelEnum
 ::: tempest_fastapi_sdk.admin.actions.admin_action
+::: tempest_fastapi_sdk.admin.actions.resolve_admin_action
+::: tempest_fastapi_sdk.admin.actions.ActionHandler
+::: tempest_fastapi_sdk.admin.actions.SchemaActionHandler
+::: tempest_fastapi_sdk.admin.actions.AnyActionHandler
 ::: tempest_fastapi_sdk.admin.actions.AdminActionContext
 ::: tempest_fastapi_sdk.admin.actions.AdminActionResult
 ::: tempest_fastapi_sdk.admin.actions.AdminSecret

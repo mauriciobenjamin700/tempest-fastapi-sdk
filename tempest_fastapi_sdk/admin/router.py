@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, time, tzinfo
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
@@ -35,7 +35,13 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import NoInspectionAvailable
 from starlette.concurrency import run_in_threadpool
 
-from tempest_fastapi_sdk.admin.actions import AdminActionContext, AdminActionResult
+from tempest_fastapi_sdk.admin.actions import (
+    ActionHandler,
+    AdminAction,
+    AdminActionContext,
+    AdminActionResult,
+    SchemaActionHandler,
+)
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel, Inline
 from tempest_fastapi_sdk.admin.dashboard import card_entry
@@ -60,6 +66,7 @@ from tempest_fastapi_sdk.admin.forms import (
 )
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy,
+    AdminActionPolicy,
     AdminPermissionEnum,
     AdminSurfaceEnum,
     AdminSurfacePolicy,
@@ -269,6 +276,7 @@ def make_admin_router(
     show_logs: bool = False,
     log_dir: str | Path = "logs",
     access_policy: AdminAccessPolicy | None = None,
+    action_policy: AdminActionPolicy | None = None,
     surface_policy: AdminSurfacePolicy | None = None,
     sql_shell: SqlShellService | None = None,
     tasks: TaskPanelService[Any] | None = None,
@@ -296,7 +304,8 @@ def make_admin_router(
     * ``GET  {prefix}/m/{slug}/export.{fmt}`` — CSV/JSON export of the
       current (filtered + sorted) result set.
     * ``POST {prefix}/m/{slug}/bulk`` — bulk delete / activate /
-      deactivate on the selected rows.
+      deactivate, or a custom action, on the selected rows; a custom action
+      declared with ``schema=`` answers its input form first.
     * ``GET/POST {prefix}/m/{slug}/new`` — create form + submit
       (when ``can_create``).
     * ``GET  {prefix}/m/{slug}/{identity}`` — detail view.
@@ -352,6 +361,15 @@ def make_admin_router(
             inline's add row ``CREATE``, its delete box ``DELETE``), and
             foreign-key selects, list filters and autocomplete need
             ``VIEW`` on the referenced admin.
+        action_policy (AdminActionPolicy | None): Hook asked
+            ``(principal, admin, AdminAction)`` before a custom action runs
+            and when the list builds its action menu. When set, a custom
+            action needs ``VIEW`` on the model (``access_policy``) and this
+            policy's approval, and no longer ``EDIT``: one action can be
+            granted without the edit form, and one role can run an action
+            another cannot. A denied action is left out of the menu and its
+            ``POST`` answers ``403``. ``None`` (default) keeps asking
+            ``EDIT`` for every custom action.
         surface_policy (AdminSurfacePolicy | None): Hook asked
             ``(principal, AdminSurfaceEnum)`` before the SQL console, the task
             panel (cancel included) or the logs page (export included) is
@@ -1004,6 +1022,118 @@ def make_admin_router(
             )
         return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
+    async def _custom_action_form(
+        request: Request,
+        admin: AdminModel[Any],
+        action: AdminAction,
+        session: AdminSession,
+        principal: Any,
+        db_session: AsyncSession,
+        ids: list[str],
+        *,
+        submitted: Any | None = None,
+        errors: dict[str, str] | None = None,
+        form_error: str | None = None,
+        status_code: int = status.HTTP_200_OK,
+    ) -> HTMLResponse:
+        """Render the input form of a custom action declared with ``schema``.
+
+        The form posts back to the bulk route with the action, the selected
+        ids and an ``action_input`` marker in hidden fields, plus a fresh
+        single-use nonce.
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The model the action runs on.
+            action (AdminAction): The action, with ``schema`` set.
+            session (AdminSession): The validated session.
+            principal (Any): The signed-in admin.
+            db_session (AsyncSession): The DB session, for autocomplete labels.
+            ids (list[str]): The selected ids, as the list submitted them.
+            submitted (Any | None): The submitted form on a re-render.
+            errors (dict[str, str] | None): Field errors on a re-render.
+            form_error (str | None): A message for the whole form.
+            status_code (int): The response status.
+
+        Returns:
+            HTMLResponse: ``form.html`` with the schema's controls.
+        """
+        assert action.schema is not None
+        fields = schema_form_fields(
+            action.schema,
+            autocomplete=set(admin.autocomplete_fields),
+            submitted=submitted,
+            errors=errors,
+        )
+        if admin.autocomplete_fields:
+            await _decorate_autocomplete_fields(admin, fields, db_session, principal)
+        slug = admin.get_slug()
+        hidden: list[tuple[str, str]] = [
+            ("action", f"custom:{action.name}"),
+            (_ACTION_INPUT_FIELD, "1"),
+            *(("ids", row_id) for row_id in ids),
+        ]
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "action",
+                "form_title": action.label,
+                "form_intro": f"{len(ids)} row(s) selected.",
+                "form_fields": fields,
+                "hidden_inputs": hidden,
+                "submit_label": action.label,
+                "action_url": f"{prefix}/m/{slug}/bulk",
+                "back_url": f"{prefix}/m/{slug}/",
+                "form_error": form_error or (errors or {}).get("__all__"),
+                "submission_nonce": nonces.issue(),
+            },
+            status_code=status_code,
+        )
+
+    async def _call_custom_action(
+        action: AdminAction,
+        data: Any,
+        context: AdminActionContext,
+        db_session: AsyncSession,
+    ) -> AdminActionResult | None:
+        """Run a custom action and commit what it left in the session.
+
+        The session is committed when the handler returns, with or without
+        ``secrets`` in the result, and rolled back when it raises, so an
+        action that only changes rows through ``ctx.db_session`` or
+        ``ctx.repository`` is persisted like a ``create_handler``.
+
+        Args:
+            action (AdminAction): The action.
+            data (Any): The validated input, for an action with ``schema``;
+                ignored otherwise.
+            context (AdminActionContext): The selection and the session.
+            db_session (AsyncSession): The request session.
+
+        Returns:
+            AdminActionResult | None: What the handler returned.
+
+        Raises:
+            BaseException: Whatever the handler raised, after the rollback.
+        """
+        try:
+            if action.schema is None:
+                plain = cast("ActionHandler", action.handler)
+                result = await plain(context)
+            else:
+                with_input = cast("SchemaActionHandler", action.handler)
+                result = await with_input(data, context)
+        except BaseException:
+            await db_session.rollback()
+            raise
+        await db_session.commit()
+        return result
+
     def _require_admin(
         slug: str,
         allowed: Callable[[AdminModel[Any]], bool],
@@ -1070,6 +1200,68 @@ def make_admin_router(
         """
         if not await _allows(principal, admin, action):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
+
+    async def _allows_custom_action(
+        principal: Any,
+        admin: AdminModel[Any],
+        action: AdminAction,
+    ) -> bool:
+        """Return whether ``principal`` may see and run a custom action.
+
+        Without ``action_policy`` a custom action needs ``EDIT`` on the
+        model, as it always did. With one, it needs ``VIEW`` and the
+        policy's approval of that action.
+
+        Args:
+            principal (Any): The current admin principal.
+            admin (AdminModel[Any]): The model the action belongs to.
+            action (AdminAction): The custom action.
+
+        Returns:
+            bool: ``True`` when permitted.
+        """
+        if action_policy is None:
+            return await _allows(principal, admin, AdminPermissionEnum.EDIT)
+        if not await _allows(principal, admin, AdminPermissionEnum.VIEW):
+            return False
+        result = action_policy(principal, admin, action)
+        if isinstance(result, bool):
+            return result
+        return bool(await result)
+
+    async def _permitted_bulk_actions(
+        principal: Any, admin: AdminModel[Any]
+    ) -> list[tuple[str, str, str]]:
+        """Return the bulk actions the principal may run on ``admin``.
+
+        Activate / deactivate need ``EDIT``, delete needs ``DELETE`` and a
+        custom action what :func:`_allows_custom_action` says, so the menu
+        never offers an action whose ``POST`` would answer ``403``. An empty
+        list hides the bulk form.
+
+        Args:
+            principal (Any): The current admin principal.
+            admin (AdminModel[Any]): The admin whose list is rendered.
+
+        Returns:
+            list[tuple[str, str, str]]: ``(value, label, confirm)`` per
+            permitted action.
+        """
+        permitted: list[tuple[str, str, str]] = []
+        for entry in _bulk_actions(admin):
+            value = entry[0]
+            if value.startswith("custom:"):
+                custom = admin.get_action(value.removeprefix("custom:"))
+                allowed = custom is not None and await _allows_custom_action(
+                    principal, admin, custom
+                )
+            elif value == "delete":
+                allowed = await _allows(principal, admin, AdminPermissionEnum.DELETE)
+            else:
+                allowed = await _allows(principal, admin, AdminPermissionEnum.EDIT)
+            if allowed:
+                permitted.append(entry)
+        return permitted
 
     async def _visible_nav(principal: Any) -> list[dict[str, str]]:
         """Return the sidebar nav entries the principal may VIEW.
@@ -2165,7 +2357,7 @@ def make_admin_router(
                 and admin.create_handler.label is not None
                 else None,
                 "new_url": f"{prefix}/m/{slug}/new",
-                "bulk_actions": _bulk_actions(admin),
+                "bulk_actions": await _permitted_bulk_actions(principal, admin),
                 "submission_nonce": nonces.issue(),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
                 "filters": await _filter_specs(admin, request, db_session, principal),
@@ -2528,50 +2720,115 @@ def make_admin_router(
             session (AdminSession): The validated session.
 
         Returns:
-            Response: Redirect back to the list view.
+            Response: Redirect back to the list view, a custom action's
+            secrets page, or its input form (``200``, or ``400`` on an
+            invalid submission or an ``AppException`` from the handler).
 
         Raises:
             HTTPException: ``404`` for unknown admin, ``403`` on CSRF
-                mismatch, ``400`` for an unknown / unpermitted action.
+                mismatch or a denied action, ``400`` for an unknown /
+                unpermitted action or an input form without a nonce.
 
         Notes:
             The permission needed depends on the action: ``delete`` removes
-            rows and so requires ``DELETE``, while activate / deactivate and
-            every custom action only mutate them and require ``EDIT``.
+            rows and so requires ``DELETE``, activate / deactivate require
+            ``EDIT``, and a custom action requires ``EDIT`` or, with an
+            ``action_policy``, ``VIEW`` plus that policy's approval. A
+            custom action is committed when its handler returns and rolled
+            back when it raises. One declared with ``schema`` answers its
+            input form on the first ``POST`` (no ``action_input`` marker)
+            and runs only on a valid submission carrying a fresh nonce.
         """
         admin = site.get(slug)
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
-        needed = (
-            AdminPermissionEnum.DELETE
-            if action == "delete"
-            else AdminPermissionEnum.EDIT
-        )
-        await _require_access(principal, admin, needed)
+        custom: AdminAction | None = None
+        if action.startswith("custom:"):
+            custom = admin.get_action(action.removeprefix("custom:"))
+            if custom is None:
+                await _require_access(principal, admin, AdminPermissionEnum.EDIT)
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown action")
+            if not await _allows_custom_action(principal, admin, custom):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
+        else:
+            needed = (
+                AdminPermissionEnum.DELETE
+                if action == "delete"
+                else AdminPermissionEnum.EDIT
+            )
+            await _require_access(principal, admin, needed)
         _check_csrf(session, csrf_token)
         form = await request.form()
-        ids = [_identity_value(str(raw)) for raw in form.getlist("ids")]
+        raw_ids = [str(raw) for raw in form.getlist("ids")]
+        ids = [_identity_value(raw) for raw in raw_ids]
         redirect_url = f"{prefix}/m/{slug}/"
-        if ids and action.startswith("custom:"):
-            admin_action = admin.get_action(action.removeprefix("custom:"))
-            if admin_action is None:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown action")
+        if ids and custom is not None:
+            admin_action = custom
+            data: Any = None
+            if admin_action.schema is not None:
+                if form.get(_ACTION_INPUT_FIELD) != "1":
+                    return await _custom_action_form(
+                        request,
+                        admin,
+                        admin_action,
+                        session,
+                        principal,
+                        db_session,
+                        raw_ids,
+                    )
+                data, errors = parse_schema_submission(admin_action.schema, form)
+                if data is None:
+                    return await _custom_action_form(
+                        request,
+                        admin,
+                        admin_action,
+                        session,
+                        principal,
+                        db_session,
+                        raw_ids,
+                        submitted=form,
+                        errors=errors,
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                    )
             nonce = form.get("submission_nonce")
+            if admin_action.schema is not None and (
+                not isinstance(nonce, str) or not nonce
+            ):
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "missing submission nonce"
+                )
             if isinstance(nonce, str) and not await nonces.consume(session, nonce):
                 return _already_processed(slug)
-            result = await admin_action.handler(
-                AdminActionContext(
-                    ids=ids,
-                    repository=admin.build_repository(db_session),
-                    db_session=db_session,
-                    request=request,
-                    session=session,
-                    principal=principal,
-                )
+            context = AdminActionContext(
+                ids=ids,
+                repository=admin.build_repository(db_session),
+                db_session=db_session,
+                request=request,
+                session=session,
+                principal=principal,
             )
+            try:
+                result = await _call_custom_action(
+                    admin_action, data, context, db_session
+                )
+            except AppException as exc:
+                if admin_action.schema is None:
+                    raise
+                await _reload_expired(db_session, principal)
+                return await _custom_action_form(
+                    request,
+                    admin,
+                    admin_action,
+                    session,
+                    principal,
+                    db_session,
+                    raw_ids,
+                    submitted=form,
+                    form_error=exc.message,
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
             if result is not None and result.secrets:
-                await db_session.commit()
                 return _secrets_response(
                     request,
                     admin,
@@ -4410,6 +4667,13 @@ def _upload_refusal(
     return None
 
 
+_ACTION_INPUT_FIELD: Final[str] = "action_input"
+"""Hidden marker of a submitted custom-action input form.
+
+The list's bulk ``POST`` lacks it, so an action declared with ``schema``
+answers its form; the form's own ``POST`` carries it and runs the action.
+"""
+
 _BULK_CONFIRM: Final[str] = "Apply the selected action to the checked rows?"
 """Confirm prompt of a bulk action that is not ``dangerous``."""
 
@@ -4435,8 +4699,10 @@ def _bulk_confirm_text(label: str, *, dangerous: bool) -> str:
 def _bulk_actions(admin: Any) -> list[tuple[str, str, str]]:
     """Return the bulk actions available for ``admin``.
 
-    Activation toggles need ``can_edit`` (every model carries the
-    ``is_active`` flag from ``BaseModel``); delete needs ``can_delete``.
+    Activation toggles need ``can_edit`` and ``can_toggle_active`` (every
+    model carries the ``is_active`` flag from ``BaseModel``); delete needs
+    ``can_delete``. The permission check on top of these flags is
+    ``_permitted_bulk_actions``, inside :func:`make_admin_router`.
 
     Args:
         admin (Any): The admin configuration.
