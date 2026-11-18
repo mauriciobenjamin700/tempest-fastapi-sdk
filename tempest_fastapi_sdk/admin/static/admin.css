@@ -2604,3 +2604,111 @@ input[type="file"] {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   padding: 0.5rem 0.75rem;
 }
+
+/* ---- Location map (BRLocationMap) ---- */
+.tempest-admin-geo__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+  gap: 1.5rem;
+  align-items: start;
+  margin-top: 1.5rem;
+}
+.tempest-admin-geo__map {
+  margin: 0;
+  padding: 1rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+}
+.tempest-br-map {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.tempest-br-map__state {
+  stroke: var(--tempest-surface);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.tempest-br-map__state:hover {
+  stroke: var(--tempest-fg);
+  stroke-width: 2;
+}
+.tempest-br-map__state--l0 { fill: var(--tempest-surface-muted); }
+.tempest-br-map__state--l1 { fill: color-mix(in srgb, var(--tempest-accent) 18%, var(--tempest-surface)); }
+.tempest-br-map__state--l2 { fill: color-mix(in srgb, var(--tempest-accent) 36%, var(--tempest-surface)); }
+.tempest-br-map__state--l3 { fill: color-mix(in srgb, var(--tempest-accent) 54%, var(--tempest-surface)); }
+.tempest-br-map__state--l4 { fill: color-mix(in srgb, var(--tempest-accent) 72%, var(--tempest-surface)); }
+.tempest-br-map__state--l5 { fill: color-mix(in srgb, var(--tempest-accent) 90%, var(--tempest-surface)); }
+.tempest-br-map__point {
+  fill: color-mix(in srgb, var(--tempest-warning) 70%, transparent);
+  stroke: var(--tempest-surface);
+  stroke-width: 1;
+}
+.tempest-br-map__point:hover { fill: var(--tempest-warning); }
+.tempest-admin-geo__legend {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--tempest-fg-soft);
+}
+.tempest-admin-geo__legend ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tempest-admin-geo__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.tempest-admin-geo__legend-title { font-weight: 600; }
+.tempest-admin-geo__swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  border: 1px solid var(--tempest-border);
+}
+.tempest-admin-geo__swatch.tempest-br-map__state--l1 { background: color-mix(in srgb, var(--tempest-accent) 18%, var(--tempest-surface)); }
+.tempest-admin-geo__swatch.tempest-br-map__state--l2 { background: color-mix(in srgb, var(--tempest-accent) 36%, var(--tempest-surface)); }
+.tempest-admin-geo__swatch.tempest-br-map__state--l3 { background: color-mix(in srgb, var(--tempest-accent) 54%, var(--tempest-surface)); }
+.tempest-admin-geo__swatch.tempest-br-map__state--l4 { background: color-mix(in srgb, var(--tempest-accent) 72%, var(--tempest-surface)); }
+.tempest-admin-geo__swatch.tempest-br-map__state--l5 { background: color-mix(in srgb, var(--tempest-accent) 90%, var(--tempest-surface)); }
+.tempest-admin-geo__swatch--point {
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tempest-warning) 70%, transparent);
+}
+.tempest-admin-geo__tables {
+  display: grid;
+  gap: 1rem;
+}
+.tempest-admin-geo__tables caption {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+}
+.tempest-admin-geo .tempest-admin-list__table .tempest-admin-geo__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tempest-admin-geo__tables .tempest-admin-table-wrap {
+  max-height: 26rem;
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .tempest-admin-geo__layout { grid-template-columns: minmax(0, 1fr); }
+}
+.tempest-admin-geo__tables .tempest-admin-list__table td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .tempest-admin-geo__tables .tempest-admin-list__table th,
+  .tempest-admin-geo__tables .tempest-admin-list__table td {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+}

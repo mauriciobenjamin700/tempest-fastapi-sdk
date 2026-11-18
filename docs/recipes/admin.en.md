@@ -1224,6 +1224,128 @@ The area is the `AdminSurfaceEnum.METRICS` surface: with a
 `surface_policy`, whoever the policy denies gets `403` on the page and no
 links in the sidebar.
 
+## Geographic distribution map (`location_maps=`) *(v0.367.0+)*
+
+With [`BRLocationMixin`](geo.md#a-users-city-and-state-brlocationmixin-v03670)
+on the model, the panel draws **where** the rows are: a map of Brazil with
+each state shaded by its count and one bubble per city, the legend, the
+state and city tables, and how many rows have no location yet. Register one
+`BRLocationMap` per map in `AdminSite(location_maps=[...])`:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    AsyncDatabaseManager,
+    BaseUserModel,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import AdminModel, BRLocationMap
+from tempest_fastapi_sdk.geo import BRLocationMixin
+
+
+class UserModel(BRLocationMixin, BaseUserModel):
+    """Users with the city and state they live in."""
+
+    __tablename__ = "users"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./painel.db")
+site = AdminSite(
+    title="Painel",
+    location_maps=[
+        BRLocationMap("Usuários por região", UserModel, value_label="usuários"),
+        BRLocationMap(
+            "Usuários ativos",
+            UserModel,
+            where=lambda: UserModel.is_active.is_(True),
+            value_label="usuários",
+        ),
+    ],
+)
+site.register(AdminModel(UserModel))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the tables and a few users spread over three cities."""
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        admin = UserModel(email="admin@example.com", hashed_password="", is_admin=True)
+        admin.set_password("troque-esta-senha")
+        session.add(admin)
+        places = [("São Paulo", "SP"), ("São Paulo", "SP"), ("Campinas", "SP")]
+        places.append(("Recife", "PE"))
+        for index, (city, state) in enumerate(places):
+            user = UserModel(email=f"user{index}@example.com", hashed_password="")
+            user.set_br_location(city, state)
+            session.add(user)
+        await session.commit()
+    yield
+    await db.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key="troque-por-um-segredo-de-32-bytes-ou-mais",
+        cookie_secure=False,
+    )
+)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+Each map becomes an entry in the sidebar's **Maps** section, at
+`/admin/maps/<slug>` (the slug comes from the title, accents dropped:
+`usuarios-por-regiao`). Measured with the example, by requests to the panel:
+
+- the sidebar lists `/admin/maps/usuarios-por-regiao` and
+  `/admin/maps/usuarios-ativos`;
+- the page answers `200` with Total `5`, With location `4` and No location
+  `1` (the administrator has no city);
+- the bubbles, largest first: `São Paulo (SP): 2 usuários`,
+  `Campinas (SP): 1 usuários`, `Recife (PE): 1 usuários`;
+- each state's tooltip (`SP: 3 usuários`, `PE: 1 usuários`,
+  `BA: 0 usuários`) and the legend with each shade's range.
+
+What each argument does:
+
+- `where=` takes a function that builds the filter on every request
+  (`lambda: UserModel.is_active.is_(True)`), applied to every count.
+- `city_limit=` (default 50) caps the bubbles and the table at the largest
+  cities.
+- `value_label=` is the word after each number in the tooltips and tables.
+
+The map is an SVG built on the server, with the state outlines shipped in
+the package: the page makes **no external request** (no map script, no tile
+server). Its colours come from the theme variables, so dark mode
+(`AdminTheme(dark_mode=True)`) already applies. Validated in a real browser
+at 1366 px and 390 px, in the light and dark themes: on a phone the map
+takes the full width and the tables move below it.
+
+!!! info "Who sees it"
+    The page asks the `access_policy` for `VIEW` on the model, of the
+    model's registered `AdminModel` (or of a throwaway `AdminModel(model)`
+    when it is not registered). Denied, the page answers `403` and leaves
+    the sidebar.
+
+!!! note "When the count fails"
+    If `where=` or the database raises, the page still renders, with the
+    notice `This map could not be counted` in place of the map and the
+    traceback in the log — like the indicator areas.
+
 ## CSV import (`can_import=True`)
 
 The admin already exports the list (CSV/JSON). The counterpart: upload a
@@ -2337,6 +2459,7 @@ control, `custom_css_url`.
   search — required the moment a foreign key has thousands of rows.
 - `dashboard_cards=` are business metrics, not system ones; `lenses=` are the
   saved views an operator would reach for again tomorrow.
+- `location_maps=[BRLocationMap(...)]` draws where the rows of a model with `BRLocationMixin` are: a map of Brazil by state and city, offline.
 - `access_policy=` is RBAC per (principal, action, model): without it, anyone
   who reaches the admin can do everything.
 - `storage=StorageBrowserService(...)` puts the bucket on screen: list,

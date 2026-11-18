@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `BRLocationMixin` em `tempest_fastapi_sdk.geo`: colunas anuláveis `city`
+  (`String(64)`), `state` (`String(2)`, indexada) e `city_ibge_code`
+  (indexada). `set_br_location(cidade, uf, *, typo_cutoff=None)` resolve a
+  cidade nos 5571 municípios do IBGE que o SDK já traz (sem rede, qualquer
+  caixa e acentuação), grava a grafia oficial e o código, e levanta
+  `UnknownMunicipalityError` para cidade que a UF não tem, sem tocar na
+  linha; `clear_br_location()` e `br_municipality()`.
+- `BRLocationSchema(city, state)`: a mesma checagem na borda da API (cidade
+  inexistente na UF responde `422`), devolvendo o nome oficial e o
+  `city_ibge_code`; `resolve_br_municipality(cidade, uf)`.
+- `br_location_distribution(session, model, *, where=None, city_limit=None)`
+  → `BRLocationDistributionSchema` (`total`, `located`, `unlocated`, contagem
+  por estado e por cidade com a coordenada), em três consultas agregadas.
+- Mapa do Brasil offline: `render_br_map_svg(contagens_por_uf, pontos)`
+  desenha os 27 estados num tom por contagem (escala logarítmica,
+  `br_map_legend` com as faixas) e uma bolha por cidade (`BRMapPoint`), só
+  com classes CSS e todo texto escapado; `uf_at(coordenada)`,
+  `project_br`, `br_state_outlines`. Contornos gerados da malha de UFs do
+  IBGE na qualidade mínima por `scripts/regen_br_states_geometry.py`
+  (`geo/_br_states_geometry_data.py`, 86 KB).
+- Admin: `AdminSite(location_maps=[BRLocationMap(titulo, model, *,
+  where=None, city_limit=50, value_label="users")])` monta
+  `/admin/maps/<slug>` com o mapa, a legenda, as tabelas de estados e
+  cidades e os totais, listado em "Maps" na barra lateral; pede `VIEW` no
+  model à `access_policy`. Nenhuma requisição externa: o SVG sai do
+  servidor e as cores do tema (modo escuro incluso).
+
 ## [0.366.0] — 2026-11-18
 
 ### Added

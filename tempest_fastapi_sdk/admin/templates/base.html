@@ -79,6 +79,15 @@
         </a>
         {% endfor %}
         {% endif %}
+        {% if nav_location_maps %}
+        <span class="tempest-admin-sidebar__heading">Maps</span>
+        {% for entry in nav_location_maps %}
+        <a href="{{ entry.url }}"
+           class="tempest-admin-sidebar__link{% if path == entry.url %} tempest-admin-sidebar__link--active{% endif %}">
+          {{ entry.title }}
+        </a>
+        {% endfor %}
+        {% endif %}
         {% if nav_logs_url or nav_sql_url or nav_tasks_url or nav_storage_url %}
         <span class="tempest-admin-sidebar__heading">System</span>
         {% endif %}

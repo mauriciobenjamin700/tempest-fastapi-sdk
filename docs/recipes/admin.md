@@ -1199,6 +1199,127 @@ aviso no lugar dos cards, e o traceback vai para o log
 A área é a superfície `AdminSurfaceEnum.METRICS`: com `surface_policy`,
 quem a política nega recebe `403` na página e não vê os links na sidebar.
 
+## Mapa de distribuição geográfica (`location_maps=`) *(v0.367.0+)*
+
+Com o [`BRLocationMixin`](geo.md#cidade-e-estado-do-usuario-brlocationmixin-v03670)
+no model, o painel desenha **onde** estão as linhas: um mapa do Brasil com
+cada estado num tom conforme a contagem e uma bolha por cidade, a legenda,
+as tabelas de estados e cidades e quantas linhas ainda não têm localização.
+Registre um `BRLocationMap` por mapa em `AdminSite(location_maps=[...])`:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    AsyncDatabaseManager,
+    BaseUserModel,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import AdminModel, BRLocationMap
+from tempest_fastapi_sdk.geo import BRLocationMixin
+
+
+class UserModel(BRLocationMixin, BaseUserModel):
+    """Users with the city and state they live in."""
+
+    __tablename__ = "users"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./painel.db")
+site = AdminSite(
+    title="Painel",
+    location_maps=[
+        BRLocationMap("Usuários por região", UserModel, value_label="usuários"),
+        BRLocationMap(
+            "Usuários ativos",
+            UserModel,
+            where=lambda: UserModel.is_active.is_(True),
+            value_label="usuários",
+        ),
+    ],
+)
+site.register(AdminModel(UserModel))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the tables and a few users spread over three cities."""
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        admin = UserModel(email="admin@example.com", hashed_password="", is_admin=True)
+        admin.set_password("troque-esta-senha")
+        session.add(admin)
+        places = [("São Paulo", "SP"), ("São Paulo", "SP"), ("Campinas", "SP")]
+        places.append(("Recife", "PE"))
+        for index, (city, state) in enumerate(places):
+            user = UserModel(email=f"user{index}@example.com", hashed_password="")
+            user.set_br_location(city, state)
+            session.add(user)
+        await session.commit()
+    yield
+    await db.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key="troque-por-um-segredo-de-32-bytes-ou-mais",
+        cookie_secure=False,
+    )
+)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+Cada mapa vira uma entrada na seção **Maps** da barra lateral, em
+`/admin/maps/<slug>` (o slug sai do título, sem acento:
+`usuarios-por-regiao`). Medido com o exemplo, por requisição ao painel:
+
+- a barra lateral lista `/admin/maps/usuarios-por-regiao` e
+  `/admin/maps/usuarios-ativos`;
+- a página responde `200` com Total `5`, With location `4` e No location `1`
+  (o administrador não tem cidade);
+- as bolhas, maior primeiro: `São Paulo (SP): 2 usuários`,
+  `Campinas (SP): 1 usuários`, `Recife (PE): 1 usuários`;
+- a dica de cada estado (`SP: 3 usuários`, `PE: 1 usuários`,
+  `BA: 0 usuários`) e a legenda com as faixas de cada tom.
+
+O que cada argumento faz:
+
+- `where=` recebe uma função que monta o filtro a cada requisição
+  (`lambda: UserModel.is_active.is_(True)`), aplicado a todas as contagens.
+- `city_limit=` (padrão 50) limita as bolhas e a tabela às maiores cidades.
+- `value_label=` é a palavra depois de cada número nas dicas e nas tabelas.
+
+O mapa é um SVG gerado no servidor, com os contornos dos estados embutidos no
+pacote: a página **não faz nenhuma requisição externa** (nem script de mapa,
+nem servidor de tiles). As cores saem das variáveis do tema, então o modo
+escuro (`AdminTheme(dark_mode=True)`) já vale. Validado em browser real a
+1366 px e a 390 px, nos temas claro e escuro: no celular, o mapa ocupa a
+largura toda e as tabelas vão para baixo dele.
+
+!!! info "Quem vê"
+    A página pede `VIEW` no model à `access_policy`, perguntado ao
+    `AdminModel` registrado do model (ou a um `AdminModel(model)` descartável,
+    quando ele não está registrado). Negado, a página responde `403` e some
+    da barra lateral.
+
+!!! note "Quando a contagem falha"
+    Se o `where=` ou o banco levantam, a página renderiza assim mesmo, com o
+    aviso `This map could not be counted` no lugar do mapa e o traceback no
+    log — como nas áreas de indicadores.
+
 ## Import CSV (`can_import=True`)
 
 O admin já exporta a listagem (CSV/JSON). A contraparte: subir um CSV
@@ -2308,6 +2429,7 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
   necessário no instante em que a FK tem milhares de linhas.
 - `dashboard_cards=` são métricas de negócio, não de sistema; `lenses=` são as
   visões salvas que o operador usaria de novo amanhã.
+- `location_maps=[BRLocationMap(...)]` desenha onde estão as linhas de um model com `BRLocationMixin`: mapa do Brasil por estado e cidade, offline.
 - `access_policy=` é RBAC por (principal, ação, model): sem ele, quem entra no
   admin pode tudo.
 - `storage=StorageBrowserService(...)` abre o bucket na tela: lista,
