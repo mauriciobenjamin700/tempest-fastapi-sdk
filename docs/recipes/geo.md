@@ -821,6 +821,106 @@ asyncio.run(main())
 `encode_polyline` / `decode_polyline` convertem a linha pro formato
 compacto do Google/OSRM (precision 5 ou 6), sem dependência.
 
+## Rota com paradas (`route_through`)
+
+`route` traça origem → destino. Uma viagem com paradas (A → B → C) — a linha
+de ônibus, a entrega com várias coletas — sai numa chamada só com
+`route_through`: o OSRM recebe todos os pontos e devolve o total **e** um
+trecho (`legs`) por par consecutivo, com distância e tempo de cada um.
+
+```python
+import asyncio
+
+import httpx
+
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    OSRMBackend,
+    RouteThroughResult,
+    TravelModeEnum,
+    estimate_route_through,
+)
+
+PARADAS: list[Coordinate] = [
+    Coordinate(latitude=-5.0892, longitude=-42.8019),
+    Coordinate(latitude=-5.0381, longitude=-42.4608),
+    Coordinate(latitude=-4.8278, longitude=-42.1686),
+]
+
+
+async def rota_com_paradas(client: httpx.AsyncClient) -> RouteThroughResult:
+    """Traça a rota pelas paradas no OSRM e cai na estimativa offline."""
+    backend = OSRMBackend(http_client=client)
+    try:
+        return await backend.route_through(PARADAS, mode=TravelModeEnum.BUS)
+    except RuntimeError:
+        return estimate_route_through(PARADAS, TravelModeEnum.BUS)
+
+
+def osrm_fake(request: httpx.Request) -> httpx.Response:
+    """Responde como o OSRM: dois trechos e o total."""
+    legs = [
+        {"distance": 41_250.0, "duration": 2_100.0},
+        {"distance": 39_800.0, "duration": 1_980.0},
+    ]
+    route = {"distance": 81_050.0, "duration": 4_080.0, "legs": legs}
+    return httpx.Response(200, json={"code": "Ok", "routes": [route]})
+
+
+def osrm_fora_do_ar(request: httpx.Request) -> httpx.Response:
+    """Simula o servidor indisponível."""
+    return httpx.Response(503)
+
+
+async def main() -> None:
+    """Roda a mesma função com o OSRM respondendo e fora do ar."""
+    for handler in (osrm_fake, osrm_fora_do_ar):
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            rota = await rota_com_paradas(client)
+        trechos = [f"{leg.distance_km:.1f} km" for leg in rota.legs]
+        print(rota.source, f"{rota.distance_km:.1f} km", f"{rota.duration_minutes:.0f} min", trechos)
+
+
+asyncio.run(main())
+```
+
+Saída medida (o primeiro caso é um servidor OSRM **fake**, montado com
+`httpx.MockTransport`, para o exemplo rodar sem rede; o segundo é o mesmo
+cliente recebendo `503`):
+
+```text
+osrm 81.0 km 109 min ['41.2 km', '39.8 km']
+heuristic 101.6 km 195 min ['49.7 km', '51.9 km']
+```
+
+O que acontece aí:
+
+- **Um `RouteThroughResult`**: `distance_km`, `duration_minutes`, `source`,
+  `geometry` e `legs: list[TravelEstimate]`. `legs[i]` vai de `PARADAS[i]` a
+  `PARADAS[i + 1]`, então N pontos dão N − 1 trechos, e a soma dos trechos
+  fecha com o total.
+- **O fator do modo vale em tudo.** Com `TravelModeEnum.BUS`, o total e cada
+  trecho têm a duração do carro × 1,6, igual ao `route` (68 min de carro
+  viraram 109 min no exemplo).
+- **`with_geometry=True`** decodifica a linha inteira da rota em `geometry`.
+  Os trechos não carregam geometria.
+- **O fallback offline** é `estimate_route_through`: soma `estimate_travel`
+  por trecho, com `source="heuristic"` e, com `with_geometry=True`, a
+  geometria em linha reta (os próprios pontos).
+
+!!! info "Limite de pontos"
+    O demo público respondeu `"Ok"` com 500 coordenadas e
+    `{"code": "TooBig", "message": "Number of entries 501 is higher than
+    current maximum (500)"}` com 501 (medido em 2026-11-18). Por isso
+    `DEFAULT_OSRM_MAX_POINTS` é `500`, e acima dele `route_through` levanta
+    `ValueError` **antes** de sair qualquer requisição. Servidor próprio com
+    outro `--max-viaroute-size`? Passe `OSRMBackend(..., max_points=N)`.
+
+`route_through` e `matrix` fazem parte do Protocol `RoutingBackend` desde a
+mesma versão, e o `FakeRoutingBackend` implementa os dois — um backend seu
+precisa dos três métodos para continuar passando no `isinstance`.
+
 ## Geometria: projeção, geofence, comprimento
 
 ```python
@@ -993,6 +1093,7 @@ geocoder = RetryingGeocoder(
 - `GeoRepositoryMixin.paginate_nearby` — raio, ordenação, `COUNT` e página no SQL, sem PostGIS; cada item é `NearbyMatch(row, distance_km)`.
 - `NominatimBackend` — geocoding endereço↔coordenada, grátis, `httpx` injetado.
 - `OSRMBackend.matrix` / `route(with_geometry=True)` — matriz N×M e linha da rota; `encode_polyline`/`decode_polyline`.
+- `OSRMBackend.route_through` / `estimate_route_through` — rota com paradas numa chamada, um `leg` por trecho, fallback offline e limite de pontos (`DEFAULT_OSRM_MAX_POINTS`).
 - `destination_point` / `initial_bearing` / `point_in_polygon` / `polygon_area_km2` / `path_length_km` — geometria offline.
 - `uf_centroid` / `cep_to_coordinate` — atalhos Brasil.
 - `extract_cep` / `resolve_br_coordinate` — CEP de texto livre e a cadeia CEP → endereço → centroide da UF, sem levantar em falha do geocoder.

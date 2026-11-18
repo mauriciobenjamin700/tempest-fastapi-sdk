@@ -21,6 +21,15 @@ PLATFORM_ROUTES: dict[str, RouteDoc] = {
     "app_errors.list_app_errors": RouteDoc(
         summary=("List reported errors for investigation"),
     ),
+    "geo_live.publish_position": RouteDoc(
+        summary="Publish a live position",
+        description=(
+            "Report the current position of the channel's publisher. The "
+            "answer only says whether it was accepted (it may be throttled, "
+            "too close to the last one, or older than it); viewers receive "
+            "it over SSE. `409` while the channel is not active."
+        ),
+    ),
     "health.liveness": RouteDoc(
         summary=("Liveness probe"),
     ),

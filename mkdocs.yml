@@ -158,6 +158,7 @@ plugins:
               - Introspection auth (resource server): recipes/introspection-auth.md
               - Jobs (long work with status): recipes/jobs.md
               - Kestra (workflow orchestrator): recipes/kestra.md
+              - Live location: recipes/live-location.md
               - Logging: recipes/logging.md
               - Management commands (tempest <cmd>): recipes/management-commands.md
               - "MCP (Model Context Protocol)": recipes/mcp.md
@@ -485,6 +486,7 @@ nav:
       - Idempotência: recipes/idempotency.md
       - "Jobs (trabalho longo com status)": recipes/jobs.md
       - Kestra (orquestrador de workflows): recipes/kestra.md
+      - Localização ao vivo: recipes/live-location.md
       - Logging: recipes/logging.md
       - Login e cadastro server-side: recipes/auth-pages.md
       - "Login social (OAuth2/OIDC)": recipes/oauth.md

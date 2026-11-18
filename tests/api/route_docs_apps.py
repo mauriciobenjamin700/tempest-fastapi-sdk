@@ -45,6 +45,7 @@ from tempest_fastapi_sdk.app_errors import make_app_error_router
 from tempest_fastapi_sdk.chat import make_chat_router
 from tempest_fastapi_sdk.genai import make_ai_chat_router, make_genai_router
 from tempest_fastapi_sdk.genai.audio import make_voice_router
+from tempest_fastapi_sdk.geo import make_live_position_router
 from tempest_fastapi_sdk.hostbridge import make_hostbridge_router
 from tempest_fastapi_sdk.integrations.messaging.zap import make_zap_webhook_router
 from tempest_fastapi_sdk.integrations.payment.adapters import (
@@ -202,6 +203,12 @@ def _auth_router(locale_kwargs: dict[str, Any]) -> APIRouter:
 
 ROUTER_BUILDERS: dict[str, Callable[[dict[str, Any]], APIRouter]] = {
     "auth": _auth_router,
+    "geo_live": lambda kw: make_live_position_router(
+        _anything,
+        authorize=_current_user,
+        channel_active=_current_user,
+        **kw,
+    ),
     "sse": lambda kw: make_sse_router(
         _anything,
         tokens=_anything,

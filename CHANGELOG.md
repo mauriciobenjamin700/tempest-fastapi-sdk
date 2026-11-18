@@ -23,6 +23,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   muda (#783).
 - `resolve_admin_action` e `ActionHandler` exportados em
   `tempest_fastapi_sdk.admin`.
+- `OSRMBackend.route_through(points, *, mode=TravelModeEnum.CAR,
+  with_geometry=False) -> RouteThroughResult`: rota por duas ou mais paradas
+  (A → B → C) numa requisição só ao `/route` do OSRM, com o total e um
+  `TravelEstimate` por trecho em `legs` (a soma dos trechos fecha com o
+  total). O fator de duração por modo vale no total e em cada trecho, como no
+  `route`; `with_geometry=True` decodifica a linha inteira (#785).
+- `RouteThroughResult` (`mode`, `distance_km`, `duration_minutes`, `source`,
+  `geometry`, `legs`) em `tempest_fastapi_sdk.geo` (#785).
+- `estimate_route_through(points, mode=..., *, with_geometry=False,
+  circuity_factor=..., car_speed_kmh=..., mode_duration_factors=None)`: o
+  fallback offline, somando `estimate_travel` por trecho, com
+  `source="heuristic"` e geometria em linha reta (#785).
+- `OSRMBackend(max_points=DEFAULT_OSRM_MAX_POINTS)`: acima do limite,
+  `route_through` levanta `ValueError` antes de qualquer requisição.
+  `DEFAULT_OSRM_MAX_POINTS = 500`, o máximo que o demo público aceitou
+  (501 coordenadas respondem `TooBig`, medido em 2026-11-18) (#785).
+- `FakeRoutingBackend.route_through` e `FakeRoutingBackend.matrix`, os dois
+  passando por `route` — par fixado com `add_route` vale dentro de uma rota
+  maior (#785).
+- Localização ao vivo em `tempest_fastapi_sdk.geo` (#786):
+  - `LivePositionSchema` (`lat`, `lng`, `accuracy_m`, `speed_kmh`, `heading`,
+    `recorded_at`): coordenada fora do intervalo, `heading` fora de [0, 360),
+    `recorded_at` sem fuso ou mais de 30 s no futuro
+    (`LIVE_POSITION_MAX_CLOCK_SKEW`) são recusados.
+  - `LivePositionStore(redis, *, key_prefix="geo:live", ttl_seconds=300,
+    min_interval_seconds=5.0, min_distance_m=10.0, broker=None,
+    audience=None, event_name="live_position",
+    cleared_event_name="live_position_cleared", eta_targets=None,
+    routing=None, mode=TravelModeEnum.CAR, clock=time.time)`: guarda só a
+    última posição por canal no Redis com TTL; `publish(channel_id,
+    position) -> bool` recusa posição antiga, dentro do throttle ou perto
+    demais (esta renova o TTL); `latest(channel_id)`; `clear(channel_id)`
+    apaga e avisa o público com `live_position_cleared`. Posição aceita vai
+    pelo `SSEBroker` só para os destinatários do callback `audience` —
+    `broker` sem `audience` (e o inverso) é `ValueError` na construção.
+    Com `eta_targets`, cada destinatário recebe a ETA até o próprio ponto
+    (`LiveEtaSchema`), num `matrix` só do `routing`, com fallback para
+    `estimate_travel` sem backend ou com ele falhando.
+  - `make_live_position_router(store, *, authorize, channel_active,
+    prefix="/live", tag="Live position", docs_locale=None)`: `POST
+    <prefix>/{channel_id}/position`, com `authorize` e `channel_active`
+    obrigatórios (`None` é `ValueError`); canal inativo responde `409` sem
+    guardar nada; a resposta (`LivePositionPublishResponseSchema`) é só
+    `{"accepted": bool}`.
+  - Também: `LivePositionEventSchema`, `AudienceResolver`,
+    `EtaTargetsResolver`, `LIVE_POSITION_INACTIVE_ERROR` e as constantes
+    `DEFAULT_LIVE_POSITION_*`.
 
 ### Changed
 
@@ -31,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   só com `EDIT`, Delete (de `can_delete`) só com `DELETE`, e cada ação
   customizada conforme a permissão dela; sem nenhuma, o formulário de lote
   some. Antes, o menu oferecia ações cujo `POST` respondia `403` (#783).
+- O Protocol `RoutingBackend` passa a exigir `route_through` e `matrix` além
+  de `route`. Backend próprio que só implementava `route` deixa de passar no
+  `isinstance(..., RoutingBackend)` e no mypy até ganhar os dois métodos; o
+  `OSRMBackend` e o `FakeRoutingBackend` já têm os três (#785).
 
 ### Fixed
 
@@ -39,6 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository com `autocommit=False`) aparecia como sucesso e se perdia no fim
   do request. O painel agora commita depois de todo handler que retorna e faz
   rollback quando ele levanta, como no `create_handler` (#784).
+- `OSRMBackend.route` levantava `KeyError` quando o OSRM respondia `"Ok"` com
+  uma rota sem `distance`/`duration`, apesar de a docstring prometer só
+  `RuntimeError`; agora levanta `RuntimeError`, como o `route_through` novo
+  (#785).
 
 ## [0.365.0] — 2026-11-16
 

@@ -724,6 +724,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.estimate.DEFAULT_MODE_DURATION_FACTORS
 ::: tempest_fastapi_sdk.geo.routing.DEFAULT_OSRM_BASE_URL
 ::: tempest_fastapi_sdk.geo.routing.DEFAULT_MODE_PROFILES
+::: tempest_fastapi_sdk.geo.routing.DEFAULT_OSRM_MAX_POINTS
 ::: tempest_fastapi_sdk.geo.geocoding.DEFAULT_NOMINATIM_BASE_URL
 ::: tempest_fastapi_sdk.geo.cache.DEFAULT_GEOCODE_CACHE_PRECISION
 ::: tempest_fastapi_sdk.geo.cache.DEFAULT_GEOCODE_CACHE_TTL_SECONDS
@@ -734,6 +735,16 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.municipalities.STATE_SEPARATORS
 ::: tempest_fastapi_sdk.geo.municipalities.UNCUED_SINGLE_WORD_FACTOR
 ::: tempest_fastapi_sdk.geo.br.CEP_PATTERN
+::: tempest_fastapi_sdk.geo.live.LIVE_POSITION_MAX_CLOCK_SKEW
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_KEY_PREFIX
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_TTL_SECONDS
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_INTERVAL_SECONDS
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_MIN_DISTANCE_M
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_EVENT
+::: tempest_fastapi_sdk.geo.live.DEFAULT_LIVE_POSITION_CLEARED_EVENT
+::: tempest_fastapi_sdk.geo.live.AudienceResolver
+::: tempest_fastapi_sdk.geo.live.EtaTargetsResolver
+::: tempest_fastapi_sdk.geo.live_router.LIVE_POSITION_INACTIVE_ERROR
 ---
 
 ## Host (controle da máquina)

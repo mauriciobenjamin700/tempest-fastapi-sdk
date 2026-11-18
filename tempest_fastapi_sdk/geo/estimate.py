@@ -7,9 +7,16 @@ use :class:`tempest_fastapi_sdk.geo.OSRMBackend` instead.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from itertools import pairwise
+
 from tempest_fastapi_sdk.geo.distance import haversine_km
 from tempest_fastapi_sdk.geo.enums import TravelModeEnum
-from tempest_fastapi_sdk.geo.schemas import Coordinate, TravelEstimate
+from tempest_fastapi_sdk.geo.schemas import (
+    Coordinate,
+    RouteThroughResult,
+    TravelEstimate,
+)
 
 # How much longer a real road is than the straight line between two points.
 # Empirical circuity factors sit around 1.2-1.4; 1.3 is a sane default.
@@ -96,4 +103,66 @@ def estimate_travel(
         distance_km=distance_km,
         duration_minutes=duration_minutes,
         source="heuristic",
+    )
+
+
+def estimate_route_through(
+    points: Sequence[Coordinate],
+    mode: TravelModeEnum = TravelModeEnum.CAR,
+    *,
+    with_geometry: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
+    car_speed_kmh: float = DEFAULT_CAR_SPEED_KMH,
+    mode_duration_factors: dict[TravelModeEnum, float] | None = None,
+) -> RouteThroughResult:
+    """Estimate a route through several points offline, leg by leg.
+
+    The offline counterpart of
+    :meth:`~tempest_fastapi_sdk.geo.OSRMBackend.route_through`: each
+    consecutive pair goes through :func:`estimate_travel`, and the totals are
+    the sums of the legs. Use it when no OSRM server is reachable, or as the
+    fallback after one fails.
+
+    Args:
+        points: The ordered points the route passes through (origin, stops,
+            destination). At least two.
+        mode: The travel mode to estimate for.
+        with_geometry: Whether to fill :attr:`RouteThroughResult.geometry`
+            with the points themselves — straight lines between them, since
+            there is no road network offline.
+        circuity_factor: Ratio of road distance to straight-line distance,
+            forwarded to :func:`estimate_travel`.
+        car_speed_kmh: Blended average car speed in km/h, forwarded to
+            :func:`estimate_travel`.
+        mode_duration_factors: Optional per-mode duration multiplier map,
+            forwarded to :func:`estimate_travel`.
+
+    Returns:
+        A :class:`RouteThroughResult` with ``source="heuristic"`` and one leg
+        per consecutive pair, each leg also ``source="heuristic"``.
+
+    Raises:
+        ValueError: If fewer than two points are given, or if
+            ``car_speed_kmh`` or ``circuity_factor`` is not positive.
+    """
+    if len(points) < 2:
+        raise ValueError("a route needs at least two points")
+    legs = [
+        estimate_travel(
+            origin,
+            destination,
+            mode,
+            circuity_factor=circuity_factor,
+            car_speed_kmh=car_speed_kmh,
+            mode_duration_factors=mode_duration_factors,
+        )
+        for origin, destination in pairwise(points)
+    ]
+    return RouteThroughResult(
+        mode=mode,
+        distance_km=sum(leg.distance_km for leg in legs),
+        duration_minutes=sum(leg.duration_minutes for leg in legs),
+        source="heuristic",
+        geometry=list(points) if with_geometry else [],
+        legs=legs,
     )

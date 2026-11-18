@@ -4651,3 +4651,36 @@ ids ocultos, nonce novo), o envio valida com `parse_schema_submission` e chama
 `form.html` ganhou `hidden_inputs`, `form_intro` e `submit_label`. Testes:
 `tests/admin/test_custom_action_flow.py` (painel real sobre SQLite em
 arquivo). Receita: `admin` (commit, `schema=`, `action_policy=`).
+
+### Rota com paradas no OSRM (#785, 2026-11-18)
+
+`geo/routing.py`: `OSRMBackend.route_through(points, *, mode, with_geometry)`
+manda todos os pontos num `/route` e devolve `RouteThroughResult` (total +
+`legs: list[TravelEstimate]`, `source="osrm"`), com o fator de duração por
+modo no total e nos trechos; `max_points` (default
+`DEFAULT_OSRM_MAX_POINTS = 500`, o limite medido do demo público) recusa com
+`ValueError` antes da requisição; resposta sem um `leg` por trecho vira
+`RuntimeError`. `geo/estimate.py`: `estimate_route_through`, o fallback
+offline (soma de `estimate_travel`, `source="heuristic"`, geometria em linha
+reta). O Protocol `RoutingBackend` ganhou `route_through` e `matrix`, e o
+`FakeRoutingBackend` implementa os dois. Testes:
+`tests/geo/test_route_through.py` (servidor OSRM fake por
+`httpx.MockTransport`). Receita: seção "Rota com paradas" em `geo`.
+
+### Localização ao vivo (#786, 2026-11-18)
+
+`geo/live.py`: `LivePositionSchema` (validada: intervalo, fuso obrigatório,
+futuro além de `LIVE_POSITION_MAX_CLOCK_SKEW` recusado) e
+`LivePositionStore` sobre um cliente Redis (protocolo posicional
+`_LivePositionRedisClient`, sem importar `redis`): última posição por canal
+com TTL, throttle por tempo do servidor (`min_interval_seconds`, `clock=`
+injetável), distância mínima (renova o TTL), posição antiga recusada,
+`latest`, `clear` (apaga + evento `live_position_cleared`). Entrega pelo
+`SSEBroker` só ao `audience` (obrigatório com `broker`); ETA por destinatário
+via `eta_targets` + `RoutingBackend.matrix`, fallback `estimate_travel`.
+`geo/live_router.py`: `make_live_position_router` com `authorize` e
+`channel_active` obrigatórios, `409` com canal inativo, resposta só com
+`accepted`. Texto OpenAPI em `api/route_docs` (`geo_live.publish_position`).
+Testes: `tests/geo/test_live.py`, `tests/geo/test_live_router.py` (fakeredis,
+OSRM fake por `httpx.MockTransport`). Receita nova: `live-location`
+(carona completa, saída medida com Redis 6.2 local e o demo público do OSRM).
