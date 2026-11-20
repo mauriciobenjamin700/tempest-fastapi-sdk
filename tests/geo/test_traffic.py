@@ -5,18 +5,26 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections import deque
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
 
 from tempest_fastapi_sdk.geo import (
     DEFAULT_TRAFFIC_SNAPSHOT_KEY,
+    ROAD_MATCH_DEFAULTS,
+    Coordinate,
     InMemoryTrafficSnapshotStore,
     RedisTrafficSnapshotStore,
+    RoadGraph,
+    RoadMatchOptions,
+    RoadMatchResult,
     TrafficAggregator,
     TrafficPrivacy,
     TrafficSnapshotSchema,
+    match_to_roads,
 )
+from tempest_fastapi_sdk.geo import traffic as traffic_module
 from tests.geo.test_live import _RecordingBroker
 from tests.geo.traffic_helpers import T0, Clock, drive, east, position, straight_street
 
@@ -348,6 +356,60 @@ class TestSpeed:
 
         assert "s-20~" in published
         assert "s-20" not in published
+
+
+class TestDeviceTimeReachesTheMatcher:
+    """The aggregator hands each position's device time to ``match_to_roads``.
+
+    With it the detour bound grows with the interval (tempest-react-sdk#678),
+    so a fleet that reports every 5-30 s stays chained round corners instead
+    of breaking at every block.
+    """
+
+    def test_timestamps_are_the_recorded_at_of_each_fix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every call gets one epoch-seconds time per fix, the device's own.
+
+        Args:
+            monkeypatch (pytest.MonkeyPatch): Swaps in a recording matcher.
+        """
+        calls: list[tuple[int, Sequence[float | None] | None]] = []
+
+        def recording(
+            fixes: Sequence[Coordinate],
+            graph: RoadGraph,
+            options: RoadMatchOptions = ROAD_MATCH_DEFAULTS,
+            *,
+            timestamps: Sequence[float | None] | None = None,
+        ) -> RoadMatchResult:
+            """Record the call and run the real matcher.
+
+            Args:
+                fixes (Sequence[Coordinate]): The fixes.
+                graph (RoadGraph): The network.
+                options (RoadMatchOptions): Tuning.
+                timestamps (Sequence[float | None] | None): The times.
+
+            Returns:
+                RoadMatchResult: The real answer.
+            """
+            calls.append((len(fixes), timestamps))
+            return match_to_roads(fixes, graph, options, timestamps=timestamps)
+
+        monkeypatch.setattr(traffic_module, "match_to_roads", recording)
+        clock = Clock()
+        agg = _aggregator(clock)
+        drive(agg, clock, "bus-0", east(0.0, 10.0), 120, start=T0)
+
+        assert calls
+        for count, timestamps in calls:
+            assert timestamps is not None
+            assert len(timestamps) == count
+            assert all(t is not None and t.is_integer() for t in timestamps)
+            stamps = [t for t in timestamps if t is not None]
+            assert stamps == sorted(set(stamps))
+            assert stamps[0] >= T0 and stamps[-1] <= T0 + 120
 
 
 class TestPublishing:

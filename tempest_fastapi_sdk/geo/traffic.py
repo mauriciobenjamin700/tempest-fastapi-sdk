@@ -733,7 +733,10 @@ class TrafficAggregator:
         fixes = ([trip.tail] if trip.tail is not None else []) + chunk
         if chunk and (len(fixes) >= 2 or self._quality is not None):
             result = match_to_roads(
-                [f.coordinate for f in fixes], self.graph, self.match_options
+                [f.coordinate for f in fixes],
+                self.graph,
+                self.match_options,
+                timestamps=[f.t for f in fixes],
             )
             if len(fixes) >= 2:
                 self._accumulate(key, trip, fixes, result)
