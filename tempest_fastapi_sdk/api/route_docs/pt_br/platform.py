@@ -39,6 +39,19 @@ PLATFORM_ROUTES: dict[str, RouteDoc] = {
             "canal não está ativo."
         ),
     ),
+    "geo_match_quality.read_match_quality": RouteDoc(
+        summary="Ler a qualidade do encaixe na rua da frota",
+        description=(
+            "Devolve a qualidade do map-matching na última janela fechada "
+            "(quebras por 1000 posições, distância da posição ao ponto "
+            "encaixado, fração encaixada e `inferred`, intervalo de "
+            "amostragem, trocas para rua paralela por km), ao lado das "
+            "medições de referência para comparar. Só aparecem agregados com "
+            "o número mínimo de aparelhos distintos, por célula das "
+            "dimensões grossas que o app informou; nada por viagem nem por "
+            "aparelho. Antes da primeira janela fechar, o retrato vem vazio."
+        ),
+    ),
     "geo_traffic.read_traffic": RouteDoc(
         summary="Ler o trânsito de uma área",
         description=(

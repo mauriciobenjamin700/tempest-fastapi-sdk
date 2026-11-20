@@ -43,6 +43,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Zhang–Suen, Douglas–Peucker, diferença com o grafo) devolve
   `RoadCandidateSchema` com `status="candidate"` para revisão humana, e
   `road_candidates_geojson` exporta para JOSM/QGIS.
+- Qualidade do map-matching na frota real, sem guardar rastro
+  (tempest-react-sdk#667): `TrafficAggregator(..., quality=MatchQualityOptions(...))`
+  mede, no encaixe que já faz, quebras por 1000 posições, distância posição →
+  ponto encaixado (mediana/p90), fração encaixada e `inferred`, intervalo de
+  amostragem (mediana/p90) e trocas para rua paralela por km — as definições e
+  os limiares de `scripts/bench-br-osm.mjs` do tempest-react-sdk. Cada trecho
+  entra na hora em contadores e histogramas de baldes fixos
+  (`QualityHistogram`) de uma célula da janela (`window_seconds`, 3600); nada
+  por viagem é guardado, o aparelho só aparece como HMAC com sal da janela, e
+  ao fechar a janela sobra só o agregado. Dimensões grossas opcionais por
+  viagem (`add_position(..., dimensions={"os": "android"})`, até 4 declaradas
+  em `MatchQualityOptions.dimensions`) com k-anonimato (o `min_devices` do
+  `TrafficPrivacy`): célula abaixo de k nunca sai, e as suprimidas vão juntas
+  para `other` — com a menor publicada quando ainda faltam aparelhos — para
+  que o total menos as células nunca isole um grupo menor que k.
+  `TrafficSnapshotSchema` ganhou `quality` (`within` o deixa de fora);
+  `make_match_quality_router(store, *, authorize)` serve `GET <prefix>` com o
+  `MatchQualityReportSchema` (janela + `MATCH_QUALITY_REFERENCES`: Kubicka e
+  rastros públicos do OSM no Brasil), com texto OpenAPI pt-BR/en-US.
+  `make_live_position_router(..., traffic_dimensions=...)` (dependência
+  `TrafficDimensionsResolver`) passa as dimensões lidas da request; valor
+  recusado é descartado com aviso e a posição entra mesmo assim.
+  Medido com `scripts/bench_geo_traffic.py --quality --repeat 6`: os
+  indicadores custam 1,7–2,4 ms por 1000 posições sobre os ~50–75 ms da
+  agregação, e o pico de memória sobe de 2,98 para 3,01 MB com 200 viagens.
 - `scripts/bench_geo_traffic.py`: 48–64 ms por 1000 posições com
   map-matching (40 e 200 viagens, até 77 abertas), pico de 3,00 MB; rua de 450 m tirada
   do grafo recuperada em 100% com 20 viagens ou mais, 77,2% com 12.
