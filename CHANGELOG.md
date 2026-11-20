@@ -72,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   map-matching (40 e 200 viagens, até 77 abertas), pico de 3,00 MB; rua de 450 m tirada
   do grafo recuperada em 100% com 20 viagens ou mais, 77,2% com 12.
 
+- `tempest_fastapi_sdk.utils.vapid`: `VAPID_SUBJECT_PATTERN` (portado
+  literalmente do `_check_sub` da `py_vapid` 1.9.4, com teste que compara com
+  a fonte instalada), `is_valid_vapid_subject` e `check_vapid_subject`;
+  `WebPushConfigurationError` exportado em `tempest_fastapi_sdk.webpush` e no
+  topo.
+
 ### Changed
 
 - Pisos das dependências na versão mais nova: `fastapi>=0.165.0` (era
@@ -89,6 +95,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `observability` agora dizem isso. Chamado no nível do módulo, nada muda: a
   instrumentação do SDK entra e o FastAPI desliga o tracing dele para a app,
   sem span duplicado (medido, e fixado num teste).
+
+### Fixed
+
+- `VAPID_SUBJECT` sem `mailto:` (um e-mail cru) ou vazio carregava normalmente
+  e só falhava no envio, com a mensagem enganosa da `py_vapid` (`Missing 'sub'
+  from claims`), vazando crua do `send`, furando o `send_many` e virando `500`
+  em quem chamava (#791). Agora:
+  - `WebPushSettings` (e `PushSettings`) recusa na leitura, quando
+    `VAPID_PRIVATE_KEY` está preenchida, com
+    `VAPID_SUBJECT must be 'mailto:<email>' or 'https://<host>' (got a bare
+    e-mail; prefix it with 'mailto:')`; sem chave, nada é checado;
+  - `WebPushDispatcher.__init__` faz a mesma checagem, inclusive num `"sub"`
+    de `extra_vapid_claims`;
+  - uma recusa da `py_vapid` no `send` vira `WebPushConfigurationError`
+    (subclasse de `WebPushError`), tipada, em vez da `VapidException` crua;
+    o `send_many` a levanta em vez de logar por assinante. Chave privada
+    malformada não entra nisso: o `pywebpush` levanta `binascii.Error`
+    antes de assinar.
 
 ### Notas de atualização
 
