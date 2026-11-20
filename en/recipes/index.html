@@ -1203,6 +1203,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -3228,6 +3232,62 @@
     
   
     Offline-first sync (delta)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="game-rooms-tcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Online game rooms (TCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="game-rooms-websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Online game rooms (WebSocket)
   
 
     
@@ -5780,6 +5840,14 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="offline-sync/">Offline-first sync (delta) »</a></strong></td>
 <td><code>BaseRepository.changes_since</code>, <code>SyncFilterSchema</code>, <code>SyncPaginationSchema</code>, cursor deltas + soft-delete</td>
+</tr>
+<tr>
+<td><strong><a href="game-rooms-tcp/">Online game rooms (TCP) »</a></strong></td>
+<td><code>serve_game_rooms_tcp</code>: the same room protocol on raw TCP, frames <code>[u32 length][u8 kind][payload]</code>, <code>TCP_NODELAY</code>, ping and drop on silence; same rooms as the WebSocket</td>
+</tr>
+<tr>
+<td><strong><a href="game-rooms-websocket/">Online game rooms (WebSocket) »</a></strong></td>
+<td><code>RoomRegistry</code> + <code>RoomPolicy</code> + <code>make_game_room_router</code>: rooms by code for multiplayer games, elected host, JSON and binary relay with the sender stamped by the server, version, reconnection with <code>resume</code>, limits; <code>make_jwt_room_identity_resolver</code></td>
 </tr>
 <tr>
 <td><strong><a href="openpix/">OpenPix (Pix via Woovi) »</a></strong></td>

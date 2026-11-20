@@ -1201,6 +1201,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -4002,6 +4006,62 @@
   
   
     <li class="md-nav__item">
+      <a href="game-rooms-tcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Salas de jogo online (TCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="game-rooms-websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Salas de jogo online (WebSocket)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="security/" class="md-nav__link">
         
   
@@ -5885,6 +5945,14 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <tr>
 <td><strong><a href="revenuecat/">RevenueCat (assinatura in-app) »</a></strong></td>
 <td><code>make_revenuecat_webhook_router</code> (header Authorization + HMAC opcional, segredo vazio recusa tudo, grava uma vez), <code>WebhookInbox</code> + <code>BaseWebhookEventModel</code> (inbox idempotente para qualquer provedor: claim, efeito e marca na mesma transação, <code>max_attempts</code> → <code>FAILED</code>), <code>normalize</code> → <code>SubscriptionSnapshot</code> sobre os 21 tipos de evento documentados, <code>RevenueCatClient.get_subscriber</code>, <code>RevenueCatSettings</code>, <code>FakeRevenueCatClient</code></td>
+</tr>
+<tr>
+<td><strong><a href="game-rooms-tcp/">Salas de jogo online (TCP) »</a></strong></td>
+<td><code>serve_game_rooms_tcp</code>: o mesmo protocolo de salas em TCP cru, frames <code>[u32 tamanho][u8 tipo][payload]</code>, <code>TCP_NODELAY</code>, ping e queda por silêncio; mesmas salas do WebSocket</td>
+</tr>
+<tr>
+<td><strong><a href="game-rooms-websocket/">Salas de jogo online (WebSocket) »</a></strong></td>
+<td><code>RoomRegistry</code> + <code>RoomPolicy</code> + <code>make_game_room_router</code>: salas por código para jogos multiplayer, anfitrião eleito, relay JSON e binário com o remetente carimbado pelo servidor, versão, reconexão com <code>resume</code>, limites; <code>make_jwt_room_identity_resolver</code></td>
 </tr>
 <tr>
 <td><strong><a href="security/">Segurança »</a></strong></td>

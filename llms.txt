@@ -97,6 +97,8 @@
 - [Permissões object-level](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/authz/)
 - [Observabilidade (tracing + slow queries)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/observability/)
 - [Sync offline-first (delta)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/offline-sync/)
+- [Salas de jogo online (TCP)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-tcp/)
+- [Salas de jogo online (WebSocket)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-websocket/)
 - [OpenPix (Pix via Woovi)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openpix/)
 - [OpenPix (assinaturas e planos)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openpix-subscriptions/)
 - [PDFs](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pdf/)

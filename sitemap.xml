@@ -442,6 +442,20 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/fuzzy-matching/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-tcp/</loc>
+        <lastmod>2026-11-20</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-tcp/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/game-rooms-tcp/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-websocket/</loc>
+        <lastmod>2026-11-20</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-websocket/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/game-rooms-websocket/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai-hosted/</loc>
         <lastmod>2026-11-20</lastmod>
         <changefreq>daily</changefreq>
@@ -1420,6 +1434,20 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/fuzzy-matching/"/>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fuzzy-matching/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/game-rooms-tcp/</loc>
+        <lastmod>2026-11-20</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/game-rooms-tcp/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-tcp/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/game-rooms-websocket/</loc>
+        <lastmod>2026-11-20</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/game-rooms-websocket/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-websocket/"/>
     </url>
     <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai-hosted/</loc>
