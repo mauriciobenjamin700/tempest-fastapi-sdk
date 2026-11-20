@@ -4787,3 +4787,18 @@ mediana 0,22–0,24 ms (WS) e 0,15–0,16 ms (TCP), N=2000 × 3 rodadas.
 Testes: `tests/rooms/` (registry com peers falsos, WebSocket ponta a ponta,
 TCP real e um teste misto TCP + WebSocket sob uvicorn). Receitas:
 `game-rooms-websocket` e `game-rooms-tcp`.
+
+### Anexo de e-mail em memória e com tipo certo (#797, 2026-11-20)
+
+`utils/email.py`: `EmailAttachment` (frozen dataclass: `filename`, `content`,
+`content_type=None`, `resolved_content_type`, `from_path`) e
+`EmailUtils.send(attachments=Iterable[Path | EmailAttachment])`. O tipo de
+cada parte vem de `mimetypes.guess_type` pelo nome, com
+`application/octet-stream` para desconhecido e para sufixo de compressão;
+`content_type` explícito vence. Construção recusa `content_type` fora de
+`tipo/subtipo` e `filename` com quebra de linha, NUL, `/` ou `\`.
+`FakeEmailUtils`/`SentEmail.attachments` aceitam o tipo novo. O `TinySMTP` de
+`tests/utils/smtp_server.py` guarda o `DATA` recebido em `messages`. Testes:
+`tests/utils/test_email_attachments.py` (inclui um PDF atravessando socket
+SMTP real). Receita: `email`, seção "Anexos: arquivo em disco ou bytes em
+memória".

@@ -34,6 +34,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Receitas "Salas de jogo online (WebSocket)" e "Salas de jogo online (TCP)",
   com os casos do PokeBudokai (lockstep binário) e do Jomasio (JSON com
   anfitrião autoritativo).
+- `EmailAttachment(filename, content, content_type=None)`: anexo em memória
+  para `EmailUtils.send(attachments=...)`, que passa a aceitar
+  `Iterable[Path | EmailAttachment]` misturado (#797). O PDF do
+  `PdfRenderer.render_document` (ou qualquer `bytes`) vai direto, sem gravar
+  e apagar arquivo temporário. `content_type=None` adivinha pelo nome
+  (`mimetypes.guess_type`); `EmailAttachment.from_path(path)` lê do disco.
+  A construção recusa com `ValueError` `content_type` que não é `tipo/subtipo`
+  puro (sem parâmetros) e `filename` vazio ou com `\r`, `\n`, NUL, `/` ou
+  `\` — a quebra de linha a stdlib só recusava na hora de montar a mensagem,
+  e a barra passava inteira para o `filename=` do `Content-Disposition`.
+  `FakeEmailUtils` registra o anexo como recebido.
+
+### Changed
+
+- Anexo de `EmailUtils.send` deixa de sair sempre como
+  `application/octet-stream`: o `Content-Type` vem do nome do arquivo, para
+  `Path` também — `boleto.pdf` sai `application/pdf`, `logo.png` sai
+  `image/png`. Extensão desconhecida, sem extensão ou com sufixo de compressão
+  (`.tar.gz`, `.csv.gz`) continua `application/octet-stream`. Quem depende do
+  tipo antigo passa
+  `EmailAttachment(path.name, path.read_bytes(), "application/octet-stream")`.
+  Um `Path` cujo nome tenha quebra de linha agora levanta `ValueError` antes
+  de montar a mensagem (antes também levantava `ValueError`, da stdlib).
 
 ## [0.368.0] — 2026-11-20
 

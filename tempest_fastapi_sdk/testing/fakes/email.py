@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tempest_fastapi_sdk.utils.email import EmailUtils
+from tempest_fastapi_sdk.utils.email import EmailAttachment, EmailUtils
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +28,8 @@ class SentEmail:
         html (str | None): The HTML alternative, when one was given.
         cc (tuple[str, ...]): Carbon copies.
         bcc (tuple[str, ...]): Blind carbon copies.
-        attachments (tuple[Path, ...]): Files that would have been attached.
+        attachments (tuple[Path | EmailAttachment, ...]): Files that would
+            have been attached, as given (a ``Path`` is not read).
         reply_to (str | None): Reply-To, when set.
         from_addr (str | None): Per-message sender override, when set.
     """
@@ -39,7 +40,7 @@ class SentEmail:
     html: str | None = None
     cc: tuple[str, ...] = field(default_factory=tuple)
     bcc: tuple[str, ...] = field(default_factory=tuple)
-    attachments: tuple[Path, ...] = field(default_factory=tuple)
+    attachments: tuple[Path | EmailAttachment, ...] = field(default_factory=tuple)
     reply_to: str | None = None
     from_addr: str | None = None
 
@@ -103,7 +104,7 @@ class FakeEmailUtils(EmailUtils):
         html: str | None = None,
         cc: Iterable[str] | None = None,
         bcc: Iterable[str] | None = None,
-        attachments: Iterable[Path] | None = None,
+        attachments: Iterable[Path | EmailAttachment] | None = None,
         reply_to: str | None = None,
         from_addr: str | None = None,
     ) -> None:
@@ -116,7 +117,8 @@ class FakeEmailUtils(EmailUtils):
             html (str | None): HTML alternative.
             cc (Iterable[str] | None): Carbon copies.
             bcc (Iterable[str] | None): Blind carbon copies.
-            attachments (Iterable[Path] | None): Files to attach.
+            attachments (Iterable[Path | EmailAttachment] | None): Files to
+                attach, recorded as given.
             reply_to (str | None): Reply-To header.
             from_addr (str | None): Sender override for this message.
 

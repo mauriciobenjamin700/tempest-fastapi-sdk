@@ -2034,6 +2034,9 @@ if TYPE_CHECKING:
         DownloadUtils as DownloadUtils,
     )
     from tempest_fastapi_sdk.utils import (
+        EmailAttachment as EmailAttachment,
+    )
+    from tempest_fastapi_sdk.utils import (
         EmailUtils as EmailUtils,
     )
     from tempest_fastapi_sdk.utils import (
@@ -3078,6 +3081,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "DecimalRatioField": "tempest_fastapi_sdk.utils",
     "DiskMetrics": "tempest_fastapi_sdk.utils",
     "DownloadUtils": "tempest_fastapi_sdk.utils",
+    "EmailAttachment": "tempest_fastapi_sdk.utils",
     "EmailUtils": "tempest_fastapi_sdk.utils",
     "FailedRecipient": "tempest_fastapi_sdk.utils",
     "FileStoreUtils": "tempest_fastapi_sdk.utils",
@@ -3503,6 +3507,7 @@ __all__: list[str] = [
     "DropEnumCheckOp",
     "DropEnumTypeOp",
     "DroppedFilterWarning",
+    "EmailAttachment",
     "EmailChangeConfirmSchema",
     "EmailChangeRequestSchema",
     "EmailChangeResponseSchema",
