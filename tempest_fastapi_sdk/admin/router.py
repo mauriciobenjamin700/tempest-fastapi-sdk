@@ -10,7 +10,7 @@ import json
 import logging
 import secrets
 from collections.abc import Callable, Collection
-from datetime import UTC, date, datetime, time, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from enum import Enum
 from functools import partial
 from pathlib import Path
@@ -4569,13 +4569,15 @@ def _resolve_filters_and_order(
             py = _filter_python_type(admin, field)
             raw_from = request.query_params.get(f"filter_{field}_from")
             raw_to = request.query_params.get(f"filter_{field}_to")
-            bound = _coerce_date_bound(raw_from, py, end=False)
+            zone = admin.display_tzinfo
+            bound = _coerce_date_bound(raw_from, py, end=False, zone=zone)
             if bound is not None:
                 filters[f"{field}__gte"] = bound
                 active_filters[f"filter_{field}_from"] = raw_from or ""
-            bound = _coerce_date_bound(raw_to, py, end=True)
+            bound = _coerce_date_bound(raw_to, py, end=True, zone=zone)
             if bound is not None:
-                filters[f"{field}__lte"] = bound
+                lookup = "lt" if _is_datetime_type(py) else "lte"
+                filters[f"{field}__{lookup}"] = bound
                 active_filters[f"filter_{field}_to"] = raw_to or ""
             continue
         value = request.query_params.get(f"filter_{field}")
@@ -5177,15 +5179,40 @@ def _filter_kind(admin: Any, field: str) -> str:
     return "other"
 
 
-def _coerce_date_bound(raw: str | None, py: type | None, *, end: bool) -> Any:
+def _is_datetime_type(py: type | None) -> bool:
+    """Tell whether a column's Python type is ``datetime`` (not ``date``).
+
+    Args:
+        py (type | None): The column's Python type.
+
+    Returns:
+        bool: ``True`` for ``datetime`` and its subclasses.
+    """
+    return isinstance(py, type) and issubclass(py, datetime)
+
+
+def _coerce_date_bound(
+    raw: str | None,
+    py: type | None,
+    *,
+    end: bool,
+    zone: tzinfo | None = None,
+) -> Any:
     """Parse a ``YYYY-MM-DD`` filter bound into a date/datetime.
+
+    For a ``datetime`` column the day is the operator's day: it starts at
+    midnight in ``zone`` (the admin's ``display_timezone``, UTC when none
+    is set) and the bound is returned in UTC. The upper bound is the
+    **next** midnight, meant for an exclusive ``<``: a ``23:59:59`` cut
+    left out a row stamped ``23:59:59.5``. A ``date`` column compares
+    dates and is returned as is.
 
     Args:
         raw (str | None): The submitted ``date`` input value.
         py (type | None): The column's Python type (``date`` vs
             ``datetime``).
-        end (bool): When the column is a ``datetime`` and this is the
-            upper bound, snap to end-of-day so the whole day is included.
+        end (bool): Whether this is the upper bound of the range.
+        zone (tzinfo | None): Zone the day is read in; ``None`` is UTC.
 
     Returns:
         Any: A ``date`` / ``datetime`` bound, or ``None`` when ``raw`` is
@@ -5197,9 +5224,9 @@ def _coerce_date_bound(raw: str | None, py: type | None, *, end: bool) -> Any:
         parsed = date.fromisoformat(raw)
     except ValueError:
         return None
-    if isinstance(py, type) and issubclass(py, datetime):
-        clock = time(23, 59, 59) if end else time(0, 0, 0)
-        return datetime.combine(parsed, clock, tzinfo=UTC)
+    if _is_datetime_type(py):
+        day = parsed + timedelta(days=1) if end else parsed
+        return datetime.combine(day, time(0, 0, 0), tzinfo=zone or UTC).astimezone(UTC)
     return parsed
 
 

@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Admin: o filtro de intervalo de data numa coluna `datetime` lê o dia no
+  `display_timezone` do site ou do model, e não em UTC (#800). Com
+  `America/Sao_Paulo`, um registro das 22:00 de 20/11 (01:00 UTC de 21/11)
+  entrava no filtro do dia 21 e sumia do dia 20, que é o dia que a listagem
+  mostra. O fim do intervalo passa a ser a meia-noite seguinte, exclusiva:
+  o corte em `23:59:59` deixava de fora um registro de `23:59:59.5`. Sem
+  `display_timezone`, o dia continua UTC; coluna `date` não muda.
+
 ## [0.369.0] — 2026-11-20
 
 ### Added
