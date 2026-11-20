@@ -65,6 +65,7 @@
 - [Feature flags](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/feature-flags/)
 - [Arquivo no serviço — `StoredFileServiceMixin`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/stored-files/)
 - [Auth Firebase (ID token)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/firebase-auth/)
+- [Trânsito da frota (GPS anônimo)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fleet-traffic/)
 - [Formulários a partir de schemas Pydantic](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui-forms/)
 - [Busca aproximada (fuzzy) e cidades em texto](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fuzzy-matching/)
 - [Geolocalização (distância + tempo)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/geo/)

@@ -1199,6 +1199,8 @@
       
         
       
+        
+      
     
     
     
@@ -4420,6 +4422,34 @@
   
   
     <li class="md-nav__item">
+      <a href="fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trânsito da frota (GPS anônimo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="uploads/" class="md-nav__link">
         
   
@@ -5915,6 +5945,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <tr>
 <td><strong><a href="transactions/">Transações (commit e savepoint) »</a></strong></td>
 <td><code>transaction()</code> compartilhado pela sessão, <code>commit()</code> / <code>flush()</code> / <code>rollback()</code> no repositório, <code>autocommit=False</code>, <code>savepoint()</code> para o passo recuperável</td>
+</tr>
+<tr>
+<td><strong><a href="fleet-traffic/">Trânsito da frota (GPS anônimo) »</a></strong></td>
+<td><code>TrafficAggregator</code> (velocidade mediana por trecho, k-anonimato, corte de início e fim, sal rotativo), <code>match_to_roads</code> (HMM, porte do tempest-react-sdk), <code>RoadGraph</code> + <code>road_graph_from_overpass</code>/<code>load_road_graph</code>, <code>make_traffic_router</code> (por caixa + tile do grafo), qualidade do encaixe na frota real só agregada (<code>MatchQualityOptions</code> + <code>make_match_quality_router</code>), <code>OffRoadDensity</code> + <code>infer_road_candidates</code> (ruas que o OSM não tem, para revisão)</td>
 </tr>
 <tr>
 <td><strong><a href="uploads/">Uploads (backends) »</a></strong></td>

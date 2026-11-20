@@ -1201,6 +1201,8 @@
       
         
       
+        
+      
     
     
     
@@ -2350,6 +2352,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet traffic (anonymous GPS)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ui-forms/" class="md-nav__link">
         
   
@@ -2861,6 +2891,17 @@
     <span class="md-ellipsis">
       
         The endpoint: make_live_position_router
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traffic-from-the-same-positions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traffic from the same positions
       
     </span>
   </a>
@@ -5513,6 +5554,11 @@ The store does not change: it only calls <code>broker.publish</code>. Delivery
 across workers is the <code>SSEBroker</code>'s, covered in the SSE recipe; it was
 not measured again through the store.</p>
 </div>
+<h2 id="traffic-from-the-same-positions">Traffic from the same positions<a class="headerlink" href="#traffic-from-the-same-positions" title="Permanent link">&para;</a></h2>
+<p><code>make_live_position_router(..., traffic=aggregator)</code> also hands every
+authorized position of an active channel to a <code>TrafficAggregator</code>, which
+publishes speed per road stretch only with k devices and cuts the start and end
+of every trip. See <a href="../fleet-traffic/">Fleet traffic</a>.</p>
 <h2 id="recap">Recap<a class="headerlink" href="#recap" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>LivePositionSchema</code> — <code>lat</code>/<code>lng</code>/<code>accuracy_m</code>/<code>speed_kmh</code>/<code>heading</code>/<code>recorded_at</code>, validated (future and naive timestamps refused).</li>

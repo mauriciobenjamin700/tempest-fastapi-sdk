@@ -1201,6 +1201,8 @@
       
         
       
+        
+      
     
     
     
@@ -2330,6 +2332,34 @@
     
   
     Firebase auth (ID token)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet traffic (anonymous GPS)
   
 
     
@@ -5703,8 +5733,8 @@ into inline CSS. Spacing uses <code>Edge</code>.</p>
 <li>The Python renderer's (SSR) <code>Style → CSS</code> conversion is a port of the
   JS client's (WASM/server) <code>styleToCss</code>, and <code>tempestweb</code> declares both
   outputs byte-identical, so the page does not "jump" when the client
-  re-renders it. Measured on <code>tempestweb</code> 0.127.0 (the <code>[ssr]</code> extra's
-  floor) with three <code>Style</code>s — this example's, an <code>Edge.symmetric</code> with
+  re-renders it. Measured on <code>tempestweb</code> 0.127.0 (then the <code>[ssr]</code>
+  extra's floor) with three <code>Style</code>s — this example's, an <code>Edge.symmetric</code> with
   <code>radius</code>, and one with margin, border, colors, <code>font_size</code> and a
   fractional <code>width</code> —, both functions emitted the same string for all
   three. That is a sample, not proof for every <code>Style</code> field.</li>
@@ -6295,7 +6325,7 @@ the shell's <code>&lt;head&gt;</code> via <code>shell=</code>.</p>
   hosts a <strong>server</strong> (WebSocket/SSE) build as a mountable sub-app;
   <code>theme=</code> hands the palette to every session's <code>App</code>, and the components
   the <code>view</code> builds resolve against it (capability since 0.67.0; declared
-  floor <code>tempestweb&gt;=0.127.0</code>).
+  floor <code>tempestweb&gt;=0.141.1</code>).
   <strong><code>detect_build_mode(dir)</code></strong> tells them apart.</li>
 <li>Everything lives in the <code>[ssr]</code> extra
   (<code>uv add "tempest-fastapi-sdk[ssr]"</code>), loaded on demand —

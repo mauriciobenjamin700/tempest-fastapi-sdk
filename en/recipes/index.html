@@ -1201,6 +1201,8 @@
       
         
       
+        
+      
     
     
     
@@ -2330,6 +2332,34 @@
     
   
     Firebase auth (ID token)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet traffic (anonymous GPS)
   
 
     
@@ -5622,6 +5652,10 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="firebase-auth/">Firebase auth (ID token) »</a></strong></td>
 <td><code>FirebaseAuth</code>, <code>FirebaseIdentity</code>, <code>FirebaseUserResolver</code> — verify the ID token a mobile app sends, idempotent initialization, one <code>code</code> per failure, <code>[firebase]</code> extra</td>
+</tr>
+<tr>
+<td><strong><a href="fleet-traffic/">Fleet traffic (anonymous GPS) »</a></strong></td>
+<td><code>TrafficAggregator</code> (median speed per stretch, k-anonymity, start and end cut, rotating salt), <code>match_to_roads</code> (HMM, port of tempest-react-sdk), <code>RoadGraph</code> + <code>road_graph_from_overpass</code>/<code>load_road_graph</code>, <code>make_traffic_router</code> (by box + graph tile), matching quality on the real fleet, aggregate only (<code>MatchQualityOptions</code> + <code>make_match_quality_router</code>), <code>OffRoadDensity</code> + <code>infer_road_candidates</code> (roads OSM lacks, for review)</td>
 </tr>
 <tr>
 <td><strong><a href="ui-forms/">Forms from Pydantic schemas »</a></strong></td>

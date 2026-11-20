@@ -1201,6 +1201,8 @@
       
         
       
+        
+      
     
     
     
@@ -2330,6 +2332,34 @@
     
   
     Firebase auth (ID token)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet traffic (anonymous GPS)
   
 
     
@@ -6181,8 +6211,8 @@ both sides sign the same string:</p>
 <li><code>/api/files/a%2Fb.pdf</code> and <code>/api/files/a/b.pdf</code> reach the route as the same
   path, with the same key <code>a/b.pdf</code>, and verify with the same signature.</li>
 </ul>
-<p>Measured on Starlette 0.46.0 (the floor <code>fastapi&gt;=0.141.1</code> accepts) and on
-1.6.0.</p>
+<p>Measured on Starlette 0.46.0 and on 1.6.0 — the floor <code>fastapi&gt;=0.165.0</code>
+requires today; the suite runs on 1.10.0.</p>
 <div class="admonition warning">
 <p class="admonition-title">Pass the decoded path, never an encoded one</p>
 <p><code>sign_path("/api/files/aula%2001.mp4", ...)</code> signs the literal key

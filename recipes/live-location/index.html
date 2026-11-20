@@ -1199,6 +1199,8 @@
       
         
       
+        
+      
     
     
     
@@ -3202,6 +3204,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#transito-a-partir-das-mesmas-posicoes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trânsito a partir das mesmas posições
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recap" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4544,6 +4557,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trânsito da frota (GPS anônimo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../uploads/" class="md-nav__link">
         
   
@@ -5512,6 +5553,11 @@ store não muda: ele só chama <code>broker.publish</code>. A entrega entre work
 a do <code>SSEBroker</code>, coberta na receita de SSE; não foi medida de novo
 através do store.</p>
 </div>
+<h2 id="transito-a-partir-das-mesmas-posicoes">Trânsito a partir das mesmas posições<a class="headerlink" href="#transito-a-partir-das-mesmas-posicoes" title="Permanent link">&para;</a></h2>
+<p><code>make_live_position_router(..., traffic=aggregator)</code> entrega também cada
+posição autorizada de um canal ativo a um <code>TrafficAggregator</code>, que publica a
+velocidade por trecho de rua só com k aparelhos e corta o começo e o fim de
+cada viagem. Veja <a href="../fleet-traffic/">Trânsito da frota</a>.</p>
 <h2 id="recap">Recap<a class="headerlink" href="#recap" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>LivePositionSchema</code> — <code>lat</code>/<code>lng</code>/<code>accuracy_m</code>/<code>speed_kmh</code>/<code>heading</code>/<code>recorded_at</code>, validados (futuro e sem fuso recusados).</li>

@@ -1199,6 +1199,8 @@
       
         
       
+        
+      
     
     
     
@@ -4545,6 +4547,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trânsito da frota (GPS anônimo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../uploads/" class="md-nav__link">
         
   
@@ -5304,9 +5334,16 @@ roda um <code>SELECT 1</code> produz estes spans (<code>span &lt;- pai</code>; o
 <p>O span de request vem de embrulhar a pilha de middleware da app, e o
 Starlette monta essa pilha no <strong>primeiro evento ASGI</strong> que recebe — que é
 justamente o startup do lifespan. Chamado de lá, <code>setup_tracing</code> encontra
-a pilha já montada e <strong>nenhuma request vira span</strong>; as queries até saem,
-mas como raízes soltas, sem request pai. Desde a 0.303.0 a função detecta
-esse caso e emite um <code>RuntimeWarning</code> em vez de falhar em silêncio.</p>
+a pilha já montada e a instrumentação do OpenTelemetry <strong>não entra</strong>. A
+função detecta esse caso e emite um <code>RuntimeWarning</code> (desde a 0.303.0).</p>
+<p>Desde o FastAPI 0.142, a request ainda vira span nesse caso, mas pela
+telemetria <strong>do próprio FastAPI</strong>, com outros nomes e atributos. Medido no
+FastAPI 0.165.0: raiz <code>GET /orders</code> no escopo <code>fastapi</code>, filhos
+<code>fastapi.dependencies</code> / <code>fastapi.endpoint</code> / <code>fastapi.serialization</code>, as
+queries sob <code>fastapi.endpoint</code> e atributos da convenção semântica nova
+(<code>http.request.method</code>, <code>url.path</code>). Chamado no nível do módulo, o
+<code>setup_tracing</code> instrumenta a app e o FastAPI desliga o tracing dele para
+ela: medido, uma request dá <strong>um</strong> span <code>GET /orders</code>, sem duplicata.</p>
 </div>
 <div class="admonition tip">
 <p class="admonition-title">Engine que já existe no nível do módulo</p>

@@ -1199,6 +1199,8 @@
       
         
       
+        
+      
     
     
     
@@ -4739,6 +4741,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../recipes/fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trânsito da frota (GPS anônimo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../recipes/uploads/" class="md-nav__link">
         
   
@@ -5702,8 +5732,8 @@ renderizador converte em CSS inline. Espaçamentos usam <code>Edge</code>.</p>
 <li>A conversão <code>Style → CSS</code> do renderizador Python (SSR) é um port do
   <code>styleToCss</code> do cliente JS (WASM/server), e o <code>tempestweb</code> declara as
   duas saídas idênticas byte a byte, para a página não "pular" quando o
-  cliente re-renderiza. Medido no <code>tempestweb</code> 0.127.0 (o piso do extra
-  <code>[ssr]</code>) com três <code>Style</code> — o deste exemplo, um <code>Edge.symmetric</code> com
+  cliente re-renderiza. Medido no <code>tempestweb</code> 0.127.0 (então o piso do
+  extra <code>[ssr]</code>) com três <code>Style</code> — o deste exemplo, um <code>Edge.symmetric</code> com
   <code>radius</code>, e um com margem, borda, cores, <code>font_size</code> e <code>width</code>
   fracionário —, as duas funções emitiram a mesma string nos três. É uma
   amostra, não prova para todo campo do <code>Style</code>.</li>
@@ -6262,7 +6292,7 @@ o tema em volta da chamada da <code>view</code>; a <code>tempestweb</code> 0.67.
 essa capacidade entra. Com <code>tempestweb</code> 0.66.0 o <code>theme=</code> é aceito e
 a página pinta baseline em silêncio.</p>
 <p>A 0.67.0 é onde a capacidade nasceu, não o que o SDK declara hoje: o
-piso declarado é <code>tempestweb&gt;=0.127.0</code>, a versão contra a qual esta
+piso declarado é <code>tempestweb&gt;=0.141.1</code>, a versão contra a qual esta
 release foi medida.</p>
 </div>
 <div class="admonition tip">
@@ -6294,7 +6324,7 @@ stylesheet base pinta, injete <code>tempestweb.html.theme_css(theme)</code> no
   hospeda um build <strong>server</strong> (WebSocket/SSE) como sub-app pra montar;
   <code>theme=</code> entrega a paleta ao <code>App</code> de cada sessão, e os componentes que a
   <code>view</code> constrói resolvem contra ela (capacidade desde a 0.67.0; piso
-  declarado <code>tempestweb&gt;=0.127.0</code>).
+  declarado <code>tempestweb&gt;=0.141.1</code>).
   <strong><code>detect_build_mode(dir)</code></strong> distingue os dois.</li>
 <li>Tudo mora no extra <code>[ssr]</code> (<code>uv add "tempest-fastapi-sdk[ssr]"</code>),
   carregado sob demanda — <code>import tempest_fastapi_sdk</code> nunca exige o extra.</li>

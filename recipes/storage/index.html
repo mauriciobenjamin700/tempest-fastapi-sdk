@@ -1199,6 +1199,8 @@
       
         
       
+        
+      
     
     
     
@@ -4827,6 +4829,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../fleet-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trânsito da frota (GPS anônimo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../uploads/" class="md-nav__link">
         
   
@@ -6171,7 +6201,8 @@ dois lados assinam a mesma string:</p>
 <li><code>/api/files/a%2Fb.pdf</code> e <code>/api/files/a/b.pdf</code> chegam à rota como o mesmo
   path, com a mesma chave <code>a/b.pdf</code>, e valem com a mesma assinatura.</li>
 </ul>
-<p>Medido no Starlette 0.46.0 (o piso que <code>fastapi&gt;=0.141.1</code> aceita) e no 1.6.0.</p>
+<p>Medido no Starlette 0.46.0 e no 1.6.0 — o piso que <code>fastapi&gt;=0.165.0</code> exige
+hoje; a suíte roda no 1.10.0.</p>
 <div class="admonition warning">
 <p class="admonition-title">Passe o path decodificado, nunca um já codificado</p>
 <p><code>sign_path("/api/files/aula%2001.mp4", ...)</code> assina a chave literal
