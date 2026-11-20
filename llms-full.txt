@@ -6753,6 +6753,50 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.368.0] — 2026-11-20
+
+### Added
+
+- `match_to_roads(..., timestamps=...)`: com o horário de cada posição
+  (segundos epoch), o desvio permitido entre duas posições cresce com o
+  intervalo — `linha reta + max_detour_m + detour_per_second_m ·
+  min(Δt, max_interval_s)` —, porte do tempest-react-sdk#678 (#667).
+  `RoadMatchOptions` / `ROAD_MATCH_DEFAULTS` ganharam `detour_per_second_m`
+  (2 m/s; `0` desliga) e `max_interval_s` (60 s). Uma frota que envia a cada
+  5–30 s deixa de quebrar a cadeia a cada esquina. Horário ausente, `nan`,
+  repetido ou voltando conta como Δt 0: resultado idêntico ao de antes. O
+  `TrafficAggregator` passa o `recorded_at` de cada posição. Paridade:
+  `scripts/map_matching_parity_fixture.mjs` ganhou 25 cenários com horário
+  (31 no total), gerados do `dist` do tempest-react-sdk com o #678; no
+  `scripts/bench_geo_traffic.py` (posições a 1 Hz) a agregação publica as
+  mesmas arestas e recupera a mesma rua (77,2% com 12 viagens, 100% com 20).
+
+### Fixed
+
+- Cinco municípios tinham a coordenada **fora do próprio território**
+  (tempest-react-sdk#677). A sede que `kelvins/municipios-brasileiros` dá para
+  eles cai longe: medido ponto-no-polígono das 5571 sedes contra a malha
+  municipal do IBGE 2022 em qualidade máxima (`/api/v3/malhas/estados/<UF>?
+  intrarregiao=municipio&qualidade=maxima`, distância até a divisa mais
+  próxima), 17 caem fora, 12 delas a menos de 1 km da divisa (cidade em
+  margem de rio ou na costa) e estas cinco muito além: Pau D'Arco/PA a
+  749,67 km (perto de Belém), Cerro Azul/PR a 359,66 km, Alto Paraíso/PR a
+  287,65 km, São Sebastião da Vargem Alegre/MG a 157,07 km e São Caitano/PE a
+  7,48 km. Para elas, `Municipality.coordinate` passa a ser o centróide do
+  território — os mesmos valores do `br-seats.json` do tempest-react-sdk
+  (#679), cada um dentro do próprio município na mesma malha — e o campo novo
+  `Municipality.point` responde `"centroid"` (`"seat"` nos outros 5566). As
+  5571 coordenadas agora batem com as do react-sdk, fixado por hash em
+  `tests/geo/test_br_seat_source.py`.
+- `scripts/regen_br_municipalities.py` lia o CSV da `kelvins` da `main`, sem
+  commit fixado. Agora lê do commit `503e2f70bbf1b4b7ec0b1f68b09086ccc38fe861`
+  (o mesmo do react-sdk) e trata o download como dado não confiável: teto de
+  tamanho, SHA-256 do CSV e do `LICENSE` conferidos (também numa cópia local
+  passada por `--kelvins`) e parse estrito (cabeçalho exato, nove colunas, sem
+  aspas, código de sete dígitos, coordenada decimal dentro do Brasil, sem
+  duplicata). O módulo gerado traz `KELVINS_COMMIT`, `KELVINS_CSV_SHA256` e
+  `CENTROID_FALLBACK_IBGE_CODES`.
+
 ## [0.367.1] — 2026-11-20
 
 ### Added
@@ -62533,10 +62577,101 @@ mais provável.
 (`ROAD_MATCH_DEFAULTS`: σ 7 m, β 3 m, raio 200 m, 16 ruas, desvio máximo
 100 m), escolhidos lá por varredura em 100 trajetos reais. O teste
 `tests/geo/test_map_matching_parity.py` compara a saída com a do TypeScript no
-mesmo grafo e nas mesmas posições (seis cenários, quebra de cadeia incluída),
-gerada por `node scripts/map_matching_parity_fixture.mjs <tempest-react-sdk>/dist`.
+mesmo grafo e nas mesmas posições (31 cenários: quebra de cadeia, posições com
+horário, relógio repetido ou voltando), gerada por
+`node scripts/map_matching_parity_fixture.mjs <tempest-react-sdk>/dist`.
 
 Você raramente chama `match_to_roads` direto: o agregador chama por você.
+
+### Posições esparsas: passe o horário
+
+O desvio máximo de 100 m foi ajustado para 1 posição por segundo. Uma fonte
+esparsa (uma posição a cada 5–30 s) vira esquina e dá a volta no quarteirão
+entre duas posições, e com o limite fixo a cadeia quebra onde o veículo só
+dirigiu. Com o horário de cada posição em `timestamps=` (segundos epoch, o
+`datetime.timestamp()`), o limite da transição passa a ser
+
+`linha reta + max_detour_m + detour_per_second_m · min(Δt, max_interval_s)`
+
+com `detour_per_second_m` 2 m/s e `max_interval_s` 60 s nos padrões — os
+mesmos do tempest-react-sdk (PR #678), escolhidos lá nos trajetos de Kubicka
+rarefeitos para uma posição a cada 5–300 s e em rastros públicos do OSM de
+cinco centros de cidades brasileiras.
+
+```python
+import math
+from datetime import UTC, datetime
+
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    RoadEdge,
+    RoadGraph,
+    RoadMatchOptions,
+    match_to_roads,
+)
+
+BASE = Coordinate(latitude=-5.09, longitude=-42.8)
+M_PER_DEG: float = 6371008.8 * math.pi / 180
+
+
+def at(x: float, y: float) -> Coordinate:
+    """A point ``x`` m east and ``y`` m north of BASE."""
+    return Coordinate(
+        latitude=BASE.latitude + y / M_PER_DEG,
+        longitude=BASE.longitude
+        + x / (M_PER_DEG * math.cos(math.radians(BASE.latitude))),
+    )
+
+
+graph = RoadGraph(
+    [at(0, 0), at(0, 80), at(150, 80), at(150, 0)],
+    [
+        RoadEdge(start=0, end=1, id="west"),
+        RoadEdge(start=1, end=2, id="top"),
+        RoadEdge(start=2, end=3, id="east"),
+    ],
+)
+fixes = [at(0, 10), at(150, 10)]
+sent = [
+    datetime(2026, 11, 20, 12, 0, 0, tzinfo=UTC),
+    datetime(2026, 11, 20, 12, 0, 30, tzinfo=UTC),
+]
+options = RoadMatchOptions(radius_m=50)
+
+untimed = match_to_roads(fixes, graph, options)
+timed = match_to_roads(
+    fixes, graph, options, timestamps=[t.timestamp() for t in sent]
+)
+
+print("untimed breaks:", untimed.breaks)
+print("timed breaks:", timed.breaks)
+print("route:", [t.edge.id for t in timed.routes[0].edges])
+```
+
+Saída:
+
+```text
+untimed breaks: 1
+timed breaks: 0
+route: ['west', 'top', 'east']
+```
+
+Sem horário, os 150 m em linha reta contra 290 m pela rede passam do desvio de
+100 m e a cadeia quebra. Com 30 s entre as duas posições, o limite ganha 60 m e
+a rota sai inteira: sobe a `west`, cruza a `top`, desce a `east`.
+
+!!! note "Sem horário, nada muda"
+    Horário ausente (`None`), `nan`, repetido (Δt 0) ou voltando conta como
+    Δt 0: o limite é o fixo de antes e o resultado é idêntico ao de quem não
+    passa `timestamps`. Só ganha folga a transição em que **as duas** posições
+    têm horário. `detour_per_second_m=0` desliga a folga.
+
+O `TrafficAggregator` já passa o horário do aparelho (`recorded_at`) de cada
+posição: uma transição de até 10 s ganha até 20 m de folga sem configurar nada.
+
+O `createRoadMatcher` do `tempest-react-sdk` (o encaixe incremental, uma posição por vez) não foi
+portado: o backend encaixa trechos já soltos de uma vez, e o marcador ao vivo é
+trabalho do app.
 
 ## A agregação: `TrafficAggregator`
 
@@ -63890,6 +64025,39 @@ São Paulo -23.5329 -46.6395 True
 formulário: com `uf`, só aquele estado. `br_municipalities()` devolve a lista
 inteira, ordenada por código.
 
+### Qual ponto é a coordenada
+
+`coordinate` é a **sede** do município (a cidade onde fica a prefeitura): o
+ponto para marcar a cidade no mapa, medir distância até ela ou ordenar por
+"mais perto de mim". O campo `point` diz o que a coordenada é:
+
+```python
+from tempest_fastapi_sdk.geo import br_municipalities, municipality_by_ibge_code
+
+picos = municipality_by_ibge_code(2208007)
+assert picos is not None
+print(picos.name, picos.coordinate.latitude, picos.coordinate.longitude, picos.point)
+
+fallback = [m.name for m in br_municipalities() if m.point == "centroid"]
+print(fallback)
+```
+
+Saída:
+
+```text
+Picos -7.07721 -41.467 seat
+["Pau D'Arco", 'São Caitano', 'São Sebastião da Vargem Alegre', 'Cerro Azul', 'Alto Paraíso']
+```
+
+Cinco municípios respondem `point == "centroid"`: a fonte põe a sede deles
+**fora do próprio território** (Pau D'Arco/PA a 750 km, perto de Belém; Cerro
+Azul/PR a 360 km; Alto Paraíso/PR a 288 km; São Sebastião da Vargem Alegre/MG
+a 157 km; São Caitano/PE a 7,5 km da divisa — medido ponto-no-polígono contra
+a malha municipal do IBGE 2022 em qualidade máxima). Para esses, a coordenada
+é o centróide do território, o mesmo ponto que o `tempest-react-sdk` devolve
+com `point: "centroid"`. As outras 5566 coordenadas são idênticas às do
+`br-seats.json` do `tempest-react-sdk`, e um teste fixa isso.
+
 ## Por significado: busca com IA
 
 `FuzzyIndex` acha o nome **escrito** parecido; não acha o nome que **quer
@@ -64026,8 +64194,11 @@ O índice é montado uma vez por processo e fica em memória.
     mesmos 5571 códigos. A lista de `list_states()` (receita
     [Helpers BR](br-helpers.md)) conta 5606 porque inclui as 35 regiões
     administrativas do DF; aqui elas são apelidos de Brasília. Para atualizar:
-    `uv run python scripts/regen_br_municipalities.py`. Um teste fixa o hash
-    dos dados, então uma regeneração aparece no diff do PR.
+    `uv run python scripts/regen_br_municipalities.py`. O arquivo da
+    `kelvins` é lido de um **commit fixado** (`503e2f70`) e recusado se o
+    SHA-256 não bater, com teto de tamanho e parse estrito do CSV; o mesmo
+    commit que o `tempest-react-sdk` usa. Um teste fixa o hash dos dados,
+    então uma regeneração aparece no diff do PR.
 
 ## Recap
 
