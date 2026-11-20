@@ -8,7 +8,8 @@ much the network distance between them differs from the straight line
 between the fixes (``beta_m``); Viterbi picks the most likely sequence.
 
 Same defaults (:data:`ROAD_MATCH_DEFAULTS`), same pre-filter, same breaks,
-same tie order — ``tests/geo/test_map_matching_parity.py`` checks the output
+same detour bound for timed fixes (the interval slack of tempest-react-sdk
+#678), same tie order — ``tests/geo/test_map_matching_parity.py`` checks the output
 against fixtures produced by the TypeScript implementation. The fixed-lag
 live matcher (``createRoadMatcher``) is not ported: the backend matches a
 released stretch of trace at once (see
@@ -41,6 +42,16 @@ class RoadMatchOptions:
         max_detour_m (float): A transition whose network distance exceeds the
             straight line by more than this is impossible; bounds the
             shortest-path search.
+        detour_per_second_m (float): Extra detour allowed per second between
+            two timed fixes, in metres: the bound becomes
+            ``max_detour_m + detour_per_second_m * dt``. A sparse source (a
+            fix every 5-30 s) turns corners and goes round blocks between
+            fixes, so a bound fixed for 1 Hz breaks the chain on real
+            drives. Applies only when both fixes have a timestamp; ``0``
+            turns it off.
+        max_interval_s (float): Intervals longer than this, in seconds, grant
+            no more detour: the slack stops at
+            ``detour_per_second_m * max_interval_s``.
         min_spacing_m (float | None): A fix closer than this to the previous
             kept fix skips the model. ``None`` is ``2 * sigma_m``.
     """
@@ -50,6 +61,8 @@ class RoadMatchOptions:
     radius_m: float = 200.0
     max_candidates: int = 16
     max_detour_m: float = 100.0
+    detour_per_second_m: float = 2.0
+    max_interval_s: float = 60.0
     min_spacing_m: float | None = None
 
     def __post_init__(self) -> None:
@@ -57,13 +70,22 @@ class RoadMatchOptions:
 
         Raises:
             ValueError: When a value is not a positive finite number (zero is
-                allowed for ``min_spacing_m``), or ``max_candidates`` is not a
-                positive integer.
+                allowed for ``min_spacing_m`` and ``detour_per_second_m``),
+                or ``max_candidates`` is not a positive integer.
         """
-        for name in ("sigma_m", "beta_m", "radius_m", "max_detour_m"):
+        for name in (
+            "sigma_m",
+            "beta_m",
+            "radius_m",
+            "max_detour_m",
+            "max_interval_s",
+        ):
             value = float(getattr(self, name))
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"road matching: invalid {name} ({value})")
+        rate = float(self.detour_per_second_m)
+        if not math.isfinite(rate) or rate < 0:
+            raise ValueError(f"road matching: invalid detour_per_second_m ({rate})")
         if self.min_spacing_m is not None and (
             not math.isfinite(self.min_spacing_m) or self.min_spacing_m < 0
         ):
@@ -84,12 +106,19 @@ class RoadMatchOptions:
 
 
 ROAD_MATCH_DEFAULTS: Final[RoadMatchOptions] = RoadMatchOptions()
-"""Default tuning: sigma 7 m, beta 3 m, radius 200 m, 16 roads, detour 100 m.
+"""Default tuning: sigma 7 m, beta 3 m, radius 200 m, 16 roads, detour 100 m,
+plus 2 m of detour per second between timed fixes, capped at 60 s.
 
 Ported from ``tempest-react-sdk``'s ``ROAD_MATCH_DEFAULTS``, chosen there by
 sweeping every knob on the Kubicka et al. dataset (100 real drives, 247 251
 fixes, ``node scripts/bench-map-matching.mjs``): 92.33% of fixes on the right
 road, 98.53% without the three drives through yards missing from OSM.
+
+``detour_per_second_m`` and ``max_interval_s`` were chosen there on the same
+drives thinned to one fix every 5-300 s and on public OpenStreetMap traces of
+five Brazilian city centres (``node scripts/bench-br-osm.mjs``, PR #678): 2 m/s
+is the largest rate that leaves the 1 Hz result where it was, and a 60 s cap
+keeps the long gaps of a 1 Hz trace from widening the search.
 """
 
 
@@ -197,6 +226,7 @@ class _Column:
         fix (int): Fix index.
         x (float): Plane x.
         y (float): Plane y.
+        t (float): Capture time, epoch seconds; ``nan`` when the fix has none.
         cands (list[RoadCandidate]): Candidates.
         score (list[float]): Log-probability per candidate.
         back (list[int]): Best previous candidate per candidate.
@@ -207,6 +237,7 @@ class _Column:
     fix: int
     x: float
     y: float
+    t: float
     cands: list[RoadCandidate]
     score: list[float] = field(default_factory=list)
     back: list[int] = field(default_factory=list)
@@ -224,6 +255,13 @@ def _advance(
     no previous candidate reaches any current one, the column restarts the
     chain from its emissions alone — the HMM break.
 
+    A route longer than
+    ``straight + max_detour_m + detour_per_second_m * min(dt, max_interval_s)``
+    is impossible, where ``dt`` is the time between this fix and the previous
+    kept one. An untimed fix has ``t = nan``, so ``dt`` is not positive and the
+    slack is zero: the bound of an untimed trace is exactly the fixed one. The
+    same zero covers clocks that repeat or go back.
+
     Args:
         graph (RoadGraph): The network.
         prev (_Column | None): Previous column, or ``None`` at the start.
@@ -236,7 +274,9 @@ def _advance(
     back = [-1] * m
     if prev is not None:
         straight = math.hypot(col.x - prev.x, col.y - prev.y)
-        limit = straight + p.max_detour_m
+        dt = col.t - prev.t
+        slack = p.detour_per_second_m * min(dt if dt > 0 else 0.0, p.max_interval_s)
+        limit = straight + p.max_detour_m + slack
 
         def consider(a: int, j: int, route: float) -> None:
             """Offer the transition ``a → j`` over ``route`` metres.
@@ -381,6 +421,8 @@ def match_to_roads(
     fixes: Sequence[Coordinate],
     graph: RoadGraph,
     options: RoadMatchOptions = ROAD_MATCH_DEFAULTS,
+    *,
+    timestamps: Sequence[float | None] | None = None,
 ) -> RoadMatchResult:
     """Match a GPS trace to a road network (Newson & Krumm 2009).
 
@@ -391,6 +433,14 @@ def match_to_roads(
       model and are projected onto that fix's edge, ``inferred=True``.
     * **No road in reach**: the match is ``None`` and the fix counts in
       ``unmatched``; it does not break the chain.
+    * **Sparse fixes**: pass ``timestamps`` and the detour allowed between
+      two fixes grows by ``detour_per_second_m`` per second of interval
+      (capped at ``max_interval_s``). Without them the bound is the fixed
+      ``max_detour_m``, tuned for 1 Hz, and a fix every 5-30 s breaks the
+      chain where the vehicle turned a corner or went round a block in
+      between. A missing (``None``) or ``nan`` time, a repeated one or one
+      that goes back grants no slack, so an untimed trace gives exactly the
+      result it gave before.
 
     Synchronous and CPU-bound; from async code run it with
     ``asyncio.to_thread`` when the trace is long.
@@ -400,11 +450,21 @@ def match_to_roads(
         graph (RoadGraph): The network.
         options (RoadMatchOptions): Model tuning; defaults in
             :data:`ROAD_MATCH_DEFAULTS`.
+        timestamps (Sequence[float | None] | None): Capture time of each
+            fix, epoch seconds (``datetime.timestamp()``), same length as
+            ``fixes``; ``None`` for a fix without one.
 
     Returns:
         RoadMatchResult: The match of every fix, the route, and what was
         skipped.
+
+    Raises:
+        ValueError: When ``timestamps`` does not have one entry per fix.
     """
+    if timestamps is not None and len(timestamps) != len(fixes):
+        raise ValueError(
+            f"match_to_roads: {len(timestamps)} timestamps for {len(fixes)} fixes"
+        )
     p = options
     spacing = p.spacing_m
     cols: list[_Column] = []
@@ -426,7 +486,14 @@ def match_to_roads(
             if last is not None:
                 last.followers.append(_Follower(index, x, y, False))
             continue
-        col = _Column(fix=index, x=x, y=y, cands=cands)
+        stamp = None if timestamps is None else timestamps[index]
+        col = _Column(
+            fix=index,
+            x=x,
+            y=y,
+            t=math.nan if stamp is None else float(stamp),
+            cands=cands,
+        )
         _advance(graph, last, col, p)
         if col.start and last is not None:
             breaks += 1

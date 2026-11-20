@@ -4747,3 +4747,17 @@ dimensões, histograma) e `TestMatchQualityRouter` em
 `scripts/bench_geo_traffic.py`. Receita: `fleet-traffic`, seção "Qualidade do
 encaixe na frota real".
 
+### Desvio por intervalo para posições esparsas (tempest-react-sdk#667/#678, 2026-11-20)
+
+`geo/map_matching.py`: `match_to_roads(..., timestamps=...)` e
+`RoadMatchOptions.detour_per_second_m` (2) / `max_interval_s` (60), porte do
+limite `straight + maxDetourM + detourPerSecondM · min(Δt, maxIntervalS)` do
+`matchToRoads` do tempest-react-sdk (PR #678). `TrafficAggregator` passa o
+`recorded_at` de cada posição. O `createRoadMatcher` continua fora do porte.
+Paridade: 31 cenários em `tests/geo/fixtures/map_matching_parity.json`
+(quarteirão de mão única a 5/30/600 s, teto e taxa, relógio repetido/voltando,
+só uma posição com horário, quatro posições no quarteirão de 100 m, e os seis
+rastros antigos a 1 Hz com taxa padrão e com taxa 0); `TestTimedFixes` em
+`tests/geo/test_map_matching_parity.py` nomeia cada comportamento. Receita:
+`fleet-traffic`, seção "Posições esparsas: passe o horário".
+

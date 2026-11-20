@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `match_to_roads(..., timestamps=...)`: com o horário de cada posição
+  (segundos epoch), o desvio permitido entre duas posições cresce com o
+  intervalo — `linha reta + max_detour_m + detour_per_second_m ·
+  min(Δt, max_interval_s)` —, porte do tempest-react-sdk#678 (#667).
+  `RoadMatchOptions` / `ROAD_MATCH_DEFAULTS` ganharam `detour_per_second_m`
+  (2 m/s; `0` desliga) e `max_interval_s` (60 s). Uma frota que envia a cada
+  5–30 s deixa de quebrar a cadeia a cada esquina. Horário ausente, `nan`,
+  repetido ou voltando conta como Δt 0: resultado idêntico ao de antes. O
+  `TrafficAggregator` passa o `recorded_at` de cada posição. Paridade:
+  `scripts/map_matching_parity_fixture.mjs` ganhou 25 cenários com horário
+  (31 no total), gerados do `dist` do tempest-react-sdk com o #678; no
+  `scripts/bench_geo_traffic.py` (posições a 1 Hz) a agregação publica as
+  mesmas arestas e recupera a mesma rua (77,2% com 12 viagens, 100% com 20).
+
 - Trânsito da frota a partir do GPS, anônimo por construção (fase 3 de
   tempest-react-sdk#667). `TrafficAggregator(graph, privacy=TrafficPrivacy(...))`
   recebe as posições (`add_position`, `end_trip`), encaixa nas ruas e, em

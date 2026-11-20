@@ -289,10 +289,101 @@ mais provável.
 (`ROAD_MATCH_DEFAULTS`: σ 7 m, β 3 m, raio 200 m, 16 ruas, desvio máximo
 100 m), escolhidos lá por varredura em 100 trajetos reais. O teste
 `tests/geo/test_map_matching_parity.py` compara a saída com a do TypeScript no
-mesmo grafo e nas mesmas posições (seis cenários, quebra de cadeia incluída),
-gerada por `node scripts/map_matching_parity_fixture.mjs <tempest-react-sdk>/dist`.
+mesmo grafo e nas mesmas posições (31 cenários: quebra de cadeia, posições com
+horário, relógio repetido ou voltando), gerada por
+`node scripts/map_matching_parity_fixture.mjs <tempest-react-sdk>/dist`.
 
 Você raramente chama `match_to_roads` direto: o agregador chama por você.
+
+### Posições esparsas: passe o horário
+
+O desvio máximo de 100 m foi ajustado para 1 posição por segundo. Uma fonte
+esparsa (uma posição a cada 5–30 s) vira esquina e dá a volta no quarteirão
+entre duas posições, e com o limite fixo a cadeia quebra onde o veículo só
+dirigiu. Com o horário de cada posição em `timestamps=` (segundos epoch, o
+`datetime.timestamp()`), o limite da transição passa a ser
+
+`linha reta + max_detour_m + detour_per_second_m · min(Δt, max_interval_s)`
+
+com `detour_per_second_m` 2 m/s e `max_interval_s` 60 s nos padrões — os
+mesmos do tempest-react-sdk (PR #678), escolhidos lá nos trajetos de Kubicka
+rarefeitos para uma posição a cada 5–300 s e em rastros públicos do OSM de
+cinco centros de cidades brasileiras.
+
+```python
+import math
+from datetime import UTC, datetime
+
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    RoadEdge,
+    RoadGraph,
+    RoadMatchOptions,
+    match_to_roads,
+)
+
+BASE = Coordinate(latitude=-5.09, longitude=-42.8)
+M_PER_DEG: float = 6371008.8 * math.pi / 180
+
+
+def at(x: float, y: float) -> Coordinate:
+    """A point ``x`` m east and ``y`` m north of BASE."""
+    return Coordinate(
+        latitude=BASE.latitude + y / M_PER_DEG,
+        longitude=BASE.longitude
+        + x / (M_PER_DEG * math.cos(math.radians(BASE.latitude))),
+    )
+
+
+graph = RoadGraph(
+    [at(0, 0), at(0, 80), at(150, 80), at(150, 0)],
+    [
+        RoadEdge(start=0, end=1, id="west"),
+        RoadEdge(start=1, end=2, id="top"),
+        RoadEdge(start=2, end=3, id="east"),
+    ],
+)
+fixes = [at(0, 10), at(150, 10)]
+sent = [
+    datetime(2026, 11, 20, 12, 0, 0, tzinfo=UTC),
+    datetime(2026, 11, 20, 12, 0, 30, tzinfo=UTC),
+]
+options = RoadMatchOptions(radius_m=50)
+
+untimed = match_to_roads(fixes, graph, options)
+timed = match_to_roads(
+    fixes, graph, options, timestamps=[t.timestamp() for t in sent]
+)
+
+print("untimed breaks:", untimed.breaks)
+print("timed breaks:", timed.breaks)
+print("route:", [t.edge.id for t in timed.routes[0].edges])
+```
+
+Saída:
+
+```text
+untimed breaks: 1
+timed breaks: 0
+route: ['west', 'top', 'east']
+```
+
+Sem horário, os 150 m em linha reta contra 290 m pela rede passam do desvio de
+100 m e a cadeia quebra. Com 30 s entre as duas posições, o limite ganha 60 m e
+a rota sai inteira: sobe a `west`, cruza a `top`, desce a `east`.
+
+!!! note "Sem horário, nada muda"
+    Horário ausente (`None`), `nan`, repetido (Δt 0) ou voltando conta como
+    Δt 0: o limite é o fixo de antes e o resultado é idêntico ao de quem não
+    passa `timestamps`. Só ganha folga a transição em que **as duas** posições
+    têm horário. `detour_per_second_m=0` desliga a folga.
+
+O `TrafficAggregator` já passa o horário do aparelho (`recorded_at`) de cada
+posição: uma frota que envia a cada 10 s fica encadeada sem configurar nada.
+
+`create_road_matcher` (o encaixe incremental, uma posição por vez) não foi
+portado: o backend encaixa trechos já soltos de uma vez, e o marcador ao vivo é
+trabalho do app.
 
 ## A agregação: `TrafficAggregator`
 
