@@ -291,6 +291,39 @@ São Paulo -23.5329 -46.6395 True
 that state only. `br_municipalities()` returns the whole list, ordered by
 code.
 
+### Which point the coordinate is
+
+`coordinate` is the municipality's **seat** (the city where the town hall
+is): the point to mark the city on a map, measure a distance to it or rank by
+"nearest to me". The `point` field says what the coordinate is:
+
+```python
+from tempest_fastapi_sdk.geo import br_municipalities, municipality_by_ibge_code
+
+picos = municipality_by_ibge_code(2208007)
+assert picos is not None
+print(picos.name, picos.coordinate.latitude, picos.coordinate.longitude, picos.point)
+
+fallback = [m.name for m in br_municipalities() if m.point == "centroid"]
+print(fallback)
+```
+
+Output:
+
+```text
+Picos -7.07721 -41.467 seat
+["Pau D'Arco", 'São Caitano', 'São Sebastião da Vargem Alegre', 'Cerro Azul', 'Alto Paraíso']
+```
+
+Five municipalities answer `point == "centroid"`: the source puts their seat
+**outside their own territory** (Pau D'Arco/PA 750 km away, near Belém; Cerro
+Azul/PR 360 km; Alto Paraíso/PR 288 km; São Sebastião da Vargem Alegre/MG
+157 km; São Caitano/PE 7.5 km past the boundary — measured point-in-polygon
+against the IBGE 2022 municipal mesh at maximum quality). For those, the
+coordinate is the territory centroid, the same point `tempest-react-sdk`
+returns with `point: "centroid"`. The other 5566 coordinates are identical to
+`tempest-react-sdk`'s `br-seats.json`, and a test pins that.
+
 ## By meaning: AI search
 
 `FuzzyIndex` finds the name **spelled** alike; it does not find the name that
@@ -429,8 +462,11 @@ The index is built once per process and stays in memory.
     `list_states()` table ([BR helpers](br-helpers.md) recipe) counts 5606
     because it includes the Federal District's 35 administrative regions;
     here they are nicknames of Brasília. To refresh:
-    `uv run python scripts/regen_br_municipalities.py`. A test pins the data
-    hash, so a regeneration shows up in the PR diff.
+    `uv run python scripts/regen_br_municipalities.py`. The `kelvins` file is
+    read from a **pinned commit** (`503e2f70`) and refused unless its SHA-256
+    matches, with a size cap and a strict CSV parse; the same commit
+    `tempest-react-sdk` uses. A test pins the data hash, so a regeneration
+    shows up in the PR diff.
 
 ## Recap
 

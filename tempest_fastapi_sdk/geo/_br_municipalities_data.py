@@ -6,7 +6,10 @@ One CSV row per municipality: ``ibge_code,name,uf,latitude,longitude,capital,
 aliases`` (aliases separated by ``|``). The name and the state come from the
 IBGE localities API (public data); latitude, longitude, the capital flag and
 the aliases (an older spelling the IBGE no longer uses) come from
-kelvins/municipios-brasileiros, under this license:
+kelvins/municipios-brasileiros at the pinned commit ``KELVINS_COMMIT``, except
+for the municipalities in ``CENTROID_FALLBACK_IBGE_CODES``, whose source seat
+lies outside the municipality and which carry the territory centroid instead.
+The kelvins data is used under this license:
 
     MIT License
 
@@ -274,7 +277,7 @@ BR_MUNICIPALITIES_CSV: str = """\
 1505494,Palestina do Pará,PA,-5.74027,-48.3181,0,
 1505502,Paragominas,PA,-3.00212,-47.3527,0,
 1505536,Parauapebas,PA,-6.06781,-49.9037,0,
-1505551,Pau D'Arco,PA,-1.59772,-46.9268,0,Pau d'Arco
+1505551,Pau D'Arco,PA,-7.7391,-50.1207,0,Pau d'Arco
 1505601,Peixe-Boi,PA,-1.19382,-47.324,0,
 1505635,Piçarra,PA,-6.43778,-48.8716,0,
 1505650,Placas,PA,-3.86813,-54.2124,0,
@@ -1647,7 +1650,7 @@ BR_MUNICIPALITIES_CSV: str = """\
 2612802,Santa Terezinha,PE,-7.37696,-37.4787,0,
 2612901,São Benedito do Sul,PE,-8.8166,-35.9453,0,
 2613008,São Bento do Una,PE,-8.52637,-36.4465,0,
-2613107,São Caitano,PE,-8.33763,-36.2869,0,São Caetano
+2613107,São Caitano,PE,-8.3276,-36.1505,0,São Caetano
 2613206,São João,PE,-8.87576,-36.3653,0,
 2613305,São Joaquim do Monte,PE,-8.43196,-35.8035,0,
 2613404,São José da Coroa Grande,PE,-8.88937,-35.1515,0,
@@ -3032,7 +3035,7 @@ BR_MUNICIPALITIES_CSV: str = """\
 3164209,São Romão,MG,-16.3641,-45.0749,0,
 3164308,São Roque de Minas,MG,-20.249,-46.3639,0,
 3164407,São Sebastião da Bela Vista,MG,-22.1583,-45.7546,0,
-3164431,São Sebastião da Vargem Alegre,MG,-19.7477,-43.3679,0,
+3164431,São Sebastião da Vargem Alegre,MG,-21.0225,-42.5975,0,
 3164472,São Sebastião do Anta,MG,-19.5064,-41.985,0,
 3164506,São Sebastião do Maranhão,MG,-18.0873,-42.5659,0,
 3164605,São Sebastião do Oeste,MG,-20.2758,-45.0063,0,
@@ -4017,7 +4020,7 @@ BR_MUNICIPALITIES_CSV: str = """\
 4104907,Castro,PR,-24.7891,-50.0108,0,
 4105003,Catanduvas,PR,-25.2044,-53.1548,0,
 4105102,Centenário do Sul,PR,-22.8188,-51.5973,0,
-4105201,Cerro Azul,PR,-26.0891,-52.8691,0,
+4105201,Cerro Azul,PR,-24.8778,-49.2846,0,
 4105300,Céu Azul,PR,-25.1489,-53.8415,0,
 4105409,Chopinzinho,PR,-25.8515,-52.5173,0,
 4105508,Cianorte,PR,-23.6599,-52.6054,0,
@@ -4339,7 +4342,7 @@ BR_MUNICIPALITIES_CSV: str = """\
 4128534,Ventania,PR,-24.2458,-50.2376,0,
 4128559,Vera Cruz do Oeste,PR,-25.0577,-53.8771,0,
 4128609,Verê,PR,-25.8772,-52.9051,0,
-4128625,Alto Paraíso,PR,-26.1146,-52.7469,0,
+4128625,Alto Paraíso,PR,-23.5358,-53.824,0,
 4128633,Doutor Ulysses,PR,-24.5665,-49.4219,0,
 4128658,Virmond,PR,-25.3829,-52.1987,0,
 4128708,Vitorino,PR,-26.2683,-52.7843,0,
@@ -5606,3 +5609,26 @@ BR_MUNICIPALITIES_CSV: str = """\
 5300108,Brasília,DF,-15.7795,-47.9297,1,
 """
 """Every municipality, one CSV row each; parsed once, on first use."""
+
+KELVINS_COMMIT: str = "503e2f70bbf1b4b7ec0b1f68b09086ccc38fe861"
+"""The kelvins/municipios-brasileiros commit the coordinates come from."""
+
+KELVINS_CSV_SHA256: str = (
+    "22bd03d004361329f69ddfa3f6c99cd53012aa53972a172e10b141288ad0b1fe"
+)
+"""SHA-256 of the kelvins CSV at ``KELVINS_COMMIT``."""
+
+CENTROID_FALLBACK_IBGE_CODES: frozenset[int] = frozenset(
+    {
+        1505551,
+        2613107,
+        3164431,
+        4105201,
+        4128625,
+    }
+)
+"""Municipalities whose row holds the territory centroid, not the seat.
+
+The source places their seat outside the municipality itself; see
+``SEAT_CENTROID_FALLBACK`` in ``scripts/regen_br_municipalities.py``.
+"""
