@@ -7396,6 +7396,12 @@ a linha fica com <code>20:00Z</code>, três horas à frente
   o <code>datetime-local</code> não tem onde dizer isso sozinho.</li>
 <li><strong>Submit</strong> lê o valor como hora de parede <strong>naquele</strong> fuso e grava em
   UTC. Valor que já chega com offset é respeitado, não sobrescrito.</li>
+<li><strong>Filtro de intervalo de data</strong> (<code>list_filter</code> numa coluna <code>datetime</code>)
+  lê o dia nesse fuso: "de 20/11 até 20/11" vai da meia-noite de 20/11
+  até a meia-noite de 21/11 em São Paulo, fim exclusivo. Um registro das
+  22:00 de 20/11 (01:00 UTC de 21/11) entra no dia 20, que é o dia que a
+  listagem mostra. O export filtrado segue o mesmo intervalo. Sem
+  <code>display_timezone</code>, o dia é UTC.</li>
 </ul>
 <div class="admonition warning">
 <p class="admonition-title">Converter só na escrita é pior que não converter</p>

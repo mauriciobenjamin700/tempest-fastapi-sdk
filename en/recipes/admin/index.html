@@ -7429,6 +7429,12 @@ keeps <code>20:00Z</code>, three hours ahead
 <li><strong>The submission</strong> is read as wall-clock time in that zone and stored
   in UTC. A value that already carries an offset is honored, not
   overridden.</li>
+<li><strong>The date-range filter</strong> (<code>list_filter</code> on a <code>datetime</code> column) reads
+  the day in that zone: "from 20/11 to 20/11" runs from midnight of 20/11
+  to midnight of 21/11 in Sao Paulo, end exclusive. A row stamped 22:00 on
+  20/11 (01:00 UTC on 21/11) lands on the 20<sup>th</sup>, the day the list shows.
+  A filtered export uses the same range. Without <code>display_timezone</code>, the
+  day is UTC.</li>
 </ul>
 <div class="admonition warning">
 <p class="admonition-title">Converting only on write is worse than not converting</p>
