@@ -537,6 +537,8 @@ come back here to plug in each capability as you need it.
 | **[Object-level permissions »](authz.md)** | `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
 | **[Observability (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
 | **[Offline-first sync (delta) »](offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, cursor deltas + soft-delete |
+| **[Online game rooms (TCP) »](game-rooms-tcp.md)** | `serve_game_rooms_tcp`: the same room protocol on raw TCP, frames `[u32 length][u8 kind][payload]`, `TCP_NODELAY`, ping and drop on silence; same rooms as the WebSocket |
+| **[Online game rooms (WebSocket) »](game-rooms-websocket.md)** | `RoomRegistry` + `RoomPolicy` + `make_game_room_router`: rooms by code for multiplayer games, elected host, JSON and binary relay with the sender stamped by the server, version, reconnection with `resume`, limits; `make_jwt_room_identity_resolver` |
 | **[OpenPix (Pix via Woovi) »](openpix.md)** | Layered architecture, opening a charge, verified webhook + API read-back, reconciliation, refunds, `OpenPixEnvironmentEnum`, `to_cents` |
 | **[OpenPix (subscriptions and plans) »](openpix-subscriptions.md)** | `SubscriptionPayload`, `RECURRENT` vs `PIX_RECURRING` (Pix Automático), lifecycle and instalments, the plan that lives in your database |
 | **[PDFs »](pdf.md)** | Generate: `PdfRenderer`, five bundled documents (receipt/quote/report/contract/voucher) with Pydantic schemas, `make_pdf_router`, `tempest pdf render`, asset policy. Read: `extract_pdf_text`, `read_pdf_pages` (upload through the API, page by page, tables) |

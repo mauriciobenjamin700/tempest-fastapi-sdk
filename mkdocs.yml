@@ -176,6 +176,8 @@ plugins:
               - Object-level permissions: recipes/authz.md
               - Observability (tracing): recipes/observability.md
               - Offline-first sync (delta): recipes/offline-sync.md
+              - Online game rooms (TCP): recipes/game-rooms-tcp.md
+              - Online game rooms (WebSocket): recipes/game-rooms-websocket.md
               - OpenPix (Pix via Woovi): recipes/openpix.md
               - "OpenPix (subscriptions and plans)": recipes/openpix-subscriptions.md
               - PDFs: recipes/pdf.md
@@ -520,6 +522,8 @@ nav:
       - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - "RevenueCat (assinatura in-app)": recipes/revenuecat.md
+      - "Salas de jogo online (TCP)": recipes/game-rooms-tcp.md
+      - "Salas de jogo online (WebSocket)": recipes/game-rooms-websocket.md
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md
       - Sessões server-side: recipes/sessions.md
