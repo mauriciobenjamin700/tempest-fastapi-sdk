@@ -43,7 +43,7 @@ class TestDataset:
         ``scripts/regen_br_municipalities.py`` muda os dois juntos.
         """
         assert DATA_SHA256 == (
-            "79851c19c0fddfabe8ef782a5b957eb3ba0a0842da2de57d9b309f0ac9865d58"
+            "7dd859b22cb7408a7c613b886d258264bed4fa8c91a670102ad68dc98c4958ba"
         )
 
     def test_every_municipality_once_with_27_capitals(self) -> None:

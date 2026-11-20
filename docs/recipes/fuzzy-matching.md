@@ -289,6 +289,39 @@ São Paulo -23.5329 -46.6395 True
 formulário: com `uf`, só aquele estado. `br_municipalities()` devolve a lista
 inteira, ordenada por código.
 
+### Qual ponto é a coordenada
+
+`coordinate` é a **sede** do município (a cidade onde fica a prefeitura): o
+ponto para marcar a cidade no mapa, medir distância até ela ou ordenar por
+"mais perto de mim". O campo `point` diz o que a coordenada é:
+
+```python
+from tempest_fastapi_sdk.geo import br_municipalities, municipality_by_ibge_code
+
+picos = municipality_by_ibge_code(2208007)
+assert picos is not None
+print(picos.name, picos.coordinate.latitude, picos.coordinate.longitude, picos.point)
+
+fallback = [m.name for m in br_municipalities() if m.point == "centroid"]
+print(fallback)
+```
+
+Saída:
+
+```text
+Picos -7.07721 -41.467 seat
+["Pau D'Arco", 'São Caitano', 'São Sebastião da Vargem Alegre', 'Cerro Azul', 'Alto Paraíso']
+```
+
+Cinco municípios respondem `point == "centroid"`: a fonte põe a sede deles
+**fora do próprio território** (Pau D'Arco/PA a 750 km, perto de Belém; Cerro
+Azul/PR a 360 km; Alto Paraíso/PR a 288 km; São Sebastião da Vargem Alegre/MG
+a 157 km; São Caitano/PE a 7,5 km da divisa — medido ponto-no-polígono contra
+a malha municipal do IBGE 2022 em qualidade máxima). Para esses, a coordenada
+é o centróide do território, o mesmo ponto que o `tempest-react-sdk` devolve
+com `point: "centroid"`. As outras 5566 coordenadas são idênticas às do
+`br-seats.json` do `tempest-react-sdk`, e um teste fixa isso.
+
 ## Por significado: busca com IA
 
 `FuzzyIndex` acha o nome **escrito** parecido; não acha o nome que **quer
@@ -425,8 +458,11 @@ O índice é montado uma vez por processo e fica em memória.
     mesmos 5571 códigos. A lista de `list_states()` (receita
     [Helpers BR](br-helpers.md)) conta 5606 porque inclui as 35 regiões
     administrativas do DF; aqui elas são apelidos de Brasília. Para atualizar:
-    `uv run python scripts/regen_br_municipalities.py`. Um teste fixa o hash
-    dos dados, então uma regeneração aparece no diff do PR.
+    `uv run python scripts/regen_br_municipalities.py`. O arquivo da
+    `kelvins` é lido de um **commit fixado** (`503e2f70`) e recusado se o
+    SHA-256 não bater, com teto de tamanho e parse estrito do CSV; o mesmo
+    commit que o `tempest-react-sdk` usa. Um teste fixa o hash dos dados,
+    então uma regeneração aparece no diff do PR.
 
 ## Recap
 

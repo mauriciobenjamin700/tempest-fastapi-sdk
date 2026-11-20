@@ -4465,6 +4465,11 @@ o que a auditoria achou faltando; `tests/text/test_text.py` compara com força
 bruta em 300 consultas por cutoff de 0.5 a 0.9). `geo/municipalities.py` +
 `geo/_br_municipalities_data.py` (gerado, CSV numa constante, 5571 linhas,
 hash fixado): IBGE (nome/UF) + kelvins (coordenada/capital/alias, MIT).
+Desde 2026-11-20 (tempest-react-sdk#677) a kelvins é lida do commit fixado
+`503e2f70` com SHA-256 do CSV e do LICENSE, teto de tamanho e parse estrito; 5
+sedes da fonte fora do próprio município (malha IBGE 2022) usam o centróide do
+react-sdk, com `Municipality.point == "centroid"`; paridade das 5571
+coordenadas com o `br-seats.json` fixada em `tests/geo/test_br_seat_source.py`.
 `find_municipalities_in_text`: janelas de até 7 tokens, exato e depois fuzzy
 (até 4 tokens, `cutoff=0.85`), UF ou nome de estado logo depois confirma e
 consome o trecho, `LOCATIVE_CUES` + maiúscula + UF distinguem lugar de

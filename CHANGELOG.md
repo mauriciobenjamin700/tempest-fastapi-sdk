@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.367.1] — 2026-11-20
+## [Unreleased]
 
 ### Added
 
@@ -22,6 +22,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (31 no total), gerados do `dist` do tempest-react-sdk com o #678; no
   `scripts/bench_geo_traffic.py` (posições a 1 Hz) a agregação publica as
   mesmas arestas e recupera a mesma rua (77,2% com 12 viagens, 100% com 20).
+
+### Fixed
+
+- Cinco municípios tinham a coordenada **fora do próprio território**
+  (tempest-react-sdk#677). A sede que `kelvins/municipios-brasileiros` dá para
+  eles cai longe: medido ponto-no-polígono das 5571 sedes contra a malha
+  municipal do IBGE 2022 em qualidade máxima (`/api/v3/malhas/estados/<UF>?
+  intrarregiao=municipio&qualidade=maxima`, distância até a divisa mais
+  próxima), 17 caem fora, 12 delas a menos de 1 km da divisa (cidade em
+  margem de rio ou na costa) e estas cinco muito além: Pau D'Arco/PA a
+  749,67 km (perto de Belém), Cerro Azul/PR a 359,66 km, Alto Paraíso/PR a
+  287,65 km, São Sebastião da Vargem Alegre/MG a 157,07 km e São Caitano/PE a
+  7,48 km. Para elas, `Municipality.coordinate` passa a ser o centróide do
+  território — os mesmos valores do `br-seats.json` do tempest-react-sdk
+  (#679), cada um dentro do próprio município na mesma malha — e o campo novo
+  `Municipality.point` responde `"centroid"` (`"seat"` nos outros 5566). As
+  5571 coordenadas agora batem com as do react-sdk, fixado por hash em
+  `tests/geo/test_br_seat_source.py`.
+- `scripts/regen_br_municipalities.py` lia o CSV da `kelvins` da `main`, sem
+  commit fixado. Agora lê do commit `503e2f70bbf1b4b7ec0b1f68b09086ccc38fe861`
+  (o mesmo do react-sdk) e trata o download como dado não confiável: teto de
+  tamanho, SHA-256 do CSV e do `LICENSE` conferidos (também numa cópia local
+  passada por `--kelvins`) e parse estrito (cabeçalho exato, nove colunas, sem
+  aspas, código de sete dígitos, coordenada decimal dentro do Brasil, sem
+  duplicata). O módulo gerado traz `KELVINS_COMMIT`, `KELVINS_CSV_SHA256` e
+  `CENTROID_FALLBACK_IBGE_CODES`.
+
+## [0.367.1] — 2026-11-20
+
+### Added
 
 - Trânsito da frota a partir do GPS, anônimo por construção (fase 3 de
   tempest-react-sdk#667). `TrafficAggregator(graph, privacy=TrafficPrivacy(...))`
