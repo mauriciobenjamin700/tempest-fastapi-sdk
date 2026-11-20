@@ -48,8 +48,8 @@ DEFAULT_MAX_IMAGE_PIXELS: int = 50_000_000
 """Largest ``width * height`` :func:`make_vision_router` decodes (50 MP).
 
 The byte ceiling does not bound memory for images: a PNG of flat colour
-compresses by orders of magnitude. Measured with Pillow 12.3.0 and
-``ort-vision-sdk`` 0.8.0, a blank 9400 x 9400 PNG of 10 804 bytes decodes
+compresses by orders of magnitude. Measured with Pillow 13.0.0 and
+``ort-vision-sdk`` 0.12.0, a blank 9400 x 9400 PNG of 10 804 bytes decodes
 into a 265 080 000-byte RGB array, without tripping Pillow's own
 decompression-bomb warning (88.36 MP sits under its 89.48 MP threshold).
 The dimensions are read from the header, before any pixel is decoded. 50 MP

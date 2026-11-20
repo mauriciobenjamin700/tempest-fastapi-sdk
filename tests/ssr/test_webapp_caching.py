@@ -30,9 +30,25 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
 
 @pytest.fixture
 def dist(built: dict[str, Path], tmp_path: Path) -> Path:
-    """A private copy of the wasm build, free to gain extra files."""
+    """A private copy of the wasm build, free to gain extra files.
+
+    The pattern tests need fixed paths, and the build's own layout moves
+    between tempestweb versions (0.141 content-addresses the client and the
+    archive, ``client-<hash>/`` and ``tempestweb-pkg.<hash>.zip``). So the
+    copy always gains ``client/dom.js``, ``client/native/index.js`` and a
+    plain ``tempestweb-pkg.zip``, and the build's own ``immutable.json`` is
+    removed: each test declares the patterns it exercises.
+    """
     copy = tmp_path / "wasm"
     shutil.copytree(built["wasm"], copy)
+    (copy / "immutable.json").unlink(missing_ok=True)
+    (copy / "client" / "native").mkdir(parents=True, exist_ok=True)
+    (copy / "client" / "dom.js").write_text("export {};\n", encoding="utf-8")
+    (copy / "client" / "native" / "index.js").write_text(
+        "export {};\n", encoding="utf-8"
+    )
+    archive = next(copy.glob("tempestweb-pkg*.zip"))
+    shutil.copyfile(archive, copy / "tempestweb-pkg.zip")
     return copy
 
 
@@ -258,6 +274,21 @@ class TestImmutablePaths:
         assert hashed_response.headers["cache-control"] == IMMUTABLE
         assert plain.headers["cache-control"] == "no-cache"
         assert manifest.headers["cache-control"] == "no-cache"
+
+    def test_the_builds_own_manifest_marks_hashed_paths(
+        self, built: dict[str, Path]
+    ) -> None:
+        """A tempestweb build that ships ``immutable.json`` needs no option."""
+        wasm = built["wasm"]
+        if not (wasm / "immutable.json").is_file():
+            pytest.skip("this tempestweb version ships no immutable.json")
+        archive = next(wasm.glob("tempestweb-pkg*.zip")).name
+        with _client(wasm) as client:
+            hashed = client.get(f"/{archive}")
+            entry = client.get("/bootstrap.js")
+        assert hashed.headers["content-type"] == "application/zip"
+        assert hashed.headers["cache-control"] == IMMUTABLE
+        assert entry.headers["cache-control"] != IMMUTABLE
 
     def test_manifest_cannot_mark_itself(self, dist: Path) -> None:
         (dist / "immutable.json").write_text(

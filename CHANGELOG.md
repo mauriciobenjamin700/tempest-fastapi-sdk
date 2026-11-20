@@ -72,6 +72,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   map-matching (40 e 200 viagens, até 77 abertas), pico de 3,00 MB; rua de 450 m tirada
   do grafo recuperada em 100% com 20 viagens ou mais, 77,2% com 12.
 
+### Changed
+
+- Pisos das dependências na versão mais nova: `fastapi>=0.165.0` (era
+  0.141.1), `tempestweb>=0.141.1` (era 0.127.0, extra `[ssr]`) e
+  `ort-vision-sdk>=0.12.0` (era 0.8.0, extras `[vision]` e
+  `[modelops-compose]`). O `tempest-cli` já estava na mais nova (0.7.0). Por
+  arrasto, o piso efetivo do Starlette sobe de 0.46.0 para 1.6.0 (o que o
+  FastAPI 0.165.0 exige) e o lock resolve Starlette 1.10.0 e `tempest-core`
+  0.23.0. Nenhuma outra dependência mudou no lock.
+- `setup_tracing` chamado tarde (no lifespan): o `RuntimeWarning` dizia que
+  nenhuma request viraria span. Desde o FastAPI 0.142 a request é traçada
+  pela telemetria do próprio FastAPI nesse caso (escopo `fastapi`, filhos
+  `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization`,
+  atributos da convenção semântica nova); o aviso e a receita
+  `observability` agora dizem isso. Chamado no nível do módulo, nada muda: a
+  instrumentação do SDK entra e o FastAPI desliga o tracing dele para a app,
+  sem span duplicado (medido, e fixado num teste).
+
+### Notas de atualização
+
+- FastAPI 0.142–0.165 traz mudanças que alcançam o código do **seu**
+  serviço, não o do SDK: OpenTelemetry nativo (exportador automático só com
+  `FASTAPI_OTEL_AUTO_CONFIGURE=true`, desde a 0.143), `**extra` removido de
+  `Query`/`Form`/`Body`/... (argumento desconhecido vira `TypeError`, 0.155),
+  defaults de `Query`/`Header`/`Cookie`/`Form` não validados sem
+  `validate_default=True` (0.148), campo de form vazio tratado como ausente
+  (0.149/0.150), `null` distinto de omitido no body (0.151), `extra` de um
+  parameter model aplicado aos campos irmãos (0.160), booleano de form
+  omitido usa o default declarado (0.162) e Python 3.10 fora (0.162.6; o SDK
+  já exigia 3.11). Limites de body e de form (0.164/0.165) são opt-in: sem
+  configurar, o body continua ilimitado e o form mantém os defaults do
+  Starlette (1000 campos, 1000 arquivos, 1 MiB por campo de texto).
+- `tempestweb` 0.141 gera caminhos com hash de conteúdo
+  (`tempestweb-pkg.<hash>.zip`, `client-<hash>/`) e publica o próprio
+  `immutable.json`: o `make_web_app_router` lê esse manifesto sem
+  configuração e serve esses caminhos com cache de um ano. Quem pedia
+  `/tempestweb-pkg.zip` pelo nome fixo cai no fallback da SPA.
+- `ort-vision-sdk` 0.9–0.12: o `Classifier` não aplica mais um segundo
+  softmax (a confiança muda; a classe prevista não), e o protocolo
+  `InferenceBackend` ganhou `input_dtypes`/`input_dtype` — afeta só quem
+  implementa um backend próprio.
+
 ## [0.367.0] — 2026-11-18
 
 ### Added

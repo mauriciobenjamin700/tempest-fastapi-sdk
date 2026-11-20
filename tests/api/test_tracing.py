@@ -153,9 +153,9 @@ def _parents(exporter: InMemorySpanExporter) -> dict[str, str | None]:
 
 
 class TestLateCall:
-    """``setup_tracing`` from the lifespan cannot trace requests."""
+    """``setup_tracing`` from the lifespan cannot attach the instrumentation."""
 
-    def test_call_from_lifespan_warns_and_traces_no_request(
+    def test_call_from_lifespan_warns_and_falls_back_to_fastapi_telemetry(
         self, spans: InMemorySpanExporter
     ) -> None:
         db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
@@ -170,7 +170,32 @@ class TestLateCall:
             TestClient(app) as client,
         ):
             assert client.get("/orders").status_code == 200
-        assert "GET /orders" not in _parents(spans)
+        parents = _parents(spans)
+        assert parents["GET /orders"] is None
+        assert parents["fastapi.endpoint"] == "GET /orders"
+        roots = [
+            span for span in spans.get_finished_spans() if span.name == "GET /orders"
+        ]
+        assert [span.instrumentation_scope.name for span in roots] == ["fastapi"]
+
+    def test_module_level_call_is_not_traced_twice(
+        self, spans: InMemorySpanExporter
+    ) -> None:
+        """With the instrumentation attached, FastAPI's own tracing stays off."""
+        db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        app = _build_app(db, in_lifespan=lambda _: None)
+        setup_tracing(app, service_name="svc", otlp_endpoint=None)
+        with TestClient(app) as client:
+            assert client.get("/orders").status_code == 200
+        names = [span.name for span in spans.get_finished_spans()]
+        servers = [
+            span for span in spans.get_finished_spans() if span.name == "GET /orders"
+        ]
+        assert len(servers) == 1
+        assert servers[0].instrumentation_scope.name == (
+            "opentelemetry.instrumentation.fastapi"
+        )
+        assert not [name for name in names if name.startswith("fastapi.")]
 
     def test_module_level_call_does_not_warn(self) -> None:
         app = FastAPI()

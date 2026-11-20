@@ -51,31 +51,35 @@ def test_text_content_is_escaped() -> None:
 def test_core_form_widgets_render_no_name_attribute() -> None:
     """Why ``ui.forms`` emits elements itself instead of reusing them.
 
-    Measured, not assumed, and the measurement moved: on
-    ``tempest-core`` 0.14.0 these widgets rendered a bare ``<div>``,
-    losing both the element type and the option list. On 0.18.0 the
-    element types are right — ``<input>``, ``<textarea>``, and a
-    ``<select>`` carrying its ``<option>`` list — so that half of the
-    reason is upstream's now.
+    Measured, not assumed, and the measurement moved twice: on
+    ``tempest-core`` 0.14.0 these widgets rendered a bare ``<div>``; on
+    0.18.0 they rendered the right elements (``<input>``, ``<textarea>``,
+    a ``<select>`` with its ``<option>`` list). On 0.23.0 they carry a
+    hard-coded inline style — ``Input`` and ``Dropdown`` inside a styled
+    ``<div>``, ``TextArea`` styled itself — which the ``ui`` layer refuses
+    on its own: its components render class names, so the look lives in one
+    stylesheet.
 
-    What remains is the half that decides it: none of the three renders
-    a ``name`` attribute, and a control without a name submits nothing.
-    A form built out of them would post an empty body, which is a
-    failure with no error message anywhere.
+    What decides it never moved: none of the three renders a ``name``
+    attribute, and a control without a name submits nothing. A form built
+    out of them would post an empty body, which is a failure with no error
+    message anywhere.
     """
     from tempest_core.widgets import Dropdown, Form, Input, TextArea
 
     dropdown = render_to_html(Dropdown(options=["a", "b"]))
+    text_input = render_to_html(Input(value=""))
+    textarea = render_to_html(TextArea(value=""))
 
     assert render_to_html(Form()) == "<div></div>"
 
-    assert "name=" not in render_to_html(Input(value=""))
-    assert "name=" not in render_to_html(TextArea(value=""))
+    assert "name=" not in text_input
+    assert "name=" not in textarea
     assert "name=" not in dropdown
 
-    assert render_to_html(Input(value="")).startswith("<input")
-    assert render_to_html(TextArea(value="")).startswith("<textarea")
-    assert dropdown.startswith("<select")
+    assert "<input" in text_input
+    assert textarea.startswith("<textarea")
+    assert "<select" in dropdown
     assert '<option value="a">a</option>' in dropdown
 
 

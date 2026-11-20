@@ -272,8 +272,8 @@ Column(
 - A conversão `Style → CSS` do renderizador Python (SSR) é um port do
   `styleToCss` do cliente JS (WASM/server), e o `tempestweb` declara as
   duas saídas idênticas byte a byte, para a página não "pular" quando o
-  cliente re-renderiza. Medido no `tempestweb` 0.127.0 (o piso do extra
-  `[ssr]`) com três `Style` — o deste exemplo, um `Edge.symmetric` com
+  cliente re-renderiza. Medido no `tempestweb` 0.127.0 (então o piso do
+  extra `[ssr]`) com três `Style` — o deste exemplo, um `Edge.symmetric` com
   `radius`, e um com margem, borda, cores, `font_size` e `width`
   fracionário —, as duas funções emitiram a mesma string nos três. É uma
   amostra, não prova para todo campo do `Style`.
@@ -820,7 +820,7 @@ def view(app: App[object]) -> Widget:
     a página pinta baseline em silêncio.
 
     A 0.67.0 é onde a capacidade nasceu, não o que o SDK declara hoje: o
-    piso declarado é `tempestweb>=0.127.0`, a versão contra a qual esta
+    piso declarado é `tempestweb>=0.141.1`, a versão contra a qual esta
     release foi medida.
 
 !!! tip "Um `theme=` explícito no widget ainda vence"
@@ -850,7 +850,7 @@ def view(app: App[object]) -> Widget:
   hospeda um build **server** (WebSocket/SSE) como sub-app pra montar;
   `theme=` entrega a paleta ao `App` de cada sessão, e os componentes que a
   `view` constrói resolvem contra ela (capacidade desde a 0.67.0; piso
-  declarado `tempestweb>=0.127.0`).
+  declarado `tempestweb>=0.141.1`).
   **`detect_build_mode(dir)`** distingue os dois.
 - Tudo mora no extra `[ssr]` (`uv add "tempest-fastapi-sdk[ssr]"`),
   carregado sob demanda — `import tempest_fastapi_sdk` nunca exige o extra.
