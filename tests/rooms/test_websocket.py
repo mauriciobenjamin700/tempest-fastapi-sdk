@@ -124,6 +124,32 @@ class TestPlay:
         assert closed.value.code == 1009
 
 
+class TestHeartbeat:
+    def test_silent_client_is_closed_with_4408_at_the_first_ping_past_the_deadline(
+        self,
+    ) -> None:
+        """Ping every 1 s, deadline 2 s: one ping, then 4408 about 2 s after."""
+        import time
+
+        settings = WebSocketSettings(  # type: ignore[call-arg]
+            _env_file=None, WS_HEARTBEAT_SECONDS=1, WS_HEARTBEAT_TIMEOUT_SECONDS=2
+        )
+        app = FastAPI()
+        app.include_router(make_game_room_router(RoomRegistry(), settings=settings))
+        with TestClient(app) as client, client.websocket_connect("/rooms/ws") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "create"})
+            _until(ws, "welcome")
+            started = time.monotonic()
+            pings = 0
+            with pytest.raises(WebSocketDisconnect) as closed:
+                while True:
+                    pings += ws.receive_json()["type"] == "ping"
+            elapsed = time.monotonic() - started
+        assert (closed.value.code, pings) == (4408, 1)
+        assert 1.9 <= elapsed < 3.5
+
+
 class TestReconnect:
     def test_dropped_player_resumes_in_the_same_slot(self) -> None:
         registry = RoomRegistry(RoomPolicy(reconnect_grace_seconds=30))

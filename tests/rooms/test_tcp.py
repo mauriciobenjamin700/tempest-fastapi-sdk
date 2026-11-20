@@ -18,6 +18,7 @@ from tempest_fastapi_sdk.rooms import (
     BROADCAST_SLOT,
     FRAME_BINARY,
     FRAME_JSON,
+    REPLACED_CLOSE_CODE,
     RoomIdentity,
     RoomPolicy,
     RoomRegistry,
@@ -157,6 +158,33 @@ class TestTcp:
         finally:
             server.close()
             await server.wait_closed()
+
+    async def test_replaced_connection_gets_a_close_frame_then_eof(
+        self, tcp_port: tuple[RoomRegistry, int]
+    ) -> None:
+        _, port = tcp_port
+        first = await TcpPlayer.open(port)
+        await first.send({"type": "create", "version": "6"})
+        seat = await first.until("welcome")
+        second = await TcpPlayer.open(port)
+        await second.send(
+            {
+                "type": "resume",
+                "code": seat["room"]["code"],
+                "player_id": seat["player_id"],
+                "resume_token": seat["resume_token"],
+            }
+        )
+        assert (await second.until("welcome"))["resumed"] is True
+        assert await first.until("close") == {
+            "type": "close",
+            "code": REPLACED_CLOSE_CODE,
+            "reason": "replaced",
+        }
+        with pytest.raises(asyncio.IncompleteReadError):
+            while True:
+                await first.frame()
+        await second.close()
 
     def test_timeout_must_exceed_the_heartbeat(self) -> None:
         with pytest.raises(ValueError, match="exceed"):

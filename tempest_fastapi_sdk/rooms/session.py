@@ -4,7 +4,8 @@ One :class:`RoomSession` per connection. It reads control messages (JSON
 objects with a ``type``) and binary relay frames, drives the
 :class:`~tempest_fastapi_sdk.rooms.RoomRegistry`, and answers a refusal with
 ``{"type": "error", "code": ..., "message": ..., "request": <type>}``
-instead of dropping the connection.
+instead of dropping the connection (``code`` is stable, ``message`` is for
+humans, ``request`` is the refused ``type`` or ``None``).
 
 Client → server
     ``create {name?, version?, token?}``, ``join {code, name?, version?,
@@ -14,14 +15,18 @@ Client → server
 
 Server → client
     ``hello``, ``welcome {player_id, resume_token, slot, resumed, room}``,
-    ``player_joined``, ``player_left``, ``player_disconnected``,
-    ``player_reconnected``, ``host_changed``, ``room_state``, ``message
-    {from, data}``, ``echo {t}``, ``error``; binary frames ``[u8 sender
-    slot][payload]``.
+    ``left {code}`` (reply to ``leave``), ``player_joined``,
+    ``player_left``, ``player_disconnected``, ``player_reconnected``,
+    ``host_changed {host_id}``, ``room_state {state}``, ``message {from,
+    data}``, ``echo {t}``, ``error {code, message, request}``, ``ping``;
+    binary frames ``[u8 sender slot][payload]``. Over TCP, a connection
+    replaced by a ``resume`` elsewhere also gets ``close {code, reason}``
+    before the stream ends (WebSocket uses the close code instead).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -62,6 +67,10 @@ def hello_message(registry: RoomRegistry, heartbeat_seconds: float) -> dict[str,
         "heartbeat_seconds": heartbeat_seconds,
         "requires_identity": registry.requires_identity,
     }
+
+
+_CLOSING: set[asyncio.Future[None]] = set()
+"""Disconnect tasks still running after their caller was cancelled."""
 
 
 class RoomSession:
@@ -144,9 +153,23 @@ class RoomSession:
             await self.refuse(error, "binary")
 
     async def close(self) -> None:
-        """Report that the connection dropped (the seat waits for a resume)."""
-        if self.room is not None and self.member is not None:
-            await self.registry.disconnect(self.room, self.member, self.peer)
+        """Report that the connection dropped (the seat waits for a resume).
+
+        The bookkeeping runs in its own task behind :func:`asyncio.shield`,
+        because transports call this from a ``finally`` that is often
+        reached by cancellation (server shutdown, a test client tearing the
+        handler down right after the disconnect). Awaited inline, the
+        cancellation interrupted it before ``player_disconnected`` went out,
+        and the seat stayed marked connected to a dead peer.
+        """
+        if self.room is None or self.member is None:
+            return
+        task = asyncio.ensure_future(
+            self.registry.disconnect(self.room, self.member, self.peer)
+        )
+        _CLOSING.add(task)
+        task.add_done_callback(_CLOSING.discard)
+        await asyncio.shield(task)
 
     def _seated(self) -> tuple[Room, RoomMember]:
         """Return the session's room and seat.

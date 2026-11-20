@@ -344,3 +344,33 @@ def test_policy_bounds() -> None:
     ):
         with pytest.raises(ValueError):
             RoomPolicy(**kwargs)  # type: ignore[arg-type]
+
+
+class TestSessionCloseUnderCancellation:
+    async def test_cancelled_close_still_marks_the_seat_disconnected(self) -> None:
+        """A transport's ``finally`` reached by cancellation still frees the seat.
+
+        The registry lock is held so ``close()`` is parked inside the
+        disconnect when the cancellation lands; awaited inline, it died
+        there and the host never heard ``player_disconnected``.
+        """
+        from tempest_fastapi_sdk.rooms import RoomSession
+
+        registry = RoomRegistry(RoomPolicy(reconnect_grace_seconds=30))
+        host, guest_peer = FakePeer(), FakePeer()
+        room, _ = await registry.create(host)
+        guest = RoomSession(registry, guest_peer)
+        await guest.handle_json({"type": "join", "code": room.code})
+        assert guest.member is not None
+        async with registry._lock:
+            closing = asyncio.create_task(guest.close())
+            await asyncio.sleep(0)
+            closing.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await closing
+        for _ in range(100):
+            if "player_disconnected" in host.types():
+                break
+            await asyncio.sleep(0.01)
+        assert "player_disconnected" in host.types()
+        assert guest.member.connected is False

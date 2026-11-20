@@ -158,12 +158,14 @@ Frames **binários** são bytes do jogo, que o servidor repassa sem ler.
 | --- | --- |
 | `hello` | Ao conectar: versão, tamanho da sala, janela de reconexão, cadência do heartbeat |
 | `welcome` | Depois de `create`/`join`/`resume`: `player_id`, `resume_token`, `slot`, `resumed`, `room` |
+| `left` | Resposta ao seu `leave`: `code` da sala que você deixou |
 | `player_joined` / `player_left` | Alguém entrou / saiu (ou a janela de reconexão acabou) |
 | `player_disconnected` / `player_reconnected` | Alguém caiu (com `grace_seconds`) / voltou |
-| `host_changed` | O anfitrião saiu e outro assumiu (o conectado de menor slot) |
-| `room_state` | A sala foi para `playing` ou `lobby` |
+| `host_changed` | O anfitrião saiu e outro assumiu (o conectado de menor slot): `host_id` |
+| `room_state` | A sala foi para `playing` ou `lobby`: `state` |
 | `message` | Uma mensagem repassada: `from` + `data` |
-| `error` | Recusa com `code` estável; a conexão continua aberta |
+| `echo` | Resposta ao seu `echo`, com o mesmo `t` |
+| `error` | Recusa: `code` estável, `message` legível e `request` (o `type` recusado); a conexão continua aberta |
 | `ping` | Heartbeat do servidor: responda `{"type": "pong"}` se estiver ocioso |
 | *(binário)* | `[u8 slot de quem mandou][bytes]` |
 
@@ -176,8 +178,9 @@ Os `code` de erro: `room_not_found`, `room_full`, `room_in_match`,
     Um jogo em tempo real manda dezenas de frames por segundo, e cada um
     conta como sinal de vida. O `pong` só é necessário num cliente parado
     (no lobby, por exemplo). Quem fica em silêncio além de
-    `WS_HEARTBEAT_TIMEOUT_SECONDS` é fechado com `4408` e o lugar dele
-    espera o `resume`.
+    `WS_HEARTBEAT_TIMEOUT_SECONDS` é fechado com `4408` no primeiro ping
+    depois do prazo — com ping a cada 1 s e prazo de 2 s, a conexão caiu
+    2,0 s depois do último frame — e o lugar dele espera o `resume`.
 
 ## Lockstep binário (o PokeBudokai)
 
@@ -214,11 +217,15 @@ fun sendInput(tick: Int, bits: Int) {
 Mapeando o que o jogo já faz:
 
 - **`HELLO` com versão e `rosterHash`**: ponha os dois na `version`
-  (`"6:<rosterHash>"`), e o servidor recusa quem não bate com
-  `version_mismatch` antes de qualquer frame do jogo.
-- **Sala TODOS x TODOS**: o anfitrião é o slot 0 (`room.host_id`); os
-  convidados mandam o `INPUT` para o slot do anfitrião, que monta o `FRAME`
-  e manda para `0xFF`.
+  (`"6:<rosterHash>"`) **e** no servidor
+  (`RoomPolicy(protocol_version="6:<rosterHash>")`); o servidor recusa quem
+  não bate com `version_mismatch` antes de qualquer frame do jogo. Os dois
+  lados mudam juntos a cada roster novo.
+- **Sala TODOS x TODOS**: quem cria a sala começa no slot 0, mas o
+  anfitrião pode mudar (`host_changed`). Leia o slot dele cruzando
+  `room.host_id` com `room.players`, e não fixe o 0; os convidados mandam o
+  `INPUT` para esse slot, e o anfitrião monta o `FRAME` e manda para
+  `0xFF`.
 - **Queda**: o `player_disconnected` chega na hora em que o servidor percebe
   a queda; o anfitrião pode passar aquele slot para a CPU no mesmo tick,
   sem esperar os 8 s de travamento.
@@ -255,14 +262,17 @@ function invite(partnerId: string): void {
 
 Três coisas que o servidor passa a fazer pelo jogo:
 
-- o `player_id` é do servidor — no servidor Node, o relay já carimba o
-  `from` pelo socket, mas o `playerId` desse socket vem do `joinRoom` que o
-  próprio cliente manda, então um cliente pode entrar com o id de outro;
+- o `from` é do servidor em **toda** mensagem — no servidor Node, o relay
+  de batalha carimba o `from` pelo socket, mas os convites
+  (`guildInvite`, `pvpInvite` e as respostas) repassam o `from` que o
+  cliente escreveu, e o `playerId` do socket vem do `joinRoom` que o
+  próprio cliente manda, então um cliente pode convidar em nome de outro;
 - `to` entrega **só** ao destinatário, em vez de mandar o convite para a
   sala inteira e deixar o cliente filtrar;
 - com `RoomPolicy(allowed_message_types=frozenset({...}))`, um `data.type`
   fora da lista é recusado com `message_not_allowed` — a whitelist que o
-  servidor Node mantém à mão.
+  servidor Node mantém à mão. A lista vale para o JSON do `send`; frames
+  binários passam sem leitura.
 
 ## Conta em vez de convidado
 

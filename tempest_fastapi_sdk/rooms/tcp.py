@@ -12,7 +12,10 @@ message ends to relay it whole::
 
 The server pings with ``{"type": "ping"}`` every ``heartbeat_seconds``; any
 inbound frame proves the client alive (a ``{"type": "pong"}`` is swallowed),
-and a client silent for ``heartbeat_timeout_seconds`` is closed. Sockets get
+and a client silent for ``heartbeat_timeout_seconds`` is closed without a
+word. A raw stream has no close code, so a connection the server ends on
+purpose — today only one whose player resumed on another connection — first
+gets ``{"type": "close", "code": 4409, "reason": "replaced"}``. Sockets get
 ``TCP_NODELAY``: a lockstep game sends a small frame every tick, and Nagle's
 algorithm would hold it back waiting for more.
 
@@ -136,6 +139,10 @@ class TCPRoomPeer:
 
     async def close(self, code: int, reason: str, /) -> None:
         """Say why, then close the stream.
+
+        Sends ``{"type": "close", "code": code, "reason": reason}`` as a JSON
+        frame, because a raw stream has no close code of its own, and then
+        closes; a write failure is ignored, the stream closes anyway.
 
         Args:
             code (int): Close code, sent in a ``{"type": "close"}`` message.

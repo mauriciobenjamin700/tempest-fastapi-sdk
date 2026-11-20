@@ -79,8 +79,13 @@ What it does on every connection:
 - sends `{"type": "ping"}` every `heartbeat_seconds` (15 s by default); any
   frame the client sends counts as a sign of life, and `{"type": "pong"}` is
   swallowed;
-- closes a client silent for `heartbeat_timeout_seconds` (45 s) — their seat
-  waits for the `resume`, as on the WebSocket;
+- closes a client silent for `heartbeat_timeout_seconds` (45 s), without a
+  word — their seat waits for the `resume`, as on the WebSocket;
+- raw TCP has no close code, so when the server ends a connection on
+  purpose it says so first with a control frame. Today that happens in one
+  case only: the player resumed their seat on another connection, and the
+  old one gets `{"type": "close", "code": 4409, "reason": "replaced"}` and
+  then the end of the stream;
 - refuses an unknown frame kind or invalid JSON with `error`
   (`bad_request`), without closing.
 
@@ -207,8 +212,9 @@ On the reading thread, a kind `1` frame carries `[sender slot][NetProto]` —
 the slot says which player the `INPUT` came from, which the ALL vs ALL room
 needs to build its `FRAME`. A kind `0` frame is control: handle `welcome`
 (keep `player_id`, `resume_token` and the code for `resume`),
-`player_disconnected` (hand the slot to the CPU) and `ping` (answer
-`{"type":"pong"}` while the game sits in a menu).
+`player_disconnected` (hand the slot to the CPU), `ping` (answer
+`{"type":"pong"}` while the game sits in a menu) and `close` (another
+connection took the seat over: do not `resume` again).
 
 !!! warning "Raw TCP has no TLS"
     The TCP server talks in the clear. Over the internet, put a TCP proxy

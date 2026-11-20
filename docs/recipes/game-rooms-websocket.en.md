@@ -158,12 +158,14 @@ frames are game bytes the server relays without reading.
 | --- | --- |
 | `hello` | On connect: version, room size, reconnect window, heartbeat cadence |
 | `welcome` | After `create`/`join`/`resume`: `player_id`, `resume_token`, `slot`, `resumed`, `room` |
+| `left` | Reply to your `leave`: the `code` of the room you left |
 | `player_joined` / `player_left` | Someone joined / left (or their reconnect window ran out) |
 | `player_disconnected` / `player_reconnected` | Someone dropped (with `grace_seconds`) / came back |
-| `host_changed` | The host left and another took over (the connected one with the lowest slot) |
-| `room_state` | The room moved to `playing` or `lobby` |
+| `host_changed` | The host left and another took over (the connected one with the lowest slot): `host_id` |
+| `room_state` | The room moved to `playing` or `lobby`: `state` |
 | `message` | A relayed message: `from` + `data` |
-| `error` | Refusal with a stable `code`; the connection stays open |
+| `echo` | Reply to your `echo`, with the same `t` |
+| `error` | Refusal: stable `code`, readable `message` and `request` (the refused `type`); the connection stays open |
 | `ping` | Server heartbeat: answer `{"type": "pong"}` when idle |
 | *(binary)* | `[u8 sender slot][bytes]` |
 
@@ -176,7 +178,9 @@ Error `code`s: `room_not_found`, `room_full`, `room_in_match`,
     A real-time game sends dozens of frames a second, and each counts as a
     sign of life. `pong` is only needed from an idle client (in the lobby,
     say). One silent past `WS_HEARTBEAT_TIMEOUT_SECONDS` is closed with
-    `4408` and their seat waits for the `resume`.
+    `4408` at the first ping after the deadline — with a ping every 1 s
+    and a 2 s deadline, the connection dropped 2.0 s after the last frame —
+    and their seat waits for the `resume`.
 
 ## Binary lockstep (PokeBudokai)
 
@@ -213,10 +217,15 @@ fun sendInput(tick: Int, bits: Int) {
 Mapping what the game already does:
 
 - **`HELLO` with version and `rosterHash`**: put both in `version`
-  (`"6:<rosterHash>"`), and the server refuses a mismatch with
-  `version_mismatch` before any game frame.
-- **ALL vs ALL room**: the host is slot 0 (`room.host_id`); guests send their
-  `INPUT` to the host's slot, which builds the `FRAME` and sends it to `0xFF`.
+  (`"6:<rosterHash>"`) **and** on the server
+  (`RoomPolicy(protocol_version="6:<rosterHash>")`); the server refuses a
+  mismatch with `version_mismatch` before any game frame. Both sides change
+  together with every new roster.
+- **ALL vs ALL room**: whoever creates the room starts in slot 0, but the
+  host can change (`host_changed`). Find the host's slot by matching
+  `room.host_id` against `room.players` instead of hard-coding 0; guests
+  send their `INPUT` to that slot, and the host builds the `FRAME` and sends
+  it to `0xFF`.
 - **Drop**: `player_disconnected` arrives as soon as the server notices the
   drop; the host can hand that slot to the CPU on the same tick, without
   waiting for the 8 s stall.
@@ -236,7 +245,7 @@ ws.onmessage = (event) => {
   if (typeof event.data !== "string") return;
   const message = JSON.parse(event.data);
   if (message.type === "message") {
-    handleGameMessage(message.from, message.data); // from é confiável
+    handleGameMessage(message.from, message.data); // from is trustworthy
   } else if (message.type === "error") {
     console.warn(message.code, message.message);
   }
@@ -253,15 +262,17 @@ function invite(partnerId: string): void {
 
 Three things the server now does for the game:
 
-- the `player_id` belongs to the server — on the Node server, the relay
-  already stamps `from` from the socket, but that socket's `playerId` comes
-  from the `joinRoom` the client itself sends, so a client can join with
-  someone else's id;
+- `from` belongs to the server on **every** message — on the Node server,
+  the battle relay stamps `from` from the socket, but invites
+  (`guildInvite`, `pvpInvite` and their responses) forward the `from` the
+  client wrote, and the socket's `playerId` comes from the `joinRoom` the
+  client itself sends, so a client can invite on someone else's behalf;
 - `to` delivers **only** to the addressee, instead of sending the invite to
   the whole room and letting the client filter;
 - with `RoomPolicy(allowed_message_types=frozenset({...}))`, a `data.type`
   off the list is refused with `message_not_allowed` — the allow list the
-  Node server keeps by hand.
+  Node server keeps by hand. The list covers the JSON of `send`; binary
+  frames pass unread.
 
 ## An account instead of a guest
 

@@ -79,8 +79,13 @@ O que ele faz em cada conexão:
 - manda `{"type": "ping"}` a cada `heartbeat_seconds` (15 s por padrão);
   qualquer frame que o cliente mande conta como sinal de vida, e
   `{"type": "pong"}` é engolido;
-- fecha quem fica em silêncio por `heartbeat_timeout_seconds` (45 s) — o
-  lugar dele espera o `resume`, como no WebSocket;
+- fecha quem fica em silêncio por `heartbeat_timeout_seconds` (45 s), sem
+  aviso — o lugar dele espera o `resume`, como no WebSocket;
+- TCP cru não tem código de fechamento, então quando o servidor encerra a
+  conexão de propósito ele avisa antes com um frame de controle. Hoje isso
+  acontece num caso só: o jogador retomou o lugar por outra conexão, e a
+  antiga recebe `{"type": "close", "code": 4409, "reason": "replaced"}` e
+  depois o fim do stream;
 - recusa um tipo de frame desconhecido ou um JSON inválido com `error`
   (`bad_request`), sem fechar.
 
@@ -207,8 +212,9 @@ Na thread de leitura, um frame de tipo `1` traz `[slot de quem mandou][NetProto]
 — o slot diz de qual jogador veio o `INPUT`, o que a sala TODOS x TODOS
 precisa para montar o `FRAME`. Um frame de tipo `0` é controle: trate
 `welcome` (guarde `player_id`, `resume_token` e o código para o `resume`),
-`player_disconnected` (passe o slot para a CPU) e `ping` (responda
-`{"type":"pong"}` quando o jogo estiver parado no menu).
+`player_disconnected` (passe o slot para a CPU), `ping` (responda
+`{"type":"pong"}` quando o jogo estiver parado no menu) e `close` (outra
+conexão assumiu o lugar: não tente o `resume` de novo).
 
 !!! warning "TCP cru não tem TLS"
     O servidor TCP fala em claro. Pela internet, ponha na frente um proxy TCP
