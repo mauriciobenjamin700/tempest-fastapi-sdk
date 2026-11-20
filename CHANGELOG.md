@@ -5,6 +5,36 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tempest_fastapi_sdk.rooms`: servidor de salas para jogos multiplayer
+  online, sem simular o jogo (a autoridade fica nos clientes — lockstep ou
+  anfitrião). `RoomRegistry` + `RoomPolicy`: salas por código curto (sem
+  `0`/`O`/`1`/`I`), limite de jogadores, `protocol_version` checada no
+  `create`/`join` (`version_mismatch`), sala em partida recusa entrada,
+  anfitrião eleito e trocado pelo conectado de menor slot quando sai
+  (`host_changed`), lugar guardado por `reconnect_grace_seconds` para um
+  `resume` com `resume_token` (conexão antiga fecha com `4409`), limite de
+  taxa por jogador (token bucket, `rate_limited` no máximo uma vez por
+  segundo), allow list opcional de `data.type`, e o `from` de toda mensagem
+  repassada carimbado pelo servidor. Convidado por padrão ou conta por
+  `identity_resolver`; `make_jwt_room_identity_resolver` aceita só access
+  token (refresh e MFA pendente recusados).
+- `make_game_room_router(registry, settings=...)`: endpoint WebSocket com
+  controle em JSON e relay binário opaco (`[u8 slot][bytes]`, o servidor troca
+  o slot de destino pelo de quem mandou), heartbeat e limite de frame do
+  `WebSocketSettings`, token em `?token=` com recusa `4401` no handshake.
+- `serve_game_rooms_tcp(registry, ...)`: o mesmo protocolo em TCP cru, frames
+  `[u32 tamanho][u8 tipo][payload]`, `TCP_NODELAY`, ping do servidor e queda
+  por silêncio; com o mesmo `registry`, jogadores TCP e WebSocket dividem a
+  sala (medido, inclusive retomando por um transporte o lugar aberto pelo
+  outro). `encode_frame` / `read_frame` para clientes de teste.
+- Receitas "Salas de jogo online (WebSocket)" e "Salas de jogo online (TCP)",
+  com os casos do PokeBudokai (lockstep binário) e do Jomasio (JSON com
+  anfitrião autoritativo).
+
 ## [0.368.0] — 2026-11-20
 
 ### Added

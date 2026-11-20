@@ -4766,3 +4766,24 @@ rastros antigos a 1 Hz com taxa padrão e com taxa 0); `TestTimedFixes` em
 `tests/geo/test_map_matching_parity.py` nomeia cada comportamento. Receita:
 `fleet-traffic`, seção "Posições esparsas: passe o horário".
 
+
+### Salas de jogo online: WebSocket e TCP (2026-11-20)
+
+`tempest_fastapi_sdk/rooms/`: `registry.py` (`RoomRegistry`, `RoomPolicy`,
+`RoomIdentity`, `RoomMember`, `Room`, protocolo `RoomPeer` — salas por código,
+slots, anfitrião e troca de anfitrião, versão, convidado ou identidade,
+reconexão com `resume_token` e janela de graça, token bucket, allow list,
+relay JSON e binário com o remetente carimbado), `session.py` (`RoomSession`,
+a máquina de protocolo compartilhada pelos dois transportes, recusas com
+`code` estável sem fechar a conexão, `echo` para RTT), `websocket.py`
+(`make_game_room_router` sobre o `heartbeat` existente, `4401` no handshake,
+`make_jwt_room_identity_resolver` sobre o `make_jwt_bearer_resolver`),
+`tcp.py` (`serve_game_rooms_tcp`, frames com prefixo de tamanho porque o
+`NetProto` do PokeBudokai não tem um, `TCP_NODELAY`, ping próprio).
+Levantado a partir do PokeBudokai (Kotlin, lockstep 60 Hz, TCP/NetProto) e
+do Jomasio Adventures (React + Node `ws`, JSON, líder autoritativo). Estado
+num processo, como o `WebSocketHub`. Medido em loopback: RTT do `echo`
+mediana 0,22–0,24 ms (WS) e 0,15–0,16 ms (TCP), N=2000 × 3 rodadas.
+Testes: `tests/rooms/` (registry com peers falsos, WebSocket ponta a ponta,
+TCP real e um teste misto TCP + WebSocket sob uvicorn). Receitas:
+`game-rooms-websocket` e `game-rooms-tcp`.
