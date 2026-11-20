@@ -1795,6 +1795,12 @@ What changes, and nothing else:
 - **The submission** is read as wall-clock time in that zone and stored
   in UTC. A value that already carries an offset is honored, not
   overridden.
+- **The date-range filter** (`list_filter` on a `datetime` column) reads
+  the day in that zone: "from 20/11 to 20/11" runs from midnight of 20/11
+  to midnight of 21/11 in Sao Paulo, end exclusive. A row stamped 22:00 on
+  20/11 (01:00 UTC on 21/11) lands on the 20th, the day the list shows.
+  A filtered export uses the same range. Without `display_timezone`, the
+  day is UTC.
 
 !!! warning "Converting only on write is worse than not converting"
     The half-fix passes every test about writing and still moves the

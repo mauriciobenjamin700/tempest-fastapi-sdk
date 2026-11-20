@@ -1764,6 +1764,12 @@ O que muda, e só isso:
   o `datetime-local` não tem onde dizer isso sozinho.
 - **Submit** lê o valor como hora de parede **naquele** fuso e grava em
   UTC. Valor que já chega com offset é respeitado, não sobrescrito.
+- **Filtro de intervalo de data** (`list_filter` numa coluna `datetime`)
+  lê o dia nesse fuso: "de 20/11 até 20/11" vai da meia-noite de 20/11
+  até a meia-noite de 21/11 em São Paulo, fim exclusivo. Um registro das
+  22:00 de 20/11 (01:00 UTC de 21/11) entra no dia 20, que é o dia que a
+  listagem mostra. O export filtrado segue o mesmo intervalo. Sem
+  `display_timezone`, o dia é UTC.
 
 !!! warning "Converter só na escrita é pior que não converter"
     A meia-correção passa em todo teste sobre gravar e ainda assim
