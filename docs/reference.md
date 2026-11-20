@@ -1696,6 +1696,9 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.throttle.InMemoryThrottleBackend
 ::: tempest_fastapi_sdk.utils.signed_url.sign_path
 ::: tempest_fastapi_sdk.utils.signed_url.verify_path
+::: tempest_fastapi_sdk.utils.vapid.VAPID_SUBJECT_PATTERN
+::: tempest_fastapi_sdk.utils.vapid.check_vapid_subject
+::: tempest_fastapi_sdk.utils.vapid.is_valid_vapid_subject
 ::: tempest_fastapi_sdk.utils.signed_url.SIGNED_URL_EXPIRES_PARAM
 ::: tempest_fastapi_sdk.utils.signed_url.SIGNED_URL_SIGNATURE_PARAM
 ::: tempest_fastapi_sdk.utils.locations.UFEnum
@@ -1727,6 +1730,7 @@ então importar o namespace não constrói nenhum modelo.
 
 ::: tempest_fastapi_sdk.webpush.dispatcher.WebPushDispatcher
 ::: tempest_fastapi_sdk.webpush.dispatcher.WebPushEndpointRefusedError
+::: tempest_fastapi_sdk.webpush.dispatcher.WebPushConfigurationError
 ::: tempest_fastapi_sdk.webpush.service.WebPushSubscriptionService
 ::: tempest_fastapi_sdk.webpush.router.make_web_push_router
 ::: tempest_fastapi_sdk.db.webpush_subscription_model.BaseWebPushSubscriptionModel

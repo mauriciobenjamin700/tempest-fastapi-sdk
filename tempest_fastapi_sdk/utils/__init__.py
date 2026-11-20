@@ -511,6 +511,15 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.upload import (
         sniff_mime as sniff_mime,
     )
+    from tempest_fastapi_sdk.utils.vapid import (
+        VAPID_SUBJECT_PATTERN as VAPID_SUBJECT_PATTERN,
+    )
+    from tempest_fastapi_sdk.utils.vapid import (
+        check_vapid_subject as check_vapid_subject,
+    )
+    from tempest_fastapi_sdk.utils.vapid import (
+        is_valid_vapid_subject as is_valid_vapid_subject,
+    )
 
 
 _LAZY_ATTRIBUTES: dict[str, str] = {
@@ -650,6 +659,9 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "SIGNED_URL_SIGNATURE_PARAM": "tempest_fastapi_sdk.utils.signed_url",
     "sign_path": "tempest_fastapi_sdk.utils.signed_url",
     "verify_path": "tempest_fastapi_sdk.utils.signed_url",
+    "VAPID_SUBJECT_PATTERN": "tempest_fastapi_sdk.utils.vapid",
+    "check_vapid_subject": "tempest_fastapi_sdk.utils.vapid",
+    "is_valid_vapid_subject": "tempest_fastapi_sdk.utils.vapid",
     "LocalUploadStorage": "tempest_fastapi_sdk.utils.storage_backends",
     "MinIOUploadStorage": "tempest_fastapi_sdk.utils.storage_backends",
     "UploadResult": "tempest_fastapi_sdk.utils.storage_backends",
@@ -779,6 +791,7 @@ __all__: list[str] = [
     "SNIFFABLE_MIMETYPES",
     "STREAM_TOKEN_TYPE",
     "UPLOAD_READ_CHUNK_BYTES",
+    "VAPID_SUBJECT_PATTERN",
     "XLSX_MEDIA_TYPE",
     "AllowedImageMediaTypes",
     "AttemptThrottle",
@@ -856,6 +869,7 @@ __all__: list[str] = [
     "async_retry",
     "build_content_disposition",
     "check_password_policy",
+    "check_vapid_subject",
     "cities_by_uf",
     "city_choices",
     "detect_pix_key_type",
@@ -881,6 +895,7 @@ __all__: list[str] = [
     "is_valid_phone_br",
     "is_valid_pix_key",
     "is_valid_uf",
+    "is_valid_vapid_subject",
     "list_states",
     "login_throttle_key",
     "modify_dict",

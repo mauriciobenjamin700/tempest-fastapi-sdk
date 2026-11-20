@@ -1,6 +1,9 @@
 """Web Push (VAPID) dispatch and subscription schemas."""
 
 from tempest_fastapi_sdk.webpush.dispatcher import (
+    WebPushConfigurationError as WebPushConfigurationError,
+)
+from tempest_fastapi_sdk.webpush.dispatcher import (
     WebPushDispatcher as WebPushDispatcher,
 )
 from tempest_fastapi_sdk.webpush.dispatcher import (
@@ -33,6 +36,7 @@ from tempest_fastapi_sdk.webpush.service import (
 
 __all__: list[str] = [
     "WebPushActionSchema",
+    "WebPushConfigurationError",
     "WebPushDispatcher",
     "WebPushEndpointRefusedError",
     "WebPushError",

@@ -681,6 +681,8 @@ module = [
     "aiofiles",
     "pywebpush",
     "pywebpush.*",
+    "py_vapid",
+    "py_vapid.*",
     "firebase_admin",
     "firebase_admin.*",
     "pynvml",
