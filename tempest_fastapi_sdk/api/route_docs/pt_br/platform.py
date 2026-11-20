@@ -39,6 +39,27 @@ PLATFORM_ROUTES: dict[str, RouteDoc] = {
             "canal não está ativo."
         ),
     ),
+    "geo_traffic.read_traffic": RouteDoc(
+        summary="Ler o trânsito de uma área",
+        description=(
+            "Devolve a velocidade mediana por trecho de rua dentro da caixa "
+            "(`min_latitude`, `max_latitude`, `min_longitude`, "
+            "`max_longitude`), na janela mais recente. Só aparecem trechos "
+            "por onde passou o número mínimo de aparelhos distintos "
+            "(k-anonimato); nenhuma posição individual sai daqui. Sem "
+            "retrato publicado ainda, a lista vem vazia. Caixa invertida "
+            "responde **422**."
+        ),
+    ),
+    "geo_traffic.read_graph_tile": RouteDoc(
+        summary="Ler o grafo de ruas de uma área",
+        description=(
+            "Devolve os trechos de rua com uma ponta dentro da caixa, no "
+            "formato de entrada do `createRoadGraph` do tempest-react-sdk: "
+            "o app encaixa o veículo nos mesmos trechos em que o trânsito "
+            "é publicado. Caixa invertida responde **422**."
+        ),
+    ),
     "health.liveness": RouteDoc(
         summary="Sonda de liveness",
         description=(

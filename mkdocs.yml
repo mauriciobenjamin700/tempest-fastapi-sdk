@@ -144,6 +144,7 @@ plugins:
               - Feature flags: recipes/feature-flags.md
               - File in the service (mixin): recipes/stored-files.md
               - "Firebase auth (ID token)": recipes/firebase-auth.md
+              - "Fleet traffic (anonymous GPS)": recipes/fleet-traffic.md
               - Forms from Pydantic schemas: recipes/ui-forms.md
               - Fuzzy matching and cities in text: recipes/fuzzy-matching.md
               - Geolocation (distance + time): recipes/geo.md
@@ -534,6 +535,7 @@ nav:
       - Testes: recipes/testing.md
       - "Tipagem (estático + runtime)": recipes/typing.md
       - "Transações (commit e savepoint)": recipes/transactions.md
+      - "Trânsito da frota (GPS anônimo)": recipes/fleet-traffic.md
       - Uploads (backends): recipes/uploads.md
       - Utilitários: recipes/utilities.md
       - "Visão computacional (ONNX)": recipes/vision.md

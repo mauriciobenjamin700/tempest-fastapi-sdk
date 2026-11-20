@@ -745,6 +745,21 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.live.AudienceResolver
 ::: tempest_fastapi_sdk.geo.live.EtaTargetsResolver
 ::: tempest_fastapi_sdk.geo.live_router.LIVE_POSITION_INACTIVE_ERROR
+::: tempest_fastapi_sdk.geo.road_graph.ROAD_GRID_CELL_M
+::: tempest_fastapi_sdk.geo.map_matching.ROAD_MATCH_DEFAULTS
+::: tempest_fastapi_sdk.geo.osm.OSM_DRIVABLE_HIGHWAYS
+::: tempest_fastapi_sdk.geo.osm.OSM_GEOJSON_COORDINATE_DIGITS
+::: tempest_fastapi_sdk.geo.osm.OSM_GRAPH_CACHE_SIZE
+::: tempest_fastapi_sdk.geo.traffic.DEFAULT_TRAFFIC_EVENT
+::: tempest_fastapi_sdk.geo.traffic.DEFAULT_TRAFFIC_PRIVACY
+::: tempest_fastapi_sdk.geo.traffic.DEFAULT_TRAFFIC_SNAPSHOT_KEY
+::: tempest_fastapi_sdk.geo.traffic.TRAFFIC_MIN_DEVICES_FLOOR
+::: tempest_fastapi_sdk.geo.traffic.TrafficAudienceResolver
+::: tempest_fastapi_sdk.geo.traffic_router.TRAFFIC_INVALID_BBOX_ERROR
+::: tempest_fastapi_sdk.geo.road_inference.DEFAULT_DENSITY_CELL_M
+::: tempest_fastapi_sdk.geo.road_inference.DEFAULT_DENSITY_BLOCK_CELLS
+::: tempest_fastapi_sdk.geo.road_inference.DEFAULT_DENSITY_EPOCH_SECONDS
+::: tempest_fastapi_sdk.geo.road_inference.DEFAULT_OFF_ROAD_M
 ---
 
 ## Host (controle da máquina)

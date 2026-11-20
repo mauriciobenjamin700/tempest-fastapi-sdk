@@ -5,6 +5,48 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Trânsito da frota a partir do GPS, anônimo por construção (fase 3 de
+  tempest-react-sdk#667). `TrafficAggregator(graph, privacy=TrafficPrivacy(...))`
+  recebe as posições (`add_position`, `end_trip`), encaixa nas ruas e, em
+  `flush()`, publica um `TrafficSnapshotSchema` com a velocidade mediana e o
+  número de aparelhos distintos por trecho dirigido, na janela
+  (`window_seconds`, 300). Regras de privacidade em código, cada uma com teste:
+  corte de `trim_radius_m` (200 m) no início e no fim de cada viagem,
+  k-anonimato (`min_devices`, 5, mínimo 2; contagem como limite inferior na
+  troca de sal), id do aparelho só como HMAC com segredo do processo e, nas
+  amostras, HMAC por trecho com sal que gira a cada janela e é esquecido;
+  nenhum rastro persistido. `InMemoryTrafficSnapshotStore` /
+  `RedisTrafficSnapshotStore` guardam só o retrato; evento SSE
+  `traffic_updated` para o `audience` obrigatório junto do `broker`.
+- `make_traffic_router(store, *, authorize, graph=None)`: `GET <prefix>` por
+  caixa (`422` para caixa invertida, lista vazia antes do primeiro retrato) e
+  `GET <prefix>/graph` com o tile do grafo no formato do `createRoadGraph` do
+  tempest-react-sdk (`RoadGraphTileSchema`).
+- `make_live_position_router(..., traffic=aggregator)`: toda posição
+  autorizada de um canal ativo também vai para o agregador.
+- `RoadGraph` / `RoadEdge` (mesmo contrato do `createRoadGraph`; `extract`,
+  `to_dict`/`from_dict`, `distance_to_road_m`) e `match_to_roads` /
+  `RoadMatchOptions` / `ROAD_MATCH_DEFAULTS`: porte em Python puro do HMM do
+  `matchToRoads` (Newson & Krumm), com os mesmos padrões e teste de paridade
+  contra a saída do TypeScript (`scripts/map_matching_parity_fixture.mjs`).
+- Grafo a partir de extrato do OpenStreetMap sem dependência nova:
+  `road_graph_from_overpass`, `road_graph_from_geojson`,
+  `road_graph_from_osm_json` e `load_road_graph` (cache por caminho, tamanho e
+  mtime); `oneway`, rotatória e `motorway` seguem o OSM.
+- Inferência de ruas (fase 4 de #667): `OffRoadDensity` conta posições já
+  cortadas a mais de 20 m de toda rua numa grade de 5 m, gravando só blocos de
+  25 m com k aparelhos no dia; `infer_road_candidates` (fechamento,
+  Zhang–Suen, Douglas–Peucker, diferença com o grafo) devolve
+  `RoadCandidateSchema` com `status="candidate"` para revisão humana, e
+  `road_candidates_geojson` exporta para JOSM/QGIS.
+- `scripts/bench_geo_traffic.py`: 48–64 ms por 1000 posições com
+  map-matching (40 e 200 viagens, até 77 abertas), pico de 3,00 MB; rua de 450 m tirada
+  do grafo recuperada em 100% com 20 viagens ou mais, 77,2% com 12.
+
 ## [0.367.0] — 2026-11-18
 
 ### Added

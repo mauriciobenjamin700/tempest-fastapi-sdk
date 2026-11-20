@@ -285,6 +285,13 @@ no futuro, por exemplo), e ela vai só para quem enviou — depois do
     a do `SSEBroker`, coberta na receita de SSE; não foi medida de novo
     através do store.
 
+## Trânsito a partir das mesmas posições
+
+`make_live_position_router(..., traffic=aggregator)` entrega também cada
+posição autorizada de um canal ativo a um `TrafficAggregator`, que publica a
+velocidade por trecho de rua só com k aparelhos e corta o começo e o fim de
+cada viagem. Veja [Trânsito da frota](fleet-traffic.md).
+
 ## Recap
 
 - `LivePositionSchema` — `lat`/`lng`/`accuracy_m`/`speed_kmh`/`heading`/`recorded_at`, validados (futuro e sem fuso recusados).

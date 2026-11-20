@@ -27,6 +27,7 @@ from pydantic import Field
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.geo.live import LivePositionSchema, LivePositionStore
+from tempest_fastapi_sdk.geo.traffic import TrafficAggregator
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 LIVE_POSITION_INACTIVE_ERROR: Final[str] = "Channel is not accepting positions"
@@ -54,6 +55,7 @@ def make_live_position_router(
     *,
     authorize: Callable[..., Coroutine[Any, Any, Any]],
     channel_active: Callable[..., Coroutine[Any, Any, bool]],
+    traffic: TrafficAggregator | None = None,
     prefix: str = "/live",
     tag: str = "Live position",
     docs_locale: str | None = None,
@@ -81,6 +83,11 @@ def make_live_position_router(
         channel_active (Callable[..., Coroutine[Any, Any, bool]]): Dependency
             answering whether ``channel_id`` accepts positions now.
             Mandatory.
+        traffic (TrafficAggregator | None): Also hands every authorized
+            position of an active channel to this aggregator, the channel id
+            as the device — throttled or not, since the matcher wants every
+            fix. The aggregator hashes the id at once and publishes only
+            k-anonymous traffic.
         prefix (str): URL prefix. Defaults to ``"/live"``.
         tag (str): OpenAPI tag. Defaults to ``"Live position"``.
         docs_locale (str | None): Language of the OpenAPI ``summary`` and
@@ -147,6 +154,8 @@ def make_live_position_router(
         """
         if not active:
             raise ConflictException(message=LIVE_POSITION_INACTIVE_ERROR)
+        if traffic is not None:
+            traffic.add_position(channel_id, position)
         accepted = await resolve_store(request).publish(channel_id, position)
         return LivePositionPublishResponseSchema(accepted=accepted)
 
