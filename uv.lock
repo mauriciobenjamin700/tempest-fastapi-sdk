@@ -1759,18 +1759,20 @@ pydantic = [
 
 [[package]]
 name = "fastapi"
-version = "0.141.1"
+version = "0.165.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
+    { name = "anyio" },
+    { name = "opentelemetry-api" },
     { name = "pydantic" },
     { name = "starlette" },
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/02/91e3416a8fdd715abb903a952a6bec7cdd8d14eed55d415fc8595524c319/fastapi-0.141.1.tar.gz", hash = "sha256:e8822fc40db1e1858054d7a949a888695bc9bdce70139178e33bd2871a453ca1", size = 425799, upload-time = "2026-07-29T17:18:05.568Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/f9/e7820ef181026fea100bde02d811445bf8e883362d7092b6928767147056/fastapi-0.165.0.tar.gz", hash = "sha256:dd94d4128319c1e1d50535ab023ab698f850a4d2822f0e181747b46f4ff3c0ab", size = 557984, upload-time = "2026-11-18T19:15:37.076Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/03/10388a42375ee7e4ac9b94eb2c5c569c8b5795e377e701c9ac3ad63de890/fastapi-0.141.1-py3-none-any.whl", hash = "sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3", size = 131954, upload-time = "2026-07-29T17:18:04.364Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/c1/3b74c030262a1b38b1fee180f80b4007bbc11c9ac12028cb18c7bcecaec9/fastapi-0.165.0-py3-none-any.whl", hash = "sha256:896f48462042bb4f162147eb8fac7e858753dc1f486765709baf105d70e4fc5b", size = 159475, upload-time = "2026-11-18T19:15:35.345Z" },
 ]
 
 [[package]]
@@ -4824,16 +4826,16 @@ wheels = [
 
 [[package]]
 name = "ort-vision-sdk"
-version = "0.8.0"
+version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "onnxruntime" },
     { name = "pillow" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/be/075b7e0cd89a724c40fdfff3881e3c873e7e1496878a6bf095dcdfc35fab/ort_vision_sdk-0.8.0.tar.gz", hash = "sha256:a0c359ca97c79b27b3f284f8f8ca18aab50745350ced1e4453d42157b07a890b", size = 120560, upload-time = "2026-08-08T15:09:54.172Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/8a/aa9f59c116ffbd9552b8f189e6bca9c069457f7cb410d68b58c6ff191743/ort_vision_sdk-0.12.0.tar.gz", hash = "sha256:24cf37b83236c67b40ec170ea7a55969e9c621c894353f67a0358dab4c4f0b8e", size = 173822, upload-time = "2026-10-03T12:21:02.119Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/16/6395a966d0391ba62cc957ce9e10f7e3176df22b29848c33a459ce115cc0/ort_vision_sdk-0.8.0-py3-none-any.whl", hash = "sha256:1e005a5c10083482a0ab47b94b83215f2376145ce103be3bbf886df0cd73d70a", size = 93765, upload-time = "2026-08-08T15:09:52.643Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/3a/168912950b55410f59794b29836bc40b289720e58b670745ac92cdbf040d/ort_vision_sdk-0.12.0-py3-none-any.whl", hash = "sha256:cfe6862575b575c9aa6db2719745fe6e4014cd442248f3685f3ff74e5ece85eb", size = 125941, upload-time = "2026-10-03T12:21:00.558Z" },
 ]
 
 [package.optional-dependencies]
@@ -6647,15 +6649,15 @@ wheels = [
 
 [[package]]
 name = "starlette"
-version = "1.6.0"
+version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/b4/205b0d5241d934e8add0c38aa924c4f9fb7330834ff11e5444db964ec3f9/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b", size = 2716969, upload-time = "2026-08-08T18:27:57.512Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/cb/6a6a47d5b464bd08695d254f3da6e7986cc70c9fa5d778eda57538edfe56/starlette-1.6.0-py3-none-any.whl", hash = "sha256:a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c", size = 75969, upload-time = "2026-08-08T18:27:56.196Z" },
+    { url = "https://files.pythonhosted.org/packages/88/2e/947cfe02def9371c07cd5bf5b6b61c829e9aecb9904db02a66cfafbc1eec/starlette-1.10.0-py3-none-any.whl", hash = "sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4", size = 80571, upload-time = "2026-10-24T15:04:10.371Z" },
 ]
 
 [[package]]
@@ -6738,14 +6740,14 @@ wheels = [
 
 [[package]]
 name = "tempest-core"
-version = "0.18.0"
+version = "0.23.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/dc/9ecca23d277d05dec2efc716094192cc7b188ec6ef848e185469a77a6137/tempest_core-0.18.0.tar.gz", hash = "sha256:3824263bab4bf8ba49d6d227f42ef15074fb584b4b5f466cc2892ec5bbcfed6e", size = 482287, upload-time = "2026-08-29T13:07:56.041Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/99/521f50f87f7f063b9732e0ace3204461977c5a5a821709f17f8a40fa4112/tempest_core-0.23.0.tar.gz", hash = "sha256:9d1bcf8bfa5597624c13f36b4ec1e753321354716480b9ae6f02c1b409168274", size = 536976, upload-time = "2026-10-17T21:56:52.768Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/7a/0e4506395d731a8f008fce253f1f14be97770aeb275a2fafb1eed2efdab8/tempest_core-0.18.0-py3-none-any.whl", hash = "sha256:c3a54a606501998c20368981a8f38929b32bf314e65389d231926a157294a634", size = 207231, upload-time = "2026-08-29T13:07:53.579Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/e1/e133db9a5862ec8fbcbea44c10f7628ec9a6c9c121220622a062abeeb353/tempest_core-0.23.0-py3-none-any.whl", hash = "sha256:2a5b228205c9e4858661ab51486ede940f0526c21a9df64b7f8a09c215ea6027", size = 228652, upload-time = "2026-10-17T21:56:50.714Z" },
 ]
 
 [[package]]
@@ -7154,7 +7156,7 @@ requires-dist = [
     { name = "email-validator", specifier = ">=2.3.0" },
     { name = "email-validator", marker = "extra == 'all'", specifier = ">=2.3.0" },
     { name = "email-validator", marker = "extra == 'email'", specifier = ">=2.3.0" },
-    { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "fastapi", specifier = ">=0.165.0" },
     { name = "faster-whisper", marker = "extra == 'genai-audio'", specifier = ">=1.2.1" },
     { name = "fastmcp", marker = "extra == 'fastmcp'", specifier = ">=4.1.0" },
     { name = "faststream", extras = ["kafka"], marker = "extra == 'queue-kafka'", specifier = ">=0.7.5" },
@@ -7211,9 +7213,9 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-sqlalchemy", marker = "extra == 'otel'", specifier = ">=0.65b0" },
     { name = "opentelemetry-sdk", marker = "extra == 'all'", specifier = ">=1.44.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.44.0" },
-    { name = "ort-vision-sdk", marker = "extra == 'vision'", specifier = ">=0.8.0" },
-    { name = "ort-vision-sdk", extras = ["compose"], marker = "extra == 'all'", specifier = ">=0.8.0" },
-    { name = "ort-vision-sdk", extras = ["compose"], marker = "extra == 'modelops-compose'", specifier = ">=0.8.0" },
+    { name = "ort-vision-sdk", marker = "extra == 'vision'", specifier = ">=0.12.0" },
+    { name = "ort-vision-sdk", extras = ["compose"], marker = "extra == 'all'", specifier = ">=0.12.0" },
+    { name = "ort-vision-sdk", extras = ["compose"], marker = "extra == 'modelops-compose'", specifier = ">=0.12.0" },
     { name = "pdfplumber", marker = "extra == 'all'", specifier = ">=0.11.7" },
     { name = "pdfplumber", marker = "extra == 'pdf-layout'", specifier = ">=0.11.7" },
     { name = "pgvector", marker = "extra == 'genai-rag'", specifier = ">=0.5.0" },
@@ -7274,8 +7276,8 @@ requires-dist = [
     { name = "taskiq-redis", marker = "extra == 'tasks-redis'", specifier = ">=1.2.3" },
     { name = "tempest-cli", marker = "extra == 'all'", specifier = ">=0.7.0" },
     { name = "tempest-cli", marker = "extra == 'cli'", specifier = ">=0.7.0" },
-    { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.127.0" },
-    { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.127.0" },
+    { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.141.1" },
+    { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.141.1" },
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.22.2" },
     { name = "torch", marker = "extra == 'genai'", specifier = ">=2.14.0" },
     { name = "torch", marker = "extra == 'genai-audio'", specifier = ">=2.14.0" },
@@ -7349,7 +7351,7 @@ dev = [
     { name = "sherpa-onnx-core" },
     { name = "taskiq", specifier = ">=0.12.6" },
     { name = "taskiq-aio-pika", specifier = ">=0.6.0" },
-    { name = "tempestweb", specifier = ">=0.127.0" },
+    { name = "tempestweb", specifier = ">=0.141.1" },
     { name = "tokenizers", specifier = ">=0.22.2" },
     { name = "trafilatura", specifier = ">=2.2.0" },
     { name = "types-markdown", specifier = ">=3.11.2.20261029" },
@@ -7368,14 +7370,14 @@ docs = [
 
 [[package]]
 name = "tempestweb"
-version = "0.127.0"
+version = "0.141.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tempest-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/cb/a26d0b8c555b6920901abea3856d43748f04ba92cbbe1f91c2887e1c6807/tempestweb-0.127.0.tar.gz", hash = "sha256:1bf86eb6485d6b5bba14ebf6422bd88dc004920e98141c23f2c4a39f735960a3", size = 972032, upload-time = "2026-08-29T16:44:00.466Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/a5/0f142fcda0e00a1b025ae1c4c4f5613f5ec886b676321d6e84f9a0d501dd/tempestweb-0.141.1.tar.gz", hash = "sha256:516f5499406dc47c0f10da63d50969867cc580f5b9fc3ad3026ac69d8e487ee7", size = 1145524, upload-time = "2026-10-25T15:53:05.278Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/16/79cbf200b8f438867679a4def6d1da021ff8708ab2d53ce5ce3d24b7a4e4/tempestweb-0.127.0-py3-none-any.whl", hash = "sha256:7f95b02e97fe7259c70fffd3395c3309358d3f5705735d6287d72057ddee2b5d", size = 788937, upload-time = "2026-08-29T16:43:58.837Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/a2/1c8ff1a9d5ff51ed1094e357fd368d84d3763ed3debeb63cb992ae9de4c8/tempestweb-0.141.1-py3-none-any.whl", hash = "sha256:1aa337d1b162738ebbefe5af4e776794d0794c67ab3c08ceffde68d63de307e6", size = 904196, upload-time = "2026-10-25T15:53:03.413Z" },
 ]
 
 [[package]]

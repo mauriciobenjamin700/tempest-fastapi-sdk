@@ -265,7 +265,7 @@ app.include_router(
 
 !!! info "Why count pixels when there is a byte ceiling"
     A flat-colour PNG compresses by orders of magnitude. Measured with
-    Pillow 12.3.0 and `ort-vision-sdk` 0.8.0: a blank 9400 x 9400 PNG of
+    Pillow 13.0.0 and `ort-vision-sdk` 0.12.0: a blank 9400 x 9400 PNG of
     10 804 bytes decodes into a 265 080 000-byte RGB array — and slips past
     Pillow's own decompression-bomb warning, because 88.36 MP sits under its
     89.48 MP threshold. The byte ceiling does not catch that file; the pixel

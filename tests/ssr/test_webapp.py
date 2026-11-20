@@ -69,8 +69,9 @@ def test_service_worker_headers(builds: dict[str, Path]) -> None:
 
 
 def test_wasm_archive_media_type(builds: dict[str, Path]) -> None:
+    archive = next(builds["wasm"].glob("tempestweb-pkg*.zip")).name
     with _static_client(builds["wasm"]) as client:
-        response = client.get("/tempestweb-pkg.zip")
+        response = client.get(f"/{archive}")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
 

@@ -574,8 +574,8 @@ both sides sign the same string:
 - `/api/files/a%2Fb.pdf` and `/api/files/a/b.pdf` reach the route as the same
   path, with the same key `a/b.pdf`, and verify with the same signature.
 
-Measured on Starlette 0.46.0 (the floor `fastapi>=0.141.1` accepts) and on
-1.6.0.
+Measured on Starlette 0.46.0 and on 1.6.0 — the floor `fastapi>=0.165.0`
+requires today; the suite runs on 1.10.0.
 
 !!! warning "Pass the decoded path, never an encoded one"
     `sign_path("/api/files/aula%2001.mp4", ...)` signs the literal key

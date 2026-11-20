@@ -80,9 +80,16 @@ def setup_tracing(
     lifespan. Request spans come from wrapping the app's middleware
     stack, and Starlette builds that stack on the first ASGI event it
     receives, which is the lifespan startup itself. A call from inside
-    the lifespan therefore finds the stack already built and no request
-    is ever traced; this function detects that case and emits a
-    :class:`RuntimeWarning` instead of failing silently.
+    the lifespan therefore finds the stack already built, and the
+    OpenTelemetry FastAPI instrumentation never wraps it; this function
+    detects that case and emits a :class:`RuntimeWarning` instead of failing
+    silently. Since FastAPI 0.142, such an app is still traced, by FastAPI's
+    own telemetry: a ``SERVER`` span under the instrumentation scope
+    ``"fastapi"`` with ``fastapi.dependencies`` / ``fastapi.endpoint`` /
+    ``fastapi.serialization`` children and the newer semantic-convention
+    attributes (``http.request.method``, ``url.path``) — not the spans this
+    function attaches. When the instrumentation does wrap the app, FastAPI
+    turns its own tracing off for it, so a request is never traced twice.
 
     The database engine of
     :class:`~tempest_fastapi_sdk.db.connection.AsyncDatabaseManager` only
@@ -132,7 +139,8 @@ def setup_tracing(
     Warns:
         RuntimeWarning: When ``app`` has already built its middleware
             stack (the call came from the lifespan or after the first
-            request), so request spans will never be produced.
+            request), so the instrumentation is not attached and requests
+            are traced by FastAPI's own telemetry instead.
 
     Notes:
         When a ``TracerProvider`` is already installed — ``setup_tracing``
@@ -211,8 +219,10 @@ def _instrument_fastapi(app: FastAPI, provider: TracerProvider) -> None:
     if app.middleware_stack is not None and not already_instrumented:
         warnings.warn(
             "setup_tracing() was called after the app built its middleware "
-            "stack (from the lifespan, or after the first request), so no "
-            "request will produce a span. Call it at module level, right "
+            "stack (from the lifespan, or after the first request), so the "
+            "OpenTelemetry FastAPI instrumentation is not attached to it; its "
+            "requests are traced by FastAPI's own telemetry instead, with "
+            "other span names and attributes. Call it at module level, right "
             "after creating the FastAPI app; instrument a database engine "
             "created in the lifespan with instrument_sqlalchemy_engine().",
             RuntimeWarning,

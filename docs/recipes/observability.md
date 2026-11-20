@@ -80,9 +80,17 @@ O trace inteiro aparece no Jaeger / Tempo / Honeycomb sob o nome
     O span de request vem de embrulhar a pilha de middleware da app, e o
     Starlette monta essa pilha no **primeiro evento ASGI** que recebe — que é
     justamente o startup do lifespan. Chamado de lá, `setup_tracing` encontra
-    a pilha já montada e **nenhuma request vira span**; as queries até saem,
-    mas como raízes soltas, sem request pai. Desde a 0.303.0 a função detecta
-    esse caso e emite um `RuntimeWarning` em vez de falhar em silêncio.
+    a pilha já montada e a instrumentação do OpenTelemetry **não entra**. A
+    função detecta esse caso e emite um `RuntimeWarning` (desde a 0.303.0).
+
+    Desde o FastAPI 0.142, a request ainda vira span nesse caso, mas pela
+    telemetria **do próprio FastAPI**, com outros nomes e atributos. Medido no
+    FastAPI 0.165.0: raiz `GET /orders` no escopo `fastapi`, filhos
+    `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization`, as
+    queries sob `fastapi.endpoint` e atributos da convenção semântica nova
+    (`http.request.method`, `url.path`). Chamado no nível do módulo, o
+    `setup_tracing` instrumenta a app e o FastAPI desliga o tracing dele para
+    ela: medido, uma request dá **um** span `GET /orders`, sem duplicata.
 
 !!! tip "Engine que já existe no nível do módulo"
     Se o engine já existe antes do lifespan (um `create_async_engine`

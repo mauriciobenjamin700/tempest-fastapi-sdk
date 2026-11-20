@@ -81,10 +81,19 @@ The whole trace shows up in Jaeger / Tempo / Honeycomb under the name
     The request span comes from wrapping the app's middleware stack, and
     Starlette builds that stack on the **first ASGI event** it receives —
     which is the lifespan startup itself. Called from there, `setup_tracing`
-    finds the stack already built and **no request becomes a span**; queries
-    are still traced, but as orphan roots with no parent request. Since
-    0.303.0 the function detects this case and emits a `RuntimeWarning`
-    instead of failing silently.
+    finds the stack already built and the OpenTelemetry instrumentation
+    **does not attach**. The function detects this case and emits a
+    `RuntimeWarning` (since 0.303.0).
+
+    Since FastAPI 0.142, the request still becomes a span in that case, but
+    through **FastAPI's own** telemetry, with other names and attributes.
+    Measured on FastAPI 0.165.0: a `GET /orders` root under the `fastapi`
+    scope, `fastapi.dependencies` / `fastapi.endpoint` /
+    `fastapi.serialization` children, the queries under `fastapi.endpoint`,
+    and the newer semantic-convention attributes (`http.request.method`,
+    `url.path`). Called at module level, `setup_tracing` instruments the app
+    and FastAPI turns its own tracing off for it: measured, one request gives
+    **one** `GET /orders` span, no duplicate.
 
 !!! tip "An engine that already exists at module level"
     If the engine exists before the lifespan (your own module-level
