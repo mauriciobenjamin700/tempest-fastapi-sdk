@@ -225,8 +225,10 @@ class BRCityCountSchema(BaseSchema):
         city_ibge_code (int): The city's IBGE code.
         city (str): Its official name.
         state (str): Its state's acronym.
-        latitude (float): Its town centre.
-        longitude (float): Its town centre.
+        latitude (float): Its municipal seat, or the territory centroid for
+            the five municipalities whose source seat lies outside their
+            territory.
+        longitude (float): Same point as ``latitude``.
         count (int): Rows with that city.
     """
 

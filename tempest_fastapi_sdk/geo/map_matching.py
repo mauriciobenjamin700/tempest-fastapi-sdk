@@ -42,13 +42,12 @@ class RoadMatchOptions:
         max_detour_m (float): A transition whose network distance exceeds the
             straight line by more than this is impossible; bounds the
             shortest-path search.
-        detour_per_second_m (float): Extra detour allowed per second between
-            two timed fixes, in metres: the bound becomes
-            ``max_detour_m + detour_per_second_m * dt``. A sparse source (a
-            fix every 5-30 s) turns corners and goes round blocks between
-            fixes, so a bound fixed for 1 Hz breaks the chain on real
-            drives. Applies only when both fixes have a timestamp; ``0``
-            turns it off.
+        detour_per_second_m (float): Extra detour allowed per second between two
+            timed fixes, in metres: the bound becomes ``straight + max_detour_m
+            + detour_per_second_m * min(dt, max_interval_s)``. A sparse source
+            (a fix every 5-30 s) turns corners and goes round blocks between
+            fixes, so a bound fixed for 1 Hz breaks the chain on real drives.
+            Applies only when both fixes have a timestamp; ``0`` turns it off.
         max_interval_s (float): Intervals longer than this, in seconds, grant
             no more detour: the slack stops at
             ``detour_per_second_m * max_interval_s``.

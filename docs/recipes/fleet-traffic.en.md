@@ -380,9 +380,9 @@ bound gains 60 m and the route comes out whole: up `west`, across `top`, down
     time gets the slack. `detour_per_second_m=0` turns it off.
 
 `TrafficAggregator` already passes each position's device time (`recorded_at`):
-a fleet that reports every 10 s stays chained with no configuration.
+a transition of up to 10 s gains up to 20 m of slack with no configuration.
 
-`create_road_matcher` (incremental matching, one position at a time) is not
+`tempest-react-sdk`'s `createRoadMatcher` (incremental matching, one position at a time) is not
 ported: the backend matches stretches already released all at once, and the
 live marker is the app's job.
 

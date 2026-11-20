@@ -379,9 +379,9 @@ a rota sai inteira: sobe a `west`, cruza a `top`, desce a `east`.
     têm horário. `detour_per_second_m=0` desliga a folga.
 
 O `TrafficAggregator` já passa o horário do aparelho (`recorded_at`) de cada
-posição: uma frota que envia a cada 10 s fica encadeada sem configurar nada.
+posição: uma transição de até 10 s ganha até 20 m de folga sem configurar nada.
 
-`create_road_matcher` (o encaixe incremental, uma posição por vez) não foi
+O `createRoadMatcher` do `tempest-react-sdk` (o encaixe incremental, uma posição por vez) não foi
 portado: o backend encaixa trechos já soltos de uma vez, e o marcador ao vivo é
 trabalho do app.
 
