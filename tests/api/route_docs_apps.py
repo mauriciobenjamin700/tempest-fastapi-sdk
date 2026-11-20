@@ -51,6 +51,7 @@ from tempest_fastapi_sdk.geo import (
     RoadEdge,
     RoadGraph,
     make_live_position_router,
+    make_match_quality_router,
     make_traffic_router,
 )
 from tempest_fastapi_sdk.hostbridge import make_hostbridge_router
@@ -214,6 +215,11 @@ ROUTER_BUILDERS: dict[str, Callable[[dict[str, Any]], APIRouter]] = {
         _anything,
         authorize=_current_user,
         channel_active=_current_user,
+        **kw,
+    ),
+    "geo_match_quality": lambda kw: make_match_quality_router(
+        InMemoryTrafficSnapshotStore(),
+        authorize=_current_user,
         **kw,
     ),
     "geo_traffic": lambda kw: make_traffic_router(

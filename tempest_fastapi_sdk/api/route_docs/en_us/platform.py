@@ -30,6 +30,19 @@ PLATFORM_ROUTES: dict[str, RouteDoc] = {
             "it over SSE. `409` while the channel is not active."
         ),
     ),
+    "geo_match_quality.read_match_quality": RouteDoc(
+        summary="Read the map-matching quality of the fleet",
+        description=(
+            "Answer the map-matching quality of the last closed window "
+            "(breaks per 1000 positions, distance from a position to its "
+            "matched point, matched and inferred shares, sampling interval, "
+            "parallel-road switches per km), next to the reference "
+            "measurements to compare it with. Only aggregates of at least "
+            "the minimum number of distinct devices appear, per cell of the "
+            "coarse dimensions the app gave; nothing per trip or device. "
+            "Before the first window closes the snapshot is empty."
+        ),
+    ),
     "geo_traffic.read_traffic": RouteDoc(
         summary="Read the traffic of an area",
         description=(

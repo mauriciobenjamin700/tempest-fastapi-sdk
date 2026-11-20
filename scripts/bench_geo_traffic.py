@@ -14,9 +14,21 @@ Prints:
 * inference quality: how much of the removed street the candidates recover,
   their Hausdorff distance to it, and candidates that are not it.
 
+With ``--quality`` the aggregator also measures the map-matching quality
+(``TrafficAggregator(quality=MatchQualityOptions(...))``), so the cost and
+memory lines compare with a run without it; the published quality of the
+window is printed too (half the fleet declared ``android``, half ``ios``).
+
 Usage::
 
-    uv run python scripts/bench_geo_traffic.py [--devices 40] [--seed 667]
+    uv run python scripts/bench_geo_traffic.py [--devices 40] [--seed 667] \
+        [--quality] [--repeat 1]
+
+``--repeat N`` times the aggregation N times and prints the fastest and the
+median: on a shared machine the fastest run is the one other load disturbed
+least. With ``--quality`` it also prints the time spent inside the quality
+tracker alone (``MatchQualityTracker.record``), the cost the indicators add
+on top of the match they reuse.
 """
 
 from __future__ import annotations
@@ -25,13 +37,16 @@ import argparse
 import itertools
 import math
 import random
+import sys
 import time
 import tracemalloc
 from datetime import UTC, datetime
+from typing import Any
 
 from tempest_fastapi_sdk.geo import (
     Coordinate,
     LivePositionSchema,
+    MatchQualityOptions,
     OffRoadDensity,
     RoadCandidateSchema,
     RoadEdge,
@@ -48,6 +63,8 @@ SIZE = 8
 MISSING_X = 600.0
 MISSING_Y = (300.0, 750.0)
 DAY0 = datetime(2026, 11, 1, tzinfo=UTC).timestamp()
+RECORD_SECONDS: list[float] = [0.0]
+"""Seconds spent in ``MatchQualityTracker.record`` in the last timed run."""
 
 
 def at(x: float, y: float) -> Coordinate:
@@ -203,6 +220,8 @@ def fleet(
 def run(
     graph: RoadGraph,
     positions: list[tuple[str, LivePositionSchema, bool]],
+    *,
+    quality: bool = False,
 ) -> tuple[TrafficAggregator, OffRoadDensity, int]:
     """Feed the fleet, processing every 30 s of clock, ending each trip.
 
@@ -210,6 +229,9 @@ def run(
         graph (RoadGraph): The base graph.
         positions (list[tuple[str, LivePositionSchema, bool]]): From
             :func:`fleet`.
+        quality (bool): Also measure the map-matching quality, in one-day
+            windows split by an ``os`` dimension (even devices ``android``,
+            odd ``ios``).
 
     Returns:
         tuple[TrafficAggregator, OffRoadDensity, int]: The aggregator, its
@@ -221,8 +243,29 @@ def run(
         graph,
         privacy=TrafficPrivacy(min_devices=5, window_seconds=3600),
         density=density,
+        quality=(
+            MatchQualityOptions(window_seconds=86_400, dimensions=("os",))
+            if quality
+            else None
+        ),
         clock=lambda: clock[0],
     )
+    tracker = aggregator._quality
+    if tracker is not None:
+        record = tracker.record
+
+        def timed(*args: Any, **kwargs: Any) -> None:
+            """Run the tracker's ``record`` and add its time to the total.
+
+            Args:
+                *args (Any): Forwarded.
+                **kwargs (Any): Forwarded.
+            """
+            started = time.perf_counter()
+            record(*args, **kwargs)
+            RECORD_SECONDS[0] += time.perf_counter() - started
+
+        tracker.record = timed  # type: ignore[method-assign]
     next_process = DAY0 + 30
     most_open = 0
     for device, position, last in positions:
@@ -230,7 +273,12 @@ def run(
         if clock[0] >= next_process:
             aggregator.process()
             next_process = clock[0] + 30
-        aggregator.add_position(device, position)
+        dimensions = (
+            {"os": "ios" if int(device.rsplit("-", 1)[1]) % 2 else "android"}
+            if quality
+            else None
+        )
+        aggregator.add_position(device, position, dimensions=dimensions)
         most_open = max(most_open, aggregator.active_trips)
         if last:
             aggregator.end_trip(device)
@@ -298,6 +346,12 @@ def main() -> None:
     parser.add_argument(
         "--spacing", type=float, default=15.0, help="seconds between trip starts"
     )
+    parser.add_argument(
+        "--quality", action="store_true", help="also measure map-matching quality"
+    )
+    parser.add_argument(
+        "--repeat", type=int, default=1, help="aggregation runs to time"
+    )
     args = parser.parse_args()
     graph = city(without_missing=True)
     positions = fleet(args.devices, random.Random(args.seed), spacing_s=args.spacing)
@@ -306,22 +360,62 @@ def main() -> None:
         f"fleet: {args.devices} trips, {len(positions)} positions"
     )
 
-    started = time.perf_counter()
-    aggregator, density, most_open = run(graph, positions)
-    elapsed = time.perf_counter() - started
+    times: list[float] = []
+    record_times: list[float] = []
+    for _ in range(max(1, args.repeat)):
+        RECORD_SECONDS[0] = 0.0
+        started = time.perf_counter()
+        aggregator, density, most_open = run(graph, positions, quality=args.quality)
+        times.append(time.perf_counter() - started)
+        record_times.append(RECORD_SECONDS[0])
+    per_1000 = sorted(t / len(positions) * 1000 * 1000 for t in times)
     print(
-        f"aggregation: {elapsed:.2f} s -> "
-        f"{elapsed / len(positions) * 1000 * 1000:.1f} ms per 1000 positions "
+        f"aggregation: {min(times):.2f} s -> "
+        f"{per_1000[0]:.1f} ms per 1000 positions, median "
+        f"{per_1000[len(per_1000) // 2]:.1f} over {len(times)} runs "
         f"(map-matching included; up to {most_open} trips open at once)"
     )
+    if args.quality:
+        record_1000 = sorted(t / len(positions) * 1000 * 1000 for t in record_times)
+        print(
+            f"quality tracker alone: {record_1000[0]:.2f} ms per 1000 positions, "
+            f"median {record_1000[len(record_1000) // 2]:.2f}"
+        )
     snapshot = aggregator.snapshot()
     print(f"traffic: {len(snapshot.edges)} directed edges published with k=5")
 
     tracemalloc.start()
-    aggregator, density, _ = run(graph, positions)
+    aggregator, density, _ = run(graph, positions, quality=args.quality)
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     print(f"memory: peak {peak / 1e6:.2f} MB traced while aggregating")
+    if aggregator._quality is not None:
+        cells = aggregator._quality._cells
+        held = sum(
+            sys.getsizeof(c.snap.counts)
+            + sys.getsizeof(c.interval.counts)
+            + sys.getsizeof(c.tokens)
+            + sum(sys.getsizeof(t) for t in c.tokens)
+            for c in cells.values()
+        )
+        print(
+            f"quality: {len(cells)} open cells holding {held / 1e3:.1f} kB "
+            "(histograms + device hashes)"
+        )
+        quality = aggregator._quality.snapshot(DAY0 + 86_400 * 2)
+        for label, cell in [("overall", quality.overall)] + [
+            (cell.dimensions["os"], cell) for cell in quality.cells
+        ]:
+            if cell is not None:
+                print(
+                    f"  {label}: {cell.devices} devices, {cell.positions} positions,"
+                    f" breaks/1000 {cell.breaks_per_1000_positions},"
+                    f" snap {cell.snap_distance_median_m}/{cell.snap_distance_p90_m} m,"
+                    f" matched {cell.matched_share}, inferred {cell.inferred_share},"
+                    f" interval {cell.sampling_interval_median_s}/"
+                    f"{cell.sampling_interval_p90_s} s,"
+                    f" parallel/km {cell.parallel_switches_per_km}"
+                )
 
     density.roll(DAY0 + 86_400 * 2)
     started = time.perf_counter()

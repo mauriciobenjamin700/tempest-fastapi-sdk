@@ -8,6 +8,10 @@
   in ``tempest-react-sdk``'s ``createRoadGraph`` input shape, so the app
   matches its live marker against the same edges the traffic is keyed by.
 
+:func:`make_match_quality_router` serves, behind its own ``authorize``, the
+map-matching quality the aggregator saved in the same snapshot
+(``TrafficAggregator(quality=...)``), next to the reference measurements.
+
 ``authorize`` is mandatory, like every geo router: who may read traffic is
 the service's decision, never the SDK's. The update notice goes over SSE
 from :meth:`TrafficAggregator.flush`; the client re-reads its box on it.
@@ -23,6 +27,10 @@ from pydantic import Field
 
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
+from tempest_fastapi_sdk.geo.match_quality import (
+    MATCH_QUALITY_REFERENCES,
+    MatchQualityReportSchema,
+)
 from tempest_fastapi_sdk.geo.road_graph import RoadGraph
 from tempest_fastapi_sdk.geo.schemas import BoundingBox, Coordinate
 from tempest_fastapi_sdk.geo.traffic import (
@@ -195,8 +203,76 @@ def make_traffic_router(
     return router
 
 
+def make_match_quality_router(
+    store: TrafficSnapshotStore | Callable[[Request], TrafficSnapshotStore],
+    *,
+    authorize: Callable[..., Coroutine[Any, Any, Any]],
+    prefix: str = "/traffic/quality",
+    tag: str = "Traffic",
+    docs_locale: str | None = None,
+) -> APIRouter:
+    """Build the router that serves the map-matching quality from ``store``.
+
+    ``GET <prefix>`` answers a :class:`MatchQualityReportSchema`: the
+    quality of the last closed window that :meth:`TrafficAggregator.flush`
+    saved in the snapshot, and the reference measurements of
+    tempest-react-sdk#667 to compare it with. It is a separate router so the
+    operations team can read it under a narrower ``authorize`` than traffic.
+
+    Args:
+        store (TrafficSnapshotStore | Callable[[Request], TrafficSnapshotStore]):
+            The store :meth:`TrafficAggregator.flush` saves to, or a factory
+            called with each request.
+        authorize (Callable[..., Coroutine[Any, Any, Any]]): Dependency that
+            raises unless the caller may read the quality. Mandatory.
+        prefix (str): URL prefix. Defaults to ``"/traffic/quality"``.
+        tag (str): OpenAPI tag.
+        docs_locale (str | None): Language of the OpenAPI text, ``"en-US"``
+            or ``"pt-BR"``; ``None`` reads ``API_DOCS_LOCALE``.
+
+    Returns:
+        APIRouter: The router, ready for ``app.include_router``.
+
+    Raises:
+        ValueError: When ``authorize`` is ``None``.
+    """
+    if authorize is None:
+        raise ValueError("make_match_quality_router needs an authorize dependency")
+
+    route_docs: RouteDocs = RouteDocs(docs_locale)
+    router = APIRouter(prefix=prefix, tags=[tag], dependencies=[Depends(authorize)])
+
+    @router.get(
+        "",
+        response_model=MatchQualityReportSchema,
+        summary=route_docs.summary("geo_match_quality.read_match_quality"),
+        description=route_docs.description("geo_match_quality.read_match_quality"),
+    )
+    async def read_match_quality(request: Request) -> MatchQualityReportSchema:
+        """Answer the last closed window's quality and the references.
+
+        Args:
+            request (Request): The request being served.
+
+        Returns:
+            MatchQualityReportSchema: With an empty snapshot
+            (``window_start`` ``None``) when nothing was published yet, the
+            stored snapshot expired, or the aggregator does not measure
+            quality.
+        """
+        source = store if isinstance(store, TrafficSnapshotStore) else store(request)
+        snapshot = await source.load()
+        report = MatchQualityReportSchema(references=list(MATCH_QUALITY_REFERENCES))
+        if snapshot is not None and snapshot.quality is not None:
+            report.snapshot = snapshot.quality
+        return report
+
+    return router
+
+
 __all__: list[str] = [
     "TRAFFIC_INVALID_BBOX_ERROR",
     "RoadGraphTileSchema",
+    "make_match_quality_router",
     "make_traffic_router",
 ]

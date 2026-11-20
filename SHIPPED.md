@@ -4728,3 +4728,22 @@ classe em `tests/geo/test_traffic.py`, e cada uma foi conferida derrubando a
 regra no código (o teste correspondente falha). Medição:
 `scripts/bench_geo_traffic.py`. Receita: `fleet-traffic`.
 
+### Qualidade do map-matching na frota real, sem rastro (tempest-react-sdk#667, 2026-11-20)
+
+`geo/match_quality.py`: `MatchQualityOptions`, `MatchQualityTracker`
+(janela alinhada ao relógio, células por dimensão grossa, sal por janela,
+`roll` que publica e apaga), `QualityHistogram` (baldes fixos, quantil por
+posto mais próximo) e os schemas `MatchQualityCellSchema` /
+`MatchQualitySnapshotSchema` / `MatchQualityReportSchema` /
+`MatchQualityReferenceSchema`, com as referências de Kubicka e do Brasil
+(`MATCH_QUALITY_REFERENCES`) e os limiares portados de
+`scripts/bench-br-osm.mjs`. `TrafficAggregator(quality=...)` reaproveita o
+`match_to_roads` de cada trecho solto; `add_position(..., dimensions=...)`;
+`TrafficSnapshotSchema.quality`; `make_match_quality_router` em
+`geo/traffic_router.py`. Testes: `tests/geo/test_match_quality.py` (ruído
+conhecido, lacuna forçada, troca paralela, varredura de memória, k nas
+dimensões, histograma) e `TestMatchQualityRouter` em
+`tests/geo/test_traffic_router.py`. Medição: `--quality` no
+`scripts/bench_geo_traffic.py`. Receita: `fleet-traffic`, seção "Qualidade do
+encaixe na frota real".
+

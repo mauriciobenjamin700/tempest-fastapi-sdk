@@ -259,7 +259,12 @@ class TestNoIdentifierKept:
         assert first and first.isdisjoint(agg._salts)
 
     async def test_store_gets_the_snapshot_and_nothing_else(self) -> None:
-        """Redis ends with one key: the k-anonymous snapshot, no id, no trace."""
+        """Redis ends with one key: the k-anonymous snapshot, no id, no trace.
+
+        ``quality`` joined the snapshot with the map-matching quality
+        (aggregate only, tested in ``test_match_quality.py``); without
+        ``quality=`` it is ``None``.
+        """
         redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
         clock = Clock()
         agg = TrafficAggregator(
@@ -281,7 +286,9 @@ class TestNoIdentifierKept:
             "window_seconds",
             "min_devices",
             "edges",
+            "quality",
         }
+        assert json.loads(raw)["quality"] is None
         loaded = await RedisTrafficSnapshotStore(redis).load()
         assert loaded is not None and loaded.edges
 

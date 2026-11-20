@@ -9,6 +9,10 @@ lot for:
 2. **Which road does the fleet use that the map does not have?** Stretches with
    many traces far from every OpenStreetMap road.
 
+And a third one, about the tool itself: **does the road matching work on this
+fleet?** Measured on the real traces, published only in aggregate (see
+[Matching quality on the real fleet](#matching-quality-on-the-real-fleet)).
+
 The map is **hybrid**: OpenStreetMap is the base (the road graph, the names), and
 the fleet's GPS is the live layer. The decision and the measurements are in
 [tempest-react-sdk#667](https://github.com/mauriciobenjamin700/tempest-react-sdk/issues/667).
@@ -377,6 +381,255 @@ map-matching wants them all.
     in a single process (a queue consumer, for instance) and read the snapshot
     from any worker through `RedisTrafficSnapshotStore`.
 
+## Matching quality on the real fleet
+
+`match_to_roads`' defaults were chosen on OSM mappers' traces and on the
+Kubicka dataset — good devices, logs often smoothed. The open question is
+**your** fleet: entry-level phones, urban canyons, batched uploads. Answering
+it needs measuring on real traces, and real traces are exactly what may not be
+kept.
+
+`TrafficAggregator(..., quality=MatchQualityOptions(...))` measures on the
+match the aggregator already makes and keeps **only the window's aggregate**.
+No trace, no trip, no id.
+
+Copy and run it — no network, no Redis:
+
+```python
+import asyncio
+import math
+import random
+from datetime import UTC, datetime, timedelta
+
+import httpx
+from fastapi import FastAPI, Header
+
+from tempest_fastapi_sdk import register_exception_handlers
+from tempest_fastapi_sdk.exceptions import ForbiddenException
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    InMemoryTrafficSnapshotStore,
+    LivePositionSchema,
+    MatchQualityOptions,
+    RoadEdge,
+    RoadGraph,
+    TrafficAggregator,
+    TrafficPrivacy,
+    make_match_quality_router,
+)
+
+CENTER = Coordinate(latitude=-5.0892, longitude=-42.8019)
+METERS_PER_DEGREE = 6371008.8 * math.pi / 180
+
+
+def point(x: float, y: float) -> Coordinate:
+    """A point x metres east and y metres north of the centre."""
+    cos_lat = math.cos(math.radians(CENTER.latitude))
+    return Coordinate(
+        latitude=CENTER.latitude + y / METERS_PER_DEGREE,
+        longitude=CENTER.longitude + x / (METERS_PER_DEGREE * cos_lat),
+    )
+
+
+def avenue() -> RoadGraph:
+    """A 4 km two-way avenue, one edge per 100 m block of way 100."""
+    nodes = [point(100.0 * i, 0.0) for i in range(41)]
+    edges = [RoadEdge(i, i + 1, True, f"way/100:{i}") for i in range(40)]
+    return RoadGraph(nodes, edges)
+
+
+async def ops_only(x_user_id: str = Header()) -> None:
+    """Only the operations team reads the quality."""
+    if x_user_id != "ops":
+        raise ForbiddenException()
+
+
+store = InMemoryTrafficSnapshotStore()
+window_start = datetime(2026, 11, 18, 7, tzinfo=UTC)
+clock = [window_start.timestamp()]
+traffic = TrafficAggregator(
+    avenue(),
+    privacy=TrafficPrivacy(min_devices=5),
+    quality=MatchQualityOptions(window_seconds=3600, dimensions=("os",)),
+    store=store,
+    clock=lambda: clock[0],
+)
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_match_quality_router(store, authorize=ops_only, prefix="/api/traffic/quality")
+)
+
+
+def drive(bus: str, os_name: str, departure: datetime, noise: random.Random) -> None:
+    """One trip east at 10 m/s, 1 Hz, GPS 5 m off the avenue on average."""
+    for second in range(301):
+        when = departure + timedelta(seconds=second)
+        clock[0] = when.timestamp()
+        here = point(10.0 * second, noise.gauss(0.0, 5.0))
+        traffic.add_position(
+            bus,
+            LivePositionSchema(lat=here.latitude, lng=here.longitude, recorded_at=when),
+            dimensions={"os": os_name},
+        )
+        if second % 20 == 19:
+            traffic.process()
+    traffic.end_trip(bus)
+
+
+async def main() -> None:
+    """Twelve trips in one hour, then the operations team reads the quality."""
+    noise = random.Random(667)
+    fleet = ["android"] * 6 + ["ios"] * 5 + ["harmony"]
+    for n, os_name in enumerate(fleet):
+        drive(f"bus-{n}", os_name, window_start + timedelta(minutes=4 * n), noise)
+    clock[0] = (window_start + timedelta(hours=1, seconds=30)).timestamp()
+    await traffic.flush()
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://app") as api:
+        stranger = await api.get("/api/traffic/quality", headers={"X-User-Id": "x"})
+        print("stranger:", stranger.status_code)
+        report = (
+            await api.get("/api/traffic/quality", headers={"X-User-Id": "ops"})
+        ).json()
+
+    snapshot = report["snapshot"]
+    print("window:", snapshot["window_start"], "->", snapshot["window_end"])
+    for label, cell in [
+        ("overall", snapshot["overall"]),
+        *((str(c["dimensions"]), c) for c in snapshot["cells"]),
+        ("other", snapshot["other"]),
+    ]:
+        if cell is None:
+            continue
+        print(
+            f"{label}: {cell['devices']} devices, {cell['positions']} positions,",
+            f"breaks/1000 {cell['breaks_per_1000_positions']},",
+            f"snap {cell['snap_distance_median_m']}/{cell['snap_distance_p90_m']} m,",
+            f"inferred {cell['inferred_share']}",
+        )
+    for ref in report["references"]:
+        print(
+            f"reference {ref['name']}: breaks/1000 {ref['breaks_per_1000_positions']},",
+            f"snap median {ref['snap_distance_median_m']} m",
+        )
+
+
+asyncio.run(main())
+```
+
+Output measured on 2026-11-20 (Python 3.13.3):
+
+```text
+stranger: 403
+window: 2026-11-18T07:00:00Z -> 2026-11-18T08:00:00Z
+overall: 12 devices, 3132 positions, breaks/1000 0.0, snap 3.3/8.0 m, inferred 0.4639
+{'os': 'android'}: 6 devices, 1566 positions, breaks/1000 0.0, snap 3.3/8.25 m, inferred 0.461
+other: 6 devices, 1566 positions, breaks/1000 0.0, snap 3.3/8.0 m, inferred 0.4668
+reference kubicka: breaks/1000 0.19, snap median 3.7 m
+reference brazil-osm: breaks/1000 1.06, snap median 3.7 m
+```
+
+The example's noise is 5 m Gaussian across the avenue. The distance to the
+matched point is the absolute value of that noise, whose theoretical median is
+0.674 × 5 = 3.37 m and p90 1.645 × 5 = 8.22 m. It came out 3.3 / 8.0 m. Let's
+go piece by piece.
+
+### The indicators
+
+They are the ones that validated the matcher in
+[tempest-react-sdk#667](https://github.com/mauriciobenjamin700/tempest-react-sdk/issues/667),
+with the same denominator. That is why a window compares directly with the
+references:
+
+| Indicator (field) | What it says | Kubicka | Brazil (OSM) |
+| --- | --- | --- | --- |
+| Breaks per 1000 positions (`breaks_per_1000_positions`) | Times the HMM chain broke: no possible path between two positions. Rises with wrong-way driving (or a wrong OSM `oneway`), roads missing from the graph and sparse sampling | 0.19 | 1.06 |
+| Position → matched point, median / p90 (`snap_distance_median_m` / `snap_distance_p90_m`) | The GPS error as the match sees it. A long tail (high p90) is urban canyon, overpass or a missing road | 3.7 m (to the true route) | 3.7 / 11.6 m |
+| Matched share (`matched_share`) | Positions with some road within 200 m | — | 100% |
+| `inferred` share (`inferred_share`) | Positions the 2σ (14 m) pre-filter skipped and projected on the previous one's edge. High in slow traffic at 1 Hz, and expected | — | 55.1% |
+| Sampling interval, median / p90 (`sampling_interval_median_s` / `sampling_interval_p90_s`) | Time between two kept positions of a trip. At ≥ 5 s the fixed 100 m detour breaks 5.7 to 24.2 times per 1000 positions (#667's sparse measurement) | ~1 s | 1 / 4 s |
+| Parallel-road switches per km (`parallel_switches_per_km`) | On straight GPS track (bearing over the 75 m before and after differs < 10°), the matched road changes to another within 20° and more than 8 m off the previous one's line. In Brazil these were dual carriageways and overpass × tunnel | — | 0.109 |
+
+`straight_km` is the last row's denominator, and `positions` the first three's.
+Both references ship in `MATCH_QUALITY_REFERENCES`, and the router returns them
+next to the window.
+
+!!! note "Where the measure differs from the reference"
+    The Brazil reference measured whole runs. The aggregator measures the
+    stretches it releases, already without the first and last 200 m, and
+    matches each stretch with only the previous one's last position as
+    context. So a straight stretch across the border of two stretches counts a
+    little less. Kubicka's median is to the true route, not to the matched
+    point.
+
+??? info "Precision of the medians"
+    Distance and interval go into fixed-bucket histograms
+    (`SNAP_DISTANCE_BUCKETS_M`, `SAMPLING_INTERVAL_BUCKETS_S`): 0.1 m up to
+    5 m, 0.25 m up to 20 m, and whole seconds up to 30 s. The quantile is by
+    nearest rank, the same rule as #667's scripts. It returns the bucket's
+    upper bound, capped at the largest value seen. It overestimates by less
+    than one bucket and is exact for a value on a bound. Memory does not grow
+    with the number of positions.
+
+### Coarse dimensions, k-anonymous too
+
+`MatchQualityOptions(dimensions=("os", "app_version"))` declares up to four
+dimensions. The app gives them per trip:
+`add_position(..., dimensions={"os": "android"})`. The latest one given applies
+to the whole trip, and a missing one becomes `"unknown"`. Use coarse values (OS
+family, app version range), never a device model or a full version.
+
+With `make_live_position_router(..., traffic=traffic)`, also pass
+`traffic_dimensions=`: a FastAPI dependency that reads the dimension from the
+request (a header the app sends, for instance) and returns `{"os": "android"}`
+or `None`. A value the aggregator refuses (an undeclared name, a text too long)
+is dropped with a warning in the log, and the position still goes in.
+
+The protection does not depend on you getting that right:
+
+- a cell only comes out with **k distinct devices** (the same `min_devices` as
+  `TrafficPrivacy`);
+- the cells below k are added into `other`. When that sum is still below k,
+  the smallest published cell goes into `other` too, until `other` reaches k or
+  no cell is left. So `overall` minus the cells never isolates a group smaller
+  than k;
+- in the example, `ios` had exactly 5 devices. But `harmony`, with 1, would
+  only be protected if `ios` went down with it, which is why only `android`
+  shows;
+- past `max_cells` (64), a new combination counts only in the total.
+
+### What stays and what leaves
+
+| Rule | Test |
+| --- | --- |
+| Each stretch goes at once into the cell's fixed-size counters and histograms; nothing per trip is kept | `TestNoTripDataKept` |
+| A device only appears as an HMAC under a salt drawn for the window | `TestNoTripDataKept` |
+| When the window closes only the published aggregate remains: salt, hashes and counters are deleted | `TestNoTripDataKept` |
+| The store gets the snapshot with the aggregate `quality` and nothing else; the traffic `GET` by box carries no `quality` | `TestNoTripDataKept` |
+| A cell with fewer than k devices never leaves, not even by difference | `TestDimensionKAnonymity` |
+| Histogram with fixed memory | `TestHistogram` |
+| Known noise gives the expected median; a forced gap counts one break | `TestKnownNoise` |
+
+All in `tests/geo/test_match_quality.py`.
+
+### Reading: `make_match_quality_router`
+
+`make_match_quality_router(store, authorize=..., prefix="/api/traffic/quality")`
+mounts `GET <prefix>`, which reads the same store as traffic and answers a
+`MatchQualityReportSchema`: `snapshot` (the last closed window) and
+`references`. Before the first window closes, `snapshot.window_start` is
+`null`. The router is separate from `make_traffic_router` so you can give it a
+narrower `authorize`: the whole app reads traffic, while quality is the
+operations team's business.
+
+!!! tip "Window"
+    The default is one hour (`window_seconds=3600`), aligned to the clock. With
+    a small fleet, widen the window so cells reach k. A window that does not
+    gather k devices publishes a `null` `overall`, and nothing leaks.
+
 ## Roads the map does not have
 
 `OffRoadDensity(centre)` counts, on a 5 m grid, the **already trimmed**
@@ -429,6 +682,27 @@ street; 8 or fewer give no candidate (k = 5 per 25 m block).
     core; tempest-react-sdk's map-matching, in TypeScript, does the same work at
     8.1 µs per position.
 
+### Cost of the quality
+
+Command: `uv run python scripts/bench_geo_traffic.py --devices N [--spacing 3] [--quality] --repeat 6`
+(Python 3.13.3, 2026-11-20). The 200 trips use `--spacing 3`, to give the 77
+open ones of the table above. The machine was shared (load average 15 to 24 on
+12 cores), so the total time varied more between runs than between "with" and
+"without". The stable number is the time **inside**
+`MatchQualityTracker.record`, because the indicators reuse the `match_to_roads`
+the aggregator already runs:
+
+| Measure | 40 trips | 200 trips |
+| --- | --- | --- |
+| Aggregation without `--quality` (fastest / median) | 66.6 / 77.7 ms per 1000 positions | 49.4–56.1 / 53.3–63.8 ms |
+| Aggregation with `--quality` (fastest / median) | 75.0 / 84.0 ms | 51.7–59.3 / 63.2–63.8 ms |
+| The indicators alone (`record`), fastest / median | 2.07 / 4.50 ms per 1000 positions | 1.72–1.93 / 2.01–2.11 ms |
+| Peak memory (`tracemalloc`), without / with | 0.75 / 0.77 MB | 2.98 / 3.01 MB |
+| Open window state (2 cells, histograms + hashes) | 10.6 kB | 30.8 kB |
+
+The state grows with the window's devices (one hash per device and cell,
+measured with `sys.getsizeof`), not with positions: the histograms have a fixed size.
+
 ## Recap
 
 - `RoadGraph` / `RoadEdge` — the graph, in the same contract as the app's `createRoadGraph`; `road_graph_from_overpass`, `road_graph_from_geojson`, `load_road_graph` (cached).
@@ -436,4 +710,5 @@ street; 8 or fewer give no candidate (k = 5 per 25 m block).
 - `TrafficAggregator` — `add_position`, `end_trip`, `flush`; publishes only stretches with k devices.
 - `TrafficPrivacy` — start and end cut, k, window, rotating salt; each rule tested.
 - `make_traffic_router` — `GET` by box and graph tile, mandatory `authorize`; `traffic_updated` over SSE.
+- `MatchQualityOptions` + `make_match_quality_router` — matching quality on the real fleet, per window, aggregate only and k-anonymous in the dimensions too; next to the Kubicka and Brazil references.
 - `OffRoadDensity` + `infer_road_candidates` — roads OSM lacks, as candidates for review.

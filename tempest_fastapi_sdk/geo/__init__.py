@@ -30,7 +30,8 @@ Layers, all sharing the same schemas:
   :func:`match_to_roads` (HMM map-matching, a port of tempest-react-sdk's),
   :class:`TrafficAggregator` (median speed per road stretch, published only
   k-anonymously, start and end of every trip cut, rotating hashes) and
-  :func:`make_traffic_router`; :class:`OffRoadDensity` +
+  :func:`make_traffic_router`; map-matching quality per window, k-anonymous
+  (``quality=`` + :func:`make_match_quality_router`); :class:`OffRoadDensity` +
   :func:`infer_road_candidates` turn off-road density into road candidates
   for human review.
 * **Database**: :class:`GeoPointMixin` (model) + :class:`GeoRepositoryMixin`
@@ -205,6 +206,42 @@ from tempest_fastapi_sdk.geo.map_matching import RoadMatchOptions as RoadMatchOp
 from tempest_fastapi_sdk.geo.map_matching import RoadMatchResult as RoadMatchResult
 from tempest_fastapi_sdk.geo.map_matching import RoadTraversal as RoadTraversal
 from tempest_fastapi_sdk.geo.map_matching import match_to_roads as match_to_roads
+from tempest_fastapi_sdk.geo.match_quality import (
+    MATCH_QUALITY_REFERENCE_BRAZIL_OSM as MATCH_QUALITY_REFERENCE_BRAZIL_OSM,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MATCH_QUALITY_REFERENCE_KUBICKA as MATCH_QUALITY_REFERENCE_KUBICKA,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MATCH_QUALITY_REFERENCES as MATCH_QUALITY_REFERENCES,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualityCellSchema as MatchQualityCellSchema,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualityIndicatorsSchema as MatchQualityIndicatorsSchema,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualityOptions as MatchQualityOptions,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualityReferenceSchema as MatchQualityReferenceSchema,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualityReportSchema as MatchQualityReportSchema,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualitySnapshotSchema as MatchQualitySnapshotSchema,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualityTracker as MatchQualityTracker,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    QualityHistogram as QualityHistogram,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    QualityTrackPoint as QualityTrackPoint,
+)
 from tempest_fastapi_sdk.geo.municipalities import (
     BR_CITY_NICKNAMES as BR_CITY_NICKNAMES,
 )
@@ -317,6 +354,9 @@ from tempest_fastapi_sdk.geo.traffic import TrafficAggregator as TrafficAggregat
 from tempest_fastapi_sdk.geo.traffic import (
     TrafficAudienceResolver as TrafficAudienceResolver,
 )
+from tempest_fastapi_sdk.geo.traffic import (
+    TrafficDimensionsResolver as TrafficDimensionsResolver,
+)
 from tempest_fastapi_sdk.geo.traffic import TrafficEdgeSchema as TrafficEdgeSchema
 from tempest_fastapi_sdk.geo.traffic import TrafficPrivacy as TrafficPrivacy
 from tempest_fastapi_sdk.geo.traffic import (
@@ -328,6 +368,9 @@ from tempest_fastapi_sdk.geo.traffic_router import (
 )
 from tempest_fastapi_sdk.geo.traffic_router import (
     RoadGraphTileSchema as RoadGraphTileSchema,
+)
+from tempest_fastapi_sdk.geo.traffic_router import (
+    make_match_quality_router as make_match_quality_router,
 )
 from tempest_fastapi_sdk.geo.traffic_router import (
     make_traffic_router as make_traffic_router,
@@ -378,6 +421,9 @@ __all__: list[str] = [
     "EARTH_RADIUS_KM",
     "LIVE_POSITION_INACTIVE_ERROR",
     "LIVE_POSITION_MAX_CLOCK_SKEW",
+    "MATCH_QUALITY_REFERENCES",
+    "MATCH_QUALITY_REFERENCE_BRAZIL_OSM",
+    "MATCH_QUALITY_REFERENCE_KUBICKA",
     "OSM_DRIVABLE_HIGHWAYS",
     "OSM_GEOJSON_COORDINATE_DIGITS",
     "OSM_GRAPH_CACHE_SIZE",
@@ -413,6 +459,13 @@ __all__: list[str] = [
     "LivePositionPublishResponseSchema",
     "LivePositionSchema",
     "LivePositionStore",
+    "MatchQualityCellSchema",
+    "MatchQualityIndicatorsSchema",
+    "MatchQualityOptions",
+    "MatchQualityReferenceSchema",
+    "MatchQualityReportSchema",
+    "MatchQualitySnapshotSchema",
+    "MatchQualityTracker",
     "MatchedFix",
     "MatchedRoute",
     "Municipality",
@@ -422,6 +475,8 @@ __all__: list[str] = [
     "OSRMBackend",
     "OffRoadDensity",
     "PostGISRepositoryMixin",
+    "QualityHistogram",
+    "QualityTrackPoint",
     "RedisGeocodeCacheStore",
     "RedisTrafficSnapshotStore",
     "RoadCandidate",
@@ -436,6 +491,7 @@ __all__: list[str] = [
     "RoutingBackend",
     "TrafficAggregator",
     "TrafficAudienceResolver",
+    "TrafficDimensionsResolver",
     "TrafficEdgeSchema",
     "TrafficPrivacy",
     "TrafficSnapshotSchema",
@@ -469,6 +525,7 @@ __all__: list[str] = [
     "load_road_graph",
     "make_geo_point_model",
     "make_live_position_router",
+    "make_match_quality_router",
     "make_traffic_router",
     "match_to_roads",
     "municipality_by_ibge_code",

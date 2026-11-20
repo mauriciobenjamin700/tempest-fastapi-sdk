@@ -20,6 +20,10 @@ The privacy rules (LGPD) are code here, each one with a test:
 * **No individual trace persisted or exposed.** Raw positions live in
   process memory only until they are released or dropped; the store and the
   SSE event get the snapshot and nothing else.
+* **Map-matching quality only in aggregate** (``quality=``): each released
+  stretch is folded at once into fixed-size counters of a window cell;
+  nothing per trip is kept, and a cell is published with k devices (see
+  :mod:`~tempest_fastapi_sdk.geo.match_quality`).
 * **Device ids only as rotating hashes.** The raw id is never kept: trips
   are keyed by an HMAC under a secret that exists only in this process, and
   each speed sample carries an HMAC of that and the edge under a salt that
@@ -43,7 +47,7 @@ import secrets
 import statistics
 import time
 from collections import deque
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
@@ -56,7 +60,14 @@ from tempest_fastapi_sdk.geo.map_matching import (
     ROAD_MATCH_DEFAULTS,
     MatchedFix,
     RoadMatchOptions,
+    RoadMatchResult,
     match_to_roads,
+)
+from tempest_fastapi_sdk.geo.match_quality import (
+    MatchQualityOptions,
+    MatchQualitySnapshotSchema,
+    MatchQualityTracker,
+    QualityTrackPoint,
 )
 from tempest_fastapi_sdk.geo.road_graph import RoadGraph
 from tempest_fastapi_sdk.geo.schemas import BoundingBox, Coordinate
@@ -80,6 +91,12 @@ TRAFFIC_MIN_DEVICES_FLOOR: Final[int] = 2
 
 TrafficAudienceResolver = Callable[[], Awaitable[Sequence[str]]]
 """Answers the SSE channels (usually user ids) told that traffic changed."""
+
+TrafficDimensionsResolver = Callable[..., Awaitable[Mapping[str, str] | None]]
+"""FastAPI dependency answering a trip's coarse quality dimensions, or ``None``.
+
+Given to ``make_live_position_router(traffic_dimensions=...)``.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +220,11 @@ class TrafficSnapshotSchema(BaseSchema):
         min_devices (int | None): The k it was published under.
         edges (list[TrafficEdgeSchema]): Edges with at least ``min_devices``
             devices.
+        quality (MatchQualitySnapshotSchema | None): The map-matching
+            quality of the last closed quality window, when the aggregator
+            measures it (``quality=``). Served by
+            :func:`~tempest_fastapi_sdk.geo.make_match_quality_router`;
+            :meth:`within` leaves it out.
     """
 
     generated_at: AwareDatetime | None = Field(
@@ -224,6 +246,11 @@ class TrafficSnapshotSchema(BaseSchema):
         title="Edges",
         description="Published edges.",
     )
+    quality: MatchQualitySnapshotSchema | None = Field(
+        default=None,
+        title="Map-matching quality",
+        description="Aggregate quality of the last closed window, when measured.",
+    )
 
     def within(self, bbox: BoundingBox) -> TrafficSnapshotSchema:
         """The same snapshot restricted to edges with an end inside ``bbox``.
@@ -232,7 +259,8 @@ class TrafficSnapshotSchema(BaseSchema):
             bbox (BoundingBox): The area.
 
         Returns:
-            TrafficSnapshotSchema: A copy with the matching edges.
+            TrafficSnapshotSchema: A copy with the matching edges and no
+            ``quality`` (city-wide, read from its own route).
         """
         return self.model_copy(
             update={
@@ -240,7 +268,8 @@ class TrafficSnapshotSchema(BaseSchema):
                     e
                     for e in self.edges
                     if bbox.contains(e.start) or bbox.contains(e.end)
-                ]
+                ],
+                "quality": None,
             }
         )
 
@@ -384,6 +413,8 @@ class _Trip:
             stretch to the previous one.
         carry (dict[int, list[float]]): Distance and time on the edge the
             device is on, not yet a sample.
+        cell (tuple[str, ...]): Quality cell of the trip (its coarse
+            dimension values), when quality is measured.
     """
 
     origin: tuple[float, float]
@@ -392,6 +423,7 @@ class _Trip:
     pending: list[_Fix] = field(default_factory=list)
     tail: _Fix | None = None
     carry: dict[int, list[float]] = field(default_factory=dict)
+    cell: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -463,6 +495,7 @@ class TrafficAggregator:
         audience: TrafficAudienceResolver | None = None,
         event_name: str = DEFAULT_TRAFFIC_EVENT,
         density: OffRoadDensity | None = None,
+        quality: MatchQualityOptions | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         """Initialize the aggregator.
@@ -481,6 +514,10 @@ class TrafficAggregator:
             density (OffRoadDensity | None): Collects the released positions
                 that are off every road, for road inference. Its grid uses
                 ``graph``'s plane.
+            quality (MatchQualityOptions | None): Also measure the
+                map-matching quality of every released stretch, published
+                only per window and k-anonymously (k is
+                ``privacy.min_devices``) in :meth:`snapshot`.
             clock (Callable[[], float]): Server time, epoch seconds.
 
         Raises:
@@ -505,6 +542,11 @@ class TrafficAggregator:
         self._trips: dict[bytes, _Trip] = {}
         self._salts: dict[int, bytes] = {}
         self._samples: dict[int, deque[_Sample]] = {}
+        self._quality: MatchQualityTracker | None = (
+            None
+            if quality is None
+            else MatchQualityTracker(quality, min_devices=privacy.min_devices)
+        )
 
     def _pseudonym(self, device_id: str) -> bytes:
         """HMAC of a device id under this process's secret.
@@ -543,7 +585,13 @@ class TrafficAggregator:
             self._salts[epoch] = salt
         return salt
 
-    def add_position(self, device_id: str, position: LivePositionSchema) -> bool:
+    def add_position(
+        self,
+        device_id: str,
+        position: LivePositionSchema,
+        *,
+        dimensions: Mapping[str, str] | None = None,
+    ) -> bool:
         """Take one position of a device.
 
         Dropped (answer ``False``) when: ``accuracy_m`` is worse than
@@ -556,10 +604,23 @@ class TrafficAggregator:
         Args:
             device_id (str): The device (vehicle, phone). Hashed at once.
             position (LivePositionSchema): The position.
+            dimensions (Mapping[str, str] | None): Coarse values of the
+                quality dimensions declared in ``MatchQualityOptions``
+                (``{"os": "android"}``) for this device's trip; the latest
+                given applies to the whole trip. ``None`` keeps them.
 
         Returns:
             bool: Whether it was kept for aggregation.
+
+        Raises:
+            ValueError: When ``dimensions`` is given without ``quality=``, or
+                names an undeclared dimension or a value out of bounds.
         """
+        cell: tuple[str, ...] | None = None
+        if dimensions is not None:
+            if self._quality is None:
+                raise ValueError("dimensions need TrafficAggregator(quality=...)")
+            cell = self._quality.cell_of(dimensions)
         p = self.privacy
         if position.accuracy_m is not None and position.accuracy_m > p.max_accuracy_m:
             return False
@@ -572,8 +633,12 @@ class TrafficAggregator:
             self._finish(key, trip)
             trip = None
         if trip is None:
-            self._trips[key] = _Trip(origin=(x, y), last=fix, seen_at=now)
+            self._trips[key] = _Trip(
+                origin=(x, y), last=fix, seen_at=now, cell=cell or ()
+            )
             return False
+        if cell is not None:
+            trip.cell = cell
         if fix.t <= trip.last.t:
             return False
         moved = math.hypot(x - trip.last.x, y - trip.last.y)
@@ -666,8 +731,22 @@ class TrafficAggregator:
                 if not self.graph.candidates_near(f.x, f.y, radius, 1):
                     self._density.add(key, f.coordinate, f.t)
         fixes = ([trip.tail] if trip.tail is not None else []) + chunk
-        if len(fixes) >= 2:
-            self._accumulate(key, trip, fixes)
+        if chunk and (len(fixes) >= 2 or self._quality is not None):
+            result = match_to_roads(
+                [f.coordinate for f in fixes], self.graph, self.match_options
+            )
+            if len(fixes) >= 2:
+                self._accumulate(key, trip, fixes, result)
+            if self._quality is not None:
+                self._quality.record(
+                    self._clock(),
+                    key,
+                    trip.cell,
+                    self.graph,
+                    [QualityTrackPoint(f.x, f.y, f.t) for f in fixes],
+                    result,
+                    skip=len(fixes) - len(chunk),
+                )
         if chunk:
             trip.tail = chunk[-1]
         if final:
@@ -675,7 +754,13 @@ class TrafficAggregator:
                 self._emit(key, directed, dist, dt, t)
             trip.carry.clear()
 
-    def _accumulate(self, key: bytes, trip: _Trip, fixes: list[_Fix]) -> None:
+    def _accumulate(
+        self,
+        key: bytes,
+        trip: _Trip,
+        fixes: list[_Fix],
+        result: RoadMatchResult,
+    ) -> None:
         """Spread distance and time of each step over the edges it drove.
 
         Args:
@@ -683,10 +768,8 @@ class TrafficAggregator:
             trip (_Trip): The trip; its ``carry`` holds the open edge.
             fixes (list[_Fix]): Positions, the first one possibly the
                 previous stretch's tail.
+            result (RoadMatchResult): ``match_to_roads`` of ``fixes``.
         """
-        result = match_to_roads(
-            [f.coordinate for f in fixes], self.graph, self.match_options
-        )
         chain_of: dict[int, int] = {}
         for number, route in enumerate(result.routes):
             for i in range(route.first_fix, route.last_fix + 1):
@@ -796,6 +879,8 @@ class TrafficAggregator:
             del self._salts[epoch]
         if self._density is not None:
             self._density.roll(now)
+        if self._quality is not None:
+            self._quality.roll(now)
 
     def snapshot(self) -> TrafficSnapshotSchema:
         """The k-anonymous edges of the current window.
@@ -834,7 +919,20 @@ class TrafficAggregator:
             window_seconds=self.privacy.window_seconds,
             min_devices=k,
             edges=edges,
+            quality=self.quality_snapshot(),
         )
+
+    def quality_snapshot(self) -> MatchQualitySnapshotSchema | None:
+        """The map-matching quality of the last closed quality window.
+
+        Returns:
+            MatchQualitySnapshotSchema | None: The k-anonymous aggregate
+            (empty before the first window closed); ``None`` without
+            ``quality=``.
+        """
+        if self._quality is None:
+            return None
+        return self._quality.snapshot(self._clock())
 
     async def flush(self) -> TrafficSnapshotSchema:
         """Process, publish the snapshot to the store and tell the audience.
@@ -875,6 +973,7 @@ __all__: list[str] = [
     "RedisTrafficSnapshotStore",
     "TrafficAggregator",
     "TrafficAudienceResolver",
+    "TrafficDimensionsResolver",
     "TrafficEdgeSchema",
     "TrafficPrivacy",
     "TrafficSnapshotSchema",

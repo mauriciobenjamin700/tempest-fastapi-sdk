@@ -18,7 +18,8 @@ error, sent to the caller after ``authorize`` passed.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
+import logging
+from collections.abc import Callable, Coroutine, Mapping
 from typing import Any, Final
 
 from fastapi import APIRouter, Depends, Request
@@ -27,8 +28,13 @@ from pydantic import Field
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.geo.live import LivePositionSchema, LivePositionStore
-from tempest_fastapi_sdk.geo.traffic import TrafficAggregator
+from tempest_fastapi_sdk.geo.traffic import (
+    TrafficAggregator,
+    TrafficDimensionsResolver,
+)
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 LIVE_POSITION_INACTIVE_ERROR: Final[str] = "Channel is not accepting positions"
 """Message of the ``409`` answered when ``channel_active`` says ``False``."""
@@ -56,6 +62,7 @@ def make_live_position_router(
     authorize: Callable[..., Coroutine[Any, Any, Any]],
     channel_active: Callable[..., Coroutine[Any, Any, bool]],
     traffic: TrafficAggregator | None = None,
+    traffic_dimensions: TrafficDimensionsResolver | None = None,
     prefix: str = "/live",
     tag: str = "Live position",
     docs_locale: str | None = None,
@@ -88,6 +95,13 @@ def make_live_position_router(
             as the device — throttled or not, since the matcher wants every
             fix. The aggregator hashes the id at once and publishes only
             k-anonymous traffic.
+        traffic_dimensions (TrafficDimensionsResolver | None): Dependency
+            answering the coarse quality dimensions of the trip
+            (``{"os": "android"}``, read from a header the app sends, for
+            instance), handed to ``traffic.add_position``; needs ``traffic``
+            built with ``quality=``. Values the aggregator refuses (an
+            undeclared name, a value too long) are dropped with a warning
+            and the position is still aggregated.
         prefix (str): URL prefix. Defaults to ``"/live"``.
         tag (str): OpenAPI tag. Defaults to ``"Live position"``.
         docs_locale (str | None): Language of the OpenAPI ``summary`` and
@@ -98,7 +112,8 @@ def make_live_position_router(
         APIRouter: The router, ready for ``app.include_router``.
 
     Raises:
-        ValueError: When ``authorize`` or ``channel_active`` is ``None``.
+        ValueError: When ``authorize`` or ``channel_active`` is ``None``,
+            or ``traffic_dimensions`` comes without ``traffic``.
     """
     if authorize is None:
         raise ValueError(
@@ -107,6 +122,18 @@ def make_live_position_router(
         )
     if channel_active is None:
         raise ValueError("make_live_position_router needs a channel_active dependency")
+    if traffic_dimensions is not None and traffic is None:
+        raise ValueError("traffic_dimensions needs traffic=")
+
+    async def no_dimensions() -> Mapping[str, str] | None:
+        """Answer no dimensions when the service gives no resolver.
+
+        Returns:
+            Mapping[str, str] | None: Always ``None``.
+        """
+        return None
+
+    dimensions_of = traffic_dimensions or no_dimensions
 
     def resolve_store(request: Request) -> LivePositionStore:
         """Return the store for this request.
@@ -136,6 +163,7 @@ def make_live_position_router(
         position: LivePositionSchema,
         request: Request,
         active: bool = Depends(channel_active),
+        dimensions: Mapping[str, str] | None = Depends(dimensions_of),
     ) -> LivePositionPublishResponseSchema:
         """Hand an authorized position to the store.
 
@@ -144,6 +172,8 @@ def make_live_position_router(
             position (LivePositionSchema): The reported position.
             request (Request): The request being served.
             active (bool): What ``channel_active`` answered.
+            dimensions (Mapping[str, str] | None): What
+                ``traffic_dimensions`` answered.
 
         Returns:
             LivePositionPublishResponseSchema: Whether it was accepted.
@@ -155,7 +185,11 @@ def make_live_position_router(
         if not active:
             raise ConflictException(message=LIVE_POSITION_INACTIVE_ERROR)
         if traffic is not None:
-            traffic.add_position(channel_id, position)
+            try:
+                traffic.add_position(channel_id, position, dimensions=dimensions)
+            except ValueError:
+                logger.warning("live position: quality dimensions refused, dropped")
+                traffic.add_position(channel_id, position)
         accepted = await resolve_store(request).publish(channel_id, position)
         return LivePositionPublishResponseSchema(accepted=accepted)
 
