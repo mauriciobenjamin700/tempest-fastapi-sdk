@@ -64,6 +64,7 @@ from tempest_fastapi_sdk.settings.base import (
     reject_conflicting_env_aliases,
 )
 from tempest_fastapi_sdk.settings.storage_credential import StorageBucketCredential
+from tempest_fastapi_sdk.utils.vapid import check_vapid_subject
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.storage import (
@@ -1610,7 +1611,8 @@ class WebPushSettings(BaseAppSettings):
         VAPID_PRIVATE_KEY (str): URL-safe base64 VAPID private key.
             Default: ``""``.
         VAPID_SUBJECT (str): ``mailto:`` / ``https://`` contact in the VAPID
-            JWT. Default: ``"mailto:admin@example.com"``.
+            JWT. Default: ``"mailto:admin@example.com"``. Checked when
+            ``VAPID_PRIVATE_KEY`` is set (see :meth:`_check_vapid_subject`).
         WEBPUSH_DEFAULT_TTL_SECONDS (int): Default TTL for outgoing
             notifications. Default: ``86400``.
     """
@@ -1645,6 +1647,27 @@ class WebPushSettings(BaseAppSettings):
         ),
         examples=[3600, 86_400, 86_400 * 7],
     )
+
+    @model_validator(mode="after")
+    def _check_vapid_subject(self) -> Self:
+        """Refuse a ``VAPID_SUBJECT`` the push signature would reject.
+
+        Checked only when ``VAPID_PRIVATE_KEY`` is set, which is when push is
+        on (:attr:`webpush_enabled`); with no key nothing is signed. Without
+        this check an e-mail missing its ``mailto:`` prefix loads fine and
+        every push fails later with ``py_vapid``'s ``Missing 'sub' from
+        claims``, a message about an absent setting (#791).
+
+        Returns:
+            Self: The settings, unchanged.
+
+        Raises:
+            ValueError: When the subject is not ``mailto:<email>`` nor
+                ``https://<host>``; the settings fail to load.
+        """
+        if self.VAPID_PRIVATE_KEY:
+            check_vapid_subject(self.VAPID_SUBJECT)
+        return self
 
     def webpush_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`WebPushDispatcher` kwargs.

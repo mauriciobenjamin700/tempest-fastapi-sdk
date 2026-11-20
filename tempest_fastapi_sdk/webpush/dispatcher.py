@@ -26,6 +26,7 @@ from tempest_fastapi_sdk.utils._egress import (
     is_public_address,
     system_resolver,
 )
+from tempest_fastapi_sdk.utils.vapid import check_vapid_subject
 from tempest_fastapi_sdk.webpush.schemas import (
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
@@ -159,6 +160,20 @@ class WebPushGoneError(WebPushError):
 
     Maps to HTTP 404/410. Receivers should delete the subscription
     from their store and stop attempting delivery.
+    """
+
+
+class WebPushConfigurationError(WebPushError):
+    """Raised when the dispatcher's own VAPID configuration cannot sign.
+
+    A configuration fault, not a delivery one: it fails the same way for
+    every subscription, so :meth:`WebPushDispatcher.send_many` raises it
+    rather than logging it per subscriber. The dispatcher checks the ``sub``
+    claim on construction; this covers what that check cannot see, a claim
+    changed afterwards, by turning ``py_vapid``'s ``VapidException`` into a
+    typed error. A malformed private key is not covered: ``pywebpush``
+    raises ``binascii.Error`` (a ``ValueError``) for it, before ``py_vapid``
+    signs anything.
     """
 
 
@@ -412,17 +427,23 @@ class WebPushDispatcher:
                 window (tests).
 
         Raises:
-            ValueError: When ``prune_after_dns_refusals`` is below 1 or
-                ``dns_refusal_window_seconds`` is negative.
+            ValueError: When ``prune_after_dns_refusals`` is below 1,
+                ``dns_refusal_window_seconds`` is negative, or the ``sub``
+                claim (``vapid_subject``, or a ``"sub"`` in
+                ``extra_vapid_claims``) is not ``mailto:<email>`` nor
+                ``https://<host>`` — the format ``py_vapid`` signs with, so
+                the fault surfaces here instead of on the first push (#791).
         """
         if prune_after_dns_refusals is not None and prune_after_dns_refusals < 1:
             raise ValueError("prune_after_dns_refusals must be at least 1")
         if dns_refusal_window_seconds < 0:
             raise ValueError("dns_refusal_window_seconds must not be negative")
-        self.vapid_private_key: str = vapid_private_key
-        self.vapid_claims: dict[str, str] = {"sub": vapid_subject}
+        claims: dict[str, str] = {"sub": vapid_subject}
         if extra_vapid_claims:
-            self.vapid_claims.update(extra_vapid_claims)
+            claims.update(extra_vapid_claims)
+        check_vapid_subject(claims["sub"], name="vapid_subject")
+        self.vapid_private_key: str = vapid_private_key
+        self.vapid_claims: dict[str, str] = claims
         self.ttl_seconds: int = ttl_seconds
         self.timeout: float = timeout
         self.allow_private_networks: bool = allow_private_networks
@@ -576,12 +597,16 @@ class WebPushDispatcher:
             WebPushEndpointRefusedError: When the egress check refuses the
                 endpoint (non-public address, not ``https``); no request is
                 sent.
+            WebPushConfigurationError: When ``py_vapid`` refuses to sign
+                the dispatcher's claims (``VapidException``, a ``sub`` it
+                does not accept); no request is sent.
             WebPushError: For any other delivery failure, including an
                 unresolvable host, a redirect answer, a timeout and a
                 connection error.
         """
         pywebpush = _require_pywebpush()
         import requests
+        from py_vapid import VapidException
 
         host, address = await self._pin_destination(subscription.endpoint)
 
@@ -614,6 +639,11 @@ class WebPushDispatcher:
                     timeout=self.timeout,
                     requests_session=session,
                 )
+            except VapidException as exc:
+                raise WebPushConfigurationError(
+                    f"Web Push cannot sign the VAPID claims: {exc}",
+                    endpoint=subscription.endpoint,
+                ) from exc
             except requests.RequestException as exc:
                 raise WebPushError(
                     f"Web Push delivery failed for "
@@ -680,6 +710,13 @@ class WebPushDispatcher:
         Returns:
             list[str]: Endpoints whose subscription is gone and should
             be removed from the application's store.
+
+        Raises:
+            WebPushConfigurationError: When ``py_vapid`` refuses to sign the
+                dispatcher's claims. It fails the same way for every
+                subscription, so it is raised rather than logged per
+                subscriber like a delivery failure. Before #791 the raw
+                ``VapidException`` escaped instead, untyped.
         """
         gone: list[str] = []
         limiter: asyncio.Semaphore | None = (
@@ -709,6 +746,8 @@ class WebPushDispatcher:
                 await self.send(sub, payload, ttl_seconds=ttl_seconds, headers=headers)
             except WebPushGoneError:
                 gone.append(sub.endpoint)
+            except WebPushConfigurationError:
+                raise
             except WebPushEndpointRefusedError as exc:
                 if exc.permanent or _dns_prunes(sub.endpoint):
                     if sub.endpoint not in gone:
@@ -744,6 +783,7 @@ __all__: list[str] = [
     "DEFAULT_PRUNE_AFTER_DNS_REFUSALS",
     "KNOWN_PUSH_SERVICE_HOSTS",
     "MAX_TRACKED_DNS_REFUSALS",
+    "WebPushConfigurationError",
     "WebPushDispatcher",
     "WebPushEndpointRefusedError",
     "WebPushError",

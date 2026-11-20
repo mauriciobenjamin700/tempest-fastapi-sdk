@@ -271,8 +271,8 @@ Column(
 - The Python renderer's (SSR) `Style → CSS` conversion is a port of the
   JS client's (WASM/server) `styleToCss`, and `tempestweb` declares both
   outputs byte-identical, so the page does not "jump" when the client
-  re-renders it. Measured on `tempestweb` 0.127.0 (the `[ssr]` extra's
-  floor) with three `Style`s — this example's, an `Edge.symmetric` with
+  re-renders it. Measured on `tempestweb` 0.127.0 (then the `[ssr]`
+  extra's floor) with three `Style`s — this example's, an `Edge.symmetric` with
   `radius`, and one with margin, border, colors, `font_size` and a
   fractional `width` —, both functions emitted the same string for all
   three. That is a sample, not proof for every `Style` field.
@@ -848,7 +848,7 @@ def view(app: App[object]) -> Widget:
   hosts a **server** (WebSocket/SSE) build as a mountable sub-app;
   `theme=` hands the palette to every session's `App`, and the components
   the `view` builds resolve against it (capability since 0.67.0; declared
-  floor `tempestweb>=0.127.0`).
+  floor `tempestweb>=0.141.1`).
   **`detect_build_mode(dir)`** tells them apart.
 - Everything lives in the `[ssr]` extra
   (`uv add "tempest-fastapi-sdk[ssr]"`), loaded on demand —

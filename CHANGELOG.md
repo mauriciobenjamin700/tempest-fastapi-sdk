@@ -9,6 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `match_to_roads(..., timestamps=...)`: com o horário de cada posição
+  (segundos epoch), o desvio permitido entre duas posições cresce com o
+  intervalo — `linha reta + max_detour_m + detour_per_second_m ·
+  min(Δt, max_interval_s)` —, porte do tempest-react-sdk#678 (#667).
+  `RoadMatchOptions` / `ROAD_MATCH_DEFAULTS` ganharam `detour_per_second_m`
+  (2 m/s; `0` desliga) e `max_interval_s` (60 s). Uma frota que envia a cada
+  5–30 s deixa de quebrar a cadeia a cada esquina. Horário ausente, `nan`,
+  repetido ou voltando conta como Δt 0: resultado idêntico ao de antes. O
+  `TrafficAggregator` passa o `recorded_at` de cada posição. Paridade:
+  `scripts/map_matching_parity_fixture.mjs` ganhou 25 cenários com horário
+  (31 no total), gerados do `dist` do tempest-react-sdk com o #678; no
+  `scripts/bench_geo_traffic.py` (posições a 1 Hz) a agregação publica as
+  mesmas arestas e recupera a mesma rua (77,2% com 12 viagens, 100% com 20).
+
+### Fixed
+
+- Cinco municípios tinham a coordenada **fora do próprio território**
+  (tempest-react-sdk#677). A sede que `kelvins/municipios-brasileiros` dá para
+  eles cai longe: medido ponto-no-polígono das 5571 sedes contra a malha
+  municipal do IBGE 2022 em qualidade máxima (`/api/v3/malhas/estados/<UF>?
+  intrarregiao=municipio&qualidade=maxima`, distância até a divisa mais
+  próxima), 17 caem fora, 12 delas a menos de 1 km da divisa (cidade em
+  margem de rio ou na costa) e estas cinco muito além: Pau D'Arco/PA a
+  749,67 km (perto de Belém), Cerro Azul/PR a 359,66 km, Alto Paraíso/PR a
+  287,65 km, São Sebastião da Vargem Alegre/MG a 157,07 km e São Caitano/PE a
+  7,48 km. Para elas, `Municipality.coordinate` passa a ser o centróide do
+  território — os mesmos valores do `br-seats.json` do tempest-react-sdk
+  (#679), cada um dentro do próprio município na mesma malha — e o campo novo
+  `Municipality.point` responde `"centroid"` (`"seat"` nos outros 5566). As
+  5571 coordenadas agora batem com as do react-sdk, fixado por hash em
+  `tests/geo/test_br_seat_source.py`.
+- `scripts/regen_br_municipalities.py` lia o CSV da `kelvins` da `main`, sem
+  commit fixado. Agora lê do commit `503e2f70bbf1b4b7ec0b1f68b09086ccc38fe861`
+  (o mesmo do react-sdk) e trata o download como dado não confiável: teto de
+  tamanho, SHA-256 do CSV e do `LICENSE` conferidos (também numa cópia local
+  passada por `--kelvins`) e parse estrito (cabeçalho exato, nove colunas, sem
+  aspas, código de sete dígitos, coordenada decimal dentro do Brasil, sem
+  duplicata). O módulo gerado traz `KELVINS_COMMIT`, `KELVINS_CSV_SHA256` e
+  `CENTROID_FALLBACK_IBGE_CODES`.
+
+## [0.367.1] — 2026-11-20
+
+### Added
+
 - Trânsito da frota a partir do GPS, anônimo por construção (fase 3 de
   tempest-react-sdk#667). `TrafficAggregator(graph, privacy=TrafficPrivacy(...))`
   recebe as posições (`add_position`, `end_trip`), encaixa nas ruas e, em
@@ -72,31 +116,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   map-matching (40 e 200 viagens, até 77 abertas), pico de 3,00 MB; rua de 450 m tirada
   do grafo recuperada em 100% com 20 viagens ou mais, 77,2% com 12.
 
+- `tempest_fastapi_sdk.utils.vapid`: `VAPID_SUBJECT_PATTERN` (portado
+  literalmente do `_check_sub` da `py_vapid` 1.9.4, com teste que compara com
+  a fonte instalada), `is_valid_vapid_subject` e `check_vapid_subject`;
+  `WebPushConfigurationError` exportado em `tempest_fastapi_sdk.webpush` e no
+  topo.
+
+### Changed
+
+- Pisos das dependências na versão mais nova: `fastapi>=0.165.0` (era
+  0.141.1), `tempestweb>=0.141.1` (era 0.127.0, extra `[ssr]`) e
+  `ort-vision-sdk>=0.12.0` (era 0.8.0, extras `[vision]` e
+  `[modelops-compose]`). O `tempest-cli` já estava na mais nova (0.7.0). Por
+  arrasto, o piso efetivo do Starlette sobe de 0.46.0 para 1.6.0 (o que o
+  FastAPI 0.165.0 exige) e o lock resolve Starlette 1.10.0 e `tempest-core`
+  0.23.0. Nenhuma outra dependência mudou no lock.
+- `setup_tracing` chamado tarde (no lifespan): o `RuntimeWarning` dizia que
+  nenhuma request viraria span. Desde o FastAPI 0.142 a request é traçada
+  pela telemetria do próprio FastAPI nesse caso (escopo `fastapi`, filhos
+  `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization`,
+  atributos da convenção semântica nova); o aviso e a receita
+  `observability` agora dizem isso. Chamado no nível do módulo, nada muda: a
+  instrumentação do SDK entra e o FastAPI desliga o tracing dele para a app,
+  sem span duplicado (medido, e fixado num teste).
+
 ### Fixed
 
-- Cinco municípios tinham a coordenada **fora do próprio território**
-  (tempest-react-sdk#677). A sede que `kelvins/municipios-brasileiros` dá para
-  eles cai longe: medido ponto-no-polígono das 5571 sedes contra a malha
-  municipal do IBGE 2022 em qualidade máxima (`/api/v3/malhas/estados/<UF>?
-  intrarregiao=municipio&qualidade=maxima`, distância até a divisa mais
-  próxima), 17 caem fora, 12 delas a menos de 1 km da divisa (cidade em
-  margem de rio ou na costa) e estas cinco muito além: Pau D'Arco/PA a
-  749,67 km (perto de Belém), Cerro Azul/PR a 359,66 km, Alto Paraíso/PR a
-  287,65 km, São Sebastião da Vargem Alegre/MG a 157,07 km e São Caitano/PE a
-  7,48 km. Para elas, `Municipality.coordinate` passa a ser o centróide do
-  território — os mesmos valores do `br-seats.json` do tempest-react-sdk
-  (#679), cada um dentro do próprio município na mesma malha — e o campo novo
-  `Municipality.point` responde `"centroid"` (`"seat"` nos outros 5566). As
-  5571 coordenadas agora batem com as do react-sdk, fixado por hash em
-  `tests/geo/test_br_seat_source.py`.
-- `scripts/regen_br_municipalities.py` lia o CSV da `kelvins` da `main`, sem
-  commit fixado. Agora lê do commit `503e2f70bbf1b4b7ec0b1f68b09086ccc38fe861`
-  (o mesmo do react-sdk) e trata o download como dado não confiável: teto de
-  tamanho, SHA-256 do CSV e do `LICENSE` conferidos (também numa cópia local
-  passada por `--kelvins`) e parse estrito (cabeçalho exato, nove colunas, sem
-  aspas, código de sete dígitos, coordenada decimal dentro do Brasil, sem
-  duplicata). O módulo gerado traz `KELVINS_COMMIT`, `KELVINS_CSV_SHA256` e
-  `CENTROID_FALLBACK_IBGE_CODES`.
+- `VAPID_SUBJECT` sem `mailto:` (um e-mail cru) ou vazio carregava normalmente
+  e só falhava no envio, com a mensagem enganosa da `py_vapid` (`Missing 'sub'
+  from claims`), vazando crua do `send`, furando o `send_many` e virando `500`
+  em quem chamava (#791). Agora:
+  - `WebPushSettings` (e `PushSettings`) recusa na leitura, quando
+    `VAPID_PRIVATE_KEY` está preenchida, com
+    `VAPID_SUBJECT must be 'mailto:<email>' or 'https://<host>' (got a bare
+    e-mail; prefix it with 'mailto:')`; sem chave, nada é checado;
+  - `WebPushDispatcher.__init__` faz a mesma checagem, inclusive num `"sub"`
+    de `extra_vapid_claims`;
+  - uma recusa da `py_vapid` no `send` vira `WebPushConfigurationError`
+    (subclasse de `WebPushError`), tipada, em vez da `VapidException` crua;
+    o `send_many` a levanta em vez de logar por assinante. Chave privada
+    malformada não entra nisso: o `pywebpush` levanta `binascii.Error`
+    antes de assinar.
+
+### Notas de atualização
+
+- FastAPI 0.142–0.165 traz mudanças que alcançam o código do **seu**
+  serviço, não o do SDK: OpenTelemetry nativo (exportador automático só com
+  `FASTAPI_OTEL_AUTO_CONFIGURE=true`, desde a 0.143), `**extra` removido de
+  `Query`/`Form`/`Body`/... (argumento desconhecido vira `TypeError`, 0.155),
+  defaults de `Query`/`Header`/`Cookie`/`Form` não validados sem
+  `validate_default=True` (0.148), campo de form vazio tratado como ausente
+  (0.149/0.150), `null` distinto de omitido no body (0.151), `extra` de um
+  parameter model aplicado aos campos irmãos (0.160), booleano de form
+  omitido usa o default declarado (0.162) e Python 3.10 fora (0.162.6; o SDK
+  já exigia 3.11). Limites de body e de form (0.164/0.165) são opt-in: sem
+  configurar, o body continua ilimitado e o form mantém os defaults do
+  Starlette (1000 campos, 1000 arquivos, 1 MiB por campo de texto).
+- `tempestweb` 0.141 gera caminhos com hash de conteúdo
+  (`tempestweb-pkg.<hash>.zip`, `client-<hash>/`) e publica o próprio
+  `immutable.json`: o `make_web_app_router` lê esse manifesto sem
+  configuração e serve esses caminhos com cache de um ano. Quem pedia
+  `/tempestweb-pkg.zip` pelo nome fixo cai no fallback da SPA.
+- `ort-vision-sdk` 0.9–0.12: o `Classifier` não aplica mais um segundo
+  softmax (a confiança muda; a classe prevista não), e o protocolo
+  `InferenceBackend` ganhou `input_dtypes`/`input_dtype` — afeta só quem
+  implementa um backend próprio.
 
 ## [0.367.0] — 2026-11-18
 

@@ -263,7 +263,7 @@ app.include_router(
 
 !!! info "Por que contar pixel, se já tem teto de bytes"
     PNG de cor chapada comprime ordens de grandeza. Medido com Pillow
-    12.3.0 e `ort-vision-sdk` 0.8.0: um PNG em branco de 9400 x 9400 com
+    13.0.0 e `ort-vision-sdk` 0.12.0: um PNG em branco de 9400 x 9400 com
     10 804 bytes decodifica num array RGB de 265 080 000 bytes — e passa
     calado pelo aviso de decompression bomb do próprio Pillow, porque
     88,36 MP fica abaixo do limiar dele (89,48 MP). O teto de bytes não pega

@@ -2379,6 +2379,9 @@ if TYPE_CHECKING:
         WebPushActionSchema as WebPushActionSchema,
     )
     from tempest_fastapi_sdk.webpush import (
+        WebPushConfigurationError as WebPushConfigurationError,
+    )
+    from tempest_fastapi_sdk.webpush import (
         WebPushDispatcher as WebPushDispatcher,
     )
     from tempest_fastapi_sdk.webpush import (
@@ -2430,7 +2433,7 @@ if TYPE_CHECKING:
         make_websocket_router as make_websocket_router,
     )
 
-__version__: str = "0.367.0"
+__version__: str = "0.367.1"
 
 _LAZY_ATTRIBUTES: dict[str, str] = {
     "AllowedImageMediaTypes": "tempest_fastapi_sdk.utils",
@@ -3190,6 +3193,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "verify_opaque_token": "tempest_fastapi_sdk.utils",
     "verify_path": "tempest_fastapi_sdk.utils",
     "WebPushDispatcher": "tempest_fastapi_sdk.webpush",
+    "WebPushConfigurationError": "tempest_fastapi_sdk.webpush",
     "WebPushEndpointRefusedError": "tempest_fastapi_sdk.webpush",
     "WebPushError": "tempest_fastapi_sdk.webpush",
     "WebPushGoneError": "tempest_fastapi_sdk.webpush",
@@ -3844,6 +3848,7 @@ __all__: list[str] = [
     "WebAuthnRegisterCompleteSchema",
     "WebAuthnService",
     "WebPushActionSchema",
+    "WebPushConfigurationError",
     "WebPushDispatcher",
     "WebPushEndpointRefusedError",
     "WebPushError",

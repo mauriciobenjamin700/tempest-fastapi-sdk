@@ -566,7 +566,8 @@ dois lados assinam a mesma string:
 - `/api/files/a%2Fb.pdf` e `/api/files/a/b.pdf` chegam à rota como o mesmo
   path, com a mesma chave `a/b.pdf`, e valem com a mesma assinatura.
 
-Medido no Starlette 0.46.0 (o piso que `fastapi>=0.141.1` aceita) e no 1.6.0.
+Medido no Starlette 0.46.0 e no 1.6.0 — o piso que `fastapi>=0.165.0` exige
+hoje; a suíte roda no 1.10.0.
 
 !!! warning "Passe o path decodificado, nunca um já codificado"
     `sign_path("/api/files/aula%2001.mp4", ...)` assina a chave literal

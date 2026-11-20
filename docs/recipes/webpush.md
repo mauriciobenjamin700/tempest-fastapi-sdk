@@ -28,6 +28,27 @@ trata: `WebPushGoneError` (HTTP 404/410 — apague a inscrição) e
 `pushManager.subscribe`); a **privada** assina cada push no backend. O
 `sub` deve ser um URI `mailto:` ou `https:`.
 
+!!! warning "`VAPID_SUBJECT` errado falha na leitura, não no primeiro push *(v0.367.1+)*"
+    A `py_vapid` só assina com `mailto:<email>` ou `https://<host>`, e recusa
+    o resto com a mesma frase que usa para claim ausente
+    (`Missing 'sub' from claims`). Um e-mail sem o `mailto:` carregava
+    normalmente e derrubava todo push depois. Agora, com
+    `VAPID_PRIVATE_KEY` preenchida, o `WebPushSettings` (e o `PushSettings`)
+    recusa o valor ao ler o ambiente — medido, com
+    `VAPID_SUBJECT=admin@example.com`:
+
+    ```text
+    1 validation error for WebPushSettings
+      Value error, VAPID_SUBJECT must be 'mailto:<email>' or 'https://<host>' (got a bare e-mail; prefix it with 'mailto:') [type=value_error]
+    ```
+
+    Sem chave privada (push desligado), nada é checado. O
+    `WebPushDispatcher` faz a mesma checagem no construtor (inclusive num
+    `"sub"` passado em `extra_vapid_claims`), e uma recusa da `py_vapid` no
+    `send` vira `WebPushConfigurationError`, tipada, em vez da
+    `VapidException` crua que vazava antes. O `send_many` a levanta em vez
+    de logar por assinante, porque ela falha igual para todos.
+
 !!! tip "Gerando um par de chaves VAPID"
     Você gera o par uma única vez e reaproveita em todos os ambientes.
     Com o `pywebpush` (extra `[webpush]`) instalado:

@@ -28,6 +28,26 @@ surfaces the two errors the application actually handles:
 `pushManager.subscribe`); the **private** key signs each push on the
 backend. The `sub` must be a `mailto:` or `https:` URI.
 
+!!! warning "A wrong `VAPID_SUBJECT` fails on load, not on the first push *(v0.367.1+)*"
+    `py_vapid` signs only with `mailto:<email>` or `https://<host>`, and
+    refuses anything else with the sentence it uses for an absent claim
+    (`Missing 'sub' from claims`). An e-mail without `mailto:` used to load
+    fine and break every push later. Now, with `VAPID_PRIVATE_KEY` set,
+    `WebPushSettings` (and `PushSettings`) refuses the value when it reads
+    the environment — measured, with `VAPID_SUBJECT=admin@example.com`:
+
+    ```text
+    1 validation error for WebPushSettings
+      Value error, VAPID_SUBJECT must be 'mailto:<email>' or 'https://<host>' (got a bare e-mail; prefix it with 'mailto:') [type=value_error]
+    ```
+
+    With no private key (push off), nothing is checked. `WebPushDispatcher`
+    runs the same check in its constructor (a `"sub"` passed in
+    `extra_vapid_claims` included), and a `py_vapid` refusal in `send`
+    becomes a typed `WebPushConfigurationError` instead of the raw
+    `VapidException` that escaped before. `send_many` raises it rather than
+    logging it per subscriber, since it fails the same way for all.
+
 !!! tip "Generating a VAPID keypair"
     You generate the pair once and reuse it across every environment.
     With `pywebpush` (the `[webpush]` extra) installed:
