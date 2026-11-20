@@ -12,6 +12,8 @@ class TinySMTP:
     and what it does with a per-recipient refusal. A monkeypatched
     `aiosmtplib.send` can answer neither, so this speaks the handful of
     verbs aiosmtplib needs over a real socket and counts what arrives.
+    ``messages`` keeps each ``DATA`` payload, dot-unstuffed, so a test can
+    parse the bytes that actually crossed the wire.
     """
 
     def __init__(self, refuse: dict[str, tuple[int, str]] | None = None) -> None:
@@ -23,6 +25,7 @@ class TinySMTP:
         """
         self.refuse: dict[str, tuple[int, str]] = refuse or {}
         self.delivered: list[str] = []
+        self.messages: list[bytes] = []
         self.connections: int = 0
         self.server: asyncio.AbstractServer | None = None
         self.port: int = 0
@@ -79,10 +82,13 @@ class TinySMTP:
             elif upper == "DATA":
                 writer.write(b"354 End data with <CR><LF>.<CR><LF>\r\n")
                 await writer.drain()
+                data: list[bytes] = []
                 while True:
                     chunk = await reader.readline()
                     if chunk in (b".\r\n", b".\n", b""):
                         break
+                    data.append(chunk[1:] if chunk.startswith(b"..") else chunk)
+                self.messages.append(b"".join(data))
                 self.delivered.extend(pending)
                 pending = []
                 writer.write(b"250 Message accepted\r\n")

@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import mimetypes
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -61,6 +63,126 @@ _PERMANENT_FLOOR: int = 500
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 """Where a transport failure is logged, once, before it is translated."""
+
+_DEFAULT_ATTACHMENT_CONTENT_TYPE: str = "application/octet-stream"
+"""Content type of an attachment whose type cannot be guessed from its name."""
+
+_CONTENT_TYPE_PATTERN: re.Pattern[str] = re.compile(
+    r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+/[!#$%&'*+\-.^_`|~0-9A-Za-z]+",
+)
+"""A bare ``type/subtype`` made of RFC 2045 token characters, no parameters."""
+
+_FORBIDDEN_FILENAME_CHARACTERS: frozenset[str] = frozenset(
+    {"\r", "\n", "\0", "/", "\\"}
+)
+"""Characters refused in an attachment filename.
+
+Line breaks would be a header injection (the standard library refuses them
+too, but only when the message is assembled); ``/`` and ``\\`` make the
+name a path that a careless client may resolve against its download folder.
+"""
+
+
+def _guess_content_type(filename: str) -> str:
+    """Guess an attachment's content type from its file name.
+
+    Uses :func:`mimetypes.guess_type`. A name the table does not know, and a
+    name with a compression suffix (``report.tar.gz``, ``data.csv.gz``), map
+    to ``application/octet-stream``: for those ``guess_type``
+    describes the *decompressed* content, which is not what the bytes are.
+
+    Args:
+        filename (str): The attachment's file name, e.g. ``"invoice.pdf"``.
+
+    Returns:
+        str: A ``type/subtype`` string, e.g. ``"application/pdf"``.
+    """
+    guessed, encoding = mimetypes.guess_type(filename)
+    if guessed is None or encoding is not None:
+        return _DEFAULT_ATTACHMENT_CONTENT_TYPE
+    return guessed
+
+
+@dataclass(frozen=True, slots=True)
+class EmailAttachment:
+    """A file attached from memory, without touching the disk.
+
+    Pass it in ``attachments`` next to (or instead of) a :class:`~pathlib.Path`
+    — for example the ``bytes`` a PDF renderer returns.
+
+    Attributes:
+        filename (str): Name the recipient sees. Must be non-empty and free
+            of line breaks, NUL, ``/`` and ``\\``.
+        content (bytes): The file's bytes.
+        content_type (str | None): ``type/subtype`` such as
+            ``"application/pdf"``, without parameters. ``None`` (the default)
+            guesses it from ``filename`` with :func:`mimetypes.guess_type`
+            — the same guess a :class:`~pathlib.Path` attachment gets. An
+            unknown extension, or a compression suffix such as ``.gz``,
+            falls back to ``application/octet-stream``.
+
+    Raises:
+        ValueError: When ``filename`` is empty or carries a forbidden
+            character, or ``content_type`` is not a bare ``type/subtype``.
+    """
+
+    filename: str
+    content: bytes
+    content_type: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate the filename and the explicit content type.
+
+        Raises:
+            ValueError: When ``filename`` is empty or carries a forbidden
+                character, or ``content_type`` is not a bare
+                ``type/subtype``.
+        """
+        if not self.filename:
+            raise ValueError("Attachment filename must not be empty")
+        forbidden = _FORBIDDEN_FILENAME_CHARACTERS.intersection(self.filename)
+        if forbidden:
+            raise ValueError(
+                f"Attachment filename {self.filename!r} contains forbidden "
+                f"characters: {sorted(forbidden)!r}",
+            )
+        if self.content_type is not None and not _CONTENT_TYPE_PATTERN.fullmatch(
+            self.content_type,
+        ):
+            raise ValueError(
+                f"Attachment content_type {self.content_type!r} is not a bare "
+                "'type/subtype' such as 'application/pdf'",
+            )
+
+    @property
+    def resolved_content_type(self) -> str:
+        """The content type the message is sent with.
+
+        Returns:
+            str: ``content_type`` when given, otherwise the type guessed
+            from ``filename``.
+        """
+        if self.content_type is not None:
+            return self.content_type
+        return _guess_content_type(self.filename)
+
+    @classmethod
+    def from_path(cls, path: Path) -> EmailAttachment:
+        """Read a file from disk into an attachment.
+
+        Args:
+            path (Path): The file to read. Its ``name`` becomes the
+                attachment filename and drives the content-type guess.
+
+        Returns:
+            EmailAttachment: The attachment, with ``content_type`` left
+            ``None`` so the type is guessed from the name.
+
+        Raises:
+            OSError: When the file cannot be read.
+            ValueError: When the file name carries a forbidden character.
+        """
+        return cls(filename=path.name, content=path.read_bytes())
 
 
 @dataclass(frozen=True)
@@ -267,7 +389,7 @@ class EmailUtils:
         cc: list[str],
         reply_to: str | None,
         from_addr: str | None,
-        attachments: Iterable[Path] | None,
+        attachments: Iterable[Path | EmailAttachment] | None,
     ) -> EmailMessage:
         """Assemble one message, shared by :meth:`send` and the bulk path.
 
@@ -279,10 +401,18 @@ class EmailUtils:
             cc (list[str]): ``Cc`` recipients.
             reply_to (str | None): ``Reply-To`` header.
             from_addr (str | None): Sender override.
-            attachments (Iterable[Path] | None): Files to attach.
+            attachments (Iterable[Path | EmailAttachment] | None): Files to
+                attach, read from disk or carried in memory. Each part's
+                ``Content-Type`` comes from
+                :attr:`EmailAttachment.resolved_content_type`.
 
         Returns:
             EmailMessage: The assembled message.
+
+        Raises:
+            OSError: When a ``Path`` attachment cannot be read.
+            ValueError: When a ``Path`` attachment's name carries a
+                forbidden character.
         """
         message = EmailMessage()
         message["From"] = from_addr or self.from_addr
@@ -296,15 +426,19 @@ class EmailUtils:
         if html is not None:
             message.add_alternative(html, subtype="html")
 
-        if attachments:
-            for path in attachments:
-                data = path.read_bytes()
-                message.add_attachment(
-                    data,
-                    maintype="application",
-                    subtype="octet-stream",
-                    filename=path.name,
-                )
+        for item in attachments or ():
+            attachment = (
+                item
+                if isinstance(item, EmailAttachment)
+                else EmailAttachment.from_path(item)
+            )
+            maintype, subtype = attachment.resolved_content_type.split("/", 1)
+            message.add_attachment(
+                attachment.content,
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment.filename,
+            )
         return message
 
     async def send(
@@ -316,7 +450,7 @@ class EmailUtils:
         html: str | None = None,
         cc: Iterable[str] | None = None,
         bcc: Iterable[str] | None = None,
-        attachments: Iterable[Path] | None = None,
+        attachments: Iterable[Path | EmailAttachment] | None = None,
         reply_to: str | None = None,
         from_addr: str | None = None,
     ) -> None:
@@ -333,7 +467,10 @@ class EmailUtils:
             cc (Iterable[str] | None): Additional ``Cc`` recipients.
             bcc (Iterable[str] | None): ``Bcc`` recipients (added to
                 the envelope, not the headers).
-            attachments (Iterable[Path] | None): Files to attach.
+            attachments (Iterable[Path | EmailAttachment] | None): Files to
+                attach. A ``Path`` is read from disk and its content type is
+                guessed from its name; an :class:`EmailAttachment` carries
+                its bytes in memory, with an explicit or guessed type.
             reply_to (str | None): Value for the ``Reply-To`` header.
             from_addr (str | None): Override the default sender for
                 this message.
@@ -351,6 +488,8 @@ class EmailUtils:
             OSError: When an ``attachments`` path cannot be read. That
                 is the caller's input, not the transport, so it is not
                 translated.
+            ValueError: When an ``attachments`` path's name carries a
+                forbidden character (see :class:`EmailAttachment`).
 
         Notes:
             STARTTLS is negotiated **opportunistically**: aiosmtplib upgrades

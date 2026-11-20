@@ -65,6 +65,7 @@ if TYPE_CHECKING:
         build_content_disposition as build_content_disposition,
     )
     from tempest_fastapi_sdk.utils.email import BulkEmailReport as BulkEmailReport
+    from tempest_fastapi_sdk.utils.email import EmailAttachment as EmailAttachment
     from tempest_fastapi_sdk.utils.email import EmailUtils as EmailUtils
     from tempest_fastapi_sdk.utils.email import FailedRecipient as FailedRecipient
     from tempest_fastapi_sdk.utils.fields import (
@@ -544,6 +545,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "DownloadUtils": "tempest_fastapi_sdk.utils.download",
     "build_content_disposition": "tempest_fastapi_sdk.utils.download",
     "BulkEmailReport": "tempest_fastapi_sdk.utils.email",
+    "EmailAttachment": "tempest_fastapi_sdk.utils.email",
     "EmailUtils": "tempest_fastapi_sdk.utils.email",
     "FailedRecipient": "tempest_fastapi_sdk.utils.email",
     "CentsField": "tempest_fastapi_sdk.utils.fields",
@@ -811,6 +813,7 @@ __all__: list[str] = [
     "DecimalRatioField",
     "DiskMetrics",
     "DownloadUtils",
+    "EmailAttachment",
     "EmailUtils",
     "FailedRecipient",
     "FileStoreUtils",

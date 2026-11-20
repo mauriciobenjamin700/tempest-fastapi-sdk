@@ -154,7 +154,7 @@ asyncio.run(main())
 ```
 
 Parâmetros opcionais por mensagem: `cc`, `bcc`, `attachments`
-(`Iterable[Path]`), `reply_to` e `from_addr` (sobrescreve o remetente
+(`Path` ou `EmailAttachment` — veja [Anexos](#anexos-arquivo-em-disco-ou-bytes-em-memoria)), `reply_to` e `from_addr` (sobrescreve o remetente
 padrão). Toda falha de transporte — host que não resolve, conexão
 recusada ou que estoura o timeout, handshake TLS quebrado, login negado,
 mensagem recusada pelo servidor — levanta `EmailDeliveryException`
@@ -173,6 +173,73 @@ inválido — sai com o tipo original.
     nada; troque por `except EmailDeliveryException` (de
     `tempest_fastapi_sdk`). O código SMTP da recusa fica no log
     (`smtp_code`), não na exceção.
+
+## Anexos: arquivo em disco ou bytes em memória
+
+`attachments` aceita `Path` (lido do disco) e `EmailAttachment` (bytes que
+você já tem em memória), misturados na mesma lista. Conteúdo gerado na hora —
+um relatório, uma planilha, o PDF do `PdfRenderer` — vai direto, sem arquivo
+temporário para gravar e apagar:
+
+```python
+import asyncio
+import csv
+import io
+
+from tempest_fastapi_sdk import EmailAttachment, EmailUtils
+
+mailer = EmailUtils(host="localhost", port=1025, from_addr="no-reply@example.com")
+
+
+def build_report() -> bytes:
+    """Monta o CSV de vendas em memória."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["produto", "quantidade"])
+    writer.writerow(["passagem", 3])
+    return buffer.getvalue().encode("utf-8")
+
+
+async def main() -> None:
+    """Run this example."""
+    await mailer.send(
+        to="ana@example.com",
+        subject="Relatório do dia",
+        body="Segue o relatório em anexo.",
+        attachments=[EmailAttachment(filename="vendas.csv", content=build_report())],
+    )
+
+
+asyncio.run(main())
+```
+
+O `Content-Type` de cada parte sai do nome do arquivo, por
+`mimetypes.guess_type` — `vendas.csv` vai como `text/csv`, `comprovante.pdf`
+como `application/pdf`, `logo.png` como `image/png`. Vale para `Path` e para
+`EmailAttachment` sem tipo explícito. Extensão desconhecida (ou sem extensão)
+e sufixo de compressão (`backup.tar.gz`, `dados.csv.gz`) caem em
+`application/octet-stream`: nesses casos o `guess_type` descreve o conteúdo
+**descomprimido**, que não é o que os bytes são.
+
+Para fixar o tipo, passe `content_type`:
+`EmailAttachment("comprovante", pdf_bytes, content_type="application/pdf")`.
+O PDF do [`PdfRenderer`](pdf.md) entra assim — `render_document` devolve
+`bytes`.
+
+O `EmailAttachment` recusa na construção, com `ValueError`:
+
+- `content_type` que não é um `tipo/subtipo` puro (`"pdf"`,
+  `"text/csv; charset=utf-8"`, com espaço ou quebra de linha);
+- `filename` vazio, ou com quebra de linha, NUL, `/` ou `\`. Quebra de linha
+  seria injeção de cabeçalho (a biblioteca padrão também recusa, mas só na
+  hora de montar a mensagem); barra faz do nome um caminho. Um `Path` cujo
+  nome tenha um desses caracteres é recusado igual, antes de qualquer envio.
+
+!!! note "Mudança de comportamento para `Path`"
+    Até aqui todo anexo saía como `application/octet-stream`. Agora um
+    `Path` `.pdf` sai como `application/pdf`. Quem depende do tipo antigo
+    passa, no lugar do `Path`,
+    `EmailAttachment(path.name, path.read_bytes(), "application/octet-stream")`.
 
 ## Enviar para muita gente: `send_many`
 
@@ -364,6 +431,7 @@ fluxo de auth recusa o cadastro **antes** de criar a conta — veja
 - Instale `[email]` e componha `EmailSettings` no seu `Settings`.
 - Uma instância de `EmailUtils` por app; `send()` é async e abre conexão por chamada.
 - `body` texto é obrigatório; `html` é a alternativa multipart opcional.
+- `attachments` mistura `Path` e `EmailAttachment` (bytes em memória); o `Content-Type` sai do nome do arquivo, com `application/octet-stream` quando não dá para adivinhar.
 - `render_template()` (com `template_dir`) gera o HTML a partir de Jinja2.
 - O fluxo bundled de auth já envia ativação/reset com templates sobrescrevíveis.
 - Porta `587` pede `SMTP_USE_TLS=true`; `465` pede `SMTP_USE_SSL=true` — o guard de produção recusa o par trocado.

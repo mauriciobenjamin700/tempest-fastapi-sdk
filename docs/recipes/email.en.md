@@ -155,7 +155,7 @@ asyncio.run(main())
 ```
 
 Optional per-message parameters: `cc`, `bcc`, `attachments`
-(`Iterable[Path]`), `reply_to`, and `from_addr` (overrides the default
+(`Path` or `EmailAttachment` — see [Attachments](#attachments-a-file-on-disk-or-bytes-in-memory)), `reply_to`, and `from_addr` (overrides the default
 sender). Every transport failure — a host that does not resolve, a
 connection refused or timed out, a broken TLS handshake, a rejected login,
 a message the server refuses — raises `EmailDeliveryException` (`503`,
@@ -174,6 +174,75 @@ argument — keeps its own type.
     now; switch to `except EmailDeliveryException` (from
     `tempest_fastapi_sdk`). A refusal's SMTP code is in the log
     (`smtp_code`), not on the exception.
+
+## Attachments: a file on disk or bytes in memory
+
+`attachments` accepts `Path` (read from disk) and `EmailAttachment` (bytes you
+already hold in memory), mixed in the same list. Content generated on the fly
+— a report, a spreadsheet, the PDF from `PdfRenderer` — goes straight in, with
+no temporary file to write and delete:
+
+```python
+import asyncio
+import csv
+import io
+
+from tempest_fastapi_sdk import EmailAttachment, EmailUtils
+
+mailer = EmailUtils(host="localhost", port=1025, from_addr="no-reply@example.com")
+
+
+def build_report() -> bytes:
+    """Build the sales CSV in memory."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["product", "quantity"])
+    writer.writerow(["ticket", 3])
+    return buffer.getvalue().encode("utf-8")
+
+
+async def main() -> None:
+    """Run this example."""
+    await mailer.send(
+        to="ana@example.com",
+        subject="Daily report",
+        body="The report is attached.",
+        attachments=[EmailAttachment(filename="sales.csv", content=build_report())],
+    )
+
+
+asyncio.run(main())
+```
+
+Each part's `Content-Type` comes from the file name, via
+`mimetypes.guess_type` — `sales.csv` goes out as `text/csv`, `receipt.pdf` as
+`application/pdf`, `logo.png` as `image/png`. That holds for `Path` and for an
+`EmailAttachment` without an explicit type. An unknown extension (or none) and
+a compression suffix (`backup.tar.gz`, `data.csv.gz`) fall back to
+`application/octet-stream`: for those, `guess_type` describes the
+**decompressed** content, which is not what the bytes are.
+
+To pin the type, pass `content_type`:
+`EmailAttachment("receipt", pdf_bytes, content_type="application/pdf")`.
+The PDF from [`PdfRenderer`](pdf.md) goes in this way — `render_document`
+returns `bytes`.
+
+`EmailAttachment` refuses at construction, with `ValueError`:
+
+- a `content_type` that is not a bare `type/subtype` (`"pdf"`,
+  `"text/csv; charset=utf-8"`, with a space or a line break);
+- an empty `filename`, or one with a line break, NUL, `/` or `\`. A line break
+  would be a header injection (the standard library refuses it too, but only
+  when the message is assembled); a slash turns the name into a path. A `Path`
+  whose name has one of these characters is refused the same way, before
+  anything is sent.
+
+!!! note "Behaviour change for `Path`"
+    Until now every attachment went out as `application/octet-stream`. A
+    `.pdf` `Path` now goes out as `application/pdf`. Code that relies on the
+    old type passes
+    `EmailAttachment(path.name, path.read_bytes(), "application/octet-stream")`
+    instead of the `Path`.
 
 ## Sending to many: `send_many`
 
@@ -364,6 +433,7 @@ The auth flow refuses the signup **before** creating the account — see
 - Install `[email]` and compose `EmailSettings` into your `Settings`.
 - One `EmailUtils` instance per app; `send()` is async and opens a connection per call.
 - The text `body` is required; `html` is the optional multipart alternative.
+- `attachments` mixes `Path` and `EmailAttachment` (in-memory bytes); the `Content-Type` comes from the file name, with `application/octet-stream` when it cannot be guessed.
 - `render_template()` (with `template_dir`) builds the HTML from Jinja2.
 - The bundled auth flow already sends activation/reset with overridable templates.
 - Port `587` needs `SMTP_USE_TLS=true`; `465` needs `SMTP_USE_SSL=true` — the production guard refuses the swapped pair.
