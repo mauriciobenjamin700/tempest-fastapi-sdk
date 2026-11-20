@@ -1,0 +1,8184 @@
+{
+ "source": "tempest-react-sdk matchToRoads",
+ "graph": {
+  "nodes": [
+   {
+    "latitude": -5.09,
+    "longitude": -42.8
+   },
+   {
+    "latitude": -5.08892081556353,
+    "longitude": -42.8
+   },
+   {
+    "latitude": -5.087841631127061,
+    "longitude": -42.8
+   },
+   {
+    "latitude": -5.086762446690591,
+    "longitude": -42.8
+   },
+   {
+    "latitude": -5.085683262254122,
+    "longitude": -42.8
+   },
+   {
+    "latitude": -5.0846040778176524,
+    "longitude": -42.8
+   },
+   {
+    "latitude": -5.083524893381183,
+    "longitude": -42.8
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.08892081556353,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.087841631127061,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.086762446690591,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.085683262254122,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.0846040778176524,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.083524893381183,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.08892081556353,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.087841631127061,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.086762446690591,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.085683262254122,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.0846040778176524,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.083524893381183,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.08892081556353,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.087841631127061,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.086762446690591,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.085683262254122,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.0846040778176524,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.083524893381183,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.08892081556353,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.087841631127061,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.086762446690591,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.085683262254122,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.0846040778176524,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.083524893381183,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.79458271510801
+   },
+   {
+    "latitude": -5.08892081556353,
+    "longitude": -42.79458271510801
+   },
+   {
+    "latitude": -5.087841631127061,
+    "longitude": -42.79458271510801
+   },
+   {
+    "latitude": -5.086762446690591,
+    "longitude": -42.79458271510801
+   },
+   {
+    "latitude": -5.085683262254122,
+    "longitude": -42.79458271510801
+   },
+   {
+    "latitude": -5.0846040778176524,
+    "longitude": -42.79458271510801
+   },
+   {
+    "latitude": -5.083524893381183,
+    "longitude": -42.79458271510801
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.79349925812961
+   },
+   {
+    "latitude": -5.08892081556353,
+    "longitude": -42.79349925812961
+   },
+   {
+    "latitude": -5.087841631127061,
+    "longitude": -42.79349925812961
+   },
+   {
+    "latitude": -5.086762446690591,
+    "longitude": -42.79349925812961
+   },
+   {
+    "latitude": -5.085683262254122,
+    "longitude": -42.79349925812961
+   },
+   {
+    "latitude": -5.0846040778176524,
+    "longitude": -42.79349925812961
+   },
+   {
+    "latitude": -5.083524893381183,
+    "longitude": -42.79349925812961
+   },
+   {
+    "latitude": -5.0898381223345295,
+    "longitude": -42.7989165430216
+   },
+   {
+    "latitude": -5.0898381223345295,
+    "longitude": -42.7978330860432
+   },
+   {
+    "latitude": -5.0898381223345295,
+    "longitude": -42.7967496290648
+   },
+   {
+    "latitude": -5.0898381223345295,
+    "longitude": -42.7956661720864
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.77291357554003
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.77020493309403
+   },
+   {
+    "latitude": -5.09,
+    "longitude": -42.76749629064803
+   }
+  ],
+  "edges": [
+   {
+    "from": 0,
+    "to": 1,
+    "twoWay": true,
+    "id": "ns-0-0"
+   },
+   {
+    "from": 1,
+    "to": 2,
+    "twoWay": true,
+    "id": "ns-0-1"
+   },
+   {
+    "from": 2,
+    "to": 3,
+    "twoWay": true,
+    "id": "ns-0-2"
+   },
+   {
+    "from": 3,
+    "to": 4,
+    "twoWay": true,
+    "id": "ns-0-3"
+   },
+   {
+    "from": 4,
+    "to": 5,
+    "twoWay": true,
+    "id": "ns-0-4"
+   },
+   {
+    "from": 5,
+    "to": 6,
+    "twoWay": true,
+    "id": "ns-0-5"
+   },
+   {
+    "from": 7,
+    "to": 8,
+    "twoWay": true,
+    "id": "ns-1-0"
+   },
+   {
+    "from": 8,
+    "to": 9,
+    "twoWay": true,
+    "id": "ns-1-1"
+   },
+   {
+    "from": 9,
+    "to": 10,
+    "twoWay": true,
+    "id": "ns-1-2"
+   },
+   {
+    "from": 10,
+    "to": 11,
+    "twoWay": true,
+    "id": "ns-1-3"
+   },
+   {
+    "from": 11,
+    "to": 12,
+    "twoWay": true,
+    "id": "ns-1-4"
+   },
+   {
+    "from": 12,
+    "to": 13,
+    "twoWay": true,
+    "id": "ns-1-5"
+   },
+   {
+    "from": 14,
+    "to": 15,
+    "twoWay": true,
+    "id": "ns-2-0"
+   },
+   {
+    "from": 15,
+    "to": 16,
+    "twoWay": true,
+    "id": "ns-2-1"
+   },
+   {
+    "from": 16,
+    "to": 17,
+    "twoWay": true,
+    "id": "ns-2-2"
+   },
+   {
+    "from": 17,
+    "to": 18,
+    "twoWay": true,
+    "id": "ns-2-3"
+   },
+   {
+    "from": 18,
+    "to": 19,
+    "twoWay": true,
+    "id": "ns-2-4"
+   },
+   {
+    "from": 19,
+    "to": 20,
+    "twoWay": true,
+    "id": "ns-2-5"
+   },
+   {
+    "from": 21,
+    "to": 22,
+    "twoWay": true,
+    "id": "ns-3-0"
+   },
+   {
+    "from": 22,
+    "to": 23,
+    "twoWay": true,
+    "id": "ns-3-1"
+   },
+   {
+    "from": 23,
+    "to": 24,
+    "twoWay": true,
+    "id": "ns-3-2"
+   },
+   {
+    "from": 24,
+    "to": 25,
+    "twoWay": true,
+    "id": "ns-3-3"
+   },
+   {
+    "from": 25,
+    "to": 26,
+    "twoWay": true,
+    "id": "ns-3-4"
+   },
+   {
+    "from": 26,
+    "to": 27,
+    "twoWay": true,
+    "id": "ns-3-5"
+   },
+   {
+    "from": 28,
+    "to": 29,
+    "twoWay": true,
+    "id": "ns-4-0"
+   },
+   {
+    "from": 29,
+    "to": 30,
+    "twoWay": true,
+    "id": "ns-4-1"
+   },
+   {
+    "from": 30,
+    "to": 31,
+    "twoWay": true,
+    "id": "ns-4-2"
+   },
+   {
+    "from": 31,
+    "to": 32,
+    "twoWay": true,
+    "id": "ns-4-3"
+   },
+   {
+    "from": 32,
+    "to": 33,
+    "twoWay": true,
+    "id": "ns-4-4"
+   },
+   {
+    "from": 33,
+    "to": 34,
+    "twoWay": true,
+    "id": "ns-4-5"
+   },
+   {
+    "from": 35,
+    "to": 36,
+    "twoWay": true,
+    "id": "ns-5-0"
+   },
+   {
+    "from": 36,
+    "to": 37,
+    "twoWay": true,
+    "id": "ns-5-1"
+   },
+   {
+    "from": 37,
+    "to": 38,
+    "twoWay": true,
+    "id": "ns-5-2"
+   },
+   {
+    "from": 38,
+    "to": 39,
+    "twoWay": true,
+    "id": "ns-5-3"
+   },
+   {
+    "from": 39,
+    "to": 40,
+    "twoWay": true,
+    "id": "ns-5-4"
+   },
+   {
+    "from": 40,
+    "to": 41,
+    "twoWay": true,
+    "id": "ns-5-5"
+   },
+   {
+    "from": 42,
+    "to": 43,
+    "twoWay": true,
+    "id": "ns-6-0"
+   },
+   {
+    "from": 43,
+    "to": 44,
+    "twoWay": true,
+    "id": "ns-6-1"
+   },
+   {
+    "from": 44,
+    "to": 45,
+    "twoWay": true,
+    "id": "ns-6-2"
+   },
+   {
+    "from": 45,
+    "to": 46,
+    "twoWay": true,
+    "id": "ns-6-3"
+   },
+   {
+    "from": 46,
+    "to": 47,
+    "twoWay": true,
+    "id": "ns-6-4"
+   },
+   {
+    "from": 47,
+    "to": 48,
+    "twoWay": true,
+    "id": "ns-6-5"
+   },
+   {
+    "from": 0,
+    "to": 7,
+    "twoWay": true,
+    "id": "ew-0-0"
+   },
+   {
+    "from": 7,
+    "to": 14,
+    "twoWay": true,
+    "id": "ew-1-0"
+   },
+   {
+    "from": 14,
+    "to": 21,
+    "twoWay": true,
+    "id": "ew-2-0"
+   },
+   {
+    "from": 21,
+    "to": 28,
+    "twoWay": true,
+    "id": "ew-3-0"
+   },
+   {
+    "from": 28,
+    "to": 35,
+    "twoWay": true,
+    "id": "ew-4-0"
+   },
+   {
+    "from": 35,
+    "to": 42,
+    "twoWay": true,
+    "id": "ew-5-0"
+   },
+   {
+    "from": 1,
+    "to": 8,
+    "twoWay": true,
+    "id": "ew-0-1"
+   },
+   {
+    "from": 8,
+    "to": 15,
+    "twoWay": true,
+    "id": "ew-1-1"
+   },
+   {
+    "from": 15,
+    "to": 22,
+    "twoWay": true,
+    "id": "ew-2-1"
+   },
+   {
+    "from": 22,
+    "to": 29,
+    "twoWay": true,
+    "id": "ew-3-1"
+   },
+   {
+    "from": 29,
+    "to": 36,
+    "twoWay": true,
+    "id": "ew-4-1"
+   },
+   {
+    "from": 36,
+    "to": 43,
+    "twoWay": true,
+    "id": "ew-5-1"
+   },
+   {
+    "from": 2,
+    "to": 9,
+    "twoWay": false,
+    "id": "ew-0-2"
+   },
+   {
+    "from": 9,
+    "to": 16,
+    "twoWay": false,
+    "id": "ew-1-2"
+   },
+   {
+    "from": 16,
+    "to": 23,
+    "twoWay": false,
+    "id": "ew-2-2"
+   },
+   {
+    "from": 23,
+    "to": 30,
+    "twoWay": false,
+    "id": "ew-3-2"
+   },
+   {
+    "from": 30,
+    "to": 37,
+    "twoWay": false,
+    "id": "ew-4-2"
+   },
+   {
+    "from": 37,
+    "to": 44,
+    "twoWay": false,
+    "id": "ew-5-2"
+   },
+   {
+    "from": 3,
+    "to": 10,
+    "twoWay": true,
+    "id": "ew-0-3"
+   },
+   {
+    "from": 10,
+    "to": 17,
+    "twoWay": true,
+    "id": "ew-1-3"
+   },
+   {
+    "from": 17,
+    "to": 24,
+    "twoWay": true,
+    "id": "ew-2-3"
+   },
+   {
+    "from": 24,
+    "to": 31,
+    "twoWay": true,
+    "id": "ew-3-3"
+   },
+   {
+    "from": 31,
+    "to": 38,
+    "twoWay": true,
+    "id": "ew-4-3"
+   },
+   {
+    "from": 38,
+    "to": 45,
+    "twoWay": true,
+    "id": "ew-5-3"
+   },
+   {
+    "from": 4,
+    "to": 11,
+    "twoWay": true,
+    "id": "ew-0-4"
+   },
+   {
+    "from": 11,
+    "to": 18,
+    "twoWay": true,
+    "id": "ew-1-4"
+   },
+   {
+    "from": 18,
+    "to": 25,
+    "twoWay": true,
+    "id": "ew-2-4"
+   },
+   {
+    "from": 25,
+    "to": 32,
+    "twoWay": true,
+    "id": "ew-3-4"
+   },
+   {
+    "from": 32,
+    "to": 39,
+    "twoWay": true,
+    "id": "ew-4-4"
+   },
+   {
+    "from": 39,
+    "to": 46,
+    "twoWay": true,
+    "id": "ew-5-4"
+   },
+   {
+    "from": 5,
+    "to": 12,
+    "twoWay": true,
+    "id": "ew-0-5"
+   },
+   {
+    "from": 12,
+    "to": 19,
+    "twoWay": true,
+    "id": "ew-1-5"
+   },
+   {
+    "from": 19,
+    "to": 26,
+    "twoWay": true,
+    "id": "ew-2-5"
+   },
+   {
+    "from": 26,
+    "to": 33,
+    "twoWay": true,
+    "id": "ew-3-5"
+   },
+   {
+    "from": 33,
+    "to": 40,
+    "twoWay": true,
+    "id": "ew-4-5"
+   },
+   {
+    "from": 40,
+    "to": 47,
+    "twoWay": true,
+    "id": "ew-5-5"
+   },
+   {
+    "from": 6,
+    "to": 13,
+    "twoWay": true,
+    "id": "ew-0-6"
+   },
+   {
+    "from": 13,
+    "to": 20,
+    "twoWay": true,
+    "id": "ew-1-6"
+   },
+   {
+    "from": 20,
+    "to": 27,
+    "twoWay": true,
+    "id": "ew-2-6"
+   },
+   {
+    "from": 27,
+    "to": 34,
+    "twoWay": true,
+    "id": "ew-3-6"
+   },
+   {
+    "from": 34,
+    "to": 41,
+    "twoWay": true,
+    "id": "ew-4-6"
+   },
+   {
+    "from": 41,
+    "to": 48,
+    "twoWay": true,
+    "id": "ew-5-6"
+   },
+   {
+    "from": 49,
+    "to": 50,
+    "twoWay": true,
+    "id": "side-0"
+   },
+   {
+    "from": 50,
+    "to": 51,
+    "twoWay": true,
+    "id": "side-1"
+   },
+   {
+    "from": 51,
+    "to": 52,
+    "twoWay": true,
+    "id": "side-2"
+   },
+   {
+    "from": 7,
+    "to": 49,
+    "twoWay": true,
+    "id": "side-w"
+   },
+   {
+    "from": 28,
+    "to": 52,
+    "twoWay": true,
+    "id": "side-e"
+   },
+   {
+    "from": 6,
+    "to": 18,
+    "twoWay": true,
+    "id": "diag"
+   },
+   {
+    "from": 53,
+    "to": 54,
+    "id": "island-0"
+   },
+   {
+    "from": 54,
+    "to": 55,
+    "id": "island-1"
+   }
+  ]
+ },
+ "scenarios": {
+  "grid_tour": {
+   "fixes": [
+    {
+     "latitude": -5.089929920056116,
+     "longitude": -42.7999482536634
+    },
+    {
+     "latitude": -5.089925955481728,
+     "longitude": -42.800033609658534
+    },
+    {
+     "latitude": -5.089771233512005,
+     "longitude": -42.79998770165677
+    },
+    {
+     "latitude": -5.089612962402235,
+     "longitude": -42.799945235251435
+    },
+    {
+     "latitude": -5.089724741199319,
+     "longitude": -42.79997267326519
+    },
+    {
+     "latitude": -5.0895290786756835,
+     "longitude": -42.80011646787082
+    },
+    {
+     "latitude": -5.089372501749481,
+     "longitude": -42.80004991062349
+    },
+    {
+     "latitude": -5.089303435875681,
+     "longitude": -42.800021863449444
+    },
+    {
+     "latitude": -5.089248845891985,
+     "longitude": -42.800056116280096
+    },
+    {
+     "latitude": -5.089136322948333,
+     "longitude": -42.79999088511288
+    },
+    {
+     "latitude": -5.0890010189001265,
+     "longitude": -42.79987672195802
+    },
+    {
+     "latitude": -5.0888980013303495,
+     "longitude": -42.800081516801875
+    },
+    {
+     "latitude": -5.088803678486183,
+     "longitude": -42.79994233193492
+    },
+    {
+     "latitude": -5.088740564432476,
+     "longitude": -42.799952306169835
+    },
+    {
+     "latitude": -5.088635892846211,
+     "longitude": -42.8000108281334
+    },
+    {
+     "latitude": -5.088551470898942,
+     "longitude": -42.8000029379303
+    },
+    {
+     "latitude": -5.088442761515162,
+     "longitude": -42.80001722663315
+    },
+    {
+     "latitude": -5.088382715768979,
+     "longitude": -42.80004999773919
+    },
+    {
+     "latitude": -5.08818568617881,
+     "longitude": -42.80009265879348
+    },
+    {
+     "latitude": -5.088159584125379,
+     "longitude": -42.80001335575654
+    },
+    {
+     "latitude": -5.088088451631734,
+     "longitude": -42.80002770197574
+    },
+    {
+     "latitude": -5.087957983093641,
+     "longitude": -42.80008501144791
+    },
+    {
+     "latitude": -5.087794699259226,
+     "longitude": -42.79990080674576
+    },
+    {
+     "latitude": -5.087719545705774,
+     "longitude": -42.80011362358899
+    },
+    {
+     "latitude": -5.087601537675344,
+     "longitude": -42.80002327410017
+    },
+    {
+     "latitude": -5.087604222720796,
+     "longitude": -42.80000948572514
+    },
+    {
+     "latitude": -5.087420925554636,
+     "longitude": -42.800039109277236
+    },
+    {
+     "latitude": -5.087391605706993,
+     "longitude": -42.79994562766145
+    },
+    {
+     "latitude": -5.087281439076743,
+     "longitude": -42.80009415524389
+    },
+    {
+     "latitude": -5.087113340820921,
+     "longitude": -42.7999156887881
+    },
+    {
+     "latitude": -5.087029791258288,
+     "longitude": -42.80005518813595
+    },
+    {
+     "latitude": -5.086955200172367,
+     "longitude": -42.800014411775734
+    },
+    {
+     "latitude": -5.086886355963443,
+     "longitude": -42.800069945474235
+    },
+    {
+     "latitude": -5.0868081385205945,
+     "longitude": -42.79991672074485
+    },
+    {
+     "latitude": -5.086742217288225,
+     "longitude": -42.79983432377753
+    },
+    {
+     "latitude": -5.086667397299244,
+     "longitude": -42.799741630678525
+    },
+    {
+     "latitude": -5.086801676000173,
+     "longitude": -42.79960763147919
+    },
+    {
+     "latitude": -5.086716155244055,
+     "longitude": -42.79963914031789
+    },
+    {
+     "latitude": -5.086699563853611,
+     "longitude": -42.79946993849157
+    },
+    {
+     "latitude": -5.086757789024901,
+     "longitude": -42.79931719369664
+    },
+    {
+     "latitude": -5.0867862238023225,
+     "longitude": -42.79940461810138
+    },
+    {
+     "latitude": -5.086734455879643,
+     "longitude": -42.79928839589678
+    },
+    {
+     "latitude": -5.086737089052354,
+     "longitude": -42.7992055374439
+    },
+    {
+     "latitude": -5.086752799565822,
+     "longitude": -42.799027544443305
+    },
+    {
+     "latitude": -5.086828170938623,
+     "longitude": -42.79892830235862
+    },
+    {
+     "latitude": -5.08682149686971,
+     "longitude": -42.798743534935525
+    },
+    {
+     "latitude": -5.086781235370527,
+     "longitude": -42.79876111923819
+    },
+    {
+     "latitude": -5.086724957866737,
+     "longitude": -42.798675672794786
+    },
+    {
+     "latitude": -5.0866903573560265,
+     "longitude": -42.79863758191289
+    },
+    {
+     "latitude": -5.086880954850251,
+     "longitude": -42.79837490863526
+    },
+    {
+     "latitude": -5.086778770911094,
+     "longitude": -42.79831402195418
+    },
+    {
+     "latitude": -5.086818553974582,
+     "longitude": -42.79811407838133
+    },
+    {
+     "latitude": -5.0867678034383434,
+     "longitude": -42.79814925524897
+    },
+    {
+     "latitude": -5.086785376594147,
+     "longitude": -42.79801670347145
+    },
+    {
+     "latitude": -5.086638300977478,
+     "longitude": -42.797979504961454
+    },
+    {
+     "latitude": -5.086786152258534,
+     "longitude": -42.797854068348904
+    },
+    {
+     "latitude": -5.086767729619796,
+     "longitude": -42.79765848303244
+    },
+    {
+     "latitude": -5.086812812568329,
+     "longitude": -42.79753876210165
+    },
+    {
+     "latitude": -5.086710378556516,
+     "longitude": -42.79760611373782
+    },
+    {
+     "latitude": -5.086857967577068,
+     "longitude": -42.797362014301406
+    },
+    {
+     "latitude": -5.08673492286518,
+     "longitude": -42.79742735355054
+    },
+    {
+     "latitude": -5.086702097111083,
+     "longitude": -42.79732922702163
+    },
+    {
+     "latitude": -5.086722551534472,
+     "longitude": -42.797063750569876
+    },
+    {
+     "latitude": -5.0867932519682375,
+     "longitude": -42.79705115083155
+    },
+    {
+     "latitude": -5.086801126082797,
+     "longitude": -42.79692498479536
+    },
+    {
+     "latitude": -5.08665363838116,
+     "longitude": -42.79681917058358
+    },
+    {
+     "latitude": -5.086767588404786,
+     "longitude": -42.79674885475793
+    },
+    {
+     "latitude": -5.086827130421101,
+     "longitude": -42.79662451647351
+    },
+    {
+     "latitude": -5.08681574735548,
+     "longitude": -42.79651585009039
+    },
+    {
+     "latitude": -5.086776649871622,
+     "longitude": -42.79635842515634
+    },
+    {
+     "latitude": -5.08672871574124,
+     "longitude": -42.79635685634241
+    },
+    {
+     "latitude": -5.0866886406341925,
+     "longitude": -42.79625105814948
+    },
+    {
+     "latitude": -5.086736792935746,
+     "longitude": -42.79618802836218
+    },
+    {
+     "latitude": -5.08677760281301,
+     "longitude": -42.79603516696559
+    },
+    {
+     "latitude": -5.086756694213206,
+     "longitude": -42.795980627515384
+    },
+    {
+     "latitude": -5.0867080432296605,
+     "longitude": -42.795901441035625
+    },
+    {
+     "latitude": -5.08674598849405,
+     "longitude": -42.79574189089552
+    },
+    {
+     "latitude": -5.086769321484466,
+     "longitude": -42.79560319240766
+    },
+    {
+     "latitude": -5.086854231355924,
+     "longitude": -42.795550138312905
+    },
+    {
+     "latitude": -5.086970597221112,
+     "longitude": -42.79565248715653
+    },
+    {
+     "latitude": -5.087029284669551,
+     "longitude": -42.79566590874855
+    },
+    {
+     "latitude": -5.087099556691137,
+     "longitude": -42.79562739777554
+    },
+    {
+     "latitude": -5.087374079177761,
+     "longitude": -42.79564810301089
+    },
+    {
+     "latitude": -5.0873737485309425,
+     "longitude": -42.79567725987272
+    },
+    {
+     "latitude": -5.087434753084452,
+     "longitude": -42.79558934707873
+    },
+    {
+     "latitude": -5.087590001422995,
+     "longitude": -42.79575959977568
+    },
+    {
+     "latitude": -5.087587311422707,
+     "longitude": -42.79575005624582
+    },
+    {
+     "latitude": -5.087812196991717,
+     "longitude": -42.79567915339797
+    },
+    {
+     "latitude": -5.087773206000813,
+     "longitude": -42.79567805025084
+    },
+    {
+     "latitude": -5.088000100271062,
+     "longitude": -42.795685885091224
+    },
+    {
+     "latitude": -5.088063294237369,
+     "longitude": -42.79567648442574
+    },
+    {
+     "latitude": -5.088138525676668,
+     "longitude": -42.795605929487756
+    },
+    {
+     "latitude": -5.08824943120906,
+     "longitude": -42.79566125049207
+    },
+    {
+     "latitude": -5.088336320997556,
+     "longitude": -42.79567066279237
+    },
+    {
+     "latitude": -5.088413214417035,
+     "longitude": -42.79565790895016
+    },
+    {
+     "latitude": -5.0885233733110535,
+     "longitude": -42.795719573785334
+    },
+    {
+     "latitude": -5.088571109584521,
+     "longitude": -42.79555778166724
+    },
+    {
+     "latitude": -5.088760399319107,
+     "longitude": -42.79575972314205
+    },
+    {
+     "latitude": -5.08890603475881,
+     "longitude": -42.79575932139069
+    },
+    {
+     "latitude": -5.088851487464109,
+     "longitude": -42.79567907481443
+    },
+    {
+     "latitude": -5.08885277197943,
+     "longitude": -42.7956293596265
+    },
+    {
+     "latitude": -5.088822397285278,
+     "longitude": -42.79544312067845
+    },
+    {
+     "latitude": -5.088951459022189,
+     "longitude": -42.795376123698986
+    },
+    {
+     "latitude": -5.08888585648304,
+     "longitude": -42.795161754353074
+    },
+    {
+     "latitude": -5.088950458726495,
+     "longitude": -42.79518858613496
+    },
+    {
+     "latitude": -5.0889986010148105,
+     "longitude": -42.795017744796326
+    },
+    {
+     "latitude": -5.088941740212174,
+     "longitude": -42.79490690001582
+    },
+    {
+     "latitude": -5.08884549968417,
+     "longitude": -42.79495043814984
+    },
+    {
+     "latitude": -5.088970105682901,
+     "longitude": -42.79479314825676
+    },
+    {
+     "latitude": -5.08886070956581,
+     "longitude": -42.794606315025085
+    },
+    {
+     "latitude": -5.088861570146859,
+     "longitude": -42.79457787705807
+    },
+    {
+     "latitude": -5.088823778180464,
+     "longitude": -42.79455564033411
+    },
+    {
+     "latitude": -5.08893808893364,
+     "longitude": -42.794475674434956
+    },
+    {
+     "latitude": -5.088866376042377,
+     "longitude": -42.79429792270257
+    },
+    {
+     "latitude": -5.088943606784303,
+     "longitude": -42.79419501912329
+    },
+    {
+     "latitude": -5.088954861617706,
+     "longitude": -42.794027537381666
+    },
+    {
+     "latitude": -5.088855936457872,
+     "longitude": -42.793960308883356
+    },
+    {
+     "latitude": -5.088841718280392,
+     "longitude": -42.79385914378912
+    },
+    {
+     "latitude": -5.088935738001016,
+     "longitude": -42.793754343867576
+    },
+    {
+     "latitude": -5.0889885739283836,
+     "longitude": -42.79354261651621
+    },
+    {
+     "latitude": -5.088885702424355,
+     "longitude": -42.793587595706974
+    },
+    {
+     "latitude": -5.08892081556353,
+     "longitude": -42.79349925812961
+    }
+   ],
+   "expected": {
+    "matches": [
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089929920056116,
+       "longitude": -42.8
+      },
+      "distanceM": 5.7312766067732355,
+      "offsetM": 7.79254498289032,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089925955481728,
+       "longitude": -42.8
+      },
+      "distanceM": 3.7225098897818043,
+      "offsetM": 8.233386150043941,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089771233512005,
+       "longitude": -42.8
+      },
+      "distanceM": 1.3621294083591238,
+      "offsetM": 25.437707987319413,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089612962402235,
+       "longitude": -42.8
+      },
+      "distanceM": 6.065587304534574,
+      "offsetM": 43.0366767368526,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089724741199319,
+       "longitude": -42.8
+      },
+      "distanceM": 3.026631183123982,
+      "offsetM": 30.60742442667521,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0895290786756835,
+       "longitude": -42.8
+      },
+      "distanceM": 12.899649084754856,
+      "offsetM": 52.36413444103971,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089372501749481,
+       "longitude": -42.8
+      },
+      "distanceM": 5.527958261212916,
+      "offsetM": 69.77471831283685,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089303435875681,
+       "longitude": -42.8
+      },
+      "distanceM": 2.4215332834287437,
+      "offsetM": 77.45450369148375,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089248845891985,
+       "longitude": -42.8
+      },
+      "distanceM": 6.215279081634435,
+      "offsetM": 83.52464130842213,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089136322948333,
+       "longitude": -42.8
+      },
+      "distanceM": 1.0095388923180053,
+      "offsetM": 96.03663905597445,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 0,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0890010189001265,
+       "longitude": -42.8
+      },
+      "distanceM": 13.653924211680987,
+      "offsetM": 111.08178355220534,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0888980013303495,
+       "longitude": -42.8
+      },
+      "distanceM": 9.028568405029091,
+      "offsetM": 2.53683048901064,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088803678486183,
+       "longitude": -42.8
+      },
+      "distanceM": 6.387150358275221,
+      "offsetM": 13.025066713940502,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088740564432476,
+       "longitude": -42.8
+      },
+      "distanceM": 5.282432556168715,
+      "offsetM": 20.043038979736934,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088635892846211,
+       "longitude": -42.8
+      },
+      "distanceM": 1.1992931628128645,
+      "offsetM": 31.682004412661225,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088551470898942,
+       "longitude": -42.8
+      },
+      "distanceM": 0.3253967784712586,
+      "offsetM": 41.06930961274433,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088442761515162,
+       "longitude": -42.8
+      },
+      "distanceM": 1.9079727398843715,
+      "offsetM": 53.15725826431703,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088382715768979,
+       "longitude": -42.8
+      },
+      "distanceM": 5.5376069469591584,
+      "offsetM": 59.83404982874541,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08818568617881,
+       "longitude": -42.8
+      },
+      "distanceM": 10.262623606805846,
+      "offsetM": 81.74277091601512,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088159584125379,
+       "longitude": -42.8
+      },
+      "distanceM": 1.479245490199446,
+      "offsetM": 84.6451908414992,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088088451631734,
+       "longitude": -42.8
+      },
+      "distanceM": 3.0681917987265024,
+      "offsetM": 92.55477417962655,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 1,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087957983093641,
+       "longitude": -42.8
+      },
+      "distanceM": 9.415625429761121,
+      "offsetM": 107.062233740849,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087794699259226,
+       "longitude": -42.8
+      },
+      "distanceM": 10.986361836606648,
+      "offsetM": 5.218592809385157,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087719545705774,
+       "longitude": -42.8
+      },
+      "distanceM": 12.584624544065719,
+      "offsetM": 13.575298215364896,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087601537675344,
+       "longitude": -42.8
+      },
+      "distanceM": 2.5777729330961847,
+      "offsetM": 26.697210627247856,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087604222720796,
+       "longitude": -42.8
+      },
+      "distanceM": 1.0506118537732618,
+      "offsetM": 26.39864678271043,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087420925554636,
+       "longitude": -42.8
+      },
+      "distanceM": 4.331631966543,
+      "offsetM": 46.780389880444815,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087391605706993,
+       "longitude": -42.8
+      },
+      "distanceM": 6.022125090770032,
+      "offsetM": 50.040612691553676,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087281439076743,
+       "longitude": -42.8
+      },
+      "distanceM": 10.428366184660945,
+      "offsetM": 62.290599981295856,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087113340820921,
+       "longitude": -42.8
+      },
+      "distanceM": 9.338069286548262,
+      "offsetM": 80.98229902450082,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087029791258288,
+       "longitude": -42.8
+      },
+      "distanceM": 6.11248048401103,
+      "offsetM": 90.27259934502923,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086955200172367,
+       "longitude": -42.8
+      },
+      "distanceM": 1.596207163244344,
+      "offsetM": 98.56676112864768,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 2,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086886355963443,
+       "longitude": -42.8
+      },
+      "distanceM": 7.746961169107863,
+      "offsetM": 106.22189846354763,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79991672074485
+      },
+      "distanceM": 5.08070670321567,
+      "offsetM": 9.223772701202961,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79983432377753
+      },
+      "distanceM": 2.2494100192268633,
+      "offsetM": 18.349825718931243,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.799741630678525
+      },
+      "distanceM": 10.569024696974637,
+      "offsetM": 28.616248907476344,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79960763147919
+      },
+      "distanceM": 4.362106226390249,
+      "offsetM": 43.457617920344774,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79963914031789
+      },
+      "distanceM": 5.1473811117469195,
+      "offsetM": 39.967788841707716,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79946993849157
+      },
+      "distanceM": 6.9922621033248085,
+      "offsetM": 58.708100385322716,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79931719369664
+      },
+      "distanceM": 0.5179095101523644,
+      "offsetM": 75.62567808449194,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79940461810138
+      },
+      "distanceM": 2.6438978466581657,
+      "offsetM": 65.94280044111065,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79928839589678
+      },
+      "distanceM": 3.112440469183997,
+      "offsetM": 78.8152402352714,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.7992055374439
+      },
+      "distanceM": 2.8196446183171275,
+      "offsetM": 87.99240607728098,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.799027544443305
+      },
+      "distanceM": 1.072712812739879,
+      "offsetM": 107.7064030018746,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 60,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79892830235862
+      },
+      "distanceM": 7.308213033154483,
+      "offsetM": 118.69817315989599,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.798743534935525
+      },
+      "distanceM": 6.56608940492961,
+      "offsetM": 19.161882013911733,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79876111923819
+      },
+      "distanceM": 2.0892087729026527,
+      "offsetM": 17.214294819151746,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.798675672794786
+      },
+      "distanceM": 4.168572776320323,
+      "offsetM": 26.67809910855385,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79863758191289
+      },
+      "distanceM": 8.015979340929245,
+      "offsetM": 30.89693651221637,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79837490863526
+      },
+      "distanceM": 13.1775243216939,
+      "offsetM": 59.98987932464274,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79831402195418
+      },
+      "distanceM": 1.8151730085211035,
+      "offsetM": 66.73351440915712,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79811407838133
+      },
+      "distanceM": 6.238853944999724,
+      "offsetM": 88.87869408990262,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79814925524897
+      },
+      "distanceM": 0.5956439960787593,
+      "offsetM": 84.98260459109609,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79801670347145
+      },
+      "distanceM": 2.549692465596273,
+      "offsetM": 99.6636612939476,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.797979504961454
+      },
+      "distanceM": 13.80439253026521,
+      "offsetM": 103.78366213185086,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.797854068348904
+      },
+      "distanceM": 2.635942529336668,
+      "offsetM": 117.67666346179634,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 19.347451367402716,
+      "offsetM": 120.0006037784035,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 33.07606090655894,
+      "offsetM": 120.0006037784035,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 25.796906357217395,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 61,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 53.2447198309004,
+      "offsetM": 120.0006037784035,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 62,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79742735355054
+      },
+      "distanceM": 3.060513974989148,
+      "offsetM": 44.937773314765984,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 62,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79732922702163
+      },
+      "distanceM": 6.710576335545982,
+      "offsetM": 55.805987697792936,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 62,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.797063750569876
+      },
+      "distanceM": 4.436145085595942,
+      "offsetM": 85.20940207811873,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 62,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79705115083155
+      },
+      "distanceM": 3.425395319473838,
+      "offsetM": 86.6049131475645,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 62,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79692498479536
+      },
+      "distanceM": 4.300958119684561,
+      "offsetM": 100.5787033587676,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 62,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79681917058358
+      },
+      "distanceM": 12.098948697347332,
+      "offsetM": 112.29838356287587,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79674885475793
+      },
+      "distanceM": 0.5717333224349309,
+      "offsetM": 0.08576001971164258,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79662451647351
+      },
+      "distanceM": 7.192512603819979,
+      "offsetM": 13.857113659875266,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79651585009039
+      },
+      "distanceM": 5.92677170881572,
+      "offsetM": 25.892692224431357,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79635842515634
+      },
+      "distanceM": 1.5793238542470875,
+      "offsetM": 43.32862877918433,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79635685634241
+      },
+      "distanceM": 3.750715619437268,
+      "offsetM": 43.50238613401643,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79625105814948
+      },
+      "distanceM": 8.206870363001974,
+      "offsetM": 55.22029213656423,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79618802836218
+      },
+      "distanceM": 2.8525713283652028,
+      "offsetM": 62.20129155109589,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79603516696559
+      },
+      "distanceM": 1.6852862483460036,
+      "offsetM": 79.13178371764091,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.795980627515384
+      },
+      "distanceM": 0.639647184377937,
+      "offsetM": 85.17241761885725,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.795901441035625
+      },
+      "distanceM": 6.0493972031916545,
+      "offsetM": 93.94288619456302,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 63,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79574189089552
+      },
+      "distanceM": 1.8300704849439435,
+      "offsetM": 111.61420450912192,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086769321484466,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 6.975449533292931,
+      "offsetM": 0.7644432564776764,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086854231355924,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 12.851569702923825,
+      "offsetM": 10.206003225910298,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086970597221112,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 1.5157037885353475,
+      "offsetM": 23.145314941852405,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087029284669551,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 0.029166548481271093,
+      "offsetM": 29.67107047979733,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087099556691137,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 4.294532045970982,
+      "offsetM": 37.484973558193545,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087374079177761,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 2.0012792515001365,
+      "offsetM": 68.01052348424167,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0873737485309425,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 1.2280515787977038,
+      "offsetM": 67.97375718474412,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087434753084452,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 8.508918664215344,
+      "offsetM": 74.75716340681203,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087590001422995,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 10.347784311371242,
+      "offsetM": 92.02001486722004,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087587311422707,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 9.290770172601924,
+      "offsetM": 91.72090006943341,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087812196991717,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 1.4377730333189902,
+      "offsetM": 116.72706895880387,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 26,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087773206000813,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 1.315591604811516,
+      "offsetM": 112.39146259689952,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088000100271062,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 2.1833561723651655,
+      "offsetM": 17.620989181715046,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088063294237369,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 1.142165283926488,
+      "offsetM": 24.64784733549044,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088138525676668,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 6.672298350975552,
+      "offsetM": 33.01321326448809,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.08824943120906,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 0.5451017467012207,
+      "offsetM": 45.34536283711137,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088336320997556,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 0.4973777809350395,
+      "offsetM": 55.00707984037689,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088413214417035,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 0.9152013945813451,
+      "offsetM": 63.557249788852346,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0885233733110535,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 5.914619816693175,
+      "offsetM": 75.80637684764554,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088571109584521,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 12.005013583373966,
+      "offsetM": 81.11441560590691,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088760399319107,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 10.361448018494457,
+      "offsetM": 102.16250283061666,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.08890603475881,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 10.316951184350046,
+      "offsetM": 118.3564472331791,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 25,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088851487464109,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 1.4290693446666864,
+      "offsetM": 112.29105642241605,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.7956293596265
+      },
+      "distanceM": 7.566111793433095,
+      "offsetM": 4.077243030601267,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79544312067845
+      },
+      "distanceM": 10.943628346722903,
+      "offsetM": 24.704537569327385,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.795376123698986
+      },
+      "distanceM": 3.4074018441706926,
+      "offsetM": 32.124931869386955,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.795161754353074
+      },
+      "distanceM": 3.887277759976598,
+      "offsetM": 55.86786901765914,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79518858613496
+      },
+      "distanceM": 3.2961738841884767,
+      "offsetM": 52.89605740797811,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.795017744796326
+      },
+      "distanceM": 8.649359496094661,
+      "offsetM": 71.81795665773552,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79490690001582
+      },
+      "distanceM": 2.3267179848286617,
+      "offsetM": 84.09480830190434,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79495043814984
+      },
+      "distanceM": 8.374755248373845,
+      "offsetM": 79.27264879373526,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79479314825676
+      },
+      "distanceM": 5.480818778171795,
+      "offsetM": 96.6936285966708,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.794606315025085
+      },
+      "distanceM": 6.6834912390283705,
+      "offsetM": 117.38674429359253,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79458271510801
+      },
+      "distanceM": 6.609555775816976,
+      "offsetM": 120.00060377761656,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79458271510801
+      },
+      "distanceM": 11.199025295835751,
+      "offsetM": 120.00060377761656,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.794475674434956
+      },
+      "distanceM": 1.9207137752151198,
+      "offsetM": 11.855519555459068,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79429792270257
+      },
+      "distanceM": 6.053406922510618,
+      "offsetM": 31.54279430137944,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79419501912329
+      },
+      "distanceM": 2.534271622459073,
+      "offsetM": 42.94010115361266,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.794027537381666
+      },
+      "distanceM": 3.785753725723964,
+      "offsetM": 61.48990102367429,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.793960308883356
+      },
+      "distanceM": 7.214237359182874,
+      "offsetM": 68.93593769066797,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79385914378912
+      },
+      "distanceM": 8.795228744825948,
+      "offsetM": 80.14069489990038,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.793754343867576
+      },
+      "distanceM": 1.65930163350086,
+      "offsetM": 91.74803521150147,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79354261651621
+      },
+      "distanceM": 7.5343968163419675,
+      "offsetM": 115.19835258130865,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.793587595706974
+      },
+      "distanceM": 3.9044083279057133,
+      "offsetM": 110.21658574014371,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     }
+    ],
+    "routes": [
+     {
+      "edges": [
+       [
+        0,
+        false
+       ],
+       [
+        1,
+        false
+       ],
+       [
+        2,
+        false
+       ],
+       [
+        60,
+        false
+       ],
+       [
+        61,
+        false
+       ],
+       [
+        62,
+        false
+       ],
+       [
+        63,
+        false
+       ],
+       [
+        26,
+        true
+       ],
+       [
+        25,
+        true
+       ],
+       [
+        52,
+        false
+       ],
+       [
+        53,
+        false
+       ]
+      ],
+      "firstFix": 0,
+      "lastFix": 121
+     }
+    ],
+    "breaks": 0,
+    "dropped": 47,
+    "unmatched": 0
+   }
+  },
+  "one_way_avenue": {
+   "fixes": [
+    {
+     "latitude": -5.087855255531689,
+     "longitude": -42.799953852484784
+    },
+    {
+     "latitude": -5.087909873427673,
+     "longitude": -42.79988293525973
+    },
+    {
+     "latitude": -5.087834199472392,
+     "longitude": -42.799773452740794
+    },
+    {
+     "latitude": -5.087897590944929,
+     "longitude": -42.799647614117525
+    },
+    {
+     "latitude": -5.087864477816203,
+     "longitude": -42.79951473062597
+    },
+    {
+     "latitude": -5.087900916828086,
+     "longitude": -42.79935005688562
+    },
+    {
+     "latitude": -5.087788579467829,
+     "longitude": -42.799292149873864
+    },
+    {
+     "latitude": -5.087903013743979,
+     "longitude": -42.79913819740348
+    },
+    {
+     "latitude": -5.087870838942346,
+     "longitude": -42.79909021534663
+    },
+    {
+     "latitude": -5.0878532459059755,
+     "longitude": -42.7989616955404
+    },
+    {
+     "latitude": -5.087817247965359,
+     "longitude": -42.79879487973621
+    },
+    {
+     "latitude": -5.087820552982256,
+     "longitude": -42.79878314096324
+    },
+    {
+     "latitude": -5.087834635829784,
+     "longitude": -42.79860061456895
+    },
+    {
+     "latitude": -5.0878131007049205,
+     "longitude": -42.798452957164294
+    },
+    {
+     "latitude": -5.087808658260708,
+     "longitude": -42.798391310617234
+    },
+    {
+     "latitude": -5.087942756441273,
+     "longitude": -42.79826690294969
+    },
+    {
+     "latitude": -5.087860072511804,
+     "longitude": -42.79812445328399
+    },
+    {
+     "latitude": -5.08783785762685,
+     "longitude": -42.79791089714451
+    },
+    {
+     "latitude": -5.087809804349739,
+     "longitude": -42.79786685958189
+    },
+    {
+     "latitude": -5.08778864417679,
+     "longitude": -42.7978428495146
+    },
+    {
+     "latitude": -5.087835060579782,
+     "longitude": -42.797661787131396
+    },
+    {
+     "latitude": -5.087854812898072,
+     "longitude": -42.797520954388695
+    },
+    {
+     "latitude": -5.087843429643553,
+     "longitude": -42.797334279480225
+    },
+    {
+     "latitude": -5.087839247466817,
+     "longitude": -42.79733366886717
+    },
+    {
+     "latitude": -5.087717118135157,
+     "longitude": -42.797247887524385
+    },
+    {
+     "latitude": -5.087879586551012,
+     "longitude": -42.79705491919025
+    },
+    {
+     "latitude": -5.087805201114305,
+     "longitude": -42.796927960978216
+    },
+    {
+     "latitude": -5.087791614520569,
+     "longitude": -42.79686085443257
+    },
+    {
+     "latitude": -5.0877436156772005,
+     "longitude": -42.7967914010044
+    },
+    {
+     "latitude": -5.087703387651203,
+     "longitude": -42.79656500663757
+    },
+    {
+     "latitude": -5.087796024219864,
+     "longitude": -42.7964609968005
+    },
+    {
+     "latitude": -5.08788975548781,
+     "longitude": -42.796411190557535
+    },
+    {
+     "latitude": -5.087857349302235,
+     "longitude": -42.79614359900558
+    },
+    {
+     "latitude": -5.0878083454673835,
+     "longitude": -42.79601162185999
+    },
+    {
+     "latitude": -5.0878151505867315,
+     "longitude": -42.79597164645567
+    },
+    {
+     "latitude": -5.087883432798635,
+     "longitude": -42.795769209663675
+    },
+    {
+     "latitude": -5.087833814639064,
+     "longitude": -42.795778680790704
+    },
+    {
+     "latitude": -5.087825152681796,
+     "longitude": -42.79557353171267
+    },
+    {
+     "latitude": -5.087874159783701,
+     "longitude": -42.79552222942277
+    },
+    {
+     "latitude": -5.087884633574629,
+     "longitude": -42.79536089313933
+    },
+    {
+     "latitude": -5.087848734169022,
+     "longitude": -42.79524960037992
+    },
+    {
+     "latitude": -5.08793325543879,
+     "longitude": -42.79506929342191
+    },
+    {
+     "latitude": -5.087834056850726,
+     "longitude": -42.79508231392665
+    },
+    {
+     "latitude": -5.087920105768287,
+     "longitude": -42.79490656859284
+    },
+    {
+     "latitude": -5.087863346550947,
+     "longitude": -42.79473457640354
+    },
+    {
+     "latitude": -5.087873951602449,
+     "longitude": -42.794676171474805
+    },
+    {
+     "latitude": -5.087752992234295,
+     "longitude": -42.794651787126426
+    },
+    {
+     "latitude": -5.087875173127231,
+     "longitude": -42.79442525509717
+    },
+    {
+     "latitude": -5.087748845663972,
+     "longitude": -42.794334571531785
+    },
+    {
+     "latitude": -5.08779598345944,
+     "longitude": -42.794224144969725
+    },
+    {
+     "latitude": -5.087900589452814,
+     "longitude": -42.79412059714501
+    },
+    {
+     "latitude": -5.087930541252031,
+     "longitude": -42.79404682095279
+    },
+    {
+     "latitude": -5.087895233205575,
+     "longitude": -42.79386998552639
+    },
+    {
+     "latitude": -5.087819693539114,
+     "longitude": -42.79377221968104
+    },
+    {
+     "latitude": -5.08783925001503,
+     "longitude": -42.793547769618826
+    },
+    {
+     "latitude": -5.087841631127061,
+     "longitude": -42.79349925812961
+    }
+   ],
+   "expected": {
+    "matches": [
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.799953852484784
+      },
+      "distanceM": 1.5149667657987607,
+      "offsetM": 5.111167124221311,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79988293525973
+      },
+      "distanceM": 7.588208091894231,
+      "offsetM": 12.965756641143797,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.799773452740794
+      },
+      "distanceM": 0.8263634371366351,
+      "offsetM": 25.091728080287794,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.799647614117525
+      },
+      "distanceM": 6.222456437734408,
+      "offsetM": 39.0292549706071,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79951473062597
+      },
+      "distanceM": 2.540439432250821,
+      "offsetM": 53.74705137268552,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79935005688562
+      },
+      "distanceM": 6.592278282161587,
+      "offsetM": 71.98584503267307,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.799292149873864
+      },
+      "distanceM": 5.899083504808928,
+      "offsetM": 78.39946044381941,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79913819740348
+      },
+      "distanceM": 6.825445013167638,
+      "offsetM": 95.45079683061044,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79909021534663
+      },
+      "distanceM": 3.2477653641153097,
+      "offsetM": 100.765152552304,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 54,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.7989616955404
+      },
+      "distanceM": 1.2915062733090537,
+      "offsetM": 114.99963961804906,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79879487973621
+      },
+      "distanceM": 2.7112876218198068,
+      "offsetM": 13.475078379357681,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79878314096324
+      },
+      "distanceM": 2.3437860027299564,
+      "offsetM": 14.77523138215838,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79860061456895
+      },
+      "distanceM": 0.7778426419229731,
+      "offsetM": 34.991334058160646,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.798452957164294
+      },
+      "distanceM": 3.172442578992701,
+      "offsetM": 51.34544692468785,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.798391310617234
+      },
+      "distanceM": 3.6664205196339026,
+      "offsetM": 58.17324259681413,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79826690294969
+      },
+      "distanceM": 11.244637427472043,
+      "offsetM": 71.95228091336207,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79812445328399
+      },
+      "distanceM": 2.050591256096311,
+      "offsetM": 87.729599471558,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79791089714451
+      },
+      "distanceM": 0.41959465871988755,
+      "offsetM": 111.38246819534105,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79786685958189
+      },
+      "distanceM": 3.538981057900415,
+      "offsetM": 116.25994299053059,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 55,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.7978428495146
+      },
+      "distanceM": 5.891888186714681,
+      "offsetM": 118.91922954132018,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.797661787131396
+      },
+      "distanceM": 0.7306125318339127,
+      "offsetM": 18.972578748052,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.797520954388695
+      },
+      "distanceM": 1.4657480851580118,
+      "offsetM": 34.57081152782712,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.797334279480225
+      },
+      "distanceM": 0.19998618564925152,
+      "offsetM": 55.24639179843938,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79733366886717
+      },
+      "distanceM": 0.2650512921142365,
+      "offsetM": 55.31402155852811,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.797247887524385
+      },
+      "distanceM": 13.845232124842013,
+      "offsetM": 64.81491834730991,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79705491919025
+      },
+      "distanceM": 4.220456411568392,
+      "offsetM": 86.18754048897335,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.796927960978216
+      },
+      "distanceM": 4.050838191286758,
+      "offsetM": 100.24906983684514,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79686085443257
+      },
+      "distanceM": 5.561600571894189,
+      "offsetM": 107.68159937441897,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 56,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.7967914010044
+      },
+      "distanceM": 10.898835811356719,
+      "offsetM": 115.37406292546598,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79656500663757
+      },
+      "distanceM": 15.371994389780653,
+      "offsetM": 20.44825330398271,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.7964609968005
+      },
+      "distanceM": 5.071263704926039,
+      "offsetM": 31.968086113749905,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.796411190557535
+      },
+      "distanceM": 5.351192154656744,
+      "offsetM": 37.484483484967086,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79614359900558
+      },
+      "distanceM": 1.7477837495835757,
+      "offsetM": 67.12216032915603,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79601162185999
+      },
+      "distanceM": 3.701201598456535,
+      "offsetM": 81.7395724385417,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79597164645567
+      },
+      "distanceM": 2.9445058065535648,
+      "offsetM": 86.1671341694971,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.795769209663675
+      },
+      "distanceM": 4.6481402245635195,
+      "offsetM": 108.58845568996433,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 57,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.795778680790704
+      },
+      "distanceM": 0.8691550100045475,
+      "offsetM": 107.53946068172831,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79557353171267
+      },
+      "distanceM": 1.8323220433877907,
+      "offsetM": 10.260583487337499,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79552222942277
+      },
+      "distanceM": 3.6170265850042966,
+      "offsetM": 15.942678748715709,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79536089313933
+      },
+      "distanceM": 4.7816606075802355,
+      "offsetM": 33.811825203265016,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79524960037992
+      },
+      "distanceM": 0.7898233207368719,
+      "offsetM": 46.13829371290694,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79506929342191
+      },
+      "distanceM": 10.188172694028566,
+      "offsetM": 66.10857795837751,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79508231392665
+      },
+      "distanceM": 0.8422222647835582,
+      "offsetM": 64.6664640016104,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79490656859284
+      },
+      "distanceM": 8.725994027436428,
+      "offsetM": 84.13151576498466,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79473457640354
+      },
+      "distanceM": 2.414648301279769,
+      "offsetM": 103.18087995092083,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.794676171474805
+      },
+      "distanceM": 3.5938778540080705,
+      "offsetM": 109.64964322605624,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 58,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.794651787126426
+      },
+      "distanceM": 9.856208792939455,
+      "offsetM": 112.35038408289188,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79442525509717
+      },
+      "distanceM": 3.7297054001241605,
+      "offsetM": 17.439821560469678,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.794334571531785
+      },
+      "distanceM": 10.317287012661694,
+      "offsetM": 27.4836745381117,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.794224144969725
+      },
+      "distanceM": 5.0757960635841215,
+      "offsetM": 39.71420550013999,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79412059714501
+      },
+      "distanceM": 6.555875762549505,
+      "offsetM": 51.18286713916109,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79404682095279
+      },
+      "distanceM": 9.886368479603789,
+      "offsetM": 59.35410770323756,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79386998552639
+      },
+      "distanceM": 5.960287421099366,
+      "offsetM": 78.93989501164877,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79377221968104
+      },
+      "distanceM": 2.439351851908782,
+      "offsetM": 89.76816111287211,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.793547769618826
+      },
+      "distanceM": 0.26476794334345755,
+      "offsetM": 114.62760963790787,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 59,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087841631127061,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     }
+    ],
+    "routes": [
+     {
+      "edges": [
+       [
+        54,
+        false
+       ],
+       [
+        55,
+        false
+       ],
+       [
+        56,
+        false
+       ],
+       [
+        57,
+        false
+       ],
+       [
+        58,
+        false
+       ],
+       [
+        59,
+        false
+       ]
+      ],
+      "firstFix": 0,
+      "lastFix": 55
+     }
+    ],
+    "breaks": 0,
+    "dropped": 19,
+    "unmatched": 0
+   }
+  },
+  "side_street": {
+   "fixes": [
+    {
+     "latitude": -5.0899612596028865,
+     "longitude": -42.799991171692405
+    },
+    {
+     "latitude": -5.089937156752792,
+     "longitude": -42.79986448010147
+    },
+    {
+     "latitude": -5.089962339764488,
+     "longitude": -42.79984079711202
+    },
+    {
+     "latitude": -5.089964338014526,
+     "longitude": -42.79975320847853
+    },
+    {
+     "latitude": -5.090025530878054,
+     "longitude": -42.799628042928
+    },
+    {
+     "latitude": -5.089941692345519,
+     "longitude": -42.799550582488884
+    },
+    {
+     "latitude": -5.09002151068157,
+     "longitude": -42.79946153088051
+    },
+    {
+     "latitude": -5.0899880534113295,
+     "longitude": -42.79945125767013
+    },
+    {
+     "latitude": -5.089893304871042,
+     "longitude": -42.79933902644331
+    },
+    {
+     "latitude": -5.089971183123395,
+     "longitude": -42.799274123532115
+    },
+    {
+     "latitude": -5.090031920816782,
+     "longitude": -42.799118312501015
+    },
+    {
+     "latitude": -5.089947193065409,
+     "longitude": -42.79909931979597
+    },
+    {
+     "latitude": -5.089980310496172,
+     "longitude": -42.79898136131604
+    },
+    {
+     "latitude": -5.089974910753797,
+     "longitude": -42.798866999949844
+    },
+    {
+     "latitude": -5.089885501205431,
+     "longitude": -42.798844038288685
+    },
+    {
+     "latitude": -5.0898383016267275,
+     "longitude": -42.79893155810563
+    },
+    {
+     "latitude": -5.0898729169923245,
+     "longitude": -42.798840464729544
+    },
+    {
+     "latitude": -5.089798444487275,
+     "longitude": -42.79872406729683
+    },
+    {
+     "latitude": -5.089809812954026,
+     "longitude": -42.79863117895475
+    },
+    {
+     "latitude": -5.089850031183571,
+     "longitude": -42.79858400606409
+    },
+    {
+     "latitude": -5.089880917846595,
+     "longitude": -42.79847054637558
+    },
+    {
+     "latitude": -5.089838134248507,
+     "longitude": -42.7984508912206
+    },
+    {
+     "latitude": -5.0898023673883355,
+     "longitude": -42.79841379766939
+    },
+    {
+     "latitude": -5.0899173668699245,
+     "longitude": -42.79818870646132
+    },
+    {
+     "latitude": -5.089854758375284,
+     "longitude": -42.79818823876818
+    },
+    {
+     "latitude": -5.089807305865253,
+     "longitude": -42.79818037191415
+    },
+    {
+     "latitude": -5.089853530393557,
+     "longitude": -42.798000551303815
+    },
+    {
+     "latitude": -5.089924692252358,
+     "longitude": -42.797927724149545
+    },
+    {
+     "latitude": -5.089820588424475,
+     "longitude": -42.797846038123026
+    },
+    {
+     "latitude": -5.089842324957948,
+     "longitude": -42.79777178341121
+    },
+    {
+     "latitude": -5.089814769586953,
+     "longitude": -42.79774633749158
+    },
+    {
+     "latitude": -5.089844644236418,
+     "longitude": -42.79766078412274
+    },
+    {
+     "latitude": -5.089834652987636,
+     "longitude": -42.79750308873084
+    },
+    {
+     "latitude": -5.089875451426811,
+     "longitude": -42.797485127775076
+    },
+    {
+     "latitude": -5.089885924323556,
+     "longitude": -42.79737683246822
+    },
+    {
+     "latitude": -5.08985042705657,
+     "longitude": -42.797275677315334
+    },
+    {
+     "latitude": -5.089939483715447,
+     "longitude": -42.797180537343735
+    },
+    {
+     "latitude": -5.089854516860924,
+     "longitude": -42.79711347459917
+    },
+    {
+     "latitude": -5.089863104588328,
+     "longitude": -42.79701846938328
+    },
+    {
+     "latitude": -5.0898605216844555,
+     "longitude": -42.79695419927809
+    },
+    {
+     "latitude": -5.089811260603793,
+     "longitude": -42.79686783600117
+    },
+    {
+     "latitude": -5.089851792401443,
+     "longitude": -42.79674272007692
+    },
+    {
+     "latitude": -5.089850252487233,
+     "longitude": -42.79673850570728
+    },
+    {
+     "latitude": -5.089819104121485,
+     "longitude": -42.79664225687249
+    },
+    {
+     "latitude": -5.089870563497511,
+     "longitude": -42.79659492118287
+    },
+    {
+     "latitude": -5.089869266245206,
+     "longitude": -42.79645397188081
+    },
+    {
+     "latitude": -5.089866094247584,
+     "longitude": -42.79632003082158
+    },
+    {
+     "latitude": -5.089880240325762,
+     "longitude": -42.796303893579356
+    },
+    {
+     "latitude": -5.089872714299715,
+     "longitude": -42.7962635266307
+    },
+    {
+     "latitude": -5.089823899933595,
+     "longitude": -42.796137724948316
+    },
+    {
+     "latitude": -5.089880840565824,
+     "longitude": -42.79605612019693
+    },
+    {
+     "latitude": -5.089800869359709,
+     "longitude": -42.795981547772335
+    },
+    {
+     "latitude": -5.089875525802196,
+     "longitude": -42.79591982935135
+    },
+    {
+     "latitude": -5.0898831747370386,
+     "longitude": -42.795836090212795
+    },
+    {
+     "latitude": -5.089777665427975,
+     "longitude": -42.795742800682405
+    },
+    {
+     "latitude": -5.089850986193714,
+     "longitude": -42.79568212554657
+    },
+    {
+     "latitude": -5.089840053888514,
+     "longitude": -42.79562468078476
+    },
+    {
+     "latitude": -5.089986074167198,
+     "longitude": -42.79568166091749
+    },
+    {
+     "latitude": -5.090016637362875,
+     "longitude": -42.79559852995125
+    },
+    {
+     "latitude": -5.089909097814917,
+     "longitude": -42.795520192081035
+    },
+    {
+     "latitude": -5.089963626023527,
+     "longitude": -42.79541485319804
+    },
+    {
+     "latitude": -5.089967781252384,
+     "longitude": -42.79529121297676
+    },
+    {
+     "latitude": -5.089953423300158,
+     "longitude": -42.795237982307434
+    },
+    {
+     "latitude": -5.090012252053949,
+     "longitude": -42.79511026264047
+    },
+    {
+     "latitude": -5.089993672382655,
+     "longitude": -42.79513115136246
+    },
+    {
+     "latitude": -5.089961596860426,
+     "longitude": -42.79499188702937
+    },
+    {
+     "latitude": -5.089994837571597,
+     "longitude": -42.79486685340702
+    },
+    {
+     "latitude": -5.090035175558339,
+     "longitude": -42.79487347945493
+    },
+    {
+     "latitude": -5.089926658717651,
+     "longitude": -42.79482818140389
+    },
+    {
+     "latitude": -5.089957525914437,
+     "longitude": -42.79474273721433
+    },
+    {
+     "latitude": -5.089918388353464,
+     "longitude": -42.79461684822258
+    },
+    {
+     "latitude": -5.089922007063008,
+     "longitude": -42.79455976479661
+    },
+    {
+     "latitude": -5.089944725095163,
+     "longitude": -42.794445915948145
+    },
+    {
+     "latitude": -5.0899397348614475,
+     "longitude": -42.79434650090094
+    },
+    {
+     "latitude": -5.090036116116953,
+     "longitude": -42.79433111847346
+    },
+    {
+     "latitude": -5.0899555318857725,
+     "longitude": -42.79413717927162
+    },
+    {
+     "latitude": -5.089938933671501,
+     "longitude": -42.79413270057293
+    },
+    {
+     "latitude": -5.0899965272500305,
+     "longitude": -42.79401413867939
+    },
+    {
+     "latitude": -5.089948430477742,
+     "longitude": -42.794013622049036
+    },
+    {
+     "latitude": -5.09000384748346,
+     "longitude": -42.79391548947299
+    },
+    {
+     "latitude": -5.08997400174001,
+     "longitude": -42.79384076579919
+    },
+    {
+     "latitude": -5.089955444639844,
+     "longitude": -42.79372180076715
+    },
+    {
+     "latitude": -5.089938426715362,
+     "longitude": -42.79370659199351
+    },
+    {
+     "latitude": -5.089986132226055,
+     "longitude": -42.79362013557013
+    },
+    {
+     "latitude": -5.089973020389088,
+     "longitude": -42.79349925812961
+    }
+   ],
+   "expected": {
+    "matches": [
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799991171692405
+      },
+      "distanceM": 4.307741565301114,
+      "offsetM": 0.977798161408373,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79986448010147
+      },
+      "distanceM": 6.9878599154120025,
+      "offsetM": 15.009797316891309,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79984079711202
+      },
+      "distanceM": 4.1876329093081495,
+      "offsetM": 17.632857659839146,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79975320847853
+      },
+      "distanceM": 3.9654373360685327,
+      "offsetM": 27.333924811183575,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799628042928
+      },
+      "distanceM": 2.8389080336856978,
+      "offsetM": 41.196904085053575,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799550582488884
+      },
+      "distanceM": 6.483524318207344,
+      "offsetM": 49.77620132352581,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79946153088051
+      },
+      "distanceM": 2.391881963075434,
+      "offsetM": 59.639303399327446,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79945125767013
+      },
+      "distanceM": 1.3284018857131628,
+      "offsetM": 60.77713487092865,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79933902644331
+      },
+      "distanceM": 11.863973424974972,
+      "offsetM": 73.20754535248057,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799274123532115
+      },
+      "distanceM": 3.2042949061663535,
+      "offsetM": 80.39600662602288,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799118312501015
+      },
+      "distanceM": 3.5494377831752217,
+      "offsetM": 97.65319189506567,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79909931979597
+      },
+      "distanceM": 5.871871328668817,
+      "offsetM": 99.75676971876554,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79898136131604
+      },
+      "distanceM": 2.1893759579402854,
+      "offsetM": 112.82151441556674,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 6.155720335052759,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 87,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089885501205431,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 8.030417358299019,
+      "offsetM": 12.731702648759553,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 87,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898383016267275,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 1.6630278686222937,
+      "offsetM": 17.980063589656368,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 87,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898729169923245,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 8.426214573244124,
+      "offsetM": 14.131005234783457,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79872406729683
+      },
+      "distanceM": 4.411981409001669,
+      "offsetM": 21.318062133650752,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79863117895475
+      },
+      "distanceM": 3.1478638364815765,
+      "offsetM": 31.60610988815051,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79858400606409
+      },
+      "distanceM": 1.324205424616423,
+      "offsetM": 36.830844671416564,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79847054637558
+      },
+      "distanceM": 4.758650397775341,
+      "offsetM": 49.39731606506325,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.7984508912206
+      },
+      "distanceM": 0.0013247756684791057,
+      "offsetM": 51.5742649543422,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79841379766939
+      },
+      "distanceM": 3.9757741107886773,
+      "offsetM": 55.68264085649889,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79818870646132
+      },
+      "distanceM": 8.811602471314359,
+      "offsetM": 80.61310086776734,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79818823876818
+      },
+      "distanceM": 1.84984588649246,
+      "offsetM": 80.66490122572736,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79818037191415
+      },
+      "distanceM": 3.4266397737511625,
+      "offsetM": 81.53621153327254,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.798000551303815
+      },
+      "distanceM": 1.713300359836694,
+      "offsetM": 101.45262929802537,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.797927724149545
+      },
+      "distanceM": 9.626148958801593,
+      "offsetM": 109.51875712596234,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.797846038123026
+      },
+      "distanceM": 1.9496845353227172,
+      "offsetM": 118.56606836946888,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 6.80576729301759,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 84,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 9.952738037091423,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79766078412274
+      },
+      "distanceM": 0.7252034037967405,
+      "offsetM": 19.083669125129287,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79750308873084
+      },
+      "distanceM": 0.38577430616129504,
+      "offsetM": 36.549560820102215,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.797485127775076
+      },
+      "distanceM": 4.150811411260634,
+      "offsetM": 38.53886503739408,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79737683246822
+      },
+      "distanceM": 5.315346005141066,
+      "offsetM": 50.53334425394791,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.797275677315334
+      },
+      "distanceM": 1.36822455453256,
+      "offsetM": 61.737000387326134,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.797180537343735
+      },
+      "distanceM": 11.270886883658363,
+      "offsetM": 72.27443220318901,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79711347459917
+      },
+      "distanceM": 1.8229906777979181,
+      "offsetM": 79.70211045809742,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79701846938328
+      },
+      "distanceM": 2.77790371549429,
+      "offsetM": 90.22461711611594,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79695419927809
+      },
+      "distanceM": 2.4906975121987216,
+      "offsetM": 97.34299060177818,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 85,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79686783600117
+      },
+      "distanceM": 2.986892304470757,
+      "offsetM": 106.90834075542534,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79674272007692
+      },
+      "distanceM": 1.5200441872007673,
+      "offsetM": 0.7652197857078136,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79673850570728
+      },
+      "distanceM": 1.348813303124814,
+      "offsetM": 1.2319913431513214,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79664225687249
+      },
+      "distanceM": 2.1147317253701203,
+      "offsetM": 11.89223768286297,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79659492118287
+      },
+      "distanceM": 3.6072977206229666,
+      "offsetM": 17.135003613886056,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79645397188081
+      },
+      "distanceM": 3.4630496464212683,
+      "offsetM": 32.74614617616384,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79632003082158
+      },
+      "distanceM": 3.110339116353714,
+      "offsetM": 47.58107575636745,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.796303893579356
+      },
+      "distanceM": 4.683313414366182,
+      "offsetM": 49.36839066517996,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.7962635266307
+      },
+      "distanceM": 3.846456344251294,
+      "offsetM": 53.83931872936068,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.796137724948316
+      },
+      "distanceM": 1.5814610130022402,
+      "offsetM": 67.77275415294457,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79605612019693
+      },
+      "distanceM": 4.750057156230582,
+      "offsetM": 76.81106359466776,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.795981547772335
+      },
+      "distanceM": 4.142347524102092,
+      "offsetM": 85.07049258443816,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79591982935135
+      },
+      "distanceM": 4.15908158815887,
+      "offsetM": 91.90624880768769,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.795836090212795
+      },
+      "distanceM": 5.009605511709651,
+      "offsetM": 101.1809568824815,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.795742800682405
+      },
+      "distanceM": 6.722510575027968,
+      "offsetM": 111.51343910950527,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 86,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0898381223345295,
+       "longitude": -42.79568212554657
+      },
+      "distanceM": 1.4303978540874027,
+      "offsetM": 118.23364404580207,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 88,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089840053888514,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 4.5954581928669995,
+      "offsetM": 0.21477930026117065,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 88,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089986074167198,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 1.715498741099509,
+      "offsetM": 16.451515904305722,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 88,
+      "reversed": true,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7956661720864
+      },
+      "distanceM": 7.7168833542303386,
+      "offsetM": 17.99999999999568,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.795520192081035
+      },
+      "distanceM": 10.107875763733261,
+      "offsetM": 16.168328906893066,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79541485319804
+      },
+      "distanceM": 4.044607232283738,
+      "offsetM": 27.835363051178774,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79529121297676
+      },
+      "distanceM": 3.582566226141523,
+      "offsetM": 41.52940120958897,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.795237982307434
+      },
+      "distanceM": 5.179099875930035,
+      "offsetM": 47.42507827443319,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79511026264047
+      },
+      "distanceM": 1.3623681219034438,
+      "offsetM": 61.57094419761756,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79513115136246
+      },
+      "distanceM": 0.7035999183375452,
+      "offsetM": 59.2573689462854,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79499188702937
+      },
+      "distanceM": 4.2702401861672,
+      "offsetM": 74.68188915257292,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79486685340702
+      },
+      "distanceM": 0.574036640469501,
+      "offsetM": 88.53025643738397,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79487347945493
+      },
+      "distanceM": 3.911349031762711,
+      "offsetM": 87.79637427572357,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79482818140389
+      },
+      "distanceM": 8.15518977518201,
+      "offsetM": 92.81345717103682,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79474273721433
+      },
+      "distanceM": 4.722909351963722,
+      "offsetM": 102.2770118313781,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79461684822258
+      },
+      "distanceM": 9.074813584545836,
+      "offsetM": 116.22011739054985,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 46,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79458271510801
+      },
+      "distanceM": 9.037276640380938,
+      "offsetM": 120.00060377761656,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.794445915948145
+      },
+      "distanceM": 6.1462974782793935,
+      "offsetM": 15.151484652381443,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79434650090094
+      },
+      "distanceM": 6.70118691661861,
+      "offsetM": 26.16241164514122,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79433111847346
+      },
+      "distanceM": 4.015934522322368,
+      "offsetM": 27.86612542661896,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79413717927162
+      },
+      "distanceM": 4.944635529340076,
+      "offsetM": 49.346278105103686,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79413270057293
+      },
+      "distanceM": 6.790275296989364,
+      "offsetM": 49.842325994300836,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79401413867939
+      },
+      "distanceM": 0.38615271147494923,
+      "offsetM": 62.97390306105103,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.794013622049036
+      },
+      "distanceM": 5.734277165063418,
+      "offsetM": 63.031123564753216,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79391548947299
+      },
+      "distanceM": 0.4278212320128887,
+      "offsetM": 73.90000771152131,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79384076579919
+      },
+      "distanceM": 2.8908786055388873,
+      "offsetM": 82.17618863153825,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79372180076715
+      },
+      "distanceM": 4.954336847382308,
+      "offsetM": 95.35241616763005,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79370659199351
+      },
+      "distanceM": 6.8466463255725785,
+      "offsetM": 97.03689654466847,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79362013557013
+      },
+      "distanceM": 1.5420282364954687,
+      "offsetM": 106.61256333460845,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 47,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 2.9999999999827764,
+      "offsetM": 120.0006037784035,
+      "inferred": false
+     }
+    ],
+    "routes": [
+     {
+      "edges": [
+       [
+        42,
+        false
+       ],
+       [
+        87,
+        false
+       ],
+       [
+        84,
+        false
+       ],
+       [
+        85,
+        false
+       ],
+       [
+        86,
+        false
+       ],
+       [
+        88,
+        true
+       ],
+       [
+        46,
+        false
+       ],
+       [
+        47,
+        false
+       ]
+      ],
+      "firstFix": 0,
+      "lastFix": 84
+     }
+    ],
+    "breaks": 0,
+    "dropped": 41,
+    "unmatched": 0
+   }
+  },
+  "diagonal_and_stop": {
+   "fixes": [
+    {
+     "latitude": -5.0834652372121285,
+     "longitude": -42.799921434055946
+    },
+    {
+     "latitude": -5.083638313056288,
+     "longitude": -42.79999338647602
+    },
+    {
+     "latitude": -5.083578230774748,
+     "longitude": -42.79982187078223
+    },
+    {
+     "latitude": -5.0836534459745435,
+     "longitude": -42.79981187043936
+    },
+    {
+     "latitude": -5.08380555722327,
+     "longitude": -42.799667922987545
+    },
+    {
+     "latitude": -5.083865416148862,
+     "longitude": -42.7996448983556
+    },
+    {
+     "latitude": -5.083883439639355,
+     "longitude": -42.799688346442686
+    },
+    {
+     "latitude": -5.083967537665634,
+     "longitude": -42.79955050011689
+    },
+    {
+     "latitude": -5.084081445599903,
+     "longitude": -42.7995328597131
+    },
+    {
+     "latitude": -5.084046378214215,
+     "longitude": -42.79939170811289
+    },
+    {
+     "latitude": -5.0841985441801345,
+     "longitude": -42.79943558414246
+    },
+    {
+     "latitude": -5.084251100912746,
+     "longitude": -42.799328702082406
+    },
+    {
+     "latitude": -5.0842303577258265,
+     "longitude": -42.79919291784925
+    },
+    {
+     "latitude": -5.084324327273854,
+     "longitude": -42.79924679053939
+    },
+    {
+     "latitude": -5.084348281424977,
+     "longitude": -42.79912783030536
+    },
+    {
+     "latitude": -5.084442912848889,
+     "longitude": -42.79898960398191
+    },
+    {
+     "latitude": -5.084627475017055,
+     "longitude": -42.79896118198578
+    },
+    {
+     "latitude": -5.0846265936292765,
+     "longitude": -42.79885469049183
+    },
+    {
+     "latitude": -5.084722408631648,
+     "longitude": -42.79890944555779
+    },
+    {
+     "latitude": -5.084827632016595,
+     "longitude": -42.79878115814213
+    },
+    {
+     "latitude": -5.084703715956227,
+     "longitude": -42.79871742625639
+    },
+    {
+     "latitude": -5.084891199830008,
+     "longitude": -42.79865157225178
+    },
+    {
+     "latitude": -5.084941335133271,
+     "longitude": -42.79850281722808
+    },
+    {
+     "latitude": -5.084948762483342,
+     "longitude": -42.79855284155539
+    },
+    {
+     "latitude": -5.0850472594257985,
+     "longitude": -42.79845833472673
+    },
+    {
+     "latitude": -5.085144274249755,
+     "longitude": -42.798413517206725
+    },
+    {
+     "latitude": -5.0851036333165185,
+     "longitude": -42.79832205386484
+    },
+    {
+     "latitude": -5.0852191214365945,
+     "longitude": -42.79821023664868
+    },
+    {
+     "latitude": -5.08537450999982,
+     "longitude": -42.798184497360225
+    },
+    {
+     "latitude": -5.085414202574481,
+     "longitude": -42.798196780444826
+    },
+    {
+     "latitude": -5.0854295224734924,
+     "longitude": -42.798148977092204
+    },
+    {
+     "latitude": -5.085449112832824,
+     "longitude": -42.79806757626553
+    },
+    {
+     "latitude": -5.0855898560805395,
+     "longitude": -42.79794497453329
+    },
+    {
+     "latitude": -5.085614594681921,
+     "longitude": -42.79781748314963
+    },
+    {
+     "latitude": -5.085683262254122,
+     "longitude": -42.7978330860432
+    },
+    {
+     "latitude": -5.085717756047807,
+     "longitude": -42.79784166055686
+    },
+    {
+     "latitude": -5.085654520089055,
+     "longitude": -42.79786041139808
+    },
+    {
+     "latitude": -5.085676867442092,
+     "longitude": -42.79779593271961
+    },
+    {
+     "latitude": -5.08567939037363,
+     "longitude": -42.79784056231788
+    },
+    {
+     "latitude": -5.08570026744902,
+     "longitude": -42.797807834452136
+    },
+    {
+     "latitude": -5.085681930900567,
+     "longitude": -42.797843471289895
+    },
+    {
+     "latitude": -5.085706946736967,
+     "longitude": -42.79783967228663
+    },
+    {
+     "latitude": -5.085757602382333,
+     "longitude": -42.797899638283205
+    },
+    {
+     "latitude": -5.08591271338102,
+     "longitude": -42.797828290700835
+    },
+    {
+     "latitude": -5.086057132728722,
+     "longitude": -42.79789569003757
+    },
+    {
+     "latitude": -5.086147536355963,
+     "longitude": -42.79781335471948
+    },
+    {
+     "latitude": -5.086252272495811,
+     "longitude": -42.79787017313694
+    },
+    {
+     "latitude": -5.0863546812725815,
+     "longitude": -42.79796145292485
+    },
+    {
+     "latitude": -5.086385135406613,
+     "longitude": -42.7978988883244
+    },
+    {
+     "latitude": -5.086481312182822,
+     "longitude": -42.79770761813628
+    },
+    {
+     "latitude": -5.086669093698532,
+     "longitude": -42.797812001602864
+    },
+    {
+     "latitude": -5.086785278818057,
+     "longitude": -42.79786057441414
+    },
+    {
+     "latitude": -5.086818949310642,
+     "longitude": -42.79784237896981
+    },
+    {
+     "latitude": -5.087061501212598,
+     "longitude": -42.79792033342973
+    },
+    {
+     "latitude": -5.087165148775382,
+     "longitude": -42.7977659732379
+    },
+    {
+     "latitude": -5.087180605435359,
+     "longitude": -42.79798431925218
+    },
+    {
+     "latitude": -5.0873573564177725,
+     "longitude": -42.7977751686491
+    },
+    {
+     "latitude": -5.087479638318545,
+     "longitude": -42.79778598806846
+    },
+    {
+     "latitude": -5.087508755507127,
+     "longitude": -42.79785602832499
+    },
+    {
+     "latitude": -5.087744020398026,
+     "longitude": -42.79785392875673
+    },
+    {
+     "latitude": -5.087711855835959,
+     "longitude": -42.79786349948456
+    },
+    {
+     "latitude": -5.08782080559253,
+     "longitude": -42.79786359573533
+    },
+    {
+     "latitude": -5.088010754050722,
+     "longitude": -42.797758817274875
+    },
+    {
+     "latitude": -5.088019812067707,
+     "longitude": -42.79779467508258
+    },
+    {
+     "latitude": -5.088163890615442,
+     "longitude": -42.79784280021238
+    },
+    {
+     "latitude": -5.08828507987305,
+     "longitude": -42.7979513452833
+    },
+    {
+     "latitude": -5.088392853904578,
+     "longitude": -42.7979106150033
+    },
+    {
+     "latitude": -5.088435555843744,
+     "longitude": -42.79784409681786
+    },
+    {
+     "latitude": -5.088641190113828,
+     "longitude": -42.79793113727793
+    },
+    {
+     "latitude": -5.08874733358726,
+     "longitude": -42.797861616401725
+    },
+    {
+     "latitude": -5.088807084436803,
+     "longitude": -42.79770923423439
+    },
+    {
+     "latitude": -5.089019278536042,
+     "longitude": -42.79782249462384
+    },
+    {
+     "latitude": -5.0889742112543,
+     "longitude": -42.79781865651666
+    },
+    {
+     "latitude": -5.089184885757795,
+     "longitude": -42.79777678609615
+    },
+    {
+     "latitude": -5.089258573759833,
+     "longitude": -42.797811759249015
+    },
+    {
+     "latitude": -5.089384370419312,
+     "longitude": -42.79783118438943
+    },
+    {
+     "latitude": -5.089491848462874,
+     "longitude": -42.7978037627991
+    },
+    {
+     "latitude": -5.089572368771681,
+     "longitude": -42.797782474979265
+    },
+    {
+     "latitude": -5.089652592205782,
+     "longitude": -42.7977476798478
+    },
+    {
+     "latitude": -5.089804873305528,
+     "longitude": -42.79779588937403
+    },
+    {
+     "latitude": -5.089897622056468,
+     "longitude": -42.797877716700995
+    },
+    {
+     "latitude": -5.09,
+     "longitude": -42.7978330860432
+    }
+   ],
+   "expected": {
+    "matches": [
+     {
+      "edgeIndex": 5,
+      "reversed": false,
+      "point": {
+       "latitude": -5.083524893381183,
+       "longitude": -42.8
+      },
+      "distanceM": 10.941811239778096,
+      "offsetM": 120.00000000000409,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79999338647602
+      },
+      "distanceM": 107.3882901266266,
+      "offsetM": 0.7324950472609543,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79982187078223
+      },
+      "distanceM": 114.06914424310253,
+      "offsetM": 19.72908394941282,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79981187043936
+      },
+      "distanceM": 105.70558406705112,
+      "offsetM": 20.8366933941179,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.799667922987545
+      },
+      "distanceM": 88.79156156047333,
+      "offsetM": 36.779902469227636,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7996448983556
+      },
+      "distanceM": 82.13554352655143,
+      "offsetM": 39.33004501300251,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.799688346442686
+      },
+      "distanceM": 80.13142005509866,
+      "offsetM": 34.5178588468666,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79955050011689
+      },
+      "distanceM": 70.78013327554072,
+      "offsetM": 49.78532461092754,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7995328597131
+      },
+      "distanceM": 58.114131385273424,
+      "offsetM": 51.739125405110826,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79939170811289
+      },
+      "distanceM": 62.01345215039788,
+      "offsetM": 67.3726739329004,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 10,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 73.06315095358497,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 10,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 60.20290407436269,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 10,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 51.612880281746705,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 10,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 48.0159882982238,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 10,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 36.83279967441498,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 10,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 19.6630156305928,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.7989165430216
+      },
+      "distanceM": 117.50240737498291,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79885469049183
+      },
+      "distanceM": 117.49635251994513,
+      "offsetM": 6.850609729211555,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79890944555779
+      },
+      "distanceM": 106.84219564368956,
+      "offsetM": 0.7860948419818214,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79878115814213
+      },
+      "distanceM": 95.1418729120139,
+      "offsetM": 14.994842991323596,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79871742625639
+      },
+      "distanceM": 108.92072918689291,
+      "offsetM": 22.053604825933917,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79865157225178
+      },
+      "distanceM": 88.07344479927386,
+      "offsetM": 29.34740649228229,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79850281722808
+      },
+      "distanceM": 82.4986457304455,
+      "offsetM": 45.82308851223547,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79855284155539
+      },
+      "distanceM": 81.67276094338072,
+      "offsetM": 40.282536741142394,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79845833472673
+      },
+      "distanceM": 70.72038552417814,
+      "offsetM": 50.749843451469125,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.798413517206725
+      },
+      "distanceM": 59.93281439049076,
+      "offsetM": 55.71370410106328,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79832205386484
+      },
+      "distanceM": 64.45188622249174,
+      "offsetM": 65.843922899827,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79821023664868
+      },
+      "distanceM": 51.610175444620864,
+      "offsetM": 78.22847874221407,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.798184497360225
+      },
+      "distanceM": 34.33173168938794,
+      "offsetM": 81.07928889603316,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.798196780444826
+      },
+      "distanceM": 29.918112665298736,
+      "offsetM": 79.71884948979299,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.798148977092204
+      },
+      "distanceM": 28.21461526553412,
+      "offsetM": 85.01341244120727,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79806757626553
+      },
+      "distanceM": 26.036263687898753,
+      "offsetM": 94.02913576346236,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 67,
+      "reversed": false,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.79794497453329
+      },
+      "distanceM": 10.386306965807194,
+      "offsetM": 107.60815383879299,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 7.828616886233971,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085717756047807,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0.9496886700176219,
+      "offsetM": 3.83554015640297,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 4.401579980414646,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 4.175980836421239,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0.9332886984825216,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.08570026744902,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 2.7967941821243585,
+      "offsetM": 1.890894011119457,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085683262254122,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 1.1597277984554488,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085706946736967,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0.7294735314449099,
+      "offsetM": 2.633597970259132,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.085757602382333,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 7.3711362267818,
+      "offsetM": 8.266256521049186,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.08591271338102,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0.53111843883039,
+      "offsetM": 25.5138364650588,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086057132728722,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 6.9338398048255385,
+      "offsetM": 41.5725574200617,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086147536355963,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 2.1853851206967647,
+      "offsetM": 51.62499600453921,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086252272495811,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 4.107660692075569,
+      "offsetM": 63.27113947829607,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0863546812725815,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 14.217549575798557,
+      "offsetM": 74.6584916279322,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086385135406613,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 7.288072928878364,
+      "offsetM": 78.04484150500377,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086481312182822,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 13.896467405056,
+      "offsetM": 88.73922585215254,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086669093698532,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 2.3352524565950716,
+      "offsetM": 109.61960655793442,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 15,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 3.9641887837979257,
+      "offsetM": 120.00000000000409,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.086818949310642,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 1.0292580385512338,
+      "offsetM": 6.282813369898236,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087061501212598,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 9.663271611693744,
+      "offsetM": 33.2533915687152,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087165148775382,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 7.4332228390057935,
+      "offsetM": 44.778490628495135,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087180605435359,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 16.75015875199506,
+      "offsetM": 46.49719517476008,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0873573564177725,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 6.414765329145666,
+      "offsetM": 66.15103484561442,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087479638318545,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 5.216437309247567,
+      "offsetM": 79.74818061309216,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087508755507127,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 2.5410216763273183,
+      "offsetM": 82.98586873364326,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087744020398026,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 2.3084794856481494,
+      "offsetM": 109.14616715333791,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.087711855835959,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 3.3685059947754326,
+      "offsetM": 105.56962609360848,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 14,
+      "reversed": true,
+      "point": {
+       "latitude": -5.08782080559253,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 3.3791664549635243,
+      "offsetM": 117.68430301696293,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088010754050722,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 8.225796887463048,
+      "offsetM": 18.8056370658272,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088019812067707,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 4.254288410176969,
+      "offsetM": 19.812843991271425,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088163890615442,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 1.0759136635529103,
+      "offsetM": 35.833669666511014,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.08828507987305,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 13.098056035209538,
+      "offsetM": 49.30931888975644,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088392853904578,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 8.586886427806121,
+      "offsetM": 61.29326097256132,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088435555843744,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 1.219521987527969,
+      "offsetM": 66.04150652425224,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088641190113828,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 10.85987501429554,
+      "offsetM": 88.9070256849842,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.08874733358726,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 3.159941112142633,
+      "offsetM": 100.70965772951723,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 13,
+      "reversed": true,
+      "point": {
+       "latitude": -5.088807084436803,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 13.717472989140106,
+      "offsetM": 107.3536582385488,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089019278536042,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 1.1730753906633709,
+      "offsetM": 10.948598128434014,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.0889742112543,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 1.598173191201795,
+      "offsetM": 5.937338119221948,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089184885757795,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 6.235621508820259,
+      "offsetM": 29.363306438494718,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089258573759833,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 2.362094877463278,
+      "offsetM": 37.55704973735851,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089384370419312,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0.21062174582061743,
+      "offsetM": 51.545019381283794,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089491848462874,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 3.2477588559950163,
+      "offsetM": 63.496049058495316,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089572368771681,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 5.605537045749543,
+      "offsetM": 72.44951125674413,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089652592205782,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 9.459346534516726,
+      "offsetM": 81.36996244822313,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089804873305528,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 4.119796953446439,
+      "offsetM": 98.30287155253876,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 12,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089897622056468,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 4.943164324422241,
+      "offsetM": 108.61607635486058,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": true,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0,
+      "offsetM": 0,
+      "inferred": false
+     }
+    ],
+    "routes": [
+     {
+      "edges": [
+       [
+        5,
+        false
+       ],
+       [
+        5,
+        true
+       ],
+       [
+        72,
+        false
+       ],
+       [
+        10,
+        true
+       ],
+       [
+        67,
+        false
+       ],
+       [
+        15,
+        true
+       ],
+       [
+        14,
+        true
+       ],
+       [
+        13,
+        true
+       ],
+       [
+        12,
+        true
+       ],
+       [
+        43,
+        true
+       ]
+      ],
+      "firstFix": 0,
+      "lastFix": 81
+     }
+    ],
+    "breaks": 0,
+    "dropped": 34,
+    "unmatched": 0
+   }
+  },
+  "gap_and_far_fix": {
+   "fixes": [
+    {
+     "latitude": -5.084597719846203,
+     "longitude": -42.800100902675894
+    },
+    {
+     "latitude": -5.084587299924591,
+     "longitude": -42.7999373101163
+    },
+    {
+     "latitude": -5.084728587704402,
+     "longitude": -42.79973726013573
+    },
+    {
+     "latitude": -5.084624264963978,
+     "longitude": -42.79966942274767
+    },
+    {
+     "latitude": -5.0846295550272735,
+     "longitude": -42.799705901632166
+    },
+    {
+     "latitude": -5.084635965382541,
+     "longitude": -42.79943661286382
+    },
+    {
+     "latitude": -5.0846245650114525,
+     "longitude": -42.79955096794432
+    },
+    {
+     "latitude": -5.084570716362842,
+     "longitude": -42.79935634170616
+    },
+    {
+     "latitude": -5.08462105231157,
+     "longitude": -42.799324946827085
+    },
+    {
+     "latitude": -5.08465130013454,
+     "longitude": -42.79915583849197
+    },
+    {
+     "latitude": -5.0845505783870255,
+     "longitude": -42.79906950281099
+    },
+    {
+     "latitude": -5.0846406512592,
+     "longitude": -42.798970559000594
+    },
+    {
+     "latitude": -5.084622073892688,
+     "longitude": -42.798975540161905
+    },
+    {
+     "latitude": -5.084576639480143,
+     "longitude": -42.79877743742154
+    },
+    {
+     "latitude": -5.08462258980336,
+     "longitude": -42.79874576012138
+    },
+    {
+     "latitude": -5.084597255110838,
+     "longitude": -42.79862005623196
+    },
+    {
+     "latitude": -5.084730407723899,
+     "longitude": -42.79852950047993
+    },
+    {
+     "latitude": -5.084634301239585,
+     "longitude": -42.79841432965315
+    },
+    {
+     "latitude": -5.084557206108746,
+     "longitude": -42.79837521956495
+    },
+    {
+     "latitude": -5.0845917879857465,
+     "longitude": -42.798253136165364
+    },
+    {
+     "latitude": -5.084632770974243,
+     "longitude": -42.79823646821073
+    },
+    {
+     "latitude": -5.084591583044333,
+     "longitude": -42.79809297509396
+    },
+    {
+     "latitude": -5.08460881059608,
+     "longitude": -42.798028001499496
+    },
+    {
+     "latitude": -5.084641257938279,
+     "longitude": -42.797927212743225
+    },
+    {
+     "latitude": -5.0846040778176524,
+     "longitude": -42.7978330860432
+    },
+    {
+     "latitude": -5.076510194544132,
+     "longitude": -42.7978330860432
+    },
+    {
+     "latitude": -5.090003171468225,
+     "longitude": -42.79344299893164
+    },
+    {
+     "latitude": -5.08990965740063,
+     "longitude": -42.79343262862637
+    },
+    {
+     "latitude": -5.0897341087817365,
+     "longitude": -42.79346746682764
+    },
+    {
+     "latitude": -5.0897374643212405,
+     "longitude": -42.79344908865342
+    },
+    {
+     "latitude": -5.089626917443446,
+     "longitude": -42.793486889624226
+    },
+    {
+     "latitude": -5.089563284569607,
+     "longitude": -42.79353532598335
+    },
+    {
+     "latitude": -5.0894075246401504,
+     "longitude": -42.793507588710305
+    },
+    {
+     "latitude": -5.0893471929320615,
+     "longitude": -42.79343418593175
+    },
+    {
+     "latitude": -5.089308685431697,
+     "longitude": -42.79349904446783
+    },
+    {
+     "latitude": -5.0891786575366895,
+     "longitude": -42.79352989330996
+    },
+    {
+     "latitude": -5.089113677223679,
+     "longitude": -42.793578361590946
+    },
+    {
+     "latitude": -5.089016406583726,
+     "longitude": -42.79346256458172
+    },
+    {
+     "latitude": -5.088918365783288,
+     "longitude": -42.793520118162455
+    },
+    {
+     "latitude": -5.088845107581167,
+     "longitude": -42.793554517609124
+    },
+    {
+     "latitude": -5.088769562878304,
+     "longitude": -42.79346548373061
+    },
+    {
+     "latitude": -5.088696055337567,
+     "longitude": -42.79348966386811
+    },
+    {
+     "latitude": -5.088645670537253,
+     "longitude": -42.79354811476811
+    },
+    {
+     "latitude": -5.088451221690556,
+     "longitude": -42.79348491542995
+    },
+    {
+     "latitude": -5.0883942710339625,
+     "longitude": -42.79348968819239
+    },
+    {
+     "latitude": -5.088231379407083,
+     "longitude": -42.793423627069785
+    },
+    {
+     "latitude": -5.088142660900086,
+     "longitude": -42.793507346188846
+    },
+    {
+     "latitude": -5.088124151981544,
+     "longitude": -42.79356769631708
+    },
+    {
+     "latitude": -5.088046616705176,
+     "longitude": -42.79353629752749
+    },
+    {
+     "latitude": -5.087968681450262,
+     "longitude": -42.79341623475571
+    },
+    {
+     "latitude": -5.087906770773368,
+     "longitude": -42.793520781028946
+    },
+    {
+     "latitude": -5.087706566894963,
+     "longitude": -42.79346882189429
+    },
+    {
+     "latitude": -5.0877390185033855,
+     "longitude": -42.793514736005996
+    },
+    {
+     "latitude": -5.087517723992789,
+     "longitude": -42.7935644067862
+    },
+    {
+     "latitude": -5.087462542674057,
+     "longitude": -42.79349529629695
+    },
+    {
+     "latitude": -5.087373853998616,
+     "longitude": -42.79347745623835
+    },
+    {
+     "latitude": -5.0872795907644655,
+     "longitude": -42.79350655923314
+    },
+    {
+     "latitude": -5.087245513897422,
+     "longitude": -42.79349533498242
+    },
+    {
+     "latitude": -5.08701964585974,
+     "longitude": -42.79340893731136
+    },
+    {
+     "latitude": -5.087036134345131,
+     "longitude": -42.79355183550569
+    },
+    {
+     "latitude": -5.086924830001728,
+     "longitude": -42.793450771379085
+    },
+    {
+     "latitude": -5.086838449990227,
+     "longitude": -42.79353635480903
+    },
+    {
+     "latitude": -5.086762446690591,
+     "longitude": -42.79349925812961
+    }
+   ],
+   "expected": {
+    "matches": [
+     {
+      "edgeIndex": 5,
+      "reversed": true,
+      "point": {
+       "latitude": -5.084597719846203,
+       "longitude": -42.8
+      },
+      "distanceM": 11.175692502640004,
+      "offsetM": 119.29302485452479,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7999373101163
+      },
+      "distanceM": 1.8656191651272422,
+      "offsetM": 6.943352661513245,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79973726013573
+      },
+      "distanceM": 13.844886846954267,
+      "offsetM": 29.100317758327037,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79966942274767
+      },
+      "distanceM": 2.2447113553205043,
+      "offsetM": 36.61379331676312,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.799705901632166
+      },
+      "distanceM": 2.8329403679441043,
+      "offsetM": 32.5734961457822,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79943661286382
+      },
+      "distanceM": 3.5457403361891977,
+      "offsetM": 62.39915183515609,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79955096794432
+      },
+      "distanceM": 2.2780751583620997,
+      "offsetM": 49.73350937910458,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79935634170616
+      },
+      "distanceM": 3.70962964433366,
+      "offsetM": 71.28975624096802,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.799324946827085
+      },
+      "distanceM": 1.8874802130391402,
+      "offsetM": 74.7669634761969,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79915583849197
+      },
+      "distanceM": 5.250889315165381,
+      "offsetM": 93.49692020018847,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79906950281099
+      },
+      "distanceM": 5.948873481010423,
+      "offsetM": 103.05921390647745,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.798970559000594
+      },
+      "distanceM": 4.066786767266535,
+      "offsetM": 114.01794805466783,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 72,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.798975540161905
+      },
+      "distanceM": 2.001075007460855,
+      "offsetM": 113.46624883933008,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79877743742154
+      },
+      "distanceM": 3.051008140857192,
+      "offsetM": 15.406939387939245,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79874576012138
+      },
+      "distanceM": 2.058441736072268,
+      "offsetM": 18.915426777442917,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79862005623196
+      },
+      "distanceM": 0.758651431662031,
+      "offsetM": 32.83803093065876,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79852950047993
+      },
+      "distanceM": 14.047264060937522,
+      "offsetM": 42.86772766619947,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79841432965315
+      },
+      "distanceM": 3.360695826689863,
+      "offsetM": 55.62371985319327,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79837521956495
+      },
+      "distanceM": 5.211903432503249,
+      "offsetM": 59.95544163897943,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.798253136165364
+      },
+      "distanceM": 1.3665688448367348,
+      "offsetM": 73.47705066826529,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79823646821073
+      },
+      "distanceM": 3.1905378492078,
+      "offsetM": 75.32314576897419,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.79809297509396
+      },
+      "distanceM": 1.3893573217177106,
+      "offsetM": 91.21603399081981,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.798028001499496
+      },
+      "distanceM": 0.5262616770100124,
+      "offsetM": 98.41232394098574,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.797927212743225
+      },
+      "distanceM": 4.134246496178406,
+      "offsetM": 109.57539903089696,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 73,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0846040778176524,
+       "longitude": -42.7978330860432
+      },
+      "distanceM": 0,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     null,
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79458271510801
+      },
+      "distanceM": 174.41102570052612,
+      "offsetM": 120.00060377761656,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 52,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79458271510801
+      },
+      "distanceM": 168.27269147550695,
+      "offsetM": 120.00060377761656,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 90.50272710879473,
+      "offsetM": 120.0006037784035,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 90.97717423634084,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 53,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 78.52700502720594,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": true,
+      "point": {
+       "latitude": -5.089563284569607,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 3.994772577320873,
+      "offsetM": 71.43939267825385,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0894075246401504,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0.9226713506247961,
+      "offsetM": 65.8803451748463,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0893471929320615,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 7.207210980753871,
+      "offsetM": 72.58893429642268,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089308685431697,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0.02366456895038027,
+      "offsetM": 76.87077888903293,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0891786575366895,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 3.393065172265324,
+      "offsetM": 91.32924110700048,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089113677223679,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 8.761273692297209,
+      "offsetM": 98.55473222579063,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": false,
+      "point": {
+       "latitude": -5.089016406583726,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 4.064072675337684,
+      "offsetM": 109.37074883977056,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 36,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08892081556353,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 2.326400935791164,
+      "offsetM": 120.00000000000409,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088845107581167,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 6.120382293607463,
+      "offsetM": 8.418355173197881,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088769562878304,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 3.7407560734573053,
+      "offsetM": 16.818554469276904,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088696055337567,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 1.0626330307957232,
+      "offsetM": 24.992231359295456,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088645670537253,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 5.41122189019984,
+      "offsetM": 30.59477327277932,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088451221690556,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 1.5885564937041181,
+      "offsetM": 52.21652838258914,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0883942710339625,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 1.0599389429987696,
+      "offsetM": 58.54916121183126,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088231379407083,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 8.376680407234517,
+      "offsetM": 76.66190873206082,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088142660900086,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0.8958103657594165,
+      "offsetM": 86.52697023577777,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088124151981544,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 7.580018387792961,
+      "offsetM": 88.58507091807206,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.088046616705176,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 4.102378034339381,
+      "offsetM": 97.20661219476582,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087968681450262,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 9.195432023554304,
+      "offsetM": 105.8726291180053,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 37,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087906770773368,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 2.383814924959779,
+      "offsetM": 112.75679180249476,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087706566894963,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 3.371030588217536,
+      "offsetM": 15.018478124826627,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0877390185033855,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 1.7142854297530903,
+      "offsetM": 11.410018922558422,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087517723992789,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 7.215679332632362,
+      "offsetM": 36.01687978353877,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087462542674057,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0.4388012814724789,
+      "offsetM": 42.15277094735423,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087373853998616,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 2.414715273970387,
+      "offsetM": 52.01451532882025,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.0872795907644655,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0.8086493965950012,
+      "offsetM": 62.49612321328382,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.087245513897422,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0.4345165898819232,
+      "offsetM": 66.28530317831644,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 38,
+      "reversed": false,
+      "point": {
+       "latitude": -5.08701964585974,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 10.003676139656818,
+      "offsetM": 91.4007177505679,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 39,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 30.984859969499855,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 39,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 18.837911299488056,
+      "offsetM": 0,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 39,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 9.397034781662708,
+      "offsetM": 0,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 39,
+      "reversed": false,
+      "point": {
+       "latitude": -5.086762446690591,
+       "longitude": -42.79349925812961
+      },
+      "distanceM": 0,
+      "offsetM": 0,
+      "inferred": false
+     }
+    ],
+    "routes": [
+     {
+      "edges": [
+       [
+        5,
+        true
+       ],
+       [
+        72,
+        false
+       ],
+       [
+        73,
+        false
+       ],
+       [
+        16,
+        true
+       ],
+       [
+        15,
+        true
+       ],
+       [
+        14,
+        true
+       ],
+       [
+        13,
+        true
+       ],
+       [
+        50,
+        false
+       ],
+       [
+        51,
+        false
+       ],
+       [
+        52,
+        false
+       ],
+       [
+        53,
+        false
+       ],
+       [
+        36,
+        true
+       ],
+       [
+        36,
+        false
+       ],
+       [
+        37,
+        false
+       ],
+       [
+        38,
+        false
+       ],
+       [
+        39,
+        false
+       ]
+      ],
+      "firstFix": 0,
+      "lastFix": 62
+     }
+    ],
+    "breaks": 0,
+    "dropped": 28,
+    "unmatched": 1
+   }
+  },
+  "jump_to_island": {
+   "fixes": [
+    {
+     "latitude": -5.0900205055844125,
+     "longitude": -42.79999384490679
+    },
+    {
+     "latitude": -5.090011621297739,
+     "longitude": -42.799800616353856
+    },
+    {
+     "latitude": -5.089963059923344,
+     "longitude": -42.79973115633165
+    },
+    {
+     "latitude": -5.090069340183403,
+     "longitude": -42.799616556867214
+    },
+    {
+     "latitude": -5.089992242784446,
+     "longitude": -42.799493790400376
+    },
+    {
+     "latitude": -5.090004268499769,
+     "longitude": -42.79929724649519
+    },
+    {
+     "latitude": -5.0899386406221705,
+     "longitude": -42.799204264243656
+    },
+    {
+     "latitude": -5.0900484773083035,
+     "longitude": -42.79904913236455
+    },
+    {
+     "latitude": -5.0900271471404706,
+     "longitude": -42.79887010171566
+    },
+    {
+     "latitude": -5.089967612261919,
+     "longitude": -42.79885930879075
+    },
+    {
+     "latitude": -5.090066293617525,
+     "longitude": -42.7986277595899
+    },
+    {
+     "latitude": -5.089973981216829,
+     "longitude": -42.798400883911825
+    },
+    {
+     "latitude": -5.08993013247076,
+     "longitude": -42.79838303636439
+    },
+    {
+     "latitude": -5.090014499620504,
+     "longitude": -42.798287881461476
+    },
+    {
+     "latitude": -5.090066836359142,
+     "longitude": -42.79810796607403
+    },
+    {
+     "latitude": -5.0899817707380635,
+     "longitude": -42.79806771118005
+    },
+    {
+     "latitude": -5.090044180824712,
+     "longitude": -42.79780620517392
+    },
+    {
+     "latitude": -5.089990511443732,
+     "longitude": -42.79768986100367
+    },
+    {
+     "latitude": -5.09000688931351,
+     "longitude": -42.79758781271149
+    },
+    {
+     "latitude": -5.089964562827878,
+     "longitude": -42.79745614974844
+    },
+    {
+     "latitude": -5.0899952450990025,
+     "longitude": -42.7972517095703
+    },
+    {
+     "latitude": -5.089989530838951,
+     "longitude": -42.79708587503259
+    },
+    {
+     "latitude": -5.089926885895713,
+     "longitude": -42.7971056194957
+    },
+    {
+     "latitude": -5.089998825521386,
+     "longitude": -42.79682892062294
+    },
+    {
+     "latitude": -5.09,
+     "longitude": -42.7967496290648
+    },
+    {
+     "latitude": -5.089947741321837,
+     "longitude": -42.772748926583624
+    },
+    {
+     "latitude": -5.090000985539305,
+     "longitude": -42.772604254387865
+    },
+    {
+     "latitude": -5.089989211738032,
+     "longitude": -42.77245283025419
+    },
+    {
+     "latitude": -5.089992024282121,
+     "longitude": -42.77234800833316
+    },
+    {
+     "latitude": -5.089975541922428,
+     "longitude": -42.772190669615775
+    },
+    {
+     "latitude": -5.089956128685808,
+     "longitude": -42.7720396217435
+    },
+    {
+     "latitude": -5.0900233756230095,
+     "longitude": -42.77188637589536
+    },
+    {
+     "latitude": -5.0900370439475005,
+     "longitude": -42.77182263828607
+    },
+    {
+     "latitude": -5.089905591767258,
+     "longitude": -42.771615025070766
+    },
+    {
+     "latitude": -5.089943154347811,
+     "longitude": -42.771477401099446
+    },
+    {
+     "latitude": -5.0899931587546225,
+     "longitude": -42.77136487008645
+    },
+    {
+     "latitude": -5.090073562372638,
+     "longitude": -42.77121242132507
+    },
+    {
+     "latitude": -5.0899701384150955,
+     "longitude": -42.77116820597129
+    },
+    {
+     "latitude": -5.089892463938606,
+     "longitude": -42.77096594433158
+    },
+    {
+     "latitude": -5.089974032730943,
+     "longitude": -42.77079242101614
+    },
+    {
+     "latitude": -5.0899716969668205,
+     "longitude": -42.770651657749596
+    },
+    {
+     "latitude": -5.0899291586651065,
+     "longitude": -42.77051366711259
+    },
+    {
+     "latitude": -5.090001641639241,
+     "longitude": -42.770430383180525
+    },
+    {
+     "latitude": -5.089977382206982,
+     "longitude": -42.770253603434654
+    },
+    {
+     "latitude": -5.09003929497099,
+     "longitude": -42.77009801179938
+    },
+    {
+     "latitude": -5.090047277187018,
+     "longitude": -42.76999277866169
+    },
+    {
+     "latitude": -5.089949129720038,
+     "longitude": -42.76987593832912
+    },
+    {
+     "latitude": -5.090026023437004,
+     "longitude": -42.76968839833486
+    },
+    {
+     "latitude": -5.090016881898388,
+     "longitude": -42.76962015131733
+    },
+    {
+     "latitude": -5.089982499924763,
+     "longitude": -42.7694669033821
+    },
+    {
+     "latitude": -5.089986939406717,
+     "longitude": -42.76937617825507
+    },
+    {
+     "latitude": -5.089962581817698,
+     "longitude": -42.76919603521781
+    },
+    {
+     "latitude": -5.089950528909321,
+     "longitude": -42.76901977067853
+    },
+    {
+     "latitude": -5.090016623092022,
+     "longitude": -42.768907819472716
+    },
+    {
+     "latitude": -5.089892565027471,
+     "longitude": -42.768744677498965
+    },
+    {
+     "latitude": -5.089984262245539,
+     "longitude": -42.768669714032086
+    },
+    {
+     "latitude": -5.089953630284913,
+     "longitude": -42.76851149466677
+    },
+    {
+     "latitude": -5.089960239441599,
+     "longitude": -42.768342060865926
+    },
+    {
+     "latitude": -5.08997200731639,
+     "longitude": -42.76824685410545
+    },
+    {
+     "latitude": -5.089941858953966,
+     "longitude": -42.76807793371069
+    },
+    {
+     "latitude": -5.089973392134287,
+     "longitude": -42.767940013964754
+    },
+    {
+     "latitude": -5.090006313733476,
+     "longitude": -42.767800396879935
+    },
+    {
+     "latitude": -5.089982013592725,
+     "longitude": -42.7676768668111
+    }
+   ],
+   "expected": {
+    "matches": [
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79999384490679
+      },
+      "distanceM": 2.2801201040044248,
+      "offsetM": 0.6817205632200967,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799800616353856
+      },
+      "distanceM": 1.2922311345325284,
+      "offsetM": 22.083163796492727,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79973115633165
+      },
+      "distanceM": 4.107554787621439,
+      "offsetM": 29.776357683316064,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799616556867214
+      },
+      "distanceM": 7.710287256915535,
+      "offsetM": 42.46906740739496,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799493790400376
+      },
+      "distanceM": 0.8625642058559038,
+      "offsetM": 56.06633101635839,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79929724649519
+      },
+      "distanceM": 0.4746361742636509,
+      "offsetM": 77.83497320625224,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.799204264243656
+      },
+      "distanceM": 6.822860940815531,
+      "offsetM": 88.13342210419432,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 42,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79904913236455
+      },
+      "distanceM": 5.390438186324104,
+      "offsetM": 105.31538643591101,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79887010171566
+      },
+      "distanceM": 3.01862846275003,
+      "offsetM": 5.143706546930616,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79885930879075
+      },
+      "distanceM": 3.60135713447562,
+      "offsetM": 6.339100116623739,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7986277595899
+      },
+      "distanceM": 7.3715241196973125,
+      "offsetM": 31.984828983531543,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.798400883911825
+      },
+      "distanceM": 2.893160682239966,
+      "offsetM": 57.11293180095231,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79838303636439
+      },
+      "distanceM": 7.768925519497259,
+      "offsetM": 59.08967523479668,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.798287881461476
+      },
+      "distanceM": 1.6122864653270312,
+      "offsetM": 69.6287608006894,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79810796607403
+      },
+      "distanceM": 7.431874317343727,
+      "offsetM": 89.55567580820298,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 43,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79806771118005
+      },
+      "distanceM": 2.0270042436158064,
+      "offsetM": 94.01419301589817,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79780620517392
+      },
+      "distanceM": 4.912690348686738,
+      "offsetM": 2.9772483889657906,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79768986100367
+      },
+      "distanceM": 1.0550807754996754,
+      "offsetM": 15.86319675114032,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79758781271149
+      },
+      "distanceM": 0.7660577684866894,
+      "offsetM": 27.165774444566065,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79745614974844
+      },
+      "distanceM": 3.9404391973625934,
+      "offsetM": 41.74838859185502,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7972517095703
+      },
+      "distanceM": 0.5287215979065536,
+      "offsetM": 64.39159944658398,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79708587503259
+      },
+      "distanceM": 1.1641192028420733,
+      "offsetM": 82.75895970962392,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7971056194957
+      },
+      "distanceM": 8.129928692335056,
+      "offsetM": 80.57211930737888,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.79682892062294
+      },
+      "distanceM": 0.13059624370725942,
+      "offsetM": 111.2184970205567,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 44,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7967496290648
+      },
+      "distanceM": 0,
+      "offsetM": 120.0006037784035,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.772748926583624
+      },
+      "distanceM": 5.810907911189645,
+      "offsetM": 18.236048661083487,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.772604254387865
+      },
+      "distanceM": 0.10958712212351429,
+      "offsetM": 34.259528307406526,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77245283025419
+      },
+      "distanceM": 1.199601655135325,
+      "offsetM": 51.03083333387258,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77234800833316
+      },
+      "distanceM": 0.8868605894784309,
+      "offsetM": 62.64061024545912,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.772190669615775
+      },
+      "distanceM": 2.719617897989849,
+      "offsetM": 80.06699768907424,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7720396217435
+      },
+      "distanceM": 4.878274301546128,
+      "offsetM": 96.79662907589476,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77188637589536
+      },
+      "distanceM": 2.5992542760714628,
+      "offsetM": 113.76970199883498,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77182263828607
+      },
+      "distanceM": 4.119104714495165,
+      "offsetM": 120.82909775826056,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.771615025070766
+      },
+      "distanceM": 10.497731014413773,
+      "offsetM": 143.82374515573952,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.771477401099446
+      },
+      "distanceM": 6.320956856083001,
+      "offsetM": 159.06658357201377,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77136487008645
+      },
+      "distanceM": 0.7607128286271632,
+      "offsetM": 171.5301975155464,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77121242132507
+      },
+      "distanceM": 8.179773927627139,
+      "offsetM": 188.41498738354673,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77116820597129
+      },
+      "distanceM": 3.3204613293415264,
+      "offsetM": 193.3121538193411,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77096594433158
+      },
+      "distanceM": 11.957480974730856,
+      "offsetM": 215.7140759729666,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77079242101614
+      },
+      "distanceM": 2.8874325662157503,
+      "offsetM": 234.93302332156574,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.770651657749596
+      },
+      "distanceM": 3.1471580452307535,
+      "offsetM": 250.52356112028153,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77051366711259
+      },
+      "distanceM": 7.877207917313683,
+      "offsetM": 265.8070103820496,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.770430383180525
+      },
+      "distanceM": 0.1825422071657954,
+      "offsetM": 275.03130108480195,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 90,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.770253603434654
+      },
+      "distanceM": 2.5149873093466795,
+      "offsetM": 294.6109213773111,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.77009801179938
+      },
+      "distanceM": 4.369407452004964,
+      "offsetM": 11.84229754460853,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76999277866169
+      },
+      "distanceM": 5.256990603746715,
+      "offsetM": 23.497619640317907,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76987593832912
+      },
+      "distanceM": 5.656524861849789,
+      "offsetM": 36.438521524906264,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76968839833486
+      },
+      "distanceM": 2.8936781656586277,
+      "offsetM": 57.209916230045565,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76962015131733
+      },
+      "distanceM": 1.8771840458096563,
+      "offsetM": 64.76876117928714,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7694669033821
+      },
+      "distanceM": 1.94592227006342,
+      "offsetM": 81.7420652625151,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76937617825507
+      },
+      "distanceM": 1.4522737179376008,
+      "offsetM": 91.79052148975074,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76919603521781
+      },
+      "distanceM": 4.160717783259656,
+      "offsetM": 111.74265034113138,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76901977067853
+      },
+      "distanceM": 5.5009418973027095,
+      "offsetM": 131.2652078212141,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.768907819472716
+      },
+      "distanceM": 1.8484060511150915,
+      "offsetM": 143.6646039758964,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.768744677498965
+      },
+      "distanceM": 11.946240390245464,
+      "offsetM": 161.73374353748773,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.768669714032086
+      },
+      "distanceM": 1.7499608699320106,
+      "offsetM": 170.03648325505947,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76851149466677
+      },
+      "distanceM": 5.156084189527519,
+      "offsetM": 187.5604087510376,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.768342060865926
+      },
+      "distanceM": 4.4211784815591955,
+      "offsetM": 206.32641313041293,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76824685410545
+      },
+      "distanceM": 3.112648699988142,
+      "offsetM": 216.87124229189885,
+      "inferred": true
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.76807793371069
+      },
+      "distanceM": 6.464998278571329,
+      "offsetM": 235.5803832779975,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.767940013964754
+      },
+      "distanceM": 2.958663762745971,
+      "offsetM": 250.8559808472167,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.767800396879935
+      },
+      "distanceM": 0.7020561004905517,
+      "offsetM": 266.3195708283149,
+      "inferred": false
+     },
+     {
+      "edgeIndex": 91,
+      "reversed": false,
+      "point": {
+       "latitude": -5.09,
+       "longitude": -42.7676768668111
+      },
+      "distanceM": 2.00000000002143,
+      "offsetM": 280.0014088157502,
+      "inferred": true
+     }
+    ],
+    "routes": [
+     {
+      "edges": [
+       [
+        42,
+        false
+       ],
+       [
+        43,
+        false
+       ],
+       [
+        44,
+        false
+       ]
+      ],
+      "firstFix": 0,
+      "lastFix": 24
+     },
+     {
+      "edges": [
+       [
+        90,
+        false
+       ],
+       [
+        91,
+        false
+       ]
+      ],
+      "firstFix": 25,
+      "lastFix": 62
+     }
+    ],
+    "breaks": 1,
+    "dropped": 20,
+    "unmatched": 0
+   }
+  }
+ }
+}

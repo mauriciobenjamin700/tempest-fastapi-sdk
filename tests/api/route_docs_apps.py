@@ -45,7 +45,14 @@ from tempest_fastapi_sdk.app_errors import make_app_error_router
 from tempest_fastapi_sdk.chat import make_chat_router
 from tempest_fastapi_sdk.genai import make_ai_chat_router, make_genai_router
 from tempest_fastapi_sdk.genai.audio import make_voice_router
-from tempest_fastapi_sdk.geo import make_live_position_router
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    InMemoryTrafficSnapshotStore,
+    RoadEdge,
+    RoadGraph,
+    make_live_position_router,
+    make_traffic_router,
+)
 from tempest_fastapi_sdk.hostbridge import make_hostbridge_router
 from tempest_fastapi_sdk.integrations.messaging.zap import make_zap_webhook_router
 from tempest_fastapi_sdk.integrations.payment.adapters import (
@@ -207,6 +214,18 @@ ROUTER_BUILDERS: dict[str, Callable[[dict[str, Any]], APIRouter]] = {
         _anything,
         authorize=_current_user,
         channel_active=_current_user,
+        **kw,
+    ),
+    "geo_traffic": lambda kw: make_traffic_router(
+        InMemoryTrafficSnapshotStore(),
+        authorize=_current_user,
+        graph=RoadGraph(
+            [
+                Coordinate(latitude=0.0, longitude=0.0),
+                Coordinate(latitude=0.0, longitude=0.001),
+            ],
+            [RoadEdge(start=0, end=1)],
+        ),
         **kw,
     ),
     "sse": lambda kw: make_sse_router(

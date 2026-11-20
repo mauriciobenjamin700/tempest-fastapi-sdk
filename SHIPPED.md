@@ -4709,3 +4709,22 @@ a 1366 e 390 px, tema claro e escuro. Testes: `tests/geo/test_br_map.py`,
 `tests/geo/test_location.py`, `tests/admin/test_location_map.py`. Receitas:
 `geo` ("Cidade e estado do usuário") e `admin` ("Mapa de distribuição
 geográfica").
+
+### Trânsito da frota e inferência de ruas (tempest-react-sdk#667 fases 3 e 4, 2026-11-19)
+
+`geo/road_graph.py` (`RoadGraph`, `RoadEdge`, índice em grade de 50 m,
+Dijkstra limitado) e `geo/map_matching.py` (`match_to_roads`), porte do
+`road-graph.ts`/`map-matching.ts` do tempest-react-sdk 0.90.0 sem o matcher ao
+vivo (`createRoadMatcher` fica no app). Paridade:
+`tests/geo/test_map_matching_parity.py` contra
+`tests/geo/fixtures/map_matching_parity.json`, gerado por
+`node scripts/map_matching_parity_fixture.mjs <react-sdk>/dist`.
+`geo/osm.py`: Overpass JSON e GeoJSON → grafo, `load_road_graph` com cache.
+`geo/traffic.py`: `TrafficAggregator` + `TrafficPrivacy` + stores do retrato;
+`geo/traffic_router.py`: `make_traffic_router`; `make_live_position_router`
+ganhou `traffic=`. `geo/road_inference.py`: `OffRoadDensity` (k por bloco de
+25 m e por dia) e `infer_road_candidates`. Cada regra de privacidade tem uma
+classe em `tests/geo/test_traffic.py`, e cada uma foi conferida derrubando a
+regra no código (o teste correspondente falha). Medição:
+`scripts/bench_geo_traffic.py`. Receita: `fleet-traffic`.
+

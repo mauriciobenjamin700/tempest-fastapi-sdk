@@ -284,6 +284,13 @@ after `authorize`, so only to the authorized publisher.
     across workers is the `SSEBroker`'s, covered in the SSE recipe; it was
     not measured again through the store.
 
+## Traffic from the same positions
+
+`make_live_position_router(..., traffic=aggregator)` also hands every
+authorized position of an active channel to a `TrafficAggregator`, which
+publishes speed per road stretch only with k devices and cuts the start and end
+of every trip. See [Fleet traffic](fleet-traffic.md).
+
 ## Recap
 
 - `LivePositionSchema` — `lat`/`lng`/`accuracy_m`/`speed_kmh`/`heading`/`recorded_at`, validated (future and naive timestamps refused).

@@ -25,6 +25,14 @@ Layers, all sharing the same schemas:
   names, optionally with each one's ETA; :func:`make_live_position_router`
   receives them behind mandatory ``authorize`` and ``channel_active``
   dependencies.
+* **Fleet traffic**: :class:`RoadGraph` (from an OSM excerpt with
+  :func:`road_graph_from_overpass` / :func:`load_road_graph`),
+  :func:`match_to_roads` (HMM map-matching, a port of tempest-react-sdk's),
+  :class:`TrafficAggregator` (median speed per road stretch, published only
+  k-anonymously, start and end of every trip cut, rotating hashes) and
+  :func:`make_traffic_router`; :class:`OffRoadDensity` +
+  :func:`infer_road_candidates` turn off-road density into road candidates
+  for human review.
 * **Database**: :class:`GeoPointMixin` (model) + :class:`GeoRepositoryMixin`
   (portable radius search) / :class:`PostGISRepositoryMixin` (ST_DWithin).
 * **Database**, paginated: :meth:`GeoRepositoryMixin.paginate_nearby`
@@ -188,6 +196,15 @@ from tempest_fastapi_sdk.geo.location import (
 from tempest_fastapi_sdk.geo.location import (
     resolve_br_municipality as resolve_br_municipality,
 )
+from tempest_fastapi_sdk.geo.map_matching import (
+    ROAD_MATCH_DEFAULTS as ROAD_MATCH_DEFAULTS,
+)
+from tempest_fastapi_sdk.geo.map_matching import MatchedFix as MatchedFix
+from tempest_fastapi_sdk.geo.map_matching import MatchedRoute as MatchedRoute
+from tempest_fastapi_sdk.geo.map_matching import RoadMatchOptions as RoadMatchOptions
+from tempest_fastapi_sdk.geo.map_matching import RoadMatchResult as RoadMatchResult
+from tempest_fastapi_sdk.geo.map_matching import RoadTraversal as RoadTraversal
+from tempest_fastapi_sdk.geo.map_matching import match_to_roads as match_to_roads
 from tempest_fastapi_sdk.geo.municipalities import (
     BR_CITY_NICKNAMES as BR_CITY_NICKNAMES,
 )
@@ -215,8 +232,49 @@ from tempest_fastapi_sdk.geo.municipalities import (
 from tempest_fastapi_sdk.geo.municipalities import (
     search_municipalities as search_municipalities,
 )
+from tempest_fastapi_sdk.geo.osm import OSM_DRIVABLE_HIGHWAYS as OSM_DRIVABLE_HIGHWAYS
+from tempest_fastapi_sdk.geo.osm import (
+    OSM_GEOJSON_COORDINATE_DIGITS as OSM_GEOJSON_COORDINATE_DIGITS,
+)
+from tempest_fastapi_sdk.geo.osm import OSM_GRAPH_CACHE_SIZE as OSM_GRAPH_CACHE_SIZE
+from tempest_fastapi_sdk.geo.osm import load_road_graph as load_road_graph
+from tempest_fastapi_sdk.geo.osm import (
+    road_graph_from_geojson as road_graph_from_geojson,
+)
+from tempest_fastapi_sdk.geo.osm import (
+    road_graph_from_osm_json as road_graph_from_osm_json,
+)
+from tempest_fastapi_sdk.geo.osm import (
+    road_graph_from_overpass as road_graph_from_overpass,
+)
 from tempest_fastapi_sdk.geo.polyline import decode_polyline as decode_polyline
 from tempest_fastapi_sdk.geo.polyline import encode_polyline as encode_polyline
+from tempest_fastapi_sdk.geo.road_graph import ROAD_GRID_CELL_M as ROAD_GRID_CELL_M
+from tempest_fastapi_sdk.geo.road_graph import RoadCandidate as RoadCandidate
+from tempest_fastapi_sdk.geo.road_graph import RoadEdge as RoadEdge
+from tempest_fastapi_sdk.geo.road_graph import RoadGraph as RoadGraph
+from tempest_fastapi_sdk.geo.road_inference import (
+    DEFAULT_DENSITY_BLOCK_CELLS as DEFAULT_DENSITY_BLOCK_CELLS,
+)
+from tempest_fastapi_sdk.geo.road_inference import (
+    DEFAULT_DENSITY_CELL_M as DEFAULT_DENSITY_CELL_M,
+)
+from tempest_fastapi_sdk.geo.road_inference import (
+    DEFAULT_DENSITY_EPOCH_SECONDS as DEFAULT_DENSITY_EPOCH_SECONDS,
+)
+from tempest_fastapi_sdk.geo.road_inference import (
+    DEFAULT_OFF_ROAD_M as DEFAULT_OFF_ROAD_M,
+)
+from tempest_fastapi_sdk.geo.road_inference import OffRoadDensity as OffRoadDensity
+from tempest_fastapi_sdk.geo.road_inference import (
+    RoadCandidateSchema as RoadCandidateSchema,
+)
+from tempest_fastapi_sdk.geo.road_inference import (
+    infer_road_candidates as infer_road_candidates,
+)
+from tempest_fastapi_sdk.geo.road_inference import (
+    road_candidates_geojson as road_candidates_geojson,
+)
 from tempest_fastapi_sdk.geo.routing import (
     DEFAULT_MODE_PROFILES as DEFAULT_MODE_PROFILES,
 )
@@ -237,6 +295,43 @@ from tempest_fastapi_sdk.geo.schemas import (
     RouteThroughResult as RouteThroughResult,
 )
 from tempest_fastapi_sdk.geo.schemas import TravelEstimate as TravelEstimate
+from tempest_fastapi_sdk.geo.traffic import (
+    DEFAULT_TRAFFIC_EVENT as DEFAULT_TRAFFIC_EVENT,
+)
+from tempest_fastapi_sdk.geo.traffic import (
+    DEFAULT_TRAFFIC_PRIVACY as DEFAULT_TRAFFIC_PRIVACY,
+)
+from tempest_fastapi_sdk.geo.traffic import (
+    DEFAULT_TRAFFIC_SNAPSHOT_KEY as DEFAULT_TRAFFIC_SNAPSHOT_KEY,
+)
+from tempest_fastapi_sdk.geo.traffic import (
+    TRAFFIC_MIN_DEVICES_FLOOR as TRAFFIC_MIN_DEVICES_FLOOR,
+)
+from tempest_fastapi_sdk.geo.traffic import (
+    InMemoryTrafficSnapshotStore as InMemoryTrafficSnapshotStore,
+)
+from tempest_fastapi_sdk.geo.traffic import (
+    RedisTrafficSnapshotStore as RedisTrafficSnapshotStore,
+)
+from tempest_fastapi_sdk.geo.traffic import TrafficAggregator as TrafficAggregator
+from tempest_fastapi_sdk.geo.traffic import (
+    TrafficAudienceResolver as TrafficAudienceResolver,
+)
+from tempest_fastapi_sdk.geo.traffic import TrafficEdgeSchema as TrafficEdgeSchema
+from tempest_fastapi_sdk.geo.traffic import TrafficPrivacy as TrafficPrivacy
+from tempest_fastapi_sdk.geo.traffic import (
+    TrafficSnapshotSchema as TrafficSnapshotSchema,
+)
+from tempest_fastapi_sdk.geo.traffic import TrafficSnapshotStore as TrafficSnapshotStore
+from tempest_fastapi_sdk.geo.traffic_router import (
+    TRAFFIC_INVALID_BBOX_ERROR as TRAFFIC_INVALID_BBOX_ERROR,
+)
+from tempest_fastapi_sdk.geo.traffic_router import (
+    RoadGraphTileSchema as RoadGraphTileSchema,
+)
+from tempest_fastapi_sdk.geo.traffic_router import (
+    make_traffic_router as make_traffic_router,
+)
 from tempest_fastapi_sdk.geo.trip_intent import CityMention as CityMention
 from tempest_fastapi_sdk.geo.trip_intent import TripCityIndex as TripCityIndex
 from tempest_fastapi_sdk.geo.trip_intent import TripIntent as TripIntent
@@ -259,6 +354,9 @@ __all__: list[str] = [
     "CEP_PATTERN",
     "DEFAULT_CAR_SPEED_KMH",
     "DEFAULT_CIRCUITY_FACTOR",
+    "DEFAULT_DENSITY_BLOCK_CELLS",
+    "DEFAULT_DENSITY_CELL_M",
+    "DEFAULT_DENSITY_EPOCH_SECONDS",
     "DEFAULT_GEOCODE_CACHE_KEY_PREFIX",
     "DEFAULT_GEOCODE_CACHE_PRECISION",
     "DEFAULT_GEOCODE_CACHE_TTL_SECONDS",
@@ -271,11 +369,22 @@ __all__: list[str] = [
     "DEFAULT_MODE_DURATION_FACTORS",
     "DEFAULT_MODE_PROFILES",
     "DEFAULT_NOMINATIM_BASE_URL",
+    "DEFAULT_OFF_ROAD_M",
     "DEFAULT_OSRM_BASE_URL",
     "DEFAULT_OSRM_MAX_POINTS",
+    "DEFAULT_TRAFFIC_EVENT",
+    "DEFAULT_TRAFFIC_PRIVACY",
+    "DEFAULT_TRAFFIC_SNAPSHOT_KEY",
     "EARTH_RADIUS_KM",
     "LIVE_POSITION_INACTIVE_ERROR",
     "LIVE_POSITION_MAX_CLOCK_SKEW",
+    "OSM_DRIVABLE_HIGHWAYS",
+    "OSM_GEOJSON_COORDINATE_DIGITS",
+    "OSM_GRAPH_CACHE_SIZE",
+    "ROAD_GRID_CELL_M",
+    "ROAD_MATCH_DEFAULTS",
+    "TRAFFIC_INVALID_BBOX_ERROR",
+    "TRAFFIC_MIN_DEVICES_FLOOR",
     "UF_CENTROIDS",
     "AudienceResolver",
     "BRCityCountSchema",
@@ -298,20 +407,39 @@ __all__: list[str] = [
     "GeocodeResult",
     "GeocodingBackend",
     "InMemoryGeocodeCacheStore",
+    "InMemoryTrafficSnapshotStore",
     "LiveEtaSchema",
     "LivePositionEventSchema",
     "LivePositionPublishResponseSchema",
     "LivePositionSchema",
     "LivePositionStore",
+    "MatchedFix",
+    "MatchedRoute",
     "Municipality",
     "MunicipalityMatch",
     "NearbyMatch",
     "NominatimBackend",
     "OSRMBackend",
+    "OffRoadDensity",
     "PostGISRepositoryMixin",
     "RedisGeocodeCacheStore",
+    "RedisTrafficSnapshotStore",
+    "RoadCandidate",
+    "RoadCandidateSchema",
+    "RoadEdge",
+    "RoadGraph",
+    "RoadGraphTileSchema",
+    "RoadMatchOptions",
+    "RoadMatchResult",
+    "RoadTraversal",
     "RouteThroughResult",
     "RoutingBackend",
+    "TrafficAggregator",
+    "TrafficAudienceResolver",
+    "TrafficEdgeSchema",
+    "TrafficPrivacy",
+    "TrafficSnapshotSchema",
+    "TrafficSnapshotStore",
     "TravelEstimate",
     "TravelModeEnum",
     "TripCityIndex",
@@ -336,9 +464,13 @@ __all__: list[str] = [
     "find_municipalities_in_text",
     "haversine_distance_sql",
     "haversine_km",
+    "infer_road_candidates",
     "initial_bearing",
+    "load_road_graph",
     "make_geo_point_model",
     "make_live_position_router",
+    "make_traffic_router",
+    "match_to_roads",
     "municipality_by_ibge_code",
     "municipality_by_name",
     "nearest",
@@ -350,6 +482,10 @@ __all__: list[str] = [
     "render_br_map_svg",
     "resolve_br_coordinate",
     "resolve_br_municipality",
+    "road_candidates_geojson",
+    "road_graph_from_geojson",
+    "road_graph_from_osm_json",
+    "road_graph_from_overpass",
     "search_municipalities",
     "uf_at",
     "uf_centroid",

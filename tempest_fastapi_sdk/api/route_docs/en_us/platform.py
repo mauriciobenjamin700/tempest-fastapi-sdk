@@ -30,6 +30,26 @@ PLATFORM_ROUTES: dict[str, RouteDoc] = {
             "it over SSE. `409` while the channel is not active."
         ),
     ),
+    "geo_traffic.read_traffic": RouteDoc(
+        summary="Read the traffic of an area",
+        description=(
+            "Answer the median speed per road edge inside the box "
+            "(`min_latitude`, `max_latitude`, `min_longitude`, "
+            "`max_longitude`) over the latest window. Only edges driven by "
+            "the minimum number of distinct devices appear (k-anonymity); no "
+            "individual position leaves through here. Before any snapshot "
+            "is published the list is empty. An inverted box answers **422**."
+        ),
+    ),
+    "geo_traffic.read_graph_tile": RouteDoc(
+        summary="Read the road graph of an area",
+        description=(
+            "Answer the road edges with an end inside the box, in "
+            "tempest-react-sdk's `createRoadGraph` input shape, so the app "
+            "matches the vehicle against the same edges traffic is keyed "
+            "by. An inverted box answers **422**."
+        ),
+    ),
     "health.liveness": RouteDoc(
         summary=("Liveness probe"),
     ),
