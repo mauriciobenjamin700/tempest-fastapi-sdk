@@ -18,6 +18,7 @@ discovery, ``Upload-Defer-Length``, *creation-with-upload* (a body on the
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -30,10 +31,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException
+from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.tus import (
+    TusBodyTimeoutException,
     TusChunkTooSmallException,
     TusContentTypeException,
     TusIdempotencyKeyReusedException,
@@ -57,6 +60,15 @@ from tempest_fastapi_sdk.storage.tus.models import (
 from tempest_fastapi_sdk.storage.tus.store import TusStore
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+DEFAULT_TUS_BODY_READ_TIMEOUT: timedelta = timedelta(seconds=30)
+"""Default longest wait for the next piece of a ``PATCH`` body.
+
+A phone that loses signal mid-chunk leaves a half-open connection (no FIN);
+without a limit the request — and the upload's lock with it — lives until TCP
+gives up, minutes later, and every retry meanwhile answers ``409
+TUS_UPLOAD_LOCKED``.
+"""
 
 TUS_MAX_INTEGER_HEADER_DIGITS: int = 20
 """Most digits ``Upload-Length``/``Upload-Offset`` may carry.
@@ -144,14 +156,36 @@ class TusCompleteCallback(Protocol):
         ...
 
 
+def _copy_exception(error: HTTPException) -> HTTPException:
+    """Copy an ``HTTPException`` without running its ``__init__``.
+
+    ``copy.copy`` rebuilds an exception from ``args``, and Starlette's
+    ``HTTPException`` keeps its fields out of ``args``, so the copy would call
+    ``__init__()`` without ``status_code`` and fail.
+
+    Args:
+        error (HTTPException): The exception to copy.
+
+    Returns:
+        HTTPException: A new instance of the same class with the same fields.
+    """
+    stamped = type(error).__new__(type(error))
+    stamped.__dict__.update(error.__dict__)
+    stamped.args = error.args
+    stamped.__traceback__ = error.__traceback__
+    return stamped
+
+
 class _TusRoute(APIRoute):
     """A route whose responses, refusals included, carry ``Tus-Resumable``.
 
     The header is added to the response the endpoint returns and to every
     :class:`~starlette.exceptions.HTTPException` raised while handling it —
     the router's own errors and a ``401``/``403`` from the
-    ``current_user_id`` dependency alike. An unhandled exception (a ``500``)
-    is answered by the app's handlers, outside the route, without it.
+    ``current_user_id`` dependency alike. The header goes on a copy of the
+    exception: an instance the service reuses across routes is not changed.
+    An unhandled exception (a ``500``) is answered by the app's handlers,
+    outside the route, without it.
     """
 
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
@@ -174,11 +208,12 @@ class _TusRoute(APIRoute):
             try:
                 response = await original(request)
             except HTTPException as error:
-                error.headers = {
+                stamped = _copy_exception(error)
+                stamped.headers = {
                     **(error.headers or {}),
                     "Tus-Resumable": TUS_VERSION,
                 }
-                raise
+                raise stamped from error
             response.headers.setdefault("Tus-Resumable", TUS_VERSION)
             return response
 
@@ -317,6 +352,7 @@ def make_tus_router(
     on_complete: TusCompleteCallback | None = None,
     max_uploads_per_owner: int | None = None,
     max_bytes_per_owner: int | None = None,
+    body_read_timeout: timedelta = DEFAULT_TUS_BODY_READ_TIMEOUT,
     tags: list[str] | None = None,
     include_in_schema: bool = True,
 ) -> APIRouter:
@@ -377,13 +413,21 @@ def make_tus_router(
             <tempest_fastapi_sdk.storage.tus.TusStore.list_uploads>`.
         max_uploads_per_owner (int | None): Most unfinished, unexpired uploads
             one owner may hold; a creation past it answers ``403
-            TUS_QUOTA_EXCEEDED``. ``None`` (default) sets no limit. Checking
+            TUS_QUOTA_EXCEEDED``. ``None`` (default) sets no limit. Applies
+            only to callers with an owner: in anonymous mode every caller
+            would share one quota, so none is enforced. An empty upload
+            completes on creation and is never counted. Checking
             reads every record in the store (:meth:`TusStore.list_uploads
             <tempest_fastapi_sdk.storage.tus.TusStore.list_uploads>`) on each
             creation, so keep the store swept with ``purge_expired``.
         max_bytes_per_owner (int | None): Most declared bytes
             (``Upload-Length``) one owner's unfinished uploads may add up to;
             same answer and same cost. ``None`` (default) sets no limit.
+        body_read_timeout (timedelta): Longest wait for the next piece of a
+            ``PATCH`` body. Past it the request answers ``408
+            TUS_BODY_READ_TIMEOUT`` (which the client retries), the chunk is
+            discarded whole — the stored offset does not move — and the
+            upload's lock is released. 30 seconds by default.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["uploads"]``.
         include_in_schema (bool): Whether the routes appear in OpenAPI.
 
@@ -502,6 +546,8 @@ def make_tus_router(
         Raises:
             TusQuotaExceededException: When a limit would be passed.
         """
+        if owner is None or length == 0:
+            return
         if max_uploads_per_owner is None and max_bytes_per_owner is None:
             return
         active = [
@@ -649,6 +695,8 @@ def make_tus_router(
 
         Raises:
             TusUploadTooLargeException: When the body passes ``limit``.
+            TusBodyTimeoutException: When no piece arrives within
+                ``body_read_timeout``.
         """
         declared = request.headers.get("content-length")
         if declared is not None and (
@@ -661,8 +709,19 @@ def make_tus_router(
             tempfile.SpooledTemporaryFile(max_size=TUS_CHUNK_SPOOL_BYTES),  # noqa: SIM115
         )
         size = 0
+        seconds = body_read_timeout.total_seconds()
+        pieces = request.stream()
         try:
-            async for block in request.stream():
+            while True:
+                try:
+                    async with asyncio.timeout(seconds):
+                        block = await anext(pieces)
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    raise TusBodyTimeoutException(
+                        details={"timeout_seconds": seconds},
+                    ) from None
                 size += len(block)
                 if size > limit:
                     raise TusUploadTooLargeException(details={"max_bytes": limit})
@@ -719,7 +778,17 @@ def make_tus_router(
             if offset != upload.offset:
                 raise TusOffsetMismatchException(details={"offset": upload.offset})
             remaining = upload.length - upload.offset
-            spool, size = await _read_chunk(request, min(remaining, max_chunk_size))
+            try:
+                spool, size = await _read_chunk(
+                    request,
+                    min(remaining, max_chunk_size),
+                )
+            except ClientDisconnect:
+                logger.info(
+                    "tus upload %s: client disconnected mid-chunk; nothing stored",
+                    upload_id,
+                )
+                return Response(status_code=400, headers=_tus_headers())
             try:
                 if size < store.min_chunk_size and size < remaining:
                     raise TusChunkTooSmallException(
@@ -777,6 +846,7 @@ def make_tus_router(
 
 
 __all__: list[str] = [
+    "DEFAULT_TUS_BODY_READ_TIMEOUT",
     "DEFAULT_TUS_EXPIRATION",
     "DEFAULT_TUS_MAX_CHUNK_SIZE",
     "DEFAULT_TUS_MAX_SIZE",

@@ -1461,6 +1461,9 @@ if TYPE_CHECKING:
         TooManyRequestsException as TooManyRequestsException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        TusBodyTimeoutException as TusBodyTimeoutException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         TusChunkTooSmallException as TusChunkTooSmallException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -2971,6 +2974,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "UnknownFilterKeyException": "tempest_fastapi_sdk.exceptions",
     "UploadTooLargeException": "tempest_fastapi_sdk.exceptions",
     "TusContentTypeException": "tempest_fastapi_sdk.exceptions",
+    "TusBodyTimeoutException": "tempest_fastapi_sdk.exceptions",
     "TusChunkTooSmallException": "tempest_fastapi_sdk.exceptions",
     "TusQuotaExceededException": "tempest_fastapi_sdk.exceptions",
     "TusUploadCompletedException": "tempest_fastapi_sdk.exceptions",
@@ -3927,6 +3931,7 @@ __all__: list[str] = [
     "TokenMatchEnum",
     "TokenSettings",
     "TooManyRequestsException",
+    "TusBodyTimeoutException",
     "TusChunkTooSmallException",
     "TusCompleteCallback",
     "TusContentTypeException",

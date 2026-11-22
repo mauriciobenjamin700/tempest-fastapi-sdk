@@ -647,6 +647,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.tus.TusInvalidHeaderException
 ::: tempest_fastapi_sdk.exceptions.tus.TusUploadTooLargeException
 ::: tempest_fastapi_sdk.exceptions.tus.TusIdempotencyKeyReusedException
+::: tempest_fastapi_sdk.exceptions.tus.TusBodyTimeoutException
 ::: tempest_fastapi_sdk.exceptions.tus.TusChunkTooSmallException
 ::: tempest_fastapi_sdk.exceptions.tus.TusQuotaExceededException
 ::: tempest_fastapi_sdk.exceptions.tus.TusUploadCompletedException

@@ -171,7 +171,24 @@ class TusQuotaExceededException(AppException):
     details_example: ClassVar[dict[str, Any]] = {"limit": "uploads", "max": 20}
 
 
+class TusBodyTimeoutException(AppException):
+    """Raised when a ``PATCH`` body stops arriving for longer than the read timeout.
+
+    ``408``, which ``tempest-react-sdk``'s client retries (it re-reads the
+    offset with ``HEAD`` first). The chunk is discarded whole — the offset
+    stays where it was — and the upload's lock is released, so a half-open
+    mobile connection does not hold the upload until TCP gives up.
+    ``details["timeout_seconds"]`` is the limit.
+    """
+
+    status_code: int = 408
+    message: str = "The chunk body stopped arriving"
+    code: str = "TUS_BODY_READ_TIMEOUT"
+    details_example: ClassVar[dict[str, Any]] = {"timeout_seconds": 30.0}
+
+
 __all__: list[str] = [
+    "TusBodyTimeoutException",
     "TusChunkTooSmallException",
     "TusContentTypeException",
     "TusIdempotencyKeyReusedException",

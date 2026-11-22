@@ -209,6 +209,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de 20 dígitos é `400`; `current_user_id` precisa resolver `str`, `int` ou
   `UUID`; `Idempotency-Key` ignorada sem dono; `purge_expired` sob o lock
   por upload; `401`/`403` da dependência levam `Tus-Resumable`.
+  `body_read_timeout` (padrão 30 s) responde `408 TUS_BODY_READ_TIMEOUT`
+  quando o corpo do `PATCH` para no meio, descarta o chunk e libera o lock;
+  desconexão no meio do corpo vira log `INFO`, não `500`; cota por dono não
+  vale no modo anônimo nem conta upload vazio; o `Tus-Resumable` vai numa
+  cópia da `HTTPException`, sem alterar uma instância reaproveitada.
 
 ### Changed
 

@@ -4962,3 +4962,11 @@ códigos novos: `TUS_UPLOAD_COMPLETED`, `TUS_UPLOAD_LOCKED`,
 falham no commit anterior), receita `archive_photo` executada direto do
 markdown.
 
+Segunda rodada (mesmo #809): `_read_chunk` lê cada pedaço sob
+`asyncio.timeout(body_read_timeout)` → `TusBodyTimeoutException` (408);
+`ClientDisconnect` capturado no `PATCH` (log `INFO`, resposta 400);
+`_check_quota` pula dono `None` e `Upload-Length: 0`; `_copy_exception` no
+`_TusRoute` (o `copy.copy` falha em `HTTPException`, que guarda os campos
+fora de `args`). Testes: `tests/storage/tus/test_resilience.py` (corpo
+travado e desconexão como ASGI cru).
+

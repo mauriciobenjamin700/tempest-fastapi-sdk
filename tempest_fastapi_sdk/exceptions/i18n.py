@@ -506,6 +506,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "O PATCH exige Content-Type: application/offset+octet-stream"
         ),
         "TUS_HEADER_INVALID": "Cabeçalho tus inválido",
+        "TUS_BODY_READ_TIMEOUT": "O corpo do pedaço parou de chegar",
         "TUS_UPLOAD_COMPLETED": "O upload já está completo",
         "TUS_UPLOAD_LOCKED": "Outra requisição está gravando este upload",
         "TUS_CHUNK_TOO_SMALL": "O pedaço é menor que o mínimo aceito",
@@ -687,6 +688,7 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "PATCH requires Content-Type: application/offset+octet-stream"
         ),
         "TUS_HEADER_INVALID": "Invalid tus header",
+        "TUS_BODY_READ_TIMEOUT": "The chunk body stopped arriving",
         "TUS_UPLOAD_COMPLETED": "Upload is already complete",
         "TUS_UPLOAD_LOCKED": "Another request is writing this upload",
         "TUS_CHUNK_TOO_SMALL": "Chunk is smaller than the minimum this store accepts",

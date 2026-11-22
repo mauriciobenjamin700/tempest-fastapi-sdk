@@ -271,6 +271,9 @@ router = make_tus_router(
 
 Passado um deles, a criação responde `403 TUS_QUOTA_EXCEEDED` com
 `details.limit` (`"uploads"` ou `"bytes"`) e `details.max`. Os dois são `None` por padrão.
+Só valem com `current_user_id`: no modo anônimo todos os chamadores dividiriam uma cota, e
+um só esgotaria para todos, então nenhuma é aplicada. Upload de tamanho 0, que completa na
+criação, nunca conta.
 
 !!! warning "Custo da checagem"
     Cada criação com limite lê todos os registros do store (`list_uploads()`). Mantenha o
@@ -288,6 +291,19 @@ segunda em `409` sem ter o corpo lido, o arquivo só com os bytes da primeira. S
 o mesmo teste mostra as duas respondendo `204` para o mesmo intervalo
 (`tests/storage/tus/test_concurrency.py`). O corpo vai para um `SpooledTemporaryFile`
 com 1 MiB em memória; o resto, até `max_chunk_size`, vai para o disco temporário.
+
+### Rede móvel: corpo que para no meio
+
+Celular que perde sinal no meio de um chunk deixa a conexão meio-aberta, sem FIN: o
+servidor fica esperando o resto do corpo até o TCP desistir, minutos depois — e, como o
+lock é pego antes de ler o corpo, toda nova tentativa responderia `409 TUS_UPLOAD_LOCKED`
+até lá. Por isso cada pedaço do corpo tem prazo: `body_read_timeout` (padrão 30 s). Passou
+o prazo sem chegar nada, o `PATCH` responde `408 TUS_BODY_READ_TIMEOUT`, **o chunk inteiro
+é descartado** (o offset gravado não anda; o que chegou antes do prazo não é guardado) e o
+lock é liberado. `408` está na lista de status que o `createResumableUpload` repete
+(`RETRIABLE_STATUSES` em `errors.ts`), relendo o offset com `HEAD` antes. Uma desconexão
+explícita no meio do corpo também não grava nada: vira um log `INFO`, não um `500`. Os dois
+casos rodam em `tests/storage/tus/test_resilience.py`, com o app chamado como ASGI cru.
 
 !!! warning "O lock é do processo"
     Duas réplicas atrás de um balanceador ainda podem disputar o mesmo upload. Com mais de
@@ -335,6 +351,7 @@ handler do app, fora da rota, sem o header.
 | `400` | `TUS_CHUNK_TOO_SMALL` | chunk que não fecha o upload abaixo do `min_chunk_size` do store; `details.min_bytes` |
 | `403` | `TUS_QUOTA_EXCEEDED` | criação passaria de `max_uploads_per_owner` ou `max_bytes_per_owner` |
 | `404` | `TUS_UPLOAD_NOT_FOUND` | id inexistente, malformado ou de outro dono |
+| `408` | `TUS_BODY_READ_TIMEOUT` | o corpo do `PATCH` ficou mais de `body_read_timeout` sem chegar; nada é gravado |
 | `409` | `TUS_OFFSET_MISMATCH` | `Upload-Offset` diferente do gravado; `details.offset` é o do servidor |
 | `409` | `TUS_UPLOAD_COMPLETED` | `PATCH` num upload que já tem todos os bytes; nada é gravado |
 | `409` | `TUS_UPLOAD_LOCKED` | outro `PATCH`/`DELETE` do mesmo upload em andamento |

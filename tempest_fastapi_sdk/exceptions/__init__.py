@@ -136,6 +136,9 @@ from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException as TooManyRequestsException,
 )
 from tempest_fastapi_sdk.exceptions.tus import (
+    TusBodyTimeoutException as TusBodyTimeoutException,
+)
+from tempest_fastapi_sdk.exceptions.tus import (
     TusChunkTooSmallException as TusChunkTooSmallException,
 )
 from tempest_fastapi_sdk.exceptions.tus import (
@@ -283,6 +286,7 @@ __all__: list[str] = [
     "PushEndpointNotPublicException",
     "StorageIntegrityException",
     "TooManyRequestsException",
+    "TusBodyTimeoutException",
     "TusChunkTooSmallException",
     "TusContentTypeException",
     "TusIdempotencyKeyReusedException",

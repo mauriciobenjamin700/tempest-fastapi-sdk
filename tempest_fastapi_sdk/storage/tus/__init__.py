@@ -26,6 +26,9 @@ from tempest_fastapi_sdk.storage.tus.models import (
     sanitize_upload_filename as sanitize_upload_filename,
 )
 from tempest_fastapi_sdk.storage.tus.router import (
+    DEFAULT_TUS_BODY_READ_TIMEOUT as DEFAULT_TUS_BODY_READ_TIMEOUT,
+)
+from tempest_fastapi_sdk.storage.tus.router import (
     DEFAULT_TUS_EXPIRATION as DEFAULT_TUS_EXPIRATION,
 )
 from tempest_fastapi_sdk.storage.tus.router import (
@@ -70,6 +73,7 @@ from tempest_fastapi_sdk.storage.tus.store import valid_upload_id as valid_uploa
 
 __all__: list[str] = [
     "DEFAULT_S3_TUS_MIN_CHUNK_SIZE",
+    "DEFAULT_TUS_BODY_READ_TIMEOUT",
     "DEFAULT_TUS_EXPIRATION",
     "DEFAULT_TUS_MAX_CHUNK_SIZE",
     "DEFAULT_TUS_MAX_SIZE",

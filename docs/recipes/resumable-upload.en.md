@@ -274,7 +274,10 @@ router = make_tus_router(
 ```
 
 Past either, the creation answers `403 TUS_QUOTA_EXCEEDED` with `details.limit`
-(`"uploads"` or `"bytes"`) and `details.max`. Both default to `None`.
+(`"uploads"` or `"bytes"`) and `details.max`. Both default to `None`. They apply only with
+`current_user_id`: in anonymous mode every caller would share one quota and one of them
+would exhaust it for everyone, so none is enforced. An empty upload, which completes on
+creation, never counts.
 
 !!! warning "Cost of the check"
     Every creation with a limit reads every record in the store (`list_uploads()`). Keep
@@ -292,6 +295,20 @@ the second at `409` with its body never read, the file holding only the first's 
 Without the lock, the same test shows both answering `204` for the same range
 (`tests/storage/tus/test_concurrency.py`). The body goes to a `SpooledTemporaryFile` with
 1 MiB in memory; the rest, up to `max_chunk_size`, goes to the temporary disk.
+
+### Mobile networks: a body that stops half-way
+
+A phone that loses signal mid-chunk leaves a half-open connection, with no FIN: the server
+waits for the rest of the body until TCP gives up, minutes later — and since the lock is
+taken before the body is read, every retry would answer `409 TUS_UPLOAD_LOCKED` until
+then. So each piece of the body has a deadline: `body_read_timeout` (30 s by default).
+When nothing arrives within it, the `PATCH` answers `408 TUS_BODY_READ_TIMEOUT`, **the
+whole chunk is discarded** (the stored offset does not move; what arrived before the
+deadline is not kept) and the lock is released. `408` is in the list of statuses
+`createResumableUpload` retries (`RETRIABLE_STATUSES` in `errors.ts`), re-reading the
+offset with `HEAD` first. An explicit disconnect mid-body stores nothing either: it becomes
+an `INFO` log, not a `500`. Both cases run in `tests/storage/tus/test_resilience.py`, with
+the app called as raw ASGI.
 
 !!! warning "The lock is per process"
     Two replicas behind a load balancer can still race on one upload. With more than one
@@ -339,6 +356,7 @@ handler answers it, outside the route, without the header.
 | `400` | `TUS_CHUNK_TOO_SMALL` | a chunk that does not end the upload is below the store's `min_chunk_size`; `details.min_bytes` |
 | `403` | `TUS_QUOTA_EXCEEDED` | the creation would pass `max_uploads_per_owner` or `max_bytes_per_owner` |
 | `404` | `TUS_UPLOAD_NOT_FOUND` | unknown, malformed or someone else's id |
+| `408` | `TUS_BODY_READ_TIMEOUT` | the `PATCH` body went longer than `body_read_timeout` without arriving; nothing is stored |
 | `409` | `TUS_OFFSET_MISMATCH` | `Upload-Offset` differs from the stored one; `details.offset` is the server's |
 | `409` | `TUS_UPLOAD_COMPLETED` | `PATCH` to an upload that already has every byte; nothing is stored |
 | `409` | `TUS_UPLOAD_LOCKED` | another `PATCH`/`DELETE` of the same upload is in progress |
