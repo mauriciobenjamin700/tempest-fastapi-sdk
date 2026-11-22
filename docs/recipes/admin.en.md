@@ -1129,6 +1129,9 @@ With a scope, the rule is the foreign key's on writes:
     `FK_OPTION_CAP` (1000) rows, read with `LIMIT` in the SQL; a reachable
     link the cap left out comes as one more option, already selected, like
     the single foreign key — saving without touching the field keeps it.
+    Those extra options stop at the cap too, read with the scope in the same
+    query; a link that still does not show stays stored: the save only
+    unlinks what the form offered and came back unselected.
 
 !!! info "Locked field"
     An `m2m_fields` name in `readonly_fields`, or in what

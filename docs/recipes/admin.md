@@ -1105,7 +1105,10 @@ Com escopo, a regra é a da FK na escrita:
     o N-1 já é o `<select>` de FK. As opções param em `FK_OPTION_CAP`
     (1000) linhas, lidas com `LIMIT` no SQL; um vínculo alcançável que o
     teto deixou de fora entra como mais uma opção, já marcada, como na FK
-    de seleção única — salvar sem mexer no campo não o apaga.
+    de seleção única — salvar sem mexer no campo não o apaga. Essas opções
+    extras também param no teto, lidas com o escopo na mesma consulta; um
+    vínculo que nem assim aparece continua gravado: o save só desliga o que
+    o form ofereceu e voltou desmarcado.
 
 !!! info "Campo trancado"
     Um nome de `m2m_fields` em `readonly_fields`, ou no que

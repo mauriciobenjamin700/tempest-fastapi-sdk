@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import ForeignKey, String, func, select
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
 from tempest_fastapi_sdk import AdminModel, AsyncDatabaseManager, BaseModel
 from tests.admin.wave2_world import (
@@ -387,3 +387,54 @@ async def test_rerender_looks_up_at_most_the_cap_beyond_the_options(
             0
         ]
         assert select_html.count("<option") == 2
+
+
+@pytest.mark.asyncio
+async def test_reachable_link_never_rendered_is_kept_on_save(
+    database: AsyncDatabaseManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tempest_fastapi_sdk.admin import router as admin_router
+
+    async for world in open_world(database):
+        async with world.db.get_session_context() as session:
+            session.add(W2Tag(name="AAAEarlier", company=OWN))
+            later = W2Tag(name="TagInsideLater", company=OWN)
+            session.add(later)
+            await session.flush()
+            later.created_at = later.created_at.replace(year=2101)
+            first = await session.get(W2Tag, world.ids["tag_in"])
+            assert first is not None
+            first.created_at = first.created_at.replace(year=2100)
+            article = (
+                await session.execute(
+                    select(W2Article)
+                    .options(selectinload(W2Article.tags))
+                    .where(W2Article.id == world.ids["article_in"])
+                )
+            ).scalar_one()
+            article.tags.append(later)
+            await session.commit()
+            later_id = str(later.id)
+        monkeypatch.setattr(admin_router, "FK_OPTION_CAP", 1)
+        for _ in range(5):
+            form = await world.client.get(f"{ARTICLES}/{world.ids['article_in']}/edit")
+            assert f'value="{world.ids["tag_in"]}" selected' in form.text
+            assert later_id not in form.text
+            assert str(world.ids["tag_out"]) not in form.text
+        resp = await world.client.post(
+            f"{ARTICLES}/{world.ids['article_in']}/edit",
+            data={
+                "csrf_token": world.csrf,
+                "title": "ArticleInside",
+                "slug": "inside",
+                "company": OWN,
+                "status": "draft",
+                "tags": [str(world.ids["tag_in"])],
+            },
+        )
+        assert resp.status_code == 303
+        assert _tag_ids(await world.article("article_in")) == {
+            str(world.ids["tag_in"]),
+            later_id,
+            str(world.ids["tag_out"]),
+        }

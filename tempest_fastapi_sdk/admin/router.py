@@ -2134,6 +2134,72 @@ def make_admin_router(
         )
         return set(result.scalars().all())
 
+    def _m2m_order(target: AdminModel[Any]) -> tuple[Any, Any]:
+        """Return the deterministic order of a many-to-many target's rows.
+
+        Args:
+            target (AdminModel[Any]): The target admin.
+
+        Returns:
+            tuple[Any, Any]: ``created_at`` then ``id``, so equal timestamps
+            still sort the same way on every request.
+        """
+        return (target.model.created_at, target.model.id)
+
+    async def _m2m_option_rows(
+        target: AdminModel[Any], db_session: AsyncSession, principal: Any
+    ) -> list[Any]:
+        """Read the options of a many-to-many field.
+
+        Args:
+            target (AdminModel[Any]): The target admin.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+
+        Returns:
+            list[Any]: The first ``FK_OPTION_CAP`` target rows inside its
+            scope, in :func:`_m2m_order`, read with ``LIMIT`` in the SQL.
+        """
+        stmt = select(target.model).order_by(*_m2m_order(target))
+        scope = await target.scope_for(principal)
+        if scope is not None:
+            stmt = stmt.where(scope)
+        return list((await db_session.execute(stmt.limit(FK_OPTION_CAP))).scalars())
+
+    async def _m2m_extra_rows(
+        target: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        ids: list[Any],
+    ) -> list[Any]:
+        """Read the selected rows the option cap left out.
+
+        Scope and cap go in the same statement — ``WHERE id IN (...) AND
+        <scope> ORDER BY created_at, id LIMIT FK_OPTION_CAP`` — so an id
+        outside the scope never takes the place of one inside it.
+
+        Args:
+            target (AdminModel[Any]): The target admin.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            ids (list[Any]): Selected ids not among the options.
+
+        Returns:
+            list[Any]: The reachable rows among ``ids``, at most
+            ``FK_OPTION_CAP``.
+        """
+        if not ids:
+            return []
+        stmt = (
+            select(target.model)
+            .where(target.model.id.in_(ids))
+            .order_by(*_m2m_order(target))
+        )
+        scope = await target.scope_for(principal)
+        if scope is not None:
+            stmt = stmt.where(scope)
+        return list((await db_session.execute(stmt.limit(FK_OPTION_CAP))).scalars())
+
     async def _m2m_form_fields(
         admin: AdminModel[Any],
         db_session: AsyncSession,
@@ -2178,11 +2244,7 @@ def make_admin_router(
         ).items():
             if name in locked:
                 continue
-            scope = await target.scope_for(principal)
-            stmt = select(target.model).order_by(target.model.created_at)
-            if scope is not None:
-                stmt = stmt.where(scope)
-            rows = list((await db_session.execute(stmt.limit(FK_OPTION_CAP))).scalars())
+            rows = await _m2m_option_rows(target, db_session, principal)
             options = [(str(row.id), fk_label(target, row)) for row in rows]
             offered = {value for value, _label in options}
             selected: list[str]
@@ -2202,14 +2264,10 @@ def make_admin_router(
                 value
                 for value in (_identity_value(raw) for raw in selected)
                 if isinstance(value, UUID) and str(value) not in offered
-            ][:FK_OPTION_CAP]
-            if beyond:
-                extra = select(target.model).where(target.model.id.in_(beyond))
-                if scope is not None:
-                    extra = extra.where(scope)
-                for row in (await db_session.execute(extra)).scalars():
-                    options.append((str(row.id), fk_label(target, row)))
-                    offered.add(str(row.id))
+            ]
+            for row in await _m2m_extra_rows(target, db_session, principal, beyond):
+                options.append((str(row.id), fk_label(target, row)))
+                offered.add(str(row.id))
             fields.append(
                 FormField(
                     name=name,
@@ -2239,7 +2297,10 @@ def make_admin_router(
         learns nothing about other tenants' ids. On an edit, the links the
         row already has outside the scope are added back to the set, since
         the form never showed them; posting one of their ids is accepted as
-        the no-op it is. A field whose target the principal may not ``VIEW``
+        the no-op it is. So are the reachable links the form could not render
+        (past the option cap and past the cap of extra selected options): a
+        link is only removed when the form offered it and it came back
+        unselected. A field whose target the principal may not ``VIEW``
         is not read at all, which keeps every stored link of it, and so is a
         field in ``locked`` (``readonly_fields``, or what
         ``readonly_fields_for`` returns for the row).
@@ -2268,7 +2329,23 @@ def make_admin_router(
             posted = list(dict.fromkeys(str(raw) for raw in form.getlist(name) if raw))
             current = list(getattr(instance, name)) if instance is not None else []
             reachable = await _reachable_ids(target, db_session, principal, current)
-            kept = [row for row in current if row.id not in reachable]
+            rendered = {
+                row.id for row in await _m2m_option_rows(target, db_session, principal)
+            }
+            rendered.update(
+                row.id
+                for row in await _m2m_extra_rows(
+                    target,
+                    db_session,
+                    principal,
+                    [row.id for row in current if row.id not in rendered],
+                )
+            )
+            kept = [
+                row
+                for row in current
+                if row.id not in reachable or row.id not in rendered
+            ]
             kept_ids = {str(row.id) for row in kept}
             wanted = [_identity_value(raw) for raw in posted if raw not in kept_ids]
             if any(not isinstance(value, UUID) for value in wanted):
