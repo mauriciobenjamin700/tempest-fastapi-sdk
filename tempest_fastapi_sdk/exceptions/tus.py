@@ -117,12 +117,70 @@ class TusIdempotencyKeyReusedException(AppException):
     code: str = "TUS_IDEMPOTENCY_KEY_REUSED"
 
 
+class TusUploadCompletedException(AppException):
+    """Raised when a ``PATCH`` targets an upload that already has every byte.
+
+    ``409``, so ``tempest-react-sdk``'s client re-reads the offset with
+    ``HEAD``, sees the upload complete and stops. Nothing is written and
+    ``on_complete`` does not run again. ``details["offset"]`` is the length.
+    """
+
+    status_code: int = 409
+    message: str = "Upload is already complete"
+    code: str = "TUS_UPLOAD_COMPLETED"
+    details_example: ClassVar[dict[str, Any]] = {"offset": 5242880}
+
+
+class TusUploadLockedException(AppException):
+    """Raised when another ``PATCH`` or ``DELETE`` of the upload is in progress.
+
+    ``409`` without reading the body: the client re-reads the offset with
+    ``HEAD`` and retries after its backoff, and the server never spools two
+    bodies for one upload at once.
+    """
+
+    status_code: int = 409
+    message: str = "Another request is writing this upload"
+    code: str = "TUS_UPLOAD_LOCKED"
+
+
+class TusChunkTooSmallException(AppException):
+    """Raised when a chunk other than the last is below the store's minimum.
+
+    :class:`~tempest_fastapi_sdk.storage.tus.S3TusStore` keeps one object per
+    chunk, so a client writing one byte per ``PATCH`` would create one object
+    per byte. ``details["min_bytes"]`` is the minimum.
+    """
+
+    status_code: int = 400
+    message: str = "Chunk is smaller than the minimum this store accepts"
+    code: str = "TUS_CHUNK_TOO_SMALL"
+    details_example: ClassVar[dict[str, Any]] = {"min_bytes": 65536}
+
+
+class TusQuotaExceededException(AppException):
+    """Raised when a creation would pass the caller's active-upload quota.
+
+    ``details["limit"]`` names the limit hit (``"uploads"`` or ``"bytes"``)
+    and ``details["max"]`` its value.
+    """
+
+    status_code: int = 403
+    message: str = "Too many unfinished uploads for this caller"
+    code: str = "TUS_QUOTA_EXCEEDED"
+    details_example: ClassVar[dict[str, Any]] = {"limit": "uploads", "max": 20}
+
+
 __all__: list[str] = [
+    "TusChunkTooSmallException",
     "TusContentTypeException",
     "TusIdempotencyKeyReusedException",
     "TusInvalidHeaderException",
     "TusOffsetMismatchException",
+    "TusQuotaExceededException",
+    "TusUploadCompletedException",
     "TusUploadExpiredException",
+    "TusUploadLockedException",
     "TusUploadNotFoundException",
     "TusUploadTooLargeException",
     "TusVersionException",

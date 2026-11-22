@@ -1,9 +1,8 @@
 """Two ``PATCH`` at the same offset of one upload, with the interleaving forced.
 
-The first request is held inside :meth:`TusStore.write` until the second has
-read its whole body and reached the lock; only then is the first released.
-No ``sleep`` decides the order: each step waits on an event the code under
-test sets.
+The first request is held inside :meth:`TusStore.write`; only then is the
+second sent. No ``sleep`` decides the order: each step waits on an event the
+code under test sets.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ import httpx
 import pytest
 
 from tempest_fastapi_sdk.storage.tus import LocalTusStore, TusUpload
-from tempest_fastapi_sdk.storage.tus import router as tus_router
+from tempest_fastapi_sdk.storage.tus import store as tus_store
 from tests.storage.tus._support import CHUNK, TUS, build_app
 
 
@@ -78,17 +77,6 @@ async def _race(
         tuple[httpx.Response, httpx.Response, str]: Both answers and the URL.
     """
     app = build_app(store)
-    second_body_read = asyncio.Event()
-
-    async def second_body() -> AsyncIterator[bytes]:
-        """Yield the second chunk, then signal it was fully read.
-
-        Yields:
-            bytes: The chunk.
-        """
-        yield b"B" * 6
-        second_body_read.set()
-
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://testserver",
@@ -102,16 +90,11 @@ async def _race(
         headers = {**CHUNK, "Upload-Offset": "0"}
         first = asyncio.create_task(http.patch(url, content=b"A" * 6, headers=headers))
         await asyncio.wait_for(store.first_inside.wait(), timeout=5)
-        second = asyncio.create_task(
-            http.patch(url, content=second_body(), headers=headers)
-        )
-        await asyncio.wait_for(second_body_read.wait(), timeout=5)
+        second = asyncio.create_task(http.patch(url, content=b"B" * 6, headers=headers))
         if second_writes_first:
             await asyncio.wait_for(store.second_inside.wait(), timeout=5)
         else:
-            for _ in range(50):
-                await asyncio.sleep(0)
-            assert not store.second_inside.is_set()
+            await asyncio.wait_for(asyncio.shield(second), timeout=5)
         store.release_first.set()
         first_answer, second_answer = await asyncio.wait_for(
             asyncio.gather(first, second),
@@ -128,7 +111,7 @@ async def test_second_same_offset_patch_gets_409_and_bytes_stay_whole(
     first, second, url = await _race(store)
     assert first.status_code == 204
     assert second.status_code == 409
-    assert second.json()["details"] == {"offset": 6}
+    assert second.json()["code"] == "TUS_UPLOAD_LOCKED"
     assert store.writes == 1
     assert store.max_concurrent == 1
     upload_id = url.rsplit("/", 1)[-1]
@@ -149,20 +132,19 @@ async def test_without_the_lock_the_same_race_corrupts(
     """
 
     @contextlib.asynccontextmanager
-    async def no_lock(self: object, key: str) -> AsyncIterator[None]:
-        """Hold nothing.
+    async def no_lock(self: object, key: str) -> AsyncIterator[bool]:
+        """Pretend the lock was taken.
 
         Args:
             self (object): The lock table.
             key (str): Ignored.
 
         Yields:
-            None: Immediately.
+            bool: Always ``True``.
         """
-        yield
+        yield True
 
-    monkeypatch.setattr(tus_router._KeyedLocks, "hold", no_lock)
-
+    monkeypatch.setattr(tus_store._KeyedLocks, "try_hold", no_lock)
     store = GatedStore(tmp_path)
     first, second, _url = await _race(store, second_writes_first=True)
     assert first.status_code == 204

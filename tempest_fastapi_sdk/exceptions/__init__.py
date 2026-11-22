@@ -136,6 +136,9 @@ from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException as TooManyRequestsException,
 )
 from tempest_fastapi_sdk.exceptions.tus import (
+    TusChunkTooSmallException as TusChunkTooSmallException,
+)
+from tempest_fastapi_sdk.exceptions.tus import (
     TusContentTypeException as TusContentTypeException,
 )
 from tempest_fastapi_sdk.exceptions.tus import (
@@ -148,7 +151,16 @@ from tempest_fastapi_sdk.exceptions.tus import (
     TusOffsetMismatchException as TusOffsetMismatchException,
 )
 from tempest_fastapi_sdk.exceptions.tus import (
+    TusQuotaExceededException as TusQuotaExceededException,
+)
+from tempest_fastapi_sdk.exceptions.tus import (
+    TusUploadCompletedException as TusUploadCompletedException,
+)
+from tempest_fastapi_sdk.exceptions.tus import (
     TusUploadExpiredException as TusUploadExpiredException,
+)
+from tempest_fastapi_sdk.exceptions.tus import (
+    TusUploadLockedException as TusUploadLockedException,
 )
 from tempest_fastapi_sdk.exceptions.tus import (
     TusUploadNotFoundException as TusUploadNotFoundException,
@@ -271,11 +283,15 @@ __all__: list[str] = [
     "PushEndpointNotPublicException",
     "StorageIntegrityException",
     "TooManyRequestsException",
+    "TusChunkTooSmallException",
     "TusContentTypeException",
     "TusIdempotencyKeyReusedException",
     "TusInvalidHeaderException",
     "TusOffsetMismatchException",
+    "TusQuotaExceededException",
+    "TusUploadCompletedException",
     "TusUploadExpiredException",
+    "TusUploadLockedException",
     "TusUploadNotFoundException",
     "TusUploadTooLargeException",
     "TusVersionException",

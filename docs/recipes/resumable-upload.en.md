@@ -96,9 +96,9 @@ Left out because the client never sends them: `OPTIONS` discovery,
 
 ## The finished file: `on_complete`
 
-When the last byte arrives, the router calls `on_complete(upload, store)` **inside the
-request of the last `PATCH`**, before the `204`. That is where the service registers the
-photo or moves the file:
+When the last byte arrives, the router calls `on_complete(upload, store)` **once per
+upload, inside the request of the last `PATCH`**, under the upload's lock, before the
+`204`. That is where the service registers the photo or moves the file:
 
 ```python
 import shutil
@@ -124,6 +124,15 @@ async def archive_photo(upload: TusUpload, store: TusStore, /) -> None:
 - `store.stream(upload.id)` reads the bytes from any store; `LocalTusStore.data_path` and
   `S3TusStore.object_key` give the path and the key, to move without copying through the
   process.
+- `await store.delete(upload.id)` inside the callback is allowed: the router does not
+  recreate the record, and the next `HEAD` answers `404`. The example above runs in
+  `tests/storage/tus/test_hardening.py`, read straight from this page.
+- A `PATCH` to an upload that is already complete — the empty one too, with
+  `Upload-Offset` equal to the length — answers `409 TUS_UPLOAD_COMPLETED` without
+  writing anything or calling the callback again. `createResumableUpload` handles every
+  `409` by re-reading the offset with `HEAD` before the next attempt
+  (`RESYNCABLE_STATUSES` in `resumable-upload.ts`, read in the code), and with the offset
+  equal to the length the upload finishes.
 
 !!! warning "A callback that raises"
     The `PATCH` answers `500`, and the upload stays complete with `notified = False`. The
@@ -134,7 +143,10 @@ async def archive_photo(upload: TusUpload, store: TusStore, /) -> None:
 
 ## Upload owner
 
-The `str()` of what `current_user_id` resolves becomes the owner. Only the same value can
+The `str()` of what `current_user_id` resolves becomes the owner, and the dependency must
+return the user's **id** as `str`, `int` or `UUID`: any other type (the user model, a
+claims dict) raises `TypeError` — the `str()` of an object can change between requests or
+collide between users. Only the same value can
 probe, continue or delete that upload; anyone else gets `404 TUS_UPLOAD_NOT_FOUND` — the
 same `404` as an id that does not exist, so it never confirms the id is real.
 
@@ -153,7 +165,15 @@ keeps `sha256(owner + key) → id` in the store itself:
 - same key, same owner, another `Upload-Length` → `422 TUS_IDEMPOTENCY_KEY_REUSED`.
 
 The mapping lives in the store (a file on disk, an object in the bucket), so it holds
-after a restart. This route does not need `IdempotencyMiddleware`: that one keys the
+after a restart.
+
+Without `current_user_id` (anonymous mode) the key is **ignored**: with no owner, every
+anonymous caller would share one key space, and whoever repeated someone else's key would
+get their URL. The client generates the key with `crypto.randomUUID()` and, where the
+browser does not offer it (outside a secure context, that is, without HTTPS), falls back
+to a UUID built with `Math.random()`, which is not cryptographic randomness
+(`src/http/idempotency.ts` in `tempest-react-sdk`). In anonymous mode, a creation retried
+after a lost `201` leaves an orphan upload, which `purge_expired()` deletes. This route does not need `IdempotencyMiddleware`: that one keys the
 cached response on a digest of the credentials, and a token refreshed between the attempt
 and the retry no longer matches.
 
@@ -186,13 +206,27 @@ starts at, and the file is assembled once, when the last byte arrives:
 Everything lives in the bucket: another process, or another replica, sees the same
 uploads.
 
+The complete record is saved **before** the chunks are deleted. If the assembly fails
+half-way, the `PATCH` answers `500`, the record stays at the previous offset and the
+retried last chunk assembles again; if only deleting the chunks fails, the upload is
+already complete and the leftover chunks go with `store.delete(id)` — both cases with an
+injected failure in `test_hardening.py`.
+
+`S3TusStore(min_chunk_size=...)` (64 KiB by default) refuses a chunk below it with
+`400 TUS_CHUNK_TOO_SMALL`, except the one that ends the upload: every chunk is an object,
+and without a floor a client sending 1 byte per `PATCH` would create one object per byte.
+At 64 KiB a 1 GiB upload has at most 16 384 chunks; the client sends 5 MiB by default and
+256 KiB in the field recipe.
+
 !!! warning "The cost"
     Every byte is written to the bucket **twice** (chunk, then file) and read once. And
     the request of the last `PATCH` waits for the assembly, which spools the file through
     a temporary file on the server's disk (`SpooledTemporaryFile`, 8 MiB in memory before
     it goes to disk). For photos and recordings of a few MiB that is invisible; for
     multi-gigabyte files the last `PATCH` takes the time to read and rewrite the whole
-    file — raise the proxy timeout, or prefer `LocalTusStore` on a shared disk.
+    file — raise the proxy timeout, or prefer `LocalTusStore` on a shared disk. The
+    temporary disk adds up per concurrent assembly: ten 1 GiB uploads finishing at once
+    take up to 10 GiB in the server's temporary directory.
 
 Measured against a real S3 server (SeaweedFS's S3 gateway in a container — the
 `minio/minio` image answered *pull access denied* on this machine on 2026-11-22): 6 MiB
@@ -203,8 +237,8 @@ with only `data` and `info.json` left (`tests/storage/tus/test_s3_live.py`,
 
 ## Expiry and cleanup
 
-An incomplete upload expires `expiration` after creation or after its last accepted
-`PATCH` (24 h by default); the deadline goes out as `Upload-Expires`. Past it, `HEAD` and
+An incomplete upload expires `expiration` after creation or after its last `PATCH` that
+stored bytes (24 h by default) — an empty `PATCH` does not renew it; the deadline goes out as `Upload-Expires`. Past it, `HEAD` and
 `PATCH` answer `410 TUS_UPLOAD_EXPIRED`, and the client starts over. A **complete**
 upload never expires: its bytes already belong to the service.
 
@@ -220,18 +254,44 @@ async def sweep_uploads() -> list[str]:
     return await store.purge_expired()
 ```
 
-`purge_expired()` returns the deleted ids (`[]` when nothing expired). Hook it to a
-`TaskQueue` periodic task or a cron.
+`purge_expired()` returns the deleted ids (`[]` when nothing expired). Each upload is
+re-read under the same per-upload lock the router uses, and one with a request in
+progress is skipped. Hook it to a `TaskQueue` periodic task or a cron.
+
+## Per-owner limits
+
+Without a limit, a signed-in user creates uploads until the disk or the bucket is full.
+Two router parameters close that, counting the owner's **unfinished, unexpired** uploads:
+
+```python
+from tempest_fastapi_sdk import LocalTusStore, make_tus_router
+
+router = make_tus_router(
+    LocalTusStore("var/tus"),
+    max_uploads_per_owner=20,
+    max_bytes_per_owner=2 * 1024 * 1024 * 1024,
+)
+```
+
+Past either, the creation answers `403 TUS_QUOTA_EXCEEDED` with `details.limit`
+(`"uploads"` or `"bytes"`) and `details.max`. Both default to `None`.
+
+!!! warning "Cost of the check"
+    Every creation with a limit reads every record in the store (`list_uploads()`). Keep
+    the store swept with `purge_expired()`; with tens of thousands of live uploads this
+    weighs on every `POST`.
 
 ## Concurrency and replicas
 
-Two `PATCH` at the same offset of the same upload: one writes, the other answers
-`409 TUS_OFFSET_MISMATCH` with `details.offset` — the client re-reads with `HEAD` and
-carries on. The offset is checked again after the body is read, under a per-upload lock.
-Measured with the interleaving forced (the first request held inside the write until the
-second has read its whole body): 1 write, the second at `409`, the file holding only the
-winner's bytes. Without the lock, the same test shows both answering `204` for the same
-range (`tests/storage/tus/test_concurrency.py`).
+A `PATCH` takes the upload's lock **before** reading its body. A second `PATCH` (or
+`DELETE`) to the same upload while the first is in progress answers
+`409 TUS_UPLOAD_LOCKED` at once, without reading the body — through the same `409`
+handling, the client re-reads with `HEAD` and retries after its backoff — so an upload never has two bodies spooled.
+Measured with the interleaving forced (the first request held inside the write): 1 write,
+the second at `409` with its body never read, the file holding only the first's bytes.
+Without the lock, the same test shows both answering `204` for the same range
+(`tests/storage/tus/test_concurrency.py`). The body goes to a `SpooledTemporaryFile` with
+1 MiB in memory; the rest, up to `max_chunk_size`, goes to the temporary disk.
 
 !!! warning "The lock is per process"
     Two replicas behind a load balancer can still race on one upload. With more than one
@@ -268,22 +328,25 @@ app.add_middleware(
 
 ## Errors
 
-Every error uses the SDK envelope (`detail`/`code`/`details`) and carries
-`Tus-Resumable: 1.0.0`.
+Errors use the SDK envelope (`detail`/`code`/`details`). Every response of the tus routes
+carries `Tus-Resumable: 1.0.0`, refusals included — the router's and a `401`/`403` raised
+by your `current_user_id` dependency. The exception is an unhandled `500`: the app's
+handler answers it, outside the route, without the header.
 
 | Status | `code` | When |
 | --- | --- | --- |
-| `400` | `TUS_HEADER_INVALID` | `Upload-Length` or `Upload-Offset` missing or not a number; `Upload-Metadata` not base64/UTF-8. `details.header` names the header |
+| `400` | `TUS_HEADER_INVALID` | `Upload-Length` or `Upload-Offset` missing, not a number or longer than 20 digits; `Upload-Metadata` not base64/UTF-8. `details.header` names the header |
+| `400` | `TUS_CHUNK_TOO_SMALL` | a chunk that does not end the upload is below the store's `min_chunk_size`; `details.min_bytes` |
+| `403` | `TUS_QUOTA_EXCEEDED` | the creation would pass `max_uploads_per_owner` or `max_bytes_per_owner` |
 | `404` | `TUS_UPLOAD_NOT_FOUND` | unknown, malformed or someone else's id |
 | `409` | `TUS_OFFSET_MISMATCH` | `Upload-Offset` differs from the stored one; `details.offset` is the server's |
+| `409` | `TUS_UPLOAD_COMPLETED` | `PATCH` to an upload that already has every byte; nothing is stored |
+| `409` | `TUS_UPLOAD_LOCKED` | another `PATCH`/`DELETE` of the same upload is in progress |
 | `410` | `TUS_UPLOAD_EXPIRED` | incomplete upload past `Upload-Expires` |
 | `412` | `TUS_VERSION_UNSUPPORTED` | `Tus-Resumable` missing or not `1.0.0`; the response carries `Tus-Version` |
 | `413` | `TUS_UPLOAD_TOO_LARGE` | `Upload-Length` above `max_size` (with `Tus-Max-Size`), or a `PATCH` body past `Upload-Length` or `max_chunk_size`; nothing is stored |
 | `415` | `TUS_CONTENT_TYPE_INVALID` | `PATCH` without `Content-Type: application/offset+octet-stream` |
 | `422` | `TUS_IDEMPOTENCY_KEY_REUSED` | the key already created an upload of another size |
-
-A `401` from your authentication dependency goes out as it raises it, without
-`Tus-Resumable` — the client reads the status, not the header.
 
 ## Recap
 
@@ -292,5 +355,6 @@ A `401` from your authentication dependency goes out as it raises it, without
 - `LocalTusStore` keeps uploads on disk; `S3TusStore` in the bucket, one object per chunk
   and the assembly at the end (twice the writes, in exchange for accepting any chunk size).
 - State survives a restart; the concurrency lock is per process.
-- `Idempotency-Key` per owner, expiry with `purge_expired()`, a sanitized file name in
-  `upload.filename`.
+- `on_complete` runs once per upload; a `PATCH` to a complete upload is `409`.
+- `Idempotency-Key` per owner (ignored without one), per-owner limits, expiry with
+  `purge_expired()`, a sanitized file name in `upload.filename`.

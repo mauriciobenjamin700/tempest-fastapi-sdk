@@ -1461,6 +1461,9 @@ if TYPE_CHECKING:
         TooManyRequestsException as TooManyRequestsException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        TusChunkTooSmallException as TusChunkTooSmallException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         TusContentTypeException as TusContentTypeException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -1473,7 +1476,16 @@ if TYPE_CHECKING:
         TusOffsetMismatchException as TusOffsetMismatchException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        TusQuotaExceededException as TusQuotaExceededException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusUploadCompletedException as TusUploadCompletedException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         TusUploadExpiredException as TusUploadExpiredException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusUploadLockedException as TusUploadLockedException,
     )
     from tempest_fastapi_sdk.exceptions import (
         TusUploadNotFoundException as TusUploadNotFoundException,
@@ -2959,6 +2971,10 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "UnknownFilterKeyException": "tempest_fastapi_sdk.exceptions",
     "UploadTooLargeException": "tempest_fastapi_sdk.exceptions",
     "TusContentTypeException": "tempest_fastapi_sdk.exceptions",
+    "TusChunkTooSmallException": "tempest_fastapi_sdk.exceptions",
+    "TusQuotaExceededException": "tempest_fastapi_sdk.exceptions",
+    "TusUploadCompletedException": "tempest_fastapi_sdk.exceptions",
+    "TusUploadLockedException": "tempest_fastapi_sdk.exceptions",
     "TusIdempotencyKeyReusedException": "tempest_fastapi_sdk.exceptions",
     "TusInvalidHeaderException": "tempest_fastapi_sdk.exceptions",
     "TusOffsetMismatchException": "tempest_fastapi_sdk.exceptions",
@@ -3911,15 +3927,19 @@ __all__: list[str] = [
     "TokenMatchEnum",
     "TokenSettings",
     "TooManyRequestsException",
+    "TusChunkTooSmallException",
     "TusCompleteCallback",
     "TusContentTypeException",
     "TusIdempotencyKeyReusedException",
     "TusInvalidHeaderException",
     "TusObjectClient",
     "TusOffsetMismatchException",
+    "TusQuotaExceededException",
     "TusStore",
     "TusUpload",
+    "TusUploadCompletedException",
     "TusUploadExpiredException",
+    "TusUploadLockedException",
     "TusUploadNotFoundException",
     "TusUploadTooLargeException",
     "TusVersionException",

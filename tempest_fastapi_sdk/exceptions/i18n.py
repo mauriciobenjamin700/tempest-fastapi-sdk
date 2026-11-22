@@ -506,6 +506,10 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "O PATCH exige Content-Type: application/offset+octet-stream"
         ),
         "TUS_HEADER_INVALID": "Cabeçalho tus inválido",
+        "TUS_UPLOAD_COMPLETED": "O upload já está completo",
+        "TUS_UPLOAD_LOCKED": "Outra requisição está gravando este upload",
+        "TUS_CHUNK_TOO_SMALL": "O pedaço é menor que o mínimo aceito",
+        "TUS_QUOTA_EXCEEDED": "Uploads inacabados demais para este usuário",
         "TUS_UPLOAD_TOO_LARGE": "O upload passa do tamanho permitido",
         "TUS_IDEMPOTENCY_KEY_REUSED": (
             "A Idempotency-Key já foi usada para outro upload"
@@ -683,6 +687,10 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
             "PATCH requires Content-Type: application/offset+octet-stream"
         ),
         "TUS_HEADER_INVALID": "Invalid tus header",
+        "TUS_UPLOAD_COMPLETED": "Upload is already complete",
+        "TUS_UPLOAD_LOCKED": "Another request is writing this upload",
+        "TUS_CHUNK_TOO_SMALL": "Chunk is smaller than the minimum this store accepts",
+        "TUS_QUOTA_EXCEEDED": "Too many unfinished uploads for this caller",
         "TUS_UPLOAD_TOO_LARGE": "Upload exceeds the allowed size",
         "TUS_IDEMPOTENCY_KEY_REUSED": (
             "Idempotency-Key was already used for a different upload"

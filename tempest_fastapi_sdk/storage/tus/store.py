@@ -16,6 +16,7 @@ import os
 import tempfile
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
@@ -82,16 +83,80 @@ def _atomic_write(target: Path, text: str) -> None:
         raise
 
 
+class _KeyedLocks:
+    """One :class:`asyncio.Lock` per key, dropped when nobody holds or waits on it."""
+
+    def __init__(self) -> None:
+        """Initialize the empty lock table."""
+        self._locks: dict[str, tuple[asyncio.Lock, int]] = {}
+
+    @asynccontextmanager
+    async def hold(self, key: str) -> AsyncIterator[None]:
+        """Hold the lock of ``key`` for the ``async with`` body, waiting for it.
+
+        Args:
+            key (str): What to serialize on.
+
+        Yields:
+            None: While the lock is held.
+        """
+        lock, users = self._locks.get(key, (asyncio.Lock(), 0))
+        self._locks[key] = (lock, users + 1)
+        try:
+            async with lock:
+                yield
+        finally:
+            current_lock, current_users = self._locks[key]
+            if current_users <= 1:
+                del self._locks[key]
+            else:
+                self._locks[key] = (current_lock, current_users - 1)
+
+    @asynccontextmanager
+    async def try_hold(self, key: str) -> AsyncIterator[bool]:
+        """Hold the lock of ``key`` only if nobody holds or waits on it.
+
+        Args:
+            key (str): What to serialize on.
+
+        Yields:
+            bool: ``True`` while the lock is held; ``False``, without waiting,
+            when someone else has it.
+        """
+        if key in self._locks:
+            yield False
+            return
+        async with self.hold(key):
+            yield True
+
+
 class TusStore(ABC):
     """Persistence contract of :func:`~tempest_fastapi_sdk.storage.tus.make_tus_router`.
 
-    The router serializes calls per upload inside one process; a store does
-    not lock. A method given an id that fails :func:`valid_upload_id` treats
-    it as absent instead of building a path or key from it.
+    Writes to one upload are serialized by a lock table that lives on the
+    store instance and is shared by every router built over it and by
+    :meth:`purge_expired`; it covers one process. A method given an id that
+    fails :func:`valid_upload_id` treats it as absent instead of building a
+    path or key from it.
 
     Subclass it to keep uploads elsewhere; :meth:`purge_expired` and
     :meth:`list_uploads` come for free from the abstract methods.
     """
+
+    min_chunk_size: int = 0
+    """Smallest chunk the router accepts, except the one that ends the upload."""
+
+    def _upload_locks(self) -> _KeyedLocks:
+        """Return this store's lock table, creating it on first use.
+
+        Returns:
+            _KeyedLocks: The table shared by the router and the sweep.
+        """
+        table = self.__dict__.get("_tus_locks")
+        if not isinstance(table, _KeyedLocks):
+            table = _KeyedLocks()
+            self.__dict__["_tus_locks"] = table
+        return table
 
     @abstractmethod
     async def create(self, upload: TusUpload) -> None:
@@ -143,6 +208,18 @@ class TusStore(ABC):
         Args:
             upload (TusUpload): The complete upload.
         """
+
+    async def discard_parts(self, upload: TusUpload) -> None:
+        """Drop whatever :meth:`finalize` assembled from, once the record says complete.
+
+        Called after the complete record is saved, so a failure here never
+        leaves an upload that cannot finish; a store with nothing to drop
+        keeps this no-op.
+
+        Args:
+            upload (TusUpload): The complete upload.
+        """
+        return None
 
     @abstractmethod
     def stream(
@@ -216,7 +293,9 @@ class TusStore(ABC):
     async def purge_expired(self, *, now: datetime | None = None) -> list[str]:
         """Delete every incomplete upload past its ``expires_at``.
 
-        Run it on a schedule (a TaskIQ periodic task, a cron). A complete
+        Run it on a schedule (a TaskIQ periodic task, a cron). Each upload is
+        re-read under the same per-upload lock the router writes under, and one
+        with a request in progress is skipped. A complete
         upload is never purged, notified or not: its bytes belong to the
         service, which deletes them with :meth:`delete` when done.
 
@@ -228,11 +307,18 @@ class TusStore(ABC):
             list[str]: The ids deleted; ``[]`` when none had expired.
         """
         moment = now or datetime.now(UTC)
+        locks = self._upload_locks()
         purged: list[str] = []
-        for upload in await self.list_uploads():
-            if upload.is_expired(moment):
-                await self.delete(upload.id)
-                purged.append(upload.id)
+        for candidate in await self.list_uploads():
+            if not candidate.is_expired(moment):
+                continue
+            async with locks.try_hold(candidate.id) as held:
+                if not held:
+                    continue
+                upload = await self.load(candidate.id)
+                if upload is not None and upload.is_expired(moment):
+                    await self.delete(upload.id)
+                    purged.append(upload.id)
         return purged
 
 

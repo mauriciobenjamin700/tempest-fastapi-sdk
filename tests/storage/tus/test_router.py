@@ -50,7 +50,7 @@ def store(request: pytest.FixtureRequest, tmp_path: Path) -> TusStore:
     """
     if request.param == "local":
         return LocalTusStore(tmp_path / "tus")
-    return S3TusStore(FakeObjectStorageClient(), prefix="uploads/tus")
+    return S3TusStore(FakeObjectStorageClient(), prefix="uploads/tus", min_chunk_size=0)
 
 
 @pytest.fixture

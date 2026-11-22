@@ -198,6 +198,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Tus-Resumable` na resposta. `TUS_CORS_EXPOSE_HEADERS` /
   `TUS_CORS_ALLOW_HEADERS` para o `CORSMiddleware`. Sem extra novo. Receita
   nova: [Upload resumível (tus)](docs/recipes/resumable-upload.md).
+  Endurecido depois de revisão de segurança: `PATCH` em upload completo
+  responde `409 TUS_UPLOAD_COMPLETED` e `on_complete` roda uma vez por
+  upload; o lock é pego antes de ler o corpo (`409 TUS_UPLOAD_LOCKED` para
+  o segundo `PATCH`); `PATCH` vazio não renova a expiração; registro apagado
+  pelo callback não é recriado; no S3 o registro completo é salvo antes de
+  apagar os chunks e `min_chunk_size` (padrão 64 KiB) recusa chunk pequeno
+  com `400 TUS_CHUNK_TOO_SMALL`; `max_uploads_per_owner` /
+  `max_bytes_per_owner` (`403 TUS_QUOTA_EXCEEDED`); header inteiro com mais
+  de 20 dígitos é `400`; `current_user_id` precisa resolver `str`, `int` ou
+  `UUID`; `Idempotency-Key` ignorada sem dono; `purge_expired` sob o lock
+  por upload; `401`/`403` da dependência levam `Tus-Resumable`.
 
 ### Changed
 

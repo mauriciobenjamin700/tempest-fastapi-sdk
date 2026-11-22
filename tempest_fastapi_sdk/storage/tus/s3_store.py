@@ -35,6 +35,13 @@ from tempest_fastapi_sdk.storage.tus.store import (
 TUS_ASSEMBLY_SPOOL_BYTES: int = 8 * 1024 * 1024
 """Bytes :meth:`S3TusStore.finalize` keeps in memory before spooling to disk."""
 
+DEFAULT_S3_TUS_MIN_CHUNK_SIZE: int = 64 * 1024
+"""Default smallest non-final chunk :class:`S3TusStore` accepts: 64 KiB.
+
+``tempest-react-sdk`` sends 5 MiB by default and 256 KiB in its field-app
+recipe, both above it; a 1 GiB upload is then at most 16 384 chunk objects.
+"""
+
 _OFFSET_DIGITS: int = 20
 """Zero-padded width of a chunk key, so lexical order is offset order."""
 
@@ -151,6 +158,7 @@ class S3TusStore(TusStore):
         bucket (str | None): Bucket override; ``None`` uses the client's
             default bucket.
         prefix (str): Key prefix every object of this store lives under.
+        min_chunk_size (int): Smallest non-final chunk the router accepts.
     """
 
     def __init__(
@@ -159,6 +167,7 @@ class S3TusStore(TusStore):
         *,
         bucket: str | None = None,
         prefix: str = "tus/",
+        min_chunk_size: int = DEFAULT_S3_TUS_MIN_CHUNK_SIZE,
     ) -> None:
         """Initialize the store.
 
@@ -168,9 +177,14 @@ class S3TusStore(TusStore):
             bucket (str | None): Bucket override.
             prefix (str): Key prefix, ``"tus/"`` by default. A trailing
                 ``/`` is added when missing.
+            min_chunk_size (int): Smallest ``PATCH`` body the router accepts,
+                except the one that ends the upload — every chunk is an
+                object, and this bounds how many one upload can create
+                (``length / min_chunk_size``). ``0`` accepts any size.
         """
         self.client: TusObjectClient = client
         self.bucket: str | None = bucket
+        self.min_chunk_size: int = min_chunk_size
         self.prefix: str = (
             prefix if not prefix or prefix.endswith("/") else f"{prefix}/"
         )
@@ -297,11 +311,14 @@ class S3TusStore(TusStore):
         await self.client.put_object(key, data, bucket=self.bucket, length=size)
 
     async def finalize(self, upload: TusUpload) -> None:
-        """Concatenate the chunks into ``<prefix><id>/data`` and drop them.
+        """Concatenate the chunks into ``<prefix><id>/data``.
 
         Only the chain of chunks that starts at ``0`` and ends at
         ``upload.length`` is read; a chunk outside it (an earlier attempt at
-        an offset that a later write superseded) is skipped and deleted.
+        an offset that a later write superseded) is skipped. The chunks stay
+        until :meth:`discard_parts`, which the router calls after saving the
+        complete record: a failure here, or before that save, leaves every
+        chunk in place, and the retried last ``PATCH`` assembles again.
 
         Args:
             upload (TusUpload): The complete upload.
@@ -337,6 +354,20 @@ class S3TusStore(TusStore):
                 bucket=self.bucket,
                 length=upload.length,
             )
+
+    async def discard_parts(self, upload: TusUpload) -> None:
+        """Delete the chunk objects of a complete upload.
+
+        Runs after the router saved the complete record, so a failure here
+        leaves stray chunks — removed by :meth:`delete` — but never an upload
+        stuck before completion.
+
+        Args:
+            upload (TusUpload): The complete upload.
+        """
+        keys = await self.client.list_objects(
+            self._chunk_prefix(upload.id), bucket=self.bucket
+        )
         for key in keys:
             await self.client.remove_object(key, bucket=self.bucket)
 
@@ -433,6 +464,7 @@ class S3TusStore(TusStore):
 
 
 __all__: list[str] = [
+    "DEFAULT_S3_TUS_MIN_CHUNK_SIZE",
     "TUS_ASSEMBLY_SPOOL_BYTES",
     "S3TusStore",
     "TusObjectClient",

@@ -4950,3 +4950,15 @@ Testes: `tests/storage/tus/test_router.py` (os dois stores, fake S3),
 `test_s3_live.py` (docker, gateway S3 do SeaweedFS, restart com chunks de
 256 KiB), `test_models.py`. Receita: `resumable-upload`; a nota de
 `storage` que mandava usar tus.io separado aponta para ela.
+
+Revisão de segurança (mesmo #809): `_KeyedLocks` mudou para `store.py`, com
+`try_hold`, e vive na instância do store (`_upload_locks()`), compartilhado
+pelo router e por `purge_expired`. `TusStore.min_chunk_size` +
+`discard_parts` (o S3 apaga chunks só depois do registro completo salvo).
+`_TusRoute` carimba `Tus-Resumable` em resposta e em `HTTPException`. Quatro
+códigos novos: `TUS_UPLOAD_COMPLETED`, `TUS_UPLOAD_LOCKED`,
+`TUS_CHUNK_TOO_SMALL`, `TUS_QUOTA_EXCEEDED`. Testes:
+`tests/storage/tus/test_hardening.py` (um por defeito; os de disco local
+falham no commit anterior), receita `archive_photo` executada direto do
+markdown.
+
