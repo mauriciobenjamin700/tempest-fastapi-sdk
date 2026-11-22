@@ -4336,7 +4336,7 @@ Builds the prompt that makes an AI fill *this branch's* PR description: the pull
 
 ### Admin site recipe
 
-Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, an audit trail stamping `created_by` / `updated_by`, file/image upload fields, and in-place inline editing of 1-N children (`Inline(editable=True)`). The admin-panel evolution is complete.
+Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON/XLSX export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, an audit trail stamping `created_by` / `updated_by`, file/image upload fields, and in-place inline editing of 1-N children (`Inline(editable=True)`). The admin-panel evolution is complete.
 
 Requires the `[admin]` extra:
 

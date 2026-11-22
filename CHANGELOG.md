@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.370.0] — 2026-11-22
 
 ### Added
 
@@ -183,8 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   criação (`Upload-Length`, `Upload-Metadata`, `Idempotency-Key`), `HEAD`,
   `PATCH` e `DELETE` — o subconjunto que o cliente envia, medido rodando o
   cliente real contra o router. `PATCH` confere `Upload-Offset` (`409`),
-  `Content-Type` (`415`) e tamanho (`413`), e confere o offset de novo sob um
-  lock por upload depois de ler o corpo. Upload pertence ao `str()` do
+  `Content-Type` (`415`) e tamanho (`413`), sob um lock por upload pego antes
+  de ler o corpo. Upload pertence ao `str()` do
   `current_user_id` (`404` para outro dono); `Idempotency-Key` vale por dono;
   `Upload-Expires` renovado a cada `PATCH`, `410` depois dele e
   `TusStore.purge_expired()` para a limpeza. Stores: `LocalTusStore` (disco,

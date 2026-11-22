@@ -7,7 +7,7 @@ Django-style management UI mounted under `/admin`. Operators sign in with a user
 
 - List view with search, rich per-field filters (enum / FK / date-range) and sortable columns.
 - Full CRUD (create / edit / delete) and bulk actions.
-- CSV/JSON export and FK-select widgets.
+- CSV/JSON/XLSX export and FK-select widgets.
 - Dashboard with live row counts + system metrics.
 - Optional TOTP MFA at login.
 - File/image upload fields.
@@ -205,12 +205,17 @@ app.include_router(
 - `GET  /admin/logs` — **application logs** (when `show_logs=True`): reads the structured JSON files written by `configure_logging(log_dir=…)`, with source filter (`?source=`), free-text search (`?q=`) and pagination. Color-coded level badges. Renders an empty state when no log files exist yet.
 - `GET  /admin/logs/export` — **log export** (`?format=md|json`): downloads the filtered selection as markdown (traceback in a fenced block, ready to paste into an issue) or verbatim JSON.
 - `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`: each word matched as a case-insensitive substring in any of the `search_fields`, and every word must appear; `%` and `_` are literal) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
-- `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000). In the CSV, a text cell starting with `=`, `+`, `-`, `@`, tab or CR is written with a leading `'`, so a spreadsheet shows the text instead of evaluating a formula; the JSON is unchanged.
+- `GET  /admin/m/{slug}/export.csv` / `export.json` / `export.xlsx` (the latter with the `[spreadsheet]` extra) — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000). In the CSV, a text cell starting with `=`, `+`, `-`, `@`, tab or CR is written with a leading `'`, so a spreadsheet shows the text instead of evaluating a formula; the JSON is unchanged.
 - `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate + your **custom actions**) on the selected rows.
 - `GET/POST /admin/m/{slug}/new` — **create** a record (when `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view with Edit/Delete controls.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **edit** a record (when `can_edit`).
 - `POST /admin/m/{slug}/{identity}/delete` — **delete** a record (when `can_delete`).
+- `GET/POST /admin/m/{slug}/import` + `POST /admin/m/{slug}/import/confirm` — **import** CSV/XLSX with a preview (when `can_import`).
+- `GET  /admin/m/{slug}/{identity}/duplicate` — **duplicate** (when `can_duplicate`).
+- `GET  /admin/m/{slug}/{identity}/restore/{entry_id}` — **restore** a change from the history (with `audit_model`).
+- `GET/POST /admin/m/{slug}/{identity}/impersonate` — **log in as** the row's account (with `impersonate=` and the `IMPERSONATE` permission).
+- `GET  /admin/search` — **global search** across models with `search_fields`.
 - `GET  /admin/static/{path}` — the panel's bundled CSS (`admin.css`).
 - `GET  /admin/_ssr/htmx.js` — the HTMX bundled in the SDK (`ssr/_static/htmx.min.js`), served without a session because the login page loads it too. The path follows `prefix`: with `prefix="/backoffice"` it becomes `/backoffice/_ssr/htmx.js`.
 

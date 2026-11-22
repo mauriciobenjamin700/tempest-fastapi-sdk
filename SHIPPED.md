@@ -4818,7 +4818,7 @@ memória".
 `transaction()`, conta a linha contra a condição e faz rollback se saiu) em
 toda rota `/m/{slug}/...`; FK options, autocomplete e inlines usam o escopo
 do model referenciado; bulk filtra os ids antes de agir. `admin/i18n.py`:
-catálogo EN/PT-BR (283 chaves), `admin_text`/`admin_plural`, globals
+catálogo EN/PT-BR (338 chaves por locale na 0.370.0), `admin_text`/`admin_plural`, globals
 `t`/`tn`/`locale` no Jinja; `AdminSite(locale=...)`. Atalhos de data em
 `_date_shortcut_ranges`/`_date_shortcut_url`. `admin/csv_import.py`: prévia
 (`run_import(commit=False)`, transação sempre desfeita, savepoint por linha,
@@ -4941,7 +4941,7 @@ ABC com `list_uploads`/`purge_expired`; `LocalTusStore`: `<id>.json` por
 protocolo `TusObjectClient`: `info.json`, `chunks/<offset>`, `data` montado no
 `finalize` via `SpooledTemporaryFile`, `_idempotency/<digest>`) e `router.py`
 (`make_tus_router`, `_KeyedLocks` por upload e por chave de idempotência,
-`TusCompleteCallback`, `TUS_CORS_*`). `exceptions/tus.py` com os 8 códigos
+`TusCompleteCallback`, `TUS_CORS_*`). `exceptions/tus.py` com os 8 códigos (13 depois da revisão)
 `TUS_*` no catálogo nas duas línguas. Sem `OPTIONS`, defer-length,
 creation-with-upload, checksum nem concatenation — o cliente não manda.
 Testes: `tests/storage/tus/test_router.py` (os dois stores, fake S3),

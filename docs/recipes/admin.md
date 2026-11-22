@@ -7,7 +7,7 @@ UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com
 
 - List view com busca, filtros ricos por campo (enum / FK / range de data) e colunas ordenáveis.
 - CRUD completo (criar / editar / excluir) e ações em massa.
-- Export CSV/JSON e widgets FK-select.
+- Export CSV/JSON/XLSX e widgets FK-select.
 - Dashboard com contagens de linhas + métricas de sistema.
 - MFA TOTP opcional no login.
 - Campos de upload de arquivo/imagem.
@@ -188,12 +188,17 @@ app.include_router(
 - `GET  /admin/logs` — **logs da aplicação** (quando `show_logs=True`): lê os arquivos JSON estruturados escritos pelo `configure_logging(log_dir=…)`, com filtro por fonte (`?source=`), busca em texto (`?q=`) e paginação. Badges coloridos por nível. Quando ainda não há arquivos de log, mostra um estado vazio.
 - `GET  /admin/logs/export` — **export dos logs** (`?format=md|json`): baixa a seleção filtrada como markdown (traceback em bloco cercado, pronto para colar em issue) ou JSON verbatim.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`: cada palavra procurada por trecho, sem diferenciar maiúscula, em qualquer um dos `search_fields`, e toda palavra precisa aparecer; `%` e `_` são literais) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
-- `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000). No CSV, uma célula de texto que começa com `=`, `+`, `-`, `@`, tab ou CR sai com um `'` na frente, para a planilha mostrar o texto em vez de avaliar uma fórmula; o JSON sai sem mudança.
+- `GET  /admin/m/{slug}/export.csv` / `export.json` / `export.xlsx` (este com o extra `[spreadsheet]`) — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000). No CSV, uma célula de texto que começa com `=`, `+`, `-`, `@`, tab ou CR sai com um `'` na frente, para a planilha mostrar o texto em vez de avaliar uma fórmula; o JSON sai sem mudança.
 - `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate + suas **ações customizadas**) nas linhas selecionadas.
 - `GET/POST /admin/m/{slug}/new` — **criar** registro (quando `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view com botões Edit/Delete.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **editar** registro (quando `can_edit`).
 - `POST /admin/m/{slug}/{identity}/delete` — **excluir** registro (quando `can_delete`).
+- `GET/POST /admin/m/{slug}/import` + `POST /admin/m/{slug}/import/confirm` — **importar** CSV/XLSX com prévia (quando `can_import`).
+- `GET  /admin/m/{slug}/{identity}/duplicate` — **duplicar** (quando `can_duplicate`).
+- `GET  /admin/m/{slug}/{identity}/restore/{entry_id}` — **restaurar** uma mudança do histórico (com `audit_model`).
+- `GET/POST /admin/m/{slug}/{identity}/impersonate` — **entrar como** a conta da linha (com `impersonate=` e a permissão `IMPERSONATE`).
+- `GET  /admin/search` — **busca global** nos models com `search_fields`.
 - `GET  /admin/static/{path}` — o CSS embutido do painel (`admin.css`).
 - `GET  /admin/_ssr/htmx.js` — o HTMX empacotado no SDK (`ssr/_static/htmx.min.js`), servido sem sessão porque a página de login também o carrega. O caminho segue o `prefix`: com `prefix="/backoffice"`, vira `/backoffice/_ssr/htmx.js`.
 

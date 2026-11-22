@@ -322,7 +322,7 @@ Admin panel — CSV import (Tier 3), the counterpart to export:
 
 | Feature | Status | Where |
 |---------|--------|-------|
-| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` exposes `GET/POST /m/{slug}/import`: upload a CSV and each row is validated/coerced like the create form and becomes a record. Report with the created count + per-row errors (best-effort: one bad row never aborts the others). "Import CSV" link on the list view. [Recipe »](recipes/admin.md) |
+| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` exposes `GET/POST /m/{slug}/import`: upload a CSV and each row is validated/coerced like the create form and becomes a record. Report with the created count + per-row errors (best-effort in v0.118; since 0.370.0 there is a preview that writes nothing and an all-or-nothing confirm — see the recipe). "Import CSV" link on the list view. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.117.0
 

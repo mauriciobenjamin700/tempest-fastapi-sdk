@@ -323,7 +323,7 @@ Painel admin — import CSV (Tier 3), contraparte do export:
 
 | Feature | Status | Onde |
 |---------|--------|------|
-| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` expõe `GET/POST /m/{slug}/import`: sobe um CSV, cada linha é validada/coagida como no create e vira um registro. Relatório com total criado + erros por linha (best-effort: uma linha ruim não aborta as outras). Link "Import CSV" na list view. [Receita »](recipes/admin.md) |
+| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` expõe `GET/POST /m/{slug}/import`: sobe um CSV, cada linha é validada/coagida como no create e vira um registro. Relatório com total criado + erros por linha (na v0.118 era best-effort; desde a 0.370.0 há prévia sem gravar e confirmação tudo ou nada — veja a receita). Link "Import CSV" na list view. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.117.0
 
