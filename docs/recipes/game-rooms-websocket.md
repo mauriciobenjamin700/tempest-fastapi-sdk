@@ -166,7 +166,7 @@ Frames **binários** são bytes do jogo, que o servidor repassa sem ler.
 | `message` | Uma mensagem repassada: `from` + `data` |
 | `echo` | Resposta ao seu `echo`, com o mesmo `t` |
 | `error` | Recusa: `code` estável, `message` legível e `request` (o `type` recusado); a conexão continua aberta |
-| `ping` | Heartbeat do servidor: responda `{"type": "pong"}` se estiver ocioso |
+| `ping` | Heartbeat do servidor, `{"type": "ping"}` — o mesmo objeto do TCP: responda `{"type": "pong"}` se estiver ocioso |
 | *(binário)* | `[u8 slot de quem mandou][bytes]` |
 
 Os `code` de erro: `room_not_found`, `room_full`, `room_in_match`,

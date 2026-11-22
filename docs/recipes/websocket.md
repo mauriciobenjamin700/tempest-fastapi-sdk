@@ -372,6 +372,13 @@ O cap de tamanho é opcional e separado: passe
 `max_message_bytes=settings.WS_MAX_MESSAGE_BYTES` para recusar frame
 grande com `1009`, ou omita para não mexer em tamanho.
 
+O `ping` sai, por padrão, no envelope do `WebSocketHub`:
+`{"type": "ping", "data": {}, "request_id": null}`. Protocolo de mensagem
+plana passa o seu com `ping_message=` — o router de
+[salas de jogo](game-rooms-websocket.md) passa `{"type": "ping"}`, o mesmo
+objeto que o servidor TCP dele manda. O `pong` de volta é engolido nos dois
+casos.
+
 !!! info "Por que isso é público desde a v0.261.0"
     A mecânica existia, mas só dentro de `make_websocket_router`, que
     impõe bearer no handshake e registro num hub indexado por

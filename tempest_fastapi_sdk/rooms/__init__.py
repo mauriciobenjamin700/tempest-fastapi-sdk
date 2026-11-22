@@ -47,6 +47,7 @@ from tempest_fastapi_sdk.rooms.registry import RoomRegistry as RoomRegistry
 from tempest_fastapi_sdk.rooms.registry import RoomState as RoomState
 from tempest_fastapi_sdk.rooms.session import RoomSession as RoomSession
 from tempest_fastapi_sdk.rooms.session import hello_message as hello_message
+from tempest_fastapi_sdk.rooms.session import ping_message as ping_message
 from tempest_fastapi_sdk.rooms.tcp import (
     DEFAULT_MAX_FRAME_BYTES as DEFAULT_MAX_FRAME_BYTES,
 )
@@ -113,6 +114,7 @@ __all__: list[str] = [
     "hello_message",
     "make_game_room_router",
     "make_jwt_room_identity_resolver",
+    "ping_message",
     "read_frame",
     "serve_game_rooms_tcp",
 ]

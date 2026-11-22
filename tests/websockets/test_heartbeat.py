@@ -146,11 +146,14 @@ class TestTheSizeCapIsOptional:
         assert socket.closed_with == 1009
 
 
-def _anonymous_app(settings: WebSocketSettings) -> FastAPI:
+def _anonymous_app(
+    settings: WebSocketSettings, ping_message: dict[str, Any] | None = None
+) -> FastAPI:
     """Build an endpoint with no auth and no hub, only the heartbeat.
 
     Args:
         settings (WebSocketSettings): Cadence for the primitive.
+        ping_message (dict[str, Any] | None): Forwarded to ``heartbeat``.
 
     Returns:
         FastAPI: The app, mounting the endpoint at ``/relay``.
@@ -164,7 +167,7 @@ def _anonymous_app(settings: WebSocketSettings) -> FastAPI:
     async def relay(ws: WebSocket) -> None:
         """Echo frames back, announcing the cadence first."""
         await ws.accept()
-        async with heartbeat(ws, settings=settings) as live:
+        async with heartbeat(ws, settings=settings, ping_message=ping_message) as live:
             await ws.send_json(
                 {"type": "hello", "heartbeat_seconds": live.interval_seconds}
             )
@@ -238,6 +241,33 @@ class TestThePrimitiveWorksWithoutAuthOrHub:
                 continue
 
         assert echoes > 0
+
+
+class TestThePingShapeBelongsToTheProtocol:
+    def test_the_default_ping_is_the_hub_envelope(self) -> None:
+        """Without ``ping_message`` the ping keeps the ``WSEnvelope`` shape."""
+        app = _anonymous_app(
+            WebSocketSettings(WS_HEARTBEAT_SECONDS=1, WS_HEARTBEAT_TIMEOUT_SECONDS=5)
+        )
+        with TestClient(app) as client, client.websocket_connect("/relay") as ws:
+            ws.receive_json()
+            ping = ws.receive_json()
+        assert ping == {"type": "ping", "data": {}, "request_id": None}
+
+    def test_a_flat_protocol_sends_its_own_ping(self) -> None:
+        """``ping_message`` is sent as is, and the ``pong`` is still swallowed."""
+        app = _anonymous_app(
+            WebSocketSettings(WS_HEARTBEAT_SECONDS=1, WS_HEARTBEAT_TIMEOUT_SECONDS=5),
+            ping_message={"type": "ping"},
+        )
+        with TestClient(app) as client, client.websocket_connect("/relay") as ws:
+            ws.receive_json()
+            ping = ws.receive_json()
+            ws.send_json({"type": "pong"})
+            ws.send_json({"probe": 1})
+            echoed = ws.receive_json()
+        assert ping == {"type": "ping"}
+        assert echoed == {"type": "echo", "data": {"probe": 1}}
 
 
 class TestTheSocketIsLeftAsItWasFound:

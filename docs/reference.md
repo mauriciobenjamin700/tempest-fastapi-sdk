@@ -1767,6 +1767,7 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.rooms.registry.ROOM_CODE_ALPHABET
 ::: tempest_fastapi_sdk.rooms.session.RoomSession
 ::: tempest_fastapi_sdk.rooms.session.hello_message
+::: tempest_fastapi_sdk.rooms.session.ping_message
 ::: tempest_fastapi_sdk.rooms.websocket.make_game_room_router
 ::: tempest_fastapi_sdk.rooms.websocket.make_jwt_room_identity_resolver
 ::: tempest_fastapi_sdk.rooms.websocket.WebSocketRoomPeer

@@ -166,7 +166,7 @@ frames are game bytes the server relays without reading.
 | `message` | A relayed message: `from` + `data` |
 | `echo` | Reply to your `echo`, with the same `t` |
 | `error` | Refusal: stable `code`, readable `message` and `request` (the refused `type`); the connection stays open |
-| `ping` | Server heartbeat: answer `{"type": "pong"}` when idle |
+| `ping` | Server heartbeat, `{"type": "ping"}` — the same object as over TCP: answer `{"type": "pong"}` when idle |
 | *(binary)* | `[u8 sender slot][bytes]` |
 
 Error `code`s: `room_not_found`, `room_full`, `room_in_match`,

@@ -69,6 +69,22 @@ def hello_message(registry: RoomRegistry, heartbeat_seconds: float) -> dict[str,
     }
 
 
+def ping_message() -> dict[str, Any]:
+    """Build the heartbeat ping of the room protocol.
+
+    The same object on every transport: the TCP server sends it from its
+    own pinger, and the WebSocket router hands it to
+    :func:`~tempest_fastapi_sdk.websockets.heartbeat` in place of that
+    primitive's default ``{"type", "data", "request_id"}`` envelope. Until
+    v0.370.0 the WebSocket side sent the envelope, so a client written for
+    one transport saw a different ``ping`` on the other.
+
+    Returns:
+        dict[str, Any]: ``{"type": "ping"}``, a fresh dict per call.
+    """
+    return {"type": "ping"}
+
+
 _CLOSING: set[asyncio.Future[None]] = set()
 """Disconnect tasks still running after their caller was cancelled."""
 
@@ -387,4 +403,4 @@ _HANDLERS: dict[str, Callable[[RoomSession, dict[str, Any]], Awaitable[None]]] =
 """Control ``type`` to the session method that handles it."""
 
 
-__all__: list[str] = ["RoomSession", "hello_message"]
+__all__: list[str] = ["RoomSession", "hello_message", "ping_message"]

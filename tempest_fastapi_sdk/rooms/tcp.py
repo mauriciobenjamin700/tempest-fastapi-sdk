@@ -36,7 +36,7 @@ from typing import Any, Final
 
 from tempest_fastapi_sdk.rooms.errors import BadRequestError
 from tempest_fastapi_sdk.rooms.registry import RoomRegistry
-from tempest_fastapi_sdk.rooms.session import RoomSession, hello_message
+from tempest_fastapi_sdk.rooms.session import RoomSession, hello_message, ping_message
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -258,7 +258,7 @@ async def _ping(peer: TCPRoomPeer, interval: float) -> None:
     with contextlib.suppress(Exception):
         while True:
             await asyncio.sleep(interval)
-            await peer.send_json({"type": "ping"})
+            await peer.send_json(ping_message())
 
 
 __all__: list[str] = [

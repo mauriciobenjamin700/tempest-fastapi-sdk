@@ -16,6 +16,7 @@ from tempest_fastapi_sdk.rooms import (
     RoomPolicy,
     RoomRegistry,
     make_game_room_router,
+    ping_message,
 )
 from tempest_fastapi_sdk.settings import WebSocketSettings
 
@@ -148,6 +149,18 @@ class TestHeartbeat:
             elapsed = time.monotonic() - started
         assert (closed.value.code, pings) == (4408, 1)
         assert 1.9 <= elapsed < 3.5
+
+    def test_the_ping_is_the_same_object_as_over_tcp(self) -> None:
+        """The WebSocket ping is ``ping_message()``, not the hub envelope."""
+        settings = WebSocketSettings(  # type: ignore[call-arg]
+            _env_file=None, WS_HEARTBEAT_SECONDS=1, WS_HEARTBEAT_TIMEOUT_SECONDS=5
+        )
+        app = FastAPI()
+        app.include_router(make_game_room_router(RoomRegistry(), settings=settings))
+        with TestClient(app) as client, client.websocket_connect("/rooms/ws") as ws:
+            ws.receive_json()
+            ping = ws.receive_json()
+        assert ping == ping_message() == {"type": "ping"}
 
 
 class TestReconnect:

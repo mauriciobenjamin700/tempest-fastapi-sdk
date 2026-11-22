@@ -20,6 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   o `make_health_router(checks=...)` espera. Lê a revision por
   `current_async(bind=db.engine)` e responde `True` só com uma head na árvore
   e o banco carimbado nela (#805).
+- `heartbeat(..., ping_message=...)`: o objeto JSON que cada ping manda.
+  Sem o argumento continua o envelope do `WebSocketHub`
+  (`{"type": "ping", "data": {}, "request_id": null}`); protocolo de
+  mensagem plana passa o seu. O `pong` é engolido nos dois casos.
+- `tempest_fastapi_sdk.rooms.ping_message()`: o ping do protocolo de salas,
+  `{"type": "ping"}`, fonte única para os dois transportes.
+
+### Changed
+
+- O WebSocket de salas (`make_game_room_router`) manda o ping como
+  `{"type": "ping"}`, o mesmo objeto do `serve_game_rooms_tcp`. Antes saía
+  o envelope genérico do `heartbeat` (`data` e `request_id` a mais), então um
+  cliente escrito para um transporte via um `ping` diferente no outro.
+  Cliente que reconhece o ping pelo `type` — como a receita manda — não
+  muda; quem comparava o objeto inteiro precisa tirar `data`/`request_id`.
 
 ### Fixed
 

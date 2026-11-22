@@ -27,7 +27,7 @@ from tempest_fastapi_sdk.rooms.registry import (
     RoomIdentity,
     RoomRegistry,
 )
-from tempest_fastapi_sdk.rooms.session import RoomSession, hello_message
+from tempest_fastapi_sdk.rooms.session import RoomSession, hello_message, ping_message
 from tempest_fastapi_sdk.settings import WebSocketSettings
 from tempest_fastapi_sdk.utils.token_types import ACCESS_TOKEN_TYPE
 from tempest_fastapi_sdk.websockets.heartbeat import heartbeat
@@ -181,7 +181,10 @@ def make_game_room_router(
         peer = WebSocketRoomPeer(ws)
         session = RoomSession(registry, peer, identity=identity)
         async with heartbeat(
-            ws, settings=settings, max_message_bytes=settings.WS_MAX_MESSAGE_BYTES
+            ws,
+            settings=settings,
+            max_message_bytes=settings.WS_MAX_MESSAGE_BYTES,
+            ping_message=ping_message(),
         ) as live:
             try:
                 await peer.send_json(hello_message(registry, live.interval_seconds))
