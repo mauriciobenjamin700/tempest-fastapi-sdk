@@ -5,6 +5,33 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `AlembicHelper.current()`, `current_async()`, `has_existing_schema()` e
+  `has_existing_schema_async()` aceitam `bind=` (keyword-only): `Engine` ou
+  `Connection` no síncrono, `AsyncEngine` ou `AsyncConnection` no `_async`
+  (#805). Com ele a leitura usa o engine/conexão do chamador e não cria nem
+  descarta engine; no `_async` roda no loop do chamador via `run_sync`, sem
+  thread de trabalho. Sem o argumento, o comportamento é o de antes,
+  inclusive o fallback só-async.
+- `AlembicHelper.schema_at_head_check(db)`: devolve o check de readiness que
+  o `make_health_router(checks=...)` espera. Lê a revision por
+  `current_async(bind=db.engine)` e responde `True` só com uma head na árvore
+  e o banco carimbado nela (#805).
+
+### Fixed
+
+- `AlembicHelper.current()` / `current_async()` não logam mais
+  `Context impl ...` nem `Will assume ... DDL.` a cada leitura (#805): leem a
+  `alembic_version` com um `SELECT` direto em vez de montar o
+  `MigrationContext` do Alembic. Num readiness a cada 15 s eram duas linhas
+  de `INFO` por probe. `upgrade`/`downgrade`/`stamp` continuam logando
+  `Running upgrade ...`, inclusive com uma leitura concorrente noutra thread.
+  Tabela ausente ou vazia continua `None`, e várias linhas levantam o mesmo
+  `CommandError` do `get_current_revision` do Alembic.
+
 ## [0.369.1] — 2026-11-20
 
 ### Fixed

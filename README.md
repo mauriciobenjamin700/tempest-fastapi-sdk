@@ -1810,6 +1810,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 Every `AlembicHelper` command that runs `alembic/env.py` has an `*_async` twin
 for code on a running event loop; the sync method raises there, naming it.
 
+#### Readiness — database at the migration head
+
+```python
+# src/api/health.py
+from fastapi import APIRouter
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager, make_health_router
+
+from src.core.settings import settings
+
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+helper: AlembicHelper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
+
+health_router: APIRouter = make_health_router(
+    db=db,
+    checks={"schema": helper.schema_at_head_check(db)},
+)
+```
+
+The check reads the stamp with `current_async(bind=db.engine)` over the app's
+pool and compares it with `heads()`. `current()` / `current_async()` read
+`alembic_version` with a plain `SELECT`, so a probe logs nothing (no
+`Context impl ...` / `Will assume ... DDL.`), and with `bind=` they create and
+dispose of no engine. `has_existing_schema(_async)` take the same `bind=`.
+
 #### CI gate — schema must match models
 
 ```python

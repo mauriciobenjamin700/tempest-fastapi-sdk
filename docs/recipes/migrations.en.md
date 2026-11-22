@@ -57,7 +57,10 @@ that executes `alembic/env.py` has an `_async` twin — `upgrade_async`,
 `safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
 `check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
 `sync_schema_async`, `squash_async`, `pending_destructive_ops_async` — with the
-same signature, and that is the one you call from async code.
+same signature, and that is the one you call from async code. The one
+difference is the readers' `bind=`, which on the `_async` twin takes an
+**async** engine/connection (see
+[the revision in a readiness probe](#the-revision-in-a-readiness-probe)).
 
 The reason is the `env.py` the SDK generates: it starts the async engine with
 `asyncio.run(...)`, and `asyncio.run` cannot be called while a loop is already
@@ -138,6 +141,88 @@ to regenerate it.
     The new `env.py` also refuses, with its own message, to be executed from
     inside a loop **without** a connection handed over — the case of calling
     `command.upgrade` straight from async code.
+
+## The revision in a readiness probe
+
+"Is the database at the head?" is a readiness-probe question, and it runs
+every few seconds. `AlembicHelper` ships the check ready for
+`make_health_router`:
+
+```python
+# src/api/health.py
+from fastapi import APIRouter
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager, make_health_router
+
+from src.core.settings import settings
+
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+helper: AlembicHelper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
+
+health_router: APIRouter = make_health_router(
+    db=db,
+    checks={"schema": helper.schema_at_head_check(db)},
+)
+```
+
+`schema_at_head_check(db)` returns the `Callable[[], Awaitable[bool]]` that
+`checks=` expects. On each call it reads the revision with
+`current_async(bind=db.engine)` — the pool the app already has open, resolved
+at call time, which is why the check can be built before the lifespan connects
+— and compares it with `heads()`. It answers `True` only when the tree has
+**one** head and the database is stamped at it; an empty tree, an unstamped
+database or one behind the head give `False`, and readiness answers `503`.
+
+Run against a SQLite database with one revision, before and after
+`upgrade_async()`:
+
+```text
+before upgrade: 503 {'status': 'not_ready', 'checks': {'database': True, 'schema': False}}
+after upgrade: 200 {'status': 'ready', 'checks': {'database': True, 'schema': True}}
+```
+
+Two things keep this cheap:
+
+- **The read does not log.** `current()` and `current_async()` read
+  `alembic_version` with a plain `SELECT`, without building Alembic's
+  `MigrationContext`. Up to 0.369.1, every read logged `Context impl ...` and
+  `Will assume ... DDL.` at `INFO` on the `alembic.runtime.migration` logger —
+  two lines per probe. With that logger at `INFO`, an `upgrade_async()`
+  followed by three readiness calls produces only the upgrade's lines:
+
+    ```text
+    alembic.runtime.migration Context impl SQLiteImpl.
+    alembic.runtime.migration Will assume non-transactional DDL.
+    alembic.runtime.migration Running upgrade  -> a172a1a0e250, first
+    ```
+
+    `upgrade`, `downgrade` and `stamp` still go through Alembic and log as
+    before, including while a read runs concurrently in another thread.
+
+- **With `bind=`, no engine is created.** Without it, `current()` opens a
+  short-lived engine from the URL and disposes of it at the end (and, on an
+  async-only install, starts an `asyncio.run` with a fresh async engine). With
+  `bind=` — `Engine`/`Connection` on the sync method,
+  `AsyncEngine`/`AsyncConnection` on the `_async` one — the read uses what you
+  passed and neither creates nor disposes of an engine; on `_async` it runs on
+  your loop through `run_sync`, with no worker thread. This applies to
+  `current`, `current_async`, `has_existing_schema` and
+  `has_existing_schema_async`:
+
+    ```python
+    # src/db/revision.py
+    from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
+
+
+    async def stamped_revision(helper: AlembicHelper, db: AsyncDatabaseManager) -> str | None:
+        """Read the stamped revision over the app's pool."""
+        return await helper.current_async(bind=db.engine)
+    ```
+
+!!! note "A custom `version_table` is not read"
+    The read targets the `alembic_version` table in the connection's default
+    schema — what the SDK-generated `env.py` configures, and what `current()`
+    always read. A hand-edited `env.py` passing `version_table=` or
+    `version_table_schema=` to `context.configure` is not seen by it.
 
 ## The three states it tells apart
 
@@ -560,6 +645,10 @@ columns — and columns it does not look at.
     - From async code (lifespan, endpoint), call the `_async` twin
       (`await helper.sync_schema_async()`); the sync method raises with a loop
       running, naming the `_async` one to use.
+    - For readiness, `helper.schema_at_head_check(db)` in
+      `make_health_router`'s `checks=`: it reads the revision over the app's
+      pool (`current_async(bind=db.engine)`), creating no engine and logging
+      nothing.
     - `create_tables()` is `CREATE TABLE IF NOT EXISTS` — a **silent no-op** on
       an existing table. It is never the step that evolves a schema.
     - When adopting an existing schema, stamp the **base revision**

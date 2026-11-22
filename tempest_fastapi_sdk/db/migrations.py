@@ -10,17 +10,24 @@ from contextlib import redirect_stdout
 from importlib import resources
 from io import StringIO
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from alembic import command
 from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.engine import Connection, make_url
+from alembic.util import CommandError
+from sqlalchemy import column, create_engine, inspect, select, table
+from sqlalchemy.engine import Connection, Engine, make_url
 from sqlalchemy.exc import NoSuchModuleError
 
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
+    from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+    from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
 
 _T = TypeVar("_T")
 
@@ -263,6 +270,115 @@ def _strip_async_driver(url: str) -> str:
     parsed = make_url(url)
     drivername = parsed.drivername.split("+", maxsplit=1)[0]
     return parsed.set(drivername=drivername).render_as_string(hide_password=False)
+
+
+_VERSION_TABLE: str = "alembic_version"
+"""Table Alembic records the applied revision in.
+
+Ported from Alembic's ``MigrationContext`` default ``version_table``. The
+SDK's ``env.py`` (:func:`~tempest_fastapi_sdk.db.alembic_env.run_alembic_env`)
+never overrides it, nor ``version_table_schema``, so the table lives in the
+connection's default schema under this name.
+"""
+
+
+def _read_current_revision(connection: Connection) -> str | None:
+    """Read the stamped revision straight from ``_VERSION_TABLE``.
+
+    Same answer as Alembic's ``MigrationContext.get_current_revision()``
+    for the SDK's ``env.py`` configuration, without building a
+    ``MigrationContext``: ``MigrationContext.configure`` logs ``Context impl
+    ...`` and ``Will assume ... DDL.`` at INFO on every call, which turns a
+    readiness probe into two log lines per request. Only the ``SELECT`` is
+    issued, so nothing is logged and nothing is written.
+
+    Args:
+        connection (Connection): An open sync connection.
+
+    Returns:
+        str | None: The revision identifier, or ``None`` when the table is
+        missing or empty.
+
+    Raises:
+        CommandError: When the table holds more than one row (unmerged
+            branches stamped in the database), with the message Alembic's
+            ``get_current_revision`` raises in that case.
+    """
+    if not inspect(connection).has_table(_VERSION_TABLE):
+        return None
+    rows: list[str] = list(
+        connection.execute(
+            select(column("version_num")).select_from(table(_VERSION_TABLE))
+        ).scalars()
+    )
+    if len(rows) > 1:
+        raise CommandError(
+            f"Version table '{_VERSION_TABLE}' has more than one head present; "
+            "please use get_current_heads()"
+        )
+    return rows[0] if rows else None
+
+
+def _has_application_tables(connection: Connection) -> bool:
+    """Report whether the database holds a table other than the version table.
+
+    Args:
+        connection (Connection): An open sync connection.
+
+    Returns:
+        bool: ``True`` when at least one non-Alembic table exists.
+    """
+    return bool(set(inspect(connection).get_table_names()) - {_VERSION_TABLE})
+
+
+def _read_on_bind[T](
+    bind: Engine | Connection, operation: Callable[[Connection], T]
+) -> T:
+    """Run ``operation`` on a caller-owned sync engine or connection.
+
+    An :class:`~sqlalchemy.engine.Engine` lends a pooled connection for the
+    duration of the call; a :class:`~sqlalchemy.engine.Connection` is used
+    as is. Neither is created nor disposed here.
+
+    Args:
+        bind (Engine | Connection): The caller's engine or connection.
+        operation (Callable[[Connection], T]): The reader to run.
+
+    Returns:
+        T: Whatever ``operation`` returned.
+    """
+    if isinstance(bind, Connection):
+        return operation(bind)
+    with bind.connect() as connection:
+        return operation(connection)
+
+
+async def _read_on_async_bind[T](
+    bind: AsyncEngine | AsyncConnection,
+    operation: Callable[[Connection], T],
+) -> T:
+    """Run ``operation`` on a caller-owned async engine or connection.
+
+    Runs on the caller's event loop through ``run_sync``: no worker
+    thread, no ``asyncio.run`` and no engine of our own. An
+    :class:`~sqlalchemy.ext.asyncio.AsyncEngine` lends a pooled connection
+    for the call; an :class:`~sqlalchemy.ext.asyncio.AsyncConnection` is
+    used as is, so the ``SELECT`` joins whatever transaction it has open.
+
+    Args:
+        bind (AsyncEngine | AsyncConnection): The caller's async engine or
+            connection.
+        operation (Callable[[Connection], T]): The reader to run.
+
+    Returns:
+        T: Whatever ``operation`` returned.
+    """
+    from sqlalchemy.ext.asyncio import AsyncConnection
+
+    if isinstance(bind, AsyncConnection):
+        return await bind.run_sync(operation)
+    async with bind.connect() as connection:
+        return await connection.run_sync(operation)
 
 
 def require_sqlite_foreign_keys_off(connection: Connection) -> None:
@@ -915,47 +1031,76 @@ class AlembicHelper:
 
         return asyncio.run(_run())
 
-    def current(self) -> str | None:
+    def current(self, *, bind: Engine | Connection | None = None) -> str | None:
         """Return the revision the database is currently stamped at.
 
-        Reads ``alembic_version`` via a temporary connection derived from
-        the configured URL.
+        Reads ``alembic_version`` with a plain ``SELECT``, without building
+        an Alembic ``MigrationContext``, so the call logs nothing:
+        ``MigrationContext.configure`` would log ``Context impl ...`` and
+        ``Will assume ... DDL.`` at INFO on every read, which is noise once
+        this backs a readiness probe. ``upgrade``/``downgrade``/``stamp``
+        still go through Alembic and keep logging ``Running upgrade ...``.
+
+        Without ``bind``, opens a short-lived engine from the configured URL
+        and disposes of it afterwards. Works from a running event loop
+        whenever a sync driver for the backend is installed. On an
+        async-only install (``asyncpg`` without a sync PostgreSQL driver)
+        the read goes through ``asyncio.run`` and therefore raises there;
+        await :meth:`current_async` instead.
+
+        Args:
+            bind (Engine | Connection | None): A sync engine or connection
+                the caller already owns. When given, the read runs on it and
+                no engine is created or disposed; ``sqlalchemy.url`` is not
+                consulted.
 
         Returns:
             str | None: The revision identifier, or ``None`` when the
             ``alembic_version`` table is missing/empty.
 
-        Works from a running event loop whenever a sync driver for the
-        backend is installed. On an async-only install (``asyncpg``
-        without a sync PostgreSQL driver) the read goes through
-        ``asyncio.run`` and therefore raises there; await
-        :meth:`current_async` instead.
-
         Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured, so
-                there is no database to read the revision from, or when
-                the async-only fallback is needed inside a running loop.
+            CommandError: When ``alembic_version`` holds more than one row
+                (unmerged branches stamped in the database), as Alembic's
+                ``get_current_revision`` does.
+            RuntimeError: When ``sqlalchemy.url`` is not configured and no
+                ``bind`` was passed, so there is no database to read the
+                revision from, or when the async-only fallback is needed
+                inside a running loop.
         """
-        return self._read(
-            lambda connection: MigrationContext.configure(
-                connection
-            ).get_current_revision(),
-            method="current",
-        )
+        if bind is not None:
+            return _read_on_bind(bind, _read_current_revision)
+        return self._read(_read_current_revision, method="current")
 
-    async def current_async(self) -> str | None:
-        """Run :meth:`current` in a worker thread, for async callers.
+    async def current_async(
+        self, *, bind: AsyncEngine | AsyncConnection | None = None
+    ) -> str | None:
+        """Return the stamped revision from async code.
+
+        With ``bind`` — typically ``db.engine`` of the app's
+        :class:`~tempest_fastapi_sdk.db.connection.AsyncDatabaseManager` —
+        the ``SELECT`` runs on the caller's event loop over that pool: no
+        worker thread, no engine created and none disposed. Without it,
+        runs :meth:`current` in a worker thread, unchanged.
+
+        Args:
+            bind (AsyncEngine | AsyncConnection | None): An async engine or
+                connection the caller already owns. An ``AsyncConnection``
+                is used as is, so the read joins its open transaction.
 
         Returns:
             str | None: The revision identifier, or ``None`` when the
             database is not stamped.
 
         Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured.
+            CommandError: When ``alembic_version`` holds more than one row.
+            RuntimeError: When ``sqlalchemy.url`` is not configured and no
+                ``bind`` was passed.
         """
+        if bind is not None:
+            return await _read_on_async_bind(bind, _read_current_revision)
         return await asyncio.to_thread(self.current)
 
-    def has_existing_schema(self) -> bool:
+    def has_existing_schema(self, *, bind: Engine | Connection | None = None) -> bool:
         """Report whether the database holds tables Alembic did not create.
 
         This is the question that separates "empty database, run the
@@ -964,30 +1109,76 @@ class AlembicHelper:
         ``alembic_version`` is excluded because Alembic writes it itself,
         so its presence says nothing about the application schema.
 
-        Returns:
-            bool: ``True`` when at least one non-Alembic table exists.
-
-        Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured, or when
-                the async-only fallback is needed inside a running loop.
-        """
-        return self._read(
-            lambda connection: bool(
-                set(inspect(connection).get_table_names()) - {"alembic_version"}
-            ),
-            method="has_existing_schema",
-        )
-
-    async def has_existing_schema_async(self) -> bool:
-        """Run :meth:`has_existing_schema` in a worker thread.
+        Args:
+            bind (Engine | Connection | None): A sync engine or connection
+                the caller already owns. When given, the read runs on it and
+                no engine is created or disposed.
 
         Returns:
             bool: ``True`` when at least one non-Alembic table exists.
 
         Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured.
+            RuntimeError: When ``sqlalchemy.url`` is not configured and no
+                ``bind`` was passed, or when the async-only fallback is
+                needed inside a running loop.
         """
+        if bind is not None:
+            return _read_on_bind(bind, _has_application_tables)
+        return self._read(_has_application_tables, method="has_existing_schema")
+
+    async def has_existing_schema_async(
+        self, *, bind: AsyncEngine | AsyncConnection | None = None
+    ) -> bool:
+        """Report :meth:`has_existing_schema` from async code.
+
+        Args:
+            bind (AsyncEngine | AsyncConnection | None): An async engine or
+                connection the caller already owns. When given, the read
+                runs on the caller's loop over it, with no worker thread and
+                no engine created or disposed; otherwise
+                :meth:`has_existing_schema` runs in a worker thread.
+
+        Returns:
+            bool: ``True`` when at least one non-Alembic table exists.
+
+        Raises:
+            RuntimeError: When ``sqlalchemy.url`` is not configured and no
+                ``bind`` was passed.
+        """
+        if bind is not None:
+            return await _read_on_async_bind(bind, _has_application_tables)
         return await asyncio.to_thread(self.has_existing_schema)
+
+    def schema_at_head_check(
+        self, db: AsyncDatabaseManager
+    ) -> Callable[[], Awaitable[bool]]:
+        """Build a readiness check: is the database stamped at the head?
+
+        The returned callable fits ``make_health_router(checks=...)``. Each
+        call reads the stamp with :meth:`current_async` over ``db.engine``
+        (the app's pool, resolved per call so the check can be built
+        before the lifespan connects) and the head with :meth:`heads` in a
+        worker thread, since that walks the migration files on disk.
+
+        Args:
+            db (AsyncDatabaseManager): The app's database manager. It must
+                be connected by the time the probe runs.
+
+        Returns:
+            Callable[[], Awaitable[bool]]: A check that answers ``True``
+            when the migration tree has exactly one head and the database
+            is stamped at it, and ``False`` otherwise — including an empty
+            tree, an unstamped database, or one behind the head. A
+            database with several stamped heads raises ``CommandError``,
+            which the health router counts as failed.
+        """
+
+        async def _schema_at_head() -> bool:
+            revision = await self.current_async(bind=db.engine)
+            heads = await asyncio.to_thread(self.heads)
+            return heads == [revision]
+
+        return _schema_at_head
 
     def base_revision(self) -> str:
         """Return the root revision of the migration tree.
