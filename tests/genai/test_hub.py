@@ -9,6 +9,7 @@ installed.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -275,6 +276,16 @@ class TestDownloadModel:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
+        """The free space is pinned, not read from the machine's disk.
+
+        The model claims 1 TB; on a host with more than that free, reading
+        the real disk made the check pass and the test fail.
+        """
+        monkeypatch.setattr(
+            hub_module.shutil,
+            "disk_usage",
+            lambda path: SimpleNamespace(total=10**10, used=9 * 10**9, free=10**9),
+        )
         _install(
             monkeypatch,
             FakeHub(
