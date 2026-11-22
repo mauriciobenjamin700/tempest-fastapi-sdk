@@ -51,7 +51,7 @@ import asyncio
 import contextlib
 import json
 import time
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -189,12 +189,16 @@ def _install_frame_guard(
     ws.receive = guarded_receive  # type: ignore[method-assign]
 
 
-async def _beat(ws: WebSocket, *, live: Liveness) -> None:
-    """Emit ``ping`` envelopes; close once the peer goes silent too long.
+async def _beat(
+    ws: WebSocket, *, live: Liveness, ping_message: Mapping[str, Any] | None
+) -> None:
+    """Emit pings; close once the peer goes silent too long.
 
     Args:
         ws (WebSocket): The accepted socket.
         live (Liveness): Read for the deadline, written by the guard.
+        ping_message (Mapping[str, Any] | None): The JSON object sent as
+            the ping; ``None`` sends the ``WSEnvelope`` ping.
 
     The deadline is checked *before* the next ping rather than after, so
     a peer that answered nothing is evicted one timeout after the
@@ -212,9 +216,13 @@ async def _beat(ws: WebSocket, *, live: Liveness) -> None:
             with contextlib.suppress(Exception):
                 await ws.close(code=HEARTBEAT_TIMEOUT_CODE)
             return
-        envelope = WSEnvelope(type="ping", data={}, request_id=None)
+        payload = (
+            WSEnvelope(type="ping", data={}, request_id=None).model_dump()
+            if ping_message is None
+            else dict(ping_message)
+        )
         try:
-            await ws.send_json(envelope.model_dump())
+            await ws.send_json(payload)
         except Exception:
             return
 
@@ -225,6 +233,7 @@ async def heartbeat(
     *,
     settings: WebSocketSettings,
     max_message_bytes: int | None = None,
+    ping_message: Mapping[str, Any] | None = None,
 ) -> AsyncIterator[Liveness]:
     """Keep an accepted socket honest for as long as the block runs.
 
@@ -238,6 +247,13 @@ async def heartbeat(
             than this with ``1009``. ``None`` — the default — leaves
             frame size alone, since a size cap is a separate policy and
             an endpoint may already enforce its own.
+        ping_message (Mapping[str, Any] | None): The JSON object each
+            ping sends. ``None`` — the default — sends the ``WSEnvelope``
+            ``{"type": "ping", "data": {}, "request_id": null}`` of
+            :class:`~tempest_fastapi_sdk.websockets.WebSocketHub`; a
+            protocol with flat messages passes its own (the game room
+            router passes ``{"type": "ping"}``, the same ping its TCP
+            server sends). The inbound ``pong`` is swallowed either way.
 
     Yields:
         Liveness: The handle. Read ``interval_seconds`` to announce the
@@ -254,7 +270,7 @@ async def heartbeat(
     )
     original = ws.receive
     _install_frame_guard(ws, live=live, max_message_bytes=max_message_bytes)
-    task = asyncio.create_task(_beat(ws, live=live))
+    task = asyncio.create_task(_beat(ws, live=live, ping_message=ping_message))
     try:
         yield live
     finally:

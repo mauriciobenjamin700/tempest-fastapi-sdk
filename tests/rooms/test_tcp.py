@@ -24,6 +24,7 @@ from tempest_fastapi_sdk.rooms import (
     RoomRegistry,
     encode_frame,
     make_game_room_router,
+    ping_message,
     read_frame,
     serve_game_rooms_tcp,
 )
@@ -109,7 +110,7 @@ class TestTcp:
         player = await TcpPlayer.open(port)
         await player.send({"type": "create", "version": "6"})
         welcome = await player.until("welcome")
-        assert (await player.until("ping")) == {"type": "ping"}
+        assert (await player.until("ping")) == ping_message() == {"type": "ping"}
         await asyncio.sleep(1.0)
         room = registry.get(welcome["room"]["code"])
         assert room is not None

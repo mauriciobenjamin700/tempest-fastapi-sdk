@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   o campo salvam como antes; inline e ações não levam a trava.
 - `ADMIN_IMPORT_MAX_BYTES`, `ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS`,
   `ADMIN_IMPORT_PREVIEW_ROWS` em `tempest_fastapi_sdk.admin`.
+- `heartbeat(..., ping_message=...)`: o objeto JSON que cada ping manda.
+  Sem o argumento continua o envelope do `WebSocketHub`
+  (`{"type": "ping", "data": {}, "request_id": null}`); protocolo de
+  mensagem plana passa o seu. O `pong` é engolido nos dois casos.
+- `tempest_fastapi_sdk.rooms.ping_message()`: o ping do protocolo de salas,
+  `{"type": "ping"}`, fonte única para os dois transportes.
 
 ### Changed
 
@@ -79,6 +85,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `parse_submission`, `parse_password_submission` e `cell_view` aceitam
   `locale=` (padrão `"en"`); `AdminSite(index_subtitle=None)` usa o texto do
   catálogo no locale do site.
+
+- O WebSocket de salas (`make_game_room_router`) manda o ping como
+  `{"type": "ping"}`, o mesmo objeto do `serve_game_rooms_tcp`. Antes saía
+  o envelope genérico do `heartbeat` (`data` e `request_id` a mais), então um
+  cliente escrito para um transporte via um `ping` diferente no outro.
+  Cliente que reconhece o ping pelo `type` — como a receita manda — não
+  muda; quem comparava o objeto inteiro precisa tirar `data`/`request_id`.
 
 ### Fixed
 
