@@ -921,7 +921,7 @@ asyncio.run(main())
 ## When NOT to use `AsyncMinIOClient`
 
 - When you need operations **outside** the listed surface (SSE-KMS, S3 v2 ACLs, bucket replication). Use `storage.client.<method>` directly — `minio-py` stays accessible.
-- For huge resumable uploads (> 5 GiB) — `minio-py` does multipart automatically but doesn't support `tus` or resume. Consider `tus.io` separately.
+- For resumable uploads from the browser — `minio-py` does multipart automatically but does not resume an interrupted upload. Use the SDK's tus server: [Resumable uploads (tus)](resumable-upload.md), with `S3TusStore` over this same `AsyncMinIOClient`.
 
 ## Private bucket behind HTTPS
 

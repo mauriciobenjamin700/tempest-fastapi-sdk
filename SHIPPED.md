@@ -4930,3 +4930,23 @@ exigida no `row_scope` do admin da classe dela e com `id`, resolver sync em
 `run_sync`, entrada `admin.impersonate.failed` quando o handler falha, busca
 por `repository_class` limitada ao `max_page_size`. Testes:
 `tests/admin/test_impersonation_reach.py`.
+
+### Servidor tus para upload resumível (#809, 2026-11-22)
+
+`storage/tus/`: `models.py` (`TusUpload`, codec de `Upload-Metadata`,
+`sanitize_upload_filename`, `TUS_UPLOAD_ID_PATTERN`), `store.py` (`TusStore`
+ABC com `list_uploads`/`purge_expired`; `LocalTusStore`: `<id>.json` por
+`mkstemp` + `os.replace`, `<id>.bin` escrito no offset com `truncate` +
+`fsync`, `_idempotency/<digest>`), `s3_store.py` (`S3TusStore` sobre o
+protocolo `TusObjectClient`: `info.json`, `chunks/<offset>`, `data` montado no
+`finalize` via `SpooledTemporaryFile`, `_idempotency/<digest>`) e `router.py`
+(`make_tus_router`, `_KeyedLocks` por upload e por chave de idempotência,
+`TusCompleteCallback`, `TUS_CORS_*`). `exceptions/tus.py` com os 8 códigos
+`TUS_*` no catálogo nas duas línguas. Sem `OPTIONS`, defer-length,
+creation-with-upload, checksum nem concatenation — o cliente não manda.
+Testes: `tests/storage/tus/test_router.py` (os dois stores, fake S3),
+`test_concurrency.py` (intercalação forçada; prova que dispara sem o lock),
+`test_restart.py` (uvicorn em subprocesso morto com `SIGKILL`),
+`test_s3_live.py` (docker, gateway S3 do SeaweedFS, restart com chunks de
+256 KiB), `test_models.py`. Receita: `resumable-upload`; a nota de
+`storage` que mandava usar tus.io separado aponta para ela.

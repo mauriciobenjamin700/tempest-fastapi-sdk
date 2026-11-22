@@ -177,6 +177,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `repository_class`. Termo vazio não consulta; acima de
   `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou
   `ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` sem consultar.
+- Servidor tus 1.0.0 para o `createResumableUpload` do `tempest-react-sdk`
+  (#809): `make_tus_router(store, *, prefix="/api/uploads", max_size,
+  max_chunk_size, expiration, current_user_id, on_complete)` com `POST` de
+  criação (`Upload-Length`, `Upload-Metadata`, `Idempotency-Key`), `HEAD`,
+  `PATCH` e `DELETE` — o subconjunto que o cliente envia, medido rodando o
+  cliente real contra o router. `PATCH` confere `Upload-Offset` (`409`),
+  `Content-Type` (`415`) e tamanho (`413`), e confere o offset de novo sob um
+  lock por upload depois de ler o corpo. Upload pertence ao `str()` do
+  `current_user_id` (`404` para outro dono); `Idempotency-Key` vale por dono;
+  `Upload-Expires` renovado a cada `PATCH`, `410` depois dele e
+  `TusStore.purge_expired()` para a limpeza. Stores: `LocalTusStore` (disco,
+  registro gravado depois dos bytes) e `S3TusStore` (um objeto por chunk e
+  montagem do arquivo no último `PATCH`, porque o cliente manda chunk menor
+  que os 5 MiB do multipart); o estado dos dois sobrevive a restart do
+  processo. Erros novos: `TusVersionException`, `TusUploadNotFoundException`,
+  `TusUploadExpiredException`, `TusOffsetMismatchException`,
+  `TusContentTypeException`, `TusInvalidHeaderException`,
+  `TusUploadTooLargeException`, `TusIdempotencyKeyReusedException`, todos com
+  `Tus-Resumable` na resposta. `TUS_CORS_EXPOSE_HEADERS` /
+  `TUS_CORS_ALLOW_HEADERS` para o `CORSMiddleware`. Sem extra novo. Receita
+  nova: [Upload resumível (tus)](docs/recipes/resumable-upload.md).
 
 ### Changed
 

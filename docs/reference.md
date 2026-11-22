@@ -639,6 +639,14 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooSmallException
 ::: tempest_fastapi_sdk.exceptions.upload.InvalidFileTypeException
 ::: tempest_fastapi_sdk.exceptions.upload.UploadTooLargeException
+::: tempest_fastapi_sdk.exceptions.tus.TusVersionException
+::: tempest_fastapi_sdk.exceptions.tus.TusUploadNotFoundException
+::: tempest_fastapi_sdk.exceptions.tus.TusUploadExpiredException
+::: tempest_fastapi_sdk.exceptions.tus.TusOffsetMismatchException
+::: tempest_fastapi_sdk.exceptions.tus.TusContentTypeException
+::: tempest_fastapi_sdk.exceptions.tus.TusInvalidHeaderException
+::: tempest_fastapi_sdk.exceptions.tus.TusUploadTooLargeException
+::: tempest_fastapi_sdk.exceptions.tus.TusIdempotencyKeyReusedException
 ::: tempest_fastapi_sdk.exceptions.image.ImageDecodeException
 ::: tempest_fastapi_sdk.exceptions.image.ImageTypeMismatchException
 ::: tempest_fastapi_sdk.exceptions.image.ImageFormatUnsupportedException
@@ -1435,6 +1443,13 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.storage.local_client.LocalObjectNotFoundError
 ::: tempest_fastapi_sdk.storage.local_crypto.LocalObjectCipher
 ::: tempest_fastapi_sdk.storage.local_router.make_local_storage_router
+::: tempest_fastapi_sdk.storage.tus.router.make_tus_router
+::: tempest_fastapi_sdk.storage.tus.router.TusCompleteCallback
+::: tempest_fastapi_sdk.storage.tus.store.TusStore
+::: tempest_fastapi_sdk.storage.tus.store.LocalTusStore
+::: tempest_fastapi_sdk.storage.tus.s3_store.S3TusStore
+::: tempest_fastapi_sdk.storage.tus.s3_store.TusObjectClient
+::: tempest_fastapi_sdk.storage.tus.models.TusUpload
 
 ### Alembic hooks
 
