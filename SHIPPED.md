@@ -208,7 +208,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   naming the twin when a loop is running, instead of Alembic's nested
   `asyncio.run` error. Generated `env.py` also accepts
   `config.attributes["connection"]` (Alembic connection sharing).
-  Guard: `tests/db/test_migrations_async.py`. **Transactions (v0.200.0):**
+  Guard: `tests/db/test_migrations_async.py`. **Quiet, bind-aware revision
+  read (#805):** `current()` reads `alembic_version` with a plain `SELECT`
+  (no `MigrationContext`, so no `Context impl ...` log per probe); the
+  readers take `bind=` (sync `Engine`/`Connection`, async
+  `AsyncEngine`/`AsyncConnection` on `_async`) and then create/dispose no
+  engine; `schema_at_head_check(db)` is the ready-made
+  `make_health_router(checks=...)` entry. Tests:
+  `tests/db/test_migrations_current_read.py`. **Transactions (v0.200.0):**
   `transaction(session)` / `savepoint(session)` (+ `repo.transaction()` /
   `.savepoint()`), depth counter in `session.info` so **every repository on
   that session joins the same block**; `commit()`/`flush()`/`rollback()` on

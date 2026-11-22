@@ -171,10 +171,26 @@ class TestSyncMethodsRefuseRunningLoop:
 class TestAsyncCounterparts:
     @pytest.mark.parametrize("name", _ASYNC_PAIRS)
     def test_signature_mirrors_sync_method(self, name: str) -> None:
+        """Pin the async counterpart to the sync method's parameters.
+
+        ``bind`` is the one parameter whose annotation differs on purpose:
+        the sync reader takes a sync ``Engine``/``Connection`` and the async
+        one an ``AsyncEngine``/``AsyncConnection`` (#805). Its name, kind
+        and default still have to match.
+        """
         sync_params = inspect.signature(getattr(AlembicHelper, name)).parameters
         async_method = getattr(AlembicHelper, f"{name}_async")
         assert inspect.iscoroutinefunction(async_method)
-        assert inspect.signature(async_method).parameters == sync_params
+        async_params = inspect.signature(async_method).parameters
+        assert list(async_params) == list(sync_params)
+        for param_name, sync_param in sync_params.items():
+            async_param = async_params[param_name]
+            if param_name == "bind":
+                assert async_param.kind == sync_param.kind
+                assert async_param.default is sync_param.default is None
+                assert "Async" in str(async_param.annotation)
+                continue
+            assert async_param == sync_param
 
     async def test_upgrade_current_downgrade(self, helper: AlembicHelper) -> None:
         head = helper.heads()[0]
