@@ -4877,3 +4877,9 @@ Testes: `tests/admin/test_impersonation.py`, `test_count_strategy.py`,
 novas de `/m/` entraram nos casos de `test_row_scope.py`. Receita: `admin`,
 seções "Entrar como um usuário", "Contagem em tabela grande", "Busca
 global" e "Desfazer pelo histórico".
+Segunda revisão: `AdminAuthBackend.load_account` (padrão de
+`is_admin_identity` pergunta `is_admin_account` sobre ela), conta resolvida
+exigida no `row_scope` do admin da classe dela e com `id`, resolver sync em
+`run_sync`, entrada `admin.impersonate.failed` quando o handler falha, busca
+por `repository_class` limitada ao `max_page_size`. Testes:
+`tests/admin/test_impersonation_reach.py`.

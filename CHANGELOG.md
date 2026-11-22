@@ -84,10 +84,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   padrão e o `is_authorized` no `UserModelAuthBackend`) sobre a linha e a
   conta, e `AdminAuthBackend.is_admin_identity` (novo) sobre o `id` que vai
   na credencial — pega o perfil 1:1 que divide a chave primária com um
-  admin. Cada impersonação vai para o log em `INFO` (operador, model, id —
+  admin (`load_account`, novo, carrega a conta sem filtro de login; backend
+  próprio cujo `load_principal` filtra deve sobrescrevê-lo). A conta
+  resolvida precisa ter `id` e estar no `row_scope` do admin da classe dela;
+  resolver sync roda em `run_sync` (lê relação lazy). Cada impersonação vai
+  para o log em `INFO` (operador, model, id —
   nunca a URL) e, com `audit_model`, grava uma entrada `event`
   (`admin.impersonate`) no alvo **antes** de o handler rodar: falhou a
-  gravação, nenhuma credencial é emitida. `token_actor(claims)` e
+  gravação, nenhuma credencial é emitida; handler que falha gera uma segunda
+  entrada `admin.impersonate.failed`. `token_actor(claims)` e
   `ACT_CLAIM` deixam uma rota sensível recusar sessão impersonada. `make_jwt_impersonation_handler(jwt,
   redirect_url=..., ttl=...)` assina um access token (`typ="access"`, padrão
   15 min) com `act = {"sub": <operador>}` e o põe no lugar de `{token}`.

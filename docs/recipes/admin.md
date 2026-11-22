@@ -1850,7 +1850,14 @@ async def own_session_only(
 Se o `impersonate=` está num model que não é a conta — um perfil, uma
 matrícula —, diga qual conta ele representa com `impersonate_account=`
 (sync ou `async`). O handler recebe essa conta, e é sobre ela que a recusa
-de admin roda; devolver `None` responde `404`:
+de admin roda. A conta precisa ter `id` (é o que vai na credencial) e, se a
+classe dela tem admin registrado com `row_scope`, estar dentro desse escopo
+para o operador — senão uma matrícula da empresa A entregaria um usuário da
+empresa B. `None`, conta sem `id` ou fora do escopo respondem `404`, antes
+de qualquer auditoria. O resolver sync roda dentro de
+`AsyncSession.run_sync`, então pode ler uma relação lazy
+(`membership.user`); um resolver `async` precisa carregar o que lê
+(`selectinload`, `AsyncAttrs.awaitable_attrs`):
 
 ```python
 from tempest_fastapi_sdk import AdminModel, JWTUtils
@@ -1914,8 +1921,10 @@ O fluxo no painel:
 4. O handler roda e o browser recebe `303` para a URL devolvida, com
    `Cache-Control: no-store` e `Referrer-Policy: no-referrer`. Um
    `AppException` do handler volta para a confirmação com a mensagem e vai
-   para o log em `WARNING`; a entrada de auditoria já gravada registra a
-   tentativa.
+   para o log em `WARNING`. Quando o handler falha (qualquer exceção), uma
+   segunda entrada, `admin.impersonate.failed` (o motivo em
+   `context["reason"]`), diz que nada foi entregue; a timeline a mostra
+   como **log in as failed** / **falha ao entrar como**.
 
 !!! danger "`IMPERSONATE` nunca vem de graça"
     Sem `access_policy`, o admin libera tudo — **menos** impersonar: o
@@ -1936,9 +1945,11 @@ Mais regras do caminho:
   o seu `is_authorized` responder — quem autoriza por papel recusa aquele
   papel), e `is_admin_identity(session, id_da_conta)` sobre o `id` que vai
   na credencial. Esta última pega o perfil 1:1 que divide a chave primária
-  com um usuário admin: no `UserModelAuthBackend` ela lê a linha do usuário
-  com aquele id mesmo inativa ou sem MFA. Sobrescreva os métodos para outra
-  regra.
+  com um usuário admin: ela pergunta ao `load_principal` e, se ele não
+  achar, ao `load_account` — que no `UserModelAuthBackend` lê a linha do
+  usuário mesmo inativa ou sem MFA. Num backend próprio cujo
+  `load_principal` filtra (inativo, MFA), **sobrescreva `load_account`**: o
+  padrão devolve `None`, e um admin que o `load_principal` descarta passaria.
 - **Registro.** Toda impersonação gera um log `INFO` com o operador, o
   model e o id do alvo — nunca a URL, que carrega a credencial. Com
   `audit_model`, grava também uma entrada `event` no alvo, autor = o
@@ -2445,7 +2456,8 @@ app.include_router(
 A busca respeita o que o resto do painel respeita: model sem `VIEW` na
 `access_policy` não entra, e cada model é consultado com o próprio
 `row_scope` — uma linha fora do escopo não aparece. Model com
-`repository_class` é consultado pelo `paginate` do repositório. Termo vazio
+`repository_class` é consultado pelo `paginate` do repositório (que roda um
+`COUNT` por model), com a página limitada ao `max_page_size` dele. Termo vazio
 (ou só espaços) mostra a página sem rodar consulta, e termo com mais de
 `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou mais de
 `ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` com o aviso, também

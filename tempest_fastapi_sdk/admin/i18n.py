@@ -372,6 +372,7 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "common.page_of_estimated": "Page {page} of ~{pages}",
         "dashboard.count_estimated": "~{count}",
         "detail.history.impersonate": "logged in as",
+        "detail.history.impersonate_failed": "log in as failed",
         "detail.history.restore": "Restore",
         "detail.history.restore_hint": (
             "Open the edit form with the values this change replaced"
@@ -768,6 +769,7 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "common.page_of_estimated": "Página {page} de ~{pages}",
         "dashboard.count_estimated": "~{count}",
         "detail.history.impersonate": "entrou como",
+        "detail.history.impersonate_failed": "falha ao entrar como",
         "detail.history.restore": "Restaurar",
         "detail.history.restore_hint": (
             "Abre o form de edição com os valores que esta mudança substituiu"

@@ -1881,7 +1881,14 @@ async def own_session_only(
 When `impersonate=` sits on a model that is not the account — a profile, a
 membership —, say which account it stands for with `impersonate_account=`
 (sync or `async`). The handler receives that account, and the admin refusal
-runs on it; returning `None` answers `404`:
+runs on it. The account must have an `id` (that is what goes into the
+credential) and, when its class has a registered admin with a `row_scope`,
+be inside that scope for the operator — otherwise a membership of company A
+would hand out a user of company B. `None`, an account without `id` or one
+outside the scope answer `404`, before any audit. A sync resolver runs
+inside `AsyncSession.run_sync`, so it may read a lazy relationship
+(`membership.user`); an `async` one must load what it reads (`selectinload`,
+`AsyncAttrs.awaitable_attrs`):
 
 ```python
 from tempest_fastapi_sdk import AdminModel, JWTUtils
@@ -1945,8 +1952,10 @@ The flow in the panel:
 4. The handler runs and the browser gets a `303` to the returned URL, with
    `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. An
    `AppException` from the handler comes back to the confirmation with its
-   message and is logged at `WARNING`; the audit entry already written
-   records the attempt.
+   message and is logged at `WARNING`. When the handler fails (any
+   exception), a second entry, `admin.impersonate.failed` (reason in
+   `context["reason"]`), says nothing was handed over; the timeline shows it
+   as **log in as failed**.
 
 !!! danger "`IMPERSONATE` never comes for free"
     Without an `access_policy` the admin allows everything — **except**
@@ -1968,9 +1977,12 @@ More rules on the way:
   whatever your `is_authorized` answers — a backend that authorizes by role
   refuses that role), and `is_admin_identity(session, account_id)` on the
   `id` that goes into the credential. The last one catches a 1:1 profile
-  sharing its primary key with an admin user: on `UserModelAuthBackend` it
-  reads the user row with that id even when inactive or without MFA.
-  Override the methods for another rule.
+  sharing its primary key with an admin user: it asks `load_principal` and,
+  when that finds nothing, `load_account` — which on `UserModelAuthBackend`
+  reads the user row even when inactive or without MFA. On your own backend
+  whose `load_principal` filters (inactive, MFA), **override
+  `load_account`**: the default returns `None`, and an admin that
+  `load_principal` drops would pass.
 - **Record.** Every impersonation logs at `INFO` the operator, the model
   and the target's id — never the URL, which carries the credential. With
   `audit_model`, it also writes an `event` entry on the target, authored
@@ -2479,7 +2491,8 @@ app.include_router(
 The search honours what the rest of the panel honours: a model without
 `VIEW` in the `access_policy` is left out, and each model is queried with
 its own `row_scope` — a row outside the scope does not show. A model with
-a `repository_class` is queried through the repository's `paginate`. An
+a `repository_class` is queried through the repository's `paginate` (one
+`COUNT` per model), with the page capped at its `max_page_size`. An
 empty term (or only spaces) renders the page without running a query, and a
 term longer than `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) characters or with
 more than `ADMIN_SEARCH_MAX_TERMS` (8) words answers `400` with a notice,

@@ -75,7 +75,10 @@ from tempest_fastapi_sdk.admin.forms import (
     to_display_timezone,
 )
 from tempest_fastapi_sdk.admin.i18n import admin_plural, admin_text
-from tempest_fastapi_sdk.admin.impersonation import ADMIN_IMPERSONATION_EVENT
+from tempest_fastapi_sdk.admin.impersonation import (
+    ADMIN_IMPERSONATION_EVENT,
+    ADMIN_IMPERSONATION_FAILED_EVENT,
+)
 from tempest_fastapi_sdk.admin.location_map import BRLocationMap
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy,
@@ -3886,6 +3889,8 @@ def make_admin_router(
                         "event": _audit_event_name(entry),
                         "impersonation": _audit_event_name(entry)
                         == ADMIN_IMPERSONATION_EVENT,
+                        "impersonation_failed": _audit_event_name(entry)
+                        == ADMIN_IMPERSONATION_FAILED_EVENT,
                         "at": entry.created_at,
                         "actor": await _actor(entry.actor) or entry.actor,
                         "changes": [
@@ -4600,25 +4605,54 @@ def make_admin_router(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    async def _impersonation_account(admin: AdminModel[Any], instance: Any) -> Any:
-        """Resolve the account a row logs in as.
+    async def _impersonation_account(
+        admin: AdminModel[Any],
+        instance: Any,
+        principal: Any,
+        db_session: AsyncSession,
+    ) -> Any:
+        """Resolve the account a row logs in as, inside the operator's reach.
+
+        A sync resolver runs through ``AsyncSession.run_sync``, so a lazy
+        relationship it reads (``membership.user``) loads instead of failing
+        with ``MissingGreenlet``; an async one is awaited and has to load
+        what it reads itself. When the account's class has a registered
+        admin with a ``row_scope``, the account must be inside that scope for
+        the operator — otherwise a row of tenant A could hand out a user of
+        tenant B.
 
         Args:
             admin (AdminModel[Any]): The row's admin.
             instance (Any): The row.
+            principal (Any): The signed-in operator.
+            db_session (AsyncSession): The DB session.
 
         Returns:
-            Any: ``impersonate_account(row)`` (awaited when async), or the
-            row itself when the admin declares no resolver; ``None`` when
-            the row has no account.
+            Any: The account; ``None`` when the resolver found none, the
+            account has no ``id`` (nothing to put in a credential), or it is
+            outside the scope of its own admin.
         """
         resolver = admin.impersonate_account
         if resolver is None:
-            return instance
-        account: Any = resolver(instance)
-        if isinstance(account, Awaitable):
-            account = await account
-        return account
+            account: Any = instance
+        else:
+            account = await db_session.run_sync(lambda _sync: resolver(instance))
+            if isinstance(account, Awaitable):
+                account = await account
+        if account is None or getattr(account, "id", None) is None:
+            return None
+        if account is instance:
+            return account
+        account_admin = site.get(cast("type[BaseModel]", type(account)))
+        if account_admin is None:
+            return account
+        scope = await account_admin.scope_for(principal)
+        if scope is None:
+            return account
+        reachable = await account_admin.build_repository(db_session).count(
+            {"id": account.id}, where=scope
+        )
+        return account if reachable else None
 
     async def _impersonation_refused(
         db_session: AsyncSession, instance: Any, account: Any
@@ -4671,7 +4705,7 @@ def make_admin_router(
             return False
         if not await _allows(principal, admin, AdminPermissionEnum.IMPERSONATE):
             return False
-        account = await _impersonation_account(admin, instance)
+        account = await _impersonation_account(admin, instance, principal, db_session)
         if account is None:
             return False
         return not await _impersonation_refused(db_session, instance, account)
@@ -4695,14 +4729,15 @@ def make_admin_router(
 
         Raises:
             HTTPException: ``403`` when the policy denies ``IMPERSONATE``;
-                ``404`` when the row is missing, outside the scope, or has
-                no account.
+                ``404`` when the row is missing or outside the scope, or
+                when :func:`_impersonation_account` finds no account (none,
+                without ``id``, or outside its own admin's scope).
         """
         await _require_access(principal, admin, AdminPermissionEnum.IMPERSONATE)
         instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
-        account = await _impersonation_account(admin, instance)
+        account = await _impersonation_account(admin, instance, principal, db_session)
         if account is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no account to enter as")
         return instance, account
@@ -4812,10 +4847,12 @@ def make_admin_router(
         answer is a no-op. The audit entry (when the admin has an
         ``audit_model``) is committed **next, before the handler runs**: an
         impersonation that could not be recorded never mints a credential.
-        The entry therefore records the attempt; a handler that refuses
-        with an ``AppException`` is logged at ``WARNING`` and the page shows
-        its message. The URL is not logged: it usually carries a
-        credential.
+        The entry therefore records the attempt; when the handler fails, a
+        second entry (:data:`ADMIN_IMPERSONATION_FAILED_EVENT`, with the
+        reason in ``context``) records that nothing was handed over. An
+        ``AppException`` is also logged at ``WARNING`` and its message shown
+        on the page; anything else propagates as a ``500``. The URL is not
+        logged: it usually carries a credential.
 
         Args:
             request (Request): The inbound request.
@@ -4872,10 +4909,49 @@ def make_admin_router(
             await _reload_expired(db_session, principal, instance, account)
         handler = admin.impersonate
         assert handler is not None
+
+        async def _record_failure(reason: str) -> None:
+            """Write the failed-impersonation event after the attempt entry.
+
+            Args:
+                reason (str): Why the handler failed.
+            """
+            await db_session.rollback()
+            if admin.audit_model is None:
+                return
+            try:
+                db_session.add(
+                    _impersonation_audit_entry(
+                        admin.audit_model,
+                        request,
+                        entity=admin.model.__name__,
+                        entity_id=target_id,
+                        operator_id=operator_id,
+                        operator_name=auth_backend.display_name(principal),
+                        trusted_ip_header=trusted_ip_header,
+                        event_name=ADMIN_IMPERSONATION_FAILED_EVENT,
+                        reason=reason,
+                    )
+                )
+                await db_session.commit()
+            except Exception:
+                await db_session.rollback()
+                logger.exception(
+                    "Admin could not record the failed impersonation of %s %s",
+                    slug,
+                    target_id,
+                )
+
         try:
             outcome: Any = handler(principal, account)
             if not isinstance(outcome, str) and isinstance(outcome, Awaitable):
                 outcome = await outcome
+            if not isinstance(outcome, str) or not outcome:
+                raise TypeError(
+                    f"AdminModel({admin.model.__name__}).impersonate must return "
+                    "the redirect URL as a non-empty str, got "
+                    f"{type(outcome).__name__}",
+                )
         except AppException as exc:
             logger.warning(
                 "Admin %s impersonation of %s %s refused by the handler: %s",
@@ -4884,7 +4960,7 @@ def make_admin_router(
                 target_id,
                 exc.message,
             )
-            await db_session.rollback()
+            await _record_failure(exc.message)
             await _reload_expired(db_session, principal, instance)
             return _impersonate_page(
                 request,
@@ -4896,11 +4972,9 @@ def make_admin_router(
                 form_error=exc.message,
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
-        if not isinstance(outcome, str) or not outcome:
-            raise TypeError(
-                f"AdminModel({admin.model.__name__}).impersonate must return the "
-                f"redirect URL as a non-empty str, got {type(outcome).__name__}",
-            )
+        except Exception as exc:
+            await _record_failure(type(exc).__name__)
+            raise
         logger.info(
             "Admin %s impersonated %s %s",
             operator_id,
@@ -5056,41 +5130,27 @@ def make_admin_router(
                 if search is None:
                     continue
                 where = _all_of(search, await admin.scope_for(principal))
-                repository = admin.build_repository(db_session)
-                if _plain_repository(admin):
-                    fetched = await _page_rows(
-                        repository,
-                        filters={},
-                        where=where,
-                        order_key=admin.order_key,
-                        ascending=admin.order_ascending,
-                        page=1,
-                        size=search_results_per_model,
-                    )
-                else:
-                    paged = await repository.paginate(
-                        page=1,
-                        page_size=search_results_per_model + 1,
-                        order_by=admin.order_key,
-                        ascending=admin.order_ascending,
-                        where=where,
-                    )
-                    fetched = list(paged["items"])
-                if not fetched:
+                rows, more = await _search_rows(
+                    admin.build_repository(db_session),
+                    admin,
+                    where,
+                    search_results_per_model,
+                )
+                if not rows:
                     continue
                 slug = admin.get_slug()
                 groups.append(
                     {
                         "label": admin.get_verbose_name_plural(),
                         "list_url": f"{prefix}/m/{slug}/?{urlencode({'q': term})}",
-                        "more": len(fetched) > search_results_per_model,
+                        "more": more,
                         "results": [
                             {
                                 "label": fk_label(admin, row),
                                 "url": f"{prefix}/m/{slug}/"
                                 f"{getattr(row, admin.identity_field)}",
                             }
-                            for row in fetched[:search_results_per_model]
+                            for row in rows
                         ],
                     }
                 )
@@ -6013,6 +6073,53 @@ async def _page_rows(
     return list(result.unique().scalars().all())
 
 
+async def _search_rows(
+    repository: Any,
+    admin: Any,
+    where: ColumnElement[bool] | None,
+    limit: int,
+) -> tuple[list[Any], bool]:
+    """Fetch one model's global-search hits and whether there are more.
+
+    With the plain repository this is :func:`_page_rows` (``limit + 1``
+    rows, no ``COUNT``). With a ``repository_class`` it goes through that
+    repository's ``paginate``, so an override that isolates tenants applies;
+    the page size is capped at the repository's ``max_page_size`` and "more"
+    comes from the page's total.
+
+    Args:
+        repository (Any): The admin's repository.
+        admin (Any): The admin configuration.
+        where (ColumnElement[bool] | None): Search and scope clause.
+        limit (int): Rows to show.
+
+    Returns:
+        tuple[list[Any], bool]: Up to ``limit`` rows, and whether more match.
+    """
+    if _plain_repository(admin):
+        fetched = await _page_rows(
+            repository,
+            filters={},
+            where=where,
+            order_key=admin.order_key,
+            ascending=admin.order_ascending,
+            page=1,
+            size=limit,
+        )
+        return fetched[:limit], len(fetched) > limit
+    ceiling: int | None = repository._max_page_size
+    size = limit if ceiling is None else max(1, min(limit, ceiling))
+    paged = await repository.paginate(
+        page=1,
+        page_size=size,
+        order_by=admin.order_key,
+        ascending=admin.order_ascending,
+        where=where,
+    )
+    rows = list(paged["items"])
+    return rows, paged["total"] > len(rows)
+
+
 async def _estimated_rows(db_session: AsyncSession, model: Any) -> int | None:
     """Read PostgreSQL's row estimate for ``model``'s table.
 
@@ -6726,6 +6833,8 @@ def _impersonation_audit_entry(
     operator_id: str,
     operator_name: str,
     trusted_ip_header: str | None,
+    event_name: str = ADMIN_IMPERSONATION_EVENT,
+    reason: str | None = None,
 ) -> Any:
     """Build the audit entry recording one impersonation.
 
@@ -6742,6 +6851,9 @@ def _impersonation_audit_entry(
         operator_id (str): The operator's principal id.
         operator_name (str): The operator's display name.
         trusted_ip_header (str | None): The router's trusted IP header.
+        event_name (str): :data:`ADMIN_IMPERSONATION_EVENT` for the attempt,
+            :data:`ADMIN_IMPERSONATION_FAILED_EVENT` when the handler failed.
+        reason (str | None): Why it failed, stored in ``context["reason"]``.
 
     Returns:
         Any: The unsaved audit row.
@@ -6754,8 +6866,12 @@ def _impersonation_audit_entry(
         action=AuditActionEnum.EVENT,
         changes={},
         actor=operator_id,
-        context={"event": ADMIN_IMPERSONATION_EVENT, "operator": operator_name},
-        event=ADMIN_IMPERSONATION_EVENT if has_origin else None,
+        context={
+            "event": event_name,
+            "operator": operator_name,
+            **({"reason": reason} if reason is not None else {}),
+        },
+        event=event_name if has_origin else None,
         request_context=(
             AuditRequestContext.from_request(
                 request, trusted_ip_header=trusted_ip_header

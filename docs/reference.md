@@ -58,6 +58,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.impersonation.make_jwt_impersonation_handler
 ::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_TTL
 ::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_EVENT
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_FAILED_EVENT
 ::: tempest_fastapi_sdk.admin.impersonation.IMPERSONATION_TOKEN_PLACEHOLDER
 ::: tempest_fastapi_sdk.admin.i18n.AdminLocale
 ::: tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES

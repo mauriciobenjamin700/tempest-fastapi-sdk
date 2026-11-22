@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from fastapi import FastAPI
@@ -321,3 +321,28 @@ async def test_oversized_term_runs_no_query() -> None:
         ok = await client.get("/admin/search", params={"q": at_limit})
         assert ok.status_code == 200
         assert "Dune part" in ok.text
+
+
+class TinyPageBookRepository(BaseRepository[SearchBook]):
+    """Repository whose ``max_page_size`` is below the search's cap."""
+
+    max_page_size: ClassVar[int | None] = 1
+
+    def __init__(self, session: Any) -> None:
+        """Bind the repository.
+
+        Args:
+            session (Any): The session.
+        """
+        super().__init__(session, model=SearchBook)
+
+
+@pytest.mark.asyncio
+async def test_repository_page_ceiling_does_not_break_the_search() -> None:
+    async for client, _statements in _search_world(
+        book_repository=TinyPageBookRepository
+    ):
+        page = await client.get("/admin/search?q=dune")
+        assert page.status_code == 200
+        assert page.text.count("Dune part") == 1
+        assert "See all" in page.text

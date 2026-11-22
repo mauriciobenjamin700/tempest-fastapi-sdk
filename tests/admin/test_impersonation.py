@@ -384,7 +384,7 @@ async def test_async_handler_and_app_exception() -> None:
         )
         assert refused.status_code == 400
         assert "Account is locked" in refused.text
-        assert len(await _audit_rows(world)) == 1
+        assert len(await _audit_rows(world)) == 2
         match = NONCE.search(refused.text)
         assert match is not None
         ok = await world.client.post(
@@ -393,7 +393,7 @@ async def test_async_handler_and_app_exception() -> None:
         )
         assert ok.status_code == 303
         assert ok.headers["location"] == "https://app.example/async"
-        assert len(await _audit_rows(world)) == 2
+        assert len(await _audit_rows(world)) == 3
 
 
 @pytest.mark.asyncio

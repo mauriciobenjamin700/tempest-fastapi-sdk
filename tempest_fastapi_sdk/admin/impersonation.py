@@ -37,8 +37,11 @@ URL usually carries a credential, so the admin never logs it."""
 AdminImpersonateAccount = Callable[[Any], "Any | Awaitable[Any]"]
 """``(row) -> account``: the account a row of the model logs in as.
 
-For ``impersonate=`` on a profile model, ``lambda profile: profile.user``.
-Sync or async; ``None`` means the row has no account (``404``)."""
+For ``impersonate=`` on a profile model, ``lambda profile: profile.user``. A
+sync resolver runs inside ``AsyncSession.run_sync``, so it may read a lazy
+relationship; an async one must load what it reads itself (eager loading,
+``AsyncAttrs.awaitable_attrs``). ``None``, an account without ``id``, or one
+outside the ``row_scope`` of its own registered admin answers ``404``."""
 
 ADMIN_IMPERSONATION_TTL: Final[timedelta] = timedelta(minutes=15)
 """Default lifetime of the token :func:`make_jwt_impersonation_handler` signs."""
@@ -49,6 +52,13 @@ ADMIN_IMPERSONATION_EVENT: Final[str] = "admin.impersonate"
 Stored in the ``event`` column when the audit table mixes in
 :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`, and under
 ``context["event"]`` otherwise."""
+
+ADMIN_IMPERSONATION_FAILED_EVENT: Final[str] = "admin.impersonate.failed"
+"""Event name of the entry written when the handler fails after the attempt.
+
+The attempt (:data:`ADMIN_IMPERSONATION_EVENT`) is recorded before the
+handler runs; this second entry, with the reason in ``context["reason"]``,
+says no credential was handed over."""
 
 IMPERSONATION_TOKEN_PLACEHOLDER: Final[str] = "{token}"
 """Marker :func:`make_jwt_impersonation_handler` replaces with the token."""
@@ -129,6 +139,7 @@ def make_jwt_impersonation_handler(
 
 __all__: list[str] = [
     "ADMIN_IMPERSONATION_EVENT",
+    "ADMIN_IMPERSONATION_FAILED_EVENT",
     "ADMIN_IMPERSONATION_TTL",
     "IMPERSONATION_TOKEN_PLACEHOLDER",
     "AdminImpersonateAccount",

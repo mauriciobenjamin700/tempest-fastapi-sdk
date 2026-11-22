@@ -76,6 +76,9 @@ from tempest_fastapi_sdk.admin.impersonation import (
     ADMIN_IMPERSONATION_EVENT as ADMIN_IMPERSONATION_EVENT,
 )
 from tempest_fastapi_sdk.admin.impersonation import (
+    ADMIN_IMPERSONATION_FAILED_EVENT as ADMIN_IMPERSONATION_FAILED_EVENT,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
     ADMIN_IMPERSONATION_TTL as ADMIN_IMPERSONATION_TTL,
 )
 from tempest_fastapi_sdk.admin.impersonation import (
@@ -225,6 +228,7 @@ from tempest_fastapi_sdk.admin.theme import AdminTheme as AdminTheme
 
 __all__: list[str] = [
     "ADMIN_IMPERSONATION_EVENT",
+    "ADMIN_IMPERSONATION_FAILED_EVENT",
     "ADMIN_IMPERSONATION_TTL",
     "ADMIN_IMPORT_MAX_BYTES",
     "ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS",

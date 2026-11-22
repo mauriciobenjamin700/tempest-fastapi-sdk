@@ -134,7 +134,7 @@
     {% for entry in history %}
     <li class="tempest-admin-history__item tempest-admin-history__item--{{ entry.action }}">
       <div class="tempest-admin-history__head">
-        <span class="tempest-admin-history__action">{% if entry.action == "create" %}{{ t("detail.history.create") }}{% elif entry.action == "update" %}{{ t("detail.history.update") }}{% elif entry.action == "delete" %}{{ t("detail.history.delete") }}{% elif entry.impersonation %}{{ t("detail.history.impersonate") }}{% elif entry.event %}{{ entry.event }}{% else %}{{ entry.action }}{% endif %}</span>
+        <span class="tempest-admin-history__action">{% if entry.action == "create" %}{{ t("detail.history.create") }}{% elif entry.action == "update" %}{{ t("detail.history.update") }}{% elif entry.action == "delete" %}{{ t("detail.history.delete") }}{% elif entry.impersonation %}{{ t("detail.history.impersonate") }}{% elif entry.impersonation_failed %}{{ t("detail.history.impersonate_failed") }}{% elif entry.event %}{{ entry.event }}{% else %}{{ entry.action }}{% endif %}</span>
         <span class="tempest-admin-history__meta">
           {{ cell(entry.at) }}{% if entry.actor %} · {{ entry.actor }}{% endif %}
         </span>
