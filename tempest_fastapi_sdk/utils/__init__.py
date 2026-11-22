@@ -428,6 +428,9 @@ if TYPE_CHECKING:
         ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
     )
     from tempest_fastapi_sdk.utils.token_types import (
+        ACT_CLAIM as ACT_CLAIM,
+    )
+    from tempest_fastapi_sdk.utils.token_types import (
         AMR_CLAIM as AMR_CLAIM,
     )
     from tempest_fastapi_sdk.utils.token_types import (
@@ -462,6 +465,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils.token_types import (
         STREAM_TOKEN_TYPE as STREAM_TOKEN_TYPE,
+    )
+    from tempest_fastapi_sdk.utils.token_types import (
+        token_actor as token_actor,
     )
     from tempest_fastapi_sdk.utils.token_types import (
         token_amr as token_amr,
@@ -674,6 +680,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "ThrottleStatus": "tempest_fastapi_sdk.utils.throttle",
     "login_throttle_key": "tempest_fastapi_sdk.utils.throttle",
     "ACCESS_TOKEN_TYPE": "tempest_fastapi_sdk.utils.token_types",
+    "ACT_CLAIM": "tempest_fastapi_sdk.utils.token_types",
     "AMR_CLAIM": "tempest_fastapi_sdk.utils.token_types",
     "AMR_EMAIL_LINK": "tempest_fastapi_sdk.utils.token_types",
     "AMR_EXTERNAL": "tempest_fastapi_sdk.utils.token_types",
@@ -686,6 +693,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PASSWORD_AMR": "tempest_fastapi_sdk.utils.token_types",
     "REFRESH_TOKEN_TYPE": "tempest_fastapi_sdk.utils.token_types",
     "STREAM_TOKEN_TYPE": "tempest_fastapi_sdk.utils.token_types",
+    "token_actor": "tempest_fastapi_sdk.utils.token_types",
     "token_amr": "tempest_fastapi_sdk.utils.token_types",
     "token_type_allowed": "tempest_fastapi_sdk.utils.token_types",
     "PROVISIONING_QR_BORDER": "tempest_fastapi_sdk.utils.totp",
@@ -754,6 +762,7 @@ def __dir__() -> list[str]:
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "ACT_CLAIM",
     "AMR_CLAIM",
     "AMR_EMAIL_LINK",
     "AMR_EXTERNAL",
@@ -926,6 +935,7 @@ __all__: list[str] = [
     "states_by_region",
     "strip_image_metadata",
     "to_utc",
+    "token_actor",
     "token_amr",
     "token_type_allowed",
     "uf_choices",

@@ -9,6 +9,7 @@
       <h1>{{ admin.get_verbose_name() }} <code class="tempest-admin-value--uuid" title="{{ identity }}">{{ identity | short_identity }}</code></h1>
     </div>
     <div class="tempest-admin-detail__actions">
+      {% if impersonate_url %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ impersonate_url }}">{{ t("impersonate.button") }}</a>{% endif %}
       {% if can_edit %}<a class="tempest-admin-btn" href="{{ edit_url }}">{{ t("common.edit") }}</a>{% endif %}
       {% if can_delete %}
       <form method="post" action="{{ delete_url }}" class="tempest-admin-detail__delete" data-confirm="{{ t('detail.delete_confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
@@ -133,10 +134,11 @@
     {% for entry in history %}
     <li class="tempest-admin-history__item tempest-admin-history__item--{{ entry.action }}">
       <div class="tempest-admin-history__head">
-        <span class="tempest-admin-history__action">{% if entry.action == "create" %}{{ t("detail.history.create") }}{% elif entry.action == "update" %}{{ t("detail.history.update") }}{% elif entry.action == "delete" %}{{ t("detail.history.delete") }}{% else %}{{ entry.action }}{% endif %}</span>
+        <span class="tempest-admin-history__action">{% if entry.action == "create" %}{{ t("detail.history.create") }}{% elif entry.action == "update" %}{{ t("detail.history.update") }}{% elif entry.action == "delete" %}{{ t("detail.history.delete") }}{% elif entry.impersonation %}{{ t("detail.history.impersonate") }}{% elif entry.impersonation_failed %}{{ t("detail.history.impersonate_failed") }}{% elif entry.event %}{{ entry.event }}{% else %}{{ entry.action }}{% endif %}</span>
         <span class="tempest-admin-history__meta">
           {{ cell(entry.at) }}{% if entry.actor %} · {{ entry.actor }}{% endif %}
         </span>
+        {% if entry.restore_url %}<a class="tempest-admin-history__restore" href="{{ entry.restore_url }}" title="{{ t('detail.history.restore_hint') }}">{{ t("detail.history.restore") }}</a>{% endif %}
       </div>
       {% if entry.changes %}
       <table class="tempest-admin-history__changes">

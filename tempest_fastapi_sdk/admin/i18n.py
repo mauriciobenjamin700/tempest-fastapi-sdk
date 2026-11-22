@@ -368,6 +368,49 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
             " by the workers. It does not show live queue depth — TaskIQ exposes none."
         ),
         "tasks.up_to": "up to {max}",
+        "common.page": "Page {page}",
+        "common.page_of_estimated": "Page {page} of ~{pages}",
+        "dashboard.count_estimated": "~{count}",
+        "detail.history.impersonate": "logged in as",
+        "detail.history.impersonate_failed": "log in as failed",
+        "detail.history.restore": "Restore",
+        "detail.history.restore_hint": (
+            "Open the edit form with the values this change replaced"
+        ),
+        "impersonate.button": "Log in as",
+        "impersonate.confirm": "Log in as this user",
+        "impersonate.lead": (
+            "You are about to enter the application as {model} {target}. "
+            "Everything you do there acts as this account."
+        ),
+        "impersonate.recorded": "This access is recorded with your name and the time.",
+        "impersonate.refused_admin": (
+            "This account can sign into the admin itself; logging in as it is "
+            "not allowed."
+        ),
+        "impersonate.title": "Log in as user",
+        "list.records_estimated.one": "~{count} record",
+        "list.records_estimated.other": "~{count} records",
+        "list.records_estimated_hint": (
+            "Estimated from the database statistics; search or filter for an "
+            "exact count."
+        ),
+        "restore.intro": (
+            "Values from before the change of {at} are filled in: {fields}. "
+            "Review them and save to restore; nothing changes until you save."
+        ),
+        "search.empty": "Nothing matches “{query}”.",
+        "search.for": "Results for “{query}”",
+        "search.label": "Search every model",
+        "search.open_list": "Open list",
+        "search.placeholder": "Search everything…",
+        "search.prompt": "Type a term to search every model.",
+        "search.see_all": "See all",
+        "search.title": "Search",
+        "search.too_long": (
+            "The search term is too long: up to {max_length} characters and "
+            "{max_terms} words."
+        ),
     },
     "pt-BR": {
         "action.rows_selected.one": "{count} linha selecionada.",
@@ -722,6 +765,51 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
             " expõe isso."
         ),
         "tasks.up_to": "até {max}",
+        "common.page": "Página {page}",
+        "common.page_of_estimated": "Página {page} de ~{pages}",
+        "dashboard.count_estimated": "~{count}",
+        "detail.history.impersonate": "entrou como",
+        "detail.history.impersonate_failed": "falha ao entrar como",
+        "detail.history.restore": "Restaurar",
+        "detail.history.restore_hint": (
+            "Abre o form de edição com os valores que esta mudança substituiu"
+        ),
+        "impersonate.button": "Entrar como",
+        "impersonate.confirm": "Entrar como este usuário",
+        "impersonate.lead": (
+            "Você vai entrar na aplicação como {model} {target}. Tudo o que "
+            "fizer lá age como esta conta."
+        ),
+        "impersonate.recorded": (
+            "Este acesso fica registrado com o seu nome e o horário."
+        ),
+        "impersonate.refused_admin": (
+            "Esta conta entra no próprio admin; entrar como ela não é permitido."
+        ),
+        "impersonate.title": "Entrar como usuário",
+        "list.records_estimated.one": "~{count} registro",
+        "list.records_estimated.other": "~{count} registros",
+        "list.records_estimated_hint": (
+            "Estimativa da estatística do banco; busque ou filtre para a "
+            "contagem exata."
+        ),
+        "restore.intro": (
+            "Os valores de antes da mudança de {at} estão preenchidos: "
+            "{fields}. Revise e salve para restaurar; nada muda até você "
+            "salvar."
+        ),
+        "search.empty": "Nada encontrado para “{query}”.",
+        "search.for": "Resultados para “{query}”",
+        "search.label": "Buscar em todos os models",
+        "search.open_list": "Abrir listagem",
+        "search.placeholder": "Buscar em tudo…",
+        "search.prompt": "Digite um termo para buscar em todos os models.",
+        "search.see_all": "Ver todos",
+        "search.title": "Busca",
+        "search.too_long": (
+            "O termo de busca é longo demais: até {max_length} caracteres e "
+            "{max_terms} palavras."
+        ),
     },
 }
 """``{locale: {key: template}}``; templates use ``str.format`` placeholders."""

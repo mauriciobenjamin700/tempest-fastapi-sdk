@@ -155,6 +155,46 @@ MFA_AMR_METHODS: frozenset[str] = frozenset({AMR_OTP})
 """The ``amr`` values that prove a second factor by default."""
 
 
+ACT_CLAIM: str = "act"
+"""Claim naming the actor behind a delegated token (RFC 8693, ``act``).
+
+The admin's impersonation handler stamps ``{"sub": <operator id>}`` here;
+read it with :func:`token_actor`."""
+
+
+def token_actor(payload: Mapping[str, Any]) -> str | None:
+    """Return who is acting behind a decoded token, if anyone.
+
+    A token the admin signed to impersonate a user carries
+    ``act = {"sub": <operator id>}`` (RFC 8693); the user's own tokens carry
+    no ``act``. A route that must not run under an impersonated session —
+    changing the password, moving money — refuses when this is not
+    ``None``:
+
+        >>> token_actor({"sub": "u1", "act": {"sub": "op7"}})
+        'op7'
+        >>> token_actor({"sub": "u1"}) is None
+        True
+
+    Args:
+        payload (Mapping[str, Any]): Decoded, signature-verified claims.
+
+    Returns:
+        str | None: The actor's ``sub``; ``None`` only when the claim is
+        absent. A malformed ``act`` (not an object with a string ``sub``)
+        comes back as ``"unknown"``, so a guard never reads a broken
+        delegation as the user's own session.
+    """
+    raw = payload.get(ACT_CLAIM)
+    if raw is None:
+        return None
+    if isinstance(raw, Mapping):
+        actor = raw.get("sub")
+        if isinstance(actor, str) and actor:
+            return actor
+    return "unknown"
+
+
 def token_amr(payload: Mapping[str, Any]) -> tuple[str, ...] | None:
     """Return the ``amr`` methods of a decoded token.
 
@@ -178,6 +218,7 @@ def token_amr(payload: Mapping[str, Any]) -> tuple[str, ...] | None:
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "ACT_CLAIM",
     "AMR_CLAIM",
     "AMR_EMAIL_LINK",
     "AMR_EXTERNAL",
@@ -190,6 +231,7 @@ __all__: list[str] = [
     "PASSWORD_AMR",
     "REFRESH_TOKEN_TYPE",
     "STREAM_TOKEN_TYPE",
+    "token_actor",
     "token_amr",
     "token_type_allowed",
 ]

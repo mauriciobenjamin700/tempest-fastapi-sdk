@@ -37,6 +37,11 @@
         </a>
       </div>
     </div>
+    {% if user and nav_search_url %}
+    <form method="get" action="{{ nav_search_url }}" class="tempest-admin-header__search" role="search">
+      <input type="search" name="q" value="{{ request.query_params.get('q', '') if request.url.path == nav_search_url else '' }}" placeholder="{{ t('search.placeholder') }}" aria-label="{{ t('search.label') }}">
+    </form>
+    {% endif %}
     {% if user %}
     <nav class="tempest-admin-header__nav">
       <span class="tempest-admin-header__user">

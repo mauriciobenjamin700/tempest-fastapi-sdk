@@ -1875,6 +1875,9 @@ if TYPE_CHECKING:
         ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
     )
     from tempest_fastapi_sdk.utils import (
+        ACT_CLAIM as ACT_CLAIM,
+    )
+    from tempest_fastapi_sdk.utils import (
         AMR_CLAIM as AMR_CLAIM,
     )
     from tempest_fastapi_sdk.utils import (
@@ -2359,6 +2362,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.utils import (
         to_utc as to_utc,
+    )
+    from tempest_fastapi_sdk.utils import (
+        token_actor as token_actor,
     )
     from tempest_fastapi_sdk.utils import (
         token_amr as token_amr,
@@ -3032,6 +3038,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "PresignedPost": "tempest_fastapi_sdk.storage",
     "make_local_storage_router": "tempest_fastapi_sdk.storage",
     "ACCESS_TOKEN_TYPE": "tempest_fastapi_sdk.utils",
+    "ACT_CLAIM": "tempest_fastapi_sdk.utils",
     "AMR_CLAIM": "tempest_fastapi_sdk.utils",
     "AMR_EMAIL_LINK": "tempest_fastapi_sdk.utils",
     "AMR_EXTERNAL": "tempest_fastapi_sdk.utils",
@@ -3190,6 +3197,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "sniff_mime": "tempest_fastapi_sdk.utils",
     "states_by_region": "tempest_fastapi_sdk.utils",
     "to_utc": "tempest_fastapi_sdk.utils",
+    "token_actor": "tempest_fastapi_sdk.utils",
     "token_amr": "tempest_fastapi_sdk.utils",
     "token_type_allowed": "tempest_fastapi_sdk.utils",
     "uf_choices": "tempest_fastapi_sdk.utils",
@@ -3296,6 +3304,7 @@ def __dir__() -> list[str]:
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "ACT_CLAIM",
     "AMR_CLAIM",
     "AMR_EMAIL_LINK",
     "AMR_EXTERNAL",
@@ -4091,6 +4100,7 @@ __all__: list[str] = [
     "supports_full_text",
     "sync_enum_types",
     "to_utc",
+    "token_actor",
     "token_amr",
     "token_type_allowed",
     "transaction",

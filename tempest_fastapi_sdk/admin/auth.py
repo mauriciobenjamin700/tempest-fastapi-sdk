@@ -142,6 +142,69 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         email = getattr(principal, "email", None)
         return str(email) if email else repr(principal)
 
+    def is_admin_account(self, target: Any) -> bool:
+        """Whether ``target`` is an account that can itself use the admin.
+
+        The impersonation flow (``AdminModel(impersonate=...)``) refuses
+        such a target: entering as another operator would turn one admin's
+        grant into another's, and the audit trail would credit the wrong
+        person. The default reads a truthy ``is_admin`` attribute, which is
+        what :class:`~tempest_fastapi_sdk.BaseUserModel` carries; override
+        it when admin access is decided by something else (a role column,
+        a group).
+
+        Args:
+            target (Any): The row the operator asked to enter as.
+
+        Returns:
+            bool: ``True`` to refuse the impersonation.
+        """
+        return bool(getattr(target, "is_admin", False))
+
+    async def load_account(self, session: AsyncSession, account_id: str) -> Any:
+        """Load the account with ``account_id`` without any sign-in filter.
+
+        :meth:`is_admin_identity` asks :meth:`is_admin_account` about what
+        this returns, so an admin that :meth:`load_principal` drops —
+        inactive, revoked, missing MFA — is still recognised as an admin.
+        The default returns ``None`` (the base class does not know where
+        accounts live); a backend whose :meth:`load_principal` filters
+        should override it.
+
+        Args:
+            session (AsyncSession): A live DB session.
+            account_id (str): The account's id, as text.
+
+        Returns:
+            Any: The account, or ``None`` when unknown.
+        """
+        return None
+
+    async def is_admin_identity(self, session: AsyncSession, account_id: str) -> bool:
+        """Whether ``account_id`` names an account that can use the admin.
+
+        The impersonation flow asks this about the ``id`` that goes into the
+        credential, on top of :meth:`is_admin_account` on the row, so a
+        model whose rows share their primary key with the user table (a 1:1
+        profile) cannot hand out an admin's identity. The default answers
+        ``True`` when :meth:`load_principal` finds a principal for that id,
+        or when :meth:`load_account` returns an account
+        :meth:`is_admin_account` calls an admin. A custom backend whose
+        ``load_principal`` filters (inactive, MFA) must override
+        :meth:`load_account` or this method, or such an admin passes.
+
+        Args:
+            session (AsyncSession): A live DB session.
+            account_id (str): The account's id, as text.
+
+        Returns:
+            bool: ``True`` to refuse the impersonation.
+        """
+        if await self.load_principal(session, account_id) is not None:
+            return True
+        account = await self.load_account(session, account_id)
+        return account is not None and self.is_admin_account(account)
+
     def credential_fingerprint(self, principal: PrincipalT) -> str | None:
         """Return a value that changes whenever the principal's credential does.
 
@@ -394,6 +457,49 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         if self.require_mfa and not self.mfa_enabled(user):
             return None
         return user
+
+    def is_admin_account(self, target: Any) -> bool:
+        """Whether ``target`` can sign into the admin itself.
+
+        A row of :attr:`user_model` answers what :meth:`is_authorized`
+        answers, so a backend that authorizes by role refuses impersonating
+        that role too; any row also counts when it carries a truthy
+        ``is_admin``.
+
+        Args:
+            target (Any): The row the operator asked to enter as.
+
+        Returns:
+            bool: ``True`` to refuse the impersonation.
+        """
+        if bool(getattr(target, "is_admin", False)):
+            return True
+        return isinstance(target, self.user_model) and self.is_authorized(target)
+
+    async def load_account(
+        self, session: AsyncSession, account_id: str
+    ) -> BaseUserModel | None:
+        """Load the :attr:`user_model` row whatever its sign-in state.
+
+        Unlike :meth:`load_principal`, an inactive or MFA-less admin comes
+        back, so :meth:`is_admin_identity` still refuses impersonating it.
+
+        Args:
+            session (AsyncSession): A live DB session.
+            account_id (str): The account's id, as text.
+
+        Returns:
+            BaseUserModel | None: The row, or ``None`` for an unknown or
+            malformed id.
+        """
+        try:
+            uid = UUID(account_id)
+        except (ValueError, TypeError):
+            return None
+        result = await session.execute(
+            select(self.user_model).where(self.user_model.id == uid)
+        )
+        return result.scalar_one_or_none()
 
     def principal_id(self, principal: BaseUserModel) -> str:
         """Return the ``id`` UUID hex for serialization.

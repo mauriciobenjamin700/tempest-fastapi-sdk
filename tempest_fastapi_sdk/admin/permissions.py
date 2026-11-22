@@ -69,12 +69,21 @@ if TYPE_CHECKING:
 
 
 class AdminPermissionEnum(BaseStrEnum):
-    """An admin action gated by an :data:`AdminAccessPolicy`."""
+    """An admin action gated by an :data:`AdminAccessPolicy`.
+
+    ``IMPERSONATE`` (entering the app as a row of a model declared with
+    ``AdminModel(impersonate=...)``) is the one permission that is **not**
+    granted when ``make_admin_router`` runs without an ``access_policy``:
+    acting as another account reaches past the admin's own screens. With a
+    policy, whatever it answers for ``IMPERSONATE`` decides — a deny-list
+    policy ("everything but ``DELETE``") grants it as well.
+    """
 
     VIEW = "view"
     CREATE = "create"
     EDIT = "edit"
     DELETE = "delete"
+    IMPERSONATE = "impersonate"
 
 
 class AdminSurfaceEnum(BaseStrEnum):

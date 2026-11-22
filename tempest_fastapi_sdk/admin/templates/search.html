@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ t("search.title") }} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-search">
+  <header class="tempest-admin-list__header">
+    <div class="tempest-admin-page-title">
+      <h1>{{ t("search.title") }}</h1>
+      {% if query and not too_long %}<span class="tempest-admin-count">{{ t("search.for", query=query) }}</span>{% endif %}
+    </div>
+  </header>
+  {% if too_long %}
+  <p class="tempest-admin-form__error">{{ t("search.too_long", max_length=max_length, max_terms=max_terms) }}</p>
+  {% elif not query %}
+  <p class="tempest-admin-empty">{{ t("search.prompt") }}</p>
+  {% elif not groups %}
+  <p class="tempest-admin-empty">{{ t("search.empty", query=query) }}</p>
+  {% else %}
+  {% for group in groups %}
+  <section class="tempest-admin-search__group">
+    <header class="tempest-admin-search__head">
+      <h2>{{ group.label }}</h2>
+      <a href="{{ group.list_url }}">{% if group.more %}{{ t("search.see_all") }}{% else %}{{ t("search.open_list") }}{% endif %} →</a>
+    </header>
+    <ul class="tempest-admin-search__results">
+      {% for result in group.results %}
+      <li><a href="{{ result.url }}">{{ result.label }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}

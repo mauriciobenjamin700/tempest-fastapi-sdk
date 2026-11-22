@@ -70,6 +70,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mensagem plana passa o seu. O `pong` é engolido nos dois casos.
 - `tempest_fastapi_sdk.rooms.ping_message()`: o ping do protocolo de salas,
   `{"type": "ping"}`, fonte única para os dois transportes.
+- Admin: entrar como um usuário (#804). `AdminModel(impersonate=handler)`,
+  com `handler(operador, alvo) -> str` (sync ou async) devolvendo a URL que
+  abre a aplicação como o alvo. O detail ganha o botão "Entrar como", que
+  abre uma confirmação (`GET/POST /m/{slug}/{id}/impersonate`, CSRF e nonce
+  de uso único) e redireciona com `303`, `no-store` e `no-referrer`. Exige a
+  permissão nova `AdminPermissionEnum.IMPERSONATE`, que **não** é concedida
+  sem `access_policy` — só uma política que diga sim a ela libera. Alvo fora
+  do `row_scope` responde `404`. `AdminModel(impersonate_account=...)` diz
+  que conta a linha representa (perfil, matrícula); o handler recebe essa
+  conta. Alvo que entra no próprio admin responde `403`: a recusa pergunta
+  `AdminAuthBackend.is_admin_account` (novo, sobrescrevível: `is_admin` por
+  padrão e o `is_authorized` no `UserModelAuthBackend`) sobre a linha e a
+  conta, e `AdminAuthBackend.is_admin_identity` (novo) sobre o `id` que vai
+  na credencial — pega o perfil 1:1 que divide a chave primária com um
+  admin (`load_account`, novo, carrega a conta sem filtro de login; backend
+  próprio cujo `load_principal` filtra deve sobrescrevê-lo). A conta
+  resolvida precisa ter `id` e estar no `row_scope` do admin da classe dela;
+  resolver sync roda em `run_sync` (lê relação lazy). Cada impersonação vai
+  para o log em `INFO` (operador, model, id —
+  nunca a URL) e, com `audit_model`, grava uma entrada `event`
+  (`admin.impersonate`) no alvo **antes** de o handler rodar: falhou a
+  gravação, nenhuma credencial é emitida; handler que falha gera uma segunda
+  entrada `admin.impersonate.failed`. `token_actor(claims)` e
+  `ACT_CLAIM` deixam uma rota sensível recusar sessão impersonada. `make_jwt_impersonation_handler(jwt,
+  redirect_url=..., ttl=...)` assina um access token (`typ="access"`, padrão
+  15 min) com `act = {"sub": <operador>}` e o põe no lugar de `{token}`.
+  Novos: `AdminImpersonateHandler`, `ADMIN_IMPERSONATION_TTL`,
+  `ADMIN_IMPERSONATION_EVENT`, `IMPERSONATION_TOKEN_PLACEHOLDER`.
+- Admin: contagem estimada (#804). `AdminModel(count_strategy=...)`:
+  `"exact"` (padrão), `"estimate"` ou `"none"` (`AdminCountStrategyEnum`).
+  `"estimate"` lê `pg_class.reltuples` no PostgreSQL enquanto nada estreita
+  a lista e mostra `~N`; com busca, filtro, lens ou `row_scope` diferente de
+  `true()`, fora do PostgreSQL e em tabela nunca analisada
+  (`reltuples = -1`) e em subclasse de herança de tabela única, conta exato.
+  `"none"` não conta e pagina só com anterior/próxima. O card do dashboard
+  segue a estratégia. Com `repository_class`, as duas caem para `exact`,
+  para não passar ao largo do repositório.
+- Admin: restaurar pelo histórico (#804). Cada entrada `update` da timeline
+  de auditoria ganha "Restaurar" (`GET /m/{slug}/{id}/restore/{entry_id}`),
+  que abre o form de edição com os valores anteriores — sem gravar; o save
+  é o da edição (permissão `EDIT`, validação, FK, `row_scope`, trava
+  otimista). Upload, senha, campos escondidos, read-only e valores
+  `[redacted]` não são restaurados.
+- Admin: busca global (#804). Caixa no topo e `GET /search?q=`: busca em
+  todo model com `search_fields` com a mesma condição da listagem, até
+  `make_admin_router(search_results_per_model=...)` linhas por model
+  (`ADMIN_SEARCH_RESULTS_PER_MODEL`, 5), respeitando `VIEW`, `row_scope` e o
+  `repository_class`. Termo vazio não consulta; acima de
+  `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou
+  `ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` sem consultar.
 
 ### Changed
 

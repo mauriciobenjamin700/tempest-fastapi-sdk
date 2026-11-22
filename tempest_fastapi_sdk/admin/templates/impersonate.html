@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ t("impersonate.title") }} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-form tempest-admin-impersonate">
+  <header class="tempest-admin-detail__header">
+    <div class="tempest-admin-page-title">
+      <a class="tempest-admin-crumb" href="{{ back_url }}">← {{ t("form.back") }}</a>
+      <h1>{{ t("impersonate.title") }}</h1>
+    </div>
+  </header>
+  {% if refused %}
+  <p class="tempest-admin-form__error">{{ t("impersonate.refused_admin") }}</p>
+  {% else %}
+  <p class="tempest-admin-form__intro">{{ t("impersonate.lead", model=admin.get_verbose_name(), target=target_label) }}</p>
+  <p class="tempest-admin-impersonate__note">{{ t("impersonate.recorded") }}</p>
+  {% if form_error %}
+  <p class="tempest-admin-form__error">{{ form_error }}</p>
+  {% endif %}
+  <form method="post" action="{{ action_url }}" class="tempest-admin-form__form">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <input type="hidden" name="submission_nonce" value="{{ submission_nonce }}">
+    <div class="tempest-admin-form__actions">
+      <a href="{{ back_url }}" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-form__cancel">{{ t("form.cancel") }}</a>
+      <button type="submit" class="tempest-admin-btn tempest-admin-btn--danger">{{ t("impersonate.confirm") }}</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
