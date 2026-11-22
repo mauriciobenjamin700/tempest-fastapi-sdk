@@ -170,6 +170,14 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "import.error.xlsx_extra": (
             'Importing .xlsx needs the spreadsheet extra: pip install "{extra}"'
         ),
+        "import.error.xlsx_formula": (
+            "{cells}: formula with no calculated value. Open the file in a"
+            " spreadsheet app, save it and upload it again."
+        ),
+        "import.error.xlsx_too_large": (
+            "The workbook passes the import limits ({max_rows} rows, {max_mib} MiB"
+            " uncompressed). Split it and import each part."
+        ),
         "import.expected_columns": "Expected header columns:",
         "import.file": "CSV file",
         "import.file_any": "CSV or XLSX file",
@@ -548,6 +556,14 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         ),
         "import.error.xlsx_extra": (
             'Importar .xlsx precisa do extra de planilha: pip install "{extra}"'
+        ),
+        "import.error.xlsx_formula": (
+            "{cells}: fórmula sem valor calculado. Abra o arquivo no Excel (ou"
+            " LibreOffice), salve e envie de novo."
+        ),
+        "import.error.xlsx_too_large": (
+            "A planilha passa dos limites do import ({max_rows} linhas, {max_mib}"
+            " MiB descompactada). Divida e importe cada parte."
         ),
         "import.expected_columns": "Colunas esperadas no cabeçalho:",
         "import.file": "Arquivo CSV",

@@ -76,7 +76,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   datetime como o mesmo texto ISO 8601 em UTC do CSV, texto que começa com
   `=` gravado como texto. O import aceita `.xlsx` (primeira aba, linha 1 de
   cabeçalho), convertido para o CSV que a prévia valida e a confirmação
-  assina; o teto de 512 KiB vale para o upload e para o CSV gerado. O
+  assina; o teto de 512 KiB vale para o upload e para o CSV gerado, e a
+  leitura para em `ADMIN_XLSX_IMPORT_MAX_ROWS` (32 768) linhas e
+  `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` (16 MiB), proporcionais a ele.
+  Fórmula sem valor calculado (planilha gerada por openpyxl/pandas) recusa o
+  arquivo nomeando as células, em vez de virar `NULL`. O
   openpyxl é carregado só quando usado; sem o extra o botão some e as rotas
   respondem com a mensagem que nomeia `tempest-fastapi-sdk[spreadsheet]`.
 - Admin: muitos-para-muitos no form (#803). `AdminModel(m2m_fields=[...])`
@@ -84,8 +88,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as linhas que o principal alcança no `row_scope` do alvo (e com `VIEW`
   nele), lista de links no detail, gravação que substitui o conjunto na
   transação do save. Vínculo fora do escopo do operador não aparece e é
-  mantido; id postado fora do escopo, ou inexistente, recusa o campo com o
-  erro de registro inexistente. Nome que não é `relationship` com
+  mantido; vínculo alcançável além do `FK_OPTION_CAP` entra como opção extra
+  marcada (as opções saem com `LIMIT` no SQL); campo trancado por
+  `readonly_fields`/`readonly_fields_for` sai do form e não é gravado; id
+  postado fora do escopo, ou inexistente, recusa o campo com o erro de
+  registro inexistente. Nome que não é `relationship` com
   `secondary` levanta `ValueError` na construção.
 - Admin: contagem de relacionados na listagem (#803).
   `AdminModel(related_counts=[RelatedCount(OrderModel.user_id, label=...)])`
@@ -94,7 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   com o `row_scope` do filho; o número linka a listagem do filho filtrada pelo
   pai (`?filter_<fk>=<id>`, aceito mesmo fora do `list_filter`, com chip
   **Filtrado por**) quando o filho tem admin. Sem `VIEW` no filho a coluna
-  some.
+  some; FK que o admin do filho esconde não ganha link e o `?filter_<fk>=`
+  dela é ignorado.
 - Admin: atividade recente no dashboard (#803). `AdminSite(recent_activity=N)`
   mostra as últimas N mudanças dos models com `audit_model`, mescladas por
   data, com link para o registro. Model sem `VIEW` fica de fora; entrada de
@@ -141,6 +149,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `SheetWriter` remove de toda `str` os caracteres de controle que o XML do
+  `.xlsx` não aceita (`\x00`-`\x08`, `\x0b`, `\x0c`, `\x0e`-`\x1f`), com o
+  `ILLEGAL_CHARACTERS_RE` do openpyxl. Antes, um deles num valor fazia o
+  openpyxl levantar `IllegalCharacterError` e o documento inteiro falhar — no
+  export `.xlsx` do admin, `500` (#803).
 - `AlembicHelper.current()` / `current_async()` não logam mais
   `Context impl ...` nem `Will assume ... DDL.` a cada leitura (#805): leem a
   `alembic_version` com um `SELECT` direto em vez de montar o

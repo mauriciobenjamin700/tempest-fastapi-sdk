@@ -98,7 +98,10 @@ from tempest_fastapi_sdk.admin.session import (
 from tempest_fastapi_sdk.admin.site import AdminSite
 from tempest_fastapi_sdk.admin.spreadsheet_io import (
     ADMIN_SPREADSHEET_EXTRA,
+    ADMIN_XLSX_IMPORT_MAX_ROWS,
+    ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES,
     XLSX_MEDIA_TYPE,
+    XlsxUncachedFormulaError,
     build_xlsx,
     is_xlsx_upload,
     spreadsheet_available,
@@ -131,6 +134,7 @@ from tempest_fastapi_sdk.db.search import like_search_condition
 from tempest_fastapi_sdk.db.signals import RepositorySignalEnum, emit, has_handlers
 from tempest_fastapi_sdk.db.transaction import transaction
 from tempest_fastapi_sdk.exceptions import AppException
+from tempest_fastapi_sdk.spreadsheet.reader import SpreadsheetTooLargeError
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router
 from tempest_fastapi_sdk.storage import object_download_response
 from tempest_fastapi_sdk.tasks.jobs import (
@@ -1905,6 +1909,7 @@ def make_admin_router(
         creating: bool = False,
         only: Collection[str] | None = None,
         with_m2m: bool = False,
+        m2m_locked: Collection[str] = (),
     ) -> Any:
         """Resolve FK options then build the form-field descriptors.
 
@@ -1925,6 +1930,8 @@ def make_admin_router(
             with_m2m (bool): Append the ``m2m_fields`` multi-selects
                 (:func:`_m2m_form_fields`); ``instance`` must then have its
                 collections loaded.
+            m2m_locked (Collection[str]): Many-to-many fields locked for this
+                form, left out of it.
 
         Returns:
             Any: The list of form-field descriptors.
@@ -1964,6 +1971,7 @@ def make_admin_router(
                     instance=instance,
                     submitted=submitted,
                     errors=errors,
+                    locked=m2m_locked,
                 )
             )
         return fields
@@ -2134,13 +2142,18 @@ def make_admin_router(
         instance: Any | None = None,
         submitted: Any | None = None,
         errors: Any | None = None,
+        locked: Collection[str] = (),
     ) -> list[FormField]:
         """Build a multi-select per many-to-many field the principal may see.
 
         The options are the target rows inside the target admin's scope,
-        capped at ``FK_OPTION_CAP``. A stored link outside them is not
-        rendered at all — the save keeps it (:func:`_parse_m2m`), so the
-        operator neither sees nor removes it.
+        read with ``LIMIT FK_OPTION_CAP`` in the SQL. A selected row the
+        principal reaches that the cap left out (a link on the edit form, an
+        id on a re-render) is added as one more selected option, read in
+        one scoped query, so saving without touching the field keeps it — the
+        foreign-key ``<select>`` does the same. A stored link outside the
+        scope is not rendered at all; the save keeps it
+        (:func:`_parse_m2m`), so the operator neither sees nor removes it.
 
         Args:
             admin (AdminModel[Any]): The admin being rendered.
@@ -2151,6 +2164,8 @@ def make_admin_router(
             submitted (Any | None): The submitted form (or a prefill
                 mapping of field to id list) to re-render.
             errors (Any | None): Per-field error messages.
+            locked (Collection[str]): Fields locked for this form
+                (``readonly_fields`` / ``readonly_fields_for``); left out.
 
         Returns:
             list[FormField]: One ``multiselect`` field per visible relation.
@@ -2159,12 +2174,14 @@ def make_admin_router(
         for name, (target, _registered) in (
             await _m2m_targets(admin, principal)
         ).items():
-            rows = await target.build_repository(db_session).list(
-                where=await target.scope_for(principal)
-            )
-            options = [
-                (str(row.id), fk_label(target, row)) for row in rows[:FK_OPTION_CAP]
-            ]
+            if name in locked:
+                continue
+            scope = await target.scope_for(principal)
+            stmt = select(target.model).order_by(target.model.created_at)
+            if scope is not None:
+                stmt = stmt.where(scope)
+            rows = list((await db_session.execute(stmt.limit(FK_OPTION_CAP))).scalars())
+            options = [(str(row.id), fk_label(target, row)) for row in rows]
             offered = {value for value, _label in options}
             selected: list[str]
             if submitted is not None:
@@ -2179,6 +2196,18 @@ def make_admin_router(
                 selected = [str(row.id) for row in getattr(instance, name)]
             else:
                 selected = []
+            beyond = [
+                value
+                for value in (_identity_value(raw) for raw in selected)
+                if isinstance(value, UUID) and str(value) not in offered
+            ]
+            if beyond:
+                extra = select(target.model).where(target.model.id.in_(beyond))
+                if scope is not None:
+                    extra = extra.where(scope)
+                for row in (await db_session.execute(extra)).scalars():
+                    options.append((str(row.id), fk_label(target, row)))
+                    offered.add(str(row.id))
             fields.append(
                 FormField(
                     name=name,
@@ -2198,6 +2227,7 @@ def make_admin_router(
         form: Any,
         *,
         instance: Any | None = None,
+        locked: Collection[str] = (),
     ) -> tuple[dict[str, list[Any]], dict[str, str]]:
         """Read the posted many-to-many selections into the sets to store.
 
@@ -2208,7 +2238,9 @@ def make_admin_router(
         row already has outside the scope are added back to the set, since
         the form never showed them; posting one of their ids is accepted as
         the no-op it is. A field whose target the principal may not ``VIEW``
-        is not read at all, which keeps every stored link of it.
+        is not read at all, which keeps every stored link of it, and so is a
+        field in ``locked`` (``readonly_fields``, or what
+        ``readonly_fields_for`` returns for the row).
 
         Args:
             admin (AdminModel[Any]): The admin being written.
@@ -2217,6 +2249,7 @@ def make_admin_router(
             form (Any): The submitted form.
             instance (Any | None): The stored row, with its collections
                 loaded, on an edit.
+            locked (Collection[str]): Fields locked for this write; not read.
 
         Returns:
             tuple[dict[str, list[Any]], dict[str, str]]: ``(values, errors)``
@@ -2228,6 +2261,8 @@ def make_admin_router(
         for name, (target, _registered) in (
             await _m2m_targets(admin, principal)
         ).items():
+            if name in locked:
+                continue
             posted = list(dict.fromkeys(str(raw) for raw in form.getlist(name) if raw))
             current = list(getattr(instance, name)) if instance is not None else []
             reachable = await _reachable_ids(target, db_session, principal, current)
@@ -2337,7 +2372,11 @@ def make_admin_router(
                     str(key): int(total)
                     for key, total in (await db_session.execute(stmt)).all()
                 }
-            base = f"{prefix}/m/{related.get_slug()}/?" if registered else None
+            base = (
+                f"{prefix}/m/{related.get_slug()}/?"
+                if registered and related.fk_field not in child.hidden_field_names()
+                else None
+            )
             columns.append(
                 {
                     "label": related.label or child.get_verbose_name_plural(),
@@ -2367,15 +2406,20 @@ def make_admin_router(
 
         Returns:
             list[str]: The foreign-key columns, without the ones
-            ``list_filter`` already covers.
+            ``list_filter`` already covers and the ones the child hides
+            (:meth:`AdminModel.hidden_field_names`): filtering on a column the
+            list never shows would answer, row count by row count, what it
+            holds.
         """
         slug = admin.get_slug()
+        hidden = admin.hidden_field_names()
         fields: list[str] = []
         for parent in site.iter_models():
             for related in parent.related_counts:
                 if (
                     related.get_slug() == slug
                     and related.fk_field not in admin.list_filter
+                    and related.fk_field not in hidden
                     and related.fk_field not in fields
                 ):
                     fields.append(related.fk_field)
@@ -3574,6 +3618,7 @@ def make_admin_router(
                     submitted=prefill or None,
                     creating=True,
                     with_m2m=True,
+                    m2m_locked=set(admin.readonly_fields),
                 ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
@@ -3772,6 +3817,32 @@ def make_admin_router(
                 )
             try:
                 converted = await xlsx_to_csv(raw)
+            except XlsxUncachedFormulaError as exc:
+                shown = ", ".join(exc.cells[:_FORMULA_CELLS_SHOWN])
+                if len(exc.cells) > _FORMULA_CELLS_SHOWN:
+                    shown += ", …"
+                return _import_page(
+                    request,
+                    admin,
+                    session,
+                    principal,
+                    form_error=_t("import.error.xlsx_formula", cells=shown),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            except SpreadsheetTooLargeError:
+                return _import_page(
+                    request,
+                    admin,
+                    session,
+                    principal,
+                    form_error=_t(
+                        "import.error.xlsx_too_large",
+                        max_rows=ADMIN_XLSX_IMPORT_MAX_ROWS,
+                        max_mib=ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES
+                        // (1024 * 1024),
+                    ),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
             except AppException:
                 return _import_page(
                     request,
@@ -3949,7 +4020,9 @@ def make_admin_router(
             locale=site.locale,
         )
         errors.update(password_errors)
-        links, link_errors = await _parse_m2m(admin, db_session, principal, form)
+        links, link_errors = await _parse_m2m(
+            admin, db_session, principal, form, locked=set(admin.readonly_fields)
+        )
         errors.update(link_errors)
         form_error: str | None = None
         if not errors:
@@ -3996,6 +4069,7 @@ def make_admin_router(
                     errors=errors,
                     creating=True,
                     with_m2m=True,
+                    m2m_locked=set(admin.readonly_fields),
                 ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
@@ -4940,6 +5014,7 @@ def make_admin_router(
                     instance=instance,
                     only=admin.editable_field_names(instance=instance),
                     with_m2m=True,
+                    m2m_locked=admin.readonly_field_names_for(instance),
                 ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
@@ -5011,6 +5086,7 @@ def make_admin_router(
                     submitted=prefill,
                     creating=True,
                     with_m2m=True,
+                    m2m_locked=set(admin.readonly_fields),
                 ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
@@ -5087,7 +5163,12 @@ def make_admin_router(
         )
         errors.update(password_errors)
         links, link_errors = await _parse_m2m(
-            admin, db_session, principal, form, instance=instance
+            admin,
+            db_session,
+            principal,
+            form,
+            instance=instance,
+            locked=admin.readonly_field_names_for(instance),
         )
         errors.update(link_errors)
         form_error: str | None = None
@@ -5169,6 +5250,7 @@ def make_admin_router(
                     errors=errors,
                     only=editable,
                     with_m2m=True,
+                    m2m_locked=admin.readonly_field_names_for(instance),
                 ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
@@ -6641,6 +6723,9 @@ reads more than it shows; with ``recent_activity=20`` it reads up to 200
 entries per audit table. When the scope hides more than that share of the
 newest entries, the feed shows fewer than ``recent_activity``.
 """
+
+_FORMULA_CELLS_SHOWN: Final[int] = 5
+"""Cells named in the import error about formulas without a cached value."""
 
 _BULK_EDIT_ACTION: Final[str] = "bulk_edit"
 """Value of the "Edit field" entry of the list's bulk-action menu."""

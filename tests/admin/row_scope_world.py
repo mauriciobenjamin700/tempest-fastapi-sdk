@@ -241,6 +241,7 @@ def _build(
             inlines=[Inline(ScopeNote, "ticket_id", editable=True)],
             actions=[record_selection],
             can_duplicate=True,
+            bulk_edit_fields=["company"],
             row_scope=_async_ticket_scope if scoped else None,
         )
     )

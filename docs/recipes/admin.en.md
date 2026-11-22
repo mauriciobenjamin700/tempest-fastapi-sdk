@@ -1126,7 +1126,14 @@ With a scope, the rule is the foreign key's on writes:
     built. One-to-many has
     [`inlines=`](#inlines-1-n-children-on-the-detail-inlines); many-to-one
     is already the foreign-key `<select>`. The options stop at
-    `FK_OPTION_CAP` (1000) rows, like the foreign-key `<select>`.
+    `FK_OPTION_CAP` (1000) rows, read with `LIMIT` in the SQL; a reachable
+    link the cap left out comes as one more option, already selected, like
+    the single foreign key — saving without touching the field keeps it.
+
+!!! info "Locked field"
+    An `m2m_fields` name in `readonly_fields`, or in what
+    `readonly_fields_for` returns for the row, leaves the form and the save
+    does not touch its links.
 
 ## Related counts on the list (`related_counts=`)
 
@@ -1165,7 +1172,11 @@ of a 25-row page and finds a single `GROUP BY`.
 - Without `VIEW` on the child, the column goes — the number is that
   model's data.
 - The link exists only when the child has a registered admin; a child
-  without one shows the count without a link.
+  without one shows the count without a link. When the child's admin hides
+  the foreign-key column (`exclude_fields`, `__secret_columns__`) there is
+  no link either, and `?filter_<fk>=` is ignored on the child's list:
+  filtering on a column the screen never shows would answer, through the
+  count, what it holds.
 - `RelatedCount` takes the mapped attribute (so it knows the child model);
   the column must carry a `ForeignKey` to the parent's table, or the
   `AdminModel` raises `ValueError` at construction.
@@ -1568,7 +1579,10 @@ uv add "tempest-fastapi-sdk[admin,spreadsheet]"
   is written as the **same ISO 8601 text in UTC** the CSV holds; numbers
   and booleans stay numbers and booleans. A text cell starting with `=`
   stays text (`SheetWriter` writes it as a string), so `=HYPERLINK(...)`
-  typed into a name does not become a formula in the file.
+  typed into a name does not become a formula in the file. A control
+  character XML cannot carry (`\x00`-`\x08`, `\x0b`, `\x0c`,
+  `\x0e`-`\x1f`) is removed from the cell instead of failing the export
+  with a `500`.
 - **Import.** An `.xlsx` (by name, or because it opens as a ZIP) is read
   from its **first sheet**, row 1 as the header, and turned into the CSV
   text the import already validates: from there it is the same path —
@@ -1577,6 +1591,17 @@ uv add "tempest-fastapi-sdk[admin,spreadsheet]"
   it becomes. A boolean becomes `true`/`false`, a datetime ISO 8601 (with
   no offset, as the sheet stores it, read in the model's zone like the
   CSV), and `3.0` becomes `3`.
+- **Formula with no calculated value.** A sheet written by a library
+  (openpyxl, pandas) stores the formula but not its result, and the cell
+  would read empty. The preview refuses the file naming the cells —
+  `A3: formula with no calculated value...`; opening and saving it in Excel
+  or LibreOffice stores the value.
+- **Read limits.** The sheet is read with a cap of
+  `ADMIN_XLSX_IMPORT_MAX_ROWS` rows (`ADMIN_IMPORT_MAX_BYTES // 16`,
+  32 768) and `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` decompressed
+  (32 × the cap, 16 MiB), proportional to the CSV cap; past them the
+  preview answers `400` naming both limits. A sheet of rows under 16 bytes
+  of CSV may be refused although it would fit in 512 KiB.
 
 !!! info "Without the extra"
     openpyxl is only loaded when an `.xlsx` is asked for. Without the extra

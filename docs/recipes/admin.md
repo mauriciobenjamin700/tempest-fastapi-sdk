@@ -1103,7 +1103,14 @@ Com escopo, a regra é a da FK na escrita:
     (uma coluna, um 1-N) levanta `ValueError` quando o `AdminModel` é
     criado. O 1-N tem o [`inlines=`](#inlines-filhos-1-n-no-detail-inlines);
     o N-1 já é o `<select>` de FK. As opções param em `FK_OPTION_CAP`
-    (1000) linhas, como no `<select>` de FK.
+    (1000) linhas, lidas com `LIMIT` no SQL; um vínculo alcançável que o
+    teto deixou de fora entra como mais uma opção, já marcada, como na FK
+    de seleção única — salvar sem mexer no campo não o apaga.
+
+!!! info "Campo trancado"
+    Um nome de `m2m_fields` em `readonly_fields`, ou no que
+    `readonly_fields_for` devolve para a linha, sai do form e o save não
+    mexe nos vínculos dele.
 
 ## Contagem de relacionados na listagem (`related_counts=`)
 
@@ -1142,7 +1149,10 @@ de uma página de 25 linhas e acha um só `GROUP BY`.
   pedidos que o principal alcança.
 - Sem `VIEW` no filho, a coluna some — o número é dado daquele model.
 - O link só existe quando o filho tem admin registrado; filho sem admin
-  mostra a contagem sem link.
+  mostra a contagem sem link. Se o admin do filho esconde a coluna FK
+  (`exclude_fields`, `__secret_columns__`), também não há link, e o
+  `?filter_<fk>=` é ignorado na listagem do filho: filtrar por uma coluna
+  que a tela não mostra responderia, pela contagem, o que ela guarda.
 - `RelatedCount` recebe o atributo mapeado (para saber o model do filho);
   a coluna precisa ter `ForeignKey` para a tabela do pai, ou o
   `AdminModel` levanta `ValueError` na construção.
@@ -1543,6 +1553,9 @@ uv add "tempest-fastapi-sdk[admin,spreadsheet]"
   continuam número e booleano. Uma célula de texto que começa com `=`
   continua texto (o `SheetWriter` grava como string), então
   `=HYPERLINK(...)` digitado num nome não vira fórmula no arquivo.
+  Caractere de controle que o XML não aceita (`\x00`-`\x08`, `\x0b`,
+  `\x0c`, `\x0e`-`\x1f`) é removido da célula, em vez de derrubar o
+  export com `500`.
 - **Import.** O `.xlsx` (pelo nome ou por abrir como ZIP) é lido da
   **primeira aba**, linha 1 como cabeçalho, e vira o texto CSV que o import
   já valida: daí em diante é o mesmo caminho — prévia, `row_scope`, FK,
@@ -1550,6 +1563,17 @@ uv add "tempest-fastapi-sdk[admin,spreadsheet]"
   512 KiB vale para o upload **e** para o CSV que ele vira. Booleano vira
   `true`/`false`, datetime vira ISO 8601 (sem fuso, como a planilha guarda,
   lido no fuso do model como o CSV), e `3.0` vira `3`.
+- **Fórmula sem valor calculado.** Planilha gerada por biblioteca
+  (openpyxl, pandas) guarda a fórmula mas não o resultado, e a célula seria
+  lida vazia. A prévia recusa o arquivo nomeando as células — `A3: formula
+  with no calculated value...` (em pt-BR, `fórmula sem valor calculado`);
+  abrir e salvar no Excel ou LibreOffice grava o valor.
+- **Limites da leitura.** A aba é lida com teto de
+  `ADMIN_XLSX_IMPORT_MAX_ROWS` linhas (`ADMIN_IMPORT_MAX_BYTES // 16`,
+  32 768) e `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` descompactados
+  (32 × o teto, 16 MiB), proporcionais ao teto do CSV; acima deles a
+  prévia responde `400` dizendo os dois limites. Uma planilha de linhas com
+  menos de 16 bytes de CSV pode ser recusada mesmo cabendo nos 512 KiB.
 
 !!! info "Sem o extra"
     O openpyxl só é carregado quando um `.xlsx` é pedido. Sem o extra, o

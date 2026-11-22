@@ -209,3 +209,36 @@ async def test_unregistered_child_counts_without_a_link(
         assert page.status_code == 200
         assert _count_cells(page.text) == ["3", "1"]
         assert "filter_article_id" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_chip_with_a_foreign_parent_shows_only_the_id(
+    world: Wave2World,
+) -> None:
+    child = await world.client.get(
+        f"{COMMENTS}/?filter_article_id={world.ids['article_out']}"
+    )
+    assert child.status_code == 200
+    assert f"Filtered by Article: {world.ids['article_out']}" in child.text
+    assert "ArticleOutside" not in child.text
+    assert "CommentOutB" not in child.text
+
+
+@pytest.mark.asyncio
+async def test_filter_on_a_column_the_child_hides_is_ignored(
+    database: AsyncDatabaseManager,
+) -> None:
+    options = {
+        "exclude_fields": ["article_id"],
+        "can_create": False,
+        "audit_model": None,
+    }
+    async for world in open_world(database, comment_options=options):
+        articles = await world.client.get(f"{ARTICLES}/")
+        assert _count_cells(articles.text) == ["2"]
+        assert "filter_article_id" not in articles.text
+        bogus = "00000000-0000-0000-0000-000000000000"
+        child = await world.client.get(f"{COMMENTS}/?filter_article_id={bogus}")
+        assert child.status_code == 200
+        assert "CommentInA" in child.text and "CommentInB" in child.text
+        assert "Filtered by" not in child.text

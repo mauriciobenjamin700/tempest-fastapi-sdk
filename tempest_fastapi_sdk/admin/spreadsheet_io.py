@@ -17,11 +17,14 @@ names the extra.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import importlib.util
 import io
 from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Final
+
+from tempest_fastapi_sdk.admin.csv_import import ADMIN_IMPORT_MAX_BYTES
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -35,6 +38,25 @@ XLSX_MEDIA_TYPE: Final[str] = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 """``Content-Type`` of an ``.xlsx`` workbook."""
+
+ADMIN_XLSX_IMPORT_MAX_ROWS: Final[int] = ADMIN_IMPORT_MAX_BYTES // 16
+"""Data rows an ``.xlsx`` import may hold (32 768 with the 512 KiB cap).
+
+The import signs the CSV the workbook becomes, which may not pass
+:data:`~tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_MAX_BYTES`, so a
+sheet past this row count is refused while it is streamed instead of being
+read whole first. It assumes a data row of at least 16 bytes of CSV: a
+sheet of shorter rows can be refused although its CSV would fit.
+"""
+
+ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES: Final[int] = 32 * ADMIN_IMPORT_MAX_BYTES
+"""Bytes the workbook's parts may decompress to on import (16 MiB).
+
+Measured with openpyxl 3.1.5 on sheets whose CSV is about 512 KiB, the
+parts decompressed to 5.8 to 27.1 times the CSV (27.1 with one-character
+cells), so 32 times the cap admits every one of them while refusing far
+less than the reader's general 100 MiB.
+"""
 
 _ZIP_SIGNATURE: Final[bytes] = b"PK\x03\x04"
 """Leading bytes of a ZIP archive, which every ``.xlsx`` is."""
@@ -131,13 +153,74 @@ def _cell_text(value: object) -> str:
     return str(value)
 
 
+class XlsxUncachedFormulaError(Exception):
+    """Formula cells of an ``.xlsx`` upload carry no calculated value.
+
+    A workbook written by a library (openpyxl, pandas) stores the formula
+    but not its result; read for values, the cell is empty, and importing
+    it would store ``NULL`` without a word. The import refuses instead,
+    naming the cells.
+
+    Attributes:
+        cells (list[str]): The cell coordinates, in sheet order (``B2``).
+    """
+
+    def __init__(self, cells: list[str]) -> None:
+        """Keep the offending cells.
+
+        Args:
+            cells (list[str]): The cell coordinates.
+        """
+        super().__init__(", ".join(cells))
+        self.cells: list[str] = cells
+
+
+def _uncached_formulas(raw: bytes) -> list[str]:
+    """Find the first tab's formula cells that have no cached value.
+
+    Reads the tab twice in read-only mode — formulas, then cached values —
+    and pairs the cells by position.
+
+    Args:
+        raw (bytes): The workbook, already checked by the reader.
+
+    Returns:
+        list[str]: Coordinates of formula cells whose cached value is empty.
+    """
+    from openpyxl import load_workbook
+
+    formulas = load_workbook(io.BytesIO(raw), read_only=True, data_only=False)
+    values = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    try:
+        formula_sheet = formulas.worksheets[0]
+        value_sheet = values.worksheets[0]
+        formula_sheet.reset_dimensions()
+        value_sheet.reset_dimensions()
+        missing: list[str] = []
+        for formula_row, value_row in zip(
+            formula_sheet.iter_rows(), value_sheet.iter_rows(), strict=False
+        ):
+            for formula_cell, value_cell in zip(formula_row, value_row, strict=False):
+                if (
+                    getattr(formula_cell, "data_type", None) == "f"
+                    and value_cell.value is None
+                ):
+                    missing.append(str(formula_cell.coordinate))
+        return missing
+    finally:
+        formulas.close()
+        values.close()
+
+
 async def xlsx_to_csv(raw: bytes) -> str:
     """Read the first tab of an ``.xlsx`` upload as CSV text.
 
     Row 1 is the header, as in a CSV import; blank rows are skipped. The
     parse runs in a worker thread
-    (:func:`~tempest_fastapi_sdk.spreadsheet.read_xlsx_async`) with that
-    reader's default limits on rows and decompressed size.
+    (:func:`~tempest_fastapi_sdk.spreadsheet.read_xlsx_async`) capped at
+    :data:`ADMIN_XLSX_IMPORT_MAX_ROWS` rows and
+    :data:`ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` decompressed. A formula
+    cell without a cached value refuses the file.
 
     Args:
         raw (bytes): The uploaded workbook.
@@ -150,10 +233,18 @@ async def xlsx_to_csv(raw: bytes) -> str:
         ImportError: When the ``[spreadsheet]`` extra is not installed.
         InvalidSpreadsheetError: When the bytes are not an ``.xlsx``.
         SpreadsheetTooLargeError: When the workbook passes a reader limit.
+        XlsxUncachedFormulaError: When a formula cell has no cached value.
     """
     from tempest_fastapi_sdk.spreadsheet import read_xlsx_async
 
-    records = await read_xlsx_async(raw)
+    records = await read_xlsx_async(
+        raw,
+        max_rows=ADMIN_XLSX_IMPORT_MAX_ROWS,
+        max_uncompressed_bytes=ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES,
+    )
+    uncached = await asyncio.to_thread(_uncached_formulas, raw)
+    if uncached:
+        raise XlsxUncachedFormulaError(uncached)
     if not records:
         return ""
     header = list(records[0])
@@ -167,7 +258,10 @@ async def xlsx_to_csv(raw: bytes) -> str:
 
 __all__: list[str] = [
     "ADMIN_SPREADSHEET_EXTRA",
+    "ADMIN_XLSX_IMPORT_MAX_ROWS",
+    "ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES",
     "XLSX_MEDIA_TYPE",
+    "XlsxUncachedFormulaError",
     "build_xlsx",
     "is_xlsx_upload",
     "spreadsheet_available",

@@ -4881,3 +4881,16 @@ duplicar e o export `.xlsx` no caso do export. Receita: `admin`, seções
 "Exportar e importar `.xlsx`", "Atividade recente no dashboard",
 "Muitos-para-muitos no form", "Contagem de relacionados na listagem",
 "Duplicar registro" e "Edição em massa de um campo".
+
+Revisão de segurança (mesmo #803): `SheetWriter._put` remove os caracteres
+de controle ilegais no XML (`ILLEGAL_CHARACTERS_RE`, import lazy), o que
+tirava o `500` do export `.xlsx`; `xlsx_to_csv` passa
+`ADMIN_XLSX_IMPORT_MAX_ROWS`/`ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` ao
+reader e recusa fórmula sem valor em cache (`_uncached_formulas`, leitura
+com e sem `data_only`, `XlsxUncachedFormulaError`); as opções de
+`m2m_fields` saem com `LIMIT FK_OPTION_CAP` e o selecionado alcançável além
+do teto vira opção extra marcada; `readonly_fields`/`readonly_fields_for`
+trancam o campo m2m; `_parent_filter_fields` ignora a FK que o admin do
+filho esconde (e a contagem perde o link). Testes novos nos mesmos arquivos,
+mais `tests/spreadsheet/test_writer.py::TestControlCharacters` e a edição em
+massa no caso do bulk de `test_row_scope.py`.

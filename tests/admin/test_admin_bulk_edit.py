@@ -15,6 +15,7 @@ from tests.admin.wave2_world import (
     COMMENTS,
     OTHER,
     OWN,
+    USERS,
     W2Article,
     Wave2World,
     new_database,
@@ -329,3 +330,31 @@ async def test_validate_edit_is_asked_for_every_row(
         assert done.status_code == 303
         after = await world.article("article_in")
         assert after is not None and after.updated_at > before.updated_at
+
+
+@pytest.mark.asyncio
+async def test_forged_bulk_field_changes_nothing(world: Wave2World) -> None:
+    base = {
+        "csrf_token": world.csrf,
+        "action": "bulk_edit",
+        "ids": [str(world.ids["article_in"])],
+    }
+    forged = await world.client.post(
+        f"{ARTICLES}/bulk",
+        data={**base, "bulk_field": "slug", "bulk_input": "1", "slug": "hijacked"},
+    )
+    assert forged.status_code == 200
+    assert 'name="bulk_field"' in forged.text
+    inside = await world.article("article_in")
+    assert inside is not None and inside.slug == "inside"
+    users = await world.client.post(
+        f"{USERS}/bulk",
+        data={
+            **base,
+            "ids": [str(world.ids["operator"])],
+            "bulk_field": "is_admin",
+            "bulk_input": "1",
+        },
+    )
+    assert users.status_code == 400
+    assert await world.audit_entries() == []

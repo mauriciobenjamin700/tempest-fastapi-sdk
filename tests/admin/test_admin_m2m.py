@@ -286,3 +286,74 @@ async def test_target_without_view_is_left_out_and_kept(
         )
         assert resp.status_code == 303
         assert len(_tag_ids(await world.article("article_in"))) == 2
+
+
+@pytest.mark.asyncio
+async def test_link_beyond_the_option_cap_is_shown_and_kept(
+    database: AsyncDatabaseManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tempest_fastapi_sdk.admin import router as admin_router
+
+    async for world in open_world(database):
+        async with world.db.get_session_context() as session:
+            session.add(W2Tag(name="AAAEarlier", company=OWN))
+            await session.commit()
+        async with world.db.get_session_context() as session:
+            first = await session.get(W2Tag, world.ids["tag_in"])
+            assert first is not None
+            first.created_at = first.created_at.replace(year=2100)
+            await session.commit()
+        monkeypatch.setattr(admin_router, "FK_OPTION_CAP", 1)
+        form = await world.client.get(f"{ARTICLES}/{world.ids['article_in']}/edit")
+        assert "AAAEarlier" in form.text
+        assert f'value="{world.ids["tag_in"]}" selected' in form.text
+        resp = await world.client.post(
+            f"{ARTICLES}/{world.ids['article_in']}/edit",
+            data={
+                "csrf_token": world.csrf,
+                "title": "ArticleInside",
+                "slug": "inside",
+                "company": OWN,
+                "status": "draft",
+                "tags": [str(world.ids["tag_in"])],
+            },
+        )
+        assert resp.status_code == 303
+        assert _tag_ids(await world.article("article_in")) == {
+            str(world.ids["tag_in"]),
+            str(world.ids["tag_out"]),
+        }
+
+
+@pytest.mark.asyncio
+async def test_field_locked_for_the_row_is_left_out_and_unchanged(
+    database: AsyncDatabaseManager,
+) -> None:
+    def lock_tags(row: Any) -> list[str]:
+        """Lock the tags of every row.
+
+        Args:
+            row (Any): The stored row.
+
+        Returns:
+            list[str]: The locked fields.
+        """
+        return ["tags"]
+
+    async for world in open_world(
+        database, article_options={"readonly_fields_for": lock_tags}
+    ):
+        form = await world.client.get(f"{ARTICLES}/{world.ids['article_in']}/edit")
+        assert 'name="tags"' not in form.text
+        resp = await world.client.post(
+            f"{ARTICLES}/{world.ids['article_in']}/edit",
+            data={
+                "csrf_token": world.csrf,
+                "title": "ArticleInside",
+                "slug": "inside",
+                "company": OWN,
+                "status": "draft",
+            },
+        )
+        assert resp.status_code == 303
+        assert len(_tag_ids(await world.article("article_in"))) == 2

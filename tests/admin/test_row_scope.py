@@ -203,7 +203,10 @@ async def case_create_submit(world: ScopeWorld) -> None:
 
 
 async def case_bulk(world: ScopeWorld) -> None:
-    """A bulk delete touches only the selected rows the principal reaches."""
+    """Bulk delete and bulk edit touch only the rows the principal reaches.
+
+    The bulk edit that would move a row out of the scope is rolled back.
+    """
     resp = await world.client.post(
         f"{TICKETS}/bulk",
         data={
@@ -225,6 +228,36 @@ async def case_bulk(world: ScopeWorld) -> None:
     assert resp.status_code == 303
     inside = await world.ticket("in")
     assert inside is not None and inside.is_active is False
+    step = await world.client.post(
+        f"{TICKETS}/bulk",
+        data={
+            "csrf_token": world.csrf,
+            "action": "bulk_edit",
+            "ids": [str(world.ids["ticket_in"]), str(world.ids["ticket_out"])],
+        },
+    )
+    assert step.status_code == 200
+    hidden("1 row(s) selected." in step.text, "foreign ticket kept in the selection")
+    nonce = re.search(r'name="submission_nonce" value="([^"]+)"', step.text)
+    assert nonce is not None
+    moved = await world.client.post(
+        f"{TICKETS}/bulk",
+        data={
+            "csrf_token": world.csrf,
+            "action": "bulk_edit",
+            "ids": [str(world.ids["ticket_in"])],
+            "bulk_field": "company",
+            "bulk_input": "1",
+            "company": OTHER,
+            "submission_nonce": nonce.group(1),
+        },
+    )
+    assert moved.status_code == 303
+    inside = await world.ticket("in")
+    hidden(
+        inside is not None and inside.company == OWN,
+        "bulk edit moved a row out of the scope",
+    )
 
 
 async def case_upload_download(world: ScopeWorld) -> None:

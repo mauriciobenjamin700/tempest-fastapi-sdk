@@ -298,3 +298,63 @@ def test_upload_kind_is_read_from_the_name_or_the_zip_signature() -> None:
     assert is_xlsx_upload("a.csv", b"PK\x03\x04rest")
     assert not is_xlsx_upload("a.csv", b"name,company\n")
     assert not is_xlsx_upload(None, b"")
+
+
+@pytest.mark.asyncio
+async def test_export_drops_control_characters_instead_of_failing(
+    world: ScopeWorld,
+) -> None:
+    async with world.db.get_session_context() as session:
+        ticket = await session.get(ScopeTicket, world.ids["ticket_in"])
+        assert ticket is not None
+        ticket.name = "abc\x0bdef\x00"
+        await session.commit()
+    resp = await world.client.get(f"{TICKETS}/export.xlsx")
+    assert resp.status_code == 200
+    assert _sheet(resp.content)[1][0] == "abcdef"
+
+
+@pytest.mark.asyncio
+async def test_formula_without_a_cached_value_refuses_the_import(
+    world: ScopeWorld,
+) -> None:
+    before = await world.ticket_count()
+    raw = _workbook([["name", "company"], ["Plain", OWN], ["=1+1", OWN]])
+    resp = await world.client.post(
+        f"{TICKETS}/import",
+        data={"csrf_token": world.csrf},
+        files={"file": ("t.xlsx", raw, XLSX_MEDIA_TYPE)},
+    )
+    assert resp.status_code == 400
+    assert "A3: formula with no calculated value." in resp.text
+    assert 'name="payload"' not in resp.text
+    assert await world.ticket_count() == before
+
+
+@pytest.mark.asyncio
+async def test_sheet_past_the_row_limit_is_refused_clearly(
+    world: ScopeWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tempest_fastapi_sdk.admin import spreadsheet_io
+
+    monkeypatch.setattr(spreadsheet_io, "ADMIN_XLSX_IMPORT_MAX_ROWS", 2)
+    monkeypatch.setattr(admin_router, "ADMIN_XLSX_IMPORT_MAX_ROWS", 2)
+    raw = _workbook([["name", "company"], *[[f"R{i}", OWN] for i in range(3)]])
+    resp = await world.client.post(
+        f"{TICKETS}/import",
+        data={"csrf_token": world.csrf},
+        files={"file": ("t.xlsx", raw, XLSX_MEDIA_TYPE)},
+    )
+    assert resp.status_code == 400
+    assert "The workbook passes the import limits (2 rows, 16 MiB" in resp.text
+
+
+def test_reader_limits_scale_with_the_import_cap() -> None:
+    from tempest_fastapi_sdk.admin import spreadsheet_io
+    from tempest_fastapi_sdk.admin.csv_import import ADMIN_IMPORT_MAX_BYTES
+
+    assert spreadsheet_io.ADMIN_XLSX_IMPORT_MAX_ROWS == ADMIN_IMPORT_MAX_BYTES // 16
+    assert (
+        spreadsheet_io.ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES
+        == 32 * ADMIN_IMPORT_MAX_BYTES
+    )
