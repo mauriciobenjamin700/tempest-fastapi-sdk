@@ -1,53 +1,79 @@
 {% extends "base.html" %}
-{% block title %}Import {{ admin.get_verbose_name_plural() }} · {{ site.title }}{% endblock %}
+{% block title %}{{ t("import.title", models=admin.get_verbose_name_plural()) }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-import">
   <header class="tempest-admin-detail__header">
-    <h1>Import {{ admin.get_verbose_name_plural() }}</h1>
-    <a href="{{ back_url }}">← Back to list</a>
+    <h1>{{ t("import.title", models=admin.get_verbose_name_plural()) }}</h1>
+    <a href="{{ back_url }}">← {{ t("import.back") }}</a>
   </header>
 
   {% if form_error %}
-  <p class="tempest-admin-form__error">{{ form_error }}</p>
+  <p class="tempest-admin-form__error" role="alert">{{ form_error }}</p>
   {% endif %}
 
-  {% if result %}
+  {% if preview %}
   <div class="tempest-admin-import__result">
-    <p class="tempest-admin-import__ok">Created {{ result.created }} record(s).</p>
-    {% if result.errors %}
-    <p class="tempest-admin-import__failed">{{ result.errors | length }} row(s) skipped:</p>
-    <table class="tempest-admin-import__errors">
-      <thead><tr><th>Row</th><th>Errors</th></tr></thead>
-      <tbody>
-        {% for err in result.errors %}
-        <tr>
-          <td>{{ err.row }}</td>
-          <td>
-            {% for field, message in err.errors.items() %}
-            <div>{% if field %}<strong>{{ field }}:</strong> {% endif %}{{ message }}</div>
-            {% endfor %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <p class="tempest-admin-import__ok">{{ tn("import.preview.accepted", preview.accepted, total=preview.total) }}</p>
+    {% if preview.sample %}
+    <div class="tempest-admin-table-wrap">
+      <table class="tempest-admin-list__table tempest-admin-import__preview">
+        <caption>{{ tn("import.preview.sample", preview.sample | length) }}</caption>
+        <thead><tr>{% for column in columns %}<th scope="col">{{ column | field_label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in preview.sample %}
+          <tr>{% for column in columns %}<td>{{ row[column] }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% endif %}
+    {% if preview.errors %}
+    <p class="tempest-admin-import__failed">{{ tn("import.preview.refused", preview.errors | length) }}</p>
+    <div class="tempest-admin-table-wrap">
+      <table class="tempest-admin-import__errors">
+        <thead><tr><th scope="col">{{ t("import.column.row") }}</th><th scope="col">{{ t("import.column.errors") }}</th></tr></thead>
+        <tbody>
+          {% for err in preview.errors %}
+          <tr>
+            <td>{{ err.row }}</td>
+            <td>
+              {% for field, message in err.errors.items() %}
+              <div>{% if field %}<strong>{{ field | field_label }}:</strong> {% endif %}{{ message }}</div>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    <form method="post" action="{{ confirm_url }}" class="tempest-admin-import__confirm">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      {% if payload %}
+      <input type="hidden" name="payload" value="{{ payload }}">
+      <input type="hidden" name="submission_nonce" value="{{ submission_nonce }}">
+      <button type="submit" class="tempest-admin-btn">{{ tn("import.confirm", preview.accepted) }}</button>
+      {% else %}
+      <button type="submit" class="tempest-admin-btn" disabled>{{ tn("import.confirm", preview.accepted) }}</button>
+      <p class="tempest-admin-form__hint">{% if preview.errors %}{{ t("import.confirm_blocked") }}{% else %}{{ t("import.nothing_to_import") }}{% endif %}</p>
+      {% endif %}
+    </form>
   </div>
   {% endif %}
 
   <form method="post" action="{{ action_url }}" enctype="multipart/form-data" class="tempest-admin-import__form">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <label>
-      <span>CSV file</span>
+      <span>{{ t("import.file") }}</span>
       <input type="file" name="file" accept=".csv,text/csv" required>
     </label>
     <p class="tempest-admin-form__hint">
-      Expected header columns: <code>{{ columns | join(', ') }}</code>.
-      The first row must be the header; each following row becomes one record.
+      {{ t("import.expected_columns") }} <code>{{ columns | join(', ') }}</code>.
+      {{ t("import.header_rule", max_kib=max_bytes // 1024) }}
     </p>
     <div class="tempest-admin-form__actions">
-      <button type="submit">Import</button>
-      <a href="{{ back_url }}" class="tempest-admin-form__cancel">Cancel</a>
+      <button type="submit">{% if preview %}{{ t("import.preview_again") }}{% else %}{{ t("import.preview_submit") }}{% endif %}</button>
+      <a href="{{ back_url }}" class="tempest-admin-form__cancel">{{ t("form.cancel") }}</a>
     </div>
   </form>
 </section>

@@ -1362,13 +1362,49 @@ site.register(AdminModel(model=Product, can_import=True))
 ```
 
 An **Import CSV** link appears on the list view → an upload page. The CSV
-needs a header row with the editable column names (the page lists them);
-each following row is validated and coerced with the **same rules as the
-create form** (types, required fields) and becomes a record.
+needs a header row with the editable column names (the page lists them).
+The import takes **two steps**:
 
-The result is best-effort: valid rows are created, and a report lists
-the skipped rows with each field's error — one bad row never aborts the
-others.
+1. **Preview.** The upload validates every row with the **same rules as
+   the create form** (types, required fields, `choices`) and rehearses the
+   inserts inside a transaction that is always rolled back — so the
+   preview also shows what only the database would refuse (a duplicate in
+   a `unique` column) and what the [`row_scope`](#row-scope-row_scope)
+   does not reach. Nothing is written. The page says how many rows go in,
+   shows the first 20, and lists each refused row by number (the header is
+   row 1, as in a spreadsheet) with each field's error.
+2. **Confirm.** The **Confirm import of N records** button posts the CSV
+   back in a hidden field **signed** with the router's `secret_key` and
+   bound to the model and the operator who previewed it: what goes in is
+   exactly the file that was seen. The rows run again, for real, in one
+   transaction, and the commit is **all or nothing** — if the table
+   changed since the preview and a row now fails, nothing goes in and the
+   page comes back with the errors. On success the panel redirects to the
+   list with `Created N record(s).`
+
+With an error in **any** row the confirm button is disabled, and the
+confirm `POST` refuses the same way: nothing is ever half imported.
+
+!!! info "Limits of the signed step"
+    - The file is capped at **512 KiB** (`ADMIN_IMPORT_MAX_BYTES`); a larger
+      one gets a `400` asking to split it. Measured over six 512 KiB files
+      (random hex, random printable ASCII, Latin-1, CJK, emoji,
+      one-character lines), the signed field came to at most 571 099 bytes.
+    - A preview stays valid for **1 hour**
+      (`ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS`). After that, or with the
+      field tampered with, or signed for another model or another
+      operator, the confirm answers `400` and writes nothing.
+    - The confirm spends a single-use nonce: reloading the answer does not
+      import again.
+
+!!! warning "Repository signals fire on the confirm only"
+    The preview inserts through the session (after the repository's
+    `_prepare_insert` hook), without the repository's `add` — no
+    `PRE_SAVE`/`POST_SAVE` handler fires for a preview. The confirm goes
+    through `repository.add`, signals included. Since the single commit
+    comes at the end, a row's `POST_SAVE` has already fired when a later
+    row rolls the batch back; a handler with an outside effect (email,
+    queue) should key on the commit, not on the signal.
 
 !!! info "Opt-in + requires create"
     `can_import` defaults to `False` and requires `can_create` (importing
@@ -1571,6 +1607,146 @@ entry.
     console reads any table the `SqlShellPolicy` allows, and an operator
     restricted to some models would read the rest through it. Pass a
     `surface_policy` to give the surfaces back to whoever should have them.
+
+## Row scope (`row_scope=`)
+
+`access_policy` answers yes or no for the **whole model**. Multi-tenant
+needs more: company A's support may see orders, but only company A's.
+Working around it with one panel per company or a hand-filtered
+repository is where data leaks — one route forgetting the filter is
+enough. `row_scope=` puts the filter in the panel:
+
+```python
+from typing import Any
+
+from sqlalchemy import ColumnElement, false, true
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import TicketModel, UserModel
+
+
+def own_company(user: UserModel, admin: AdminModel[Any]) -> ColumnElement[bool]:
+    if user.is_superuser:
+        return true()
+    if user.company_id is None:
+        return false()
+    return TicketModel.company_id == user.company_id
+
+
+site.register(AdminModel(model=TicketModel, row_scope=own_company))
+```
+
+The function receives the signed-in principal and the `AdminModel`
+itself, and returns a SQLAlchemy condition. "Every row" is said
+explicitly, with `sqlalchemy.true()`. It may be `async` (to look the
+tenant up in another table, for instance). The condition is ANDed into
+**every** route that reads or writes a row of the model:
+
+- list, count (in the header and on the dashboard card) and export;
+- detail, the edit form and its `POST`, delete and the upload download;
+- bulk actions — delete, activate/deactivate — and custom actions: the
+  selected ids outside the scope are dropped as if they did not exist;
+- autocomplete, foreign-key `<select>` and foreign-key filter **when this
+  model is the target**, and the inline table when it is the **child**;
+- the editable inline formset (the parent and each child are read in
+  scope);
+- the CSV import preview and confirm.
+
+A row outside the scope answers `404` — the same as a row that does not
+exist, so the response never confirms it is there. On delete and the
+built-in bulk actions, the condition is inside the `DELETE` / `UPDATE`
+statement itself, not only in the read before it.
+
+!!! danger "Returning `None` does not open everything"
+    A scope function that forgets its `return` hands back `None`. The panel
+    treats that as an error: it raises `AdminRowScopeError`, logs the model
+    name and the request answers `500` — it fails closed instead of opening
+    every row. To let everything through, return `true()`.
+
+    And mind the principal without a tenant: `TicketModel.company_id ==
+    user.company_id` with `company_id` `None` becomes `IS NULL`, which
+    matches every row without a company. If that user should see nothing,
+    return `false()` first, as in the example.
+
+### On writes
+
+The rule holds for the result: a row that is **created**, **edited** or
+**imported** must still match the scope after the write. The panel writes
+inside a transaction, counts the row against the condition in that same
+transaction and, if it left, rolls back and returns the form with `This
+record would fall outside the rows you may manage; nothing was saved.` —
+company A's operator cannot create a company B ticket, nor "move" one of
+theirs there by changing `company_id`. The same applies to:
+
+- **`create_handler`**: the schema fields named like a foreign-key column
+  go through the foreign-key check below before the handler runs. Then
+  every row of the model the handler writes through the session —
+  inserted **or changed**, as in an upsert that edits an existing row — is
+  counted against the scope before the commit; outside it, rollback.
+  Escaping the check: writes through SQL Core (`insert()`, `update()`,
+  `bulk_create_values`), a service that opens a session of its own, and
+  rows of **other** models the handler writes. A handler that commits on
+  its own has already made the row durable: the panel cannot undo it,
+  logs it at `ERROR` with the model, and says on the form that the record
+  **was** saved outside the scope, instead of claiming nothing was saved.
+- **bulk activate/deactivate**: if the new `is_active` takes any row out
+  of the scope (a scope that filters on it), nothing changes and the list
+  comes back with the warning.
+- **foreign keys**: on create, edit, inline or import, the value of a
+  foreign key whose target model has a `row_scope` must be a row the
+  principal reaches there. Outside the scope the field gets `Select a
+  valid choice; that record does not exist.` — the same error as an id
+  that does not exist, so a forged `POST` learns no other tenant's ids.
+  The column is checked against its first `ForeignKey`: in a composite
+  `ForeignKeyConstraint`, or on a column with several foreign keys, only
+  that target is verified.
+
+An uploaded file stored by a create or edit that ends up refused is
+deleted (one attempt; a failure goes to the log).
+
+On the edit form, a foreign key pointing at a row the operator does
+**not** reach (or past `FK_OPTION_CAP`) stays selected: the `<select>`
+gains one option with the current value, labelled with the id alone, and
+saving without touching it keeps the reference — before, the browser
+posted the first option and the save rewrote the reference silently.
+
+In the detail's audit panel, the author of a change is shown by name when
+the user model is not registered on the site, or has no `row_scope`. With
+a `row_scope`, the name shows only if the principal has `VIEW` on that
+model and reaches that user through the scope; otherwise only the id.
+
+On delete, when the `DELETE ... AND <scope>` removes nothing (the row
+left the scope after it was read), the whole block is rolled back —
+whatever a `PRE_DELETE` handler wrote in the session is undone —, the
+answer is `404` and no `POST_DELETE` fires. `POST_DELETE` receives the
+instance outside the session, as with `BaseRepository.delete`, so it
+reads the columns even with `expire_on_commit=True`.
+
+!!! warning "What the scope does not cover"
+    - `row_scope` applies to the `/m/{slug}/...` routes and to what they
+      show of another model. What runs your code or free SQL stays out:
+      the dashboard cards (`dashboard_cards=`), indicator areas, maps
+      (`location_maps=`) and the SQL console.
+    - In a custom action, `ctx.ids` are already filtered, but
+      `ctx.repository` is the model's unfiltered repository and the panel
+      does not check the outcome: the action can read beyond the ids and
+      can **move** a row out of the scope. That is its own business.
+    - The storage browser (`/storage`, the `STORAGE` surface) serves any
+      key in the bucket. If the scoped model's uploads live in the same
+      bucket, whoever has the surface bypasses the upload download's scope
+      — deny `STORAGE` to those roles in `surface_policy`.
+    - Create and import remain a `UNIQUE` oracle across tenants: a code
+      that exists in company B conflicts for company A. The way out is a
+      composite `UNIQUE` constraint with the tenant column
+      (`UniqueConstraint("company_id", "code")`).
+
+!!! tip "Together with `access_policy`"
+    The two compose: `access_policy` decides **whether** the principal
+    opens the model and which action it takes; `row_scope` decides
+    **which rows**. A support role with `VIEW` and a per-company scope sees
+    only its own company's list and gets `404` on any other's detail.
 
 ## Field widgets by column type
 
@@ -1825,6 +2001,122 @@ What changes, and nothing else:
     `ValueError` when the `AdminModel` is built, not in the request that
     renders the form. A timezone resolved late has cost us before: the
     cron's offset string died inside the scheduler loop, silently.
+
+### Date filter shortcuts
+
+Every date-range filter (`list_filter` on a `date` or `datetime` column)
+gains, below its two boxes, the links **Today**, **7 days**, **30 days**,
+**This month** and **Last month** (in Portuguese with
+`AdminSite(locale="pt-BR")`):
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import OrderModel
+
+
+site.register(
+    AdminModel(
+        model=OrderModel,
+        list_filter=[OrderModel.created_at, OrderModel.status],
+        search_fields=[OrderModel.code],
+        display_timezone="America/Sao_Paulo",
+    ),
+)
+```
+
+Each link fills `filter_created_at_from` and `filter_created_at_to` with
+the range's days, both inclusive: today; the last 7 and 30 days ending
+today; the current month from the 1st to its last day; the whole previous
+month. "Today" is the day in the model's `display_timezone` (UTC without
+one) — the same day the filter reads. The rest of the query stays as the
+operator left it (search, the other filters, the sort, the lens); only the
+page goes back to the first. The shortcut matching the active range is
+marked. They are links built on the server, with no JavaScript.
+
+## Concurrent edits: optimistic lock
+
+Two operators open the same record; the first saves, the second saves
+over it without knowing. The edit form prevents that on its own, for
+every model with an `updated_at` column — and every `BaseModel` has one:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import CustomerModel
+
+
+site.register(AdminModel(model=CustomerModel))
+```
+
+The form carries, in a hidden field, the `updated_at` it read when it
+opened. On save, before any column is assigned, the panel runs
+`UPDATE ... SET updated_at = updated_at WHERE id = :id AND updated_at =
+:read` in the **same transaction** as the `UPDATE` that writes the edit —
+there is no `SELECT` first asking whether it changed. Zero rows affected
+means another save (through the panel or any other path that goes through
+the ORM) got there first: nothing is written and the form comes back with
+`409`, the warning `Someone else saved this record after you opened it.
+Nothing was saved: your values are below — review them and save again to
+overwrite.` and the values the operator typed.
+
+The returned form already carries the row's **current** version. Saving
+again, after reviewing, overwrites knowingly.
+
+!!! info "Where the lock does not apply"
+    - A model without an `updated_at` column, or a `POST` without the
+      hidden field (a form opened before the SDK upgrade), saves as before.
+    - The editable inline formset and the bulk/custom actions take no
+      lock: the inline saves each child as posted, and an action acts on
+      the row it finds.
+
+## Interface in Portuguese (`locale=`)
+
+Every piece of text the panel writes itself — labels, buttons, empty
+states, pagination, flash messages and the errors the router shows on the
+form (`This field is required.`, the conflict warning, the scope one) —
+comes from a catalog with English and Brazilian Portuguese. Pick it on the
+site:
+
+```python
+from tempest_fastapi_sdk import AdminSite
+
+site = AdminSite(
+    title="Backoffice",
+    locale="pt-BR",
+    display_timezone="America/Sao_Paulo",
+)
+```
+
+The default is `"en"`, with the same text as always, so an existing panel
+does not change. A `locale` outside `ADMIN_LOCALES` raises `ValueError`
+when the `AdminSite` is built. `<html lang>` follows the locale, and the
+default `index_subtitle` becomes `Administração do site` (passed by hand,
+it stays as you wrote it).
+
+What is **not** translated is what comes from you: model and field names,
+`verbose_name`, action labels, `title`. Messages another component writes
+also come out as it writes them — the auth backend's `AdminAuthError`
+(`Invalid credentials`), the `StorageBrowserService` errors and the
+password policy message.
+
+To write text of your own from the same catalog — a custom action's
+result, for instance — use `admin_text`:
+
+```python
+from tempest_fastapi_sdk.admin import admin_plural, admin_text
+
+title = admin_text("pt-BR", "list.new", model="Pedido")
+count = admin_plural("pt-BR", "list.records", 3)
+```
+
+`admin_text(locale, key, **params)` formats the text with `str.format`;
+`admin_plural(locale, key, n)` reads `key.one` when `n == 1` and
+`key.other` otherwise. A key missing from the locale falls back to
+English, and an unknown key returns the key itself — the
+`tests/test_admin_i18n_guard.py` guard keeps both languages complete.
 
 ## Lenses — saved views (`lenses=`)
 
@@ -2471,9 +2763,16 @@ control, `custom_css_url`.
 - `storage=StorageBrowserService(...)` puts the bucket on screen: list,
   preview (SVG and HTML only as source), upload, edit text, rename and
   delete — `read_only=True` leaves only the reads.
-- `AdminTheme` covers the look through typed fields; `can_import=True` opens CSV
-  import, which writes every valid row at once and reports the rows it
-  skipped — there is no preview step.
+- `AdminTheme` covers the look through typed fields; `can_import=True` opens a
+  two-step CSV import: the preview validates and rehearses without
+  writing, and the confirm writes the signed file, all or nothing.
+- `row_scope=` filters **which rows** the principal reaches on every route
+  of the model; outside the scope is `404`, and a write that takes the row
+  out of the scope is rolled back.
+- The edit form brings the optimistic lock for free: a save over a stale
+  version comes back with `409` and the operator's values, unwritten.
+- `AdminSite(locale="pt-BR")` puts the panel in Portuguese; the filter's
+  date shortcuts come out translated and in the model's zone.
 - `exclude_fields=` takes a credential that is not a password off every
   surface of the panel; `readonly_fields` only locks the write.
 - `display_timezone=` is what turns the datetime field into a widget: the

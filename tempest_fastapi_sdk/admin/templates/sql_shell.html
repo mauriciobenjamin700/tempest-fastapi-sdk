@@ -1,48 +1,47 @@
 {% extends "base.html" %}
-{% block title %}SQL console · {{ site.title }}{% endblock %}
+{% block title %}{{ t("nav.sql") }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-sql">
   <div class="tempest-admin-list__header">
-    <h1>SQL console</h1>
+    <h1>{{ t("nav.sql") }}</h1>
   </div>
 
   <div class="tempest-admin-sql__policy">
     <span class="tempest-admin-sql__policy-item">
-      <strong>Allowed:</strong> {{ capabilities|join(", ") or "nothing" }}
+      <strong>{{ t("sql.allowed") }}</strong> {{ capabilities|join(", ") or t("sql.nothing") }}
     </span>
     {% if allowed_tables %}
     <span class="tempest-admin-sql__policy-item">
-      <strong>Tables:</strong> {{ allowed_tables|join(", ") }}
+      <strong>{{ t("sql.tables") }}</strong> {{ allowed_tables|join(", ") }}
     </span>
     {% endif %}
     {% if denied_tables %}
     <span class="tempest-admin-sql__policy-item">
-      <strong>Denied:</strong> {{ denied_tables|join(", ") }}
+      <strong>{{ t("sql.denied") }}</strong> {{ denied_tables|join(", ") }}
     </span>
     {% endif %}
     <span class="tempest-admin-sql__policy-item">
-      <strong>Row cap:</strong> {{ max_rows }}
+      <strong>{{ t("sql.row_cap") }}</strong> {{ max_rows }}
     </span>
   </div>
 
   {% if not read_only %}
   <p class="tempest-admin-sql__warning">
-    This console can modify data. Statements run against the live database
-    and are not undoable from here.
+    {{ t("sql.warning") }}
   </p>
   {% endif %}
 
   <form method="post" action="{{ nav_sql_url }}" class="tempest-admin-sql__form">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <label for="sql-input" class="tempest-admin-sql__label">Statement</label>
+    <label for="sql-input" class="tempest-admin-sql__label">{{ t("sql.statement") }}</label>
     <textarea id="sql-input"
               name="sql"
               rows="8"
               spellcheck="false"
               class="tempest-admin-sql__editor"
-              placeholder="SELECT * FROM ...">{{ submitted or "" }}</textarea>
+              placeholder="{{ t('sql.placeholder') }}">{{ submitted or "" }}</textarea>
     <div class="tempest-admin-sql__actions">
-      <button type="submit" class="tempest-admin-sql__run">Run</button>
+      <button type="submit" class="tempest-admin-sql__run">{{ t("sql.run") }}</button>
     </div>
   </form>
 
@@ -56,11 +55,11 @@
   {% if result %}
   <div class="tempest-admin-sql__meta">
     <span>{{ result.capability }}</span>
-    <span>{{ result.row_count }} row{{ "" if result.row_count == 1 else "s" }}</span>
-    <span>{{ "%.3f"|format(result.seconds) }}s</span>
+    <span>{{ tn("sql.rows", result.row_count) }}</span>
+    <span>{{ t("sql.seconds", value="%.3f"|format(result.seconds)) }}</span>
     {% if result.truncated %}
     <span class="tempest-admin-sql__truncated">
-      truncated at {{ max_rows }} rows
+      {{ t("sql.truncated", max=max_rows) }}
     </span>
     {% endif %}
   </div>
@@ -79,7 +78,7 @@
         {% for row in result.rows %}
         <tr>
           {% for cell in row %}
-          <td>{% if cell is none %}<em>NULL</em>{% else %}{{ cell }}{% endif %}</td>
+          <td>{% if cell is none %}<em>{{ t("sql.null") }}</em>{% else %}{{ cell }}{% endif %}</td>
           {% endfor %}
         </tr>
         {% endfor %}
@@ -87,11 +86,11 @@
     </table>
   </div>
   {% if not result.rows %}
-  <p class="tempest-admin-sql__empty">The query returned no rows.</p>
+  <p class="tempest-admin-sql__empty">{{ t("sql.empty") }}</p>
   {% endif %}
   {% else %}
   <p class="tempest-admin-sql__empty">
-    Statement executed. {{ result.row_count }} row{{ "" if result.row_count == 1 else "s" }} affected.
+    {{ tn("sql.affected", result.row_count) }}
   </p>
   {% endif %}
   {% endif %}

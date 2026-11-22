@@ -9,11 +9,11 @@
       <h1>{{ admin.get_verbose_name() }} <code class="tempest-admin-value--uuid" title="{{ identity }}">{{ identity | short_identity }}</code></h1>
     </div>
     <div class="tempest-admin-detail__actions">
-      {% if can_edit %}<a class="tempest-admin-btn" href="{{ edit_url }}">Edit</a>{% endif %}
+      {% if can_edit %}<a class="tempest-admin-btn" href="{{ edit_url }}">{{ t("common.edit") }}</a>{% endif %}
       {% if can_delete %}
-      <form method="post" action="{{ delete_url }}" class="tempest-admin-detail__delete" onsubmit="return confirm('Delete this record? This cannot be undone.');">
+      <form method="post" action="{{ delete_url }}" class="tempest-admin-detail__delete" data-confirm="{{ t('detail.delete_confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-        <button type="submit" class="tempest-admin-btn tempest-admin-btn--danger">Delete</button>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--danger">{{ t("common.delete") }}</button>
       </form>
       {% endif %}
     </div>
@@ -22,7 +22,7 @@
     {% for column, value in fields %}
     <dt>{{ column | field_label }}</dt>
     <dd>
-      {% if value is not none and column in json_columns %}<pre class="tempest-admin-detail__json">{{ value }}</pre>{% elif column in upload_urls %}<a href="{{ upload_urls[column] }}" download>Download</a> <code class="tempest-admin-form__hint">{{ value }}</code>{% else %}{{ cell(value, full=true) }}{% endif %}
+      {% if value is not none and column in json_columns %}<pre class="tempest-admin-detail__json">{{ value }}</pre>{% elif column in upload_urls %}<a href="{{ upload_urls[column] }}" download>{{ t("common.download") }}</a> <code class="tempest-admin-form__hint">{{ value }}</code>{% else %}{{ cell(value, full=true) }}{% endif %}
     </dd>
     {% endfor %}
   </dl>
@@ -33,7 +33,7 @@
     <textarea name="{{ f.name }}" rows="2" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
     {% elif f.widget == 'select' %}
     <select name="{{ f.name }}" {% if f.required %}required{% endif %}>
-      {% if not f.required %}<option value="">— none —</option>{% endif %}
+      {% if not f.required %}<option value="">{{ t("form.none") }}</option>{% endif %}
       {% for val, lbl in f.options %}<option value="{{ val }}" {% if (f.value | string) == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
     </select>
     {% elif f.widget == 'number' %}
@@ -53,7 +53,7 @@
   <section class="tempest-admin-inline">
     <header class="tempest-admin-inline__header">
       <h2>{{ inline.label }}{% if inline.total %} <span class="tempest-admin-inline__count">({{ inline.total }})</span>{% endif %}</h2>
-      {% if inline.add_url %}<a class="tempest-admin-btn" href="{{ inline.add_url }}">Add</a>{% endif %}
+      {% if inline.add_url %}<a class="tempest-admin-btn" href="{{ inline.add_url }}">{{ t("detail.inline_add") }}</a>{% endif %}
     </header>
     {% if inline.editable %}
     {% if inline_error %}<p class="tempest-admin-form__error">{{ inline_error }}</p>{% endif %}
@@ -62,7 +62,7 @@
       <div class="tempest-admin-inline__scroll">
         <table class="tempest-admin-inline__table">
           <thead>
-            <tr>{% for col in inline.columns %}<th>{{ col }}</th>{% endfor %}{% if inline.can_delete %}<th>Delete</th>{% endif %}</tr>
+            <tr>{% for col in inline.columns %}<th>{{ col }}</th>{% endfor %}{% if inline.can_delete %}<th>{{ t("common.delete") }}</th>{% endif %}</tr>
           </thead>
           <tbody>
             {% for row in inline.rows %}
@@ -81,10 +81,10 @@
         </table>
       </div>
       <div class="tempest-admin-form__actions">
-        <button type="submit">Save {{ inline.label }}</button>
+        <button type="submit">{{ t("detail.inline_save", label=inline.label) }}</button>
       </div>
     </form>
-    {% if inline.truncated %}<p class="tempest-admin-inline__more"><em>Editing the first {{ inline.rows | length }} of {{ inline.total }}.</em></p>{% endif %}
+    {% if inline.truncated %}<p class="tempest-admin-inline__more"><em>{{ t("detail.inline_editing_first", shown=inline.rows | length, total=inline.total) }}</em></p>{% endif %}
     {% elif inline.rows %}
     <div class="tempest-admin-inline__scroll">
       <table class="tempest-admin-inline__table">
@@ -97,50 +97,50 @@
             {% for col, value in row.cells %}
             <td>{{ cell(value) }}</td>
             {% endfor %}
-            <td>{% if row.url %}<a href="{{ row.url }}">View</a>{% endif %}</td>
+            <td>{% if row.url %}<a href="{{ row.url }}">{{ t("common.view") }}</a>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% if inline.truncated %}<p class="tempest-admin-inline__more"><em>Showing the first {{ inline.rows | length }} of {{ inline.total }}.</em></p>{% endif %}
+    {% if inline.truncated %}<p class="tempest-admin-inline__more"><em>{{ t("detail.inline_showing_first", shown=inline.rows | length, total=inline.total) }}</em></p>{% endif %}
     {% else %}
-    <p class="tempest-admin-inline__empty"><em>No related records.</em></p>
+    <p class="tempest-admin-inline__empty"><em>{{ t("detail.inline_empty") }}</em></p>
     {% endif %}
   </section>
   {% endfor %}
   {% if audit %}
-  <h2 class="tempest-admin-detail__audit-title">Audit</h2>
+  <h2 class="tempest-admin-detail__audit-title">{{ t("detail.audit") }}</h2>
   <dl class="tempest-admin-detail__fields tempest-admin-detail__audit">
-    <dt>Created at</dt>
+    <dt>{{ t("detail.created_at") }}</dt>
     <dd>{{ cell(audit.created_at) }}</dd>
     {% if audit.has_actors %}
-    <dt>Created by</dt>
+    <dt>{{ t("detail.created_by") }}</dt>
     <dd>{% if audit.created_by %}{{ audit.created_by }}{% else %}<em>—</em>{% endif %}</dd>
     {% endif %}
-    <dt>Updated at</dt>
+    <dt>{{ t("detail.updated_at") }}</dt>
     <dd>{{ cell(audit.updated_at) }}</dd>
     {% if audit.has_actors %}
-    <dt>Updated by</dt>
+    <dt>{{ t("detail.updated_by") }}</dt>
     <dd>{% if audit.updated_by %}{{ audit.updated_by }}{% else %}<em>—</em>{% endif %}</dd>
     {% endif %}
   </dl>
   {% endif %}
   {% if admin.audit_model is not none %}
-  <h2 class="tempest-admin-detail__audit-title">History</h2>
+  <h2 class="tempest-admin-detail__audit-title">{{ t("detail.history") }}</h2>
   {% if history %}
   <ol class="tempest-admin-history">
     {% for entry in history %}
     <li class="tempest-admin-history__item tempest-admin-history__item--{{ entry.action }}">
       <div class="tempest-admin-history__head">
-        <span class="tempest-admin-history__action">{{ entry.action }}</span>
+        <span class="tempest-admin-history__action">{% if entry.action == "create" %}{{ t("detail.history.create") }}{% elif entry.action == "update" %}{{ t("detail.history.update") }}{% elif entry.action == "delete" %}{{ t("detail.history.delete") }}{% else %}{{ entry.action }}{% endif %}</span>
         <span class="tempest-admin-history__meta">
           {{ cell(entry.at) }}{% if entry.actor %} · {{ entry.actor }}{% endif %}
         </span>
       </div>
       {% if entry.changes %}
       <table class="tempest-admin-history__changes">
-        <thead><tr><th>field</th><th>before</th><th>after</th></tr></thead>
+        <thead><tr><th>{{ t("detail.history.field") }}</th><th>{{ t("detail.history.before") }}</th><th>{{ t("detail.history.after") }}</th></tr></thead>
         <tbody>
           {% for change in entry.changes %}
           <tr>
@@ -156,7 +156,7 @@
     {% endfor %}
   </ol>
   {% else %}
-  <p class="tempest-admin-history__empty"><em>No recorded changes for this record.</em></p>
+  <p class="tempest-admin-history__empty"><em>{{ t("detail.history_empty") }}</em></p>
   {% endif %}
   {% endif %}
 </section>

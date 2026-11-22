@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Sign in · {{ site.title }}{% endblock %}
+{% block title %}{{ t("login.sign_in") }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-login">
   <div class="tempest-admin-login__brand">
@@ -10,7 +10,7 @@
     <span>{{ site.brand_text }}</span>
     {% endif %}
   </div>
-  <h1>Sign in</h1>
+  <h1>{{ t("login.sign_in") }}</h1>
   <p class="tempest-admin-login__subtitle">{{ site.index_subtitle }}</p>
   {% if error %}
   <p class="tempest-admin-login__error" role="alert">{{ error }}</p>
@@ -18,14 +18,14 @@
   <form method="post" action="{{ url_for('admin_login') }}" class="tempest-admin-login__form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>
-      <span>Email</span>
+      <span>{{ t("login.email") }}</span>
       <input type="email" name="identifier" autocomplete="username" required autofocus>
     </label>
     <label>
-      <span>Password</span>
+      <span>{{ t("login.password") }}</span>
       <input type="password" name="password" autocomplete="current-password" required>
     </label>
-    <button type="submit" class="tempest-admin-btn tempest-admin-btn--block">Sign in</button>
+    <button type="submit" class="tempest-admin-btn tempest-admin-btn--block">{{ t("login.sign_in") }}</button>
   </form>
 </section>
 {% endblock %}

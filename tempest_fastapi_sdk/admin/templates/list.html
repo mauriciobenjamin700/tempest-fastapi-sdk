@@ -6,13 +6,13 @@
   <header class="tempest-admin-list__header">
     <div class="tempest-admin-page-title">
       <h1>{{ admin.get_verbose_name_plural() }}</h1>
-      <span class="tempest-admin-count">{{ pagination.total }} record{{ pagination.total|pluralize }}</span>
+      <span class="tempest-admin-count">{{ tn("list.records", pagination.total) }}</span>
     </div>
     <div class="tempest-admin-list__actions">
-      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">Export CSV</a>
-      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
-      {% if admin.can_import and admin.can_create %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_import', slug=admin.get_slug()) }}">Import CSV</a>{% endif %}
-      {% if can_create %}<a class="tempest-admin-btn tempest-admin-list__new" href="{{ new_url }}">+ {{ new_label or ("New " ~ admin.get_verbose_name()) }}</a>{% endif %}
+      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">{{ t("list.export_csv") }}</a>
+      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">{{ t("list.export_json") }}</a>
+      {% if admin.can_import and admin.can_create %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_import', slug=admin.get_slug()) }}">{{ t("list.import_csv") }}</a>{% endif %}
+      {% if can_create %}<a class="tempest-admin-btn tempest-admin-list__new" href="{{ new_url }}">+ {{ new_label or t("list.new", model=admin.get_verbose_name()) }}</a>{% endif %}
     </div>
   </header>
   {% if flash %}
@@ -21,14 +21,14 @@
   <div class="tempest-admin-list__toolbar">
     <form method="get" class="tempest-admin-list__filters">
       {% if admin.search_fields %}
-      <input type="search" name="q" value="{{ query.q or '' }}" placeholder="Search…" aria-label="Search">
+      <input type="search" name="q" value="{{ query.q or '' }}" placeholder="{{ t('common.search_placeholder') }}" aria-label="{{ t('common.search') }}">
       {% endif %}
       {% for f in filters %}
       <label>
         <span>{{ f.label }}</span>
         {% if f.type == 'select' %}
         <select name="filter_{{ f.field }}">
-          <option value="">— any —</option>
+          <option value="">{{ t("list.any") }}</option>
           {% for option in f.options %}
           <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
             {{ option.label }}
@@ -37,8 +37,11 @@
         </select>
         {% elif f.type == 'daterange' %}
         <span class="tempest-admin-list__daterange">
-          <input type="date" name="filter_{{ f.field }}_from" value="{{ f.value_from }}" aria-label="{{ f.label }} from">
-          <input type="date" name="filter_{{ f.field }}_to" value="{{ f.value_to }}" aria-label="{{ f.label }} to">
+          <input type="date" name="filter_{{ f.field }}_from" value="{{ f.value_from }}" aria-label="{{ t('list.date_from', label=f.label) }}">
+          <input type="date" name="filter_{{ f.field }}_to" value="{{ f.value_to }}" aria-label="{{ t('list.date_to', label=f.label) }}">
+        </span>
+        <span class="tempest-admin-list__shortcuts">
+          {% for shortcut in f.shortcuts %}<a class="tempest-admin-list__shortcut{% if shortcut.active %} tempest-admin-list__shortcut--active{% endif %}" href="{{ shortcut.url }}"{% if shortcut.active %} aria-current="true"{% endif %}>{{ shortcut.label }}</a>{% endfor %}
         </span>
         {% else %}
         <input type="text" name="filter_{{ f.field }}" value="{{ f.value }}">
@@ -46,12 +49,12 @@
       </label>
       {% endfor %}
       {% if admin.search_fields or admin.list_filter %}
-      <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Apply</button>
+      <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">{{ t("list.apply") }}</button>
       {% endif %}
     </form>
   </div>
   {% if lens_tabs %}
-  <nav class="tempest-admin-lenses" aria-label="Lenses">
+  <nav class="tempest-admin-lenses" aria-label="{{ t('list.lenses') }}">
     {% for tab in lens_tabs %}
     <a class="tempest-admin-lens{% if tab.active %} tempest-admin-lens--active{% endif %}" href="{{ tab.url }}">{{ tab.label }}</a>
     {% endfor %}
@@ -63,19 +66,19 @@
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     {% if submission_nonce %}<input type="hidden" name="submission_nonce" value="{{ submission_nonce }}">{% endif %}
     <div class="tempest-admin-bulk__bar">
-      <select name="action" aria-label="Bulk action">
+      <select name="action" aria-label="{{ t('list.bulk_action') }}">
         {% for value, label, confirm_text in bulk_actions %}
         <option value="{{ value }}" data-confirm="{{ confirm_text }}">{{ label }}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Apply to selected</button>
+      <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">{{ t("list.apply_selected") }}</button>
     </div>
   {% endif %}
     <div class="tempest-admin-table-wrap">
       <table class="tempest-admin-list__table">
         <thead>
           <tr>
-            {% if bulk_actions %}<th class="tempest-admin-list__check"><input type="checkbox" data-select-all aria-label="Select all"></th>{% endif %}
+            {% if bulk_actions %}<th class="tempest-admin-list__check"><input type="checkbox" data-select-all aria-label="{{ t('list.select_all') }}"></th>{% endif %}
             {% for column in columns %}
             <th>
               {% if column in sort_state %}
@@ -87,21 +90,21 @@
               {% else %}{{ column | field_label }}{% endif %}
             </th>
             {% endfor %}
-            <th class="tempest-admin-list__rowaction"><span class="tempest-admin-sr">Actions</span></th>
+            <th class="tempest-admin-list__rowaction"><span class="tempest-admin-sr">{{ t("list.actions") }}</span></th>
           </tr>
         </thead>
         <tbody>
           {% for row in rows %}
           <tr>
-            {% if bulk_actions %}<td class="tempest-admin-list__check"><input type="checkbox" name="ids" value="{{ row.pk }}" data-row-check aria-label="Select row"></td>{% endif %}
+            {% if bulk_actions %}<td class="tempest-admin-list__check"><input type="checkbox" name="ids" value="{{ row.pk }}" data-row-check aria-label="{{ t('list.select_row') }}"></td>{% endif %}
             {% set detail_url = url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) %}
             {% for column in columns %}<td>{% if loop.first %}<a class="tempest-admin-list__primary" href="{{ detail_url }}">{{ cell(row.values[column]) }}</a>{% else %}{{ cell(row.values[column]) }}{% endif %}</td>{% endfor %}
             <td class="tempest-admin-list__rowaction">
-              <a href="{{ detail_url }}">View</a>
+              <a href="{{ detail_url }}">{{ t("common.view") }}</a>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="{{ ncols }}" class="tempest-admin-empty">No records.</td></tr>
+          <tr><td colspan="{{ ncols }}" class="tempest-admin-empty">{{ t("list.empty") }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -121,13 +124,13 @@
   </script>
   {% endif %}
   {% if pagination.pages > 1 %}
-  <nav class="tempest-admin-list__pagination" aria-label="Pagination">
+  <nav class="tempest-admin-list__pagination" aria-label="{{ t('common.pagination') }}">
     {% if pagination.page > 1 %}
-    <a href="?{{ pagination.query_for(pagination.page - 1) }}">← Prev</a>
+    <a href="?{{ pagination.query_for(pagination.page - 1) }}">← {{ t("common.prev") }}</a>
     {% endif %}
-    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    <span>{{ t("common.page_of", page=pagination.page, pages=pagination.pages) }}</span>
     {% if pagination.page < pagination.pages %}
-    <a href="?{{ pagination.query_for(pagination.page + 1) }}">Next →</a>
+    <a href="?{{ pagination.query_for(pagination.page + 1) }}">{{ t("common.next") }} →</a>
     {% endif %}
   </nav>
   {% endif %}

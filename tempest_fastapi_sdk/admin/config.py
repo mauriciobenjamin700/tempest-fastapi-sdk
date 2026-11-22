@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+import logging
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy import ColumnElement
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import operators
@@ -30,6 +32,8 @@ if TYPE_CHECKING:
 
     from tempest_fastapi_sdk.utils.storage_backends import UploadStorage
 
+logger = logging.getLogger(__name__)
+
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 FieldRef = InstrumentedAttribute[Any] | str
@@ -48,6 +52,26 @@ EditValidator = Callable[[Any, Mapping[str, Any]], Mapping[str, str]]
 ReadonlyFieldsFor = Callable[[Any], Sequence[FieldRef]]
 """``(row) -> fields``: the columns locked on this row's edit form, on top of
 ``readonly_fields``."""
+
+AdminRowScope = Callable[
+    [Any, "AdminModel[Any]"],
+    "ColumnElement[bool] | Awaitable[ColumnElement[bool]]",
+]
+"""``(principal, admin) -> condition``: the rows of ``admin.model`` the
+signed-in principal may reach, as a SQLAlchemy boolean clause. Every row is
+``sqlalchemy.true()``, said explicitly; ``None`` (a forgotten ``return``) is
+refused with :class:`AdminRowScopeError`. Sync or async."""
+
+
+class AdminRowScopeError(RuntimeError):
+    """A ``row_scope`` returned something that is not a SQLAlchemy clause.
+
+    Raised instead of treating the value as "every row": a scope function
+    that forgets its ``return`` hands back ``None``, and reading that as
+    unrestricted would open every tenant's rows. The request fails with a
+    ``500`` and the error is logged with the model name.
+    """
+
 
 ChoiceSource = type[Enum] | Sequence[str | tuple[str, str]]
 """The fixed values of a ``choices`` field: an ``Enum`` class, or a sequence
@@ -403,6 +427,25 @@ class AdminModel(Generic[ModelT]):
             ``NOT NULL`` column with no default while ``can_create`` is
             on: the form could never fill it, and every create would end
             in ``Conflict creating <Model>``.
+        row_scope (AdminRowScope | None): Called with the signed-in principal and this
+            admin on every request that reads or writes a row of :attr:`model`; the
+            clause it returns is ANDed into every such query — list, count, export,
+            detail, edit, delete, bulk and custom actions, autocomplete and foreign-key
+            options where this model is the target, inlines where it is the child,
+            upload downloads and the CSV import. Return ``sqlalchemy.true()`` to leave
+            the rows unrestricted; any value that is not a SQLAlchemy clause — ``None``
+            included — raises :class:`AdminRowScopeError` (fail closed). A row outside
+            the clause answers ``404``, the same as a row that does not exist, so the
+            response never confirms it is there. A row the principal creates, edits or
+            imports must still match the clause after the write, or the write is rolled
+            back and refused. For a support role that sees only its own company's rows::
+
+                def own_company(user: UserModel, admin: AdminModel[Any]) -> Any:
+                    if user.is_superuser:
+                        return true()
+                    if user.company_id is None:
+                        return false()
+                    return TicketModel.company_id == user.company_id
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -449,6 +492,7 @@ class AdminModel(Generic[ModelT]):
         upload_accept: Mapping[FieldRef, Sequence[str]] | None = None,
         validate_edit: EditValidator | None = None,
         readonly_fields_for: ReadonlyFieldsFor | None = None,
+        row_scope: AdminRowScope | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -509,6 +553,7 @@ class AdminModel(Generic[ModelT]):
             )
         self.validate_edit: EditValidator | None = validate_edit
         self.readonly_fields_for: ReadonlyFieldsFor | None = readonly_fields_for
+        self.row_scope: AdminRowScope | None = row_scope
         if audit_model is not None and (
             not isinstance(audit_model, type)
             or not issubclass(audit_model, BaseAuditLogModel)
@@ -693,6 +738,40 @@ class AdminModel(Generic[ModelT]):
             if lens.slug() == slug:
                 return lens
         return None
+
+    async def scope_for(self, principal: Any) -> ColumnElement[bool] | None:
+        """Resolve :attr:`row_scope` for ``principal``.
+
+        Args:
+            principal (Any): The signed-in admin principal.
+
+        Returns:
+            ColumnElement[bool] | None: The clause the principal's rows must
+            match, or ``None`` when the admin declares no ``row_scope``.
+
+        Raises:
+            AdminRowScopeError: When the scope returns (or awaits to)
+                anything that is not a SQLAlchemy clause, ``None`` included;
+                logged with the model name before it propagates.
+        """
+        if self.row_scope is None:
+            return None
+        result: Any = self.row_scope(principal, self)
+        if not isinstance(result, ColumnElement) and isinstance(result, Awaitable):
+            result = await result
+        if not isinstance(result, ColumnElement):
+            logger.error(
+                "AdminModel(%s).row_scope returned %r instead of a SQLAlchemy "
+                "clause; refusing the request (return sqlalchemy.true() for "
+                "every row)",
+                self.model.__name__,
+                result,
+            )
+            raise AdminRowScopeError(
+                f"row_scope of {self.model.__name__} returned {type(result).__name__}, "
+                "not a SQLAlchemy clause; return sqlalchemy.true() for every row"
+            )
+        return cast("ColumnElement[bool]", result)
 
     @property
     def creates(self) -> bool:
@@ -1092,6 +1171,8 @@ def _pluralize_name(name: str) -> str:
 
 __all__: list[str] = [
     "AdminModel",
+    "AdminRowScope",
+    "AdminRowScopeError",
     "ChoiceSource",
     "EditValidator",
     "FieldRef",

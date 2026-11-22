@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ locale }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -21,7 +21,7 @@
   <header class="tempest-admin-header">
     <div class="tempest-admin-header__left">
       {% if user %}
-      <label for="tempest-nav-toggle" class="tempest-admin-burger" aria-label="Toggle navigation">
+      <label for="tempest-nav-toggle" class="tempest-admin-burger" aria-label="{{ t('nav.toggle') }}">
         <span></span><span></span><span></span>
       </label>
       {% endif %}
@@ -43,10 +43,10 @@
         <span class="tempest-admin-avatar" aria-hidden="true">{{ (user_display or '?')[:1] | upper }}</span>
         <span class="tempest-admin-header__username">{{ user_display }}</span>
       </span>
-      {% if site.site_url %}<a href="{{ site.site_url }}">View site</a>{% endif %}
+      {% if site.site_url %}<a href="{{ site.site_url }}">{{ t("nav.view_site") }}</a>{% endif %}
       <form method="post" action="{{ url_for('admin_logout') }}" class="tempest-admin-header__logout">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-        <button type="submit" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm">Logout</button>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm">{{ t("nav.logout") }}</button>
       </form>
     </nav>
     {% endif %}
@@ -56,13 +56,13 @@
     {% set path = request.url.path %}
     <label for="tempest-nav-toggle" class="tempest-admin-scrim" aria-hidden="true"></label>
     <aside class="tempest-admin-sidebar">
-      <nav class="tempest-admin-sidebar__nav" aria-label="Admin navigation">
+      <nav class="tempest-admin-sidebar__nav" aria-label="{{ t('nav.label') }}">
         <a href="{{ nav_index_url }}"
            class="tempest-admin-sidebar__link{% if path == nav_index_url %} tempest-admin-sidebar__link--active{% endif %}">
-          Dashboard
+          {{ t("nav.dashboard") }}
         </a>
         {% if nav_models %}
-        <span class="tempest-admin-sidebar__heading">Models</span>
+        <span class="tempest-admin-sidebar__heading">{{ t("nav.models") }}</span>
         {% for entry in nav_models %}
         <a href="{{ entry.url }}"
            class="tempest-admin-sidebar__link{% if path.startswith(entry.url) %} tempest-admin-sidebar__link--active{% endif %}">
@@ -71,7 +71,7 @@
         {% endfor %}
         {% endif %}
         {% if nav_metrics_areas %}
-        <span class="tempest-admin-sidebar__heading">Metrics</span>
+        <span class="tempest-admin-sidebar__heading">{{ t("nav.metrics") }}</span>
         {% for entry in nav_metrics_areas %}
         <a href="{{ entry.url }}"
            class="tempest-admin-sidebar__link{% if path == entry.url %} tempest-admin-sidebar__link--active{% endif %}">
@@ -80,7 +80,7 @@
         {% endfor %}
         {% endif %}
         {% if nav_location_maps %}
-        <span class="tempest-admin-sidebar__heading">Maps</span>
+        <span class="tempest-admin-sidebar__heading">{{ t("nav.maps") }}</span>
         {% for entry in nav_location_maps %}
         <a href="{{ entry.url }}"
            class="tempest-admin-sidebar__link{% if path == entry.url %} tempest-admin-sidebar__link--active{% endif %}">
@@ -89,30 +89,30 @@
         {% endfor %}
         {% endif %}
         {% if nav_logs_url or nav_sql_url or nav_tasks_url or nav_storage_url %}
-        <span class="tempest-admin-sidebar__heading">System</span>
+        <span class="tempest-admin-sidebar__heading">{{ t("nav.system") }}</span>
         {% endif %}
         {% if nav_logs_url %}
         <a href="{{ nav_logs_url }}"
            class="tempest-admin-sidebar__link{% if path == nav_logs_url %} tempest-admin-sidebar__link--active{% endif %}">
-          Logs
+          {{ t("nav.logs") }}
         </a>
         {% endif %}
         {% if nav_sql_url %}
         <a href="{{ nav_sql_url }}"
            class="tempest-admin-sidebar__link{% if path == nav_sql_url %} tempest-admin-sidebar__link--active{% endif %}">
-          SQL console
+          {{ t("nav.sql") }}
         </a>
         {% endif %}
         {% if nav_tasks_url %}
         <a href="{{ nav_tasks_url }}"
            class="tempest-admin-sidebar__link{% if path.startswith(nav_tasks_url) %} tempest-admin-sidebar__link--active{% endif %}">
-          Tasks
+          {{ t("nav.tasks") }}
         </a>
         {% endif %}
         {% if nav_storage_url %}
         <a href="{{ nav_storage_url }}"
            class="tempest-admin-sidebar__link{% if path.startswith(nav_storage_url) %} tempest-admin-sidebar__link--active{% endif %}">
-          Storage
+          {{ t("nav.storage") }}
         </a>
         {% endif %}
       </nav>

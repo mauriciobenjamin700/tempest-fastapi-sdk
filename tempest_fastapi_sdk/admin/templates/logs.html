@@ -1,39 +1,39 @@
 {% extends "base.html" %}
-{% block title %}Logs · {{ site.title }}{% endblock %}
+{% block title %}{{ t("nav.logs") }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-logs">
   <div class="tempest-admin-list__header">
-    <h1>Application logs</h1>
+    <h1>{{ t("logs.heading") }}</h1>
     <div class="tempest-admin-logs__actions">
-      <a class="tempest-admin-logs__export tempest-admin-logs__refresh" href="{{ refresh_url }}" title="Reload the newest records with the current filter">Refresh</a>
+      <a class="tempest-admin-logs__export tempest-admin-logs__refresh" href="{{ refresh_url }}" title="{{ t('logs.refresh_title') }}">{{ t("logs.refresh") }}</a>
       {% if available %}
-      <a class="tempest-admin-logs__export" href="{{ export_md_url }}" download>Export .md</a>
-      <a class="tempest-admin-logs__export" href="{{ export_json_url }}" download>Export .json</a>
+      <a class="tempest-admin-logs__export" href="{{ export_md_url }}" download>{{ t("logs.export_md") }}</a>
+      <a class="tempest-admin-logs__export" href="{{ export_json_url }}" download>{{ t("logs.export_json") }}</a>
       {% endif %}
     </div>
   </div>
-  <p class="tempest-admin-logs__read-at">Read at <time>{{ read_at }}</time></p>
+  <p class="tempest-admin-logs__read-at">{{ t("logs.read_at") }} <time>{{ read_at }}</time></p>
 
   {% if not available %}
   <p class="tempest-admin-logs__empty">
-    No log files found. File logging is written by
-    <code>configure_logging(log_dir=...)</code>; once it runs, records show up here.
+    {{ t("logs.no_files.lead") }}
+    <code>configure_logging(log_dir=...)</code>{{ t("logs.no_files.tail") }}
   </p>
   {% else %}
   <form method="get" action="{{ nav_logs_url }}" class="tempest-admin-list__filters">
     <label>
-      <span>Source</span>
+      <span>{{ t("logs.source") }}</span>
       <select name="source">
         {% for src in log_sources %}
-        <option value="{{ src }}"{% if src == current_source %} selected{% endif %}>{{ src }}</option>
+        <option value="{{ src }}"{% if src == current_source %} selected{% endif %}>{% if src == "all" %}{{ t("logs.source_all") }}{% else %}{{ src }}{% endif %}</option>
         {% endfor %}
       </select>
     </label>
     <label>
-      <span>Search message</span>
-      <input type="search" name="q" value="{{ query }}" placeholder="substring…">
+      <span>{{ t("logs.search") }}</span>
+      <input type="search" name="q" value="{{ query }}" placeholder="{{ t('logs.search_placeholder') }}">
     </label>
-    <button type="submit">Filter</button>
+    <button type="submit">{{ t("common.filter") }}</button>
   </form>
 
   {% if entries %}
@@ -41,10 +41,10 @@
     <table class="tempest-admin-list__table tempest-admin-logs__table">
       <thead>
         <tr>
-          <th>Timestamp</th>
-          <th>Level</th>
-          <th>Logger</th>
-          <th>Message</th>
+          <th>{{ t("logs.col.timestamp") }}</th>
+          <th>{{ t("logs.col.level") }}</th>
+          <th>{{ t("logs.col.logger") }}</th>
+          <th>{{ t("logs.col.message") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -55,13 +55,13 @@
           {% if entry.get(key) is not none %}{% set _ = ctx.append((key, entry.get(key))) %}{% endif %}
         {% endfor %}
         <tr>
-          <td class="tempest-admin-logs__ts" data-label="Timestamp">{{ entry.get("timestamp", "") }}</td>
-          <td data-label="Level">
+          <td class="tempest-admin-logs__ts" data-label="{{ t('logs.col.timestamp') }}">{{ entry.get("timestamp", "") }}</td>
+          <td data-label="{{ t('logs.col.level') }}">
             {% set level = (entry.get("level", "") or "")|lower %}
             <span class="tempest-log-badge tempest-log-badge--{{ level }}">{{ entry.get("level", "—") }}</span>
           </td>
-          <td class="tempest-admin-logs__logger" data-label="Logger">{{ entry.get("logger", entry.get("name", "—")) }}</td>
-          <td class="tempest-admin-logs__msg" data-label="Message">
+          <td class="tempest-admin-logs__logger" data-label="{{ t('logs.col.logger') }}">{{ entry.get("logger", entry.get("name", "—")) }}</td>
+          <td class="tempest-admin-logs__msg" data-label="{{ t('logs.col.message') }}">
             {% if traceback %}
             {# The whole record is the toggle: clicking anywhere on the message
                reveals the traceback. Collapsed by default so a page of 500s
@@ -77,7 +77,7 @@
                   {% endfor %}
                 </ul>
                 {% endif %}
-                <span class="tempest-admin-logs__trace-hint">Traceback</span>
+                <span class="tempest-admin-logs__trace-hint">{{ t("logs.traceback") }}</span>
               </summary>
               <pre><code>{{ traceback }}</code></pre>
             </details>
@@ -100,21 +100,19 @@
 
   <div class="tempest-admin-list__pagination">
     {% if pagination.page > 1 %}
-    <a href="?{{ pagination.query_for(pagination.page - 1) }}">&laquo; Prev</a>
+    <a href="?{{ pagination.query_for(pagination.page - 1) }}">&laquo; {{ t("common.prev") }}</a>
     {% endif %}
-    <span>Page {{ pagination.page }} of {{ pagination.pages }} ({{ pagination.total }} records)</span>
+    <span>{{ t("logs.page_of_total", page=pagination.page, pages=pagination.pages, total=pagination.total) }}</span>
     {% if pagination.page < pagination.pages %}
-    <a href="?{{ pagination.query_for(pagination.page + 1) }}">Next &raquo;</a>
+    <a href="?{{ pagination.query_for(pagination.page + 1) }}">{{ t("common.next") }} &raquo;</a>
     {% endif %}
   </div>
 
   <p class="tempest-admin-logs__note">
-    An export covers every record matching the current filter, newest first, up to
-    {{ export_max }} — not just this page. Markdown wraps each traceback in a fenced
-    block so it survives a paste into an issue; JSON ships the records verbatim.
+    {{ t("logs.export_note", max=export_max) }}
   </p>
   {% else %}
-  <p class="tempest-admin-logs__empty">No records match the current filter.</p>
+  <p class="tempest-admin-logs__empty">{{ t("logs.empty_filter") }}</p>
   {% endif %}
   {% endif %}
 </section>
