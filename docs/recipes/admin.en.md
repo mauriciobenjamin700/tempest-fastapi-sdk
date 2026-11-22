@@ -914,6 +914,46 @@ first.
     `audit_model`, the detail view is unchanged (only the
     `created_by`/`updated_by` stamps).
 
+### Recent activity on the dashboard (`recent_activity=`)
+
+The timeline above is per record. To see what changed across the panel
+without opening record after record, turn the dashboard feed on in the
+`AdminSite`:
+
+```python
+from tempest_fastapi_sdk import AdminModel, AdminSite
+
+from src.db.models import AuditLog, OrderModel, TicketModel
+
+site = AdminSite(title="Shop", recent_activity=20)
+site.register(AdminModel(model=OrderModel, audit_model=AuditLog))
+site.register(AdminModel(model=TicketModel, audit_model=AuditLog))
+```
+
+The dashboard gains a **Recent activity** block: the last 20 entries of
+every model that declares `audit_model`, merged newest first, each with
+the action, the model, the record's label (a link to its detail), the date
+and the author.
+
+The feed follows the same rules as the rest of the panel:
+
+- a model the principal has no `VIEW` on in the `access_policy` is left out;
+- an entry for a row outside the model's `row_scope` is left out — its
+  label too. On a scoped model, an entry for a row that no longer exists
+  (a `delete`) goes as well, since nothing proves it was reachable; with no
+  scope it shows without a link;
+- the author follows the detail's audit panel rule: with a `row_scope` on
+  the user model, the name shows only for users the principal reaches;
+  otherwise the id.
+
+!!! info "Off by default — the cost"
+    `recent_activity=None` is the default because the feed costs queries on
+    **every** dashboard load: one per audit table, one per audited model (to
+    keep only the rows in scope and read their labels) and one author lookup
+    per distinct author. To make up for the entries the scope hides, the
+    panel reads up to `10 × recent_activity` entries per table; when the
+    scope hides more than that among the newest, the feed shows fewer than
+    asked.
 ### Undo from the history (Restore)
 
 Every `update` entry in the timeline gets a **Restore** link. It writes
@@ -1052,6 +1092,125 @@ becomes a new child, and a checked delete box removes the row.
       per-field message and nothing inserted.
     - Needs the child's `AdminModel` + `can_edit` (and `can_delete` to
       delete). Up to 50 rows per inline.
+
+## Many-to-many in the form (`m2m_fields=`)
+
+A `relationship(..., secondary=...)` — an article's tags, a user's roles —
+is not a column, so the form did not show it. Declare it in `m2m_fields`:
+
+```python
+from sqlalchemy import Column, ForeignKey, String, Table
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from tempest_fastapi_sdk import AdminModel, BaseModel
+
+from src.admin import site
+
+article_tags = Table(
+    "article_tags",
+    BaseModel.metadata,
+    Column("article_id", ForeignKey("articles.id"), primary_key=True),
+    Column("tag_id", ForeignKey("tags.id"), primary_key=True),
+)
+
+
+class Tag(BaseModel):
+    __tablename__ = "tags"
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class Article(BaseModel):
+    __tablename__ = "articles"
+    title: Mapped[str] = mapped_column(String(120))
+    tags: Mapped[list[Tag]] = relationship(secondary=article_tags)
+
+
+site.register(AdminModel(model=Tag, search_fields=[Tag.name]))
+site.register(AdminModel(model=Article, m2m_fields=[Article.tags]))
+```
+
+Create and edit gain a `<select multiple>` of the tags (labelled like the
+foreign-key `<select>`: the target admin's first `search_fields`), and the
+detail lists the linked tags, linking to them when the target has an admin.
+Saving **replaces the set** in the same transaction as the row: what was
+not selected is unlinked, and when the save is refused (validation, scope,
+conflict) no link changes.
+
+With a scope, the rule is the foreign key's on writes:
+
+- the options are only the rows the principal reaches through the
+  target's `row_scope` (and need `VIEW` on it — without `VIEW` the field is
+  not shown, and the stored links stay as they are);
+- a link the operator does **not** reach is not shown in the form and
+  **stays** after the save — they do not delete what they cannot see;
+- an id posted outside the scope, or one that does not exist, refuses the
+  field with `Select a valid choice; that record does not exist.`, the same
+  error, so a forged `POST` learns nothing about another tenant's ids.
+
+!!! info "Checked at construction"
+    A name in `m2m_fields` that is not a `relationship` with `secondary`
+    (a column, a one-to-many) raises `ValueError` when the `AdminModel` is
+    built. One-to-many has
+    [`inlines=`](#inlines-1-n-children-on-the-detail-inlines); many-to-one
+    is already the foreign-key `<select>`. The options stop at
+    `FK_OPTION_CAP` (1000) rows, read with `LIMIT` in the SQL; a reachable
+    link the cap left out comes as one more option, already selected, like
+    the single foreign key — saving without touching the field keeps it.
+    Those extra options stop at the cap too, read with the scope in the same
+    query; a link that still does not show stays stored: the save only
+    unlinks what the form offered and came back unselected.
+
+!!! info "Locked field"
+    An `m2m_fields` name in `readonly_fields`, or in what
+    `readonly_fields_for` returns for the row, leaves the form and the save
+    does not touch its links. The form the history's **Restore** opens
+    carries the current links like the edit form, so restoring another
+    field unlinks nothing.
+
+## Related counts on the list (`related_counts=`)
+
+On the customer list, how many orders does each one have? Declare the
+**child's** foreign-key column on the **parent's** admin:
+
+```python
+from tempest_fastapi_sdk import AdminModel, RelatedCount
+
+from src.admin import site
+from src.db.models import CustomerModel, OrderModel
+
+
+site.register(
+    AdminModel(
+        model=CustomerModel,
+        related_counts=[RelatedCount(OrderModel.customer_id, label="Orders")],
+    )
+)
+site.register(AdminModel(model=OrderModel))
+```
+
+The list gains an **Orders** column with the count per row, and each number
+links to the order list already filtered by the customer
+(`?filter_customer_id=<id>`) — the filter applies even with `customer_id`
+outside the orders' `list_filter`, shows as a **Filtered by** chip with
+**Clear filter**, and the filtered list's export honours it too.
+
+A whole page's counts come from **one** query,
+`SELECT customer_id, COUNT(*) ... WHERE customer_id IN (<page ids>)
+GROUP BY customer_id`, never one per row — the test counts the statements
+of a 25-row page and finds a single `GROUP BY`.
+
+- The query carries the child admin's `row_scope`: the number counts only
+  the orders the principal reaches.
+- Without `VIEW` on the child, the column goes — the number is that
+  model's data.
+- The link exists only when the child has a registered admin; a child
+  without one shows the count without a link. When the child's admin hides
+  the foreign-key column (`exclude_fields`, `__secret_columns__`) there is
+  no link either, and `?filter_<fk>=` is ignored on the child's list:
+  filtering on a column the screen never shows would answer, through the
+  count, what it holds.
+- `RelatedCount` takes the mapped attribute (so it knows the child model);
+  the column must carry a `ForeignKey` to the parent's table, or the
+  `AdminModel` raises `ValueError` at construction.
 
 ## Dashboard: business-metric cards (`dashboard_cards=`)
 
@@ -1437,6 +1596,133 @@ confirm `POST` refuses the same way: nothing is ever half imported.
     `can_import` defaults to `False` and requires `can_create` (importing
     is bulk creation). File-upload columns are not imported from CSV.
 
+### Export and import `.xlsx`
+
+With the `[spreadsheet]` extra installed, the list gains **Export XLSX**
+next to CSV and JSON, and the import takes `.xlsx` as well as `.csv`:
+
+```bash
+uv add "tempest-fastapi-sdk[admin,spreadsheet]"
+```
+
+- **Export.** The CSV's rows — search, filters, `row_scope` and the
+  `export_max_rows` cap — in one sheet, with the header frozen. A datetime
+  is written as the **same ISO 8601 text in UTC** the CSV holds; numbers
+  and booleans stay numbers and booleans. A text cell starting with `=`
+  stays text (`SheetWriter` writes it as a string), so `=HYPERLINK(...)`
+  typed into a name does not become a formula in the file. A control
+  character XML cannot carry (`\x00`-`\x08`, `\x0b`, `\x0c`,
+  `\x0e`-`\x1f`) is removed from the cell instead of failing the export
+  with a `500`.
+- **Import.** An `.xlsx` (by name, or because it opens as a ZIP) is read
+  from its **first sheet**, row 1 as the header, and turned into the CSV
+  text the import already validates: from there it is the same path —
+  preview, `row_scope`, foreign keys, signed confirmation. What gets signed
+  is that CSV, so the 512 KiB cap applies to the upload **and** to the CSV
+  it becomes. A boolean becomes `true`/`false`, a datetime ISO 8601 (with
+  no offset, as the sheet stores it, read in the model's zone like the
+  CSV), and `3.0` becomes `3`.
+- **Formula with no calculated value.** A sheet written by a library
+  (openpyxl, pandas) stores the formula but not its result, and the cell
+  would read empty. The preview refuses the file naming the cells —
+  `A3: formula with no calculated value...`; opening and saving it in Excel
+  or LibreOffice stores the value. A formula Excel evaluated to empty text
+  (`=IF(A2="","",...)`) is valid and comes in empty, and only the columns
+  with a header in row 1 are checked: a formula in a column the import
+  ignores does not refuse the file.
+- **Read limits.** The sheet is read with a cap of
+  `ADMIN_XLSX_IMPORT_MAX_ROWS` rows (`ADMIN_IMPORT_MAX_BYTES // 16`,
+  32 768) and `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` decompressed
+  (32 × the cap, 16 MiB), proportional to the CSV cap; past them the
+  preview answers `400` naming both limits. A sheet of rows under 16 bytes
+  of CSV may be refused although it would fit in 512 KiB.
+
+!!! info "Without the extra"
+    openpyxl is only loaded when an `.xlsx` is asked for. Without the extra
+    the **Export XLSX** button is not rendered, the upload's `accept` goes
+    back to CSV only, and the routes answer with the message that names the
+    package: the export redirects to the list with
+    `Exporting .xlsx needs the spreadsheet extra: pip install "tempest-fastapi-sdk[spreadsheet]"`
+    and the import preview answers `400` with the equivalent.
+
+## Duplicate a record (`can_duplicate=True`)
+
+To create a record that resembles an existing one, `can_duplicate=True`
+puts **Duplicate** on the detail:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import ProductModel
+
+
+site.register(AdminModel(model=ProductModel, can_duplicate=True))
+```
+
+The button opens the **create** form filled with the record's values,
+minus what a copy must not carry: the identity, the unique columns
+(`unique=True`, `UniqueConstraint` and unique indexes — composite ones
+included), passwords, uploads, secret columns and the audit columns
+(`created_at`, `updated_at`, `created_by`, `updated_by`). The
+[`m2m_fields`](#many-to-many-in-the-form-m2m_fields) links the principal
+reaches come selected.
+
+The form posts to the ordinary create, so the copy goes through **every**
+check a new record does — validation, foreign keys in scope, `row_scope`
+after the write. It needs `CREATE` (and `VIEW`, since it reads the source),
+and the source must be in scope: outside it, `404`. It needs the column
+form: with `can_create=False` or a `create_handler`, construction raises
+`ValueError`.
+
+## Bulk edit of one field (`bulk_edit_fields=`)
+
+Archiving 40 orders at once without opening each one:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import OrderModel
+
+
+site.register(
+    AdminModel(
+        model=OrderModel,
+        bulk_edit_fields=[OrderModel.status, OrderModel.assignee_id],
+        choices={OrderModel.status: ["open", "shipped", "archived"]},
+    )
+)
+```
+
+The selection's action menu gains **Edit field**. Check the rows, pick the
+action, pick the field (a step skipped when there is only one) and type the
+value into **the field's own widget** — the `choices` `<select>`, the
+foreign-key one. The value is validated like the edit form: type, required,
+`choices`, the foreign key within the target's scope, each row's
+`validate_edit`, and a field that `readonly_fields_for` locks on any
+selected row refuses the whole edit.
+
+The write is **one** `UPDATE ... WHERE id IN (...) AND <scope>` in a
+transaction:
+
+- only the selected ids the principal reaches go in;
+- when the new value takes any row out of the scope, the whole transaction
+  is rolled back and the list shows the scope warning;
+- with `audit_model`, each row gets its own `update` entry with its diff,
+  in the same transaction;
+- `updated_by` gets the operator and `updated_at` moves — an edit form
+  opened before reports the [conflict](#concurrent-edits-optimistic-lock).
+
+Needs `can_edit` and `EDIT`. The value step carries a single-use nonce:
+reloading the answer does not apply it again.
+
+!!! warning "No repository signals"
+    Like bulk activate/deactivate, the bulk edit is SQL Core: `PRE_SAVE` /
+    `POST_SAVE` handlers do not fire. Each name in `bulk_edit_fields` must be
+    an editable form column (not an upload, a password or `readonly_fields`),
+    checked at construction.
+
 ## Granular RBAC (`access_policy=`)
 
 By default, anyone who logs into the admin (`is_admin`) can do
@@ -1681,7 +1967,10 @@ tenant up in another table, for instance). The condition is ANDed into
   model is the target**, and the inline table when it is the **child**;
 - the editable inline formset (the parent and each child are read in
   scope);
-- the CSV import preview and confirm.
+- the CSV and `.xlsx` import preview and confirm, and the `.xlsx` export;
+- duplicate (the source is read in scope), bulk edit, the `m2m_fields`
+  options and links and the `related_counts` count (with the target's or
+  child's scope), and the recent-activity feed.
 
 A row outside the scope answers `404` — the same as a row that does not
 exist, so the response never confirms it is there. On delete and the
@@ -1723,6 +2012,11 @@ theirs there by changing `company_id`. The same applies to:
 - **bulk activate/deactivate**: if the new `is_active` takes any row out
   of the scope (a scope that filters on it), nothing changes and the list
   comes back with the warning.
+- **bulk edit** (`bulk_edit_fields=`): the same rule — the `UPDATE` carries
+  the scope in its `WHERE`, and a value that takes any row out of the scope
+  rolls the whole transaction back.
+- **many-to-many** (`m2m_fields=`): every posted id must be within the
+  target's scope, and a link the operator does not reach is kept.
 - **foreign keys**: on create, edit, inline or import, the value of a
   foreign key whose target model has a `row_scope` must be a row the
   principal reaches there. Outside the scope the field gets `Select a
@@ -3119,6 +3413,15 @@ control, `custom_css_url`.
   surface of the panel; `readonly_fields` only locks the write.
 - `display_timezone=` is what turns the datetime field into a widget: the
   screen reads and writes in the operator's zone, the column stays UTC.
+- `m2m_fields=` edits a `secondary` as a multi-select, and a link the
+  operator does not reach stays; `related_counts=` counts the children per
+  row with one `GROUP BY` per page.
+- `can_duplicate=True` opens the create form filled with the copy, and
+  `bulk_edit_fields=` applies one value to the whole selection in a single
+  `UPDATE`, rolled back when it takes a row out of the scope.
+- `AdminSite(recent_activity=N)` turns on the dashboard feed of the latest
+  audited changes; the `[spreadsheet]` extra adds `.xlsx` to the export and
+  the import.
 - `impersonate=` puts "Log in as" on the detail: the service provides the
   URL (`make_jwt_impersonation_handler` signs a short access token with
   `act`), the panel confirms, refuses an admin target, records and

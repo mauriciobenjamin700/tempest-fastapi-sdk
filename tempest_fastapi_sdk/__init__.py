@@ -109,6 +109,9 @@ if TYPE_CHECKING:
         OrderRef as OrderRef,
     )
     from tempest_fastapi_sdk.admin import (
+        RelatedCount as RelatedCount,
+    )
+    from tempest_fastapi_sdk.admin import (
         Threshold as Threshold,
     )
     from tempest_fastapi_sdk.admin import (
@@ -2467,6 +2470,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "FieldRef": "tempest_fastapi_sdk.admin",
     "Inline": "tempest_fastapi_sdk.admin",
     "Lens": "tempest_fastapi_sdk.admin",
+    "RelatedCount": "tempest_fastapi_sdk.admin",
     "MetricCard": "tempest_fastapi_sdk.admin",
     "MetricPartition": "tempest_fastapi_sdk.admin",
     "MetricTrend": "tempest_fastapi_sdk.admin",
@@ -3768,6 +3772,7 @@ __all__: list[str] = [
     "RedisWebAuthnChallengeStore",
     "RefreshSchema",
     "RegionEnum",
+    "RelatedCount",
     "RenameEnumTypeOp",
     "ReplaceEnumOp",
     "RepositorySignalEnum",

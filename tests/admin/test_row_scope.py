@@ -11,6 +11,7 @@ every case on the same data with no ``row_scope`` and expects it to fail.
 
 from __future__ import annotations
 
+import io
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
@@ -18,6 +19,7 @@ from pathlib import Path
 import pytest
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
+from openpyxl import load_workbook
 from sqlalchemy import true
 
 from tempest_fastapi_sdk import AdminModel, AsyncDatabaseManager
@@ -93,11 +95,31 @@ async def case_list(world: ScopeWorld) -> None:
 
 
 async def case_export(world: ScopeWorld) -> None:
-    """The CSV export holds only the principal's rows."""
+    """The CSV and XLSX exports hold only the principal's rows."""
     resp = await world.client.get(f"{TICKETS}/export.csv")
     assert resp.status_code == 200
     assert "TicketInside" in resp.text
     hidden("TicketOutside" not in resp.text, "foreign ticket exported")
+    sheet = await world.client.get(f"{TICKETS}/export.xlsx")
+    assert sheet.status_code == 200
+    names = [
+        row[0]
+        for row in load_workbook(io.BytesIO(sheet.content))
+        .worksheets[0]
+        .iter_rows(min_row=2, values_only=True)
+    ]
+    assert "TicketInside" in names
+    hidden("TicketOutside" not in names, "foreign ticket exported to xlsx")
+
+
+async def case_duplicate(world: ScopeWorld) -> None:
+    """Duplicating a foreign row is ``404``; an own row fills the create form."""
+    out = await world.client.get(f"{TICKETS}/{world.ids['ticket_out']}/duplicate")
+    hidden(out.status_code == 404, "foreign row duplicated")
+    hidden("TicketOutside" not in out.text, "foreign values in the copy")
+    inside = await world.client.get(f"{TICKETS}/{world.ids['ticket_in']}/duplicate")
+    assert inside.status_code == 200
+    assert 'value="TicketInside"' in inside.text
 
 
 async def case_create_form(world: ScopeWorld) -> None:
@@ -182,7 +204,10 @@ async def case_create_submit(world: ScopeWorld) -> None:
 
 
 async def case_bulk(world: ScopeWorld) -> None:
-    """A bulk delete touches only the selected rows the principal reaches."""
+    """Bulk delete and bulk edit touch only the rows the principal reaches.
+
+    The bulk edit that would move a row out of the scope is rolled back.
+    """
     resp = await world.client.post(
         f"{TICKETS}/bulk",
         data={
@@ -204,6 +229,36 @@ async def case_bulk(world: ScopeWorld) -> None:
     assert resp.status_code == 303
     inside = await world.ticket("in")
     assert inside is not None and inside.is_active is False
+    step = await world.client.post(
+        f"{TICKETS}/bulk",
+        data={
+            "csrf_token": world.csrf,
+            "action": "bulk_edit",
+            "ids": [str(world.ids["ticket_in"]), str(world.ids["ticket_out"])],
+        },
+    )
+    assert step.status_code == 200
+    hidden("1 row(s) selected." in step.text, "foreign ticket kept in the selection")
+    nonce = re.search(r'name="submission_nonce" value="([^"]+)"', step.text)
+    assert nonce is not None
+    moved = await world.client.post(
+        f"{TICKETS}/bulk",
+        data={
+            "csrf_token": world.csrf,
+            "action": "bulk_edit",
+            "ids": [str(world.ids["ticket_in"])],
+            "bulk_field": "company",
+            "bulk_input": "1",
+            "company": OTHER,
+            "submission_nonce": nonce.group(1),
+        },
+    )
+    assert moved.status_code == 303
+    inside = await world.ticket("in")
+    hidden(
+        inside is not None and inside.company == OWN,
+        "bulk edit moved a row out of the scope",
+    )
 
 
 async def case_upload_download(world: ScopeWorld) -> None:
@@ -375,6 +430,7 @@ CASES: dict[tuple[str, str], ScopeCase] = {
     ("GET", "/admin/m/{slug}/{identity}"): case_detail,
     ("GET", "/admin/m/{slug}/autocomplete/{field}"): case_autocomplete,
     ("GET", "/admin/m/{slug}/{identity}/edit"): case_edit_form,
+    ("GET", "/admin/m/{slug}/{identity}/duplicate"): case_duplicate,
     ("POST", "/admin/m/{slug}/{identity}/edit"): case_edit_submit,
     ("POST", "/admin/m/{slug}/{identity}/inlines/{child_slug}"): case_inline_submit,
     ("POST", "/admin/m/{slug}/{identity}/delete"): case_delete,

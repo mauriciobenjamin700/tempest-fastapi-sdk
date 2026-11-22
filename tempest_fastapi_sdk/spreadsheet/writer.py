@@ -380,6 +380,13 @@ class SheetWriter:
         ``.xlsx`` they are only a formula prefix when someone types them,
         and a stored string cell is never re-parsed.
 
+        Characters XML 1.0 cannot carry (``\x00``-``\x08``, ``\x0b``,
+        ``\x0c``, ``\x0e``-``\x1f``) are removed from a ``str`` first,
+        with ``openpyxl``'s own ``ILLEGAL_CHARACTERS_RE``: left in, the cell
+        assignment raises ``IllegalCharacterError`` and one stray byte in a
+        stored value fails the whole document. Tab, newline and carriage
+        return are legal and kept.
+
         Args:
             row (int): 1-based row.
             column (int): 1-based column.
@@ -390,6 +397,10 @@ class SheetWriter:
         """
         if isinstance(value, Formula):
             return self.sheet.cell(row=row, column=column, value=value.expression)
+        if isinstance(value, str):
+            from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+
+            value = ILLEGAL_CHARACTERS_RE.sub("", value)
         cell = self.sheet.cell(row=row, column=column, value=value)
         if isinstance(value, str) and value.startswith("="):
             cell.data_type = "s"

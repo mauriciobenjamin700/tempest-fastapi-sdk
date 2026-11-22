@@ -71,6 +71,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_PREVIEW_ROWS
 ::: tempest_fastapi_sdk.admin.config.Inline
 ::: tempest_fastapi_sdk.admin.config.Lens
+::: tempest_fastapi_sdk.admin.config.RelatedCount
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum
 ::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
 ::: tempest_fastapi_sdk.admin.permissions.AdminActionPolicy

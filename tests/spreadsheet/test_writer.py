@@ -363,3 +363,31 @@ class TestSheetStyle:
         cell = sheet.cell(row=1, column=1)
         assert cell.fill.fgColor.rgb.endswith("112233")
         assert cell.font.name == "Arial"
+
+
+class TestControlCharacters:
+    """Characters XML 1.0 cannot carry are dropped instead of failing.
+
+    ``openpyxl`` raises ``IllegalCharacterError`` on ``\\x00``-``\\x08``,
+    ``\\x0b``, ``\\x0c`` and ``\\x0e``-``\\x1f``; one such byte in a stored
+    name used to make the whole export fail.
+    """
+
+    @pytest.mark.parametrize("bad", ["\x00", "\x08", "\x0b", "\x0c", "\x0e", "\x1f"])
+    def test_illegal_character_is_dropped(self, bad: str) -> None:
+        workbook = new_workbook("Dados")
+        SheetWriter(workbook["Dados"], COLUMNS).write_row([f"abc{bad}def"])
+        reopened = openpyxl.load_workbook(BytesIO(workbook_to_bytes(workbook)))
+        assert reopened["Dados"].cell(row=1, column=1).value == "abcdef"
+
+    def test_tab_and_newline_are_kept(self) -> None:
+        workbook = new_workbook("Dados")
+        SheetWriter(workbook["Dados"], COLUMNS).header_row(["a\tb\nc"])
+        assert workbook["Dados"].cell(row=1, column=1).value == "a\tb\nc"
+
+    def test_formula_like_text_with_a_control_character_stays_text(self) -> None:
+        workbook = new_workbook("Dados")
+        SheetWriter(workbook["Dados"], COLUMNS).title_block(["=1+\x0b1"])
+        cell = workbook["Dados"].cell(row=1, column=1)
+        assert cell.value == "=1+1"
+        assert cell.data_type == "s"

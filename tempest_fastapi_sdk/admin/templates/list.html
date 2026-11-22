@@ -11,6 +11,7 @@
     <div class="tempest-admin-list__actions">
       <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">{{ t("list.export_csv") }}</a>
       <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">{{ t("list.export_json") }}</a>
+      {% if xlsx_available %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='xlsx') }}{% if export_query %}?{{ export_query }}{% endif %}">{{ t("list.export_xlsx") }}</a>{% endif %}
       {% if admin.can_import and admin.can_create %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_import', slug=admin.get_slug()) }}">{{ t("list.import_csv") }}</a>{% endif %}
       {% if can_create %}<a class="tempest-admin-btn tempest-admin-list__new" href="{{ new_url }}">+ {{ new_label or t("list.new", model=admin.get_verbose_name()) }}</a>{% endif %}
     </div>
@@ -53,6 +54,13 @@
       {% endif %}
     </form>
   </div>
+  {% if parent_filters %}
+  <div class="tempest-admin-list__parent-filters">
+    {% for chip in parent_filters %}
+    <span class="tempest-admin-chip">{{ t("list.filtered_by", field=chip.field, value=chip.value) }} <a href="{{ chip.clear_url }}">{{ t("list.clear_filter") }}</a></span>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% if lens_tabs %}
   <nav class="tempest-admin-lenses" aria-label="{{ t('list.lenses') }}">
     {% for tab in lens_tabs %}
@@ -60,7 +68,7 @@
     {% endfor %}
   </nav>
   {% endif %}
-  {% set ncols = columns|length + 1 + (1 if bulk_actions else 0) %}
+  {% set ncols = columns|length + related_columns|length + 1 + (1 if bulk_actions else 0) %}
   {% if bulk_actions %}
   <form method="post" action="{{ bulk_url }}" class="tempest-admin-bulk" onsubmit="var s = this.querySelector('select[name=action]'); return confirm(s.options[s.selectedIndex].dataset.confirm);">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
@@ -90,6 +98,7 @@
               {% else %}{{ column | field_label }}{% endif %}
             </th>
             {% endfor %}
+            {% for related in related_columns %}<th class="tempest-admin-list__count">{{ related.label }}</th>{% endfor %}
             <th class="tempest-admin-list__rowaction"><span class="tempest-admin-sr">{{ t("list.actions") }}</span></th>
           </tr>
         </thead>
@@ -99,6 +108,7 @@
             {% if bulk_actions %}<td class="tempest-admin-list__check"><input type="checkbox" name="ids" value="{{ row.pk }}" data-row-check aria-label="{{ t('list.select_row') }}"></td>{% endif %}
             {% set detail_url = url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) %}
             {% for column in columns %}<td>{% if loop.first %}<a class="tempest-admin-list__primary" href="{{ detail_url }}">{{ cell(row.values[column]) }}</a>{% else %}{{ cell(row.values[column]) }}{% endif %}</td>{% endfor %}
+            {% for related in row.related %}<td class="tempest-admin-list__count">{% if related.url %}<a href="{{ related.url }}">{{ related.count | number }}</a>{% else %}{{ related.count | number }}{% endif %}</td>{% endfor %}
             <td class="tempest-admin-list__rowaction">
               <a href="{{ detail_url }}">{{ t("common.view") }}</a>
             </td>

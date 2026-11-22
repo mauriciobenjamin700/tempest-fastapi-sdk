@@ -303,6 +303,14 @@ stored as `inlineStr` in the XML and shows exactly what was passed.
     3.1.5). That is why `SheetWriter` leaves the value untouched — no leading
     apostrophe.
 
+!!! info "Control characters leave the cell"
+    An `.xlsx`'s XML cannot carry `\x00`-`\x08`, `\x0b`, `\x0c` or
+    `\x0e`-`\x1f`: `openpyxl` raises `IllegalCharacterError` when writing
+    one, and a stray byte in a stored value used to fail the whole document.
+    `SheetWriter` removes those characters from every `str` before writing
+    (with `openpyxl`'s own `ILLEGAL_CHARACTERS_RE`) — `"abc\x0bdef"` comes
+    out `abcdef`. Tab, newline and CR are legal and stay.
+
 ## Theme
 
 `SheetStyle` is **plain data** — hex colours, integer sizes, no `openpyxl`

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import metric_card %}
+{% from "_macros.html" import cell, metric_card %}
 {% block content %}
 <section class="tempest-admin-dashboard">
   <header class="tempest-admin-dashboard__header">
@@ -33,6 +33,25 @@
     {{ metric_card(card) }}
     {% endfor %}
   </div>
+  {% endif %}
+
+  {% if activity_enabled %}
+  <section class="tempest-admin-activity" aria-labelledby="tempest-admin-activity-title">
+    <h2 id="tempest-admin-activity-title">{{ t("dashboard.activity") }}</h2>
+    {% if activity %}
+    <ol class="tempest-admin-activity__list">
+      {% for entry in activity %}
+      <li class="tempest-admin-activity__item">
+        <span class="tempest-admin-history__action tempest-admin-activity__action tempest-admin-activity__action--{{ entry.action }}">{% if entry.action == "create" %}{{ t("detail.history.create") }}{% elif entry.action == "update" %}{{ t("detail.history.update") }}{% elif entry.action == "delete" %}{{ t("detail.history.delete") }}{% else %}{{ entry.action }}{% endif %}</span>
+        <span class="tempest-admin-activity__what">{{ entry.model }}{% if entry.url %} · <a href="{{ entry.url }}">{{ entry.label }}</a>{% else %} · <em>{{ t("dashboard.activity_gone") }}</em>{% endif %}</span>
+        <span class="tempest-admin-activity__meta">{{ cell(entry.at) }}{% if entry.actor %} · {{ entry.actor }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="tempest-admin-activity__empty"><em>{{ t("dashboard.activity_empty") }}</em></p>
+    {% endif %}
+  </section>
   {% endif %}
 
   {% if models_view %}

@@ -305,6 +305,14 @@ sai como `inlineStr` no XML e mostra exatamente o que foi passado.
     como string, sem elemento de fórmula (medido no `openpyxl` 3.1.5). Por
     isso o `SheetWriter` não altera o valor — não há apóstrofo na frente.
 
+!!! info "Caractere de controle sai da célula"
+    O XML do `.xlsx` não carrega `\x00`-`\x08`, `\x0b`, `\x0c` nem
+    `\x0e`-`\x1f`: o `openpyxl` levanta `IllegalCharacterError` ao gravar
+    um deles, e um byte perdido num valor salvo derrubava o documento
+    inteiro. O `SheetWriter` remove esses caracteres de toda `str` antes de
+    gravar (com o `ILLEGAL_CHARACTERS_RE` do próprio `openpyxl`) — `"abc\x0bdef"`
+    sai `abcdef`. Tab, quebra de linha e CR são válidos e ficam.
+
 ## Tema
 
 `SheetStyle` é **dado puro** — cores em hexadecimal, tamanhos em inteiros,

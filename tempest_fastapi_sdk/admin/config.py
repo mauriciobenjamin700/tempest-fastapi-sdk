@@ -259,6 +259,91 @@ class Lens:
         return self.label or self.name
 
 
+class RelatedCount:
+    """A list-view column counting the child rows that point at each row.
+
+    Declared on the **parent** admin with the child's foreign-key column
+    (``RelatedCount(OrderModel.user_id, label="Orders")`` on the users
+    admin). The list renders one extra column holding, per row, how many
+    child rows reference it. The counts of a page come from **one**
+    ``SELECT fk, COUNT(*) ... WHERE fk IN (<page ids>) GROUP BY fk``, never
+    one query per row, and that query carries the child admin's
+    ``row_scope``, so the number covers only the children the principal
+    reaches.
+
+    When the child model has its own registered :class:`AdminModel` and the
+    principal may ``VIEW`` it, the count links to the child's list filtered
+    by the parent (``?filter_<fk>=<id>``). A child the principal may not
+    ``VIEW`` drops the column altogether: the number is that model's data,
+    whichever page shows it. A child with no registered admin is asked
+    through a throwaway ``AdminModel(child)``, like an :class:`Inline`, and
+    renders the count without a link.
+
+    Attributes:
+        model (type[BaseModel]): The child model, read from the column.
+        fk_field (str): The child column that references the parent.
+        label (str | None): Column heading; defaults to the child's plural
+            name.
+        target_table (str): The parent table the column references.
+        target_column (str): The parent column it references (``id``).
+    """
+
+    def __init__(
+        self, fk: InstrumentedAttribute[Any], *, label: str | None = None
+    ) -> None:
+        """Build the related count. See class docstring.
+
+        Args:
+            fk (InstrumentedAttribute[Any]): The child's foreign-key column,
+                as a mapped attribute (``OrderModel.user_id``) so the child
+                model is known.
+            label (str | None): Column heading.
+
+        Raises:
+            TypeError: When ``fk`` is not a mapped column attribute of a
+                ``BaseModel`` subclass.
+            ValueError: When the column carries no ``ForeignKey``.
+        """
+        owner = getattr(fk, "class_", None)
+        key = getattr(fk, "key", None)
+        if (
+            not isinstance(owner, type)
+            or not issubclass(owner, BaseModel)
+            or not isinstance(key, str)
+        ):
+            raise TypeError(
+                "RelatedCount takes the child's foreign-key column as a mapped "
+                "attribute, e.g. RelatedCount(OrderModel.user_id)"
+            )
+        column = inspect(owner).columns.get(key)
+        if column is None or not column.foreign_keys:
+            raise ValueError(
+                f"RelatedCount column {owner.__name__}.{key} has no ForeignKey"
+            )
+        self.model: type[BaseModel] = owner
+        self.fk_field: str = key
+        self.label: str | None = label
+        target = next(iter(column.foreign_keys)).column
+        self.target_table: str = target.table.name
+        self.target_column: str = target.name
+
+    def get_slug(self) -> str:
+        """Return the child model's admin slug (its table name).
+
+        Returns:
+            str: The table name used to look the child admin up.
+        """
+        return self.model.get_table_name()
+
+    def key(self) -> str:
+        """Return the identifier of this count among the parent's counts.
+
+        Returns:
+            str: ``<child table>.<fk column>``.
+        """
+        return f"{self.get_slug()}.{self.fk_field}"
+
+
 class AdminModel(Generic[ModelT]):
     """Declarative admin configuration for one SQLAlchemy model.
 
@@ -474,6 +559,37 @@ class AdminModel(Generic[ModelT]):
                         return false()
                     return TicketModel.company_id == user.company_id
 
+        m2m_fields (Sequence[FieldRef]): Many-to-many relationships
+            (``relationship(..., secondary=...)``) edited on the create/edit
+            form as a multi-select of the target model's rows. The options
+            are the rows the principal reaches through the target admin's
+            ``row_scope`` (and need ``VIEW`` on it; without it the field is
+            left out and the stored links are kept). Saving replaces the
+            whole set in the same transaction as the row; a link the
+            operator cannot see is kept, and an id outside the options is
+            refused with the "does not exist" error. The detail view lists
+            the linked rows. Checked at construction: a name that is not a
+            relationship with ``secondary`` raises ``ValueError``.
+        related_counts (Sequence[RelatedCount]): Columns of the list view
+            counting the child rows that reference each row
+            (:class:`RelatedCount`), one ``GROUP BY`` query per page.
+        can_duplicate (bool): Show a "Duplicate" button on the detail view
+            that opens the create form filled with the row's values, minus
+            the identity, unique columns, password and upload fields and the
+            audit columns (``created_at``, ``updated_at``, ``created_by``,
+            ``updated_by``). Needs the column create form (``can_create``,
+            no ``create_handler``) and ``CREATE``; the source row must be in
+            the principal's scope. The submission is an ordinary create.
+        bulk_edit_fields (Sequence[FieldRef]): Columns the list's selection
+            can set on every checked row at once ("Edit field"). The value
+            is typed into the column's own widget and validated like the
+            edit form; it is written with one ``UPDATE ... WHERE id IN
+            (...) AND <scope>`` in a transaction that is rolled back when
+            the value takes any row out of the scope. A foreign key is
+            checked against the target's scope, and with ``audit_model`` one
+            audit entry is written per row. Needs ``can_edit`` and ``EDIT``.
+            Each name must be an editable column that is not an upload,
+            password or many-to-many field.
         impersonate (AdminImpersonateHandler | None): Turns a row of this
             model into a "log in as" target. The detail view gains a button
             that opens a confirmation page; confirming resolves the account
@@ -552,6 +668,10 @@ class AdminModel(Generic[ModelT]):
         validate_edit: EditValidator | None = None,
         readonly_fields_for: ReadonlyFieldsFor | None = None,
         row_scope: AdminRowScope | None = None,
+        m2m_fields: Sequence[FieldRef] = (),
+        related_counts: Sequence[RelatedCount] = (),
+        can_duplicate: bool = False,
+        bulk_edit_fields: Sequence[FieldRef] = (),
         impersonate: AdminImpersonateHandler | None = None,
         impersonate_account: AdminImpersonateAccount | None = None,
         count_strategy: AdminCountStrategy = AdminCountStrategyEnum.EXACT,
@@ -661,6 +781,19 @@ class AdminModel(Generic[ModelT]):
         self._check_filter_keys()
         self.exclude_fields: list[str] = _normalize_fields(exclude_fields)
         self._check_exclude_fields(known)
+        self.m2m_fields: list[str] = _normalize_fields(m2m_fields)
+        self._check_m2m_fields()
+        self.related_counts: list[RelatedCount] = list(related_counts)
+        self._check_related_counts()
+        if can_duplicate and not self.can_create:
+            raise ValueError(
+                f"AdminModel for {model.__name__}: `can_duplicate` opens the "
+                "column create form, so it needs can_create=True and no "
+                "create_handler."
+            )
+        self.can_duplicate: bool = can_duplicate
+        self.bulk_edit_fields: list[str] = _normalize_fields(bulk_edit_fields)
+        self._check_bulk_edit_fields()
         self.display_timezone: str | None = display_timezone
         self.display_tzinfo: ZoneInfo | None = None
         if display_timezone is not None:
@@ -796,6 +929,75 @@ class AdminModel(Generic[ModelT]):
                 f"which {name} requires (NOT NULL, no default): the create "
                 "form could never fill it. Set can_create=False, or give the "
                 "column a default.",
+            )
+
+    def _check_m2m_fields(self) -> None:
+        """Refuse an ``m2m_fields`` entry that is not a ``secondary`` relationship.
+
+        Raises:
+            ValueError: When a name is not a relationship of the model, or
+                is one without ``secondary`` (a one-to-many or a
+                many-to-one, which the foreign-key widgets already cover).
+        """
+        relationships = inspect(self.model).relationships
+        for name in self.m2m_fields:
+            relationship = relationships.get(name)
+            if relationship is None or relationship.secondary is None:
+                raise ValueError(
+                    f"AdminModel `m2m_fields` names {name!r}, which is not a "
+                    f"relationship with `secondary` on {self.model.__name__}"
+                )
+
+    def _check_related_counts(self) -> None:
+        """Refuse a :class:`RelatedCount` whose column does not point here.
+
+        Raises:
+            ValueError: When the column's foreign key targets another table,
+                or two counts name the same column.
+        """
+        table = self.model.get_table_name()
+        seen: set[str] = set()
+        for related in self.related_counts:
+            if related.target_table != table:
+                raise ValueError(
+                    f"RelatedCount {related.model.__name__}.{related.fk_field} "
+                    f"references {related.target_table!r}, not {table!r} of "
+                    f"{self.model.__name__}"
+                )
+            if related.key() in seen:
+                raise ValueError(
+                    f"AdminModel `related_counts` names "
+                    f"{related.model.__name__}.{related.fk_field} twice"
+                )
+            seen.add(related.key())
+
+    def _check_bulk_edit_fields(self) -> None:
+        """Refuse a ``bulk_edit_fields`` entry the edit form would not take.
+
+        Raises:
+            ValueError: When ``can_edit`` is off, or a name is not an
+                editable column, or is an upload or password field.
+        """
+        if not self.bulk_edit_fields:
+            return
+        name = self.model.__name__
+        if not self.can_edit:
+            raise ValueError(
+                f"AdminModel for {name}: `bulk_edit_fields` needs can_edit=True"
+            )
+        editable = set(self.editable_field_names())
+        refused = sorted(
+            field
+            for field in self.bulk_edit_fields
+            if field not in editable
+            or field in self.upload_fields
+            or field in self.password_fields
+        )
+        if refused:
+            raise ValueError(
+                f"AdminModel `bulk_edit_fields` names {', '.join(refused)}, which "
+                f"{name}'s edit form does not take as a plain column (not "
+                "editable, an upload or a password field)"
             )
 
     def get_lens(self, slug: str) -> Lens | None:
@@ -1253,4 +1455,5 @@ __all__: list[str] = [
     "Lens",
     "OrderRef",
     "ReadonlyFieldsFor",
+    "RelatedCount",
 ]

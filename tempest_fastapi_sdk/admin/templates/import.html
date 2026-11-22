@@ -64,12 +64,13 @@
   <form method="post" action="{{ action_url }}" enctype="multipart/form-data" class="tempest-admin-import__form">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <label>
-      <span>{{ t("import.file") }}</span>
-      <input type="file" name="file" accept=".csv,text/csv" required>
+      <span>{% if xlsx_available %}{{ t("import.file_any") }}{% else %}{{ t("import.file") }}{% endif %}</span>
+      <input type="file" name="file" accept=".csv,text/csv{% if xlsx_available %},.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet{% endif %}" required>
     </label>
     <p class="tempest-admin-form__hint">
       {{ t("import.expected_columns") }} <code>{{ columns | join(', ') }}</code>.
       {{ t("import.header_rule", max_kib=max_bytes // 1024) }}
+      {% if xlsx_available %}{{ t("import.xlsx_rule") }}{% endif %}
     </p>
     <div class="tempest-admin-form__actions">
       <button type="submit">{% if preview %}{{ t("import.preview_again") }}{% else %}{{ t("import.preview_submit") }}{% endif %}</button>
