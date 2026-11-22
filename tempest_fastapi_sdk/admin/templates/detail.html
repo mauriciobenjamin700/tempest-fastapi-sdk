@@ -10,6 +10,7 @@
     </div>
     <div class="tempest-admin-detail__actions">
       {% if can_edit %}<a class="tempest-admin-btn" href="{{ edit_url }}">{{ t("common.edit") }}</a>{% endif %}
+      {% if duplicate_url %}<a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ duplicate_url }}">{{ t("detail.duplicate") }}</a>{% endif %}
       {% if can_delete %}
       <form method="post" action="{{ delete_url }}" class="tempest-admin-detail__delete" data-confirm="{{ t('detail.delete_confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
@@ -23,6 +24,12 @@
     <dt>{{ column | field_label }}</dt>
     <dd>
       {% if value is not none and column in json_columns %}<pre class="tempest-admin-detail__json">{{ value }}</pre>{% elif column in upload_urls %}<a href="{{ upload_urls[column] }}" download>{{ t("common.download") }}</a> <code class="tempest-admin-form__hint">{{ value }}</code>{% else %}{{ cell(value, full=true) }}{% endif %}
+    </dd>
+    {% endfor %}
+    {% for link in links %}
+    <dt>{{ link.name | field_label }}</dt>
+    <dd>
+      {% if link["items"] %}<ul class="tempest-admin-detail__links">{% for item in link["items"] %}<li>{% if item.url %}<a href="{{ item.url }}">{{ item.label }}</a>{% else %}{{ item.label }}{% endif %}</li>{% endfor %}</ul>{% else %}<em>—</em>{% endif %}
     </dd>
     {% endfor %}
   </dl>

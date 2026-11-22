@@ -51,8 +51,9 @@ class FormField:
         label (str): Human-readable label.
         widget (str): One of ``text`` / ``textarea`` / ``number`` /
             ``checkbox`` / ``datetime`` / ``date`` / ``select`` /
-            ``file`` / ``password``.
-        value (Any): Value to pre-fill (string for most widgets).
+            ``file`` / ``password`` / ``multiselect``.
+        value (Any): Value to pre-fill (string for most widgets; the list
+            of selected ids for ``multiselect``).
         required (bool): Whether the field is mandatory.
         checked (bool): Checkbox state (``checkbox`` widget only).
         step (str | None): ``step`` attribute for ``number`` widgets.
@@ -437,6 +438,75 @@ def build_form_fields(
             )
         )
     return fields
+
+
+def unique_field_names(admin: AdminModel[Any]) -> set[str]:
+    """Return the columns a copy of a row may not repeat.
+
+    The primary key, every column declared ``unique=True``, and every
+    column of a ``UniqueConstraint`` or unique ``Index`` on the table —
+    composite ones included, since copying all of their columns repeats
+    the tuple.
+
+    Args:
+        admin (AdminModel[Any]): The admin configuration.
+
+    Returns:
+        set[str]: The mapped attribute keys of those columns.
+    """
+    from sqlalchemy import Index, UniqueConstraint
+
+    mapper_columns = sa_inspect(admin.model).columns
+    unique: set[Any] = {
+        column for column in mapper_columns if column.primary_key or column.unique
+    }
+    table = getattr(admin.model, "__table__", None)
+    if table is not None:
+        for constraint in table.constraints:
+            if isinstance(constraint, UniqueConstraint):
+                unique.update(constraint.columns)
+        for index in table.indexes:
+            if isinstance(index, Index) and index.unique:
+                unique.update(index.columns)
+    return {key for key, column in mapper_columns.items() if column in unique}
+
+
+def duplicate_values(admin: AdminModel[Any], instance: Any) -> dict[str, str]:
+    """Return the create-form values that copy ``instance``.
+
+    Every column the create form takes, formatted the way the edit form
+    shows it, except the ones a copy must not carry: the identity, the
+    columns :func:`unique_field_names` returns, upload and password fields,
+    the model's secret columns and the audit columns (``created_at``,
+    ``updated_at``, ``created_by``, ``updated_by``). Those stay blank.
+
+    Args:
+        admin (AdminModel[Any]): The admin configuration.
+        instance (Any): The row being duplicated.
+
+    Returns:
+        dict[str, str]: Field name to the submitted-form value; a checkbox
+        is ``"true"`` or ``""``.
+    """
+    skip = (
+        unique_field_names(admin)
+        | set(admin.upload_fields)
+        | set(admin.password_fields)
+        | set(admin.model.get_secret_columns())
+        | {admin.identity_field, "id", "created_at", "updated_at"}
+        | {"created_by", "updated_by"}
+    )
+    values: dict[str, str] = {}
+    for form_field in build_form_fields(admin, instance=instance, creating=True):
+        if form_field.name in skip:
+            continue
+        if form_field.widget == "checkbox":
+            values[form_field.name] = "true" if form_field.checked else ""
+        else:
+            values[form_field.name] = (
+                "" if form_field.value is None else str(form_field.value)
+            )
+    return values
 
 
 def _truthy(raw: Any) -> bool:

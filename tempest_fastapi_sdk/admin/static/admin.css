@@ -2755,3 +2755,108 @@ input[type="file"] {
     padding-right: 0.6rem;
   }
 }
+
+.tempest-admin-list__table .tempest-admin-list__count {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tempest-admin-list__parent-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.tempest-admin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--tempest-border);
+  border-radius: 999px;
+  background: var(--tempest-accent-soft);
+  color: var(--tempest-fg);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-chip a {
+  color: var(--tempest-accent);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tempest-admin-form__multiselect {
+  min-height: 6rem;
+}
+
+.tempest-admin-detail__links {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.tempest-admin-detail__links li + li {
+  margin-top: 0.15rem;
+}
+
+.tempest-admin-activity {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--tempest-surface);
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius-lg);
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-activity h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.tempest-admin-activity__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tempest-admin-activity__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--tempest-border);
+  min-width: 0;
+}
+
+.tempest-admin-activity__item:first-child {
+  border-top: 0;
+}
+
+.tempest-admin-activity__action {
+  min-width: 5.75rem;
+}
+
+.tempest-admin-activity__action--create { color: var(--tempest-success); }
+.tempest-admin-activity__action--update { color: var(--tempest-warning); }
+.tempest-admin-activity__action--delete { color: var(--tempest-danger); }
+
+.tempest-admin-activity__what {
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-activity__meta {
+  color: var(--tempest-fg-soft);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.tempest-admin-activity__empty {
+  margin: 0;
+  color: var(--tempest-fg-soft);
+}

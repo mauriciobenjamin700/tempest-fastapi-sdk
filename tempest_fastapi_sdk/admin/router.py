@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import hashlib
 import hmac
@@ -11,6 +12,7 @@ import logging
 import secrets
 from collections.abc import Awaitable, Callable, Collection
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from decimal import Decimal
 from enum import Enum
 from functools import partial
 from pathlib import Path
@@ -30,10 +32,10 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
-from sqlalchemy import JSON, and_, event, or_, select
+from sqlalchemy import JSON, and_, event, func, or_, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import update as sa_update
-from sqlalchemy.exc import NoInspectionAvailable
+from sqlalchemy.exc import IntegrityError, NoInspectionAvailable
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import (
@@ -64,6 +66,7 @@ from tempest_fastapi_sdk.admin.forms import (
     FormField,
     apply_password_fields,
     build_form_fields,
+    duplicate_values,
     fk_fields,
     fk_label,
     inline_editable_names,
@@ -93,6 +96,14 @@ from tempest_fastapi_sdk.admin.session import (
     admin_credential_digest,
 )
 from tempest_fastapi_sdk.admin.site import AdminSite
+from tempest_fastapi_sdk.admin.spreadsheet_io import (
+    ADMIN_SPREADSHEET_EXTRA,
+    XLSX_MEDIA_TYPE,
+    build_xlsx,
+    is_xlsx_upload,
+    spreadsheet_available,
+    xlsx_to_csv,
+)
 from tempest_fastapi_sdk.admin.sql_shell import (
     SqlShellDenied,
     SqlShellError,
@@ -114,6 +125,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
     resolve_log_files,
     rotated_log_files,
 )
+from tempest_fastapi_sdk.db.audit import snapshot_model
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.search import like_search_condition
 from tempest_fastapi_sdk.db.signals import RepositorySignalEnum, emit, has_handlers
@@ -139,8 +151,10 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import CursorResult
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from tempest_fastapi_sdk.db.audit import BaseAuditLogModel
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
     from tempest_fastapi_sdk.db.model import BaseModel
+    from tempest_fastapi_sdk.spreadsheet import CellValue
 
 
 logger = logging.getLogger(__name__)
@@ -1890,6 +1904,7 @@ def make_admin_router(
         errors: Any | None = None,
         creating: bool = False,
         only: Collection[str] | None = None,
+        with_m2m: bool = False,
     ) -> Any:
         """Resolve FK options then build the form-field descriptors.
 
@@ -1907,6 +1922,9 @@ def make_admin_router(
                 edit form passes the row's
                 :meth:`AdminModel.editable_field_names`, which honours
                 ``readonly_fields_for``.
+            with_m2m (bool): Append the ``m2m_fields`` multi-selects
+                (:func:`_m2m_form_fields`); ``instance`` must then have its
+                collections loaded.
 
         Returns:
             Any: The list of form-field descriptors.
@@ -1937,6 +1955,17 @@ def make_admin_router(
                 form_field.options = [*form_field.options, (value, value)]
         if admin.autocomplete_fields:
             await _decorate_autocomplete_fields(admin, fields, db_session, principal)
+        if with_m2m and admin.m2m_fields:
+            fields.extend(
+                await _m2m_form_fields(
+                    admin,
+                    db_session,
+                    principal,
+                    instance=instance,
+                    submitted=submitted,
+                    errors=errors,
+                )
+            )
         return fields
 
     async def _decorate_autocomplete_fields(
@@ -1977,6 +2006,520 @@ def make_admin_router(
             )
             if current is not None:
                 form_field.display_label = fk_label(referenced, current)
+
+    async def _actor_label(
+        principal: Any, db_session: AsyncSession, uid: Any
+    ) -> str | None:
+        """Name the author of a change, within the user admin's scope.
+
+        When the principal's model is registered with a ``row_scope``, the
+        name is shown only for a user the signed-in principal may ``VIEW``
+        and reaches through that scope; any other author is shown by id, so
+        neither the audit panel nor the dashboard feed reads another
+        tenant's users.
+
+        Args:
+            principal (Any): The signed-in admin principal.
+            db_session (AsyncSession): The DB session.
+            uid (Any): The stored actor id.
+
+        Returns:
+            str | None: The display name, the id, or ``None``.
+        """
+        if uid is None:
+            return None
+        actor = await auth_backend.load_principal(db_session, str(uid))
+        if actor is None:
+            return str(uid)
+        actor_admin = site.get(cast("type[BaseModel]", type(actor)))
+        if actor_admin is not None and actor_admin.row_scope is not None:
+            if not await _allows(principal, actor_admin, AdminPermissionEnum.VIEW):
+                return str(uid)
+            visible = await actor_admin.build_repository(db_session).count(
+                {"id": getattr(actor, "id", None)},
+                where=await actor_admin.scope_for(principal),
+            )
+            if not visible:
+                return str(uid)
+        return auth_backend.display_name(actor)
+
+    def _related_admin(model: type[BaseModel]) -> tuple[AdminModel[Any], bool]:
+        """Return the admin a page asks about rows of another ``model``.
+
+        Args:
+            model (type[BaseModel]): The related model.
+
+        Returns:
+            tuple[AdminModel[Any], bool]: The model's registered admin and
+            ``True``, or a throwaway ``AdminModel(model)`` and ``False`` when
+            it is not registered, so a policy that decides by
+            ``admin.model`` answers the same.
+        """
+        registered = site.get(model)
+        if registered is not None:
+            return registered, True
+        return AdminModel(model, can_create=False), False
+
+    async def _m2m_targets(
+        admin: AdminModel[Any], principal: Any
+    ) -> dict[str, tuple[AdminModel[Any], bool]]:
+        """Return the many-to-many fields the principal may see the target of.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered or written.
+            principal (Any): The signed-in admin principal.
+
+        Returns:
+            dict[str, tuple[AdminModel[Any], bool]]: Field to the target's
+            admin and whether it is registered, for every ``m2m_fields``
+            entry whose target the principal may ``VIEW``. A field left out
+            is neither rendered nor written, so its stored links stay.
+        """
+        relationships = sa_inspect(admin.model).relationships
+        targets: dict[str, tuple[AdminModel[Any], bool]] = {}
+        for name in admin.m2m_fields:
+            target, registered = _related_admin(relationships[name].mapper.class_)
+            if await _allows(principal, target, AdminPermissionEnum.VIEW):
+                targets[name] = (target, registered)
+        return targets
+
+    async def _load_m2m(
+        db_session: AsyncSession, instance: Any, names: Collection[str]
+    ) -> None:
+        """Load the named many-to-many collections of a stored row.
+
+        Reading an unloaded collection from async code would emit sync IO;
+        ``refresh`` with the attribute names loads them inside the greenlet.
+
+        Args:
+            db_session (AsyncSession): The DB session.
+            instance (Any): The stored row.
+            names (Collection[str]): The relationship attributes to load.
+        """
+        if names:
+            await db_session.refresh(instance, attribute_names=list(names))
+
+    async def _reachable_ids(
+        target: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        rows: list[Any],
+    ) -> set[Any]:
+        """Return the ids of ``rows`` inside the target admin's scope.
+
+        Args:
+            target (AdminModel[Any]): The admin of the rows.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            rows (list[Any]): Rows of ``target.model``.
+
+        Returns:
+            set[Any]: Every id when the target declares no scope; otherwise
+            the ids the scope keeps, read in one query.
+        """
+        ids = [row.id for row in rows]
+        scope = await target.scope_for(principal)
+        if scope is None or not ids:
+            return set(ids)
+        result = await db_session.execute(
+            select(target.model.id).where(target.model.id.in_(ids), scope)
+        )
+        return set(result.scalars().all())
+
+    async def _m2m_form_fields(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        *,
+        instance: Any | None = None,
+        submitted: Any | None = None,
+        errors: Any | None = None,
+    ) -> list[FormField]:
+        """Build a multi-select per many-to-many field the principal may see.
+
+        The options are the target rows inside the target admin's scope,
+        capped at ``FK_OPTION_CAP``. A stored link outside them is not
+        rendered at all — the save keeps it (:func:`_parse_m2m`), so the
+        operator neither sees nor removes it.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            instance (Any | None): The stored row, with its collections
+                loaded (:func:`_load_m2m`), on the edit form.
+            submitted (Any | None): The submitted form (or a prefill
+                mapping of field to id list) to re-render.
+            errors (Any | None): Per-field error messages.
+
+        Returns:
+            list[FormField]: One ``multiselect`` field per visible relation.
+        """
+        fields: list[FormField] = []
+        for name, (target, _registered) in (
+            await _m2m_targets(admin, principal)
+        ).items():
+            rows = await target.build_repository(db_session).list(
+                where=await target.scope_for(principal)
+            )
+            options = [
+                (str(row.id), fk_label(target, row)) for row in rows[:FK_OPTION_CAP]
+            ]
+            offered = {value for value, _label in options}
+            selected: list[str]
+            if submitted is not None:
+                raw: Any = (
+                    submitted.getlist(name)
+                    if hasattr(submitted, "getlist")
+                    else submitted.get(name, [])
+                )
+                values = raw if isinstance(raw, list | tuple) else [raw]
+                selected = [str(value) for value in values if value]
+            elif instance is not None:
+                selected = [str(row.id) for row in getattr(instance, name)]
+            else:
+                selected = []
+            fields.append(
+                FormField(
+                    name=name,
+                    label=humanize_field(name),
+                    widget="multiselect",
+                    value=[value for value in selected if value in offered],
+                    options=options,
+                    error=(errors or {}).get(name),
+                )
+            )
+        return fields
+
+    async def _parse_m2m(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        form: Any,
+        *,
+        instance: Any | None = None,
+    ) -> tuple[dict[str, list[Any]], dict[str, str]]:
+        """Read the posted many-to-many selections into the sets to store.
+
+        Every posted id must name a target row inside the target admin's
+        scope; one that does not exist, or that the scope hides, refuses the
+        field with the same "does not exist" error, so a forged ``POST``
+        learns nothing about other tenants' ids. On an edit, the links the
+        row already has outside the scope are added back to the set, since
+        the form never showed them; posting one of their ids is accepted as
+        the no-op it is. A field whose target the principal may not ``VIEW``
+        is not read at all, which keeps every stored link of it.
+
+        Args:
+            admin (AdminModel[Any]): The admin being written.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            form (Any): The submitted form.
+            instance (Any | None): The stored row, with its collections
+                loaded, on an edit.
+
+        Returns:
+            tuple[dict[str, list[Any]], dict[str, str]]: ``(values, errors)``
+            — field to the full list of target rows to store, and field to
+            message for each refused field.
+        """
+        values: dict[str, list[Any]] = {}
+        errors: dict[str, str] = {}
+        for name, (target, _registered) in (
+            await _m2m_targets(admin, principal)
+        ).items():
+            posted = list(dict.fromkeys(str(raw) for raw in form.getlist(name) if raw))
+            current = list(getattr(instance, name)) if instance is not None else []
+            reachable = await _reachable_ids(target, db_session, principal, current)
+            kept = [row for row in current if row.id not in reachable]
+            kept_ids = {str(row.id) for row in kept}
+            wanted = [_identity_value(raw) for raw in posted if raw not in kept_ids]
+            if any(not isinstance(value, UUID) for value in wanted):
+                errors[name] = _t("form.error.fk_missing")
+                continue
+            found: list[Any] = []
+            if wanted:
+                stmt = select(target.model).where(target.model.id.in_(wanted))
+                scope = await target.scope_for(principal)
+                if scope is not None:
+                    stmt = stmt.where(scope)
+                found = list((await db_session.execute(stmt)).scalars().all())
+            if len(found) != len(wanted):
+                errors[name] = _t("form.error.fk_missing")
+                continue
+            values[name] = [*found, *kept]
+        return values, errors
+
+    async def _m2m_detail(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        instance: Any,
+    ) -> list[dict[str, Any]]:
+        """List the linked rows of each many-to-many field on the detail view.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            instance (Any): The stored row.
+
+        Returns:
+            list[dict[str, Any]]: ``{name, items}`` per field whose target
+            the principal may ``VIEW``; ``items`` holds ``{label, url}`` for
+            each linked row inside the target's scope, ``url`` set when the
+            target has a registered admin.
+        """
+        targets = await _m2m_targets(admin, principal)
+        await _load_m2m(db_session, instance, targets)
+        blocks: list[dict[str, Any]] = []
+        for name, (target, registered) in targets.items():
+            current = list(getattr(instance, name))
+            reachable = await _reachable_ids(target, db_session, principal, current)
+            blocks.append(
+                {
+                    "name": name,
+                    "items": [
+                        {
+                            "label": fk_label(target, row),
+                            "url": f"{prefix}/m/{target.get_slug()}/"
+                            f"{getattr(row, target.identity_field)}"
+                            if registered
+                            else None,
+                        }
+                        for row in current
+                        if row.id in reachable
+                    ],
+                }
+            )
+        return blocks
+
+    async def _related_count_columns(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        items: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Count, per row of a list page, the child rows of each ``related_counts``.
+
+        One ``SELECT fk, COUNT(*) ... WHERE fk IN (<page>) GROUP BY fk`` per
+        :class:`~tempest_fastapi_sdk.admin.RelatedCount`, with the child
+        admin's ``row_scope`` in its ``WHERE``, whatever the page size. A
+        child the principal may not ``VIEW`` drops its column.
+
+        Args:
+            admin (AdminModel[Any]): The parent admin.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            items (list[Any]): The rows of the page.
+
+        Returns:
+            list[dict[str, Any]]: ``{label, cells}`` per visible count;
+            ``cells`` holds ``{count, url}`` per row, in page order, ``url``
+            filtering the child's list by the parent when the child has a
+            registered admin.
+        """
+        columns: list[dict[str, Any]] = []
+        for related in admin.related_counts:
+            child, registered = _related_admin(related.model)
+            if not await _allows(principal, child, AdminPermissionEnum.VIEW):
+                continue
+            keys = [getattr(item, related.target_column, None) for item in items]
+            counts: dict[str, int] = {}
+            present = [key for key in keys if key is not None]
+            if present:
+                fk = getattr(related.model, related.fk_field)
+                stmt = select(fk, func.count()).where(fk.in_(present)).group_by(fk)
+                scope = await child.scope_for(principal)
+                if scope is not None:
+                    stmt = stmt.where(scope)
+                counts = {
+                    str(key): int(total)
+                    for key, total in (await db_session.execute(stmt)).all()
+                }
+            base = f"{prefix}/m/{related.get_slug()}/?" if registered else None
+            columns.append(
+                {
+                    "label": related.label or child.get_verbose_name_plural(),
+                    "cells": [
+                        {
+                            "count": counts.get(str(key), 0),
+                            "url": base
+                            + urlencode({f"filter_{related.fk_field}": str(key)})
+                            if base is not None and key is not None
+                            else None,
+                        }
+                        for key in keys
+                    ],
+                }
+            )
+        return columns
+
+    def _parent_filter_fields(admin: AdminModel[Any]) -> list[str]:
+        """Return the foreign keys a parent's count link filters this list by.
+
+        A :class:`~tempest_fastapi_sdk.admin.RelatedCount` links to the
+        child's list with ``?filter_<fk>=<id>``; the list honours that key
+        even when ``<fk>`` is not in the child's ``list_filter``.
+
+        Args:
+            admin (AdminModel[Any]): The child admin whose list is served.
+
+        Returns:
+            list[str]: The foreign-key columns, without the ones
+            ``list_filter`` already covers.
+        """
+        slug = admin.get_slug()
+        fields: list[str] = []
+        for parent in site.iter_models():
+            for related in parent.related_counts:
+                if (
+                    related.get_slug() == slug
+                    and related.fk_field not in admin.list_filter
+                    and related.fk_field not in fields
+                ):
+                    fields.append(related.fk_field)
+        return fields
+
+    async def _parent_filter_chips(
+        admin: AdminModel[Any],
+        request: Request,
+        db_session: AsyncSession,
+        principal: Any,
+        fields: list[str],
+    ) -> list[dict[str, str]]:
+        """Describe the parent filters a count link applied to this list.
+
+        Args:
+            admin (AdminModel[Any]): The child admin whose list is served.
+            request (Request): The inbound request.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            fields (list[str]): :func:`_parent_filter_fields` of ``admin``.
+
+        Returns:
+            list[dict[str, str]]: ``{field, value, clear_url}`` per active
+            filter; ``value`` is the parent row's label when the principal
+            may ``VIEW`` its admin and reaches it, the raw id otherwise.
+        """
+        chips: list[dict[str, str]] = []
+        columns = sa_inspect(admin.model).columns
+        for field in fields:
+            raw = request.query_params.get(f"filter_{field}")
+            if not raw:
+                continue
+            label = raw
+            column = columns.get(field)
+            if column is not None and column.foreign_keys:
+                parent = site.get(next(iter(column.foreign_keys)).column.table.name)
+                if parent is not None and await _allows(
+                    principal, parent, AdminPermissionEnum.VIEW
+                ):
+                    row = await _get_scoped(parent, db_session, principal, raw)
+                    if row is not None:
+                        label = fk_label(parent, row)
+            remaining = {
+                key: value
+                for key, value in request.query_params.items()
+                if key not in (f"filter_{field}", "page")
+            }
+            chips.append(
+                {
+                    "field": humanize_field(field),
+                    "value": label,
+                    "clear_url": "?" + urlencode(remaining),
+                }
+            )
+        return chips
+
+    async def _recent_activity(
+        principal: Any, db_session: AsyncSession
+    ) -> list[dict[str, Any]]:
+        """Collect the dashboard's feed of the latest audited changes.
+
+        For every registered admin with an ``audit_model`` the principal may
+        ``VIEW``, the newest entries are read — one query per audit table,
+        at most ``recent_activity * _ACTIVITY_SCAN_FACTOR`` rows — and then
+        matched against the rows they name with one query per model that
+        carries the model's ``row_scope``. An entry whose row is outside the
+        scope is dropped before anything about it is rendered; so is one
+        whose row no longer exists when the model is scoped, since nothing
+        proves it was reachable. The rest are merged newest first and cut
+        at ``recent_activity``.
+
+        Args:
+            principal (Any): The signed-in admin principal.
+            db_session (AsyncSession): The DB session.
+
+        Returns:
+            list[dict[str, Any]]: ``{at, action, model, label, url, actor}``
+            per entry, newest first; ``[]`` when the feed is off.
+        """
+        limit = site.recent_activity
+        if not limit:
+            return []
+        tables: dict[type[BaseAuditLogModel], dict[str, AdminModel[Any]]] = {}
+        for admin in site.iter_models():
+            if admin.audit_model is None:
+                continue
+            if not await _allows(principal, admin, AdminPermissionEnum.VIEW):
+                continue
+            tables.setdefault(admin.audit_model, {})[admin.model.__name__] = admin
+        candidates: list[tuple[Any, AdminModel[Any]]] = []
+        for audit_model, admins in tables.items():
+            result = await db_session.execute(
+                select(audit_model)
+                .where(audit_model.entity.in_(list(admins)))
+                .order_by(audit_model.created_at.desc())
+                .limit(limit * _ACTIVITY_SCAN_FACTOR)
+            )
+            candidates.extend(
+                (entry, admins[entry.entity]) for entry in result.scalars().all()
+            )
+        wanted: dict[str, set[UUID]] = {}
+        for entry, admin in candidates:
+            value = _identity_value(entry.entity_id)
+            if isinstance(value, UUID):
+                wanted.setdefault(admin.get_slug(), set()).add(value)
+        rows: dict[str, dict[str, Any]] = {}
+        for slug, ids in wanted.items():
+            owner = site.get(slug)
+            assert owner is not None
+            stmt = select(owner.model).where(owner.model.id.in_(list(ids)))
+            scope = await owner.scope_for(principal)
+            if scope is not None:
+                stmt = stmt.where(scope)
+            rows[slug] = {
+                str(row.id): row for row in (await db_session.execute(stmt)).scalars()
+            }
+        candidates.sort(key=lambda pair: pair[0].created_at, reverse=True)
+        actors: dict[str, str | None] = {}
+        feed: list[dict[str, Any]] = []
+        for entry, admin in candidates:
+            slug = admin.get_slug()
+            row = rows.get(slug, {}).get(entry.entity_id)
+            if row is None and admin.row_scope is not None:
+                continue
+            actor_key = "" if entry.actor is None else str(entry.actor)
+            if actor_key not in actors:
+                actors[actor_key] = await _actor_label(
+                    principal, db_session, entry.actor
+                )
+            feed.append(
+                {
+                    "at": _localized(entry.created_at, admin.display_tzinfo),
+                    "action": entry.action,
+                    "model": admin.get_verbose_name(),
+                    "label": fk_label(admin, row) if row is not None else None,
+                    "url": f"{prefix}/m/{slug}/{getattr(row, admin.identity_field)}"
+                    if row is not None
+                    else None,
+                    "actor": actors[actor_key],
+                }
+            )
+            if len(feed) == limit:
+                break
+        return feed
 
     @router.get("/login", name="admin_login_form")
     async def login_form(
@@ -2337,6 +2880,8 @@ def make_admin_router(
                 "user_display": auth_backend.display_name(principal),
                 "models_view": models_view,
                 "cards": cards,
+                "activity": await _recent_activity(principal, db_session),
+                "activity_enabled": bool(site.recent_activity),
                 "metrics": await _system_metrics() if show_metrics else None,
             },
         )
@@ -2761,7 +3306,9 @@ def make_admin_router(
             ascending,
             active_sort,
             active_ascending,
-        ) = _resolve_filters_and_order(admin, request, q, sort, dir)
+        ) = _resolve_filters_and_order(
+            admin, request, q, sort, dir, _parent_filter_fields(admin)
+        )
 
         active_lens = admin.get_lens(lens) if lens else None
         if active_lens is not None:
@@ -2788,6 +3335,11 @@ def make_admin_router(
             _RowView(instance, columns, admin.identity_field, admin.display_tzinfo)
             for instance in result["items"]
         ]
+        related_columns = await _related_count_columns(
+            admin, db_session, principal, result["items"]
+        )
+        for index, row in enumerate(rows):
+            row.related = [column["cells"][index] for column in related_columns]
 
         query_params: dict[str, str] = {}
         if q:
@@ -2858,6 +3410,15 @@ def make_admin_router(
                 "submission_nonce": nonces.issue(),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
                 "filters": await _filter_specs(admin, request, db_session, principal),
+                "related_columns": related_columns,
+                "parent_filters": await _parent_filter_chips(
+                    admin,
+                    request,
+                    db_session,
+                    principal,
+                    _parent_filter_fields(admin),
+                ),
+                "xlsx_available": spreadsheet_available(),
             },
         )
 
@@ -2872,12 +3433,18 @@ def make_admin_router(
         db_session: AsyncSession = Depends(_db_session),
         session: AdminSession = Depends(_require_session),
     ) -> Response:
-        """Export the current (filtered + sorted) result set as CSV/JSON.
+        """Export the current (filtered + sorted) result set as CSV/JSON/XLSX.
+
+        The ``.xlsx`` holds the cells the CSV holds — datetimes as the same
+        ISO 8601 text in UTC — in one sheet, with numbers and booleans kept
+        as such; a text cell starting with ``=`` stays text. It needs the
+        ``[spreadsheet]`` extra: without it the request is redirected to the
+        list with a message naming the extra.
 
         Args:
             request (Request): The inbound request.
             slug (str): The admin slug.
-            fmt (str): ``"csv"`` or ``"json"``.
+            fmt (str): ``"csv"``, ``"json"`` or ``"xlsx"``.
             q (str): Free-text search term (same semantics as the list).
             sort (str): Sort column.
             dir (str): Sort direction.
@@ -2885,7 +3452,8 @@ def make_admin_router(
             session (AdminSession): The validated session.
 
         Returns:
-            Response: An attachment with the serialized rows.
+            Response: An attachment with the serialized rows, or a ``303``
+            to the list when ``.xlsx`` is asked without the extra.
 
         Raises:
             HTTPException: ``404`` for an unknown admin or unsupported
@@ -2894,14 +3462,29 @@ def make_admin_router(
         admin = site.get(slug)
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
-        if fmt not in {"csv", "json"}:
+        if fmt not in {"csv", "json", "xlsx"}:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unsupported format")
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.VIEW)
+        if fmt == "xlsx" and not spreadsheet_available():
+            query = urlencode(
+                {
+                    "flash": _t(
+                        "export.error.xlsx_extra", extra=ADMIN_SPREADSHEET_EXTRA
+                    ),
+                    "flash_cat": "error",
+                }
+            )
+            return RedirectResponse(
+                url=f"{prefix}/m/{slug}/?{query}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
 
         repository = admin.build_repository(db_session)
         filters, _active, order_key, ascending, _sort, _asc = (
-            _resolve_filters_and_order(admin, request, q, sort, dir)
+            _resolve_filters_and_order(
+                admin, request, q, sort, dir, _parent_filter_fields(admin)
+            )
         )
         result = await repository.paginate(
             filters=filters,
@@ -2915,9 +3498,20 @@ def make_admin_router(
         items = result["items"]
         filename = f"{admin.get_slug()}.{fmt}"
 
+        payload: str | bytes
         if fmt == "csv":
             payload = _to_csv(columns, items)
             media = "text/csv; charset=utf-8"
+        elif fmt == "xlsx":
+            payload = build_xlsx(
+                admin.get_slug(),
+                columns,
+                [
+                    [_xlsx_cell(getattr(instance, col, None)) for col in columns]
+                    for instance in items
+                ],
+            )
+            media = XLSX_MEDIA_TYPE
         else:
             payload = _to_json(columns, items)
             media = "application/json; charset=utf-8"
@@ -2979,6 +3573,7 @@ def make_admin_router(
                     principal,
                     submitted=prefill or None,
                     creating=True,
+                    with_m2m=True,
                 ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
@@ -3030,6 +3625,7 @@ def make_admin_router(
                 "payload": payload,
                 "submission_nonce": nonces.issue() if payload else None,
                 "max_bytes": ADMIN_IMPORT_MAX_BYTES,
+                "xlsx_available": spreadsheet_available(),
                 "form_error": form_error,
             },
             status_code=status_code,
@@ -3106,7 +3702,15 @@ def make_admin_router(
         db_session: AsyncSession = Depends(_db_session),
         session: AdminSession = Depends(_require_session),
     ) -> HTMLResponse:
-        """Preview an uploaded CSV without writing anything.
+        """Preview an uploaded CSV or ``.xlsx`` without writing anything.
+
+        An ``.xlsx`` (named so, or opening as a ZIP) is read from its first
+        tab and turned into CSV text first (:func:`xlsx_to_csv`); from there
+        it is the CSV path, and the signed payload the confirm step posts is
+        that CSV. The upload is capped at :data:`ADMIN_IMPORT_MAX_BYTES`, and
+        so is the CSV it becomes, since that is what the signed field carries.
+        Without the ``[spreadsheet]`` extra an ``.xlsx`` is refused with a
+        message naming it.
 
         Every row is validated with the create form's rules and rehearsed
         inside a transaction that is rolled back (see :func:`run_import`),
@@ -3154,6 +3758,42 @@ def make_admin_router(
                 ),
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
+        if is_xlsx_upload(file.filename, raw):
+            if not spreadsheet_available():
+                return _import_page(
+                    request,
+                    admin,
+                    session,
+                    principal,
+                    form_error=_t(
+                        "import.error.xlsx_extra", extra=ADMIN_SPREADSHEET_EXTRA
+                    ),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                converted = await xlsx_to_csv(raw)
+            except AppException:
+                return _import_page(
+                    request,
+                    admin,
+                    session,
+                    principal,
+                    form_error=_t("import.error.unreadable_xlsx"),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(converted.encode("utf-8")) > ADMIN_IMPORT_MAX_BYTES:
+                return _import_page(
+                    request,
+                    admin,
+                    session,
+                    principal,
+                    form_error=_t(
+                        "import.error.too_large",
+                        max_kib=ADMIN_IMPORT_MAX_BYTES // 1024,
+                    ),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            raw = converted.encode("utf-8")
         try:
             text = raw.decode("utf-8-sig")
             outcome = await _import_pass(
@@ -3309,10 +3949,14 @@ def make_admin_router(
             locale=site.locale,
         )
         errors.update(password_errors)
+        links, link_errors = await _parse_m2m(admin, db_session, principal, form)
+        errors.update(link_errors)
         form_error: str | None = None
         if not errors:
             repository = admin.build_repository(db_session)
             instance = admin.model(**data)
+            for name, linked in links.items():
+                setattr(instance, name, linked)
             apply_password_fields(admin, instance, passwords)
             _stamp_audit(instance, auth_backend.principal_id(principal), creating=True)
             try:
@@ -3351,12 +3995,246 @@ def make_admin_router(
                     submitted=form,
                     errors=errors,
                     creating=True,
+                    with_m2m=True,
                 ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
                 "form_error": form_error,
             },
             status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    async def _bulk_edit_form(
+        request: Request,
+        admin: AdminModel[Any],
+        session: AdminSession,
+        principal: Any,
+        db_session: AsyncSession,
+        raw_ids: list[str],
+        field: str | None,
+        *,
+        submitted: Any | None = None,
+        errors: dict[str, str] | None = None,
+        status_code: int = status.HTTP_200_OK,
+    ) -> HTMLResponse:
+        """Render a step of the bulk "Edit field" form.
+
+        Without ``field`` it asks which column to set; with it, the column's
+        own widget (the edit form's, FK select and autocomplete included).
+        Both post back to the bulk route with the selection in hidden
+        fields; the value step carries a fresh single-use nonce.
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The admin being edited.
+            session (AdminSession): The validated session.
+            principal (Any): The signed-in admin.
+            db_session (AsyncSession): The DB session.
+            raw_ids (list[str]): The selected ids the principal reaches.
+            field (str | None): The chosen column, or ``None``.
+            submitted (Any | None): The submitted form on a re-render.
+            errors (dict[str, str] | None): Field errors on a re-render.
+            status_code (int): The response status.
+
+        Returns:
+            HTMLResponse: ``form.html``.
+        """
+        slug = admin.get_slug()
+        hidden: list[tuple[str, str]] = [
+            ("action", _BULK_EDIT_ACTION),
+            *(("ids", row_id) for row_id in raw_ids),
+        ]
+        if field is None:
+            fields: list[FormField] = [
+                FormField(
+                    name=_BULK_FIELD,
+                    label=_t("bulk_edit.field"),
+                    widget="select",
+                    required=True,
+                    options=[
+                        (name, humanize_field(name)) for name in admin.bulk_edit_fields
+                    ],
+                )
+            ]
+            submit_label = _t("bulk_edit.next")
+            nonce = None
+        else:
+            hidden.extend([(_BULK_FIELD, field), (_BULK_INPUT_FIELD, "1")])
+            fields = await _form_fields(
+                admin,
+                db_session,
+                principal,
+                submitted=submitted,
+                errors=errors,
+                only=[field],
+            )
+            submit_label = _t("bulk_edit.apply")
+            nonce = nonces.issue()
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "action",
+                "form_title": _t("bulk_edit.title"),
+                "form_intro": _tn("action.rows_selected", len(raw_ids)),
+                "form_fields": fields,
+                "hidden_inputs": hidden,
+                "submit_label": submit_label,
+                "action_url": f"{prefix}/m/{slug}/bulk",
+                "back_url": f"{prefix}/m/{slug}/",
+                "form_error": (errors or {}).get("__all__"),
+                "submission_nonce": nonce,
+            },
+            status_code=status_code,
+        )
+
+    async def _bulk_edit(
+        request: Request,
+        admin: AdminModel[Any],
+        session: AdminSession,
+        principal: Any,
+        db_session: AsyncSession,
+        form: Any,
+        raw_ids: list[str],
+        scope: ColumnElement[bool] | None,
+    ) -> Response:
+        """Run the bulk "Edit field" flow on the selected rows.
+
+        Three posts to the bulk route: which column (skipped when
+        ``bulk_edit_fields`` names one), its value, then the write. The value
+        is parsed with the edit form's rules (``parse_submission``,
+        ``choices``), its foreign key checked against the target's scope,
+        ``validate_edit`` asked for every row and a column that
+        ``readonly_fields_for`` locks on any selected row refuses the whole
+        edit. The write is one ``UPDATE ... WHERE id IN (...) AND <scope>``
+        inside a transaction; when the new value leaves fewer rows in the
+        scope than it touched, everything is rolled back. With
+        ``audit_model`` each row gets an ``update`` entry with its diff, in
+        the same transaction. ``updated_at`` moves, so an edit form opened
+        before reports the conflict.
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The admin being edited.
+            session (AdminSession): The validated session.
+            principal (Any): The signed-in admin.
+            db_session (AsyncSession): The DB session.
+            form (Any): The submitted form.
+            raw_ids (list[str]): The selected ids the principal reaches.
+            scope (ColumnElement[bool] | None): The principal's scope.
+
+        Returns:
+            Response: A form step (``200``, ``400`` on invalid input), or a
+            redirect to the list with the outcome.
+
+        Raises:
+            HTTPException: ``400`` when bulk edit is off for the admin, or
+                the value step carries no nonce.
+        """
+        if not admin.can_edit or not admin.bulk_edit_fields:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "bulk edit disabled")
+        slug = admin.get_slug()
+        redirect_url = f"{prefix}/m/{slug}/"
+        if not raw_ids:
+            return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+        chosen = form.get(_BULK_FIELD)
+        if len(admin.bulk_edit_fields) == 1:
+            chosen = admin.bulk_edit_fields[0]
+        if not isinstance(chosen, str) or chosen not in admin.bulk_edit_fields:
+            return await _bulk_edit_form(
+                request, admin, session, principal, db_session, raw_ids, None
+            )
+        if form.get(_BULK_INPUT_FIELD) != "1":
+            return await _bulk_edit_form(
+                request, admin, session, principal, db_session, raw_ids, chosen
+            )
+        ids = [_identity_value(raw) for raw in raw_ids]
+        repository = admin.build_repository(db_session)
+        rows = await repository.list({"id": ids}, where=scope)
+        data, errors = parse_submission(admin, form, only=[chosen], locale=site.locale)
+        if not errors and chosen not in data:
+            errors[chosen] = _t("form.error.required")
+        if not errors:
+            errors.update(await _fk_scope_errors(admin, db_session, principal, data))
+        if not errors:
+            locked = sum(
+                1 for row in rows if chosen in admin.readonly_field_names_for(row)
+            )
+            if locked:
+                errors[chosen] = _tn("bulk_edit.error.locked", locked)
+        if not errors and admin.validate_edit is not None:
+            for row in rows:
+                refused = admin.validate_edit(row, form)
+                if refused:
+                    errors.update(refused)
+                    break
+        if errors:
+            return await _bulk_edit_form(
+                request,
+                admin,
+                session,
+                principal,
+                db_session,
+                raw_ids,
+                chosen,
+                submitted=form,
+                errors=errors,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        nonce = form.get("submission_nonce")
+        if not isinstance(nonce, str) or not nonce:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "missing submission nonce")
+        if not await nonces.consume(session, nonce):
+            return _already_processed(slug)
+        values: dict[str, Any] = {chosen: data[chosen]}
+        actor_id = auth_backend.principal_id(principal)
+        if "updated_by" in admin.column_names():
+            with contextlib.suppress(ValueError, TypeError):
+                values["updated_by"] = UUID(actor_id)
+        row_ids = [row.id for row in rows]
+        audit_model = admin.audit_model
+        before = (
+            {row.id: snapshot_model(row) for row in rows}
+            if audit_model is not None
+            else {}
+        )
+        label = humanize_field(chosen)
+        try:
+            async with transaction(db_session):
+                stmt = (
+                    sa_update(admin.model)
+                    .where(admin.model.id.in_(row_ids))
+                    .values(**values)
+                    .execution_options(synchronize_session=False)
+                )
+                if scope is not None:
+                    stmt = stmt.where(scope)
+                result = await db_session.execute(stmt)
+                touched = cast("CursorResult[Any]", result).rowcount or 0
+                if scope is not None:
+                    still = await repository.count({"id": row_ids}, where=scope)
+                    if still < touched:
+                        raise _RowOutOfScopeError
+                if audit_model is not None:
+                    for row in rows:
+                        await db_session.refresh(row)
+                        db_session.add(
+                            audit_model.for_update(row, before[row.id], actor=actor_id)
+                        )
+        except _RowOutOfScopeError:
+            flash, category = _t("error.out_of_scope"), "error"
+        except IntegrityError:
+            flash, category = _t("bulk_edit.error.conflict", field=label), "error"
+        else:
+            flash = _tn("bulk_edit.done", touched, field=label)
+            category = "success"
+        return RedirectResponse(
+            url=f"{redirect_url}?{urlencode({'flash': flash, 'flash_cat': category})}",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @router.post("/m/{slug}/bulk", name="admin_bulk")
@@ -3438,6 +4316,10 @@ def make_admin_router(
             ]
             ids = [_identity_value(raw) for raw in raw_ids]
         redirect_url = f"{prefix}/m/{slug}/"
+        if action == _BULK_EDIT_ACTION:
+            return await _bulk_edit(
+                request, admin, session, principal, db_session, form, raw_ids, scope
+            )
         if ids and custom is not None:
             admin_action = custom
             data: Any = None
@@ -3704,13 +4586,7 @@ def make_admin_router(
             fields.append((column, raw_value))
 
         async def _actor(uid: Any) -> str | None:
-            """Name the author of a change, within the user admin's scope.
-
-            When the principal's model is registered with a ``row_scope``,
-            the name is shown only for a user the signed-in principal may
-            ``VIEW`` and reaches through that scope; any other author is
-            shown by id, so the audit panel does not read another
-            tenant's users.
+            """Name the author of a change (see :func:`_actor_label`).
 
             Args:
                 uid (Any): The stored actor id.
@@ -3718,22 +4594,7 @@ def make_admin_router(
             Returns:
                 str | None: The display name, the id, or ``None``.
             """
-            if uid is None:
-                return None
-            actor = await auth_backend.load_principal(db_session, str(uid))
-            if actor is None:
-                return str(uid)
-            actor_admin = site.get(cast("type[BaseModel]", type(actor)))
-            if actor_admin is not None and actor_admin.row_scope is not None:
-                if not await _allows(principal, actor_admin, AdminPermissionEnum.VIEW):
-                    return str(uid)
-                visible = await actor_admin.build_repository(db_session).count(
-                    {"id": getattr(actor, "id", None)},
-                    where=await actor_admin.scope_for(principal),
-                )
-                if not visible:
-                    return str(uid)
-            return auth_backend.display_name(actor)
+            return await _actor_label(principal, db_session, uid)
 
         audit = {
             "created_at": _localized(
@@ -3786,6 +4647,7 @@ def make_admin_router(
             identity,
             overrides=inline_overrides,
         )
+        links = await _m2m_detail(admin, db_session, principal, instance)
 
         return _render(
             request,
@@ -3814,6 +4676,12 @@ def make_admin_router(
                 and await _allows(principal, admin, AdminPermissionEnum.DELETE),
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
+                "links": links,
+                "duplicate_url": f"{prefix}/m/{slug}/{identity}/duplicate"
+                if admin.can_duplicate
+                and admin.can_create
+                and await _allows(principal, admin, AdminPermissionEnum.CREATE)
+                else None,
             },
             status_code=status_code,
         )
@@ -4054,6 +4922,7 @@ def make_admin_router(
         instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        await _load_m2m(db_session, instance, await _m2m_targets(admin, principal))
         return _render(
             request,
             "form.html",
@@ -4070,12 +4939,82 @@ def make_admin_router(
                     principal,
                     instance=instance,
                     only=admin.editable_field_names(instance=instance),
+                    with_m2m=True,
                 ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
                 "form_error": None,
                 "version_field": _VERSION_FIELD,
                 "version_token": _version_token(admin, instance),
+            },
+        )
+
+    @router.get("/m/{slug}/{identity}/duplicate", name="admin_duplicate")
+    async def duplicate_form(
+        request: Request,
+        slug: str,
+        identity: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Render the create form filled with a copy of one row.
+
+        The values come from :func:`duplicate_values` — no identity, unique
+        column, password, upload, secret or audit column — plus the source's
+        many-to-many links the principal reaches. The form posts to the
+        ordinary create route, so the copy passes every check a new row
+        does (validation, foreign-key scope, ``row_scope`` after the write).
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The source row's identity.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: ``form.html`` in create mode.
+
+        Raises:
+            HTTPException: ``404`` when duplication is off, the admin has no
+                column create form, or the source row does not exist or is
+                outside the scope; ``403`` without ``VIEW`` or ``CREATE``.
+        """
+        admin = _require_admin(slug, lambda a: a.can_duplicate and a.can_create)
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermissionEnum.VIEW)
+        await _require_access(principal, admin, AdminPermissionEnum.CREATE)
+        source = await _get_scoped(admin, db_session, principal, identity)
+        if source is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        prefill: dict[str, Any] = dict(duplicate_values(admin, source))
+        targets = await _m2m_targets(admin, principal)
+        await _load_m2m(db_session, source, targets)
+        for name in targets:
+            prefill[name] = [str(row.id) for row in getattr(source, name)]
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "create",
+                "form_title": _t(
+                    "form.title.duplicate", model=admin.get_verbose_name()
+                ),
+                "form_fields": await _form_fields(
+                    admin,
+                    db_session,
+                    principal,
+                    submitted=prefill,
+                    creating=True,
+                    with_m2m=True,
+                ),
+                "action_url": f"{prefix}/m/{slug}/new",
+                "back_url": f"{prefix}/m/{slug}/{identity}",
+                "form_error": None,
             },
         )
 
@@ -4125,6 +5064,7 @@ def make_admin_router(
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         form = await request.form()
+        await _load_m2m(db_session, instance, await _m2m_targets(admin, principal))
         editable = admin.editable_field_names(instance=instance)
         data, errors = parse_submission(admin, form, only=editable, locale=site.locale)
         if admin.validate_edit is not None:
@@ -4146,6 +5086,10 @@ def make_admin_router(
             locale=site.locale,
         )
         errors.update(password_errors)
+        links, link_errors = await _parse_m2m(
+            admin, db_session, principal, form, instance=instance
+        )
+        errors.update(link_errors)
         form_error: str | None = None
         submitted_version = form.get(_VERSION_FIELD)
         version_token = (
@@ -4180,6 +5124,8 @@ def make_admin_router(
                     raise _EditConflictError
             for key, value in data.items():
                 setattr(instance, key, value)
+            for name, linked in links.items():
+                setattr(instance, name, linked)
             apply_password_fields(admin, instance, passwords)
             _stamp_audit(instance, auth_backend.principal_id(principal), creating=False)
             return await repository.update(instance)
@@ -4222,6 +5168,7 @@ def make_admin_router(
                     submitted=form,
                     errors=errors,
                     only=editable,
+                    with_m2m=True,
                 ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
@@ -5196,6 +6143,7 @@ class _RowView:
         self.instance: Any = instance
         self.identity: Any = getattr(instance, identity_field, None)
         self.pk: Any = getattr(instance, "id", None)
+        self.related: list[dict[str, Any]] = []
         self.values: dict[str, Any] = {
             col: _localized(getattr(instance, col, None), timezone) for col in columns
         }
@@ -5327,6 +6275,7 @@ def _resolve_filters_and_order(
     q: str,
     sort: str,
     direction: str,
+    extra_fk_filters: Collection[str] = (),
 ) -> tuple[dict[str, Any], dict[str, str], str | None, bool, str, bool]:
     """Build the repository filters + ordering from the request.
 
@@ -5342,6 +6291,9 @@ def _resolve_filters_and_order(
         sort (str): Requested sort column (validated against the
             sortable columns; ignored otherwise).
         direction (str): ``"asc"`` or ``"desc"``.
+        extra_fk_filters (Collection[str]): Foreign-key columns outside
+            ``list_filter`` whose ``filter_<fk>`` value is honoured too —
+            the parent filter a related-count link applies.
 
     Returns:
         tuple: ``(filters, active_filters, order_key, ascending,
@@ -5374,6 +6326,11 @@ def _resolve_filters_and_order(
             filters[field] = (
                 _identity_value(value) if kind == "fk" else _coerce_filter_value(value)
             )
+    for field in extra_fk_filters:
+        value = request.query_params.get(f"filter_{field}")
+        if value:
+            active_filters[f"filter_{field}"] = value
+            filters[field] = _identity_value(value)
     sortable = _sortable_columns(admin)
     if sort and sort in sortable:
         ascending = direction != "desc"
@@ -5641,6 +6598,8 @@ def _bulk_actions(admin: Any, locale: str) -> list[tuple[str, str, str]]:
     if admin.can_edit and admin.can_toggle_active:
         actions.append(("activate", admin_text(locale, "list.activate"), plain))
         actions.append(("deactivate", admin_text(locale, "list.deactivate"), plain))
+    if admin.can_edit and admin.bulk_edit_fields:
+        actions.append((_BULK_EDIT_ACTION, admin_text(locale, "list.bulk_edit"), plain))
     if admin.can_delete:
         delete_label = admin_text(locale, "common.delete")
         actions.append(
@@ -5673,6 +6632,24 @@ _AUTOCOMPLETE_LIMIT = 20
 
 #: Cap on child rows rendered per inline on the detail view.
 _INLINE_ROW_LIMIT = 50
+
+_ACTIVITY_SCAN_FACTOR: Final[int] = 10
+"""Audit rows read per table for each entry the dashboard feed shows.
+
+The feed drops entries whose row the principal's ``row_scope`` hides, so it
+reads more than it shows; with ``recent_activity=20`` it reads up to 200
+entries per audit table. When the scope hides more than that share of the
+newest entries, the feed shows fewer than ``recent_activity``.
+"""
+
+_BULK_EDIT_ACTION: Final[str] = "bulk_edit"
+"""Value of the "Edit field" entry of the list's bulk-action menu."""
+
+_BULK_FIELD: Final[str] = "bulk_field"
+"""Form field naming the column a bulk edit sets."""
+
+_BULK_INPUT_FIELD: Final[str] = "bulk_input"
+"""Marker of the bulk-edit form that carries the value to apply."""
 
 
 def _prefix_row_fields(key: str, fields: list[FormField]) -> list[FormField]:
@@ -5937,6 +6914,27 @@ def _to_json(columns: list[str], items: list[Any]) -> str:
         for instance in items
     ]
     return json.dumps(rows, ensure_ascii=False, default=str)
+
+
+def _xlsx_cell(value: Any) -> CellValue:
+    """Normalize a column value for an ``.xlsx`` cell.
+
+    The same text as the CSV export (:func:`_export_value`: datetimes as
+    ISO 8601, so the stored UTC instant is written as it is), except that a
+    ``Decimal`` stays a number. No ``'`` prefix: a text cell of an
+    ``.xlsx`` is never evaluated, and :class:`SheetWriter` keeps a string
+    that starts with ``=`` as text.
+
+    Args:
+        value (Any): The raw ORM attribute value.
+
+    Returns:
+        CellValue: The value to write.
+    """
+    if isinstance(value, Decimal):
+        return value
+    exported: CellValue = _export_value(value)
+    return exported
 
 
 def _coerce_filter_value(raw: str) -> Any:

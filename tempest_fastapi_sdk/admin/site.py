@@ -65,6 +65,8 @@ class AdminSite:
         location_maps (list[BRLocationMap]): Map pages of where a model's
             rows are in Brazil.
         locale (AdminLocale): Language of the panel's own text.
+        recent_activity (int | None): Entries of the dashboard's recent
+            activity feed, or ``None`` when the feed is off.
     """
 
     def __init__(
@@ -80,6 +82,7 @@ class AdminSite:
         metrics_areas: Sequence[MetricsArea] = (),
         location_maps: Sequence[BRLocationMap] = (),
         locale: AdminLocale = DEFAULT_ADMIN_LOCALE,
+        recent_activity: int | None = None,
     ) -> None:
         """Initialize the site.
 
@@ -123,13 +126,30 @@ class AdminSite:
                 Brazilian Portuguese. Text you configure (model and field
                 names, ``verbose_name``, action labels, ``title``) is shown
                 as given.
+            recent_activity (int | None): Show the last ``N`` changes of every
+                registered model that declares ``audit_model`` on the
+                dashboard, merged newest first, each linking to its row.
+                ``None`` (default) leaves the feed off, because it costs
+                queries on every dashboard load: one per audit table, one
+                per audited model to keep only the rows the principal
+                reaches, and one author lookup per distinct author. A
+                model the principal may not ``VIEW`` is left out, and so is
+                an entry whose row falls outside the model's ``row_scope``
+                (or no longer exists, on a scoped model), label included.
 
         Raises:
             ValueError: When ``display_timezone`` is not a zone the
                 host's tz database knows, or two ``metrics_areas`` (or two
                 ``location_maps``) share a URL slug, or ``locale`` is not one
-                of :data:`~tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES`.
+                of :data:`~tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES`,
+                or ``recent_activity`` is not a positive number.
         """
+        if recent_activity is not None and recent_activity < 1:
+            raise ValueError(
+                f"AdminSite recent_activity must be a positive number of "
+                f"entries or None, got {recent_activity!r}"
+            )
+        self.recent_activity: int | None = recent_activity
         if locale not in ADMIN_LOCALES:
             raise ValueError(
                 f"AdminSite locale {locale!r} is not one of {list(ADMIN_LOCALES)}"

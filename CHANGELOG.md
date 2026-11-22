@@ -70,6 +70,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mensagem plana passa o seu. O `pong` é engolido nos dois casos.
 - `tempest_fastapi_sdk.rooms.ping_message()`: o ping do protocolo de salas,
   `{"type": "ping"}`, fonte única para os dois transportes.
+- Admin: export e import `.xlsx` (#803). Com o extra `[spreadsheet]`, a
+  listagem ganha **Export XLSX** (`GET {prefix}/m/{slug}/export.xlsx`): as
+  linhas do CSV — busca, filtros, `row_scope`, `export_max_rows` — numa aba,
+  datetime como o mesmo texto ISO 8601 em UTC do CSV, texto que começa com
+  `=` gravado como texto. O import aceita `.xlsx` (primeira aba, linha 1 de
+  cabeçalho), convertido para o CSV que a prévia valida e a confirmação
+  assina; o teto de 512 KiB vale para o upload e para o CSV gerado. O
+  openpyxl é carregado só quando usado; sem o extra o botão some e as rotas
+  respondem com a mensagem que nomeia `tempest-fastapi-sdk[spreadsheet]`.
+- Admin: muitos-para-muitos no form (#803). `AdminModel(m2m_fields=[...])`
+  para `relationship` com `secondary`: `<select multiple>` no create/edit com
+  as linhas que o principal alcança no `row_scope` do alvo (e com `VIEW`
+  nele), lista de links no detail, gravação que substitui o conjunto na
+  transação do save. Vínculo fora do escopo do operador não aparece e é
+  mantido; id postado fora do escopo, ou inexistente, recusa o campo com o
+  erro de registro inexistente. Nome que não é `relationship` com
+  `secondary` levanta `ValueError` na construção.
+- Admin: contagem de relacionados na listagem (#803).
+  `AdminModel(related_counts=[RelatedCount(OrderModel.user_id, label=...)])`
+  (`RelatedCount` exportado na raiz e em `tempest_fastapi_sdk.admin`): uma
+  coluna por contagem, de um `SELECT fk, COUNT(*) ... GROUP BY fk` por página
+  com o `row_scope` do filho; o número linka a listagem do filho filtrada pelo
+  pai (`?filter_<fk>=<id>`, aceito mesmo fora do `list_filter`, com chip
+  **Filtrado por**) quando o filho tem admin. Sem `VIEW` no filho a coluna
+  some.
+- Admin: atividade recente no dashboard (#803). `AdminSite(recent_activity=N)`
+  mostra as últimas N mudanças dos models com `audit_model`, mescladas por
+  data, com link para o registro. Model sem `VIEW` fica de fora; entrada de
+  linha fora do `row_scope` (ou de linha apagada, em model com escopo) não
+  aparece, nem o rótulo; o autor segue a regra do painel de auditoria. Padrão
+  `None` (desligado): o feed custa uma consulta por tabela de auditoria, uma
+  por model auditado e uma por autor distinto em cada carga do dashboard.
+- Admin: duplicar registro (#803). `AdminModel(can_duplicate=True)` põe
+  **Duplicar** no detail (`GET {prefix}/m/{slug}/{identity}/duplicate`): o
+  form de criação preenchido sem identidade, colunas únicas (inclusive
+  `UniqueConstraint` e índice único), senha, upload, secretas e auditoria,
+  postando para o create comum. Exige `CREATE` e `VIEW`; origem fora do
+  escopo é `404`. Sem o form de colunas, `ValueError` na construção.
+- Admin: edição em massa de um campo (#803).
+  `AdminModel(bulk_edit_fields=[...])` acrescenta **Editar campo** às ações
+  da seleção: escolhe o campo, digita no widget dele, valida como o form de
+  edição (FK no escopo do alvo, `validate_edit` por linha, campo travado por
+  `readonly_fields_for` recusa tudo) e aplica com um
+  `UPDATE ... WHERE id IN (...) AND escopo` numa transação que volta se o
+  valor tirar alguma linha do escopo; com `audit_model`, uma entrada por
+  linha. Exige `EDIT`; nonce de uso único no passo do valor.
 
 ### Changed
 

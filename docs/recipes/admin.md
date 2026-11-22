@@ -890,6 +890,47 @@ nova para a mais antiga.
     `audit_model`, o detail continua igual (só os carimbos
     `created_by`/`updated_by`).
 
+### Atividade recente no dashboard (`recent_activity=`)
+
+A linha do tempo acima é por registro. Para ver o que mudou no painel
+inteiro sem abrir registro por registro, ligue o feed do dashboard no
+`AdminSite`:
+
+```python
+from tempest_fastapi_sdk import AdminModel, AdminSite
+
+from src.db.models import AuditLog, OrderModel, TicketModel
+
+site = AdminSite(title="Loja", recent_activity=20)
+site.register(AdminModel(model=OrderModel, audit_model=AuditLog))
+site.register(AdminModel(model=TicketModel, audit_model=AuditLog))
+```
+
+O dashboard ganha o bloco **Atividade recente**: as últimas 20 entradas de
+todos os models que declaram `audit_model`, mescladas da mais nova para a
+mais antiga, cada uma com a ação, o model, o rótulo do registro (link para
+o detail), a data e o autor.
+
+O feed passa pelas mesmas regras do resto do painel:
+
+- model em que o principal não tem `VIEW` no `access_policy` não aparece;
+- entrada de uma linha fora do `row_scope` do model não aparece — nem o
+  rótulo. Num model com escopo, também some a entrada de uma linha que não
+  existe mais (um `delete`), porque nada prova que ela era alcançável; sem
+  escopo, ela aparece sem link;
+- o autor segue a regra do painel de auditoria do detail: com `row_scope`
+  no model de usuário, o nome só aparece para quem o principal alcança;
+  senão, o id.
+
+!!! info "Desligado por padrão — o custo"
+    `recent_activity=None` é o padrão porque o feed custa consultas em
+    **toda** carga do dashboard: uma por tabela de auditoria, uma por model
+    auditado (para manter só as linhas do escopo e ler os rótulos) e uma
+    busca de autor por autor distinto. Para compensar as entradas que o
+    escopo esconde, o painel lê até `10 × recent_activity` entradas por
+    tabela; se o escopo esconder mais que isso entre as mais novas, o feed
+    mostra menos que o pedido.
+
 ## FK com autocomplete (`autocomplete_fields=`)
 
 Por padrão um campo FK cujo alvo tem admin registrado vira um `<select>`
@@ -1002,6 +1043,109 @@ a linha.
       mensagem por campo e sem inserir nada.
     - Precisa do `AdminModel` do filho + `can_edit` (e `can_delete` pra
       excluir). Até 50 linhas por inline.
+
+## Muitos-para-muitos no form (`m2m_fields=`)
+
+Um `relationship(..., secondary=...)` — tags de um artigo, papéis de um
+usuário — não é coluna, então o form não o mostrava. Declare em
+`m2m_fields`:
+
+```python
+from sqlalchemy import Column, ForeignKey, String, Table
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from tempest_fastapi_sdk import AdminModel, BaseModel
+
+from src.admin import site
+
+article_tags = Table(
+    "article_tags",
+    BaseModel.metadata,
+    Column("article_id", ForeignKey("articles.id"), primary_key=True),
+    Column("tag_id", ForeignKey("tags.id"), primary_key=True),
+)
+
+
+class Tag(BaseModel):
+    __tablename__ = "tags"
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class Article(BaseModel):
+    __tablename__ = "articles"
+    title: Mapped[str] = mapped_column(String(120))
+    tags: Mapped[list[Tag]] = relationship(secondary=article_tags)
+
+
+site.register(AdminModel(model=Tag, search_fields=[Tag.name]))
+site.register(AdminModel(model=Article, m2m_fields=[Article.tags]))
+```
+
+O create e o edit ganham um `<select multiple>` com as tags (rotuladas
+como no `<select>` de FK: o primeiro `search_fields` do admin do alvo),
+e o detail lista as tags ligadas, com link quando o alvo tem admin. Salvar
+**substitui o conjunto** na mesma transação do registro: o que não veio
+selecionado é desligado, e se o save volta (validação, escopo, conflito),
+nenhum vínculo muda.
+
+Com escopo, a regra é a da FK na escrita:
+
+- as opções são só as linhas que o principal alcança pelo `row_scope` do
+  alvo (e pedem `VIEW` nele — sem `VIEW`, o campo nem aparece, e os
+  vínculos gravados ficam como estão);
+- um vínculo que o operador **não** alcança não aparece no form e
+  **continua** depois do save — ele não apaga o que não vê;
+- um id postado fora do escopo, ou que não existe, recusa o campo com
+  `Select a valid choice; that record does not exist.`, o mesmo erro, para
+  um `POST` forjado não descobrir ids de outro tenant.
+
+!!! info "Conferido na construção"
+    Um nome em `m2m_fields` que não é `relationship` com `secondary`
+    (uma coluna, um 1-N) levanta `ValueError` quando o `AdminModel` é
+    criado. O 1-N tem o [`inlines=`](#inlines-filhos-1-n-no-detail-inlines);
+    o N-1 já é o `<select>` de FK. As opções param em `FK_OPTION_CAP`
+    (1000) linhas, como no `<select>` de FK.
+
+## Contagem de relacionados na listagem (`related_counts=`)
+
+Na listagem de clientes, quantos pedidos cada um tem? Declare no admin do
+**pai** a coluna FK do **filho**:
+
+```python
+from tempest_fastapi_sdk import AdminModel, RelatedCount
+
+from src.admin import site
+from src.db.models import CustomerModel, OrderModel
+
+
+site.register(
+    AdminModel(
+        model=CustomerModel,
+        related_counts=[RelatedCount(OrderModel.customer_id, label="Pedidos")],
+    )
+)
+site.register(AdminModel(model=OrderModel))
+```
+
+A listagem ganha a coluna **Pedidos** com a contagem por linha, e cada
+número é um link para a listagem de pedidos já filtrada pelo cliente
+(`?filter_customer_id=<id>`) — o filtro vale mesmo com `customer_id` fora
+do `list_filter` dos pedidos, aparece como um chip **Filtrado por** com
+**Limpar filtro**, e o export da listagem filtrada respeita o mesmo
+filtro.
+
+A contagem de uma página inteira sai de **uma** consulta,
+`SELECT customer_id, COUNT(*) ... WHERE customer_id IN (<ids da página>)
+GROUP BY customer_id`, nunca uma por linha — o teste conta os statements
+de uma página de 25 linhas e acha um só `GROUP BY`.
+
+- A consulta leva o `row_scope` do admin do filho: o número conta só os
+  pedidos que o principal alcança.
+- Sem `VIEW` no filho, a coluna some — o número é dado daquele model.
+- O link só existe quando o filho tem admin registrado; filho sem admin
+  mostra a contagem sem link.
+- `RelatedCount` recebe o atributo mapeado (para saber o model do filho);
+  a coluna precisa ter `ForeignKey` para a tabela do pai, ou o
+  `AdminModel` levanta `ValueError` na construção.
 
 ## Dashboard: cards de métricas de negócio (`dashboard_cards=`)
 
@@ -1384,6 +1528,115 @@ metade.
     `can_import` é `False` por padrão e exige `can_create` (importar é
     criar em massa). Colunas de upload de arquivo não entram pelo CSV.
 
+### Exportar e importar `.xlsx`
+
+Com o extra `[spreadsheet]` instalado, a listagem ganha **Export XLSX** ao
+lado de CSV e JSON, e o import aceita `.xlsx` além de `.csv`:
+
+```bash
+uv add "tempest-fastapi-sdk[admin,spreadsheet]"
+```
+
+- **Export.** As mesmas linhas do CSV — busca, filtros, `row_scope` e o
+  teto `export_max_rows` —, numa aba, com o cabeçalho congelado. Datetime
+  sai como o **mesmo texto ISO 8601 em UTC** do CSV; número e booleano
+  continuam número e booleano. Uma célula de texto que começa com `=`
+  continua texto (o `SheetWriter` grava como string), então
+  `=HYPERLINK(...)` digitado num nome não vira fórmula no arquivo.
+- **Import.** O `.xlsx` (pelo nome ou por abrir como ZIP) é lido da
+  **primeira aba**, linha 1 como cabeçalho, e vira o texto CSV que o import
+  já valida: daí em diante é o mesmo caminho — prévia, `row_scope`, FK,
+  confirmação assinada. O que vai assinado é esse CSV, então o teto de
+  512 KiB vale para o upload **e** para o CSV que ele vira. Booleano vira
+  `true`/`false`, datetime vira ISO 8601 (sem fuso, como a planilha guarda,
+  lido no fuso do model como o CSV), e `3.0` vira `3`.
+
+!!! info "Sem o extra"
+    O openpyxl só é carregado quando um `.xlsx` é pedido. Sem o extra, o
+    botão **Export XLSX** não aparece, o `accept` do upload volta a ser só
+    CSV, e as rotas respondem com a mensagem que nomeia o pacote: o export
+    redireciona para a listagem com
+    `Exporting .xlsx needs the spreadsheet extra: pip install "tempest-fastapi-sdk[spreadsheet]"`
+    e a prévia do import responde `400` com o equivalente.
+
+## Duplicar registro (`can_duplicate=True`)
+
+Para criar um registro parecido com um que já existe, `can_duplicate=True`
+põe **Duplicar** no detail:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import ProductModel
+
+
+site.register(AdminModel(model=ProductModel, can_duplicate=True))
+```
+
+O botão abre o form de **criação** preenchido com os valores do registro,
+menos o que uma cópia não pode carregar: a identidade, as colunas únicas
+(`unique=True`, `UniqueConstraint` e índice único — composto inclusive),
+senha, upload, colunas secretas e as de auditoria (`created_at`,
+`updated_at`, `created_by`, `updated_by`). Os vínculos de
+[`m2m_fields`](#muitos-para-muitos-no-form-m2m_fields) que o principal
+alcança vêm marcados.
+
+O form posta para o create comum, então a cópia passa por **toda**
+checagem de um registro novo — validação, FK no escopo, `row_scope`
+depois da escrita. Exige `CREATE` (e `VIEW`, porque lê a origem), e a
+origem precisa estar no escopo: fora dele, `404`. Precisa do form de
+colunas: com `can_create=False` ou com `create_handler`, a construção
+levanta `ValueError`.
+
+## Edição em massa de um campo (`bulk_edit_fields=`)
+
+Arquivar 40 pedidos de uma vez sem abrir um por um:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import OrderModel
+
+
+site.register(
+    AdminModel(
+        model=OrderModel,
+        bulk_edit_fields=[OrderModel.status, OrderModel.assignee_id],
+        choices={OrderModel.status: ["open", "shipped", "archived"]},
+    )
+)
+```
+
+O menu de ações da seleção ganha **Editar campo**. Marque as linhas,
+escolha a ação, escolha o campo (passo pulado quando só há um) e digite o
+valor no **widget do próprio campo** — o `<select>` de `choices`, o de
+FK. O valor é validado como no form de edição: tipo,
+obrigatório, `choices`, a FK no escopo do alvo, o `validate_edit` de cada
+linha, e um campo que o `readonly_fields_for` tranca em qualquer linha
+selecionada recusa a edição inteira.
+
+A escrita é **um** `UPDATE ... WHERE id IN (...) AND <escopo>` numa
+transação:
+
+- só os ids selecionados que o principal alcança entram;
+- se o valor novo tira alguma linha do escopo, a transação volta inteira e
+  a listagem mostra o aviso de escopo;
+- com `audit_model`, cada linha ganha a sua entrada `update` com o diff,
+  na mesma transação;
+- `updated_by` recebe o operador e `updated_at` anda — um form de edição
+  aberto antes acusa o [conflito](#edicao-simultanea-trava-otimista).
+
+Exige `can_edit` e `EDIT`. O passo do valor leva um nonce de uso único:
+recarregar a resposta não aplica de novo.
+
+!!! warning "Sem sinais do repositório"
+    Como o activate/deactivate em lote, a edição em massa é SQL Core:
+    handlers de `PRE_SAVE`/`POST_SAVE` não disparam. Cada nome em
+    `bulk_edit_fields` precisa ser coluna editável do form (nem upload, nem
+    senha, nem `readonly_fields`), conferido na construção.
+
 ## RBAC granular (`access_policy=`)
 
 Por padrão, quem loga no admin (`is_admin`) faz tudo o que os flags
@@ -1622,7 +1875,10 @@ ou escreve linha do model:
 - autocomplete, `<select>` de FK e filtro de FK **quando este model é o
   alvo**, e a tabela de inline quando ele é o **filho**;
 - o formset do inline editável (o pai e cada filho são lidos no escopo);
-- a prévia e a confirmação do import CSV.
+- a prévia e a confirmação do import CSV e `.xlsx`, e o export `.xlsx`;
+- o duplicar (a origem é lida no escopo), a edição em massa, as opções e
+  os vínculos de `m2m_fields` e a contagem de `related_counts` (com o
+  escopo do model alvo ou filho), e o feed de atividade recente.
 
 Linha fora do escopo responde `404` — o mesmo de uma linha que não
 existe, para a resposta não confirmar que ela está lá. No delete e nas
@@ -1664,6 +1920,11 @@ saved.` — o operador da empresa A não cria um ticket da empresa B nem
 - **activate/deactivate em lote**: se o `is_active` novo tira alguma
   linha do escopo (um escopo que filtra por ele), nada muda e a listagem
   volta com o aviso.
+- **edição em massa** (`bulk_edit_fields=`): a mesma regra — o `UPDATE`
+  leva o escopo no `WHERE`, e um valor que tira qualquer linha do escopo
+  volta a transação inteira.
+- **muitos-para-muitos** (`m2m_fields=`): cada id postado precisa estar no
+  escopo do alvo, e o vínculo que o operador não alcança é mantido.
 - **chave estrangeira**: num create, edit, inline ou import, o valor de
   uma FK cujo model alvo tem `row_scope` precisa ser uma linha que o
   principal alcança lá. Fora do escopo, o campo recebe `Select a valid
@@ -2745,3 +3006,12 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
   do painel; `readonly_fields` só tranca a escrita.
 - `display_timezone=` é o que transforma o campo de datetime em widget:
   a tela lê e escreve no fuso do operador, a coluna continua em UTC.
+- `m2m_fields=` edita um `secondary` como multi-select, e o vínculo que o
+  operador não alcança fica; `related_counts=` conta os filhos por linha
+  com um `GROUP BY` por página.
+- `can_duplicate=True` abre o create preenchido com a cópia, e
+  `bulk_edit_fields=` aplica um valor a toda a seleção num `UPDATE` só,
+  com rollback se ele tirar linha do escopo.
+- `AdminSite(recent_activity=N)` liga o feed das últimas mudanças
+  auditadas no dashboard; o extra `[spreadsheet]` acrescenta o `.xlsx` ao
+  export e ao import.

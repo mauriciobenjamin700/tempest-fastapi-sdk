@@ -32,6 +32,17 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "action.rows_selected.one": "{count} row(s) selected.",
         "action.rows_selected.other": "{count} row(s) selected.",
         "autocomplete.empty": "No matches",
+        "bulk_edit.apply": "Apply to selected",
+        "bulk_edit.done.one": "Set {field} on {count} row.",
+        "bulk_edit.done.other": "Set {field} on {count} rows.",
+        "bulk_edit.error.conflict": (
+            "The database refused that {field}; no row was changed."
+        ),
+        "bulk_edit.error.locked.one": "{count} selected row locks this field.",
+        "bulk_edit.error.locked.other": "{count} selected rows lock this field.",
+        "bulk_edit.field": "Field",
+        "bulk_edit.next": "Next",
+        "bulk_edit.title": "Edit field",
         "card.level.green": "OK",
         "card.level.red": "Critical",
         "card.level.yellow": "Attention",
@@ -50,6 +61,9 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "common.search_placeholder": "Search…",
         "common.view": "View",
         "common.yes": "Yes",
+        "dashboard.activity": "Recent activity",
+        "dashboard.activity_empty": "No recorded changes yet.",
+        "dashboard.activity_gone": "record no longer exists",
         "dashboard.browse": "Browse",
         "dashboard.business_metrics": "Business metrics",
         "dashboard.cpu": "CPU",
@@ -65,6 +79,7 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "detail.created_at": "Created at",
         "detail.created_by": "Created by",
         "detail.delete_confirm": "Delete this record? This cannot be undone.",
+        "detail.duplicate": "Duplicate",
         "detail.history": "History",
         "detail.history.after": "after",
         "detail.history.before": "before",
@@ -93,6 +108,9 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "error.out_of_scope": (
             "This record would fall outside the rows you may manage; nothing was saved."
         ),
+        "export.error.xlsx_extra": (
+            'Exporting .xlsx needs the spreadsheet extra: pip install "{extra}"'
+        ),
         "filter.shortcut.last_30_days": "30 days",
         "filter.shortcut.last_7_days": "7 days",
         "filter.shortcut.last_month": "Last month",
@@ -112,12 +130,15 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "form.error.upload_type": "Only {types} files are accepted.",
         "form.file_current": "Current: {value} — choose a file to replace.",
         "form.json_hint": "JSON — must parse (e.g.",
+        "form.multiselect_empty": "No records to choose from.",
+        "form.multiselect_hint": "Hold Ctrl (Cmd on a Mac) to select more than one.",
         "form.none": "— none —",
         "form.password_keep": "Leave blank to keep the current password.",
         "form.required": "required",
         "form.save": "Save",
         "form.timezone_hint": "Timezone: {zone} — stored as UTC.",
         "form.title.create": "New {model}",
+        "form.title.duplicate": "Duplicate {model}",
         "form.title.edit": "Edit {model}",
         "import.back": "Back to list",
         "import.column.errors": "Errors",
@@ -145,8 +166,13 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
             "The file is larger than {max_kib} KiB. Split it and import each part."
         ),
         "import.error.unreadable": "Could not read the file as UTF-8 CSV.",
+        "import.error.unreadable_xlsx": "Could not read the file as an .xlsx workbook.",
+        "import.error.xlsx_extra": (
+            'Importing .xlsx needs the spreadsheet extra: pip install "{extra}"'
+        ),
         "import.expected_columns": "Expected header columns:",
         "import.file": "CSV file",
+        "import.file_any": "CSV or XLSX file",
         "import.header_rule": (
             "The first row must be the header; each following row becomes one record."
             " Up to {max_kib} KiB."
@@ -161,6 +187,7 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "import.preview_again": "Preview another file",
         "import.preview_submit": "Preview",
         "import.title": "Import {models}",
+        "import.xlsx_rule": "An .xlsx file is read from its first sheet.",
         "list.actions": "Actions",
         "list.activate": "Activate",
         "list.any": "— any —",
@@ -171,12 +198,16 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "list.bulk_confirm_dangerous": (
             'Run "{label}" on the checked rows? This cannot be undone.'
         ),
+        "list.bulk_edit": "Edit field",
+        "list.clear_filter": "Clear filter",
         "list.date_from": "{label} from",
         "list.date_to": "{label} to",
         "list.deactivate": "Deactivate",
         "list.empty": "No records.",
         "list.export_csv": "Export CSV",
         "list.export_json": "Export JSON",
+        "list.export_xlsx": "Export XLSX",
+        "list.filtered_by": "Filtered by {field}: {value}",
         "list.import_csv": "Import CSV",
         "list.lens_all": "All",
         "list.lenses": "Lenses",
@@ -373,6 +404,19 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "action.rows_selected.one": "{count} linha selecionada.",
         "action.rows_selected.other": "{count} linhas selecionadas.",
         "autocomplete.empty": "Nenhum resultado",
+        "bulk_edit.apply": "Aplicar às selecionadas",
+        "bulk_edit.done.one": "{field} alterado em {count} linha.",
+        "bulk_edit.done.other": "{field} alterado em {count} linhas.",
+        "bulk_edit.error.conflict": (
+            "O banco recusou esse valor de {field}; nenhuma linha foi alterada."
+        ),
+        "bulk_edit.error.locked.one": "{count} linha selecionada trava este campo.",
+        "bulk_edit.error.locked.other": (
+            "{count} linhas selecionadas travam este campo."
+        ),
+        "bulk_edit.field": "Campo",
+        "bulk_edit.next": "Continuar",
+        "bulk_edit.title": "Editar campo",
         "card.level.green": "OK",
         "card.level.red": "Crítico",
         "card.level.yellow": "Atenção",
@@ -391,6 +435,9 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "common.search_placeholder": "Buscar…",
         "common.view": "Ver",
         "common.yes": "Sim",
+        "dashboard.activity": "Atividade recente",
+        "dashboard.activity_empty": "Nenhuma alteração registrada ainda.",
+        "dashboard.activity_gone": "registro não existe mais",
         "dashboard.browse": "Abrir",
         "dashboard.business_metrics": "Indicadores do negócio",
         "dashboard.cpu": "CPU",
@@ -406,6 +453,7 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "detail.created_at": "Criado em",
         "detail.created_by": "Criado por",
         "detail.delete_confirm": "Excluir este registro? Isso não pode ser desfeito.",
+        "detail.duplicate": "Duplicar",
         "detail.history": "Histórico",
         "detail.history.after": "depois",
         "detail.history.before": "antes",
@@ -436,6 +484,9 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
             "Este registro ficaria fora das linhas que você pode gerenciar; nada foi"
             " salvo."
         ),
+        "export.error.xlsx_extra": (
+            'Exportar .xlsx precisa do extra de planilha: pip install "{extra}"'
+        ),
         "filter.shortcut.last_30_days": "30 dias",
         "filter.shortcut.last_7_days": "7 dias",
         "filter.shortcut.last_month": "Mês passado",
@@ -455,12 +506,15 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "form.error.upload_type": "Só são aceitos arquivos {types}.",
         "form.file_current": "Atual: {value} — escolha um arquivo para substituir.",
         "form.json_hint": "JSON — precisa ser válido (ex.:",
+        "form.multiselect_empty": "Nenhum registro para escolher.",
+        "form.multiselect_hint": "Segure Ctrl (Cmd no Mac) para escolher mais de um.",
         "form.none": "— nenhum —",
         "form.password_keep": "Deixe em branco para manter a senha atual.",
         "form.required": "obrigatório",
         "form.save": "Salvar",
         "form.timezone_hint": "Fuso horário: {zone} — gravado em UTC.",
         "form.title.create": "Novo: {model}",
+        "form.title.duplicate": "Duplicar: {model}",
         "form.title.edit": "Editar: {model}",
         "import.back": "Voltar para a lista",
         "import.column.errors": "Erros",
@@ -489,8 +543,15 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
             "O arquivo passa de {max_kib} KiB. Divida-o e importe cada parte."
         ),
         "import.error.unreadable": "Não foi possível ler o arquivo como CSV em UTF-8.",
+        "import.error.unreadable_xlsx": (
+            "Não foi possível ler o arquivo como planilha .xlsx."
+        ),
+        "import.error.xlsx_extra": (
+            'Importar .xlsx precisa do extra de planilha: pip install "{extra}"'
+        ),
         "import.expected_columns": "Colunas esperadas no cabeçalho:",
         "import.file": "Arquivo CSV",
+        "import.file_any": "Arquivo CSV ou XLSX",
         "import.header_rule": (
             "A primeira linha precisa ser o cabeçalho; cada linha seguinte vira um"
             " registro. Até {max_kib} KiB."
@@ -505,6 +566,7 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "import.preview_again": "Gerar prévia de outro arquivo",
         "import.preview_submit": "Gerar prévia",
         "import.title": "Importar {models}",
+        "import.xlsx_rule": "Um arquivo .xlsx é lido da primeira aba.",
         "list.actions": "Ações",
         "list.activate": "Ativar",
         "list.any": "— qualquer —",
@@ -515,12 +577,16 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "list.bulk_confirm_dangerous": (
             'Executar "{label}" nas linhas marcadas? Isso não pode ser desfeito.'
         ),
+        "list.bulk_edit": "Editar campo",
+        "list.clear_filter": "Limpar filtro",
         "list.date_from": "{label} desde",
         "list.date_to": "{label} até",
         "list.deactivate": "Desativar",
         "list.empty": "Nenhum registro.",
         "list.export_csv": "Exportar CSV",
         "list.export_json": "Exportar JSON",
+        "list.export_xlsx": "Exportar XLSX",
+        "list.filtered_by": "Filtrado por {field}: {value}",
         "list.import_csv": "Importar CSV",
         "list.lens_all": "Todos",
         "list.lenses": "Visões",

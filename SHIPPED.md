@@ -4852,3 +4852,32 @@ do schema; `_inserts_in_scope` coleta `session.new | session.dirty` no
 (`_CommittedOutOfScopeError`, mensagem `error.out_of_scope_committed`);
 `_delete_scoped` faz rollback quando o `DELETE` com escopo não pega linha
 e dá `expunge` antes do commit.
+
+### Admin: XLSX, muitos-para-muitos, contagem de relacionados, atividade recente, duplicar e edição em massa (#803, 2026-11-22)
+
+`admin/spreadsheet_io.py`: `spreadsheet_available()` (procura o openpyxl sem
+importar), `build_xlsx` (sobre `SheetWriter`/`new_workbook`, cabeçalho
+congelado) e `xlsx_to_csv` (sobre `read_xlsx_async`); o export `.xlsx` usa as
+mesmas linhas e o mesmo `_export_value` do CSV (`_xlsx_cell` só preserva
+`Decimal`), e o import converte o `.xlsx` em CSV antes da prévia, então a
+assinatura e o teto de 512 KiB valem para o CSV gerado. `admin/config.py`:
+`RelatedCount`, `AdminModel(m2m_fields=, related_counts=, can_duplicate=,
+bulk_edit_fields=)` com validação na construção; `AdminSite(recent_activity=)`.
+`admin/router.py`: `_m2m_targets`/`_m2m_form_fields`/`_parse_m2m`/`_m2m_detail`
+(opções e links no escopo do alvo, vínculos fora do escopo do operador
+preservados no save), `_related_count_columns` (um `GROUP BY` por página com
+o escopo do filho) e `_parent_filter_fields` (o `filter_<fk>` do link vale
+fora do `list_filter`), `_recent_activity` (uma consulta por tabela de
+auditoria, filtro de escopo por model, autor por `_actor_label`, o `_actor`
+do detail promovido a helper), rota `GET /m/{slug}/{identity}/duplicate`
+(`forms.duplicate_values` + `unique_field_names`), `_bulk_edit`/
+`_bulk_edit_form` dentro do `POST /m/{slug}/bulk` (`UPDATE ... AND escopo`,
+recontagem e rollback, `for_update` por linha). Testes:
+`tests/admin/test_admin_xlsx.py`, `test_admin_m2m.py`,
+`test_admin_related_counts.py` (conta statements), `test_admin_recent_activity.py`,
+`test_admin_duplicate.py`, `test_admin_bulk_edit.py`, com o mundo em
+`tests/admin/wave2_world.py`; `test_row_scope.py` ganhou o caso da rota de
+duplicar e o export `.xlsx` no caso do export. Receita: `admin`, seções
+"Exportar e importar `.xlsx`", "Atividade recente no dashboard",
+"Muitos-para-muitos no form", "Contagem de relacionados na listagem",
+"Duplicar registro" e "Edição em massa de um campo".

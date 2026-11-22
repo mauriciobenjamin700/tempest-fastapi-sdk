@@ -44,6 +44,7 @@ from tempest_fastapi_sdk.admin.config import OrderRef as OrderRef
 from tempest_fastapi_sdk.admin.config import (
     ReadonlyFieldsFor as ReadonlyFieldsFor,
 )
+from tempest_fastapi_sdk.admin.config import RelatedCount as RelatedCount
 from tempest_fastapi_sdk.admin.csv_import import (
     ADMIN_IMPORT_MAX_BYTES as ADMIN_IMPORT_MAX_BYTES,
 )
@@ -253,6 +254,7 @@ __all__: list[str] = [
     "MetricsProvider",
     "OrderRef",
     "ReadonlyFieldsFor",
+    "RelatedCount",
     "ScheduledTask",
     "SchemaActionHandler",
     "SessionStore",
