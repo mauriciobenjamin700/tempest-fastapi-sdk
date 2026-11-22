@@ -1337,12 +1337,48 @@ site.register(AdminModel(model=Product, can_import=True))
 
 Aparece um link **Import CSV** na list view → página com upload. O CSV
 precisa de uma linha de cabeçalho com os nomes das colunas editáveis; a
-página mostra quais são. Cada linha seguinte é validada e coagida com as
-**mesmas regras do create** (tipos, obrigatórios) e vira um registro.
+página mostra quais são. O import tem **dois passos**:
 
-O resultado é best-effort: linhas válidas são criadas, e um relatório
-lista as linhas puladas com o erro de cada campo — uma linha ruim nunca
-aborta as outras.
+1. **Prévia.** O upload valida cada linha com as **mesmas regras do
+   create** (tipos, obrigatórios, `choices`) e ensaia os inserts numa
+   transação que sempre sofre rollback — então a prévia também mostra o
+   que só o banco recusaria (valor duplicado numa `unique`) e o que o
+   [`row_scope`](#escopo-por-linha-row_scope) não alcança. Nada é
+   gravado. A página diz quantas linhas entram, mostra as primeiras 20 e
+   lista cada linha recusada com o número (o cabeçalho é a linha 1, como
+   na planilha) e o erro de cada campo.
+2. **Confirmar.** O botão **Confirm import of N records** reenvia o CSV
+   num campo oculto **assinado** com o `secret_key` do router e preso ao
+   model e ao operador da prévia: o que entra é exatamente o arquivo que
+   foi visto. As linhas rodam de novo, de verdade, numa transação só, e
+   o commit é **tudo ou nada** — se a tabela mudou desde a prévia e uma
+   linha agora falha, nada entra e a página volta com os erros. Deu
+   certo, o painel redireciona para a listagem com `Created N record(s).`
+
+Com erro em **qualquer** linha o botão de confirmar vem desabilitado, e
+o `POST` de confirmação recusa do mesmo jeito: nada é importado pela
+metade.
+
+!!! info "Limites do passo assinado"
+    - O arquivo vai até **512 KiB** (`ADMIN_IMPORT_MAX_BYTES`); maior que
+      isso a prévia responde `400` pedindo para dividir o arquivo. Medido
+      sobre seis arquivos de 512 KiB (hex aleatório, ASCII imprimível
+      aleatório, Latin-1, CJK, emoji, linhas de um caractere), o campo
+      assinado ficou em no máximo 571 099 bytes.
+    - A prévia vale **1 hora** (`ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS`).
+      Depois disso, ou com o campo adulterado, ou assinado para outro
+      model ou outro operador, a confirmação responde `400` e não grava.
+    - A confirmação gasta um nonce de uso único: recarregar a resposta não
+      importa de novo.
+
+!!! warning "Sinais do repositório só na confirmação"
+    A prévia insere pela sessão (depois do gancho `_prepare_insert` do
+    repositório), sem o `add` do repositório — nenhum handler de
+    `PRE_SAVE`/`POST_SAVE` dispara por uma prévia. A confirmação usa
+    `repository.add`, com sinais. Como o commit é único no fim, um
+    `POST_SAVE` de uma linha já disparou quando uma linha seguinte faz o
+    lote voltar; handler com efeito externo (e-mail, fila) deve olhar o
+    commit, não o sinal.
 
 !!! info "Opt-in + requer create"
     `can_import` é `False` por padrão e exige `can_create` (importar é
@@ -1542,6 +1578,145 @@ entrada da barra lateral.
     abre: o console lê qualquer tabela que a `SqlShellPolicy` libera, e um
     operador restrito a alguns models leria o resto por ali. Passe uma
     `surface_policy` para devolver as superfícies a quem deve tê-las.
+
+## Escopo por linha (`row_scope=`)
+
+O `access_policy` responde sim ou não para o **model inteiro**. No
+multi-tenant isso não basta: o suporte da empresa A pode ver pedidos,
+mas só os da empresa A. Contornar com um painel por empresa ou um
+repositório filtrado à mão é onde o dado vaza — basta uma rota esquecer
+o filtro. `row_scope=` põe o filtro no painel:
+
+```python
+from typing import Any
+
+from sqlalchemy import ColumnElement, false, true
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import TicketModel, UserModel
+
+
+def own_company(user: UserModel, admin: AdminModel[Any]) -> ColumnElement[bool]:
+    if user.is_superuser:
+        return true()
+    if user.company_id is None:
+        return false()
+    return TicketModel.company_id == user.company_id
+
+
+site.register(AdminModel(model=TicketModel, row_scope=own_company))
+```
+
+A função recebe o principal logado e o próprio `AdminModel`, e devolve
+uma condição SQLAlchemy. "Todas as linhas" se diz explicitamente, com
+`sqlalchemy.true()`. Pode ser `async` (para buscar o tenant em outra
+tabela, por exemplo). A condição entra com `AND` em **toda** rota que lê
+ou escreve linha do model:
+
+- listagem, contagem (no cabeçalho e no card do dashboard) e export;
+- detail, form de edição e o `POST` dele, delete e o download de upload;
+- ações em lote — delete, activate/deactivate — e ações customizadas: os
+  ids selecionados fora do escopo são descartados como se não existissem;
+- autocomplete, `<select>` de FK e filtro de FK **quando este model é o
+  alvo**, e a tabela de inline quando ele é o **filho**;
+- o formset do inline editável (o pai e cada filho são lidos no escopo);
+- a prévia e a confirmação do import CSV.
+
+Linha fora do escopo responde `404` — o mesmo de uma linha que não
+existe, para a resposta não confirmar que ela está lá. No delete e nas
+ações em lote embutidas, a condição está no próprio `DELETE` / `UPDATE`,
+não só na leitura que veio antes.
+
+!!! danger "Devolver `None` não libera tudo"
+    Uma função de escopo que esquece o `return` devolve `None`. O painel
+    trata isso como erro: levanta `AdminRowScopeError`, registra no log o
+    nome do model e a requisição responde `500` — fecha, em vez de abrir
+    todas as linhas. Para liberar tudo, devolva `true()`.
+
+    E cuidado com o principal sem tenant: `TicketModel.company_id ==
+    user.company_id` com `company_id` `None` vira `IS NULL`, e casa com
+    toda linha sem empresa. Se esse usuário não deve ver nada, devolva
+    `false()` antes, como no exemplo.
+
+### Na escrita
+
+A regra vale para o resultado: uma linha **criada**, **editada** ou
+**importada** precisa continuar dentro do escopo depois da escrita. O
+painel grava dentro de uma transação, conta a linha contra a condição na
+mesma transação e, se ela saiu, faz rollback e devolve o form com
+`This record would fall outside the rows you may manage; nothing was
+saved.` — o operador da empresa A não cria um ticket da empresa B nem
+"move" um dos seus para lá trocando o `company_id`. O mesmo vale para:
+
+- **`create_handler`**: os campos do schema com o nome de uma coluna FK
+  passam pela checagem de FK abaixo antes do handler rodar. Depois, toda
+  linha do model que o handler grava pela sessão — inserida **ou
+  alterada**, como num upsert que edita uma linha existente — é contada
+  contra o escopo antes do commit; fora, rollback. Escapam da checagem:
+  escrita por SQL Core (`insert()`, `update()`, `bulk_create_values`), um
+  service que abre uma sessão própria e linhas de **outros** models que o
+  handler grave. Handler que dá `commit` sozinho já tornou a linha
+  durável: o painel não consegue desfazer, registra em `ERROR` com o model
+  e diz no form que o registro **foi** salvo fora do escopo, em vez de
+  afirmar que nada foi salvo.
+- **activate/deactivate em lote**: se o `is_active` novo tira alguma
+  linha do escopo (um escopo que filtra por ele), nada muda e a listagem
+  volta com o aviso.
+- **chave estrangeira**: num create, edit, inline ou import, o valor de
+  uma FK cujo model alvo tem `row_scope` precisa ser uma linha que o
+  principal alcança lá. Fora do escopo, o campo recebe `Select a valid
+  choice; that record does not exist.` — o mesmo erro de um id que não
+  existe, então um `POST` forjado não descobre ids de outro tenant. A
+  coluna é conferida contra a sua primeira `ForeignKey`: numa
+  `ForeignKeyConstraint` composta, ou numa coluna com várias FKs, só esse
+  alvo é verificado.
+
+Um arquivo de upload gravado por um create ou edit que acabou recusado é
+apagado (tentativa única; falha vai para o log).
+
+No form de edição, uma FK que aponta para uma linha que o operador **não**
+alcança (ou além do `FK_OPTION_CAP`) continua selecionada: o `<select>`
+ganha uma opção com o valor atual, rotulada só com o id, e salvar sem
+mexer nela mantém a referência — antes o browser mandava a primeira
+opção e o save trocava a referência sem aviso.
+
+No painel de auditoria do detail, o autor de uma alteração aparece pelo
+nome quando o model de usuário não está registrado no site, ou está sem
+`row_scope`. Com `row_scope`, o nome só aparece se o principal tem `VIEW`
+nesse model e alcança aquele usuário pelo escopo; senão, só o id.
+
+No delete, quando o `DELETE ... AND <escopo>` não apaga nada (a linha
+saiu do escopo depois da leitura), o bloco volta inteiro — o que um
+handler de `PRE_DELETE` gravou na sessão é desfeito —, a resposta é `404`
+e o `POST_DELETE` não dispara. O `POST_DELETE` recebe a instância fora da
+sessão, como no `BaseRepository.delete`, então lê as colunas mesmo com
+`expire_on_commit=True`.
+
+!!! warning "O que o escopo não cobre"
+    - O `row_scope` vale nas rotas `/m/{slug}/...` e no que elas mostram de
+      outro model. Ficam de fora o que roda código seu ou SQL livre: os
+      cards do dashboard (`dashboard_cards=`), as áreas de indicadores, os
+      mapas (`location_maps=`) e o console SQL.
+    - Numa ação customizada, os `ctx.ids` já vêm filtrados, mas o
+      `ctx.repository` é o repositório do model sem filtro, e o painel não
+      confere o resultado: a ação pode ler além dos ids e pode **mover**
+      uma linha para fora do escopo. Isso é responsabilidade dela.
+    - O navegador de storage (`/storage`, superfície `STORAGE`) serve
+      qualquer chave do bucket. Se os uploads do model escopado moram no
+      mesmo bucket, quem tem a superfície contorna o escopo do download de
+      upload — negue `STORAGE` a esses papéis no `surface_policy`.
+    - Create e import continuam sendo oráculo de `UNIQUE` entre tenants:
+      um código que já existe na empresa B dá conflito para a empresa A.
+      A saída é a constraint `UNIQUE` composta com a coluna do tenant
+      (`UniqueConstraint("company_id", "code")`).
+
+!!! tip "Junto com o `access_policy`"
+    Os dois compõem: o `access_policy` decide **se** o principal abre o
+    model e qual ação faz; o `row_scope` decide **quais linhas**. Um
+    suporte com `VIEW` e um escopo por empresa vê a listagem só da própria
+    empresa e recebe `404` no detail de qualquer outra.
 
 ## Widgets de campo por tipo de coluna
 
@@ -1795,6 +1970,121 @@ O que muda, e só isso:
     renderiza o form. Fuso resolvido tarde já custou caro aqui: a
     string de offset do cron morria dentro do loop do scheduler,
     calada.
+
+### Atalhos no filtro de data
+
+Todo filtro de intervalo de data (`list_filter` numa coluna `date` ou
+`datetime`) ganha, embaixo das duas caixas, os links **Today**, **7 days**,
+**30 days**, **This month** e **Last month** (em português com
+`AdminSite(locale="pt-BR")`):
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import OrderModel
+
+
+site.register(
+    AdminModel(
+        model=OrderModel,
+        list_filter=[OrderModel.created_at, OrderModel.status],
+        search_fields=[OrderModel.code],
+        display_timezone="America/Sao_Paulo",
+    ),
+)
+```
+
+Cada link preenche `filter_created_at_from` e `filter_created_at_to` com
+os dias do intervalo, ambos inclusivos: hoje; os últimos 7 e 30 dias
+terminando hoje; o mês corrente do dia 1 ao último dia; o mês anterior
+inteiro. "Hoje" é o dia no `display_timezone` do model (UTC sem ele) —
+o mesmo dia que o filtro lê. O resto da query fica como o operador deixou
+(busca, os outros filtros, a ordenação, a lens); só a página volta para a
+primeira. O atalho que bate com o intervalo ativo aparece marcado. São
+links montados no servidor, sem JavaScript.
+
+## Edição simultânea: trava otimista
+
+Dois operadores abrem o mesmo registro; o primeiro salva, o segundo
+salva por cima sem saber. O form de edição evita isso sozinho, para
+todo model com coluna `updated_at` — e todo `BaseModel` tem uma:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import CustomerModel
+
+
+site.register(AdminModel(model=CustomerModel))
+```
+
+O form leva, num campo oculto, o `updated_at` que leu ao abrir. No save,
+antes de atribuir qualquer coluna, o painel roda
+`UPDATE ... SET updated_at = updated_at WHERE id = :id AND updated_at =
+:lido` na **mesma transação** do `UPDATE` que grava a edição — não há
+`SELECT` antes para perguntar se mudou. Zero linhas afetadas significa
+que outro save (pelo painel ou por qualquer outro caminho que passe pelo
+ORM) chegou antes: nada é gravado e o form volta com `409`, o aviso
+`Someone else saved this record after you opened it. Nothing was saved:
+your values are below — review them and save again to overwrite.` e os
+valores que o operador digitou.
+
+O form devolvido já carrega a versão **atual** da linha. Salvar de novo,
+depois de revisar, sobrescreve conscientemente.
+
+!!! info "Onde a trava não vale"
+    - Model sem coluna `updated_at`, ou um `POST` sem o campo oculto (um
+      form aberto antes da atualização do SDK), salva como antes.
+    - O formset do inline editável e as ações em lote/customizadas não
+      levam a trava: o inline salva cada filho como está, e uma ação age
+      sobre a linha que encontra.
+
+## Interface em português (`locale=`)
+
+Todo texto que o próprio painel escreve — rótulos, botões, estados
+vazios, a paginação, os avisos de flash e os erros que o router mostra
+no form (`This field is required.`, o aviso de conflito, o de escopo) —
+sai de um catálogo com inglês e português do Brasil. Escolha no site:
+
+```python
+from tempest_fastapi_sdk import AdminSite
+
+site = AdminSite(
+    title="Backoffice",
+    locale="pt-BR",
+    display_timezone="America/Sao_Paulo",
+)
+```
+
+O padrão é `"en"`, com o mesmo texto de sempre, então um painel que já
+existe não muda. Um `locale` fora de `ADMIN_LOCALES` levanta `ValueError`
+na construção do `AdminSite`. O `<html lang>` acompanha o locale, e o
+`index_subtitle` padrão vira `Administração do site` (passado à mão, ele
+fica como você escreveu).
+
+O que **não** é traduzido é o que vem de você: nome de model e de campo,
+`verbose_name`, rótulo de ação, `title`. As mensagens que outro
+componente escreve também saem como ele as escreve — o
+`AdminAuthError` do backend de auth (`Invalid credentials`), os erros do
+`StorageBrowserService` e a mensagem da política de senha.
+
+Para escrever um texto seu no mesmo catálogo — o retorno de uma ação
+customizada, por exemplo — use `admin_text`:
+
+```python
+from tempest_fastapi_sdk.admin import admin_plural, admin_text
+
+title = admin_text("pt-BR", "list.new", model="Pedido")
+count = admin_plural("pt-BR", "list.records", 3)
+```
+
+`admin_text(locale, chave, **params)` formata o texto com `str.format`;
+`admin_plural(locale, chave, n)` lê `chave.one` com `n == 1` e
+`chave.other` no resto. Chave que falta no locale cai no inglês, e chave
+desconhecida devolve a própria chave — o guard
+`tests/test_admin_i18n_guard.py` mantém as duas línguas completas.
 
 ## Lenses — visões salvas (`lenses=`)
 
@@ -2442,8 +2732,15 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
   pré-visualiza (SVG e HTML só como código-fonte), sobe, edita texto,
   renomeia e apaga — `read_only=True` deixa só a leitura.
 - `AdminTheme` cobre a aparência por campo tipado; `can_import=True` abre o
-  import CSV, que grava cada linha válida na hora e devolve o relatório
-  das que pulou — não há pré-visualização.
+  import CSV em dois passos: a prévia valida e ensaia sem gravar, e o
+  confirmar grava o arquivo assinado, tudo ou nada.
+- `row_scope=` filtra **quais linhas** o principal alcança em toda rota do
+  model; fora do escopo é `404`, e escrita que tira a linha do escopo
+  volta.
+- O form de edição traz a trava otimista de graça: save sobre uma versão
+  velha volta com `409` e os valores do operador, sem gravar.
+- `AdminSite(locale="pt-BR")` põe o painel em português; os atalhos de
+  data do filtro saem traduzidos e no fuso do model.
 - `exclude_fields=` tira a credencial que não é senha de toda superfície
   do painel; `readonly_fields` só tranca a escrita.
 - `display_timezone=` é o que transforma o campo de datetime em widget:

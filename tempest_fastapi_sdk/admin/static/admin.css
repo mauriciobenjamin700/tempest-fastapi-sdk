@@ -829,6 +829,33 @@ input[type="file"] {
   gap: 0.35rem;
 }
 
+.tempest-admin-list__shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.tempest-admin-list__shortcut {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--tempest-border);
+  border-radius: 999px;
+  color: var(--tempest-fg-soft);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tempest-admin-list__shortcut:hover {
+  color: var(--tempest-fg);
+  border-color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-list__shortcut--active,
+.tempest-admin-list__shortcut--active:hover {
+  color: var(--tempest-accent);
+  border-color: var(--tempest-accent);
+}
+
 .tempest-admin-lenses {
   display: flex;
   flex-wrap: wrap;
@@ -1390,6 +1417,22 @@ input[type="file"] {
 .tempest-admin-import__form label {
   display: block;
   margin: 1rem 0 0.5rem;
+}
+
+.tempest-admin-import__preview caption {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 0.8rem;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-import__confirm {
+  margin: 1rem 0 0;
+}
+
+.tempest-admin-import__confirm .tempest-admin-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---- Create / edit form ---- */

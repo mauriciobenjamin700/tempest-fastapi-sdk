@@ -8,7 +8,7 @@
   </header>
   {% if failed %}
   <div class="tempest-admin-flash tempest-admin-flash--error" role="alert">
-    These indicators could not be collected. The error is in the server log.
+    {{ t("metrics.failed") }}
   </div>
   {% elif cards %}
   <div class="tempest-admin-cards" aria-label="{{ area.title }}">

@@ -19,6 +19,8 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
+from tempest_fastapi_sdk.admin.i18n import DEFAULT_ADMIN_LOCALE, admin_text
+
 CellKind = Literal["none", "bool", "datetime", "uuid", "enum", "number", "text"]
 """What a cell is, so the template picks the styling."""
 
@@ -115,11 +117,12 @@ def offset_label(value: datetime) -> str | None:
     return f"{stamp[:3]}:{stamp[3:5]}"
 
 
-def cell_view(value: Any) -> CellView:
+def cell_view(value: Any, locale: str = DEFAULT_ADMIN_LOCALE) -> CellView:
     """Classify a value and pick what the cell prints.
 
     Args:
         value (Any): The ORM attribute value.
+        locale (str): Language of the boolean badge text.
 
     Returns:
         CellView: The kind, the text and, when shortened, the full value.
@@ -129,7 +132,11 @@ def cell_view(value: Any) -> CellView:
     if isinstance(value, bool):
         return CellView(
             kind="bool",
-            text="Yes" if value else "No",
+            text=(
+                admin_text(locale, "common.yes")
+                if value
+                else admin_text(locale, "common.no")
+            ),
             state="yes" if value else "no",
         )
     if isinstance(value, Enum):

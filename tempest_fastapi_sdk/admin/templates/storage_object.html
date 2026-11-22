@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}{{ item.name if item else "Object" }} · Storage · {{ site.title }}{% endblock %}
+{% block title %}{{ item.name if item else t("storage.object") }} · {{ t("nav.storage") }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-storage">
   {% if item is none %}
   <header class="tempest-admin-list__header">
-    <div class="tempest-admin-page-title"><h1>Object not found</h1></div>
+    <div class="tempest-admin-page-title"><h1>{{ t("storage.not_found") }}</h1></div>
   </header>
   <div class="tempest-admin-flash tempest-admin-flash--error" role="alert">{{ error }}</div>
-  <p><a href="{{ storage_url }}">Back to storage</a></p>
+  <p><a href="{{ storage_url }}">{{ t("storage.back") }}</a></p>
   {% else %}
   {% set raw_url = storage_url ~ "/raw?" ~ ({'key': item.key}|urlencode) %}
-  <nav class="tempest-admin-storage__crumbs" aria-label="Folder">
+  <nav class="tempest-admin-storage__crumbs" aria-label="{{ t('storage.folder') }}">
     {% for crumb in item.crumbs %}
     <a href="{{ storage_url }}?{{ {'prefix': crumb.prefix}|urlencode }}">{{ crumb.name }}</a>
     <span class="tempest-admin-storage__sep" aria-hidden="true">/</span>
@@ -24,8 +24,8 @@
       <span class="tempest-admin-count">{{ item.size|filesizeformat(true) }}</span>
     </div>
     <div class="tempest-admin-list__actions">
-      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ raw_url }}" target="_blank" rel="noopener">Open</a>
-      <a class="tempest-admin-btn" href="{{ raw_url }}&amp;download=true">Download</a>
+      <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ raw_url }}" target="_blank" rel="noopener">{{ t("storage.open") }}</a>
+      <a class="tempest-admin-btn" href="{{ raw_url }}&amp;download=true">{{ t("common.download") }}</a>
     </div>
   </header>
 
@@ -49,11 +49,11 @@
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <input type="hidden" name="key" value="{{ item.key }}">
         <input type="hidden" name="etag" value="{{ item.etag or '' }}">
-        <label class="tempest-admin-sr" for="tempest-storage-text">Content</label>
+        <label class="tempest-admin-sr" for="tempest-storage-text">{{ t("storage.content") }}</label>
         <textarea id="tempest-storage-text" name="text" spellcheck="false" rows="20">{{ item.text }}</textarea>
         <div class="tempest-admin-storage__row">
-          <button type="submit" class="tempest-admin-btn">Save</button>
-          <span class="tempest-admin-form__hint">Saving is refused if the file changed since this page loaded.</span>
+          <button type="submit" class="tempest-admin-btn">{{ t("form.save") }}</button>
+          <span class="tempest-admin-form__hint">{{ t("storage.save_hint") }}</span>
         </div>
       </form>
       {% else %}
@@ -61,20 +61,20 @@
       {% endif %}
       {% elif item.preview == "text" %}
       <p class="tempest-admin-empty">
-        Too large to preview here (over {{ browser.max_text_bytes|filesizeformat(true) }}). Download it to read.
+        {{ t("storage.too_large", size=browser.max_text_bytes|filesizeformat(true)) }}
       </p>
       {% else %}
-      <p class="tempest-admin-empty">No preview for <code>{{ item.content_type }}</code>. Download it to open.</p>
+      <p class="tempest-admin-empty">{{ t("storage.no_preview.lead") }} <code>{{ item.content_type }}</code>{{ t("storage.no_preview.tail") }}</p>
       {% endif %}
     </div>
 
     <aside class="tempest-admin-storage__side">
       <dl class="tempest-admin-storage__facts">
-        <dt>Key</dt><dd><code>{{ item.key }}</code></dd>
-        <dt>Type</dt><dd><code>{{ item.content_type }}</code></dd>
-        <dt>Size</dt><dd>{{ item.size|filesizeformat(true) }} ({{ item.size|number }} bytes)</dd>
-        <dt>Modified</dt><dd>{{ item.last_modified.strftime("%Y-%m-%d %H:%M:%S %Z") if item.last_modified else "—" }}</dd>
-        <dt>ETag</dt><dd><code>{{ item.etag or "—" }}</code></dd>
+        <dt>{{ t("storage.fact.key") }}</dt><dd><code>{{ item.key }}</code></dd>
+        <dt>{{ t("storage.col.type") }}</dt><dd><code>{{ item.content_type }}</code></dd>
+        <dt>{{ t("storage.col.size") }}</dt><dd>{{ item.size|filesizeformat(true) }} ({{ t("storage.bytes", count=item.size|number) }})</dd>
+        <dt>{{ t("storage.col.modified") }}</dt><dd>{{ item.last_modified.strftime("%Y-%m-%d %H:%M:%S %Z") if item.last_modified else "—" }}</dd>
+        <dt>{{ t("storage.fact.etag") }}</dt><dd><code>{{ item.etag or "—" }}</code></dd>
         {% for name, value in item.metadata|dictsort %}
         <dt>{{ name }}</dt><dd>{{ value }}</dd>
         {% endfor %}
@@ -85,10 +85,10 @@
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <input type="hidden" name="key" value="{{ item.key }}">
         <label class="tempest-admin-storage__field">
-          <span>Rename or move to</span>
+          <span>{{ t("storage.rename_to") }}</span>
           <input type="text" name="new_key" value="{{ item.key }}" required autocomplete="off">
         </label>
-        <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Rename</button>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">{{ t("storage.rename") }}</button>
       </form>
 
       <form method="post" action="{{ storage_url }}/object/replace" enctype="multipart/form-data"
@@ -96,17 +96,17 @@
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <input type="hidden" name="key" value="{{ item.key }}">
         <label class="tempest-admin-storage__field">
-          <span>Replace content</span>
+          <span>{{ t("storage.replace_content") }}</span>
           <input type="file" name="file" required>
         </label>
-        <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">Replace</button>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--secondary">{{ t("storage.replace") }}</button>
       </form>
 
       <form method="post" action="{{ storage_url }}/object/delete" class="tempest-admin-storage__form"
-            onsubmit="return confirm('Delete this file? This cannot be undone.');">
+            data-confirm="{{ t('storage.delete_confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <input type="hidden" name="key" value="{{ item.key }}">
-        <button type="submit" class="tempest-admin-btn tempest-admin-btn--danger">Delete</button>
+        <button type="submit" class="tempest-admin-btn tempest-admin-btn--danger">{{ t("common.delete") }}</button>
       </form>
       {% endif %}
     </aside>

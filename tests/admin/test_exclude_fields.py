@@ -393,8 +393,21 @@ class TestSurfaces:
                 files={"file": ("keys.csv", b"name,secret\nci,IMPORTED\n", "text/csv")},
             )
 
+            payload = re.search(r'name="payload" value="([^"]+)"', response.text)
+            nonce = re.search(r'name="submission_nonce" value="([^"]+)"', response.text)
+            assert payload is not None and nonce is not None
+            confirmed = await client.post(
+                f"/admin/m/{KEYS}/import/confirm",
+                data={
+                    "csrf_token": match.group(1),
+                    "payload": payload.group(1),
+                    "submission_nonce": nonce.group(1),
+                },
+            )
+
         assert "secret" not in page.text
-        assert "Created 1 record(s)." in response.text
+        assert "IMPORTED" not in response.text
+        assert confirmed.status_code == 303
         async with panel.db.get_session_context() as session:
             stored = (await session.execute(select(ApiKey.secret))).scalar_one()
         assert stored is None

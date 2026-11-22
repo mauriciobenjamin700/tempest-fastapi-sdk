@@ -49,6 +49,17 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.ChoiceSource
 ::: tempest_fastapi_sdk.admin.config.EditValidator
 ::: tempest_fastapi_sdk.admin.config.ReadonlyFieldsFor
+::: tempest_fastapi_sdk.admin.config.AdminRowScope
+::: tempest_fastapi_sdk.admin.config.AdminRowScopeError
+::: tempest_fastapi_sdk.admin.i18n.AdminLocale
+::: tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES
+::: tempest_fastapi_sdk.admin.i18n.DEFAULT_ADMIN_LOCALE
+::: tempest_fastapi_sdk.admin.i18n.ADMIN_MESSAGES
+::: tempest_fastapi_sdk.admin.i18n.admin_text
+::: tempest_fastapi_sdk.admin.i18n.admin_plural
+::: tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_MAX_BYTES
+::: tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS
+::: tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_PREVIEW_ROWS
 ::: tempest_fastapi_sdk.admin.config.Inline
 ::: tempest_fastapi_sdk.admin.config.Lens
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum

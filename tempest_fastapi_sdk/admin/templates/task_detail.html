@@ -1,16 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Run · {{ site.title }}{% endblock %}
+{% block title %}{{ t("tasks.run") }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-tasks">
   {% if job is none %}
   <div class="tempest-admin-list__header">
-    <h1>Run not found</h1>
+    <h1>{{ t("tasks.run_not_found") }}</h1>
   </div>
   <p class="tempest-admin-tasks__empty">
-    This run is no longer stored. Retention sweeps delete finished rows, so a
-    bookmarked link outlives the record it points at.
+    {{ t("tasks.run_gone") }}
   </p>
-  <p><a href="{{ tasks_url }}">Back to tasks</a></p>
+  <p><a href="{{ tasks_url }}">{{ t("tasks.back") }}</a></p>
   {% else %}
   <div class="tempest-admin-list__header">
     <h1>{{ job.kind }}</h1>
@@ -18,22 +17,22 @@
   </div>
 
   <span class="tempest-admin-tasks__bar tempest-admin-tasks__bar--wide" role="img"
-        aria-label="{{ (job.progress * 100) | round(0) | int }} percent">
+        aria-label="{{ t('tasks.percent', value=(job.progress * 100) | round(0) | int) }}">
     <span class="tempest-admin-tasks__bar-fill" style="width: {{ (job.progress * 100) | round(0) | int }}%"></span>
   </span>
 
   <dl class="tempest-admin-tasks__facts">
-    <dt>Stage</dt><dd>{{ job.stage or "—" }}</dd>
-    <dt>Attempts</dt><dd>{{ job.attempts }} of {{ job.max_attempts }}</dd>
-    <dt>Requested</dt><dd>{{ job.created_at }}</dd>
-    <dt>Started</dt><dd>{{ job.started_at or "—" }}</dd>
-    <dt>Finished</dt><dd>{{ job.finished_at or "—" }}</dd>
-    <dt>Result</dt><dd>{{ job.result_id or "—" }}</dd>
+    <dt>{{ t("tasks.col.stage") }}</dt><dd>{{ job.stage or "—" }}</dd>
+    <dt>{{ t("tasks.col.attempts") }}</dt><dd>{{ t("tasks.attempts_of", attempts=job.attempts, max=job.max_attempts) }}</dd>
+    <dt>{{ t("tasks.col.requested") }}</dt><dd>{{ job.created_at }}</dd>
+    <dt>{{ t("tasks.col.started") }}</dt><dd>{{ job.started_at or "—" }}</dd>
+    <dt>{{ t("tasks.col.finished") }}</dt><dd>{{ job.finished_at or "—" }}</dd>
+    <dt>{{ t("tasks.col.result") }}</dt><dd>{{ job.result_id or "—" }}</dd>
   </dl>
 
   {% if job.error %}
   <div class="tempest-admin-tasks__error">
-    <h2 class="tempest-admin-tasks__heading">Error</h2>
+    <h2 class="tempest-admin-tasks__heading">{{ t("tasks.error") }}</h2>
     <pre>{{ job.error }}</pre>
   </div>
   {% endif %}
@@ -41,15 +40,14 @@
   {% if cancellable %}
   <form method="post" action="{{ cancel_url }}" class="tempest-admin-tasks__cancel">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <button type="submit">Cancel this run</button>
+    <button type="submit">{{ t("tasks.cancel") }}</button>
     <span class="tempest-admin-tasks__hint">
-      Cancelling is cooperative: the row flips now, and the worker stops at its
-      next progress check.
+      {{ t("tasks.cancel_hint") }}
     </span>
   </form>
   {% endif %}
 
-  <p><a href="{{ tasks_url }}">Back to tasks</a></p>
+  <p><a href="{{ tasks_url }}">{{ t("tasks.back") }}</a></p>
   {% endif %}
 </section>
 {% endblock %}

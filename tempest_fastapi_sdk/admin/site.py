@@ -8,6 +8,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from tempest_fastapi_sdk.admin.config import AdminModel
 from tempest_fastapi_sdk.admin.dashboard import MetricCard
+from tempest_fastapi_sdk.admin.i18n import (
+    ADMIN_LOCALES,
+    DEFAULT_ADMIN_LOCALE,
+    AdminLocale,
+    admin_text,
+)
 from tempest_fastapi_sdk.admin.location_map import BRLocationMap
 from tempest_fastapi_sdk.admin.metrics import MetricsArea
 from tempest_fastapi_sdk.admin.theme import AdminTheme
@@ -58,6 +64,7 @@ class AdminSite:
             a schema and a service, one card per field.
         location_maps (list[BRLocationMap]): Map pages of where a model's
             rows are in Brazil.
+        locale (AdminLocale): Language of the panel's own text.
     """
 
     def __init__(
@@ -65,13 +72,14 @@ class AdminSite:
         title: str = "Admin",
         *,
         brand: str | None = None,
-        index_subtitle: str = "Site administration",
+        index_subtitle: str | None = None,
         site_url: str | None = None,
         theme: AdminTheme | None = None,
         dashboard_cards: Sequence[MetricCard] = (),
         display_timezone: str | None = None,
         metrics_areas: Sequence[MetricsArea] = (),
         location_maps: Sequence[BRLocationMap] = (),
+        locale: AdminLocale = DEFAULT_ADMIN_LOCALE,
     ) -> None:
         """Initialize the site.
 
@@ -83,7 +91,9 @@ class AdminSite:
                 existing sites keep their current header. Set it to
                 show a distinct name (e.g. ``"servus-backend-admin"``)
                 centered at the top of every page.
-            index_subtitle (str): Dashboard subtitle.
+            index_subtitle (str | None): Dashboard and login subtitle.
+                ``None`` (default) uses the catalog's
+                ``"Site administration"`` in :attr:`locale`.
             site_url (str | None): Optional outbound link rendered
                 in the admin header.
             theme (AdminTheme | None): Typed appearance overrides.
@@ -105,15 +115,33 @@ class AdminSite:
             location_maps (Sequence[BRLocationMap]): Map pages listed under
                 "Maps" in the sidebar, each shading Brazil by a model's row
                 count per state. Gated by ``VIEW`` on that model.
+            locale (AdminLocale): Language of the panel's own text —
+                labels, buttons, empty states, flash messages and the
+                errors the router renders (see
+                :mod:`tempest_fastapi_sdk.admin.i18n`). ``"en"`` (default)
+                keeps the strings the panel always had; ``"pt-BR"`` renders
+                Brazilian Portuguese. Text you configure (model and field
+                names, ``verbose_name``, action labels, ``title``) is shown
+                as given.
 
         Raises:
             ValueError: When ``display_timezone`` is not a zone the
                 host's tz database knows, or two ``metrics_areas`` (or two
-                ``location_maps``) share a URL slug.
+                ``location_maps``) share a URL slug, or ``locale`` is not one
+                of :data:`~tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES`.
         """
+        if locale not in ADMIN_LOCALES:
+            raise ValueError(
+                f"AdminSite locale {locale!r} is not one of {list(ADMIN_LOCALES)}"
+            )
+        self.locale: AdminLocale = locale
         self.title: str = title
         self.brand: str | None = brand
-        self.index_subtitle: str = index_subtitle
+        self.index_subtitle: str = (
+            admin_text(locale, "site.index_subtitle")
+            if index_subtitle is None
+            else index_subtitle
+        )
         self.site_url: str | None = site_url
         self.theme: AdminTheme = theme or AdminTheme()
         self.dashboard_cards: list[MetricCard] = list(dashboard_cards)

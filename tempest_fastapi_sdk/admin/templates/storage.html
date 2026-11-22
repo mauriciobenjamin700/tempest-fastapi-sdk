@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Storage · {{ site.title }}{% endblock %}
+{% block title %}{{ t("nav.storage") }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-storage">
   <header class="tempest-admin-list__header">
     <div class="tempest-admin-page-title">
-      <h1>Storage</h1>
+      <h1>{{ t("nav.storage") }}</h1>
       {% if listing %}
-      <span class="tempest-admin-count">{{ listing.total }} item{{ listing.total|pluralize }}</span>
+      <span class="tempest-admin-count">{{ tn("storage.items", listing.total) }}</span>
       {% endif %}
     </div>
     {% if browser.read_only %}
-    <span class="tempest-admin-storage__badge">Read-only</span>
+    <span class="tempest-admin-storage__badge">{{ t("storage.read_only") }}</span>
     {% endif %}
   </header>
 
@@ -20,10 +20,10 @@
 
   {% if listing is none %}
   <div class="tempest-admin-flash tempest-admin-flash--error" role="alert">{{ error }}</div>
-  <p><a href="{{ storage_url }}">Back to the root</a></p>
+  <p><a href="{{ storage_url }}">{{ t("storage.back_root") }}</a></p>
   {% else %}
 
-  <nav class="tempest-admin-storage__crumbs" aria-label="Folder">
+  <nav class="tempest-admin-storage__crumbs" aria-label="{{ t('storage.folder') }}">
     {% for crumb in listing.crumbs %}
     {% if not loop.last %}
     <a href="{{ storage_url }}?{{ {'prefix': crumb.prefix}|urlencode }}">{{ crumb.name }}</a>
@@ -40,20 +40,20 @@
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <input type="hidden" name="prefix" value="{{ listing.prefix }}">
     <label class="tempest-admin-storage__field">
-      <span>File</span>
+      <span>{{ t("storage.file") }}</span>
       <input type="file" name="file" required>
     </label>
     <label class="tempest-admin-storage__field">
-      <span>Save as <small>(optional; <code>a/b.txt</code> creates folders)</small></span>
-      <input type="text" name="name" placeholder="keep the file's name" autocomplete="off">
+      <span>{{ t("storage.save_as") }} <small>({{ t("storage.save_as_optional") }} <code>a/b.txt</code> {{ t("storage.save_as_folders") }})</small></span>
+      <input type="text" name="name" placeholder="{{ t('storage.name_placeholder') }}" autocomplete="off">
     </label>
     <label class="tempest-admin-storage__check">
       <input type="checkbox" name="overwrite" value="true">
-      <span>Overwrite</span>
+      <span>{{ t("storage.overwrite") }}</span>
     </label>
-    <button type="submit" class="tempest-admin-btn">Upload</button>
+    <button type="submit" class="tempest-admin-btn">{{ t("storage.upload") }}</button>
     <p class="tempest-admin-form__hint">
-      Up to {{ browser.max_upload_bytes|filesizeformat(true) }} per file, into
+      {{ t("storage.upload_limit", size=browser.max_upload_bytes|filesizeformat(true)) }}
       <code>{{ listing.prefix or "/" }}</code>.
     </p>
   </form>
@@ -64,10 +64,10 @@
     <table class="tempest-admin-list__table tempest-admin-storage__table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th class="tempest-admin-storage__num">Size</th>
-          <th class="tempest-admin-storage__wide">Type</th>
-          <th class="tempest-admin-storage__wide">Modified</th>
+          <th>{{ t("storage.col.name") }}</th>
+          <th class="tempest-admin-storage__num">{{ t("storage.col.size") }}</th>
+          <th class="tempest-admin-storage__wide">{{ t("storage.col.type") }}</th>
+          <th class="tempest-admin-storage__wide">{{ t("storage.col.modified") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -79,7 +79,7 @@
                href="{{ storage_url }}?{{ {'prefix': entry.key}|urlencode }}">{{ entry.name }}/</a>
           </td>
           <td class="tempest-admin-storage__num">—</td>
-          <td class="tempest-admin-storage__wide">folder</td>
+          <td class="tempest-admin-storage__wide">{{ t("storage.folder_kind") }}</td>
           <td class="tempest-admin-storage__wide">—</td>
           {% else %}
           <td>
@@ -97,18 +97,18 @@
   </div>
   {% else %}
   <p class="tempest-admin-empty">
-    {% if listing.prefix %}Nothing under <code>{{ listing.prefix }}</code>.{% else %}The bucket is empty.{% endif %}
+    {% if listing.prefix %}{{ t("storage.nothing_under") }} <code>{{ listing.prefix }}</code>.{% else %}{{ t("storage.empty") }}{% endif %}
   </p>
   {% endif %}
 
   {% if listing.pages > 1 %}
-  <nav class="tempest-admin-list__pagination" aria-label="Pagination">
+  <nav class="tempest-admin-list__pagination" aria-label="{{ t('common.pagination') }}">
     {% if listing.page > 1 %}
-    <a href="{{ storage_url }}?{{ {'prefix': listing.prefix, 'page': listing.page - 1}|urlencode }}">← Prev</a>
+    <a href="{{ storage_url }}?{{ {'prefix': listing.prefix, 'page': listing.page - 1}|urlencode }}">← {{ t("common.prev") }}</a>
     {% endif %}
-    <span>Page {{ listing.page }} of {{ listing.pages }}</span>
+    <span>{{ t("common.page_of", page=listing.page, pages=listing.pages) }}</span>
     {% if listing.page < listing.pages %}
-    <a href="{{ storage_url }}?{{ {'prefix': listing.prefix, 'page': listing.page + 1}|urlencode }}">Next →</a>
+    <a href="{{ storage_url }}?{{ {'prefix': listing.prefix, 'page': listing.page + 1}|urlencode }}">{{ t("common.next") }} →</a>
     {% endif %}
   </nav>
   {% endif %}

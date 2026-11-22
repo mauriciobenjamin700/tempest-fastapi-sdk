@@ -1,30 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Tasks · {{ site.title }}{% endblock %}
+{% block title %}{{ t("nav.tasks") }} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-tasks">
   <div class="tempest-admin-list__header">
-    <h1>Tasks</h1>
+    <h1>{{ t("nav.tasks") }}</h1>
   </div>
 
   <p class="tempest-admin-tasks__scope">
-    This panel shows what is <strong>declared</strong> on the broker and what
-    was <strong>persisted</strong> by the workers. It does not show live queue
-    depth &mdash; TaskIQ exposes none.
+    {{ t("tasks.scope") }}
   </p>
 
   {% if shows_runs %}
-  <h2 class="tempest-admin-tasks__heading">Runs</h2>
+  <h2 class="tempest-admin-tasks__heading">{{ t("tasks.runs") }}</h2>
   <form method="get" action="{{ tasks_url }}" class="tempest-admin-list__filters">
     <label>
-      <span>Status</span>
+      <span>{{ t("tasks.col.status") }}</span>
       <select name="status">
-        <option value=""{% if not status_filter %} selected{% endif %}>All</option>
+        <option value=""{% if not status_filter %} selected{% endif %}>{{ t("tasks.all") }}</option>
         {% for value in statuses %}
         <option value="{{ value.value }}"{% if value.value == status_filter %} selected{% endif %}>{{ value.value }}</option>
         {% endfor %}
       </select>
     </label>
-    <button type="submit">Filter</button>
+    <button type="submit">{{ t("common.filter") }}</button>
   </form>
 
   {% if runs %}
@@ -32,12 +30,12 @@
     <table class="tempest-admin-list__table">
       <thead>
         <tr>
-          <th>Kind</th>
-          <th>Status</th>
-          <th>Progress</th>
-          <th>Stage</th>
-          <th>Attempts</th>
-          <th>Requested</th>
+          <th>{{ t("tasks.col.kind") }}</th>
+          <th>{{ t("tasks.col.status") }}</th>
+          <th>{{ t("tasks.col.progress") }}</th>
+          <th>{{ t("tasks.col.stage") }}</th>
+          <th>{{ t("tasks.col.attempts") }}</th>
+          <th>{{ t("tasks.col.requested") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -46,7 +44,7 @@
           <td><a href="{{ tasks_url }}/{{ job.id }}">{{ job.kind }}</a></td>
           <td><span class="tempest-admin-tasks__status tempest-admin-tasks__status--{{ job.status }}">{{ job.status }}</span></td>
           <td>
-            <span class="tempest-admin-tasks__bar" role="img" aria-label="{{ (job.progress * 100) | round(0) | int }} percent">
+            <span class="tempest-admin-tasks__bar" role="img" aria-label="{{ t('tasks.percent', value=(job.progress * 100) | round(0) | int) }}">
               <span class="tempest-admin-tasks__bar-fill" style="width: {{ (job.progress * 100) | round(0) | int }}%"></span>
             </span>
           </td>
@@ -60,22 +58,22 @@
   </div>
   {% else %}
   <p class="tempest-admin-tasks__empty">
-    No runs recorded yet. Rows appear here once a
-    <code>JobStore</code> enqueues work.
+    {{ t("tasks.no_runs.lead") }}
+    <code>JobStore</code> {{ t("tasks.no_runs.tail") }}
   </p>
   {% endif %}
   {% endif %}
 
   {% if shows_schedule %}
-  <h2 class="tempest-admin-tasks__heading">Schedule</h2>
+  <h2 class="tempest-admin-tasks__heading">{{ t("tasks.schedule") }}</h2>
   {% if schedule %}
   <div class="tempest-admin-table-wrap">
     <table class="tempest-admin-list__table">
       <thead>
         <tr>
-          <th>Task</th>
-          <th>Schedule</th>
-          <th>Retries</th>
+          <th>{{ t("tasks.col.task") }}</th>
+          <th>{{ t("tasks.schedule") }}</th>
+          <th>{{ t("tasks.col.retries") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -88,20 +86,20 @@
             <div class="tempest-admin-tasks__trigger">
               {%- if trigger.cron %}<code>{{ trigger.cron }}</code>
               {%- if trigger.cron_offset_label %} <span class="tempest-admin-tasks__offset">{{ trigger.cron_offset_label }}</span>{% endif %}
-              {%- elif trigger.interval_seconds %}every {{ trigger.interval_seconds | int }}s
-              {%- elif trigger.run_at %}once at {{ trigger.run_at }}
+              {%- elif trigger.interval_seconds %}{{ t("tasks.every", seconds=trigger.interval_seconds | int) }}
+              {%- elif trigger.run_at %}{{ t("tasks.once_at", at=trigger.run_at) }}
               {%- else %}—
               {%- endif %}
             </div>
             {%- endfor %}
-            {%- else %}on demand
+            {%- else %}{{ t("tasks.on_demand") }}
             {%- endif %}
           </td>
           <td>
             {% if task.retry_on_error %}
-              up to {{ task.max_retries if task.max_retries is not none else "default" }}
+              {{ t("tasks.up_to", max=task.max_retries if task.max_retries is not none else t("tasks.default")) }}
             {% else %}
-              off
+              {{ t("tasks.off") }}
             {% endif %}
           </td>
         </tr>
@@ -111,7 +109,7 @@
   </div>
   {% else %}
   <p class="tempest-admin-tasks__empty">
-    No tasks registered on the broker.
+    {{ t("tasks.no_schedule") }}
   </p>
   {% endif %}
   {% endif %}
