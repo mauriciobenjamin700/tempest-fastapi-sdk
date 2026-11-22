@@ -1207,6 +1207,8 @@
       
         
       
+        
+      
     
     
     
@@ -3672,6 +3674,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resumable uploads (tus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../revenuecat/" class="md-nav__link">
         
   
@@ -5909,6 +5939,15 @@ starting with <code>=</code> as a formula; the others are written as text, store
 in the XML as a string with no formula element (measured on <code>openpyxl</code>
 3.1.5). That is why <code>SheetWriter</code> leaves the value untouched — no leading
 apostrophe.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Control characters leave the cell</p>
+<p>An <code>.xlsx</code>'s XML cannot carry <code>\x00</code>-<code>\x08</code>, <code>\x0b</code>, <code>\x0c</code> or
+<code>\x0e</code>-<code>\x1f</code>: <code>openpyxl</code> raises <code>IllegalCharacterError</code> when writing
+one, and a stray byte in a stored value used to fail the whole document.
+<code>SheetWriter</code> removes those characters from every <code>str</code> before writing
+(with <code>openpyxl</code>'s own <code>ILLEGAL_CHARACTERS_RE</code>) — <code>"abc\x0bdef"</code> comes
+out <code>abcdef</code>. Tab, newline and CR are legal and stay.</p>
 </div>
 <h2 id="theme">Theme<a class="headerlink" href="#theme" title="Permanent link">&para;</a></h2>
 <p><code>SheetStyle</code> is <strong>plain data</strong> — hex colours, integer sizes, no <code>openpyxl</code>

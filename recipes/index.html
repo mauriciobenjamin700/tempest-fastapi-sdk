@@ -1205,6 +1205,8 @@
       
         
       
+        
+      
     
     
     
@@ -4510,6 +4512,34 @@
   
   
     <li class="md-nav__item">
+      <a href="resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upload resumível (tus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="uploads/" class="md-nav__link">
         
   
@@ -5418,6 +5448,7 @@ storage MinIO/S3, presigned URLs.</p>
 </span></code></pre></div>
 <p>Receitas: <a href="file-store/">File store</a>, <a href="uploads/">Uploads</a>,
 <a href="downloads/">Downloads</a>, <a href="storage/">Storage</a>,
+<a href="resumable-upload/">Upload resumível (tus)</a>,
 <a href="image-metadata/">Metadados de imagem</a>.</p>
 <h3 id="extras-de-dominio">Extras de domínio<a class="headerlink" href="#extras-de-dominio" title="Permanent link">&para;</a></h3>
 <p>Feature flags, audit trail, multi-tenant, sync offline-first, sessões
@@ -6017,6 +6048,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <tr>
 <td><strong><a href="fleet-traffic/">Trânsito da frota (GPS anônimo) »</a></strong></td>
 <td><code>TrafficAggregator</code> (velocidade mediana por trecho, k-anonimato, corte de início e fim, sal rotativo), <code>match_to_roads</code> (HMM, porte do tempest-react-sdk), <code>RoadGraph</code> + <code>road_graph_from_overpass</code>/<code>load_road_graph</code>, <code>make_traffic_router</code> (por caixa + tile do grafo), qualidade do encaixe na frota real só agregada (<code>MatchQualityOptions</code> + <code>make_match_quality_router</code>), <code>OffRoadDensity</code> + <code>infer_road_candidates</code> (ruas que o OSM não tem, para revisão)</td>
+</tr>
+<tr>
+<td><strong><a href="resumable-upload/">Upload resumível (tus) »</a></strong></td>
+<td><code>make_tus_router</code> (servidor tus 1.0.0 do <code>createResumableUpload</code> do <code>tempest-react-sdk</code>: <code>POST</code>/<code>HEAD</code>/<code>PATCH</code>/<code>DELETE</code>, <code>Idempotency-Key</code> por dono, expiração, <code>409</code> de offset sob lock por upload), <code>LocalTusStore</code> e <code>S3TusStore</code> (estado que sobrevive a restart), <code>on_complete</code></td>
 </tr>
 <tr>
 <td><strong><a href="uploads/">Uploads (backends) »</a></strong></td>

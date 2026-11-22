@@ -1239,6 +1239,30 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -1719,6 +1743,19 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.exceptions`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -2554,6 +2591,13 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ### Alembic hooks
 
@@ -2867,6 +2911,8 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ## Web Push
 
@@ -2897,6 +2943,7 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.rooms`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -3275,7 +3322,7 @@ Painel admin — import CSV (Tier 3), contraparte do export:
 
 | Feature | Status | Onde |
 |---------|--------|------|
-| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` expõe `GET/POST /m/{slug}/import`: sobe um CSV, cada linha é validada/coagida como no create e vira um registro. Relatório com total criado + erros por linha (best-effort: uma linha ruim não aborta as outras). Link "Import CSV" na list view. [Receita »](recipes/admin.md) |
+| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` expõe `GET/POST /m/{slug}/import`: sobe um CSV, cada linha é validada/coagida como no create e vira um registro. Relatório com total criado + erros por linha (na v0.118 era best-effort; desde a 0.370.0 há prévia sem gravar e confirmação tudo ou nada — veja a receita). Link "Import CSV" na list view. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.117.0
 
@@ -6798,6 +6845,254 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.370.0] — 2026-11-22
+
+### Added
+
+- `AlembicHelper.current()`, `current_async()`, `has_existing_schema()` e
+  `has_existing_schema_async()` aceitam `bind=` (keyword-only): `Engine` ou
+  `Connection` no síncrono, `AsyncEngine` ou `AsyncConnection` no `_async`
+  (#805). Com ele a leitura usa o engine/conexão do chamador e não cria nem
+  descarta engine; no `_async` roda no loop do chamador via `run_sync`, sem
+  thread de trabalho. Sem o argumento, o comportamento é o de antes,
+  inclusive o fallback só-async.
+- `AlembicHelper.schema_at_head_check(db)`: devolve o check de readiness que
+  o `make_health_router(checks=...)` espera. Lê a revision por
+  `current_async(bind=db.engine)` e responde `True` só com uma head na árvore
+  e o banco carimbado nela (#805).
+- Admin: escopo por linha (#802). `AdminModel(row_scope=...)` recebe
+  `(principal, admin)` e devolve uma condição SQLAlchemy, sync ou async;
+  "todas as linhas" é `sqlalchemy.true()`, explícito. Retorno que não é
+  cláusula — `None` de um `return` esquecido incluído — levanta
+  `AdminRowScopeError`, vai para o log com o model e responde `500` (falha
+  fechada). A condição entra com `AND` em toda rota do model — listagem,
+  contagem (cabeçalho e card do dashboard), export, detail, edit, delete,
+  download de upload, ações em lote e customizadas (ids fora do escopo são
+  descartados), autocomplete, `<select>` e filtro de FK quando o model é o
+  alvo, inline quando é o filho, formset editável e import. Linha fora do
+  escopo responde `404`; no delete e no delete/activate/deactivate em lote
+  a condição está no próprio `DELETE`/`UPDATE`. Create (inclusive por
+  `create_handler`), edit, inline, import e activate/deactivate que
+  deixariam a linha fora do escopo voltam sem gravar; o `create_handler`
+  confere também as linhas que altera (upsert) e os campos de FK do
+  schema, e quando o próprio handler comita fora do escopo o form diz que o
+  registro foi salvo (e loga em `ERROR`). FK cujo model alvo
+  tem `row_scope` só aceita uma linha que o principal alcança lá; fora, o
+  campo recebe o mesmo erro de um id inexistente. No form de edição, a FK
+  que aponta para uma linha fora das opções do `<select>` continua
+  selecionada (opção rotulada só com o id). Upload gravado por um create ou
+  edit recusado é apagado. Com o model de usuário registrado com
+  `row_scope`, o autor no painel de auditoria aparece pelo nome só quando o
+  principal alcança esse usuário; senão, pelo id (sem `row_scope` ali, o
+  nome aparece como antes). Delete cujo `DELETE ... AND escopo` não apaga
+  nada desfaz o efeito do `PRE_DELETE` e responde `404`. Tipos
+  `AdminRowScope` e `AdminRowScopeError`.
+- Admin: interface em português (#802). `AdminSite(locale="pt-BR")` troca
+  todo texto do painel — rótulos, botões, estados vazios, paginação, flash e
+  os erros que o router e o form mostram — pelo catálogo
+  `tempest_fastapi_sdk.admin.i18n` (`ADMIN_MESSAGES`, `ADMIN_LOCALES`,
+  `admin_text`, `admin_plural`, helpers `t`/`tn` nos templates). O padrão é
+  `"en"`, com o texto de antes. Guard `tests/test_admin_i18n_guard.py`.
+- Admin: atalhos no filtro de intervalo de data (#802) — Today, 7 days,
+  30 days, This month, Last month —, calculados no `display_timezone` do
+  model (UTC sem ele), preservando busca, filtros, ordenação e lens. Links,
+  sem JavaScript.
+- Admin: trava otimista no form de edição (#802). O form leva o `updated_at`
+  lido; o save roda `UPDATE ... WHERE updated_at = :lido` na transação da
+  edição e, com zero linhas, devolve o form com `409`, aviso, os valores do
+  operador e a versão atual, sem gravar. Model sem `updated_at` e `POST` sem
+  o campo salvam como antes; inline e ações não levam a trava.
+- `ADMIN_IMPORT_MAX_BYTES`, `ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS`,
+  `ADMIN_IMPORT_PREVIEW_ROWS` em `tempest_fastapi_sdk.admin`.
+- `heartbeat(..., ping_message=...)`: o objeto JSON que cada ping manda.
+  Sem o argumento continua o envelope do `WebSocketHub`
+  (`{"type": "ping", "data": {}, "request_id": null}`); protocolo de
+  mensagem plana passa o seu. O `pong` é engolido nos dois casos.
+- `tempest_fastapi_sdk.rooms.ping_message()`: o ping do protocolo de salas,
+  `{"type": "ping"}`, fonte única para os dois transportes.
+- Admin: export e import `.xlsx` (#803). Com o extra `[spreadsheet]`, a
+  listagem ganha **Export XLSX** (`GET {prefix}/m/{slug}/export.xlsx`): as
+  linhas do CSV — busca, filtros, `row_scope`, `export_max_rows` — numa aba,
+  datetime como o mesmo texto ISO 8601 em UTC do CSV, texto que começa com
+  `=` gravado como texto. O import aceita `.xlsx` (primeira aba, linha 1 de
+  cabeçalho), convertido para o CSV que a prévia valida e a confirmação
+  assina; o teto de 512 KiB vale para o upload e para o CSV gerado, e a
+  leitura para em `ADMIN_XLSX_IMPORT_MAX_ROWS` (32 768) linhas e
+  `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` (16 MiB), proporcionais a ele.
+  Fórmula sem valor calculado (planilha gerada por openpyxl/pandas) numa
+  coluna com cabeçalho recusa o arquivo nomeando as células, em vez de virar
+  `NULL`; fórmula que o Excel calculou como texto vazio passa. A conversão
+  inteira roda numa thread atrás do semáforo do reader e abre o workbook uma
+  vez só. O
+  openpyxl é carregado só quando usado; sem o extra o botão some e as rotas
+  respondem com a mensagem que nomeia `tempest-fastapi-sdk[spreadsheet]`.
+- Admin: muitos-para-muitos no form (#803). `AdminModel(m2m_fields=[...])`
+  para `relationship` com `secondary`: `<select multiple>` no create/edit com
+  as linhas que o principal alcança no `row_scope` do alvo (e com `VIEW`
+  nele), lista de links no detail, gravação que substitui o conjunto na
+  transação do save. Vínculo fora do escopo do operador não aparece e é
+  mantido; vínculo alcançável além do `FK_OPTION_CAP` entra como opção extra
+  marcada (as opções saem com `LIMIT` no SQL); campo trancado por
+  `readonly_fields`/`readonly_fields_for` sai do form e não é gravado; id
+  postado fora do escopo, ou inexistente, recusa o campo com o erro de
+  registro inexistente. Nome que não é `relationship` com
+  `secondary` levanta `ValueError` na construção.
+- Admin: contagem de relacionados na listagem (#803).
+  `AdminModel(related_counts=[RelatedCount(OrderModel.user_id, label=...)])`
+  (`RelatedCount` exportado na raiz e em `tempest_fastapi_sdk.admin`): uma
+  coluna por contagem, de um `SELECT fk, COUNT(*) ... GROUP BY fk` por página
+  com o `row_scope` do filho; o número linka a listagem do filho filtrada pelo
+  pai (`?filter_<fk>=<id>`, aceito mesmo fora do `list_filter`, com chip
+  **Filtrado por**) quando o filho tem admin. Sem `VIEW` no filho a coluna
+  some; FK que o admin do filho esconde não ganha link e o `?filter_<fk>=`
+  dela é ignorado.
+- Admin: atividade recente no dashboard (#803). `AdminSite(recent_activity=N)`
+  mostra as últimas N mudanças dos models com `audit_model`, mescladas por
+  data, com link para o registro. Model sem `VIEW` fica de fora; entrada de
+  linha fora do `row_scope` (ou de linha apagada, em model com escopo) não
+  aparece, nem o rótulo; o autor segue a regra do painel de auditoria. Padrão
+  `None` (desligado): o feed custa uma consulta por tabela de auditoria, uma
+  por model auditado e uma por autor distinto em cada carga do dashboard.
+- Admin: duplicar registro (#803). `AdminModel(can_duplicate=True)` põe
+  **Duplicar** no detail (`GET {prefix}/m/{slug}/{identity}/duplicate`): o
+  form de criação preenchido sem identidade, colunas únicas (inclusive
+  `UniqueConstraint` e índice único), senha, upload, secretas e auditoria,
+  postando para o create comum. Exige `CREATE` e `VIEW`; origem fora do
+  escopo é `404`. Sem o form de colunas, `ValueError` na construção.
+- Admin: edição em massa de um campo (#803).
+  `AdminModel(bulk_edit_fields=[...])` acrescenta **Editar campo** às ações
+  da seleção: escolhe o campo, digita no widget dele, valida como o form de
+  edição (FK no escopo do alvo, `validate_edit` por linha, campo travado por
+  `readonly_fields_for` recusa tudo) e aplica com um
+  `UPDATE ... WHERE id IN (...) AND escopo` numa transação que volta se o
+  valor tirar alguma linha do escopo; com `audit_model`, uma entrada por
+  linha. Exige `EDIT`; nonce de uso único no passo do valor.
+- Admin: entrar como um usuário (#804). `AdminModel(impersonate=handler)`,
+  com `handler(operador, alvo) -> str` (sync ou async) devolvendo a URL que
+  abre a aplicação como o alvo. O detail ganha o botão "Entrar como", que
+  abre uma confirmação (`GET/POST /m/{slug}/{id}/impersonate`, CSRF e nonce
+  de uso único) e redireciona com `303`, `no-store` e `no-referrer`. Exige a
+  permissão nova `AdminPermissionEnum.IMPERSONATE`, que **não** é concedida
+  sem `access_policy` — só uma política que diga sim a ela libera. Alvo fora
+  do `row_scope` responde `404`. `AdminModel(impersonate_account=...)` diz
+  que conta a linha representa (perfil, matrícula); o handler recebe essa
+  conta. Alvo que entra no próprio admin responde `403`: a recusa pergunta
+  `AdminAuthBackend.is_admin_account` (novo, sobrescrevível: `is_admin` por
+  padrão e o `is_authorized` no `UserModelAuthBackend`) sobre a linha e a
+  conta, e `AdminAuthBackend.is_admin_identity` (novo) sobre o `id` que vai
+  na credencial — pega o perfil 1:1 que divide a chave primária com um
+  admin (`load_account`, novo, carrega a conta sem filtro de login; backend
+  próprio cujo `load_principal` filtra deve sobrescrevê-lo). A conta
+  resolvida precisa ter `id` e estar no `row_scope` do admin da classe dela;
+  resolver sync roda em `run_sync` (lê relação lazy). Cada impersonação vai
+  para o log em `INFO` (operador, model, id —
+  nunca a URL) e, com `audit_model`, grava uma entrada `event`
+  (`admin.impersonate`) no alvo **antes** de o handler rodar: falhou a
+  gravação, nenhuma credencial é emitida; handler que falha gera uma segunda
+  entrada `admin.impersonate.failed`. `token_actor(claims)` e
+  `ACT_CLAIM` deixam uma rota sensível recusar sessão impersonada. `make_jwt_impersonation_handler(jwt,
+  redirect_url=..., ttl=...)` assina um access token (`typ="access"`, padrão
+  15 min) com `act = {"sub": <operador>}` e o põe no lugar de `{token}`.
+  Novos: `AdminImpersonateHandler`, `ADMIN_IMPERSONATION_TTL`,
+  `ADMIN_IMPERSONATION_EVENT`, `IMPERSONATION_TOKEN_PLACEHOLDER`.
+- Admin: contagem estimada (#804). `AdminModel(count_strategy=...)`:
+  `"exact"` (padrão), `"estimate"` ou `"none"` (`AdminCountStrategyEnum`).
+  `"estimate"` lê `pg_class.reltuples` no PostgreSQL enquanto nada estreita
+  a lista e mostra `~N`; com busca, filtro, lens ou `row_scope` diferente de
+  `true()`, fora do PostgreSQL e em tabela nunca analisada
+  (`reltuples = -1`) e em subclasse de herança de tabela única, conta exato.
+  `"none"` não conta e pagina só com anterior/próxima. O card do dashboard
+  segue a estratégia. Com `repository_class`, as duas caem para `exact`,
+  para não passar ao largo do repositório.
+- Admin: restaurar pelo histórico (#804). Cada entrada `update` da timeline
+  de auditoria ganha "Restaurar" (`GET /m/{slug}/{id}/restore/{entry_id}`),
+  que abre o form de edição com os valores anteriores — sem gravar; o save
+  é o da edição (permissão `EDIT`, validação, FK, `row_scope`, trava
+  otimista). Upload, senha, campos escondidos, read-only e valores
+  `[redacted]` não são restaurados.
+- Admin: busca global (#804). Caixa no topo e `GET /search?q=`: busca em
+  todo model com `search_fields` com a mesma condição da listagem, até
+  `make_admin_router(search_results_per_model=...)` linhas por model
+  (`ADMIN_SEARCH_RESULTS_PER_MODEL`, 5), respeitando `VIEW`, `row_scope` e o
+  `repository_class`. Termo vazio não consulta; acima de
+  `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou
+  `ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` sem consultar.
+- Servidor tus 1.0.0 para o `createResumableUpload` do `tempest-react-sdk`
+  (#809): `make_tus_router(store, *, prefix="/api/uploads", max_size,
+  max_chunk_size, expiration, current_user_id, on_complete)` com `POST` de
+  criação (`Upload-Length`, `Upload-Metadata`, `Idempotency-Key`), `HEAD`,
+  `PATCH` e `DELETE` — o subconjunto que o cliente envia, medido rodando o
+  cliente real contra o router. `PATCH` confere `Upload-Offset` (`409`),
+  `Content-Type` (`415`) e tamanho (`413`), sob um lock por upload pego antes
+  de ler o corpo. Upload pertence ao `str()` do
+  `current_user_id` (`404` para outro dono); `Idempotency-Key` vale por dono;
+  `Upload-Expires` renovado a cada `PATCH`, `410` depois dele e
+  `TusStore.purge_expired()` para a limpeza. Stores: `LocalTusStore` (disco,
+  registro gravado depois dos bytes) e `S3TusStore` (um objeto por chunk e
+  montagem do arquivo no último `PATCH`, porque o cliente manda chunk menor
+  que os 5 MiB do multipart); o estado dos dois sobrevive a restart do
+  processo. Erros novos: `TusVersionException`, `TusUploadNotFoundException`,
+  `TusUploadExpiredException`, `TusOffsetMismatchException`,
+  `TusContentTypeException`, `TusInvalidHeaderException`,
+  `TusUploadTooLargeException`, `TusIdempotencyKeyReusedException`, todos com
+  `Tus-Resumable` na resposta. `TUS_CORS_EXPOSE_HEADERS` /
+  `TUS_CORS_ALLOW_HEADERS` para o `CORSMiddleware`. Sem extra novo. Receita
+  nova: [Upload resumível (tus)](docs/recipes/resumable-upload.md).
+  Endurecido depois de revisão de segurança: `PATCH` em upload completo
+  responde `409 TUS_UPLOAD_COMPLETED` e `on_complete` roda uma vez por
+  upload; o lock é pego antes de ler o corpo (`409 TUS_UPLOAD_LOCKED` para
+  o segundo `PATCH`); `PATCH` vazio não renova a expiração; registro apagado
+  pelo callback não é recriado; no S3 o registro completo é salvo antes de
+  apagar os chunks e `min_chunk_size` (padrão 64 KiB) recusa chunk pequeno
+  com `400 TUS_CHUNK_TOO_SMALL`; `max_uploads_per_owner` /
+  `max_bytes_per_owner` (`403 TUS_QUOTA_EXCEEDED`); header inteiro com mais
+  de 20 dígitos é `400`; `current_user_id` precisa resolver `str`, `int` ou
+  `UUID`; `Idempotency-Key` ignorada sem dono; `purge_expired` sob o lock
+  por upload; `401`/`403` da dependência levam `Tus-Resumable`.
+  `body_read_timeout` (padrão 30 s) responde `408 TUS_BODY_READ_TIMEOUT`
+  quando o corpo do `PATCH` para no meio, descarta o chunk e libera o lock;
+  desconexão no meio do corpo vira log `INFO`, não `500`; cota por dono não
+  vale no modo anônimo nem conta upload vazio; o `Tus-Resumable` vai numa
+  cópia da `HTTPException`, sem alterar uma instância reaproveitada.
+
+### Changed
+
+- Admin: o import CSV tem dois passos (#802). `POST /m/{slug}/import`
+  valida e ensaia os inserts numa transação desfeita e mostra a prévia
+  (linhas que entram, as 20 primeiras, erros por linha e campo) sem gravar;
+  `POST /m/{slug}/import/confirm` grava o CSV que veio assinado da prévia
+  (preso ao model e ao operador, válido por 1 hora, nonce de uso único),
+  **tudo ou nada**, e redireciona para a listagem. Antes o upload gravava
+  na hora, linha a linha, e pulava as inválidas. Com erro em qualquer linha
+  o confirmar fica desabilitado e o `POST` também recusa. Arquivo acima de
+  512 KiB responde `400`.
+- `parse_submission`, `parse_password_submission` e `cell_view` aceitam
+  `locale=` (padrão `"en"`); `AdminSite(index_subtitle=None)` usa o texto do
+  catálogo no locale do site.
+
+- O WebSocket de salas (`make_game_room_router`) manda o ping como
+  `{"type": "ping"}`, o mesmo objeto do `serve_game_rooms_tcp`. Antes saía
+  o envelope genérico do `heartbeat` (`data` e `request_id` a mais), então um
+  cliente escrito para um transporte via um `ping` diferente no outro.
+  Cliente que reconhece o ping pelo `type` — como a receita manda — não
+  muda; quem comparava o objeto inteiro precisa tirar `data`/`request_id`.
+
+### Fixed
+
+- `SheetWriter` remove de toda `str` os caracteres de controle que o XML do
+  `.xlsx` não aceita (`\x00`-`\x08`, `\x0b`, `\x0c`, `\x0e`-`\x1f`), com o
+  `ILLEGAL_CHARACTERS_RE` do openpyxl. Antes, um deles num valor fazia o
+  openpyxl levantar `IllegalCharacterError` e o documento inteiro falhar — no
+  export `.xlsx` do admin, `500` (#803).
+- `AlembicHelper.current()` / `current_async()` não logam mais
+  `Context impl ...` nem `Will assume ... DDL.` a cada leitura (#805): leem a
+  `alembic_version` com um `SELECT` direto em vez de montar o
+  `MigrationContext` do Alembic. Num readiness a cada 15 s eram duas linhas
+  de `INFO` por probe. `upgrade`/`downgrade`/`stamp` continuam logando
+  `Running upgrade ...`, inclusive com uma leitura concorrente noutra thread.
+  Tabela ausente ou vazia continua `None`, e várias linhas levantam o mesmo
+  `CommandError` do `get_current_revision` do Alembic.
 
 ## [0.369.1] — 2026-11-20
 
@@ -34116,6 +34411,7 @@ asyncio.run(main())
 
 Receitas: [File store](file-store.md), [Uploads](uploads.md),
 [Downloads](downloads.md), [Storage](storage.md),
+[Upload resumível (tus)](resumable-upload.md),
 [Metadados de imagem](image-metadata.md).
 
 ### Extras de domínio
@@ -34420,6 +34716,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Tipagem (estático + runtime) »](typing.md)** | `strict_types` / `typed` / `require_annotations`, knob `[tool.tempest] typing_strictness`, ruff `ANN` |
 | **[Transações (commit e savepoint) »](transactions.md)** | `transaction()` compartilhado pela sessão, `commit()` / `flush()` / `rollback()` no repositório, `autocommit=False`, `savepoint()` para o passo recuperável |
 | **[Trânsito da frota (GPS anônimo) »](fleet-traffic.md)** | `TrafficAggregator` (velocidade mediana por trecho, k-anonimato, corte de início e fim, sal rotativo), `match_to_roads` (HMM, porte do tempest-react-sdk), `RoadGraph` + `road_graph_from_overpass`/`load_road_graph`, `make_traffic_router` (por caixa + tile do grafo), qualidade do encaixe na frota real só agregada (`MatchQualityOptions` + `make_match_quality_router`), `OffRoadDensity` + `infer_road_candidates` (ruas que o OSM não tem, para revisão) |
+| **[Upload resumível (tus) »](resumable-upload.md)** | `make_tus_router` (servidor tus 1.0.0 do `createResumableUpload` do `tempest-react-sdk`: `POST`/`HEAD`/`PATCH`/`DELETE`, `Idempotency-Key` por dono, expiração, `409` de offset sob lock por upload), `LocalTusStore` e `S3TusStore` (estado que sobrevive a restart), `on_complete` |
 | **[Uploads (backends) »](uploads.md)** | `UploadUtils`, validação de extensão/MIME (`sniff_mime`), backends local / MinIO |
 | **[Utilitários »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, tokens opacos, `generate_password`, URL assinada (`sign_path`), `form_encode`, `is_light` |
 | **[Visão computacional (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + schemas de predição |
@@ -34467,7 +34764,7 @@ UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com
 
 - List view com busca, filtros ricos por campo (enum / FK / range de data) e colunas ordenáveis.
 - CRUD completo (criar / editar / excluir) e ações em massa.
-- Export CSV/JSON e widgets FK-select.
+- Export CSV/JSON/XLSX e widgets FK-select.
 - Dashboard com contagens de linhas + métricas de sistema.
 - MFA TOTP opcional no login.
 - Campos de upload de arquivo/imagem.
@@ -34648,12 +34945,17 @@ app.include_router(
 - `GET  /admin/logs` — **logs da aplicação** (quando `show_logs=True`): lê os arquivos JSON estruturados escritos pelo `configure_logging(log_dir=…)`, com filtro por fonte (`?source=`), busca em texto (`?q=`) e paginação. Badges coloridos por nível. Quando ainda não há arquivos de log, mostra um estado vazio.
 - `GET  /admin/logs/export` — **export dos logs** (`?format=md|json`): baixa a seleção filtrada como markdown (traceback em bloco cercado, pronto para colar em issue) ou JSON verbatim.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`: cada palavra procurada por trecho, sem diferenciar maiúscula, em qualquer um dos `search_fields`, e toda palavra precisa aparecer; `%` e `_` são literais) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
-- `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000). No CSV, uma célula de texto que começa com `=`, `+`, `-`, `@`, tab ou CR sai com um `'` na frente, para a planilha mostrar o texto em vez de avaliar uma fórmula; o JSON sai sem mudança.
+- `GET  /admin/m/{slug}/export.csv` / `export.json` / `export.xlsx` (este com o extra `[spreadsheet]`) — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000). No CSV, uma célula de texto que começa com `=`, `+`, `-`, `@`, tab ou CR sai com um `'` na frente, para a planilha mostrar o texto em vez de avaliar uma fórmula; o JSON sai sem mudança.
 - `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate + suas **ações customizadas**) nas linhas selecionadas.
 - `GET/POST /admin/m/{slug}/new` — **criar** registro (quando `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view com botões Edit/Delete.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **editar** registro (quando `can_edit`).
 - `POST /admin/m/{slug}/{identity}/delete` — **excluir** registro (quando `can_delete`).
+- `GET/POST /admin/m/{slug}/import` + `POST /admin/m/{slug}/import/confirm` — **importar** CSV/XLSX com prévia (quando `can_import`).
+- `GET  /admin/m/{slug}/{identity}/duplicate` — **duplicar** (quando `can_duplicate`).
+- `GET  /admin/m/{slug}/{identity}/restore/{entry_id}` — **restaurar** uma mudança do histórico (com `audit_model`).
+- `GET/POST /admin/m/{slug}/{identity}/impersonate` — **entrar como** a conta da linha (com `impersonate=` e a permissão `IMPERSONATE`).
+- `GET  /admin/search` — **busca global** nos models com `search_fields`.
 - `GET  /admin/static/{path}` — o CSS embutido do painel (`admin.css`).
 - `GET  /admin/_ssr/htmx.js` — o HTMX empacotado no SDK (`ssr/_static/htmx.min.js`), servido sem sessão porque a página de login também o carrega. O caminho segue o `prefix`: com `prefix="/backoffice"`, vira `/backoffice/_ssr/htmx.js`.
 
@@ -35350,6 +35652,73 @@ nova para a mais antiga.
     `audit_model`, o detail continua igual (só os carimbos
     `created_by`/`updated_by`).
 
+### Atividade recente no dashboard (`recent_activity=`)
+
+A linha do tempo acima é por registro. Para ver o que mudou no painel
+inteiro sem abrir registro por registro, ligue o feed do dashboard no
+`AdminSite`:
+
+```python
+from tempest_fastapi_sdk import AdminModel, AdminSite
+
+from src.db.models import AuditLog, OrderModel, TicketModel
+
+site = AdminSite(title="Loja", recent_activity=20)
+site.register(AdminModel(model=OrderModel, audit_model=AuditLog))
+site.register(AdminModel(model=TicketModel, audit_model=AuditLog))
+```
+
+O dashboard ganha o bloco **Atividade recente**: as últimas 20 entradas de
+todos os models que declaram `audit_model`, mescladas da mais nova para a
+mais antiga, cada uma com a ação, o model, o rótulo do registro (link para
+o detail), a data e o autor.
+
+O feed passa pelas mesmas regras do resto do painel:
+
+- model em que o principal não tem `VIEW` no `access_policy` não aparece;
+- entrada de uma linha fora do `row_scope` do model não aparece — nem o
+  rótulo. Num model com escopo, também some a entrada de uma linha que não
+  existe mais (um `delete`), porque nada prova que ela era alcançável; sem
+  escopo, ela aparece sem link;
+- o autor segue a regra do painel de auditoria do detail: com `row_scope`
+  no model de usuário, o nome só aparece para quem o principal alcança;
+  senão, o id.
+
+!!! info "Desligado por padrão — o custo"
+    `recent_activity=None` é o padrão porque o feed custa consultas em
+    **toda** carga do dashboard: uma por tabela de auditoria, uma por model
+    auditado (para manter só as linhas do escopo e ler os rótulos) e uma
+    busca de autor por autor distinto. Para compensar as entradas que o
+    escopo esconde, o painel lê até `10 × recent_activity` entradas por
+    tabela; se o escopo esconder mais que isso entre as mais novas, o feed
+    mostra menos que o pedido.
+### Desfazer pelo histórico (Restaurar)
+
+Cada entrada `update` da timeline ganha um link **Restaurar**. Ele não
+grava nada: abre o form de edição do registro com os valores **de antes**
+daquela mudança já preenchidos — os outros campos ficam como estão hoje — e
+um aviso dizendo quais campos vieram do histórico. O operador revisa e
+salva pelo caminho de sempre, então valem a permissão `EDIT`, a validação
+do form, o `validate_edit`, a conferência de FK, o `row_scope` e a trava
+otimista (o form carrega a versão **atual** da linha: se outro save chegou
+depois de abrir, a resposta é `409`). A entrada nova da timeline sai do
+mesmo lugar que grava as outras edições — o painel não escreve auditoria
+sozinho.
+
+O link só aparece para quem tem `EDIT` no model, e só em entrada `update`
+de que algum campo possa voltar. Ficam de fora, e continuam com o valor
+atual:
+
+- campos de upload (`upload_fields`) e de senha (`password_fields`);
+- campos escondidos — `exclude_fields` e os segredos do model — e todo
+  valor que a auditoria gravou como `[redacted]`;
+- campos fora do form de edição (`readonly_fields`, `readonly_fields_for`).
+
+Um valor antigo que hoje é inválido — uma opção que saiu do `choices`, por
+exemplo — aparece preenchido (o `<select>` ganha a opção, para o browser
+não trocar pela primeira em silêncio) e vira erro de campo no save, sem
+gravar nada.
+
 ## FK com autocomplete (`autocomplete_fields=`)
 
 Por padrão um campo FK cujo alvo tem admin registrado vira um `<select>`
@@ -35462,6 +35831,124 @@ a linha.
       mensagem por campo e sem inserir nada.
     - Precisa do `AdminModel` do filho + `can_edit` (e `can_delete` pra
       excluir). Até 50 linhas por inline.
+
+## Muitos-para-muitos no form (`m2m_fields=`)
+
+Um `relationship(..., secondary=...)` — tags de um artigo, papéis de um
+usuário — não é coluna, então o form não o mostrava. Declare em
+`m2m_fields`:
+
+```python
+from sqlalchemy import Column, ForeignKey, String, Table
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from tempest_fastapi_sdk import AdminModel, BaseModel
+
+from src.admin import site
+
+article_tags = Table(
+    "article_tags",
+    BaseModel.metadata,
+    Column("article_id", ForeignKey("articles.id"), primary_key=True),
+    Column("tag_id", ForeignKey("tags.id"), primary_key=True),
+)
+
+
+class Tag(BaseModel):
+    __tablename__ = "tags"
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class Article(BaseModel):
+    __tablename__ = "articles"
+    title: Mapped[str] = mapped_column(String(120))
+    tags: Mapped[list[Tag]] = relationship(secondary=article_tags)
+
+
+site.register(AdminModel(model=Tag, search_fields=[Tag.name]))
+site.register(AdminModel(model=Article, m2m_fields=[Article.tags]))
+```
+
+O create e o edit ganham um `<select multiple>` com as tags (rotuladas
+como no `<select>` de FK: o primeiro `search_fields` do admin do alvo),
+e o detail lista as tags ligadas, com link quando o alvo tem admin. Salvar
+**substitui o conjunto** na mesma transação do registro: o que não veio
+selecionado é desligado, e se o save volta (validação, escopo, conflito),
+nenhum vínculo muda.
+
+Com escopo, a regra é a da FK na escrita:
+
+- as opções são só as linhas que o principal alcança pelo `row_scope` do
+  alvo (e pedem `VIEW` nele — sem `VIEW`, o campo nem aparece, e os
+  vínculos gravados ficam como estão);
+- um vínculo que o operador **não** alcança não aparece no form e
+  **continua** depois do save — ele não apaga o que não vê;
+- um id postado fora do escopo, ou que não existe, recusa o campo com
+  `Select a valid choice; that record does not exist.`, o mesmo erro, para
+  um `POST` forjado não descobrir ids de outro tenant.
+
+!!! info "Conferido na construção"
+    Um nome em `m2m_fields` que não é `relationship` com `secondary`
+    (uma coluna, um 1-N) levanta `ValueError` quando o `AdminModel` é
+    criado. O 1-N tem o [`inlines=`](#inlines-filhos-1-n-no-detail-inlines);
+    o N-1 já é o `<select>` de FK. As opções param em `FK_OPTION_CAP`
+    (1000) linhas, lidas com `LIMIT` no SQL; um vínculo alcançável que o
+    teto deixou de fora entra como mais uma opção, já marcada, como na FK
+    de seleção única — salvar sem mexer no campo não o apaga. Essas opções
+    extras também param no teto, lidas com o escopo na mesma consulta; um
+    vínculo que nem assim aparece continua gravado: o save só desliga o que
+    o form ofereceu e voltou desmarcado.
+
+!!! info "Campo trancado"
+    Um nome de `m2m_fields` em `readonly_fields`, ou no que
+    `readonly_fields_for` devolve para a linha, sai do form e o save não
+    mexe nos vínculos dele. O form que o **Restaurar** do histórico abre
+    traz os vínculos atuais do jeito do form de edição, então restaurar
+    outro campo não desliga nenhum.
+
+## Contagem de relacionados na listagem (`related_counts=`)
+
+Na listagem de clientes, quantos pedidos cada um tem? Declare no admin do
+**pai** a coluna FK do **filho**:
+
+```python
+from tempest_fastapi_sdk import AdminModel, RelatedCount
+
+from src.admin import site
+from src.db.models import CustomerModel, OrderModel
+
+
+site.register(
+    AdminModel(
+        model=CustomerModel,
+        related_counts=[RelatedCount(OrderModel.customer_id, label="Pedidos")],
+    )
+)
+site.register(AdminModel(model=OrderModel))
+```
+
+A listagem ganha a coluna **Pedidos** com a contagem por linha, e cada
+número é um link para a listagem de pedidos já filtrada pelo cliente
+(`?filter_customer_id=<id>`) — o filtro vale mesmo com `customer_id` fora
+do `list_filter` dos pedidos, aparece como um chip **Filtrado por** com
+**Limpar filtro**, e o export da listagem filtrada respeita o mesmo
+filtro.
+
+A contagem de uma página inteira sai de **uma** consulta,
+`SELECT customer_id, COUNT(*) ... WHERE customer_id IN (<ids da página>)
+GROUP BY customer_id`, nunca uma por linha — o teste conta os statements
+de uma página de 25 linhas e acha um só `GROUP BY`.
+
+- A consulta leva o `row_scope` do admin do filho: o número conta só os
+  pedidos que o principal alcança.
+- Sem `VIEW` no filho, a coluna some — o número é dado daquele model.
+- O link só existe quando o filho tem admin registrado; filho sem admin
+  mostra a contagem sem link. Se o admin do filho esconde a coluna FK
+  (`exclude_fields`, `__secret_columns__`), também não há link, e o
+  `?filter_<fk>=` é ignorado na listagem do filho: filtrar por uma coluna
+  que a tela não mostra responderia, pela contagem, o que ela guarda.
+- `RelatedCount` recebe o atributo mapeado (para saber o model do filho);
+  a coluna precisa ter `ForeignKey` para a tabela do pai, ou o
+  `AdminModel` levanta `ValueError` na construção.
 
 ## Dashboard: cards de métricas de negócio (`dashboard_cards=`)
 
@@ -35797,16 +36284,178 @@ site.register(AdminModel(model=Product, can_import=True))
 
 Aparece um link **Import CSV** na list view → página com upload. O CSV
 precisa de uma linha de cabeçalho com os nomes das colunas editáveis; a
-página mostra quais são. Cada linha seguinte é validada e coagida com as
-**mesmas regras do create** (tipos, obrigatórios) e vira um registro.
+página mostra quais são. O import tem **dois passos**:
 
-O resultado é best-effort: linhas válidas são criadas, e um relatório
-lista as linhas puladas com o erro de cada campo — uma linha ruim nunca
-aborta as outras.
+1. **Prévia.** O upload valida cada linha com as **mesmas regras do
+   create** (tipos, obrigatórios, `choices`) e ensaia os inserts numa
+   transação que sempre sofre rollback — então a prévia também mostra o
+   que só o banco recusaria (valor duplicado numa `unique`) e o que o
+   [`row_scope`](#escopo-por-linha-row_scope) não alcança. Nada é
+   gravado. A página diz quantas linhas entram, mostra as primeiras 20 e
+   lista cada linha recusada com o número (o cabeçalho é a linha 1, como
+   na planilha) e o erro de cada campo.
+2. **Confirmar.** O botão **Confirm import of N records** reenvia o CSV
+   num campo oculto **assinado** com o `secret_key` do router e preso ao
+   model e ao operador da prévia: o que entra é exatamente o arquivo que
+   foi visto. As linhas rodam de novo, de verdade, numa transação só, e
+   o commit é **tudo ou nada** — se a tabela mudou desde a prévia e uma
+   linha agora falha, nada entra e a página volta com os erros. Deu
+   certo, o painel redireciona para a listagem com `Created N record(s).`
+
+Com erro em **qualquer** linha o botão de confirmar vem desabilitado, e
+o `POST` de confirmação recusa do mesmo jeito: nada é importado pela
+metade.
+
+!!! info "Limites do passo assinado"
+    - O arquivo vai até **512 KiB** (`ADMIN_IMPORT_MAX_BYTES`); maior que
+      isso a prévia responde `400` pedindo para dividir o arquivo. Medido
+      sobre seis arquivos de 512 KiB (hex aleatório, ASCII imprimível
+      aleatório, Latin-1, CJK, emoji, linhas de um caractere), o campo
+      assinado ficou em no máximo 571 099 bytes.
+    - A prévia vale **1 hora** (`ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS`).
+      Depois disso, ou com o campo adulterado, ou assinado para outro
+      model ou outro operador, a confirmação responde `400` e não grava.
+    - A confirmação gasta um nonce de uso único: recarregar a resposta não
+      importa de novo.
+
+!!! warning "Sinais do repositório só na confirmação"
+    A prévia insere pela sessão (depois do gancho `_prepare_insert` do
+    repositório), sem o `add` do repositório — nenhum handler de
+    `PRE_SAVE`/`POST_SAVE` dispara por uma prévia. A confirmação usa
+    `repository.add`, com sinais. Como o commit é único no fim, um
+    `POST_SAVE` de uma linha já disparou quando uma linha seguinte faz o
+    lote voltar; handler com efeito externo (e-mail, fila) deve olhar o
+    commit, não o sinal.
 
 !!! info "Opt-in + requer create"
     `can_import` é `False` por padrão e exige `can_create` (importar é
     criar em massa). Colunas de upload de arquivo não entram pelo CSV.
+
+### Exportar e importar `.xlsx`
+
+Com o extra `[spreadsheet]` instalado, a listagem ganha **Export XLSX** ao
+lado de CSV e JSON, e o import aceita `.xlsx` além de `.csv`:
+
+```bash
+uv add "tempest-fastapi-sdk[admin,spreadsheet]"
+```
+
+- **Export.** As mesmas linhas do CSV — busca, filtros, `row_scope` e o
+  teto `export_max_rows` —, numa aba, com o cabeçalho congelado. Datetime
+  sai como o **mesmo texto ISO 8601 em UTC** do CSV; número e booleano
+  continuam número e booleano. Uma célula de texto que começa com `=`
+  continua texto (o `SheetWriter` grava como string), então
+  `=HYPERLINK(...)` digitado num nome não vira fórmula no arquivo.
+  Caractere de controle que o XML não aceita (`\x00`-`\x08`, `\x0b`,
+  `\x0c`, `\x0e`-`\x1f`) é removido da célula, em vez de derrubar o
+  export com `500`.
+- **Import.** O `.xlsx` (pelo nome ou por abrir como ZIP) é lido da
+  **primeira aba**, linha 1 como cabeçalho, e vira o texto CSV que o import
+  já valida: daí em diante é o mesmo caminho — prévia, `row_scope`, FK,
+  confirmação assinada. O que vai assinado é esse CSV, então o teto de
+  512 KiB vale para o upload **e** para o CSV que ele vira. Booleano vira
+  `true`/`false`, datetime vira ISO 8601 (sem fuso, como a planilha guarda,
+  lido no fuso do model como o CSV), e `3.0` vira `3`.
+- **Fórmula sem valor calculado.** Planilha gerada por biblioteca
+  (openpyxl, pandas) guarda a fórmula mas não o resultado, e a célula seria
+  lida vazia. A prévia recusa o arquivo nomeando as células — `A3: formula
+  with no calculated value...` (em pt-BR, `fórmula sem valor calculado`);
+  abrir e salvar no Excel ou LibreOffice grava o valor. Fórmula que o Excel
+  calculou como texto vazio (`=IF(A2="";"";...)`) é válida e entra vazia, e
+  só as colunas com cabeçalho na linha 1 são conferidas: fórmula numa coluna
+  que o import ignora não recusa o arquivo.
+- **Limites da leitura.** A aba é lida com teto de
+  `ADMIN_XLSX_IMPORT_MAX_ROWS` linhas (`ADMIN_IMPORT_MAX_BYTES // 16`,
+  32 768) e `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` descompactados
+  (32 × o teto, 16 MiB), proporcionais ao teto do CSV; acima deles a
+  prévia responde `400` dizendo os dois limites. Uma planilha de linhas com
+  menos de 16 bytes de CSV pode ser recusada mesmo cabendo nos 512 KiB.
+
+!!! info "Sem o extra"
+    O openpyxl só é carregado quando um `.xlsx` é pedido. Sem o extra, o
+    botão **Export XLSX** não aparece, o `accept` do upload volta a ser só
+    CSV, e as rotas respondem com a mensagem que nomeia o pacote: o export
+    redireciona para a listagem com
+    `Exporting .xlsx needs the spreadsheet extra: pip install "tempest-fastapi-sdk[spreadsheet]"`
+    e a prévia do import responde `400` com o equivalente.
+
+## Duplicar registro (`can_duplicate=True`)
+
+Para criar um registro parecido com um que já existe, `can_duplicate=True`
+põe **Duplicar** no detail:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import ProductModel
+
+
+site.register(AdminModel(model=ProductModel, can_duplicate=True))
+```
+
+O botão abre o form de **criação** preenchido com os valores do registro,
+menos o que uma cópia não pode carregar: a identidade, as colunas únicas
+(`unique=True`, `UniqueConstraint` e índice único — composto inclusive),
+senha, upload, colunas secretas e as de auditoria (`created_at`,
+`updated_at`, `created_by`, `updated_by`). Os vínculos de
+[`m2m_fields`](#muitos-para-muitos-no-form-m2m_fields) que o principal
+alcança vêm marcados.
+
+O form posta para o create comum, então a cópia passa por **toda**
+checagem de um registro novo — validação, FK no escopo, `row_scope`
+depois da escrita. Exige `CREATE` (e `VIEW`, porque lê a origem), e a
+origem precisa estar no escopo: fora dele, `404`. Precisa do form de
+colunas: com `can_create=False` ou com `create_handler`, a construção
+levanta `ValueError`.
+
+## Edição em massa de um campo (`bulk_edit_fields=`)
+
+Arquivar 40 pedidos de uma vez sem abrir um por um:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import OrderModel
+
+
+site.register(
+    AdminModel(
+        model=OrderModel,
+        bulk_edit_fields=[OrderModel.status, OrderModel.assignee_id],
+        choices={OrderModel.status: ["open", "shipped", "archived"]},
+    )
+)
+```
+
+O menu de ações da seleção ganha **Editar campo**. Marque as linhas,
+escolha a ação, escolha o campo (passo pulado quando só há um) e digite o
+valor no **widget do próprio campo** — o `<select>` de `choices`, o de
+FK. O valor é validado como no form de edição: tipo,
+obrigatório, `choices`, a FK no escopo do alvo, o `validate_edit` de cada
+linha, e um campo que o `readonly_fields_for` tranca em qualquer linha
+selecionada recusa a edição inteira.
+
+A escrita é **um** `UPDATE ... WHERE id IN (...) AND <escopo>` numa
+transação:
+
+- só os ids selecionados que o principal alcança entram;
+- se o valor novo tira alguma linha do escopo, a transação volta inteira e
+  a listagem mostra o aviso de escopo;
+- com `audit_model`, cada linha ganha a sua entrada `update` com o diff,
+  na mesma transação;
+- `updated_by` recebe o operador e `updated_at` anda — um form de edição
+  aberto antes acusa o [conflito](#edicao-simultanea-trava-otimista).
+
+Exige `can_edit` e `EDIT`. O passo do valor leva um nonce de uso único:
+recarregar a resposta não aplica de novo.
+
+!!! warning "Sem sinais do repositório"
+    Como o activate/deactivate em lote, a edição em massa é SQL Core:
+    handlers de `PRE_SAVE`/`POST_SAVE` não disparam. Cada nome em
+    `bulk_edit_fields` precisa ser coluna editável do form (nem upload, nem
+    senha, nem `readonly_fields`), conferido na construção.
 
 ## RBAC granular (`access_policy=`)
 
@@ -35854,7 +36503,8 @@ app.include_router(
 ```
 
 A política é consultada `(principal, admin, action)` em **toda** ação —
-`VIEW` / `CREATE` / `EDIT` / `DELETE`. Negar dá `403`; negar `VIEW`
+`VIEW` / `CREATE` / `EDIT` / `DELETE`, e `IMPERSONATE` no model com
+`impersonate=` (veja [Entrar como um usuário](#entrar-como-um-usuario-impersonate)). Negar dá `403`; negar `VIEW`
 também **esconde** o modelo do dashboard e da barra lateral, e negar
 create/edit/delete some com os botões correspondentes. Vale em list,
 detail, create, edit, delete, bulk (delete → `DELETE`, resto → `EDIT`),
@@ -35876,7 +36526,8 @@ Vale também para o que a página de um model mostra de **outro** model:
 !!! info "Compõe com os flags `can_*`"
     A policy **soma** aos flags `can_create`/`can_edit`/`can_delete` do
     `AdminModel` — os dois precisam liberar. Sem `access_policy`, nada
-    muda (todo admin logado faz tudo). Pode ser sync ou `async`.
+    muda (todo admin logado faz tudo), com uma exceção: `IMPERSONATE` só
+    vem de uma política que o conceda. Pode ser sync ou `async`.
 
 ### Uma ação sem `EDIT` no model (`action_policy=`) *(v0.366.0+)*
 
@@ -36002,6 +36653,364 @@ entrada da barra lateral.
     abre: o console lê qualquer tabela que a `SqlShellPolicy` libera, e um
     operador restrito a alguns models leria o resto por ali. Passe uma
     `surface_policy` para devolver as superfícies a quem deve tê-las.
+
+## Escopo por linha (`row_scope=`)
+
+O `access_policy` responde sim ou não para o **model inteiro**. No
+multi-tenant isso não basta: o suporte da empresa A pode ver pedidos,
+mas só os da empresa A. Contornar com um painel por empresa ou um
+repositório filtrado à mão é onde o dado vaza — basta uma rota esquecer
+o filtro. `row_scope=` põe o filtro no painel:
+
+```python
+from typing import Any
+
+from sqlalchemy import ColumnElement, false, true
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import TicketModel, UserModel
+
+
+def own_company(user: UserModel, admin: AdminModel[Any]) -> ColumnElement[bool]:
+    if user.is_superuser:
+        return true()
+    if user.company_id is None:
+        return false()
+    return TicketModel.company_id == user.company_id
+
+
+site.register(AdminModel(model=TicketModel, row_scope=own_company))
+```
+
+A função recebe o principal logado e o próprio `AdminModel`, e devolve
+uma condição SQLAlchemy. "Todas as linhas" se diz explicitamente, com
+`sqlalchemy.true()`. Pode ser `async` (para buscar o tenant em outra
+tabela, por exemplo). A condição entra com `AND` em **toda** rota que lê
+ou escreve linha do model:
+
+- listagem, contagem (no cabeçalho e no card do dashboard) e export;
+- detail, form de edição e o `POST` dele, delete e o download de upload;
+- ações em lote — delete, activate/deactivate — e ações customizadas: os
+  ids selecionados fora do escopo são descartados como se não existissem;
+- autocomplete, `<select>` de FK e filtro de FK **quando este model é o
+  alvo**, e a tabela de inline quando ele é o **filho**;
+- o formset do inline editável (o pai e cada filho são lidos no escopo);
+- a prévia e a confirmação do import CSV e `.xlsx`, e o export `.xlsx`;
+- o duplicar (a origem é lida no escopo), a edição em massa, as opções e
+  os vínculos de `m2m_fields` e a contagem de `related_counts` (com o
+  escopo do model alvo ou filho), e o feed de atividade recente.
+
+Linha fora do escopo responde `404` — o mesmo de uma linha que não
+existe, para a resposta não confirmar que ela está lá. No delete e nas
+ações em lote embutidas, a condição está no próprio `DELETE` / `UPDATE`,
+não só na leitura que veio antes.
+
+!!! danger "Devolver `None` não libera tudo"
+    Uma função de escopo que esquece o `return` devolve `None`. O painel
+    trata isso como erro: levanta `AdminRowScopeError`, registra no log o
+    nome do model e a requisição responde `500` — fecha, em vez de abrir
+    todas as linhas. Para liberar tudo, devolva `true()`.
+
+    E cuidado com o principal sem tenant: `TicketModel.company_id ==
+    user.company_id` com `company_id` `None` vira `IS NULL`, e casa com
+    toda linha sem empresa. Se esse usuário não deve ver nada, devolva
+    `false()` antes, como no exemplo.
+
+### Na escrita
+
+A regra vale para o resultado: uma linha **criada**, **editada** ou
+**importada** precisa continuar dentro do escopo depois da escrita. O
+painel grava dentro de uma transação, conta a linha contra a condição na
+mesma transação e, se ela saiu, faz rollback e devolve o form com
+`This record would fall outside the rows you may manage; nothing was
+saved.` — o operador da empresa A não cria um ticket da empresa B nem
+"move" um dos seus para lá trocando o `company_id`. O mesmo vale para:
+
+- **`create_handler`**: os campos do schema com o nome de uma coluna FK
+  passam pela checagem de FK abaixo antes do handler rodar. Depois, toda
+  linha do model que o handler grava pela sessão — inserida **ou
+  alterada**, como num upsert que edita uma linha existente — é contada
+  contra o escopo antes do commit; fora, rollback. Escapam da checagem:
+  escrita por SQL Core (`insert()`, `update()`, `bulk_create_values`), um
+  service que abre uma sessão própria e linhas de **outros** models que o
+  handler grave. Handler que dá `commit` sozinho já tornou a linha
+  durável: o painel não consegue desfazer, registra em `ERROR` com o model
+  e diz no form que o registro **foi** salvo fora do escopo, em vez de
+  afirmar que nada foi salvo.
+- **activate/deactivate em lote**: se o `is_active` novo tira alguma
+  linha do escopo (um escopo que filtra por ele), nada muda e a listagem
+  volta com o aviso.
+- **edição em massa** (`bulk_edit_fields=`): a mesma regra — o `UPDATE`
+  leva o escopo no `WHERE`, e um valor que tira qualquer linha do escopo
+  volta a transação inteira.
+- **muitos-para-muitos** (`m2m_fields=`): cada id postado precisa estar no
+  escopo do alvo, e o vínculo que o operador não alcança é mantido.
+- **chave estrangeira**: num create, edit, inline ou import, o valor de
+  uma FK cujo model alvo tem `row_scope` precisa ser uma linha que o
+  principal alcança lá. Fora do escopo, o campo recebe `Select a valid
+  choice; that record does not exist.` — o mesmo erro de um id que não
+  existe, então um `POST` forjado não descobre ids de outro tenant. A
+  coluna é conferida contra a sua primeira `ForeignKey`: numa
+  `ForeignKeyConstraint` composta, ou numa coluna com várias FKs, só esse
+  alvo é verificado.
+
+Um arquivo de upload gravado por um create ou edit que acabou recusado é
+apagado (tentativa única; falha vai para o log).
+
+No form de edição, uma FK que aponta para uma linha que o operador **não**
+alcança (ou além do `FK_OPTION_CAP`) continua selecionada: o `<select>`
+ganha uma opção com o valor atual, rotulada só com o id, e salvar sem
+mexer nela mantém a referência — antes o browser mandava a primeira
+opção e o save trocava a referência sem aviso.
+
+No painel de auditoria do detail, o autor de uma alteração aparece pelo
+nome quando o model de usuário não está registrado no site, ou está sem
+`row_scope`. Com `row_scope`, o nome só aparece se o principal tem `VIEW`
+nesse model e alcança aquele usuário pelo escopo; senão, só o id.
+
+No delete, quando o `DELETE ... AND <escopo>` não apaga nada (a linha
+saiu do escopo depois da leitura), o bloco volta inteiro — o que um
+handler de `PRE_DELETE` gravou na sessão é desfeito —, a resposta é `404`
+e o `POST_DELETE` não dispara. O `POST_DELETE` recebe a instância fora da
+sessão, como no `BaseRepository.delete`, então lê as colunas mesmo com
+`expire_on_commit=True`.
+
+!!! warning "O que o escopo não cobre"
+    - O `row_scope` vale nas rotas `/m/{slug}/...` e no que elas mostram de
+      outro model. Ficam de fora o que roda código seu ou SQL livre: os
+      cards do dashboard (`dashboard_cards=`), as áreas de indicadores, os
+      mapas (`location_maps=`) e o console SQL.
+    - Numa ação customizada, os `ctx.ids` já vêm filtrados, mas o
+      `ctx.repository` é o repositório do model sem filtro, e o painel não
+      confere o resultado: a ação pode ler além dos ids e pode **mover**
+      uma linha para fora do escopo. Isso é responsabilidade dela.
+    - O navegador de storage (`/storage`, superfície `STORAGE`) serve
+      qualquer chave do bucket. Se os uploads do model escopado moram no
+      mesmo bucket, quem tem a superfície contorna o escopo do download de
+      upload — negue `STORAGE` a esses papéis no `surface_policy`.
+    - Create e import continuam sendo oráculo de `UNIQUE` entre tenants:
+      um código que já existe na empresa B dá conflito para a empresa A.
+      A saída é a constraint `UNIQUE` composta com a coluna do tenant
+      (`UniqueConstraint("company_id", "code")`).
+
+!!! tip "Junto com o `access_policy`"
+    Os dois compõem: o `access_policy` decide **se** o principal abre o
+    model e qual ação faz; o `row_scope` decide **quais linhas**. Um
+    suporte com `VIEW` e um escopo por empresa vê a listagem só da própria
+    empresa e recebe `404` no detail de qualquer outra.
+
+## Entrar como um usuário (`impersonate=`)
+
+O suporte precisa ver a tela que o cliente vê. O admin não sabe como o seu
+serviço autentica usuários, então a tarefa se divide: você entrega uma
+função que transforma `(operador, alvo)` na URL que abre a aplicação como o
+alvo, e o painel cuida do resto — a permissão, a confirmação, a recusa de
+alvo que também é admin, o registro de quem entrou como quem e o redirect.
+
+Para um serviço cujo login emite access token com `JWTUtils`, o handler já
+vem pronto:
+
+```python
+from datetime import timedelta
+from typing import Any
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminModel,
+    AdminPermissionEnum,
+    JWTUtils,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import make_jwt_impersonation_handler
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import AuditLog, UserModel
+
+app = FastAPI()
+tokens = JWTUtils(settings.JWT_SECRET)
+
+site.register(
+    AdminModel(
+        model=UserModel,
+        audit_model=AuditLog,
+        impersonate=make_jwt_impersonation_handler(
+            tokens,
+            redirect_url="https://app.example.com/impersonate#token={token}",
+            ttl=timedelta(minutes=10),
+        ),
+    )
+)
+
+
+def policy(
+    user: UserModel, admin: AdminModel[Any], action: AdminPermissionEnum
+) -> bool:
+    if action is AdminPermissionEnum.IMPERSONATE:
+        return user.role == "support-lead"
+    return True
+
+
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.ADMIN_SECRET,
+        access_policy=policy,
+    ),
+)
+```
+
+O token assinado leva `sub` (o `id` da conta), `typ` = `"access"` — então
+`make_bearer_token_dependency` e `make_jwt_user_dependency` com o mesmo
+segredo o aceitam como qualquer access token —, o `email` do alvo quando
+existe e `act = {"sub": "<id do operador>"}`, o claim de ator da RFC 8693:
+a aplicação sabe que a sessão é de impersonação e quem está por trás. O
+prazo padrão é `ADMIN_IMPERSONATION_TTL` (15 minutos). `redirect_url`
+precisa ter `{token}` (senão `ValueError` na construção); prefira pôr o
+token no fragmento (`#`), que o browser não manda ao servidor da aplicação
+nem no `Referer`.
+
+Fora o `act`, é um access token comum: **toda** rota que aceita o token do
+próprio usuário aceita este. Para uma rota que não deve rodar numa sessão
+de impersonação — trocar a senha, mover dinheiro —, `token_actor(claims)`
+devolve o operador por trás (`None` na sessão do próprio usuário; um `act`
+malformado vem como `"unknown"`, nunca como `None`):
+
+```python
+from typing import Any
+
+from fastapi import Depends
+
+from tempest_fastapi_sdk import ForbiddenException, token_actor
+
+from src.api.dependencies.auth import bearer
+
+
+async def own_session_only(
+    claims: dict[str, Any] = Depends(bearer),
+) -> dict[str, Any]:
+    if token_actor(claims) is not None:
+        raise ForbiddenException(message="Indisponível durante impersonação.")
+    return claims
+```
+
+Se o `impersonate=` está num model que não é a conta — um perfil, uma
+matrícula —, diga qual conta ele representa com `impersonate_account=`
+(sync ou `async`). O handler recebe essa conta, e é sobre ela que a recusa
+de admin roda. A conta precisa ter `id` (é o que vai na credencial) e, se a
+classe dela tem admin registrado com `row_scope`, estar dentro desse escopo
+para o operador — senão uma matrícula da empresa A entregaria um usuário da
+empresa B. `None`, conta sem `id` ou fora do escopo respondem `404`, antes
+de qualquer auditoria. O resolver sync roda dentro de
+`AsyncSession.run_sync`, então pode ler uma relação lazy
+(`membership.user`); um resolver `async` precisa carregar o que lê
+(`selectinload`, `AsyncAttrs.awaitable_attrs`):
+
+```python
+from tempest_fastapi_sdk import AdminModel, JWTUtils
+from tempest_fastapi_sdk.admin import make_jwt_impersonation_handler
+
+from src.admin import site
+from src.core.settings import settings
+from src.db.models import MembershipModel
+
+site.register(
+    AdminModel(
+        model=MembershipModel,
+        impersonate=make_jwt_impersonation_handler(
+            JWTUtils(settings.JWT_SECRET),
+            redirect_url="https://app.example.com/impersonate#token={token}",
+        ),
+        impersonate_account=lambda membership: membership.user,
+    )
+)
+```
+
+Outro mecanismo de login (link mágico, sessão por cookie) é só outra
+função com a mesma forma — `handler(operador, conta) -> str`, sync ou
+`async`:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import UserModel
+from src.services.magic_links import issue_magic_link
+
+
+async def enter_as(operator: UserModel, target: UserModel) -> str:
+    link = await issue_magic_link(target.id, actor_id=operator.id)
+    return f"https://app.example.com/magic#link={link}"
+
+
+site.register(AdminModel(model=UserModel, impersonate=enter_as))
+```
+
+Como no JWT, a credencial vai no fragmento: no caminho ela entraria no
+log de acesso do servidor da aplicação.
+
+!!! danger "O handler entra como a conta que recebeu"
+    A recusa de alvo admin roda sobre a conta que o handler recebe. Um
+    handler que entra como **outra** coisa — `target.owner`, um id lido de
+    outra tabela — passa ao largo dela e precisa recusar conta admin
+    sozinho. Ponha o `impersonate=` no model da conta, ou use
+    `impersonate_account=`.
+
+O fluxo no painel:
+
+1. O detail do registro ganha o botão **Log in as** / **Entrar como**.
+2. Ele abre uma página de confirmação; o botão de confirmar faz `POST` com
+   o token CSRF e um nonce de uso único — recarregar a resposta não entra
+   de novo, volta para a listagem com o aviso de envio repetido.
+3. Com `audit_model`, a entrada de auditoria é gravada (commit) **antes**
+   de o handler rodar; se a gravação falha, o handler não roda — nenhuma
+   credencial é emitida — e a requisição termina em erro, sem `303`.
+4. O handler roda e o browser recebe `303` para a URL devolvida, com
+   `Cache-Control: no-store` e `Referrer-Policy: no-referrer`. Um
+   `AppException` do handler volta para a confirmação com a mensagem e vai
+   para o log em `WARNING`. Quando o handler falha (qualquer exceção), uma
+   segunda entrada, `admin.impersonate.failed` (o motivo em
+   `context["reason"]`), diz que nada foi entregue; a timeline a mostra
+   como **log in as failed** / **falha ao entrar como**.
+
+!!! danger "`IMPERSONATE` nunca vem de graça"
+    Sem `access_policy`, o admin libera tudo — **menos** impersonar: o
+    botão não aparece e a rota responde `403`. Agir como outra conta vai
+    além das telas do admin (e além do `row_scope` e da auditoria dele),
+    então só uma política que diz sim para `AdminPermissionEnum.IMPERSONATE`
+    concede. Cuidado com política escrita como "tudo menos `DELETE`": ela
+    libera `IMPERSONATE` também. Ter `EDIT` não basta.
+
+Mais regras do caminho:
+
+- **Escopo.** O alvo precisa estar no `row_scope` do model; fora dele é
+  `404`, como em toda rota de linha.
+- **Admin não é alvo.** Uma conta que entra no próprio admin é recusada
+  (`403`, sem formulário). São três perguntas ao backend, e qualquer uma
+  recusa: `is_admin_account` sobre a linha e sobre a conta resolvida (por
+  padrão, um `is_admin` verdadeiro; no `UserModelAuthBackend`, também o que
+  o seu `is_authorized` responder — quem autoriza por papel recusa aquele
+  papel), e `is_admin_identity(session, id_da_conta)` sobre o `id` que vai
+  na credencial. Esta última pega o perfil 1:1 que divide a chave primária
+  com um usuário admin: ela pergunta ao `load_principal` e, se ele não
+  achar, ao `load_account` — que no `UserModelAuthBackend` lê a linha do
+  usuário mesmo inativa ou sem MFA. Num backend próprio cujo
+  `load_principal` filtra (inativo, MFA), **sobrescreva `load_account`**: o
+  padrão devolve `None`, e um admin que o `load_principal` descarta passaria.
+- **Registro.** Toda impersonação gera um log `INFO` com o operador, o
+  model e o id do alvo — nunca a URL, que carrega a credencial. Com
+  `audit_model`, grava também uma entrada `event` no alvo, autor = o
+  operador, **antes** do handler (veja o passo 3). Com `AuditRequestMixin` na tabela, o evento
+  (`admin.impersonate`), o IP e o user agent vão para as colunas próprias;
+  sem ele, o nome fica em `context["event"]`. A timeline do detail mostra a
+  entrada como **logged in as** / **entrou como**.
 
 ## Widgets de campo por tipo de coluna
 
@@ -36256,6 +37265,121 @@ O que muda, e só isso:
     string de offset do cron morria dentro do loop do scheduler,
     calada.
 
+### Atalhos no filtro de data
+
+Todo filtro de intervalo de data (`list_filter` numa coluna `date` ou
+`datetime`) ganha, embaixo das duas caixas, os links **Today**, **7 days**,
+**30 days**, **This month** e **Last month** (em português com
+`AdminSite(locale="pt-BR")`):
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import OrderModel
+
+
+site.register(
+    AdminModel(
+        model=OrderModel,
+        list_filter=[OrderModel.created_at, OrderModel.status],
+        search_fields=[OrderModel.code],
+        display_timezone="America/Sao_Paulo",
+    ),
+)
+```
+
+Cada link preenche `filter_created_at_from` e `filter_created_at_to` com
+os dias do intervalo, ambos inclusivos: hoje; os últimos 7 e 30 dias
+terminando hoje; o mês corrente do dia 1 ao último dia; o mês anterior
+inteiro. "Hoje" é o dia no `display_timezone` do model (UTC sem ele) —
+o mesmo dia que o filtro lê. O resto da query fica como o operador deixou
+(busca, os outros filtros, a ordenação, a lens); só a página volta para a
+primeira. O atalho que bate com o intervalo ativo aparece marcado. São
+links montados no servidor, sem JavaScript.
+
+## Edição simultânea: trava otimista
+
+Dois operadores abrem o mesmo registro; o primeiro salva, o segundo
+salva por cima sem saber. O form de edição evita isso sozinho, para
+todo model com coluna `updated_at` — e todo `BaseModel` tem uma:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import CustomerModel
+
+
+site.register(AdminModel(model=CustomerModel))
+```
+
+O form leva, num campo oculto, o `updated_at` que leu ao abrir. No save,
+antes de atribuir qualquer coluna, o painel roda
+`UPDATE ... SET updated_at = updated_at WHERE id = :id AND updated_at =
+:lido` na **mesma transação** do `UPDATE` que grava a edição — não há
+`SELECT` antes para perguntar se mudou. Zero linhas afetadas significa
+que outro save (pelo painel ou por qualquer outro caminho que passe pelo
+ORM) chegou antes: nada é gravado e o form volta com `409`, o aviso
+`Someone else saved this record after you opened it. Nothing was saved:
+your values are below — review them and save again to overwrite.` e os
+valores que o operador digitou.
+
+O form devolvido já carrega a versão **atual** da linha. Salvar de novo,
+depois de revisar, sobrescreve conscientemente.
+
+!!! info "Onde a trava não vale"
+    - Model sem coluna `updated_at`, ou um `POST` sem o campo oculto (um
+      form aberto antes da atualização do SDK), salva como antes.
+    - O formset do inline editável e as ações em lote/customizadas não
+      levam a trava: o inline salva cada filho como está, e uma ação age
+      sobre a linha que encontra.
+
+## Interface em português (`locale=`)
+
+Todo texto que o próprio painel escreve — rótulos, botões, estados
+vazios, a paginação, os avisos de flash e os erros que o router mostra
+no form (`This field is required.`, o aviso de conflito, o de escopo) —
+sai de um catálogo com inglês e português do Brasil. Escolha no site:
+
+```python
+from tempest_fastapi_sdk import AdminSite
+
+site = AdminSite(
+    title="Backoffice",
+    locale="pt-BR",
+    display_timezone="America/Sao_Paulo",
+)
+```
+
+O padrão é `"en"`, com o mesmo texto de sempre, então um painel que já
+existe não muda. Um `locale` fora de `ADMIN_LOCALES` levanta `ValueError`
+na construção do `AdminSite`. O `<html lang>` acompanha o locale, e o
+`index_subtitle` padrão vira `Administração do site` (passado à mão, ele
+fica como você escreveu).
+
+O que **não** é traduzido é o que vem de você: nome de model e de campo,
+`verbose_name`, rótulo de ação, `title`. As mensagens que outro
+componente escreve também saem como ele as escreve — o
+`AdminAuthError` do backend de auth (`Invalid credentials`), os erros do
+`StorageBrowserService` e a mensagem da política de senha.
+
+Para escrever um texto seu no mesmo catálogo — o retorno de uma ação
+customizada, por exemplo — use `admin_text`:
+
+```python
+from tempest_fastapi_sdk.admin import admin_plural, admin_text
+
+title = admin_text("pt-BR", "list.new", model="Pedido")
+count = admin_plural("pt-BR", "list.records", 3)
+```
+
+`admin_text(locale, chave, **params)` formata o texto com `str.format`;
+`admin_plural(locale, chave, n)` lê `chave.one` com `n == 1` e
+`chave.other` no resto. Chave que falta no locale cai no inglês, e chave
+desconhecida devolve a própria chave — o guard
+`tests/test_admin_i18n_guard.py` mantém as duas línguas completas.
+
 ## Lenses — visões salvas (`lenses=`)
 
 Uma lens é um preset nomeado de filtros + ordenação, mostrado como aba
@@ -36294,6 +37418,104 @@ volta ao padrão.
     `filters` usa o mesmo dict do repository (`campo__gte`, `name` ILIKE,
     iterável → `IN`, …). O slug da aba (`?lens=`) sai do nome
     (minúsculo, hífens).
+
+## Contagem em tabela grande (`count_strategy=`)
+
+A listagem roda `COUNT(*)` a cada página para mostrar "N registros" e
+"Página X de Y". Numa tabela de dezenas de milhões de linhas, essa
+contagem é a parte cara da página. `count_strategy=` troca:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import EventModel, LedgerEntryModel
+
+
+site.register(AdminModel(model=EventModel, count_strategy="estimate"))
+site.register(AdminModel(model=LedgerEntryModel, count_strategy="none"))
+```
+
+- `"exact"` (padrão): o `COUNT` de sempre.
+- `"estimate"`: no PostgreSQL, lê `pg_class.reltuples` — a estatística que
+  o `ANALYZE` (e o autovacuum) mantém, uma consulta ao catálogo seja qual
+  for o tamanho da tabela — e a tela mostra `~40 registros` e `Página 1 de
+  ~4`, com uma dica no `title`. A página busca uma linha a mais para saber
+  se existe próxima.
+- `"none"`: não conta. A tela mostra só **Anterior** / **Próxima** e
+  `Página N`; a próxima aparece quando a busca de `page_size + 1` linhas
+  trouxe a linha extra.
+
+O card do model no dashboard segue a mesma estratégia (`~40`, ou sem
+número com `"none"`). `AdminCountStrategyEnum` tem os três valores, se
+preferir o enum à string.
+
+!!! info "Quando o `estimate` conta de verdade"
+    A estatística descreve a **tabela inteira**. Com busca, filtro, lens ou
+    um `row_scope` que não seja `true()`, o que o operador vê é outro
+    conjunto, e o número estimado seria de linhas que ele não alcança — no
+    caso do escopo, o tamanho da tabela de outros tenants. Nesses casos a
+    contagem volta a ser exata (`COUNT` com o mesmo `WHERE`). Também conta
+    exato fora do PostgreSQL (SQLite inclusive), numa tabela que o
+    PostgreSQL nunca analisou (`reltuples = -1`) e numa subclasse de herança
+    de tabela única (a estatística da tabela conta as classes irmãs).
+
+!!! warning "Com `repository_class=`, vale `exact`"
+    `estimate` e `none` montam o próprio `SELECT` (e o `estimate` lê o
+    catálogo), o que passaria ao largo de um `repository_class` que filtra
+    — um isolamento de tenant num `paginate` sobrescrito, por exemplo. Com
+    `repository_class` configurado, a listagem e o card usam o `paginate` /
+    `count` do seu repositório, como no `exact`.
+
+Medido num `postgres:16-alpine` capturando os statements de uma página:
+com `"estimate"` sobre 40 linhas analisadas, a página rodou o `SELECT` da
+página e `SELECT reltuples FROM pg_class WHERE oid = to_regclass($1)`,
+nenhum `count(`; com `?q=` o `count(*)` voltou; numa tabela recém-criada
+(`reltuples = -1`) o `count(*)` rodou depois da leitura do catálogo e o
+cabeçalho saiu sem `~`.
+
+## Busca global
+
+Quando algum model que o operador vê tem `search_fields`, o topo do painel
+ganha uma caixa de busca. Ela vai para `GET /admin/search?q=`, que procura
+o termo em **todo** model com `search_fields`, com a mesma condição da
+busca da listagem (cada palavra num `ILIKE`, em qualquer um dos campos), e
+mostra até `ADMIN_SEARCH_RESULTS_PER_MODEL` (5) linhas por model, cada uma
+com link para o detail. Quando há mais, o grupo leva **Ver todos** para a
+listagem do model já filtrada com `?q=`. O limite é ajustável:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserModelAuthBackend, make_admin_router
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+app = FastAPI()
+
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.ADMIN_SECRET,
+        search_results_per_model=10,
+    ),
+)
+```
+
+A busca respeita o que o resto do painel respeita: model sem `VIEW` na
+`access_policy` não entra, e cada model é consultado com o próprio
+`row_scope` — uma linha fora do escopo não aparece. Model com
+`repository_class` é consultado pelo `paginate` do repositório (que roda um
+`COUNT` por model), com a página limitada ao `max_page_size` dele. Termo vazio
+(ou só espaços) mostra a página sem rodar consulta, e termo com mais de
+`ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou mais de
+`ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` com o aviso, também
+sem consulta — cada palavra vira um `ILIKE` por campo de cada model.
 
 #### 4. Defaults de segurança de sessão
 
@@ -36902,12 +38124,39 @@ dashboard, list, detail, forms) sem tocar em CSS. Para customização total,
   pré-visualiza (SVG e HTML só como código-fonte), sobe, edita texto,
   renomeia e apaga — `read_only=True` deixa só a leitura.
 - `AdminTheme` cobre a aparência por campo tipado; `can_import=True` abre o
-  import CSV, que grava cada linha válida na hora e devolve o relatório
-  das que pulou — não há pré-visualização.
+  import CSV em dois passos: a prévia valida e ensaia sem gravar, e o
+  confirmar grava o arquivo assinado, tudo ou nada.
+- `row_scope=` filtra **quais linhas** o principal alcança em toda rota do
+  model; fora do escopo é `404`, e escrita que tira a linha do escopo
+  volta.
+- O form de edição traz a trava otimista de graça: save sobre uma versão
+  velha volta com `409` e os valores do operador, sem gravar.
+- `AdminSite(locale="pt-BR")` põe o painel em português; os atalhos de
+  data do filtro saem traduzidos e no fuso do model.
 - `exclude_fields=` tira a credencial que não é senha de toda superfície
   do painel; `readonly_fields` só tranca a escrita.
 - `display_timezone=` é o que transforma o campo de datetime em widget:
   a tela lê e escreve no fuso do operador, a coluna continua em UTC.
+- `m2m_fields=` edita um `secondary` como multi-select, e o vínculo que o
+  operador não alcança fica; `related_counts=` conta os filhos por linha
+  com um `GROUP BY` por página.
+- `can_duplicate=True` abre o create preenchido com a cópia, e
+  `bulk_edit_fields=` aplica um valor a toda a seleção num `UPDATE` só,
+  com rollback se ele tirar linha do escopo.
+- `AdminSite(recent_activity=N)` liga o feed das últimas mudanças
+  auditadas no dashboard; o extra `[spreadsheet]` acrescenta o `.xlsx` ao
+  export e ao import.
+- `impersonate=` põe "Entrar como" no detail: o serviço dá a URL
+  (`make_jwt_impersonation_handler` assina um access token curto com
+  `act`), o painel confirma, recusa alvo admin, registra e redireciona — e
+  só com `IMPERSONATE` concedido por uma `access_policy`.
+- `count_strategy="estimate"` troca o `COUNT` pela estatística do
+  PostgreSQL enquanto nada estreita a lista; `"none"` deixa só
+  anterior/próxima.
+- **Restaurar** no histórico abre o form de edição com os valores
+  anteriores; o save é uma edição normal, com permissão, validação e trava.
+- A busca global do topo procura em todo model com `search_fields`,
+  respeitando `VIEW` e `row_scope`.
 
 
 ---
@@ -78556,7 +79805,9 @@ que executa o `alembic/env.py` tem um par `_async` — `upgrade_async`,
 `safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
 `check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
 `sync_schema_async`, `squash_async`, `pending_destructive_ops_async` — com a
-mesma assinatura, e é ele que você chama de código async.
+mesma assinatura, e é ele que você chama de código async. A única diferença é
+o `bind=` dos leitores, que no par `_async` recebe engine/conexão **async**
+(veja [a revision num readiness probe](#a-revision-num-readiness-probe)).
 
 O motivo é o `env.py` que o SDK gera: ele sobe o engine async com
 `asyncio.run(...)`, e `asyncio.run` não pode ser chamado com um loop já
@@ -78635,6 +79886,87 @@ funcionando** — não precisa regenerar.
     O `env.py` novo também recusa, com mensagem própria, ser executado de
     dentro de um loop **sem** conexão entregue — o caso de quem chama
     `command.upgrade` direto de código async.
+
+## A revision num readiness probe
+
+"O banco está na head?" é a pergunta de um readiness probe, e ela roda a cada
+poucos segundos. O `AlembicHelper` entrega o check pronto para o
+`make_health_router`:
+
+```python
+# src/api/health.py
+from fastapi import APIRouter
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager, make_health_router
+
+from src.core.settings import settings
+
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+helper: AlembicHelper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
+
+health_router: APIRouter = make_health_router(
+    db=db,
+    checks={"schema": helper.schema_at_head_check(db)},
+)
+```
+
+`schema_at_head_check(db)` devolve o `Callable[[], Awaitable[bool]]` que o
+`checks=` espera. A cada chamada ele lê a revision com
+`current_async(bind=db.engine)` — o pool que o app já tem aberto, resolvido na
+hora da chamada, por isso o check pode ser montado antes do lifespan conectar
+— e compara com `heads()`. Responde `True` só quando a árvore tem **uma**
+head e o banco está carimbado nela; árvore vazia, banco sem carimbo ou banco
+atrás da head dão `False`, e o readiness responde `503`.
+
+Rodando contra um SQLite com uma revision, antes e depois do
+`upgrade_async()`:
+
+```text
+before upgrade: 503 {'status': 'not_ready', 'checks': {'database': True, 'schema': False}}
+after upgrade: 200 {'status': 'ready', 'checks': {'database': True, 'schema': True}}
+```
+
+Duas coisas tornam isso barato:
+
+- **A leitura não loga.** `current()` e `current_async()` leem a
+  `alembic_version` com um `SELECT` direto, sem montar o `MigrationContext`
+  do Alembic. Até a 0.369.1, cada leitura logava `Context impl ...` e
+  `Will assume ... DDL.` em `INFO` no logger `alembic.runtime.migration` —
+  duas linhas por probe. Com o logger em `INFO`, um `upgrade_async()` seguido
+  de três readiness produz só as linhas do upgrade:
+
+    ```text
+    alembic.runtime.migration Context impl SQLiteImpl.
+    alembic.runtime.migration Will assume non-transactional DDL.
+    alembic.runtime.migration Running upgrade  -> a172a1a0e250, first
+    ```
+
+    `upgrade`, `downgrade` e `stamp` continuam passando pelo Alembic e logando
+    como antes, inclusive com uma leitura rodando em paralelo noutra thread.
+
+- **Com `bind=`, nenhum engine é criado.** Sem argumento, `current()` abre um
+  engine curto a partir da URL e o descarta no fim (e, em instalação
+  só-async, sobe um `asyncio.run` com engine async novo). Com
+  `bind=` — `Engine`/`Connection` no síncrono, `AsyncEngine`/`AsyncConnection`
+  no `_async` —, a leitura usa o que você passou e não cria nem descarta
+  engine; no `_async`, roda no seu loop via `run_sync`, sem thread de
+  trabalho. Vale para `current`, `current_async`, `has_existing_schema` e
+  `has_existing_schema_async`:
+
+    ```python
+    # src/db/revision.py
+    from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
+
+
+    async def stamped_revision(helper: AlembicHelper, db: AsyncDatabaseManager) -> str | None:
+        """Lê a revision carimbada usando o pool do app."""
+        return await helper.current_async(bind=db.engine)
+    ```
+
+!!! note "`version_table` customizada não é lida"
+    A leitura vai na tabela `alembic_version` do schema default da conexão —
+    o que o `env.py` gerado pelo SDK configura, e o que o `current()` sempre
+    leu. Um `env.py` editado à mão com `version_table=` ou
+    `version_table_schema=` no `context.configure` não é visto por ele.
 
 ## Os três estados que ele distingue
 
@@ -79053,6 +80385,9 @@ nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
     - De código async (lifespan, endpoint), chame o par `_async`
       (`await helper.sync_schema_async()`); o método síncrono levanta com um
       loop rodando, nomeando o `_async` a usar.
+    - Para readiness, `helper.schema_at_head_check(db)` no `checks=` do
+      `make_health_router`: lê a revision pelo pool do app
+      (`current_async(bind=db.engine)`), sem criar engine e sem logar.
     - `create_tables()` é `CREATE TABLE IF NOT EXISTS` — **no-op silencioso**
       numa tabela existente. Nunca é o passo que faz um schema evoluir.
     - Ao adotar um schema existente, carimbe a **revision base**
@@ -83588,7 +84923,7 @@ Frames **binários** são bytes do jogo, que o servidor repassa sem ler.
 | `message` | Uma mensagem repassada: `from` + `data` |
 | `echo` | Resposta ao seu `echo`, com o mesmo `t` |
 | `error` | Recusa: `code` estável, `message` legível e `request` (o `type` recusado); a conexão continua aberta |
-| `ping` | Heartbeat do servidor: responda `{"type": "pong"}` se estiver ocioso |
+| `ping` | Heartbeat do servidor, `{"type": "ping"}` — o mesmo objeto do TCP: responda `{"type": "pong"}` se estiver ocioso |
 | *(binário)* | `[u8 slot de quem mandou][bytes]` |
 
 Os `code` de erro: `room_not_found`, `room_full`, `room_in_match`,
@@ -92843,6 +94178,388 @@ async def issue(
 - Refresh vira **opaco** (hash no banco); access continua JWT.
 - Rotação **single-use** + **família** = detecção de reuso → `POST /auth/refresh` mata a família num roubo.
 - `POST /auth/logout` revoga sessão (ou todas com `all_sessions=true`); montado só no modo DB-backed.
+
+
+---
+
+# Upload resumível (tus)
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/resumable-upload/
+
+# Upload resumível (tus)
+
+O técnico de campo tira dez fotos sem sinal; quando a rede volta, elas sobem — e se a
+conexão cair no meio da terceira, o envio continua do byte onde parou, não do zero.
+No navegador quem faz isso é o `createResumableUpload` do `tempest-react-sdk`, que fala
+o protocolo [tus 1.0.0](https://tus.io/protocols/resumable-upload). Esta receita monta o
+lado servidor com `make_tus_router`.
+
+!!! info "Sem extra novo"
+    O router e o `LocalTusStore` usam só o que a instalação base já traz (FastAPI e a
+    stdlib). O `S3TusStore` sobre o `AsyncMinIOClient` pede o extra `[minio]`.
+
+## O exemplo mínimo
+
+```python
+from pathlib import Path
+from uuid import UUID
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    LocalTusStore,
+    TusStore,
+    TusUpload,
+    make_tus_router,
+    register_exception_handlers,
+)
+
+
+async def current_user_id() -> UUID:
+    return UUID("00000000-0000-0000-0000-000000000001")
+
+
+async def photo_received(upload: TusUpload, store: TusStore, /) -> None:
+    print("upload completo:", upload.id, upload.filename, upload.length)
+
+
+store = LocalTusStore(Path("var/tus"))
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_tus_router(
+        store,
+        current_user_id=current_user_id,
+        on_complete=photo_received,
+    ),
+)
+```
+
+Troque o `current_user_id` acima pela dependência de autenticação que o seu serviço já
+usa (a que devolve o id do usuário logado). No frontend:
+
+```ts
+const done = await createResumableUpload({
+  endpoint: "/api/uploads",
+  file,
+  metadata: { filename: file.name },
+  getToken: auth.getToken,
+}).start();
+```
+
+O `prefix` padrão é `/api/uploads`, o mesmo `endpoint` dos exemplos do
+`tempest-react-sdk`.
+
+## O que o cliente manda — e o que o router responde
+
+O subconjunto implementado é exatamente o que o `createResumableUpload` envia. Medido de
+duas formas: lendo `src/http/resumable-upload.ts` e os testes dele, e rodando o cliente
+real (empacotado do código-fonte com `esbuild`, no Node 24, com o transporte `fetch`)
+contra este router: um arquivo de 1 MiB em chunks de 256 KiB, pausado na metade,
+retomado por um segundo handle — como depois de um reload —, com o `sha256` do arquivo no
+disco igual ao do cliente.
+
+| Passo | Requisição do cliente | Resposta do router |
+| --- | --- | --- |
+| Criar | `POST /api/uploads` + `Tus-Resumable`, `Upload-Length`, `Idempotency-Key`, `Upload-Metadata` (quando há metadata) | `201` + `Location` relativo (`/api/uploads/<id>`) + `Upload-Expires` |
+| Sondar | `HEAD /api/uploads/<id>` + `Tus-Resumable` | `200` + `Upload-Offset`, `Upload-Length`, `Cache-Control: no-store` |
+| Escrever | `PATCH /api/uploads/<id>` + `Tus-Resumable`, `Upload-Offset`, `Content-Type: application/offset+octet-stream`, corpo = chunk | `204` + o novo `Upload-Offset` |
+| Descartar | `DELETE /api/uploads/<id>` + `Tus-Resumable` (no `abort({ discard: true })`) | `204` |
+
+Mais o que o cliente acrescenta conforme a configuração: `Authorization: Bearer` (com
+`getToken`), `X-CSRF-Token` no `POST`, `PATCH` e `DELETE` — nunca no `HEAD` — (com
+`csrf`), e os `headers` fixos. O router não lê nenhum deles: autenticação é a sua
+dependência `current_user_id`, e CSRF é o `CSRFMiddleware` do app.
+
+Ficaram de fora porque o cliente nunca manda: `OPTIONS` de descoberta,
+`Upload-Defer-Length`, corpo no `POST` (*creation-with-upload*), *checksum*,
+*concatenation* e `X-HTTP-Method-Override`.
+
+??? note "Por que o `Location` é relativo"
+    O cliente resolve o `Location` contra a URL para onde o `POST` foi (RFC 9110). Um
+    caminho relativo dispensa saber o host e o esquema que o proxy expõe; atrás de um
+    `root_path` (`/svc`), o `Location` sai `/svc/api/uploads/<id>` — coberto em
+    `tests/storage/tus/test_router.py`.
+
+## O arquivo pronto: `on_complete`
+
+Quando o último byte chega, o router chama `on_complete(upload, store)` **uma vez por
+upload, dentro da requisição do último `PATCH`**, sob o lock do upload, antes do `204`.
+É ali que o serviço registra a foto ou move o arquivo:
+
+```python
+import shutil
+from pathlib import Path
+
+from tempest_fastapi_sdk import LocalTusStore, TusStore, TusUpload
+
+ARCHIVE = Path("var/photos")
+
+
+async def archive_photo(upload: TusUpload, store: TusStore, /) -> None:
+    assert isinstance(store, LocalTusStore)
+    name = upload.filename or "foto.bin"
+    shutil.move(store.data_path(upload.id), ARCHIVE / f"{upload.id}-{name}")
+    await store.delete(upload.id)
+```
+
+- `upload.metadata` traz o `Upload-Metadata` decodificado (base64 → UTF-8), como o
+  cliente mandou — `nota-ação.webm` chega com o acento.
+- `upload.filename` é o nome **saneado**: só o último componente do caminho, letras,
+  dígitos e `-_. ()`. `../../etc/passwd` vira `passwd`. Use este, nunca
+  `metadata["filename"]`, para montar caminho.
+- `store.stream(upload.id)` lê os bytes em qualquer store; `LocalTusStore.data_path` e
+  `S3TusStore.object_key` dão o caminho e a chave, para mover sem copiar pelo processo.
+- `await store.delete(upload.id)` dentro do callback é permitido: o router não recria o
+  registro, e o `HEAD` seguinte responde `404`. O exemplo acima roda em
+  `tests/storage/tus/test_hardening.py`, lido direto desta página.
+- Um `PATCH` num upload já completo — inclusive o vazio, com `Upload-Offset` igual ao
+  tamanho — responde `409 TUS_UPLOAD_COMPLETED` sem gravar nada e sem chamar o callback
+  de novo. O `createResumableUpload` trata todo `409` relendo o offset com `HEAD` antes
+  da tentativa seguinte (`RESYNCABLE_STATUSES` em `resumable-upload.ts`, lido no
+  código), e com o offset igual ao tamanho o envio termina.
+
+!!! warning "Callback que levanta"
+    O `PATCH` responde `500`, e o upload fica completo com `notified = False`. O cliente
+    não repete: o `HEAD` seguinte já mostra todos os bytes, e para ele o envio terminou.
+    Ache esses uploads com
+    `[u for u in await store.list_uploads() if u.completed and not u.notified]` e
+    reprocesse — coberto em `test_failing_on_complete_leaves_the_upload_complete_and_unnotified`.
+
+## Dono do upload
+
+O `str()` do que `current_user_id` resolve vira o dono, e a dependência precisa devolver o
+**id** do usuário como `str`, `int` ou `UUID`: qualquer outro tipo (o model do usuário, o
+dict de claims) levanta `TypeError` — o `str()` de um objeto pode mudar entre requisições
+ou coincidir entre usuários. Só o mesmo valor sonda, continua
+ou apaga aquele upload; qualquer outro recebe `404 TUS_UPLOAD_NOT_FOUND` — o mesmo `404`
+de um id inexistente, para não confirmar que o id existe.
+
+Sem `current_user_id`, o upload é anônimo e a URL é a única credencial. O id tem 192 bits
+aleatórios (`secrets.token_urlsafe(24)`, 32 caracteres), e o store recusa como ausente
+qualquer id fora de `[A-Za-z0-9_-]{16,128}`: não há `/`, `.` nem `\`, então o caminho do
+`LocalTusStore` nunca sai do diretório.
+
+## `Idempotency-Key` na criação
+
+O cliente gera uma chave por upload e a repete se o `201` se perder. O router guarda
+`sha256(dono + chave) → id` no próprio store:
+
+- mesma chave, mesmo dono, mesmo `Upload-Length` → o **mesmo** `Location`;
+- mesma chave de outro dono → outro upload (a chave nunca entrega a URL de outra pessoa);
+- mesma chave, mesmo dono, outro `Upload-Length` → `422 TUS_IDEMPOTENCY_KEY_REUSED`.
+
+O mapeamento mora no store (arquivo no disco, objeto no bucket), então vale depois de um
+restart.
+
+Sem `current_user_id` (modo anônimo) a chave é **ignorada**: sem dono, todos os
+anônimos dividiriam um espaço de chaves, e quem repetisse a chave de outro receberia a URL
+dele. O cliente gera a chave com `crypto.randomUUID()` e, onde o navegador não oferece
+essa função (fora de contexto seguro, isto é, sem HTTPS), cai num UUID montado com
+`Math.random()`, que não é aleatoriedade criptográfica (`src/http/idempotency.ts` do
+`tempest-react-sdk`). No modo anônimo, uma criação repetida depois de um `201` perdido
+deixa um upload órfão, que o `purge_expired()` apaga. Não precisa do `IdempotencyMiddleware` para esta rota: ele guarda a resposta pela
+digest das credenciais, e um token renovado entre a tentativa e a repetição já não casa.
+
+## MinIO / S3: `S3TusStore`
+
+```python
+from tempest_fastapi_sdk import AsyncMinIOClient, S3TusStore, make_tus_router
+
+client = AsyncMinIOClient(
+    endpoint="localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    default_bucket="uploads",
+)
+router = make_tus_router(S3TusStore(client, prefix="tus/"))
+```
+
+S3 não tem *append*, e uma parte de multipart precisa de pelo menos 5 MiB (menos a
+última) — mas quem escolhe o tamanho do chunk é o cliente, e a receita "App de campo
+offline" do `tempest-react-sdk` manda 256 KiB. Por isso cada `PATCH` aceito vira um
+objeto pequeno, chaveado pelo offset em que começa, e o arquivo é montado uma vez, quando
+o último byte chega:
+
+| Chave | Conteúdo |
+| --- | --- |
+| `tus/<id>/info.json` | o registro (offset, tamanho, dono, expiração) |
+| `tus/<id>/chunks/<offset com 20 dígitos>` | um objeto por `PATCH` |
+| `tus/<id>/data` | o arquivo pronto, escrito no fim; os chunks são apagados |
+| `tus/_idempotency/<digest>` | o id que uma `Idempotency-Key` criou |
+
+Tudo mora no bucket: outro processo, ou outra réplica, vê os mesmos uploads.
+
+O registro completo é salvo **antes** de os chunks serem apagados. Se a montagem falhar no
+meio, o `PATCH` responde `500`, o registro continua no offset anterior e a repetição do
+último chunk monta de novo; se só a remoção dos chunks falhar, o upload já está completo e
+os chunks que sobraram saem no `store.delete(id)` — os dois casos com falha injetada em
+`test_hardening.py`.
+
+`S3TusStore(min_chunk_size=...)` (padrão 64 KiB) recusa com
+`400 TUS_CHUNK_TOO_SMALL` um chunk menor que isso, exceto o que fecha o upload: cada chunk
+é um objeto, e sem piso um cliente mandando 1 byte por `PATCH` criaria um objeto por byte.
+Com 64 KiB, um upload de 1 GiB tem no máximo 16 384 chunks; o cliente manda 5 MiB por
+padrão e 256 KiB na receita de campo.
+
+!!! warning "O custo"
+    Cada byte é escrito no bucket **duas vezes** (chunk, depois arquivo) e lido uma. E a
+    requisição do último `PATCH` espera a montagem, que passa o arquivo por um
+    temporário no disco do servidor (`SpooledTemporaryFile`, 8 MiB em memória antes de ir
+    para o disco). Para fotos e áudios de alguns MiB isso é invisível; para arquivos de
+    gigabytes, o último `PATCH` demora o tempo de reler e reescrever o arquivo inteiro —
+    ajuste o timeout do proxy, ou prefira o `LocalTusStore` com o disco compartilhado.
+    O disco temporário conta por montagem simultânea: dez uploads de 1 GiB terminando ao
+    mesmo tempo ocupam até 10 GiB no diretório temporário do servidor.
+
+Medido contra um servidor S3 real (o gateway S3 do SeaweedFS em container — a imagem
+`minio/minio` respondeu *pull access denied* nesta máquina em 2026-11-22): 6 MiB em chunks
+de 256 KiB, servidor morto com `SIGKILL` na metade, um processo novo retoma do offset
+gravado no bucket, e o objeto `data` final é idêntico byte a byte ao enviado, com só
+`data` e `info.json` restando (`tests/storage/tus/test_s3_live.py`, `make test-docker`).
+
+## Expiração e limpeza
+
+Upload incompleto expira `expiration` depois da criação ou do último `PATCH` que gravou
+bytes (padrão 24 h) — um `PATCH` vazio não renova o prazo; o prazo sai no `Upload-Expires`. Passado o prazo, `HEAD` e `PATCH` respondem
+`410 TUS_UPLOAD_EXPIRED`, e o cliente recomeça do zero. Upload **completo** nunca expira:
+os bytes já são do serviço.
+
+Quem apaga o que expirou é você, num agendamento:
+
+```python
+from tempest_fastapi_sdk import LocalTusStore
+
+store = LocalTusStore("var/tus")
+
+
+async def sweep_uploads() -> list[str]:
+    return await store.purge_expired()
+```
+
+`purge_expired()` devolve os ids apagados (`[]` quando nada expirou). Cada upload é relido
+sob o mesmo lock por upload que o router usa, e um upload com requisição em andamento é
+pulado. Ligue a uma task periódica do `TaskQueue` ou a um cron.
+
+## Limites por dono
+
+Sem limite, um usuário autenticado cria uploads até encher o disco ou o bucket. Dois
+parâmetros do router fecham isso, contando os uploads **inacabados e não expirados** do
+mesmo dono:
+
+```python
+from tempest_fastapi_sdk import LocalTusStore, make_tus_router
+
+router = make_tus_router(
+    LocalTusStore("var/tus"),
+    max_uploads_per_owner=20,
+    max_bytes_per_owner=2 * 1024 * 1024 * 1024,
+)
+```
+
+Passado um deles, a criação responde `403 TUS_QUOTA_EXCEEDED` com
+`details.limit` (`"uploads"` ou `"bytes"`) e `details.max`. Os dois são `None` por padrão.
+Só valem com `current_user_id`: no modo anônimo todos os chamadores dividiriam uma cota, e
+um só esgotaria para todos, então nenhuma é aplicada. Upload de tamanho 0, que completa na
+criação, nunca conta.
+
+!!! warning "Custo da checagem"
+    Cada criação com limite lê todos os registros do store (`list_uploads()`). Mantenha o
+    store varrido com `purge_expired()`; com dezenas de milhares de uploads vivos, isso
+    pesa em cada `POST`.
+
+## Concorrência e réplicas
+
+O `PATCH` pega o lock do upload **antes** de ler o corpo. Um segundo `PATCH` (ou
+`DELETE`) no mesmo upload enquanto o primeiro está em andamento responde
+`409 TUS_UPLOAD_LOCKED` na hora, sem ler o corpo — pelo mesmo tratamento de `409`, o cliente
+relê com `HEAD` e tenta de novo depois do backoff —, então um upload nunca tem dois corpos no spool. Medido com a
+intercalação forçada (a primeira requisição presa dentro da gravação): 1 gravação, a
+segunda em `409` sem ter o corpo lido, o arquivo só com os bytes da primeira. Sem o lock,
+o mesmo teste mostra as duas respondendo `204` para o mesmo intervalo
+(`tests/storage/tus/test_concurrency.py`). O corpo vai para um `SpooledTemporaryFile`
+com 1 MiB em memória; o resto, até `max_chunk_size`, vai para o disco temporário.
+
+### Rede móvel: corpo que para no meio
+
+Celular que perde sinal no meio de um chunk deixa a conexão meio-aberta, sem FIN: o
+servidor fica esperando o resto do corpo até o TCP desistir, minutos depois — e, como o
+lock é pego antes de ler o corpo, toda nova tentativa responderia `409 TUS_UPLOAD_LOCKED`
+até lá. Por isso cada pedaço do corpo tem prazo: `body_read_timeout` (padrão 30 s). Passou
+o prazo sem chegar nada, o `PATCH` responde `408 TUS_BODY_READ_TIMEOUT`, **o chunk inteiro
+é descartado** (o offset gravado não anda; o que chegou antes do prazo não é guardado) e o
+lock é liberado. `408` está na lista de status que o `createResumableUpload` repete
+(`RETRIABLE_STATUSES` em `errors.ts`), relendo o offset com `HEAD` antes. Uma desconexão
+explícita no meio do corpo também não grava nada: vira um log `INFO`, não um `500`. Os dois
+casos rodam em `tests/storage/tus/test_resilience.py`, com o app chamado como ASGI cru.
+
+!!! warning "O lock é do processo"
+    Duas réplicas atrás de um balanceador ainda podem disputar o mesmo upload. Com mais de
+    uma réplica, roteie as requisições de um upload para a mesma réplica (sessão fixa no
+    caminho `/api/uploads/<id>`).
+
+Um restart, por outro lado, não perde nada: o registro é gravado só depois dos bytes, e é
+a autoridade do offset. Medido em `tests/storage/tus/test_restart.py`: uvicorn em
+subprocesso, morto com `SIGKILL` depois de 192 KiB de 300 KiB; o processo novo, montado
+só com o mesmo diretório, responde o `HEAD` com `Upload-Offset: 196608` e aceita o resto,
+e o arquivo final é idêntico ao enviado.
+
+## CORS
+
+Frontend em outra origem só lê `Location` e `Upload-Offset` se o backend os expuser — sem
+isso, `getResponseHeader("Location")` devolve `null` e o cliente não acha o upload que
+criou:
+
+```python
+from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
+
+from tempest_fastapi_sdk import TUS_CORS_ALLOW_HEADERS, TUS_CORS_EXPOSE_HEADERS
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://app.exemplo.com"],
+    allow_methods=["POST", "HEAD", "PATCH", "DELETE"],
+    allow_headers=list(TUS_CORS_ALLOW_HEADERS),
+    expose_headers=list(TUS_CORS_EXPOSE_HEADERS),
+)
+```
+
+## Erros
+
+Os erros saem no envelope do SDK (`detail`/`code`/`details`). Toda resposta das rotas tus
+leva `Tus-Resumable: 1.0.0`, inclusive as recusas — as do router e um `401`/`403` levantado
+pela sua dependência `current_user_id`. A exceção é um `500` não tratado: quem responde é o
+handler do app, fora da rota, sem o header.
+
+| Status | `code` | Quando |
+| --- | --- | --- |
+| `400` | `TUS_HEADER_INVALID` | `Upload-Length` ou `Upload-Offset` ausente, não numérico ou com mais de 20 dígitos; `Upload-Metadata` fora de base64/UTF-8. `details.header` nomeia o header |
+| `400` | `TUS_CHUNK_TOO_SMALL` | chunk que não fecha o upload abaixo do `min_chunk_size` do store; `details.min_bytes` |
+| `403` | `TUS_QUOTA_EXCEEDED` | criação passaria de `max_uploads_per_owner` ou `max_bytes_per_owner` |
+| `404` | `TUS_UPLOAD_NOT_FOUND` | id inexistente, malformado ou de outro dono |
+| `408` | `TUS_BODY_READ_TIMEOUT` | o corpo do `PATCH` ficou mais de `body_read_timeout` sem chegar; nada é gravado |
+| `409` | `TUS_OFFSET_MISMATCH` | `Upload-Offset` diferente do gravado; `details.offset` é o do servidor |
+| `409` | `TUS_UPLOAD_COMPLETED` | `PATCH` num upload que já tem todos os bytes; nada é gravado |
+| `409` | `TUS_UPLOAD_LOCKED` | outro `PATCH`/`DELETE` do mesmo upload em andamento |
+| `410` | `TUS_UPLOAD_EXPIRED` | upload incompleto depois do `Upload-Expires` |
+| `412` | `TUS_VERSION_UNSUPPORTED` | `Tus-Resumable` ausente ou diferente de `1.0.0`; a resposta traz `Tus-Version` |
+| `413` | `TUS_UPLOAD_TOO_LARGE` | `Upload-Length` acima de `max_size` (com `Tus-Max-Size`), ou corpo do `PATCH` além do `Upload-Length` ou de `max_chunk_size`; nada é gravado |
+| `415` | `TUS_CONTENT_TYPE_INVALID` | `PATCH` sem `Content-Type: application/offset+octet-stream` |
+| `422` | `TUS_IDEMPOTENCY_KEY_REUSED` | a chave já criou um upload de outro tamanho |
+
+
+## Recap
+
+- `make_tus_router(store, current_user_id=..., on_complete=...)` atende o
+  `createResumableUpload`: `POST`, `HEAD`, `PATCH`, `DELETE`.
+- `LocalTusStore` guarda no disco; `S3TusStore` no bucket, com um objeto por chunk e a
+  montagem no fim (o dobro de escrita, em troca de aceitar chunk de qualquer tamanho).
+- O estado sobrevive a restart; o lock de concorrência é por processo.
+- `on_complete` roda uma vez por upload; `PATCH` em upload completo é `409`.
+- `Idempotency-Key` por dono (ignorada sem dono), limites por dono, expiração com
+  `purge_expired()`, nome de arquivo saneado em `upload.filename`.
 
 
 ---
@@ -102720,6 +104437,14 @@ sai como `inlineStr` no XML e mostra exatamente o que foi passado.
     como string, sem elemento de fórmula (medido no `openpyxl` 3.1.5). Por
     isso o `SheetWriter` não altera o valor — não há apóstrofo na frente.
 
+!!! info "Caractere de controle sai da célula"
+    O XML do `.xlsx` não carrega `\x00`-`\x08`, `\x0b`, `\x0c` nem
+    `\x0e`-`\x1f`: o `openpyxl` levanta `IllegalCharacterError` ao gravar
+    um deles, e um byte perdido num valor salvo derrubava o documento
+    inteiro. O `SheetWriter` remove esses caracteres de toda `str` antes de
+    gravar (com o `ILLEGAL_CHARACTERS_RE` do próprio `openpyxl`) — `"abc\x0bdef"`
+    sai `abcdef`. Tab, quebra de linha e CR são válidos e ficam.
+
 ## Tema
 
 `SheetStyle` é **dado puro** — cores em hexadecimal, tamanhos em inteiros,
@@ -105890,7 +107615,7 @@ asyncio.run(main())
 ## Quando NÃO usar `AsyncMinIOClient`
 
 - Quando você precisa de operações **fora** das listadas (SSE-KMS, ACLs S3 v2, bucket replication). Use `storage.client.<método>` direto — `minio-py` continua acessível.
-- Para uploads gigantes (> 5 GiB) com retomada — `minio-py` faz multipart automático mas não suporta `tus` ou resume. Considere `tus.io` separadamente.
+- Para upload com retomada vindo do navegador — `minio-py` faz multipart automático, mas não retoma um envio interrompido. Use o servidor tus do SDK: [Upload resumível (tus)](resumable-upload.md), com `S3TusStore` sobre este mesmo `AsyncMinIOClient`.
 
 ## Bucket privado atrás de HTTPS
 
@@ -116276,6 +118001,13 @@ sessão, por exemplo. Todo frame de entrada já faz isso sozinho.
 O cap de tamanho é opcional e separado: passe
 `max_message_bytes=settings.WS_MAX_MESSAGE_BYTES` para recusar frame
 grande com `1009`, ou omita para não mexer em tamanho.
+
+O `ping` sai, por padrão, no envelope do `WebSocketHub`:
+`{"type": "ping", "data": {}, "request_id": null}`. Protocolo de mensagem
+plana passa o seu com `ping_message=` — o router de
+[salas de jogo](game-rooms-websocket.md) passa `{"type": "ping"}`, o mesmo
+objeto que o servidor TCP dele manda. O `pong` de volta é engolido nos dois
+casos.
 
 !!! info "Por que isso é público desde a v0.261.0"
     A mecânica existia, mas só dentro de `make_websocket_router`, que

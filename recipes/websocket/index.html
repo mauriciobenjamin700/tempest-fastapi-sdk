@@ -1205,6 +1205,8 @@
       
         
       
+        
+      
     
     
     
@@ -4510,6 +4512,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upload resumível (tus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../uploads/" class="md-nav__link">
         
   
@@ -5765,6 +5795,12 @@ sessão, por exemplo. Todo frame de entrada já faz isso sozinho.</p>
 <p>O cap de tamanho é opcional e separado: passe
 <code>max_message_bytes=settings.WS_MAX_MESSAGE_BYTES</code> para recusar frame
 grande com <code>1009</code>, ou omita para não mexer em tamanho.</p>
+<p>O <code>ping</code> sai, por padrão, no envelope do <code>WebSocketHub</code>:
+<code>{"type": "ping", "data": {}, "request_id": null}</code>. Protocolo de mensagem
+plana passa o seu com <code>ping_message=</code> — o router de
+<a href="../game-rooms-websocket/">salas de jogo</a> passa <code>{"type": "ping"}</code>, o mesmo
+objeto que o servidor TCP dele manda. O <code>pong</code> de volta é engolido nos dois
+casos.</p>
 <div class="admonition info">
 <p class="admonition-title">Por que isso é público desde a v0.261.0</p>
 <p>A mecânica existia, mas só dentro de <code>make_websocket_router</code>, que

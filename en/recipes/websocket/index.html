@@ -1207,6 +1207,8 @@
       
         
       
+        
+      
     
     
     
@@ -3672,6 +3674,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resumable uploads (tus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../revenuecat/" class="md-nav__link">
         
   
@@ -5767,6 +5797,11 @@ Every inbound frame already does this on its own.</p>
 <p>The size cap is optional and separate: pass
 <code>max_message_bytes=settings.WS_MAX_MESSAGE_BYTES</code> to reject an oversized
 frame with <code>1009</code>, or leave it out to touch frame size not at all.</p>
+<p>By default the <code>ping</code> goes out in the <code>WebSocketHub</code> envelope:
+<code>{"type": "ping", "data": {}, "request_id": null}</code>. A protocol with flat
+messages passes its own with <code>ping_message=</code> — the
+<a href="../game-rooms-websocket/">game room</a> router passes <code>{"type": "ping"}</code>, the
+same object its TCP server sends. The <code>pong</code> back is swallowed either way.</p>
 <div class="admonition info">
 <p class="admonition-title">Why this is public as of v0.261.0</p>
 <p>The machinery existed, but only inside <code>make_websocket_router</code>, which

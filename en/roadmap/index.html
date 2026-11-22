@@ -1205,6 +1205,8 @@
       
         
       
+        
+      
     
     
     
@@ -3646,6 +3648,34 @@
     
   
     Refresh tokens (rotation/revocation)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resumable uploads (tus)
   
 
     
@@ -6445,7 +6475,7 @@ GraphQL/gRPC (REST by decision).</p>
 <tr>
 <td><strong>CSV import</strong></td>
 <td>✅ v0.118</td>
-<td><code>AdminModel(can_import=True)</code> exposes <code>GET/POST /m/{slug}/import</code>: upload a CSV and each row is validated/coerced like the create form and becomes a record. Report with the created count + per-row errors (best-effort: one bad row never aborts the others). "Import CSV" link on the list view. <a href="../recipes/admin/">Recipe »</a></td>
+<td><code>AdminModel(can_import=True)</code> exposes <code>GET/POST /m/{slug}/import</code>: upload a CSV and each row is validated/coerced like the create form and becomes a record. Report with the created count + per-row errors (best-effort in v0.118; since 0.370.0 there is a preview that writes nothing and an all-or-nothing confirm — see the recipe). "Import CSV" link on the list view. <a href="../recipes/admin/">Recipe »</a></td>
 </tr>
 </tbody>
 </table>

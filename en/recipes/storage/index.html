@@ -1207,6 +1207,8 @@
       
         
       
+        
+      
     
     
     
@@ -3652,6 +3654,34 @@
     
   
     Refresh tokens (rotation/revocation)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resumable uploads (tus)
   
 
     
@@ -6595,7 +6625,7 @@ store refused:</p>
 <h2 id="when-not-to-use-asyncminioclient">When NOT to use <code>AsyncMinIOClient</code><a class="headerlink" href="#when-not-to-use-asyncminioclient" title="Permanent link">&para;</a></h2>
 <ul>
 <li>When you need operations <strong>outside</strong> the listed surface (SSE-KMS, S3 v2 ACLs, bucket replication). Use <code>storage.client.&lt;method&gt;</code> directly — <code>minio-py</code> stays accessible.</li>
-<li>For huge resumable uploads (&gt; 5 GiB) — <code>minio-py</code> does multipart automatically but doesn't support <code>tus</code> or resume. Consider <code>tus.io</code> separately.</li>
+<li>For resumable uploads from the browser — <code>minio-py</code> does multipart automatically but does not resume an interrupted upload. Use the SDK's tus server: <a href="../resumable-upload/">Resumable uploads (tus)</a>, with <code>S3TusStore</code> over this same <code>AsyncMinIOClient</code>.</li>
 </ul>
 <h2 id="private-bucket-behind-https">Private bucket behind HTTPS<a class="headerlink" href="#private-bucket-behind-https" title="Permanent link">&para;</a></h2>
 <p>In production the guard refuses <code>STORAGE_SECURE=false</code> — with one

@@ -1205,6 +1205,8 @@
       
         
       
+        
+      
     
     
     
@@ -4845,6 +4847,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upload resumível (tus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../uploads/" class="md-nav__link">
         
   
@@ -5909,6 +5939,15 @@ admin os neutraliza. No <code>.xlsx</code>, o <code>openpyxl</code> só trata co
 <code>str</code> que começa com <code>=</code>; as outras saem como texto, gravadas no XML
 como string, sem elemento de fórmula (medido no <code>openpyxl</code> 3.1.5). Por
 isso o <code>SheetWriter</code> não altera o valor — não há apóstrofo na frente.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Caractere de controle sai da célula</p>
+<p>O XML do <code>.xlsx</code> não carrega <code>\x00</code>-<code>\x08</code>, <code>\x0b</code>, <code>\x0c</code> nem
+<code>\x0e</code>-<code>\x1f</code>: o <code>openpyxl</code> levanta <code>IllegalCharacterError</code> ao gravar
+um deles, e um byte perdido num valor salvo derrubava o documento
+inteiro. O <code>SheetWriter</code> remove esses caracteres de toda <code>str</code> antes de
+gravar (com o <code>ILLEGAL_CHARACTERS_RE</code> do próprio <code>openpyxl</code>) — <code>"abc\x0bdef"</code>
+sai <code>abcdef</code>. Tab, quebra de linha e CR são válidos e ficam.</p>
 </div>
 <h2 id="tema">Tema<a class="headerlink" href="#tema" title="Permanent link">&para;</a></h2>
 <p><code>SheetStyle</code> é <strong>dado puro</strong> — cores em hexadecimal, tamanhos em inteiros,

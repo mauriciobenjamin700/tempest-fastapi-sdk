@@ -1207,6 +1207,8 @@
       
         
       
+        
+      
     
     
     
@@ -3672,6 +3674,34 @@
   
   
     <li class="md-nav__item">
+      <a href="resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resumable uploads (tus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="revenuecat/" class="md-nav__link">
         
   
@@ -5421,6 +5451,7 @@ MinIO/S3 storage, presigned URLs.</p>
 </span></code></pre></div>
 <p>Recipes: <a href="file-store/">File store</a>, <a href="uploads/">Uploads</a>,
 <a href="downloads/">Downloads</a>, <a href="storage/">Storage</a>,
+<a href="resumable-upload/">Resumable uploads (tus)</a>,
 <a href="image-metadata/">Image metadata</a>.</p>
 <h3 id="domain-extras">Domain extras<a class="headerlink" href="#domain-extras" title="Permanent link">&para;</a></h3>
 <p>Feature flags, audit trail, multi-tenant, offline-first sync, server-side
@@ -5900,6 +5931,10 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="refresh-tokens/">Refresh tokens (rotation/revocation) »</a></strong></td>
 <td><code>BaseUserRefreshTokenModel</code>, <code>make_user_refresh_token_model</code>, <code>issue_token_pair</code>, rotation + family reuse detection</td>
+</tr>
+<tr>
+<td><strong><a href="resumable-upload/">Resumable uploads (tus) »</a></strong></td>
+<td><code>make_tus_router</code> (tus 1.0.0 server for <code>tempest-react-sdk</code>'s <code>createResumableUpload</code>: <code>POST</code>/<code>HEAD</code>/<code>PATCH</code>/<code>DELETE</code>, per-owner <code>Idempotency-Key</code>, expiry, offset <code>409</code> under a per-upload lock), <code>LocalTusStore</code> and <code>S3TusStore</code> (state that survives a restart), <code>on_complete</code></td>
 </tr>
 <tr>
 <td><strong><a href="revenuecat/">RevenueCat (in-app subscriptions) »</a></strong></td>

@@ -1205,6 +1205,8 @@
       
         
       
+        
+      
     
     
     
@@ -4917,6 +4919,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../resumable-upload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upload resumível (tus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../uploads/" class="md-nav__link">
         
   
@@ -6584,7 +6614,7 @@ que o storage recusou:</p>
 <h2 id="quando-nao-usar-asyncminioclient">Quando NÃO usar <code>AsyncMinIOClient</code><a class="headerlink" href="#quando-nao-usar-asyncminioclient" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Quando você precisa de operações <strong>fora</strong> das listadas (SSE-KMS, ACLs S3 v2, bucket replication). Use <code>storage.client.&lt;método&gt;</code> direto — <code>minio-py</code> continua acessível.</li>
-<li>Para uploads gigantes (&gt; 5 GiB) com retomada — <code>minio-py</code> faz multipart automático mas não suporta <code>tus</code> ou resume. Considere <code>tus.io</code> separadamente.</li>
+<li>Para upload com retomada vindo do navegador — <code>minio-py</code> faz multipart automático, mas não retoma um envio interrompido. Use o servidor tus do SDK: <a href="../resumable-upload/">Upload resumível (tus)</a>, com <code>S3TusStore</code> sobre este mesmo <code>AsyncMinIOClient</code>.</li>
 </ul>
 <h2 id="bucket-privado-atras-de-https">Bucket privado atrás de HTTPS<a class="headerlink" href="#bucket-privado-atras-de-https" title="Permanent link">&para;</a></h2>
 <p>Em produção o guard recusa <code>STORAGE_SECURE=false</code> — com uma exceção, para

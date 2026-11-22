@@ -112,6 +112,7 @@
 - [Tempo real](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/realtime/)
 - [Receber mensagens do WhatsApp (zap-api)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/zap-inbound/)
 - [Refresh tokens DB-backed (rotação + revogação)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/refresh-tokens/)
+- [Upload resumível (tus)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/resumable-upload/)
 - [RevenueCat (assinatura in-app)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/revenuecat/)
 - [Deploy seguro (migrações + graceful shutdown)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/deploy-safety/)
 - [Segurança](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/security/)
