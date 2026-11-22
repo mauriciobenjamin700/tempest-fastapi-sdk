@@ -1461,6 +1461,30 @@ if TYPE_CHECKING:
         TooManyRequestsException as TooManyRequestsException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        TusContentTypeException as TusContentTypeException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusIdempotencyKeyReusedException as TusIdempotencyKeyReusedException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusInvalidHeaderException as TusInvalidHeaderException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusOffsetMismatchException as TusOffsetMismatchException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusUploadExpiredException as TusUploadExpiredException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusUploadNotFoundException as TusUploadNotFoundException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusUploadTooLargeException as TusUploadTooLargeException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        TusVersionException as TusVersionException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         UnauthorizedException as UnauthorizedException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -1845,6 +1869,12 @@ if TYPE_CHECKING:
         sse_response as sse_response,
     )
     from tempest_fastapi_sdk.storage import (
+        TUS_CORS_ALLOW_HEADERS as TUS_CORS_ALLOW_HEADERS,
+    )
+    from tempest_fastapi_sdk.storage import (
+        TUS_CORS_EXPOSE_HEADERS as TUS_CORS_EXPOSE_HEADERS,
+    )
+    from tempest_fastapi_sdk.storage import (
         AsyncMinIOClient as AsyncMinIOClient,
     )
     from tempest_fastapi_sdk.storage import (
@@ -1855,6 +1885,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.storage import (
         LocalObjectStorageClient as LocalObjectStorageClient,
+    )
+    from tempest_fastapi_sdk.storage import (
+        LocalTusStore as LocalTusStore,
     )
     from tempest_fastapi_sdk.storage import (
         ObjectDeleteError as ObjectDeleteError,
@@ -1869,10 +1902,28 @@ if TYPE_CHECKING:
         PutObjectItem as PutObjectItem,
     )
     from tempest_fastapi_sdk.storage import (
+        S3TusStore as S3TusStore,
+    )
+    from tempest_fastapi_sdk.storage import (
         StorageBucketCredential as StorageBucketCredential,
     )
     from tempest_fastapi_sdk.storage import (
+        TusCompleteCallback as TusCompleteCallback,
+    )
+    from tempest_fastapi_sdk.storage import (
+        TusObjectClient as TusObjectClient,
+    )
+    from tempest_fastapi_sdk.storage import (
+        TusStore as TusStore,
+    )
+    from tempest_fastapi_sdk.storage import (
+        TusUpload as TusUpload,
+    )
+    from tempest_fastapi_sdk.storage import (
         make_local_storage_router as make_local_storage_router,
+    )
+    from tempest_fastapi_sdk.storage import (
+        make_tus_router as make_tus_router,
     )
     from tempest_fastapi_sdk.utils import (
         ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
@@ -2907,6 +2958,14 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "UnauthorizedException": "tempest_fastapi_sdk.exceptions",
     "UnknownFilterKeyException": "tempest_fastapi_sdk.exceptions",
     "UploadTooLargeException": "tempest_fastapi_sdk.exceptions",
+    "TusContentTypeException": "tempest_fastapi_sdk.exceptions",
+    "TusIdempotencyKeyReusedException": "tempest_fastapi_sdk.exceptions",
+    "TusInvalidHeaderException": "tempest_fastapi_sdk.exceptions",
+    "TusOffsetMismatchException": "tempest_fastapi_sdk.exceptions",
+    "TusUploadExpiredException": "tempest_fastapi_sdk.exceptions",
+    "TusUploadNotFoundException": "tempest_fastapi_sdk.exceptions",
+    "TusUploadTooLargeException": "tempest_fastapi_sdk.exceptions",
+    "TusVersionException": "tempest_fastapi_sdk.exceptions",
     "ValidationException": "tempest_fastapi_sdk.exceptions",
     "ValidationValueError": "tempest_fastapi_sdk.exceptions",
     "ZapSendFailedException": "tempest_fastapi_sdk.exceptions",
@@ -3041,6 +3100,15 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "LocalObjectStorageClient": "tempest_fastapi_sdk.storage",
     "PresignedPost": "tempest_fastapi_sdk.storage",
     "make_local_storage_router": "tempest_fastapi_sdk.storage",
+    "TUS_CORS_ALLOW_HEADERS": "tempest_fastapi_sdk.storage",
+    "TUS_CORS_EXPOSE_HEADERS": "tempest_fastapi_sdk.storage",
+    "LocalTusStore": "tempest_fastapi_sdk.storage",
+    "S3TusStore": "tempest_fastapi_sdk.storage",
+    "TusCompleteCallback": "tempest_fastapi_sdk.storage",
+    "TusObjectClient": "tempest_fastapi_sdk.storage",
+    "TusStore": "tempest_fastapi_sdk.storage",
+    "TusUpload": "tempest_fastapi_sdk.storage",
+    "make_tus_router": "tempest_fastapi_sdk.storage",
     "ACCESS_TOKEN_TYPE": "tempest_fastapi_sdk.utils",
     "ACT_CLAIM": "tempest_fastapi_sdk.utils",
     "AMR_CLAIM": "tempest_fastapi_sdk.utils",
@@ -3401,6 +3469,8 @@ __all__: list[str] = [
     "STATIC_CREDENTIAL_NAMESPACE",
     "STREAM_TOKEN_TYPE",
     "SUPPORTED_LOCALES",
+    "TUS_CORS_ALLOW_HEADERS",
+    "TUS_CORS_EXPOSE_HEADERS",
     "UPLOAD_READ_CHUNK_BYTES",
     "VALIDATION_ERROR_CODE",
     "WITHHELD_NOTICE",
@@ -3612,6 +3682,7 @@ __all__: list[str] = [
     "Liveness",
     "LocalObjectNotFoundError",
     "LocalObjectStorageClient",
+    "LocalTusStore",
     "LocalUploadStorage",
     "LocaleColumnMixin",
     "LocaleEnum",
@@ -3782,6 +3853,7 @@ __all__: list[str] = [
     "RetryLogger",
     "RetryPolicy",
     "RevenueCatSettings",
+    "S3TusStore",
     "SSEBroker",
     "SSEData",
     "SSETicketResponseSchema",
@@ -3839,6 +3911,18 @@ __all__: list[str] = [
     "TokenMatchEnum",
     "TokenSettings",
     "TooManyRequestsException",
+    "TusCompleteCallback",
+    "TusContentTypeException",
+    "TusIdempotencyKeyReusedException",
+    "TusInvalidHeaderException",
+    "TusObjectClient",
+    "TusOffsetMismatchException",
+    "TusStore",
+    "TusUpload",
+    "TusUploadExpiredException",
+    "TusUploadNotFoundException",
+    "TusUploadTooLargeException",
+    "TusVersionException",
     "UFEnum",
     "UFField",
     "UnauthorizedException",
@@ -4013,6 +4097,7 @@ __all__: list[str] = [
     "make_sse_router",
     "make_token_dependency",
     "make_tool_spec_router",
+    "make_tus_router",
     "make_unhandled_exception_handler",
     "make_user_oauth_account_model",
     "make_user_recovery_code_model",

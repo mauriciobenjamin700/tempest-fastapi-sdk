@@ -498,6 +498,18 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "FILE_TOO_LARGE": "Arquivo muito grande",
         "FILE_TOO_SMALL": "Arquivo muito pequeno",
         "UPLOAD_TOO_LARGE": "Upload grande demais",
+        "TUS_VERSION_UNSUPPORTED": "Versão do protocolo tus não suportada",
+        "TUS_UPLOAD_NOT_FOUND": "Upload não encontrado",
+        "TUS_UPLOAD_EXPIRED": "O upload expirou",
+        "TUS_OFFSET_MISMATCH": "O Upload-Offset não corresponde ao que o servidor tem",
+        "TUS_CONTENT_TYPE_INVALID": (
+            "O PATCH exige Content-Type: application/offset+octet-stream"
+        ),
+        "TUS_HEADER_INVALID": "Cabeçalho tus inválido",
+        "TUS_UPLOAD_TOO_LARGE": "O upload passa do tamanho permitido",
+        "TUS_IDEMPOTENCY_KEY_REUSED": (
+            "A Idempotency-Key já foi usada para outro upload"
+        ),
         "INVALID_FILE_TYPE": "Tipo de arquivo inválido",
         "IMAGE_DECODE_FAILED": "Não foi possível ler a imagem",
         "IMAGE_TYPE_MISMATCH": "O conteúdo da imagem não corresponde ao tipo declarado",
@@ -663,6 +675,18 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "FILE_TOO_LARGE": "File too large",
         "FILE_TOO_SMALL": "File too small",
         "UPLOAD_TOO_LARGE": "Upload too large",
+        "TUS_VERSION_UNSUPPORTED": "Unsupported tus protocol version",
+        "TUS_UPLOAD_NOT_FOUND": "Upload not found",
+        "TUS_UPLOAD_EXPIRED": "Upload expired",
+        "TUS_OFFSET_MISMATCH": "Upload-Offset does not match the stored offset",
+        "TUS_CONTENT_TYPE_INVALID": (
+            "PATCH requires Content-Type: application/offset+octet-stream"
+        ),
+        "TUS_HEADER_INVALID": "Invalid tus header",
+        "TUS_UPLOAD_TOO_LARGE": "Upload exceeds the allowed size",
+        "TUS_IDEMPOTENCY_KEY_REUSED": (
+            "Idempotency-Key was already used for a different upload"
+        ),
         "INVALID_FILE_TYPE": "Invalid file type",
         "IMAGE_DECODE_FAILED": "The image could not be decoded",
         "IMAGE_TYPE_MISMATCH": "The image content does not match the declared type",
