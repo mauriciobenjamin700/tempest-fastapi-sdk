@@ -93,6 +93,33 @@ from tempest_fastapi_sdk.storage.presign import (
 from tempest_fastapi_sdk.storage.presign import (
     PresignedPost as PresignedPost,
 )
+from tempest_fastapi_sdk.storage.tus import (
+    TUS_CORS_ALLOW_HEADERS as TUS_CORS_ALLOW_HEADERS,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    TUS_CORS_EXPOSE_HEADERS as TUS_CORS_EXPOSE_HEADERS,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    LocalTusStore as LocalTusStore,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    S3TusStore as S3TusStore,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    TusCompleteCallback as TusCompleteCallback,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    TusObjectClient as TusObjectClient,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    TusStore as TusStore,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    TusUpload as TusUpload,
+)
+from tempest_fastapi_sdk.storage.tus import (
+    make_tus_router as make_tus_router,
+)
 
 __all__: list[str] = [
     "DEFAULT_LOCAL_MAX_UPLOAD_BYTES",
@@ -108,17 +135,26 @@ __all__: list[str] = [
     "LOCAL_STORAGE_POST_PURPOSE",
     "LOCAL_STORAGE_PUT_PURPOSE",
     "POST_FILE_FIELD",
+    "TUS_CORS_ALLOW_HEADERS",
+    "TUS_CORS_EXPOSE_HEADERS",
     "AsyncMinIOClient",
     "BucketRoutedMinIOClient",
     "DownloadableStore",
     "LocalObjectCipher",
     "LocalObjectNotFoundError",
     "LocalObjectStorageClient",
+    "LocalTusStore",
     "ObjectDeleteError",
     "ObjectStat",
     "PresignedPost",
     "PutObjectItem",
+    "S3TusStore",
     "StorageBucketCredential",
+    "TusCompleteCallback",
+    "TusObjectClient",
+    "TusStore",
+    "TusUpload",
     "make_local_storage_router",
+    "make_tus_router",
     "object_download_response",
 ]

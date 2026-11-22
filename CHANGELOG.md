@@ -177,6 +177,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `repository_class`. Termo vazio não consulta; acima de
   `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou
   `ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` sem consultar.
+- Servidor tus 1.0.0 para o `createResumableUpload` do `tempest-react-sdk`
+  (#809): `make_tus_router(store, *, prefix="/api/uploads", max_size,
+  max_chunk_size, expiration, current_user_id, on_complete)` com `POST` de
+  criação (`Upload-Length`, `Upload-Metadata`, `Idempotency-Key`), `HEAD`,
+  `PATCH` e `DELETE` — o subconjunto que o cliente envia, medido rodando o
+  cliente real contra o router. `PATCH` confere `Upload-Offset` (`409`),
+  `Content-Type` (`415`) e tamanho (`413`), e confere o offset de novo sob um
+  lock por upload depois de ler o corpo. Upload pertence ao `str()` do
+  `current_user_id` (`404` para outro dono); `Idempotency-Key` vale por dono;
+  `Upload-Expires` renovado a cada `PATCH`, `410` depois dele e
+  `TusStore.purge_expired()` para a limpeza. Stores: `LocalTusStore` (disco,
+  registro gravado depois dos bytes) e `S3TusStore` (um objeto por chunk e
+  montagem do arquivo no último `PATCH`, porque o cliente manda chunk menor
+  que os 5 MiB do multipart); o estado dos dois sobrevive a restart do
+  processo. Erros novos: `TusVersionException`, `TusUploadNotFoundException`,
+  `TusUploadExpiredException`, `TusOffsetMismatchException`,
+  `TusContentTypeException`, `TusInvalidHeaderException`,
+  `TusUploadTooLargeException`, `TusIdempotencyKeyReusedException`, todos com
+  `Tus-Resumable` na resposta. `TUS_CORS_EXPOSE_HEADERS` /
+  `TUS_CORS_ALLOW_HEADERS` para o `CORSMiddleware`. Sem extra novo. Receita
+  nova: [Upload resumível (tus)](docs/recipes/resumable-upload.md).
+  Endurecido depois de revisão de segurança: `PATCH` em upload completo
+  responde `409 TUS_UPLOAD_COMPLETED` e `on_complete` roda uma vez por
+  upload; o lock é pego antes de ler o corpo (`409 TUS_UPLOAD_LOCKED` para
+  o segundo `PATCH`); `PATCH` vazio não renova a expiração; registro apagado
+  pelo callback não é recriado; no S3 o registro completo é salvo antes de
+  apagar os chunks e `min_chunk_size` (padrão 64 KiB) recusa chunk pequeno
+  com `400 TUS_CHUNK_TOO_SMALL`; `max_uploads_per_owner` /
+  `max_bytes_per_owner` (`403 TUS_QUOTA_EXCEEDED`); header inteiro com mais
+  de 20 dígitos é `400`; `current_user_id` precisa resolver `str`, `int` ou
+  `UUID`; `Idempotency-Key` ignorada sem dono; `purge_expired` sob o lock
+  por upload; `401`/`403` da dependência levam `Tus-Resumable`.
+  `body_read_timeout` (padrão 30 s) responde `408 TUS_BODY_READ_TIMEOUT`
+  quando o corpo do `PATCH` para no meio, descarta o chunk e libera o lock;
+  desconexão no meio do corpo vira log `INFO`, não `500`; cota por dono não
+  vale no modo anônimo nem conta upload vazio; o `Tus-Resumable` vai numa
+  cópia da `HTTPException`, sem alterar uma instância reaproveitada.
 
 ### Changed
 

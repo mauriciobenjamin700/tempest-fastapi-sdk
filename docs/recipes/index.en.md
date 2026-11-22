@@ -278,6 +278,7 @@ asyncio.run(main())
 
 Recipes: [File store](file-store.md), [Uploads](uploads.md),
 [Downloads](downloads.md), [Storage](storage.md),
+[Resumable uploads (tus)](resumable-upload.md),
 [Image metadata](image-metadata.md).
 
 ### Domain extras
@@ -552,6 +553,7 @@ come back here to plug in each capability as you need it.
 | **[Real-time »](realtime.md)** | Overview — when to choose SSE, WebSocket or Web Push |
 | **[Receiving WhatsApp messages (zap-api) »](zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC over the raw body, `ZapWebhookDelivery` with `inbound` / `status` already parsed by `event`, enums (`ZapWebhookEventEnum`, `ZapInboundMediaTypeEnum`, `ZapJidServerEnum`, `ZapOutboundKindEnum`) to dispatch without loose strings, a full model → repository → service → controller → router layer over `ZapInbox` + mixins (claim, status and send ready-made), `is_forward_transition` against out-of-order callbacks, media via `get_message_media` |
 | **[Refresh tokens (rotation/revocation) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotation + family reuse detection |
+| **[Resumable uploads (tus) »](resumable-upload.md)** | `make_tus_router` (tus 1.0.0 server for `tempest-react-sdk`'s `createResumableUpload`: `POST`/`HEAD`/`PATCH`/`DELETE`, per-owner `Idempotency-Key`, expiry, offset `409` under a per-upload lock), `LocalTusStore` and `S3TusStore` (state that survives a restart), `on_complete` |
 | **[RevenueCat (in-app subscriptions) »](revenuecat.md)** | `make_revenuecat_webhook_router` (Authorization header + optional HMAC, empty secret refuses all, records once), `WebhookInbox` + `BaseWebhookEventModel` (idempotent inbox for any provider: claim, effect and mark in one transaction, `max_attempts` → `FAILED`), `normalize` → `SubscriptionSnapshot` over all 21 documented event types, `RevenueCatClient.get_subscriber`, `RevenueCatSettings`, `FakeRevenueCatClient` |
 | **[Safe deploys »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (blocks DROPs), `GracefulShutdownMiddleware` |
 | **[Security »](security.md)** | `AttemptThrottle`, opaque-token helpers, `HardenedStaticFiles`, security headers |

@@ -277,6 +277,7 @@ asyncio.run(main())
 
 Receitas: [File store](file-store.md), [Uploads](uploads.md),
 [Downloads](downloads.md), [Storage](storage.md),
+[Upload resumível (tus)](resumable-upload.md),
 [Metadados de imagem](image-metadata.md).
 
 ### Extras de domínio
@@ -581,6 +582,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Tipagem (estático + runtime) »](typing.md)** | `strict_types` / `typed` / `require_annotations`, knob `[tool.tempest] typing_strictness`, ruff `ANN` |
 | **[Transações (commit e savepoint) »](transactions.md)** | `transaction()` compartilhado pela sessão, `commit()` / `flush()` / `rollback()` no repositório, `autocommit=False`, `savepoint()` para o passo recuperável |
 | **[Trânsito da frota (GPS anônimo) »](fleet-traffic.md)** | `TrafficAggregator` (velocidade mediana por trecho, k-anonimato, corte de início e fim, sal rotativo), `match_to_roads` (HMM, porte do tempest-react-sdk), `RoadGraph` + `road_graph_from_overpass`/`load_road_graph`, `make_traffic_router` (por caixa + tile do grafo), qualidade do encaixe na frota real só agregada (`MatchQualityOptions` + `make_match_quality_router`), `OffRoadDensity` + `infer_road_candidates` (ruas que o OSM não tem, para revisão) |
+| **[Upload resumível (tus) »](resumable-upload.md)** | `make_tus_router` (servidor tus 1.0.0 do `createResumableUpload` do `tempest-react-sdk`: `POST`/`HEAD`/`PATCH`/`DELETE`, `Idempotency-Key` por dono, expiração, `409` de offset sob lock por upload), `LocalTusStore` e `S3TusStore` (estado que sobrevive a restart), `on_complete` |
 | **[Uploads (backends) »](uploads.md)** | `UploadUtils`, validação de extensão/MIME (`sniff_mime`), backends local / MinIO |
 | **[Utilitários »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, tokens opacos, `generate_password`, URL assinada (`sign_path`), `form_encode`, `is_light` |
 | **[Visão computacional (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + schemas de predição |

@@ -191,6 +191,7 @@ plugins:
               - Real-time: recipes/realtime.md
               - "Receiving WhatsApp messages (zap-api)": recipes/zap-inbound.md
               - Refresh tokens (rotation/revocation): recipes/refresh-tokens.md
+              - Resumable uploads (tus): recipes/resumable-upload.md
               - "RevenueCat (in-app subscriptions)": recipes/revenuecat.md
               - Safe deploys (migrations + shutdown): recipes/deploy-safety.md
               - Security: recipes/security.md
@@ -284,6 +285,7 @@ plugins:
             "Agentes de IA (conceitos)": "AI agents (concepts)"
             "Agentes de IA (ferramentas)": "AI agents (tools)"
             "Agentes de IA (prompts)": "AI agents (prompts)"
+            "Upload resumível (tus)": "Resumable uploads (tus)"
             Uploads (backends): Uploads (backends)
             Downloads: Downloads
             "File store (unificado)": "Unified file store"
@@ -540,6 +542,7 @@ nav:
       - "Tipagem (estático + runtime)": recipes/typing.md
       - "Transações (commit e savepoint)": recipes/transactions.md
       - "Trânsito da frota (GPS anônimo)": recipes/fleet-traffic.md
+      - "Upload resumível (tus)": recipes/resumable-upload.md
       - Uploads (backends): recipes/uploads.md
       - Utilitários: recipes/utilities.md
       - "Visão computacional (ONNX)": recipes/vision.md
