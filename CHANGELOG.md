@@ -21,14 +21,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `current_async(bind=db.engine)` e responde `True` só com uma head na árvore
   e o banco carimbado nela (#805).
 - Admin: escopo por linha (#802). `AdminModel(row_scope=...)` recebe
-  `(principal, admin)` e devolve uma condição SQLAlchemy (`None` libera
-  tudo), sync ou async; ela entra com `AND` em toda rota do model —
-  listagem, contagem (cabeçalho e card do dashboard), export, detail, edit,
-  delete, download de upload, ações em lote e customizadas (ids fora do
-  escopo são descartados), autocomplete, `<select>` e filtro de FK quando o
-  model é o alvo, inline quando é o filho, formset editável e import. Linha
-  fora do escopo responde `404`. Create, edit, inline e import que deixariam
-  a linha fora do escopo voltam sem gravar. Tipo `AdminRowScope`.
+  `(principal, admin)` e devolve uma condição SQLAlchemy, sync ou async;
+  "todas as linhas" é `sqlalchemy.true()`, explícito. Retorno que não é
+  cláusula — `None` de um `return` esquecido incluído — levanta
+  `AdminRowScopeError`, vai para o log com o model e responde `500` (falha
+  fechada). A condição entra com `AND` em toda rota do model — listagem,
+  contagem (cabeçalho e card do dashboard), export, detail, edit, delete,
+  download de upload, ações em lote e customizadas (ids fora do escopo são
+  descartados), autocomplete, `<select>` e filtro de FK quando o model é o
+  alvo, inline quando é o filho, formset editável e import. Linha fora do
+  escopo responde `404`; no delete e no delete/activate/deactivate em lote
+  a condição está no próprio `DELETE`/`UPDATE`. Create (inclusive por
+  `create_handler`), edit, inline, import e activate/deactivate que
+  deixariam a linha fora do escopo voltam sem gravar. FK cujo model alvo
+  tem `row_scope` só aceita uma linha que o principal alcança lá; fora, o
+  campo recebe o mesmo erro de um id inexistente. No form de edição, a FK
+  que aponta para uma linha fora das opções do `<select>` continua
+  selecionada (opção rotulada só com o id). Upload gravado por um create ou
+  edit recusado é apagado. O autor no painel de auditoria aparece pelo nome
+  só quando o principal alcança esse usuário pelo escopo do model de
+  usuário; fora disso, pelo id. Tipos `AdminRowScope` e
+  `AdminRowScopeError`.
 - Admin: interface em português (#802). `AdminSite(locale="pt-BR")` troca
   todo texto do painel — rótulos, botões, estados vazios, paginação, flash e
   os erros que o router e o form mostram — pelo catálogo

@@ -32,6 +32,9 @@ from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
 from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
 from tempest_fastapi_sdk.admin.config import AdminRowScope as AdminRowScope
+from tempest_fastapi_sdk.admin.config import (
+    AdminRowScopeError as AdminRowScopeError,
+)
 from tempest_fastapi_sdk.admin.config import ChoiceSource as ChoiceSource
 from tempest_fastapi_sdk.admin.config import EditValidator as EditValidator
 from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
@@ -223,6 +226,7 @@ __all__: list[str] = [
     "AdminModel",
     "AdminPermissionEnum",
     "AdminRowScope",
+    "AdminRowScopeError",
     "AdminSecret",
     "AdminSession",
     "AdminSessionRevocations",

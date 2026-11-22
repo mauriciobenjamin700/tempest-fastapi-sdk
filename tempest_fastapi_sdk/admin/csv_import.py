@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
@@ -153,6 +153,7 @@ async def run_import(
     prepare: Callable[[Any], None],
     commit: bool,
     locale: str,
+    check: Callable[[dict[str, Any]], Awaitable[dict[str, str]]] | None = None,
 ) -> ImportOutcome:
     """Validate and insert every CSV row inside one transaction.
 
@@ -176,6 +177,10 @@ async def run_import(
             inserted (audit columns).
         commit (bool): Whether to keep the rows when every one went in.
         locale (str): Language of the row errors.
+        check (Callable[[dict[str, Any]], Awaitable[dict[str, str]]] | None):
+            Extra per-row validation run on the parsed values before the
+            insert (the router passes the foreign-key scope check); its
+            ``{field: message}`` refuses the row like a parse error.
 
     Returns:
         ImportOutcome: Counts, the preview sample and the row errors.
@@ -194,6 +199,8 @@ async def run_import(
                 data, errors = parse_submission(
                     admin, row, creating=True, locale=locale
                 )
+                if not errors and check is not None:
+                    errors = await check(data)
                 if errors:
                     outcome.errors.append({"row": line_no, "errors": errors})
                     continue

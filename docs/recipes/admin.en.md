@@ -1619,7 +1619,7 @@ enough. `row_scope=` puts the filter in the panel:
 ```python
 from typing import Any
 
-from sqlalchemy import ColumnElement
+from sqlalchemy import ColumnElement, false, true
 
 from tempest_fastapi_sdk import AdminModel
 
@@ -1627,9 +1627,11 @@ from src.admin import site
 from src.db.models import TicketModel, UserModel
 
 
-def own_company(user: UserModel, admin: AdminModel[Any]) -> ColumnElement[bool] | None:
+def own_company(user: UserModel, admin: AdminModel[Any]) -> ColumnElement[bool]:
     if user.is_superuser:
-        return None
+        return true()
+    if user.company_id is None:
+        return false()
     return TicketModel.company_id == user.company_id
 
 
@@ -1637,10 +1639,10 @@ site.register(AdminModel(model=TicketModel, row_scope=own_company))
 ```
 
 The function receives the signed-in principal and the `AdminModel`
-itself, and returns a SQLAlchemy condition — `None` lets every row
-through. It may be `async` (to look the tenant up in another table, for
-instance). The condition is ANDed into **every** route that reads or
-writes a row of the model:
+itself, and returns a SQLAlchemy condition. "Every row" is said
+explicitly, with `sqlalchemy.true()`. It may be `async` (to look the
+tenant up in another table, for instance). The condition is ANDed into
+**every** route that reads or writes a row of the model:
 
 - list, count (in the header and on the dashboard card) and export;
 - detail, the edit form and its `POST`, delete and the upload download;
@@ -1653,25 +1655,75 @@ writes a row of the model:
 - the CSV import preview and confirm.
 
 A row outside the scope answers `404` — the same as a row that does not
-exist, so the response never confirms it is there.
+exist, so the response never confirms it is there. On delete and the
+built-in bulk actions, the condition is inside the `DELETE` / `UPDATE`
+statement itself, not only in the read before it.
 
-On writes the rule holds for the result: a row that is **created**,
-**edited** or **imported** must still match the scope after the write.
-The panel writes inside a transaction, counts the row against the
-condition in that same transaction and, if it left, rolls back and
-returns the form with `This record would fall outside the rows you may
-manage; nothing was saved.` — company A's operator cannot create a
-company B ticket, nor "move" one of theirs there by changing
-`company_id`.
+!!! danger "Returning `None` does not open everything"
+    A scope function that forgets its `return` hands back `None`. The panel
+    treats that as an error: it raises `AdminRowScopeError`, logs the model
+    name and the request answers `500` — it fails closed instead of opening
+    every row. To let everything through, return `true()`.
+
+    And mind the principal without a tenant: `TicketModel.company_id ==
+    user.company_id` with `company_id` `None` becomes `IS NULL`, which
+    matches every row without a company. If that user should see nothing,
+    return `false()` first, as in the example.
+
+### On writes
+
+The rule holds for the result: a row that is **created**, **edited** or
+**imported** must still match the scope after the write. The panel writes
+inside a transaction, counts the row against the condition in that same
+transaction and, if it left, rolls back and returns the form with `This
+record would fall outside the rows you may manage; nothing was saved.` —
+company A's operator cannot create a company B ticket, nor "move" one of
+theirs there by changing `company_id`. The same applies to:
+
+- **`create_handler`**: every row of the model the handler inserts through
+  the session (via `ctx.repository` or `session.add`) is counted against
+  the scope before the commit. A row inserted through SQL Core
+  (`insert()`, `bulk_create_values`), or a handler that commits on its
+  own, escapes the check.
+- **bulk activate/deactivate**: if the new `is_active` takes any row out
+  of the scope (a scope that filters on it), nothing changes and the list
+  comes back with the warning.
+- **foreign keys**: on create, edit, inline or import, the value of a
+  foreign key whose target model has a `row_scope` must be a row the
+  principal reaches there. Outside the scope the field gets `Select a
+  valid choice; that record does not exist.` — the same error as an id
+  that does not exist, so a forged `POST` learns no other tenant's ids.
+
+An uploaded file stored by a create or edit that ends up refused is
+deleted (one attempt; a failure goes to the log).
+
+On the edit form, a foreign key pointing at a row the operator does
+**not** reach (or past `FK_OPTION_CAP`) stays selected: the `<select>`
+gains one option with the current value, labelled with the id alone, and
+saving without touching it keeps the reference — before, the browser
+posted the first option and the save rewrote the reference silently.
+
+In the detail's audit panel, the author of a change is shown by name only
+when the registered user model has a `row_scope` and the principal
+reaches that user (with `VIEW`); otherwise the id is shown.
 
 !!! warning "What the scope does not cover"
-    `row_scope` applies to the `/m/{slug}/...` routes and to what they show
-    of another model. What runs your code or free SQL stays out: the
-    dashboard cards (`dashboard_cards=`), indicator areas, maps
-    (`location_maps=`) and the SQL console. In a custom action, `ctx.ids`
-    are already filtered, but `ctx.repository` is the model's unfiltered
-    repository — whatever the action reads beyond the ids is its own
-    business.
+    - `row_scope` applies to the `/m/{slug}/...` routes and to what they
+      show of another model. What runs your code or free SQL stays out:
+      the dashboard cards (`dashboard_cards=`), indicator areas, maps
+      (`location_maps=`) and the SQL console.
+    - In a custom action, `ctx.ids` are already filtered, but
+      `ctx.repository` is the model's unfiltered repository and the panel
+      does not check the outcome: the action can read beyond the ids and
+      can **move** a row out of the scope. That is its own business.
+    - The storage browser (`/storage`, the `STORAGE` surface) serves any
+      key in the bucket. If the scoped model's uploads live in the same
+      bucket, whoever has the surface bypasses the upload download's scope
+      — deny `STORAGE` to those roles in `surface_policy`.
+    - Create and import remain a `UNIQUE` oracle across tenants: a code
+      that exists in company B conflicts for company A. The way out is a
+      composite `UNIQUE` constraint with the tenant column
+      (`UniqueConstraint("company_id", "code")`).
 
 !!! tip "Together with `access_policy`"
     The two compose: `access_policy` decides **whether** the principal

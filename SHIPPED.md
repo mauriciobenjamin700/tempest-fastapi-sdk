@@ -4833,3 +4833,16 @@ escopo), `test_edit_conflict.py` (inclui a ordem dos statements),
 `tests/test_admin_i18n_guard.py`. Receita: `admin`, seções "Escopo por
 linha", "Import CSV", "Atalhos no filtro de data", "Edição simultânea" e
 "Interface em português".
+
+Revisão de segurança do escopo (mesmo #802): `AdminRowScopeError` (retorno
+`None` falha fechado; `true()` é "todas as linhas"), `_inserts_in_scope`
+(linhas que um `create_handler` insere, coletadas pelo evento
+`pending_to_persistent` e contadas antes do commit), `_fk_scope_errors` (FK
+para model alvo com escopo, em create/edit/inline/import), opção com o id
+atual no `<select>` de FK, `_delete_scoped` / `_toggle_in_scope` (escopo no
+`DELETE`/`UPDATE`), autor de auditoria pelo id fora do escopo do model de
+usuário, `_discard_uploads` em recusa, `logger.exception` no card do
+dashboard. Testes: `tests/admin/test_row_scope_writes.py`; o modelo
+compartilhado foi para `tests/admin/row_scope_world.py`, e a prova de que
+os casos por rota mordem exige `ScopeLeakError`, não qualquer
+`AssertionError`.

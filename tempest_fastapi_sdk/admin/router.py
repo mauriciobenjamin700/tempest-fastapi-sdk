@@ -30,7 +30,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
-from sqlalchemy import JSON, and_, or_, select
+from sqlalchemy import JSON, and_, event, or_, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import NoInspectionAvailable
@@ -116,6 +116,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.search import like_search_condition
+from tempest_fastapi_sdk.db.signals import RepositorySignalEnum, emit, has_handlers
 from tempest_fastapi_sdk.db.transaction import transaction
 from tempest_fastapi_sdk.exceptions import AppException
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router
@@ -1020,19 +1021,22 @@ def make_admin_router(
         slug = admin.get_slug()
         if not await nonces.consume(session, nonce):
             return _already_processed(slug)
+        context = AdminActionContext(
+            ids=[],
+            repository=admin.build_repository(db_session),
+            db_session=db_session,
+            request=request,
+            session=session,
+            principal=principal,
+        )
         try:
-            result = await handler.handler(
-                data,
-                AdminActionContext(
-                    ids=[],
-                    repository=admin.build_repository(db_session),
-                    db_session=db_session,
-                    request=request,
-                    session=session,
-                    principal=principal,
-                ),
+            result = await _inserts_in_scope(
+                admin,
+                db_session,
+                principal,
+                partial(handler.handler, data, context),
             )
-        except AppException as exc:
+        except (AppException, _RowOutOfScopeError) as exc:
             await db_session.rollback()
             await _reload_expired(db_session, principal)
             return await _handler_form(
@@ -1042,7 +1046,9 @@ def make_admin_router(
                 principal,
                 db_session,
                 submitted=form,
-                form_error=exc.message,
+                form_error=exc.message
+                if isinstance(exc, AppException)
+                else _t("error.out_of_scope"),
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
         if result is not None and result.secrets:
@@ -1432,6 +1438,196 @@ def make_admin_router(
                 raise _RowOutOfScopeError
         return saved
 
+    async def _delete_scoped(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        instance: Any,
+    ) -> bool:
+        """Delete one row with the scope inside the ``DELETE`` statement.
+
+        Without a scope this is the repository's ``delete``. With one, the
+        statement is ``DELETE ... WHERE id = :id AND <scope>``, so a row
+        that left the scope between the lookup and the delete is not
+        removed; ``PRE_DELETE`` / ``POST_DELETE`` handlers still run around
+        it, as :meth:`BaseRepository.delete` runs them.
+
+        Args:
+            admin (AdminModel[Any]): The row's admin.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            instance (Any): The row, already loaded inside the scope.
+
+        Returns:
+            bool: Whether a row was deleted.
+        """
+        repository = admin.build_repository(db_session)
+        scope = await admin.scope_for(principal)
+        if scope is None:
+            await repository.delete(instance.id)
+            return True
+        signals = has_handlers(
+            admin.model, RepositorySignalEnum.PRE_DELETE
+        ) or has_handlers(admin.model, RepositorySignalEnum.POST_DELETE)
+        async with transaction(db_session):
+            if signals:
+                await emit(type(instance), RepositorySignalEnum.PRE_DELETE, instance)
+            deleted = await repository.delete_many({"id": instance.id}, where=scope)
+        if deleted and signals:
+            await emit(type(instance), RepositorySignalEnum.POST_DELETE, instance)
+        return bool(deleted)
+
+    async def _toggle_in_scope(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        ids: list[Any],
+        scope: ColumnElement[bool],
+        *,
+        active: bool,
+    ) -> bool:
+        """Activate or deactivate rows with the scope in the ``UPDATE``.
+
+        Follows the edit form's rule: when the new ``is_active`` takes any
+        of the rows out of the scope (a scope that filters on it), the
+        whole statement is rolled back.
+
+        Args:
+            admin (AdminModel[Any]): The rows' admin.
+            db_session (AsyncSession): The DB session.
+            ids (list[Any]): The selected, reachable ids.
+            scope (ColumnElement[bool]): The principal's scope.
+            active (bool): The new ``is_active``.
+
+        Returns:
+            bool: ``True`` when committed, ``False`` when refused.
+        """
+        try:
+            async with transaction(db_session):
+                result = await db_session.execute(
+                    sa_update(admin.model)
+                    .where(admin.model.id.in_(ids), scope)
+                    .values(is_active=active)
+                    .execution_options(synchronize_session=False)
+                )
+                touched = cast("CursorResult[Any]", result).rowcount or 0
+                still = await admin.build_repository(db_session).count(
+                    {"id": ids}, where=scope
+                )
+                if still < touched:
+                    raise _RowOutOfScopeError
+        except _RowOutOfScopeError:
+            return False
+        return True
+
+    async def _inserts_in_scope(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        run: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        """Run code that inserts rows of ``admin.model`` and check each one.
+
+        For a ``create_handler``, which writes through a service and returns
+        no row. With a scope, ``run`` executes inside
+        :func:`~tempest_fastapi_sdk.db.transaction`, every instance of
+        :attr:`AdminModel.model` that becomes persistent in the session is
+        collected (SQLAlchemy's ``pending_to_persistent`` event), and they
+        are counted against the scope in the same transaction before it
+        commits; one outside it raises and rolls everything back. A row
+        inserted through Core (``insert()``, ``bulk_create_values``) or a
+        handler that commits the session itself escapes the check.
+
+        Args:
+            admin (AdminModel[Any]): The admin the handler creates rows of.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            run (Callable[[], Awaitable[Any]]): The write.
+
+        Returns:
+            Any: What ``run`` returned.
+
+        Raises:
+            _RowOutOfScopeError: When a created row falls outside the scope.
+        """
+        scope = await admin.scope_for(principal)
+        if scope is None:
+            return await run()
+        created: list[Any] = []
+
+        def _collect(_session: Any, instance: Any) -> None:
+            """Remember a row of the admin's model that was just inserted.
+
+            Args:
+                _session (Any): The sync session (unused).
+                instance (Any): The instance that became persistent.
+            """
+            if isinstance(instance, admin.model):
+                created.append(instance)
+
+        sync_session = db_session.sync_session
+        event.listen(sync_session, "pending_to_persistent", _collect)
+        try:
+            async with transaction(db_session):
+                result = await run()
+                await db_session.flush()
+                ids = {row.id for row in created}
+                if ids:
+                    reachable = await admin.build_repository(db_session).count(
+                        {"id": list(ids)}, where=scope
+                    )
+                    if reachable != len(ids):
+                        raise _RowOutOfScopeError
+        finally:
+            event.remove(sync_session, "pending_to_persistent", _collect)
+        return result
+
+    async def _fk_scope_errors(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        data: dict[str, Any],
+        *,
+        current: Any | None = None,
+    ) -> dict[str, str]:
+        """Refuse foreign-key values that point outside the target's scope.
+
+        Only a foreign key whose target table has a registered admin with a
+        ``row_scope`` is checked: its value must name a row the principal
+        reaches there. A row outside the scope gets the same field error as
+        one that does not exist, so a forged ``POST`` learns nothing about
+        other tenants' ids. A value equal to what ``current`` already holds
+        is not checked, so an edit keeps a reference it cannot see instead
+        of failing on it.
+
+        Args:
+            admin (AdminModel[Any]): The admin being written.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            data (dict[str, Any]): The parsed values about to be written.
+            current (Any | None): The stored row, on an edit.
+
+        Returns:
+            dict[str, str]: Field → error for each refused value.
+        """
+        errors: dict[str, str] = {}
+        columns = sa_inspect(admin.model).columns
+        for field_name, table in fk_fields(admin).items():
+            value = data.get(field_name)
+            if value is None or field_name not in data:
+                continue
+            if current is not None and getattr(current, field_name, None) == value:
+                continue
+            referenced = site.get(table)
+            if referenced is None or referenced.row_scope is None:
+                continue
+            target = next(iter(columns[field_name].foreign_keys)).column.name
+            found = await referenced.build_repository(db_session).count(
+                {target: value}, where=await referenced.scope_for(principal)
+            )
+            if not found:
+                errors[field_name] = _t("form.error.fk_missing")
+        return errors
+
     async def _resolve_fk_options(
         admin: AdminModel[Any],
         db_session: AsyncSession,
@@ -1650,6 +1846,15 @@ def make_admin_router(
 
         Returns:
             Any: The list of form-field descriptors.
+
+        Notes:
+            A foreign-key ``<select>`` whose current value is not among its
+            options — a row outside the target's ``row_scope``, or past
+            ``FK_OPTION_CAP`` — gets one extra option carrying that value,
+            labelled with the id alone. Without it the browser would post
+            the blank or the first option and the save would rewrite the
+            reference silently; the id is already in the form, so the
+            label tells nothing new.
         """
         fk_options = await _resolve_fk_options(admin, db_session, principal)
         fields = build_form_fields(
@@ -1661,6 +1866,11 @@ def make_admin_router(
             creating=creating,
             only=only,
         )
+        for form_field in fields:
+            options = fk_options.get(form_field.name)
+            value = "" if form_field.value is None else str(form_field.value)
+            if options is not None and value and value not in {v for v, _ in options}:
+                form_field.options = [*form_field.options, (value, value)]
         if admin.autocomplete_fields:
             await _decorate_autocomplete_fields(admin, fields, db_session, principal)
         return fields
@@ -2037,6 +2247,10 @@ def make_admin_router(
                     where=await admin.scope_for(principal)
                 )
             except Exception:
+                logger.exception(
+                    "Admin dashboard could not count %s; showing no count",
+                    admin.get_slug(),
+                )
                 count = None
             models_view.append(
                 {
@@ -2787,6 +3001,7 @@ def make_admin_router(
             prepare=partial(_stamp_audit, actor_id=actor_id, creating=True),
             commit=commit,
             locale=site.locale,
+            check=partial(_fk_scope_errors, admin, db_session, principal),
         )
         await _reload_expired(db_session, principal)
         return outcome
@@ -3018,9 +3233,11 @@ def make_admin_router(
                 request, admin, session, principal, db_session, form
             )
         data, errors = parse_submission(admin, form, creating=True, locale=site.locale)
+        errors.update(await _fk_scope_errors(admin, db_session, principal, data))
         errors.update(
             await _save_uploads(admin, form, data, creating=True, locale=site.locale)
         )
+        uploaded = _uploaded_keys(admin, data)
         passwords, password_errors = parse_password_submission(
             admin,
             form,
@@ -3053,6 +3270,7 @@ def make_admin_router(
                     url=f"{prefix}/m/{slug}/{identity}",
                     status_code=status.HTTP_303_SEE_OTHER,
                 )
+        await _discard_uploads(admin, uploaded)
         return _render(
             request,
             "form.html",
@@ -3239,15 +3457,25 @@ def make_admin_router(
             if action == "delete":
                 if not admin.can_delete:
                     raise HTTPException(status.HTTP_400_BAD_REQUEST, "delete disabled")
-                await repository.delete_batch(ids)
+                if scope is None:
+                    await repository.delete_batch(ids)
+                else:
+                    await repository.delete_many({"id": ids}, where=scope)
             elif action in ("activate", "deactivate"):
                 if not admin.can_edit or not admin.can_toggle_active:
                     raise HTTPException(
                         status.HTTP_400_BAD_REQUEST, "activate/deactivate disabled"
                     )
-                await repository.bulk_update(
-                    {"id": ids}, {"is_active": action == "activate"}
-                )
+                if scope is None:
+                    await repository.bulk_update(
+                        {"id": ids}, {"is_active": action == "activate"}
+                    )
+                elif not await _toggle_in_scope(
+                    admin, db_session, ids, scope, active=action == "activate"
+                ):
+                    redirect_url += "?" + urlencode(
+                        {"flash": _t("error.out_of_scope"), "flash_cat": "error"}
+                    )
             else:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown action")
         return RedirectResponse(
@@ -3412,10 +3640,36 @@ def make_admin_router(
             fields.append((column, raw_value))
 
         async def _actor(uid: Any) -> str | None:
+            """Name the author of a change, within the user admin's scope.
+
+            When the principal's model is registered with a ``row_scope``,
+            the name is shown only for a user the signed-in principal may
+            ``VIEW`` and reaches through that scope; any other author is
+            shown by id, so the audit panel does not read another
+            tenant's users.
+
+            Args:
+                uid (Any): The stored actor id.
+
+            Returns:
+                str | None: The display name, the id, or ``None``.
+            """
             if uid is None:
                 return None
             actor = await auth_backend.load_principal(db_session, str(uid))
-            return auth_backend.display_name(actor) if actor is not None else str(uid)
+            if actor is None:
+                return str(uid)
+            actor_admin = site.get(cast("type[BaseModel]", type(actor)))
+            if actor_admin is not None and actor_admin.row_scope is not None:
+                if not await _allows(principal, actor_admin, AdminPermissionEnum.VIEW):
+                    return str(uid)
+                visible = await actor_admin.build_repository(db_session).count(
+                    {"id": getattr(actor, "id", None)},
+                    where=await actor_admin.scope_for(principal),
+                )
+                if not visible:
+                    return str(uid)
+            return auth_backend.display_name(actor)
 
         audit = {
             "created_at": _localized(
@@ -3811,12 +4065,16 @@ def make_admin_router(
         data, errors = parse_submission(admin, form, only=editable, locale=site.locale)
         if admin.validate_edit is not None:
             errors.update(admin.validate_edit(instance, form))
+        errors.update(
+            await _fk_scope_errors(admin, db_session, principal, data, current=instance)
+        )
         if not errors:
             errors.update(
                 await _save_uploads(
                     admin, form, data, creating=False, locale=site.locale
                 )
             )
+        uploaded = _uploaded_keys(admin, data)
         passwords, password_errors = parse_password_submission(
             admin,
             form,
@@ -3882,6 +4140,7 @@ def make_admin_router(
                     url=f"{prefix}/m/{slug}/{identity}",
                     status_code=status.HTTP_303_SEE_OTHER,
                 )
+        await _discard_uploads(admin, uploaded)
         return _render(
             request,
             "form.html",
@@ -4039,12 +4298,20 @@ def make_admin_router(
             if not is_new and can_delete and key in to_delete:
                 existing = await _owned(key)
                 if existing is not None:
-                    await child_repo.delete(existing.id)
+                    await _delete_scoped(child_admin, db_session, principal, existing)
                 continue
             if is_new and not any(v.strip() for v in values.values()):
                 continue
             data, errs = parse_submission(
                 child_admin, values, only=names, locale=site.locale
+            )
+            current_row = None if is_new else await _owned(key)
+            if not is_new and current_row is None:
+                continue
+            errs.update(
+                await _fk_scope_errors(
+                    child_admin, db_session, principal, data, current=current_row
+                )
             )
             if errs:
                 error_rows.append((key, values, errs))
@@ -4061,9 +4328,7 @@ def make_admin_router(
                         partial(child_repo.add, child),
                     )
                 else:
-                    existing = await _owned(key)
-                    if existing is None:
-                        continue
+                    existing = current_row
                     for field_name, value in data.items():
                         setattr(existing, field_name, value)
                     _stamp_audit(existing, actor_id, creating=False)
@@ -4133,7 +4398,8 @@ def make_admin_router(
         instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
-        await admin.build_repository(db_session).delete(instance.id)
+        if not await _delete_scoped(admin, db_session, principal, instance):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         return RedirectResponse(
             url=f"{prefix}/m/{slug}/",
             status_code=status.HTTP_303_SEE_OTHER,
@@ -5120,6 +5386,36 @@ async def _system_metrics() -> dict[str, Any] | None:
 
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def _uploaded_keys(admin: Any, data: dict[str, Any]) -> list[str]:
+    """Return the storage keys :func:`_save_uploads` just wrote into ``data``.
+
+    Args:
+        admin (Any): The admin configuration.
+        data (dict[str, Any]): The parsed submission, after the uploads.
+
+    Returns:
+        list[str]: One key per upload field that received a file.
+    """
+    return [str(data[name]) for name in admin.upload_fields if data.get(name)]
+
+
+async def _discard_uploads(admin: Any, keys: list[str]) -> None:
+    """Delete files stored by a submission that was then refused.
+
+    Best effort: the row was never written, so nothing points at the file;
+    a failed delete is logged and the response goes on.
+
+    Args:
+        admin (Any): The admin configuration (owner of ``upload_storage``).
+        keys (list[str]): The keys to remove.
+    """
+    for key in keys:
+        try:
+            await admin.upload_storage.delete(key)
+        except Exception:
+            logger.exception("Admin could not delete orphan upload %r", key)
 
 
 async def _save_uploads(

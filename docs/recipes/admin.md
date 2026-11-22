@@ -1590,7 +1590,7 @@ o filtro. `row_scope=` põe o filtro no painel:
 ```python
 from typing import Any
 
-from sqlalchemy import ColumnElement
+from sqlalchemy import ColumnElement, false, true
 
 from tempest_fastapi_sdk import AdminModel
 
@@ -1598,9 +1598,11 @@ from src.admin import site
 from src.db.models import TicketModel, UserModel
 
 
-def own_company(user: UserModel, admin: AdminModel[Any]) -> ColumnElement[bool] | None:
+def own_company(user: UserModel, admin: AdminModel[Any]) -> ColumnElement[bool]:
     if user.is_superuser:
-        return None
+        return true()
+    if user.company_id is None:
+        return false()
     return TicketModel.company_id == user.company_id
 
 
@@ -1608,9 +1610,10 @@ site.register(AdminModel(model=TicketModel, row_scope=own_company))
 ```
 
 A função recebe o principal logado e o próprio `AdminModel`, e devolve
-uma condição SQLAlchemy — `None` libera todas as linhas. Pode ser `async`
-(para buscar o tenant em outra tabela, por exemplo). A condição entra
-com `AND` em **toda** rota que lê ou escreve linha do model:
+uma condição SQLAlchemy. "Todas as linhas" se diz explicitamente, com
+`sqlalchemy.true()`. Pode ser `async` (para buscar o tenant em outra
+tabela, por exemplo). A condição entra com `AND` em **toda** rota que lê
+ou escreve linha do model:
 
 - listagem, contagem (no cabeçalho e no card do dashboard) e export;
 - detail, form de edição e o `POST` dele, delete e o download de upload;
@@ -1622,24 +1625,75 @@ com `AND` em **toda** rota que lê ou escreve linha do model:
 - a prévia e a confirmação do import CSV.
 
 Linha fora do escopo responde `404` — o mesmo de uma linha que não
-existe, para a resposta não confirmar que ela está lá.
+existe, para a resposta não confirmar que ela está lá. No delete e nas
+ações em lote embutidas, a condição está no próprio `DELETE` / `UPDATE`,
+não só na leitura que veio antes.
 
-E na escrita a regra vale para o resultado: uma linha **criada**,
-**editada** ou **importada** precisa continuar dentro do escopo depois da
-escrita. O painel grava dentro de uma transação, conta a linha contra a
-condição na mesma transação e, se ela saiu, faz rollback e devolve o form
-com `This record would fall outside the rows you may manage; nothing was
+!!! danger "Devolver `None` não libera tudo"
+    Uma função de escopo que esquece o `return` devolve `None`. O painel
+    trata isso como erro: levanta `AdminRowScopeError`, registra no log o
+    nome do model e a requisição responde `500` — fecha, em vez de abrir
+    todas as linhas. Para liberar tudo, devolva `true()`.
+
+    E cuidado com o principal sem tenant: `TicketModel.company_id ==
+    user.company_id` com `company_id` `None` vira `IS NULL`, e casa com
+    toda linha sem empresa. Se esse usuário não deve ver nada, devolva
+    `false()` antes, como no exemplo.
+
+### Na escrita
+
+A regra vale para o resultado: uma linha **criada**, **editada** ou
+**importada** precisa continuar dentro do escopo depois da escrita. O
+painel grava dentro de uma transação, conta a linha contra a condição na
+mesma transação e, se ela saiu, faz rollback e devolve o form com
+`This record would fall outside the rows you may manage; nothing was
 saved.` — o operador da empresa A não cria um ticket da empresa B nem
-"move" um dos seus para lá trocando o `company_id`.
+"move" um dos seus para lá trocando o `company_id`. O mesmo vale para:
+
+- **`create_handler`**: toda linha do model que o handler insere pela
+  sessão (pelo `ctx.repository` ou por `session.add`) é contada contra o
+  escopo antes do commit. Linha inserida por SQL Core (`insert()`,
+  `bulk_create_values`), ou um handler que dá `commit` sozinho, escapa da
+  checagem.
+- **activate/deactivate em lote**: se o `is_active` novo tira alguma
+  linha do escopo (um escopo que filtra por ele), nada muda e a listagem
+  volta com o aviso.
+- **chave estrangeira**: num create, edit, inline ou import, o valor de
+  uma FK cujo model alvo tem `row_scope` precisa ser uma linha que o
+  principal alcança lá. Fora do escopo, o campo recebe `Select a valid
+  choice; that record does not exist.` — o mesmo erro de um id que não
+  existe, então um `POST` forjado não descobre ids de outro tenant.
+
+Um arquivo de upload gravado por um create ou edit que acabou recusado é
+apagado (tentativa única; falha vai para o log).
+
+No form de edição, uma FK que aponta para uma linha que o operador **não**
+alcança (ou além do `FK_OPTION_CAP`) continua selecionada: o `<select>`
+ganha uma opção com o valor atual, rotulada só com o id, e salvar sem
+mexer nela mantém a referência — antes o browser mandava a primeira
+opção e o save trocava a referência sem aviso.
+
+No painel de auditoria do detail, o autor de uma alteração aparece pelo
+nome só quando o model de usuário registrado tem `row_scope` e o
+principal alcança esse usuário (com `VIEW`); fora disso, aparece o id.
 
 !!! warning "O que o escopo não cobre"
-    O `row_scope` vale nas rotas `/m/{slug}/...` e no que elas mostram de
-    outro model. Ficam de fora o que roda código seu ou SQL livre: os
-    cards do dashboard (`dashboard_cards=`), as áreas de indicadores, os
-    mapas (`location_maps=`) e o console SQL. Numa ação customizada, os
-    `ctx.ids` já vêm filtrados, mas o `ctx.repository` é o repositório do
-    model sem filtro — o que a ação ler além dos ids é responsabilidade
-    dela.
+    - O `row_scope` vale nas rotas `/m/{slug}/...` e no que elas mostram de
+      outro model. Ficam de fora o que roda código seu ou SQL livre: os
+      cards do dashboard (`dashboard_cards=`), as áreas de indicadores, os
+      mapas (`location_maps=`) e o console SQL.
+    - Numa ação customizada, os `ctx.ids` já vêm filtrados, mas o
+      `ctx.repository` é o repositório do model sem filtro, e o painel não
+      confere o resultado: a ação pode ler além dos ids e pode **mover**
+      uma linha para fora do escopo. Isso é responsabilidade dela.
+    - O navegador de storage (`/storage`, superfície `STORAGE`) serve
+      qualquer chave do bucket. Se os uploads do model escopado moram no
+      mesmo bucket, quem tem a superfície contorna o escopo do download de
+      upload — negue `STORAGE` a esses papéis no `surface_policy`.
+    - Create e import continuam sendo oráculo de `UNIQUE` entre tenants:
+      um código que já existe na empresa B dá conflito para a empresa A.
+      A saída é a constraint `UNIQUE` composta com a coluna do tenant
+      (`UniqueConstraint("company_id", "code")`).
 
 !!! tip "Junto com o `access_policy`"
     Os dois compõem: o `access_policy` decide **se** o principal abre o

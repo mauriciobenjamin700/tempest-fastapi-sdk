@@ -12,293 +12,33 @@ every case on the same data with no ``row_scope`` and expects it to fail.
 from __future__ import annotations
 
 import re
-import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import pytest
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter
 from fastapi.routing import APIRoute
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import ColumnElement, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import true
 
-from tempest_fastapi_sdk import (
-    AdminModel,
-    AdminSite,
-    AsyncDatabaseManager,
-    BaseModel,
-    BaseRepository,
-    BaseUserModel,
-    UserModelAuthBackend,
-    make_admin_router,
-)
-from tempest_fastapi_sdk.admin import (
-    AdminActionContext,
-    AdminActionResult,
-    Inline,
-    admin_action,
-)
+from tempest_fastapi_sdk import AdminModel, AsyncDatabaseManager
+from tempest_fastapi_sdk.admin import AdminRowScopeError
 from tempest_fastapi_sdk.admin.csv_import import sign_import_payload
-from tempest_fastapi_sdk.testing import admin_csrf_token, admin_login
-from tempest_fastapi_sdk.utils import LocalUploadStorage
-
-SECRET = "s" * 48
-OWN = "acme"
-OTHER = "globex"
-
-
-class ScopeUser(BaseUserModel):
-    """Principal carrying the company its scope is keyed on."""
-
-    __tablename__ = "admin_scope_users"
-    company: Mapped[str] = mapped_column(String(32), nullable=False, default=OWN)
-
-
-class ScopeCategory(BaseModel):
-    """Autocomplete target of :class:`ScopeTicket`."""
-
-    __tablename__ = "admin_scope_categories"
-    name: Mapped[str] = mapped_column(String(64), nullable=False)
-    company: Mapped[str] = mapped_column(String(32), nullable=False)
-
-
-class ScopeTicket(BaseModel):
-    """The scoped model under test."""
-
-    __tablename__ = "admin_scope_tickets"
-    name: Mapped[str] = mapped_column(String(64), nullable=False)
-    company: Mapped[str] = mapped_column(String(32), nullable=False)
-    attachment: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    category_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("admin_scope_categories.id"), nullable=True
-    )
-
-
-class ScopeNote(BaseModel):
-    """Editable inline child of :class:`ScopeTicket`; its FK is a select."""
-
-    __tablename__ = "admin_scope_notes"
-    body: Mapped[str] = mapped_column(String(64), nullable=False)
-    company: Mapped[str] = mapped_column(String(32), nullable=False)
-    ticket_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("admin_scope_tickets.id"), nullable=False
-    )
-
-
-def _company_scope(column: Any) -> Callable[[Any, Any], ColumnElement[bool]]:
-    """Build a sync scope keeping the principal's own company.
-
-    Args:
-        column (Any): The model's ``company`` column.
-
-    Returns:
-        Callable[[Any, Any], ColumnElement[bool]]: The ``row_scope``.
-    """
-
-    def scope(user: Any, admin: Any) -> ColumnElement[bool]:
-        """Return ``company == user.company``.
-
-        Args:
-            user (Any): The principal.
-            admin (Any): The admin asked about.
-
-        Returns:
-            ColumnElement[bool]: The clause.
-        """
-        return column == user.company
-
-    return scope
-
-
-async def _async_ticket_scope(user: Any, admin: Any) -> ColumnElement[bool]:
-    """Async scope for tickets, so both call styles are exercised.
-
-    Args:
-        user (Any): The principal.
-        admin (Any): The admin asked about.
-
-    Returns:
-        ColumnElement[bool]: ``ScopeTicket.company == user.company``.
-    """
-    return ScopeTicket.company == user.company
-
-
-ACTION_IDS: list[list[str]] = []
-"""What :func:`record_selection` saw, one entry per run."""
-
-
-@admin_action(label="Record selection")
-async def record_selection(ctx: AdminActionContext) -> AdminActionResult:
-    """Record the ids a custom action receives.
-
-    Args:
-        ctx (AdminActionContext): The selection.
-
-    Returns:
-        AdminActionResult: A plain success.
-    """
-    ACTION_IDS.append(sorted(str(row_id) for row_id in ctx.ids))
-    return AdminActionResult(message="recorded")
-
-
-@dataclass
-class ScopeWorld:
-    """What one case needs: a signed-in client and the seeded rows."""
-
-    client: AsyncClient
-    db: AsyncDatabaseManager
-    csrf: str
-    principal_id: str
-    ids: dict[str, uuid.UUID] = field(default_factory=dict)
-
-    async def ticket(self, key: str) -> ScopeTicket | None:
-        """Reload a seeded ticket.
-
-        Args:
-            key (str): ``"in"`` or ``"out"``.
-
-        Returns:
-            ScopeTicket | None: The row, or ``None`` when deleted.
-        """
-        async with self.db.get_session_context() as session:
-            repo: BaseRepository[ScopeTicket] = BaseRepository(
-                session, model=ScopeTicket
-            )
-            return await repo.get_or_none({"id": self.ids[f"ticket_{key}"]})
-
-    async def note(self, key: str) -> ScopeNote | None:
-        """Reload a seeded note.
-
-        Args:
-            key (str): ``"in"`` or ``"out"``.
-
-        Returns:
-            ScopeNote | None: The row.
-        """
-        async with self.db.get_session_context() as session:
-            repo: BaseRepository[ScopeNote] = BaseRepository(session, model=ScopeNote)
-            return await repo.get_or_none({"id": self.ids[f"note_{key}"]})
-
-    async def ticket_count(self) -> int:
-        """Count every ticket, scope or not.
-
-        Returns:
-            int: The row count.
-        """
-        async with self.db.get_session_context() as session:
-            repo: BaseRepository[ScopeTicket] = BaseRepository(
-                session, model=ScopeTicket
-            )
-            return await repo.count()
-
-
-def _build(
-    db: AsyncDatabaseManager, upload_root: Path, *, scoped: bool
-) -> tuple[FastAPI, APIRouter]:
-    """Mount the admin with or without ``row_scope`` on the three models.
-
-    Args:
-        db (AsyncDatabaseManager): The connected database.
-        upload_root (Path): Directory of the upload storage.
-        scoped (bool): Whether the models declare their ``row_scope``.
-
-    Returns:
-        tuple[FastAPI, APIRouter]: The app and the admin router.
-    """
-    site = AdminSite(title="Scope")
-    site.register(
-        AdminModel(
-            ScopeCategory,
-            search_fields=["name"],
-            row_scope=_company_scope(ScopeCategory.company) if scoped else None,
-        )
-    )
-    site.register(
-        AdminModel(
-            ScopeTicket,
-            list_display=["name", "company"],
-            list_filter=["category_id"],
-            search_fields=["name"],
-            autocomplete_fields=["category_id"],
-            upload_fields=["attachment"],
-            upload_storage=LocalUploadStorage(upload_root),
-            can_import=True,
-            inlines=[Inline(ScopeNote, "ticket_id", editable=True)],
-            actions=[record_selection],
-            row_scope=_async_ticket_scope if scoped else None,
-        )
-    )
-    site.register(
-        AdminModel(
-            ScopeNote,
-            search_fields=["body"],
-            row_scope=_company_scope(ScopeNote.company) if scoped else None,
-        )
-    )
-    router = make_admin_router(
-        site,
-        db=db,
-        auth_backend=UserModelAuthBackend(ScopeUser),
-        secret_key=SECRET,
-        cookie_secure=False,
-    )
-    app = FastAPI()
-    app.include_router(router)
-    return app, router
-
-
-async def _seed(db: AsyncDatabaseManager, upload_root: Path) -> dict[str, uuid.UUID]:
-    """Insert one row per company of each model, and the operator.
-
-    Args:
-        db (AsyncDatabaseManager): The connected database.
-        upload_root (Path): Where the attachments are written.
-
-    Returns:
-        dict[str, uuid.UUID]: ``{ticket_in, ticket_out, category_in, ...}``.
-    """
-    async with db.get_session_context() as session:
-        user = ScopeUser(
-            email="op@example.com", hashed_password="", is_admin=True, company=OWN
-        )
-        user.set_password("hunter2")
-        cat_in = ScopeCategory(name="CategoryInside", company=OWN)
-        cat_out = ScopeCategory(name="CategoryOutside", company=OTHER)
-        session.add_all([user, cat_in, cat_out])
-        await session.flush()
-        ticket_in = ScopeTicket(
-            name="TicketInside",
-            company=OWN,
-            attachment="in.txt",
-            category_id=cat_in.id,
-        )
-        ticket_out = ScopeTicket(
-            name="TicketOutside",
-            company=OTHER,
-            attachment="out.txt",
-            category_id=cat_out.id,
-        )
-        session.add_all([ticket_in, ticket_out])
-        await session.flush()
-        note_in = ScopeNote(body="NoteInside", company=OWN, ticket_id=ticket_in.id)
-        note_out = ScopeNote(body="NoteOutside", company=OTHER, ticket_id=ticket_in.id)
-        session.add_all([note_in, note_out])
-        await session.commit()
-        ids = {
-            "operator": user.id,
-            "ticket_in": ticket_in.id,
-            "ticket_out": ticket_out.id,
-            "category_in": cat_in.id,
-            "category_out": cat_out.id,
-            "note_in": note_in.id,
-            "note_out": note_out.id,
-        }
-    (upload_root / "in.txt").write_text("inside")
-    (upload_root / "out.txt").write_text("outside")
-    return ids
+from tests.admin.row_scope_world import (
+    ACTION_IDS,
+    NOTES,
+    OTHER,
+    OWN,
+    SECRET,
+    TICKETS,
+    ScopeLeakError,
+    ScopeNote,
+    ScopeTicket,
+    ScopeWorld,
+    _build,
+    hidden,
+    new_database,
+    open_world,
+)
 
 
 @pytest.fixture
@@ -308,41 +48,10 @@ async def database() -> AsyncIterator[AsyncDatabaseManager]:
     Yields:
         AsyncDatabaseManager: The connected manager.
     """
-    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
-    await db.connect()
-    await db.create_tables()
+    db = await new_database()
     yield db
     await db.drop_tables()
     await db.disconnect()
-
-
-async def _world(
-    db: AsyncDatabaseManager, tmp_path: Path, *, scoped: bool
-) -> AsyncIterator[ScopeWorld]:
-    """Seed, mount and sign in.
-
-    Args:
-        db (AsyncDatabaseManager): The database.
-        tmp_path (Path): Scratch directory for uploads.
-        scoped (bool): Whether the scope is declared.
-
-    Yields:
-        ScopeWorld: The signed-in world.
-    """
-    ids = await _seed(db, tmp_path)
-    app, _router = _build(db, tmp_path, scoped=scoped)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        await admin_login(client, "op@example.com", "hunter2")
-        page = await client.get(f"/admin/m/{ScopeTicket.__tablename__}/")
-        yield ScopeWorld(
-            client=client,
-            db=db,
-            csrf=admin_csrf_token(page.text),
-            principal_id=str(ids["operator"]),
-            ids=ids,
-        )
 
 
 @pytest.fixture
@@ -354,7 +63,7 @@ async def scoped_world(
     Yields:
         ScopeWorld: The signed-in world.
     """
-    async for world in _world(database, tmp_path, scoped=True):
+    async for world in open_world(database, tmp_path, scoped=True):
         yield world
 
 
@@ -367,12 +76,8 @@ async def unscoped_world(
     Yields:
         ScopeWorld: The signed-in world.
     """
-    async for world in _world(database, tmp_path, scoped=False):
+    async for world in open_world(database, tmp_path, scoped=False):
         yield world
-
-
-TICKETS = f"/admin/m/{ScopeTicket.__tablename__}"
-NOTES = f"/admin/m/{ScopeNote.__tablename__}"
 
 
 async def case_list(world: ScopeWorld) -> None:
@@ -380,10 +85,10 @@ async def case_list(world: ScopeWorld) -> None:
     page = await world.client.get(f"{TICKETS}/")
     assert page.status_code == 200
     assert "TicketInside" in page.text
-    assert "TicketOutside" not in page.text
-    assert "1 record" in page.text
     assert "CategoryInside" in page.text
-    assert "CategoryOutside" not in page.text
+    hidden("TicketOutside" not in page.text, "foreign ticket listed")
+    hidden("1 record" in page.text, "foreign ticket counted")
+    hidden("CategoryOutside" not in page.text, "foreign category in the filter")
 
 
 async def case_export(world: ScopeWorld) -> None:
@@ -391,7 +96,7 @@ async def case_export(world: ScopeWorld) -> None:
     resp = await world.client.get(f"{TICKETS}/export.csv")
     assert resp.status_code == 200
     assert "TicketInside" in resp.text
-    assert "TicketOutside" not in resp.text
+    hidden("TicketOutside" not in resp.text, "foreign ticket exported")
 
 
 async def case_create_form(world: ScopeWorld) -> None:
@@ -399,7 +104,7 @@ async def case_create_form(world: ScopeWorld) -> None:
     page = await world.client.get(f"{NOTES}/new")
     assert page.status_code == 200
     assert "TicketInside" in page.text
-    assert "TicketOutside" not in page.text
+    hidden("TicketOutside" not in page.text, "foreign ticket offered as parent")
 
 
 async def case_import_form(world: ScopeWorld) -> None:
@@ -423,9 +128,12 @@ async def case_import_submit(world: ScopeWorld) -> None:
         },
     )
     assert resp.status_code == 200
-    assert "1 of 2 row(s) will be imported." in resp.text
-    assert "outside the rows you may manage" in resp.text
-    assert 'name="payload"' not in resp.text
+    hidden(
+        "1 of 2 row(s) will be imported." in resp.text
+        and "outside the rows you may manage" in resp.text
+        and 'name="payload"' not in resp.text,
+        "foreign row accepted by the preview",
+    )
     assert await world.ticket_count() == before
 
 
@@ -449,7 +157,7 @@ async def case_import_confirm(world: ScopeWorld) -> None:
             "submission_nonce": nonce.group(1),
         },
     )
-    assert resp.status_code == 400
+    hidden(resp.status_code == 400, "foreign row committed by the confirm")
     assert "outside the rows you may manage" in resp.text
     assert await world.ticket_count() == before
 
@@ -461,7 +169,7 @@ async def case_create_submit(world: ScopeWorld) -> None:
         f"{TICKETS}/new",
         data={"csrf_token": world.csrf, "name": "MadeOutside", "company": OTHER},
     )
-    assert refused.status_code == 400
+    hidden(refused.status_code == 400, "foreign row created")
     assert "outside the rows you may manage" in refused.text
     assert await world.ticket_count() == before
     accepted = await world.client.post(
@@ -483,7 +191,7 @@ async def case_bulk(world: ScopeWorld) -> None:
         },
     )
     assert resp.status_code == 303
-    assert await world.ticket("out") is not None
+    hidden(await world.ticket("out") is not None, "foreign ticket bulk-deleted")
     resp = await world.client.post(
         f"{TICKETS}/bulk",
         data={
@@ -502,7 +210,7 @@ async def case_upload_download(world: ScopeWorld) -> None:
     out = await world.client.get(
         f"{TICKETS}/{world.ids['ticket_out']}/upload/attachment"
     )
-    assert out.status_code == 404
+    hidden(out.status_code == 404, "foreign attachment served")
     inside = await world.client.get(
         f"{TICKETS}/{world.ids['ticket_in']}/upload/attachment"
     )
@@ -512,11 +220,11 @@ async def case_upload_download(world: ScopeWorld) -> None:
 async def case_detail(world: ScopeWorld) -> None:
     """Detail answers ``404`` outside; inside, the inline hides foreign notes."""
     out = await world.client.get(f"{TICKETS}/{world.ids['ticket_out']}")
-    assert out.status_code == 404
+    hidden(out.status_code == 404, "foreign detail served")
     inside = await world.client.get(f"{TICKETS}/{world.ids['ticket_in']}")
     assert inside.status_code == 200
     assert "NoteInside" in inside.text
-    assert "NoteOutside" not in inside.text
+    hidden("NoteOutside" not in inside.text, "foreign note in the inline")
 
 
 async def case_autocomplete(world: ScopeWorld) -> None:
@@ -524,13 +232,13 @@ async def case_autocomplete(world: ScopeWorld) -> None:
     resp = await world.client.get(f"{TICKETS}/autocomplete/category_id?q=Category")
     assert resp.status_code == 200
     assert "CategoryInside" in resp.text
-    assert "CategoryOutside" not in resp.text
+    hidden("CategoryOutside" not in resp.text, "foreign category autocompleted")
 
 
 async def case_edit_form(world: ScopeWorld) -> None:
     """The edit form answers ``404`` outside the scope."""
     out = await world.client.get(f"{TICKETS}/{world.ids['ticket_out']}/edit")
-    assert out.status_code == 404
+    hidden(out.status_code == 404, "foreign edit form served")
     inside = await world.client.get(f"{TICKETS}/{world.ids['ticket_in']}/edit")
     assert inside.status_code == 200
 
@@ -541,14 +249,14 @@ async def case_edit_submit(world: ScopeWorld) -> None:
         f"{TICKETS}/{world.ids['ticket_out']}/edit",
         data={"csrf_token": world.csrf, "name": "Hijacked", "company": OTHER},
     )
-    assert out.status_code == 404
+    hidden(out.status_code == 404, "foreign row edited")
     outside = await world.ticket("out")
     assert outside is not None and outside.name == "TicketOutside"
     moved = await world.client.post(
         f"{TICKETS}/{world.ids['ticket_in']}/edit",
         data={"csrf_token": world.csrf, "name": "TicketInside", "company": OTHER},
     )
-    assert moved.status_code == 400
+    hidden(moved.status_code == 400, "row moved out of the scope")
     assert "outside the rows you may manage" in moved.text
     inside = await world.ticket("in")
     assert inside is not None and inside.company == OWN
@@ -560,7 +268,7 @@ async def case_inline_submit(world: ScopeWorld) -> None:
         f"{TICKETS}/{world.ids['ticket_out']}/inlines/{ScopeNote.__tablename__}",
         data={"csrf_token": world.csrf},
     )
-    assert out.status_code == 404
+    hidden(out.status_code == 404, "foreign formset served")
     resp = await world.client.post(
         f"{TICKETS}/{world.ids['ticket_in']}/inlines/{ScopeNote.__tablename__}",
         data={
@@ -573,7 +281,10 @@ async def case_inline_submit(world: ScopeWorld) -> None:
     )
     assert resp.status_code == 303
     foreign = await world.note("out")
-    assert foreign is not None and foreign.body == "NoteOutside"
+    hidden(
+        foreign is not None and foreign.body == "NoteOutside",
+        "foreign note edited through the formset",
+    )
     own = await world.note("in")
     assert own is not None and own.body == "EditedInside"
 
@@ -584,7 +295,7 @@ async def case_delete(world: ScopeWorld) -> None:
         f"{NOTES}/{world.ids['note_out']}/delete",
         data={"csrf_token": world.csrf},
     )
-    assert out.status_code == 404
+    hidden(out.status_code == 404, "foreign note deleted")
     assert await world.note("out") is not None
     inside = await world.client.post(
         f"{NOTES}/{world.ids['note_in']}/delete",
@@ -689,7 +400,7 @@ async def test_route_honours_row_scope(
 async def test_case_fails_without_the_scope(
     route: tuple[str, str], unscoped_world: ScopeWorld
 ) -> None:
-    with pytest.raises(AssertionError):
+    with pytest.raises(ScopeLeakError):
         await CASES[route](unscoped_world)
 
 
@@ -724,7 +435,15 @@ async def test_dashboard_count_is_scoped(scoped_world: ScopeWorld) -> None:
 
 
 @pytest.mark.asyncio
-async def test_scope_returning_none_leaves_rows_unrestricted() -> None:
-    admin = AdminModel(ScopeTicket, row_scope=lambda user, admin: None)
-    assert await admin.scope_for(object()) is None
+async def test_scope_returning_none_fails_closed() -> None:
+    forgot_return = AdminModel(ScopeTicket, row_scope=lambda user, admin: None)
+    with pytest.raises(AdminRowScopeError, match="not a SQLAlchemy clause"):
+        await forgot_return.scope_for(object())
+
+
+@pytest.mark.asyncio
+async def test_true_is_the_explicit_every_row() -> None:
+    every_row = AdminModel(ScopeTicket, row_scope=lambda user, admin: true())
+    clause = await every_row.scope_for(object())
+    assert clause is not None
     assert await AdminModel(ScopeTicket).scope_for(object()) is None
