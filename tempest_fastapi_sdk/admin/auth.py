@@ -161,6 +161,24 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         """
         return bool(getattr(target, "is_admin", False))
 
+    async def is_admin_identity(self, session: AsyncSession, account_id: str) -> bool:
+        """Whether ``account_id`` names an account that can use the admin.
+
+        The impersonation flow asks this about the ``id`` that goes into the
+        credential, on top of :meth:`is_admin_account` on the row, so a
+        model whose rows share their primary key with the user table (a 1:1
+        profile) cannot hand out an admin's identity. The default answers
+        whether :meth:`load_principal` finds a principal for that id.
+
+        Args:
+            session (AsyncSession): A live DB session.
+            account_id (str): The account's id, as text.
+
+        Returns:
+            bool: ``True`` to refuse the impersonation.
+        """
+        return await self.load_principal(session, account_id) is not None
+
     def credential_fingerprint(self, principal: PrincipalT) -> str | None:
         """Return a value that changes whenever the principal's credential does.
 
@@ -431,6 +449,30 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         if bool(getattr(target, "is_admin", False)):
             return True
         return isinstance(target, self.user_model) and self.is_authorized(target)
+
+    async def is_admin_identity(self, session: AsyncSession, account_id: str) -> bool:
+        """Whether the :attr:`user_model` row with ``account_id`` is an admin.
+
+        Reads the row whatever its ``is_active`` or MFA state — unlike
+        :meth:`load_principal`, which drops an inactive or MFA-less admin —
+        and answers :meth:`is_admin_account` for it.
+
+        Args:
+            session (AsyncSession): A live DB session.
+            account_id (str): The account's id, as text.
+
+        Returns:
+            bool: ``True`` when a user row with that id is an admin account.
+        """
+        try:
+            uid = UUID(account_id)
+        except (ValueError, TypeError):
+            return False
+        result = await session.execute(
+            select(self.user_model).where(self.user_model.id == uid)
+        )
+        user = result.scalar_one_or_none()
+        return user is not None and self.is_admin_account(user)
 
     def principal_id(self, principal: BaseUserModel) -> str:
         """Return the ``id`` UUID hex for serialization.

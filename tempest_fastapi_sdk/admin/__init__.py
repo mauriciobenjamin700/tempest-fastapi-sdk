@@ -82,6 +82,9 @@ from tempest_fastapi_sdk.admin.impersonation import (
     IMPERSONATION_TOKEN_PLACEHOLDER as IMPERSONATION_TOKEN_PLACEHOLDER,
 )
 from tempest_fastapi_sdk.admin.impersonation import (
+    AdminImpersonateAccount as AdminImpersonateAccount,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
     AdminImpersonateHandler as AdminImpersonateHandler,
 )
 from tempest_fastapi_sdk.admin.impersonation import (
@@ -140,6 +143,12 @@ from tempest_fastapi_sdk.admin.permissions import (
 from tempest_fastapi_sdk.admin.permissions import AdminSurfaceEnum as AdminSurfaceEnum
 from tempest_fastapi_sdk.admin.permissions import (
     AdminSurfacePolicy as AdminSurfacePolicy,
+)
+from tempest_fastapi_sdk.admin.router import (
+    ADMIN_SEARCH_MAX_QUERY_LENGTH as ADMIN_SEARCH_MAX_QUERY_LENGTH,
+)
+from tempest_fastapi_sdk.admin.router import (
+    ADMIN_SEARCH_MAX_TERMS as ADMIN_SEARCH_MAX_TERMS,
 )
 from tempest_fastapi_sdk.admin.router import (
     ADMIN_SEARCH_RESULTS_PER_MODEL as ADMIN_SEARCH_RESULTS_PER_MODEL,
@@ -222,6 +231,8 @@ __all__: list[str] = [
     "ADMIN_IMPORT_PREVIEW_ROWS",
     "ADMIN_LOCALES",
     "ADMIN_MESSAGES",
+    "ADMIN_SEARCH_MAX_QUERY_LENGTH",
+    "ADMIN_SEARCH_MAX_TERMS",
     "ADMIN_SEARCH_RESULTS_PER_MODEL",
     "DANGEROUS_TRANSITIONS",
     "DEFAULT_ADMIN_LOCALE",
@@ -251,6 +262,7 @@ __all__: list[str] = [
     "AdminCountStrategy",
     "AdminCountStrategyEnum",
     "AdminCreateHandler",
+    "AdminImpersonateAccount",
     "AdminImpersonateHandler",
     "AdminLocale",
     "AdminLoginCSRF",

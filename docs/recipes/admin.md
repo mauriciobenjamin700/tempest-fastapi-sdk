@@ -1813,7 +1813,7 @@ app.include_router(
 )
 ```
 
-O token assinado leva `sub` (o `id` do alvo), `typ` = `"access"` — então
+O token assinado leva `sub` (o `id` da conta), `typ` = `"access"` — então
 `make_bearer_token_dependency` e `make_jwt_user_dependency` com o mesmo
 segredo o aceitam como qualquer access token —, o `email` do alvo quando
 existe e `act = {"sub": "<id do operador>"}`, o claim de ator da RFC 8693:
@@ -1823,8 +1823,57 @@ precisa ter `{token}` (senão `ValueError` na construção); prefira pôr o
 token no fragmento (`#`), que o browser não manda ao servidor da aplicação
 nem no `Referer`.
 
+Fora o `act`, é um access token comum: **toda** rota que aceita o token do
+próprio usuário aceita este. Para uma rota que não deve rodar numa sessão
+de impersonação — trocar a senha, mover dinheiro —, `token_actor(claims)`
+devolve o operador por trás (`None` na sessão do próprio usuário; um `act`
+malformado vem como `"unknown"`, nunca como `None`):
+
+```python
+from typing import Any
+
+from fastapi import Depends
+
+from tempest_fastapi_sdk import ForbiddenException, token_actor
+
+from src.api.dependencies.auth import bearer
+
+
+async def own_session_only(
+    claims: dict[str, Any] = Depends(bearer),
+) -> dict[str, Any]:
+    if token_actor(claims) is not None:
+        raise ForbiddenException(message="Indisponível durante impersonação.")
+    return claims
+```
+
+Se o `impersonate=` está num model que não é a conta — um perfil, uma
+matrícula —, diga qual conta ele representa com `impersonate_account=`
+(sync ou `async`). O handler recebe essa conta, e é sobre ela que a recusa
+de admin roda; devolver `None` responde `404`:
+
+```python
+from tempest_fastapi_sdk import AdminModel, JWTUtils
+from tempest_fastapi_sdk.admin import make_jwt_impersonation_handler
+
+from src.admin import site
+from src.core.settings import settings
+from src.db.models import MembershipModel
+
+site.register(
+    AdminModel(
+        model=MembershipModel,
+        impersonate=make_jwt_impersonation_handler(
+            JWTUtils(settings.JWT_SECRET),
+            redirect_url="https://app.example.com/impersonate#token={token}",
+        ),
+        impersonate_account=lambda membership: membership.user,
+    )
+)
+```
+
 Outro mecanismo de login (link mágico, sessão por cookie) é só outra
-função com a mesma forma — `handler(operador, alvo) -> str`, sync ou
+função com a mesma forma — `handler(operador, conta) -> str`, sync ou
 `async`:
 
 ```python
@@ -1837,11 +1886,21 @@ from src.services.magic_links import issue_magic_link
 
 async def enter_as(operator: UserModel, target: UserModel) -> str:
     link = await issue_magic_link(target.id, actor_id=operator.id)
-    return f"https://app.example.com/magic/{link}"
+    return f"https://app.example.com/magic#link={link}"
 
 
 site.register(AdminModel(model=UserModel, impersonate=enter_as))
 ```
+
+Como no JWT, a credencial vai no fragmento: no caminho ela entraria no
+log de acesso do servidor da aplicação.
+
+!!! danger "O handler entra como a conta que recebeu"
+    A recusa de alvo admin roda sobre a conta que o handler recebe. Um
+    handler que entra como **outra** coisa — `target.owner`, um id lido de
+    outra tabela — passa ao largo dela e precisa recusar conta admin
+    sozinho. Ponha o `impersonate=` no model da conta, ou use
+    `impersonate_account=`.
 
 O fluxo no painel:
 
@@ -1849,9 +1908,14 @@ O fluxo no painel:
 2. Ele abre uma página de confirmação; o botão de confirmar faz `POST` com
    o token CSRF e um nonce de uso único — recarregar a resposta não entra
    de novo, volta para a listagem com o aviso de envio repetido.
-3. O handler roda e o browser recebe `303` para a URL devolvida, com
+3. Com `audit_model`, a entrada de auditoria é gravada (commit) **antes**
+   de o handler rodar; se a gravação falha, o handler não roda — nenhuma
+   credencial é emitida — e a requisição termina em erro, sem `303`.
+4. O handler roda e o browser recebe `303` para a URL devolvida, com
    `Cache-Control: no-store` e `Referrer-Policy: no-referrer`. Um
-   `AppException` do handler volta para a confirmação com a mensagem.
+   `AppException` do handler volta para a confirmação com a mensagem e vai
+   para o log em `WARNING`; a entrada de auditoria já gravada registra a
+   tentativa.
 
 !!! danger "`IMPERSONATE` nunca vem de graça"
     Sem `access_policy`, o admin libera tudo — **menos** impersonar: o
@@ -1866,16 +1930,19 @@ Mais regras do caminho:
 - **Escopo.** O alvo precisa estar no `row_scope` do model; fora dele é
   `404`, como em toda rota de linha.
 - **Admin não é alvo.** Uma conta que entra no próprio admin é recusada
-  (`403`, sem formulário). Quem decide é
-  `AdminAuthBackend.is_admin_account(alvo)`: por padrão, um `is_admin`
-  verdadeiro; no `UserModelAuthBackend`, também o que o seu
-  `is_authorized` responder — quem autoriza por papel recusa aquele papel.
-  Sobrescreva o método para outra regra.
+  (`403`, sem formulário). São três perguntas ao backend, e qualquer uma
+  recusa: `is_admin_account` sobre a linha e sobre a conta resolvida (por
+  padrão, um `is_admin` verdadeiro; no `UserModelAuthBackend`, também o que
+  o seu `is_authorized` responder — quem autoriza por papel recusa aquele
+  papel), e `is_admin_identity(session, id_da_conta)` sobre o `id` que vai
+  na credencial. Esta última pega o perfil 1:1 que divide a chave primária
+  com um usuário admin: no `UserModelAuthBackend` ela lê a linha do usuário
+  com aquele id mesmo inativa ou sem MFA. Sobrescreva os métodos para outra
+  regra.
 - **Registro.** Toda impersonação gera um log `INFO` com o operador, o
   model e o id do alvo — nunca a URL, que carrega a credencial. Com
   `audit_model`, grava também uma entrada `event` no alvo, autor = o
-  operador, **antes** do redirect: se a gravação falhar, a URL não é
-  entregue. Com `AuditRequestMixin` na tabela, o evento
+  operador, **antes** do handler (veja o passo 3). Com `AuditRequestMixin` na tabela, o evento
   (`admin.impersonate`), o IP e o user agent vão para as colunas próprias;
   sem ele, o nome fica em `context["event"]`. A timeline do detail mostra a
   entrada como **logged in as** / **entrou como**.
@@ -2324,8 +2391,16 @@ preferir o enum à string.
     conjunto, e o número estimado seria de linhas que ele não alcança — no
     caso do escopo, o tamanho da tabela de outros tenants. Nesses casos a
     contagem volta a ser exata (`COUNT` com o mesmo `WHERE`). Também conta
-    exato fora do PostgreSQL (SQLite inclusive) e numa tabela que o
-    PostgreSQL nunca analisou (`reltuples = -1`).
+    exato fora do PostgreSQL (SQLite inclusive), numa tabela que o
+    PostgreSQL nunca analisou (`reltuples = -1`) e numa subclasse de herança
+    de tabela única (a estatística da tabela conta as classes irmãs).
+
+!!! warning "Com `repository_class=`, vale `exact`"
+    `estimate` e `none` montam o próprio `SELECT` (e o `estimate` lê o
+    catálogo), o que passaria ao largo de um `repository_class` que filtra
+    — um isolamento de tenant num `paginate` sobrescrito, por exemplo. Com
+    `repository_class` configurado, a listagem e o card usam o `paginate` /
+    `count` do seu repositório, como no `exact`.
 
 Medido num `postgres:16-alpine` capturando os statements de uma página:
 com `"estimate"` sobre 40 linhas analisadas, a página rodou o `SELECT` da
@@ -2369,8 +2444,12 @@ app.include_router(
 
 A busca respeita o que o resto do painel respeita: model sem `VIEW` na
 `access_policy` não entra, e cada model é consultado com o próprio
-`row_scope` — uma linha fora do escopo não aparece. Termo vazio (ou só
-espaços) mostra a página sem rodar consulta.
+`row_scope` — uma linha fora do escopo não aparece. Model com
+`repository_class` é consultado pelo `paginate` do repositório. Termo vazio
+(ou só espaços) mostra a página sem rodar consulta, e termo com mais de
+`ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou mais de
+`ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` com o aviso, também
+sem consulta — cada palavra vira um `ILIKE` por campo de cada model.
 
 #### 4. Defaults de segurança de sessão
 

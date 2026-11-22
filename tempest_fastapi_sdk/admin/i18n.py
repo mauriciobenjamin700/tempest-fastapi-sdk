@@ -406,6 +406,10 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "search.prompt": "Type a term to search every model.",
         "search.see_all": "See all",
         "search.title": "Search",
+        "search.too_long": (
+            "The search term is too long: up to {max_length} characters and "
+            "{max_terms} words."
+        ),
     },
     "pt-BR": {
         "action.rows_selected.one": "{count} linha selecionada.",
@@ -800,6 +804,10 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
         "search.prompt": "Digite um termo para buscar em todos os models.",
         "search.see_all": "Ver todos",
         "search.title": "Busca",
+        "search.too_long": (
+            "O termo de busca é longo demais: até {max_length} caracteres e "
+            "{max_terms} palavras."
+        ),
     },
 }
 """``{locale: {key: template}}``; templates use ``str.format`` placeholders."""

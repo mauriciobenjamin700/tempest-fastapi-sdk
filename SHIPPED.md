@@ -4855,11 +4855,16 @@ e dá `expunge` antes do commit.
 
 ### Admin: impersonar, contagem estimada, restaurar pelo histórico e busca global (#804, 2026-11-22)
 
-`AdminModel(impersonate=...)` + `AdminPermissionEnum.IMPERSONATE` (negado sem
-`access_policy`), confirmação com CSRF e nonce, recusa por
-`AdminAuthBackend.is_admin_account`, entrada `event` `admin.impersonate` no
-`audit_model` antes do redirect e log `INFO` sem a URL;
-`make_jwt_impersonation_handler` (access token curto, `act` RFC 8693).
+`AdminModel(impersonate=..., impersonate_account=...)` +
+`AdminPermissionEnum.IMPERSONATE` (negado sem `access_policy`), confirmação
+com CSRF e nonce, recusa por `AdminAuthBackend.is_admin_account` (linha e
+conta) e `is_admin_identity` (o `id` da credencial), entrada `event`
+`admin.impersonate` no `audit_model` antes do handler e log `INFO` sem a URL;
+`make_jwt_impersonation_handler` (access token curto, `act` RFC 8693) e
+`token_actor` / `ACT_CLAIM` para o app recusar sessão impersonada.
+`estimate`/`none` e a busca passam pelo `repository_class` quando há um;
+STI conta exato; busca limita termo (200 caracteres, 8 palavras).
+Testes da revisão: `tests/admin/test_impersonation_hardening.py`.
 `AdminModel(count_strategy="exact"|"estimate"|"none")`
 (`AdminCountStrategyEnum`): `reltuples` só sem busca/filtro/lens/escopo
 efetivo, exato no resto; `"none"` busca `page_size + 1`. "Restaurar" na

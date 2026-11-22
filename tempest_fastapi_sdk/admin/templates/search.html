@@ -5,10 +5,12 @@
   <header class="tempest-admin-list__header">
     <div class="tempest-admin-page-title">
       <h1>{{ t("search.title") }}</h1>
-      {% if query %}<span class="tempest-admin-count">{{ t("search.for", query=query) }}</span>{% endif %}
+      {% if query and not too_long %}<span class="tempest-admin-count">{{ t("search.for", query=query) }}</span>{% endif %}
     </div>
   </header>
-  {% if not query %}
+  {% if too_long %}
+  <p class="tempest-admin-form__error">{{ t("search.too_long", max_length=max_length, max_terms=max_terms) }}</p>
+  {% elif not query %}
   <p class="tempest-admin-empty">{{ t("search.prompt") }}</p>
   {% elif not groups %}
   <p class="tempest-admin-empty">{{ t("search.empty", query=query) }}</p>

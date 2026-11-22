@@ -20,7 +20,10 @@ from tempest_fastapi_sdk.admin.actions import (
     AnyActionHandler,
     resolve_admin_action,
 )
-from tempest_fastapi_sdk.admin.impersonation import AdminImpersonateHandler
+from tempest_fastapi_sdk.admin.impersonation import (
+    AdminImpersonateAccount,
+    AdminImpersonateHandler,
+)
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, audit_redacted_columns
 from tempest_fastapi_sdk.db.expressions import resolve_filter_key
@@ -473,19 +476,29 @@ class AdminModel(Generic[ModelT]):
 
         impersonate (AdminImpersonateHandler | None): Turns a row of this
             model into a "log in as" target. The detail view gains a button
-            that opens a confirmation page; confirming calls
-            ``impersonate(operator, row)`` (sync or async) and redirects the
-            browser to the URL it returns. Needs
-            ``AdminPermissionEnum.IMPERSONATE``, which no principal has
-            unless ``access_policy`` grants it by name — without an
-            ``access_policy`` the button never shows. The row must be inside
-            ``row_scope``, and a row that is itself an admin account is
-            refused
-            (:meth:`~tempest_fastapi_sdk.admin.AdminAuthBackend.is_admin_account`).
-            Each impersonation is logged at ``INFO`` (operator, model, row — never
-            the URL) and, with ``audit_model`` set, written there as an
-            ``event`` entry before the redirect. See
+            that opens a confirmation page; confirming resolves the account
+            (``impersonate_account``), records the attempt, calls
+            ``impersonate(operator, account)`` (sync or async) and redirects
+            the browser to the URL it returns. Needs
+            ``AdminPermissionEnum.IMPERSONATE``, which ``make_admin_router``
+            never grants without an ``access_policy``; with one, whatever
+            the policy answers for it decides — a deny-list policy ("all but
+            ``DELETE``") grants it too. The row must be inside
+            ``row_scope``. The impersonation is refused when the row or the
+            resolved account is an admin account
+            (:meth:`~tempest_fastapi_sdk.admin.AdminAuthBackend.is_admin_account`),
+            or when the account's ``id`` loads as an admin principal through
+            the backend (a 1:1 profile sharing its primary key with an admin
+            user). Each impersonation is logged at ``INFO`` (operator, model,
+            row — never the URL) and, with ``audit_model`` set, written there
+            as an ``event`` entry **before** the handler runs. See
             :func:`~tempest_fastapi_sdk.admin.make_jwt_impersonation_handler`.
+        impersonate_account (AdminImpersonateAccount | None): Maps the row
+            to the account the handler enters as (``lambda profile:
+            profile.user``), sync or async; ``None`` (default) is the row
+            itself. The admin-account refusal runs on what it returns, and
+            the handler receives it as its second argument. Returning
+            ``None`` answers ``404``.
         count_strategy (AdminCountStrategy): How the list counts its rows:
             ``"exact"`` (default), ``"estimate"`` or ``"none"``. See
             :class:`AdminCountStrategyEnum`. The dashboard card of the model
@@ -540,6 +553,7 @@ class AdminModel(Generic[ModelT]):
         readonly_fields_for: ReadonlyFieldsFor | None = None,
         row_scope: AdminRowScope | None = None,
         impersonate: AdminImpersonateHandler | None = None,
+        impersonate_account: AdminImpersonateAccount | None = None,
         count_strategy: AdminCountStrategy = AdminCountStrategyEnum.EXACT,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
@@ -603,6 +617,7 @@ class AdminModel(Generic[ModelT]):
         self.readonly_fields_for: ReadonlyFieldsFor | None = readonly_fields_for
         self.row_scope: AdminRowScope | None = row_scope
         self.impersonate: AdminImpersonateHandler | None = impersonate
+        self.impersonate_account: AdminImpersonateAccount | None = impersonate_account
         try:
             self.count_strategy: AdminCountStrategyEnum = AdminCountStrategyEnum(
                 count_strategy

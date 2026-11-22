@@ -1844,7 +1844,7 @@ app.include_router(
 )
 ```
 
-The signed token carries `sub` (the target's `id`), `typ` = `"access"` — so
+The signed token carries `sub` (the account's `id`), `typ` = `"access"` — so
 `make_bearer_token_dependency` and `make_jwt_user_dependency` on the same
 secret accept it like any access token —, the target's `email` when it has
 one, and `act = {"sub": "<operator id>"}`, the RFC 8693 actor claim: the
@@ -1854,8 +1854,57 @@ must contain `{token}` (otherwise `ValueError` at construction); prefer
 putting the token in the fragment (`#`), which the browser sends neither to
 the app's server nor in the `Referer`.
 
+Apart from `act`, it is an ordinary access token: **every** route that
+accepts the user's own token accepts this one. For a route that must not run
+under an impersonated session — changing the password, moving money —,
+`token_actor(claims)` returns the operator behind it (`None` on the user's
+own session; a malformed `act` comes back as `"unknown"`, never as `None`):
+
+```python
+from typing import Any
+
+from fastapi import Depends
+
+from tempest_fastapi_sdk import ForbiddenException, token_actor
+
+from src.api.dependencies.auth import bearer
+
+
+async def own_session_only(
+    claims: dict[str, Any] = Depends(bearer),
+) -> dict[str, Any]:
+    if token_actor(claims) is not None:
+        raise ForbiddenException(message="Unavailable while impersonating.")
+    return claims
+```
+
+When `impersonate=` sits on a model that is not the account — a profile, a
+membership —, say which account it stands for with `impersonate_account=`
+(sync or `async`). The handler receives that account, and the admin refusal
+runs on it; returning `None` answers `404`:
+
+```python
+from tempest_fastapi_sdk import AdminModel, JWTUtils
+from tempest_fastapi_sdk.admin import make_jwt_impersonation_handler
+
+from src.admin import site
+from src.core.settings import settings
+from src.db.models import MembershipModel
+
+site.register(
+    AdminModel(
+        model=MembershipModel,
+        impersonate=make_jwt_impersonation_handler(
+            JWTUtils(settings.JWT_SECRET),
+            redirect_url="https://app.example.com/impersonate#token={token}",
+        ),
+        impersonate_account=lambda membership: membership.user,
+    )
+)
+```
+
 Another sign-in mechanism (magic link, cookie session) is just another
-function of the same shape — `handler(operator, target) -> str`, sync or
+function of the same shape — `handler(operator, account) -> str`, sync or
 `async`:
 
 ```python
@@ -1868,11 +1917,21 @@ from src.services.magic_links import issue_magic_link
 
 async def enter_as(operator: UserModel, target: UserModel) -> str:
     link = await issue_magic_link(target.id, actor_id=operator.id)
-    return f"https://app.example.com/magic/{link}"
+    return f"https://app.example.com/magic#link={link}"
 
 
 site.register(AdminModel(model=UserModel, impersonate=enter_as))
 ```
+
+As with the JWT, the credential goes in the fragment: in the path it would
+land in the app server's access log.
+
+!!! danger "The handler enters as the account it received"
+    The admin-target refusal runs on the account the handler receives. A
+    handler that enters as **something else** — `target.owner`, an id read
+    from another table — goes around it and must refuse admin accounts on
+    its own. Put `impersonate=` on the account's model, or use
+    `impersonate_account=`.
 
 The flow in the panel:
 
@@ -1880,10 +1939,14 @@ The flow in the panel:
 2. It opens a confirmation page; confirming `POST`s the CSRF token and a
    single-use nonce — reloading the answer does not enter again, it goes
    back to the list with the repeated-submission notice.
-3. The handler runs and the browser gets a `303` to the returned URL, with
+3. With `audit_model`, the audit entry is written (committed) **before**
+   the handler runs; if the write fails, the handler does not run — no
+   credential is minted — and the request ends in an error, with no `303`.
+4. The handler runs and the browser gets a `303` to the returned URL, with
    `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. An
    `AppException` from the handler comes back to the confirmation with its
-   message.
+   message and is logged at `WARNING`; the audit entry already written
+   records the attempt.
 
 !!! danger "`IMPERSONATE` never comes for free"
     Without an `access_policy` the admin allows everything — **except**
@@ -1899,16 +1962,19 @@ More rules on the way:
 - **Scope.** The target must be inside the model's `row_scope`; outside it
   is `404`, as on every row route.
 - **An admin is not a target.** An account that signs into the admin
-  itself is refused (`403`, no form). The decision is
-  `AdminAuthBackend.is_admin_account(target)`: by default a truthy
-  `is_admin`; on `UserModelAuthBackend`, also whatever your
-  `is_authorized` answers — a backend that authorizes by role refuses that
-  role. Override the method for another rule.
+  itself is refused (`403`, no form). Three questions go to the backend,
+  any one refuses: `is_admin_account` on the row and on the resolved
+  account (by default a truthy `is_admin`; on `UserModelAuthBackend`, also
+  whatever your `is_authorized` answers — a backend that authorizes by role
+  refuses that role), and `is_admin_identity(session, account_id)` on the
+  `id` that goes into the credential. The last one catches a 1:1 profile
+  sharing its primary key with an admin user: on `UserModelAuthBackend` it
+  reads the user row with that id even when inactive or without MFA.
+  Override the methods for another rule.
 - **Record.** Every impersonation logs at `INFO` the operator, the model
   and the target's id — never the URL, which carries the credential. With
   `audit_model`, it also writes an `event` entry on the target, authored
-  by the operator, **before** the redirect: if the write fails, the URL is
-  not handed over. With `AuditRequestMixin` on the table, the event
+  by the operator, **before** the handler (see step 3). With `AuditRequestMixin` on the table, the event
   (`admin.impersonate`), the IP and the user agent go to their own columns;
   without it, the name stays in `context["event"]`. The detail's timeline
   shows the entry as **logged in as**.
@@ -2359,8 +2425,16 @@ prefer the enum to the string.
     different set, and the estimate would be of rows they cannot reach — in
     the scope case, the size of other tenants' data. Those count exactly
     (`COUNT` with the same `WHERE`). It also counts exactly outside
-    PostgreSQL (SQLite included) and on a table PostgreSQL never analyzed
-    (`reltuples = -1`).
+    PostgreSQL (SQLite included), on a table PostgreSQL never analyzed
+    (`reltuples = -1`) and on a single-table-inheritance subclass (the
+    table's statistic counts the sibling classes).
+
+!!! warning "With `repository_class=`, it is `exact`"
+    `estimate` and `none` build their own `SELECT` (and `estimate` reads
+    the catalog), which would go around a `repository_class` that filters —
+    tenant isolation in an overridden `paginate`, for example. With a
+    `repository_class` configured, the list and the card use your
+    repository's `paginate` / `count`, as `exact` does.
 
 Measured on `postgres:16-alpine`, capturing one page's statements: with
 `"estimate"` over 40 analyzed rows the page ran the page `SELECT` and
@@ -2404,8 +2478,13 @@ app.include_router(
 
 The search honours what the rest of the panel honours: a model without
 `VIEW` in the `access_policy` is left out, and each model is queried with
-its own `row_scope` — a row outside the scope does not show. An empty term
-(or only spaces) renders the page without running a query.
+its own `row_scope` — a row outside the scope does not show. A model with
+a `repository_class` is queried through the repository's `paginate`. An
+empty term (or only spaces) renders the page without running a query, and a
+term longer than `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) characters or with
+more than `ADMIN_SEARCH_MAX_TERMS` (8) words answers `400` with a notice,
+also without a query — each word becomes one `ILIKE` per field of every
+model.
 
 #### 4. Session security defaults
 

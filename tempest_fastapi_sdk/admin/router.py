@@ -186,6 +186,15 @@ across a list of addresses stops after twenty.
 ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS: int = 900
 """Length, in seconds, of the default admin ``/login`` failure windows."""
 
+ADMIN_SEARCH_MAX_QUERY_LENGTH: int = 200
+"""Longest global-search term, in characters, that runs a query."""
+
+ADMIN_SEARCH_MAX_TERMS: int = 8
+"""Most words a global-search term may have and still run a query.
+
+Every word becomes one escaped ``ILIKE`` per search field of every
+searchable model, so the cap bounds the statement the search can build."""
+
 ADMIN_SEARCH_RESULTS_PER_MODEL: int = 5
 """Rows the global search (``GET {prefix}/search``) lists per model.
 
@@ -2848,6 +2857,8 @@ def make_admin_router(
         )
         if strategy is AdminCountStrategyEnum.ESTIMATE and narrowed:
             strategy = AdminCountStrategyEnum.EXACT
+        if not _plain_repository(admin):
+            strategy = AdminCountStrategyEnum.EXACT
         total: int | None
         estimated = False
         has_next: bool | None = None
@@ -3931,7 +3942,7 @@ def make_admin_router(
                 "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
                 "impersonate_url": (
                     f"{prefix}/m/{slug}/{identity}/impersonate"
-                    if await _may_impersonate(principal, admin, instance)
+                    if await _may_impersonate(principal, admin, instance, db_session)
                     else None
                 ),
             },
@@ -4589,8 +4600,59 @@ def make_admin_router(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    async def _impersonation_account(admin: AdminModel[Any], instance: Any) -> Any:
+        """Resolve the account a row logs in as.
+
+        Args:
+            admin (AdminModel[Any]): The row's admin.
+            instance (Any): The row.
+
+        Returns:
+            Any: ``impersonate_account(row)`` (awaited when async), or the
+            row itself when the admin declares no resolver; ``None`` when
+            the row has no account.
+        """
+        resolver = admin.impersonate_account
+        if resolver is None:
+            return instance
+        account: Any = resolver(instance)
+        if isinstance(account, Awaitable):
+            account = await account
+        return account
+
+    async def _impersonation_refused(
+        db_session: AsyncSession, instance: Any, account: Any
+    ) -> bool:
+        """Whether the row or the account it logs in as is an admin.
+
+        Three checks, any one refuses: the row and the resolved account
+        through :meth:`AdminAuthBackend.is_admin_account`, and the account's
+        ``id`` — what the handler puts in the credential — through
+        :meth:`AdminAuthBackend.is_admin_identity`, which catches a model
+        whose rows share their primary key with an admin user.
+
+        Args:
+            db_session (AsyncSession): The DB session.
+            instance (Any): The row.
+            account (Any): The resolved account.
+
+        Returns:
+            bool: ``True`` to refuse.
+        """
+        if auth_backend.is_admin_account(instance) or auth_backend.is_admin_account(
+            account
+        ):
+            return True
+        account_id = getattr(account, "id", None)
+        if account_id is None:
+            return False
+        return await auth_backend.is_admin_identity(db_session, str(account_id))
+
     async def _may_impersonate(
-        principal: Any, admin: AdminModel[Any], instance: Any
+        principal: Any,
+        admin: AdminModel[Any],
+        instance: Any,
+        db_session: AsyncSession,
     ) -> bool:
         """Whether the detail view offers "log in as" for ``instance``.
 
@@ -4598,25 +4660,29 @@ def make_admin_router(
             principal (Any): The signed-in admin principal.
             admin (AdminModel[Any]): The row's admin.
             instance (Any): The row, already loaded inside the scope.
+            db_session (AsyncSession): The DB session.
 
         Returns:
-            bool: ``True`` when the admin declares ``impersonate``, the row
-            is not an admin account and the policy grants
-            ``IMPERSONATE``.
+            bool: ``True`` when the admin declares ``impersonate``, the
+            policy grants ``IMPERSONATE``, the row has an account and
+            neither is an admin.
         """
-        return (
-            admin.impersonate is not None
-            and not auth_backend.is_admin_account(instance)
-            and await _allows(principal, admin, AdminPermissionEnum.IMPERSONATE)
-        )
+        if admin.impersonate is None:
+            return False
+        if not await _allows(principal, admin, AdminPermissionEnum.IMPERSONATE):
+            return False
+        account = await _impersonation_account(admin, instance)
+        if account is None:
+            return False
+        return not await _impersonation_refused(db_session, instance, account)
 
     async def _impersonation_target(
         admin: AdminModel[Any],
         principal: Any,
         identity: str,
         db_session: AsyncSession,
-    ) -> Any:
-        """Check ``IMPERSONATE`` and load the target row inside the scope.
+    ) -> tuple[Any, Any]:
+        """Check ``IMPERSONATE``, load the row in scope and resolve its account.
 
         Args:
             admin (AdminModel[Any]): The admin, with ``impersonate`` set.
@@ -4625,17 +4691,21 @@ def make_admin_router(
             db_session (AsyncSession): The DB session.
 
         Returns:
-            Any: The target row.
+            tuple[Any, Any]: ``(row, account)``.
 
         Raises:
             HTTPException: ``403`` when the policy denies ``IMPERSONATE``;
-                ``404`` when the row is missing or outside the scope.
+                ``404`` when the row is missing, outside the scope, or has
+                no account.
         """
         await _require_access(principal, admin, AdminPermissionEnum.IMPERSONATE)
         instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
-        return instance
+        account = await _impersonation_account(admin, instance)
+        if account is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no account to enter as")
+        return instance, account
 
     def _impersonate_page(
         request: Request,
@@ -4710,8 +4780,10 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.impersonate is not None)
         principal = await _resolve_principal(request, db_session, session)
-        instance = await _impersonation_target(admin, principal, identity, db_session)
-        refused = auth_backend.is_admin_account(instance)
+        instance, account = await _impersonation_target(
+            admin, principal, identity, db_session
+        )
+        refused = await _impersonation_refused(db_session, instance, account)
         return _impersonate_page(
             request,
             admin,
@@ -4735,12 +4807,15 @@ def make_admin_router(
     ) -> Response:
         """Run the admin's ``impersonate`` handler and redirect to its URL.
 
-        Order: CSRF, the row inside the scope, the admin-account refusal,
-        then the single-use nonce, so a reload of the answer is a no-op.
-        The handler runs next; the audit entry (when the admin has an
-        ``audit_model``) is committed **before** the redirect, so an
-        impersonation that could not be recorded never hands over the URL.
-        The URL is not logged: it usually carries a credential.
+        Order: the row inside the scope and its account, CSRF, the
+        admin-account refusal, then the single-use nonce, so a reload of the
+        answer is a no-op. The audit entry (when the admin has an
+        ``audit_model``) is committed **next, before the handler runs**: an
+        impersonation that could not be recorded never mints a credential.
+        The entry therefore records the attempt; a handler that refuses
+        with an ``AppException`` is logged at ``WARNING`` and the page shows
+        its message. The URL is not logged: it usually carries a
+        credential.
 
         Args:
             request (Request): The inbound request.
@@ -4762,9 +4837,11 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.impersonate is not None)
         principal = await _resolve_principal(request, db_session, session)
-        instance = await _impersonation_target(admin, principal, identity, db_session)
+        instance, account = await _impersonation_target(
+            admin, principal, identity, db_session
+        )
         _check_csrf(session, csrf_token)
-        if auth_backend.is_admin_account(instance):
+        if await _impersonation_refused(db_session, instance, account):
             return _impersonate_page(
                 request,
                 admin,
@@ -4777,13 +4854,36 @@ def make_admin_router(
             )
         if not await nonces.consume(session, submission_nonce):
             return _already_processed(slug)
+        operator_id = auth_backend.principal_id(principal)
+        target_id = str(getattr(instance, "id", identity))
+        if admin.audit_model is not None:
+            db_session.add(
+                _impersonation_audit_entry(
+                    admin.audit_model,
+                    request,
+                    entity=admin.model.__name__,
+                    entity_id=target_id,
+                    operator_id=operator_id,
+                    operator_name=auth_backend.display_name(principal),
+                    trusted_ip_header=trusted_ip_header,
+                )
+            )
+            await db_session.commit()
+            await _reload_expired(db_session, principal, instance, account)
         handler = admin.impersonate
         assert handler is not None
         try:
-            outcome: Any = handler(principal, instance)
+            outcome: Any = handler(principal, account)
             if not isinstance(outcome, str) and isinstance(outcome, Awaitable):
                 outcome = await outcome
         except AppException as exc:
+            logger.warning(
+                "Admin %s impersonation of %s %s refused by the handler: %s",
+                operator_id,
+                slug,
+                target_id,
+                exc.message,
+            )
             await db_session.rollback()
             await _reload_expired(db_session, principal, instance)
             return _impersonate_page(
@@ -4801,21 +4901,6 @@ def make_admin_router(
                 f"AdminModel({admin.model.__name__}).impersonate must return the "
                 f"redirect URL as a non-empty str, got {type(outcome).__name__}",
             )
-        operator_id = auth_backend.principal_id(principal)
-        target_id = str(getattr(instance, "id", identity))
-        if admin.audit_model is not None:
-            db_session.add(
-                _impersonation_audit_entry(
-                    admin.audit_model,
-                    request,
-                    entity=admin.model.__name__,
-                    entity_id=target_id,
-                    operator_id=operator_id,
-                    operator_name=auth_backend.display_name(principal),
-                    trusted_ip_header=trusted_ip_header,
-                )
-            )
-            await db_session.commit()
         logger.info(
             "Admin %s impersonated %s %s",
             operator_id,
@@ -4940,7 +5025,10 @@ def make_admin_router(
         (:func:`_search_where`), ANDed with the principal's ``row_scope``,
         and only when the principal has ``VIEW`` on it; up to
         ``search_results_per_model`` rows per model link to their detail.
-        A blank term runs no query.
+        A blank term runs no query, and so does one longer than
+        :data:`ADMIN_SEARCH_MAX_QUERY_LENGTH` characters or with more than
+        :data:`ADMIN_SEARCH_MAX_TERMS` words (``400``): each word is one
+        ``ILIKE`` per search field per model.
 
         Args:
             request (Request): The inbound request.
@@ -4954,7 +5042,11 @@ def make_admin_router(
         principal = await _resolve_principal(request, db_session, session)
         term = q.strip()
         groups: list[dict[str, Any]] = []
-        if term:
+        too_long = (
+            len(term) > ADMIN_SEARCH_MAX_QUERY_LENGTH
+            or len(term.split()) > ADMIN_SEARCH_MAX_TERMS
+        )
+        if term and not too_long:
             for admin in site.iter_models():
                 if not admin.search_fields:
                     continue
@@ -4963,15 +5055,27 @@ def make_admin_router(
                 search = _search_where(admin, term)
                 if search is None:
                     continue
-                fetched = await _page_rows(
-                    admin.build_repository(db_session),
-                    filters={},
-                    where=_all_of(search, await admin.scope_for(principal)),
-                    order_key=admin.order_key,
-                    ascending=admin.order_ascending,
-                    page=1,
-                    size=search_results_per_model,
-                )
+                where = _all_of(search, await admin.scope_for(principal))
+                repository = admin.build_repository(db_session)
+                if _plain_repository(admin):
+                    fetched = await _page_rows(
+                        repository,
+                        filters={},
+                        where=where,
+                        order_key=admin.order_key,
+                        ascending=admin.order_ascending,
+                        page=1,
+                        size=search_results_per_model,
+                    )
+                else:
+                    paged = await repository.paginate(
+                        page=1,
+                        page_size=search_results_per_model + 1,
+                        order_by=admin.order_key,
+                        ascending=admin.order_ascending,
+                        where=where,
+                    )
+                    fetched = list(paged["items"])
                 if not fetched:
                     continue
                 slug = admin.get_slug()
@@ -4999,7 +5103,11 @@ def make_admin_router(
                 "user_display": auth_backend.display_name(principal),
                 "query": term,
                 "groups": groups,
+                "too_long": too_long,
+                "max_length": ADMIN_SEARCH_MAX_QUERY_LENGTH,
+                "max_terms": ADMIN_SEARCH_MAX_TERMS,
             },
+            status_code=status.HTTP_400_BAD_REQUEST if too_long else status.HTTP_200_OK,
         )
 
     if sql_shell is not None:
@@ -5842,6 +5950,24 @@ def _reaches_every_row(scope: ColumnElement[bool] | None) -> bool:
     return scope is None or isinstance(scope, True_)
 
 
+def _plain_repository(admin: Any) -> bool:
+    """Whether the list may read rows without the admin's repository.
+
+    The ``estimate`` / ``none`` strategies and the global search build their
+    own ``SELECT`` (and ``estimate`` reads the catalog), which skips anything
+    a custom ``repository_class`` adds — a tenant filter in an overridden
+    ``paginate`` or ``_apply_where``. With one configured they go through
+    the repository's ``paginate`` / ``count`` instead.
+
+    Args:
+        admin (Any): The admin configuration.
+
+    Returns:
+        bool: ``True`` when the admin uses the plain :class:`BaseRepository`.
+    """
+    return admin.repository_class is None
+
+
 async def _page_rows(
     repository: Any,
     *,
@@ -5900,11 +6026,18 @@ async def _estimated_rows(db_session: AsyncSession, model: Any) -> int | None:
 
     Returns:
         int | None: The estimate, or ``None`` when the dialect is not
-        PostgreSQL or the table was never analyzed (``reltuples = -1``);
-        the caller then counts exactly.
+        PostgreSQL, the model is a single-table-inheritance subclass (its
+        table's statistic counts the sibling classes too) or the table was
+        never analyzed (``reltuples = -1``); the caller then counts exactly.
     """
     dialect = db_session.get_bind().dialect
     if dialect.name != "postgresql":
+        return None
+    mapper = sa_inspect(model)
+    parent = mapper.inherits
+    if parent is not None and (
+        mapper.single or mapper.local_table is parent.local_table
+    ):
         return None
     name = dialect.identifier_preparer.format_table(model.__table__)
     result = await db_session.execute(
@@ -5938,6 +6071,8 @@ async def _count_for_strategy(
         under ``count_strategy="none"``.
     """
     strategy = admin.count_strategy
+    if not _plain_repository(admin):
+        strategy = AdminCountStrategyEnum.EXACT
     if strategy is AdminCountStrategyEnum.NONE:
         return None, False
     if strategy is AdminCountStrategyEnum.ESTIMATE and _reaches_every_row(scope):

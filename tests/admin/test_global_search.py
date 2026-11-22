@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import String, event
+from sqlalchemy import String, and_, event
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
@@ -22,6 +22,7 @@ from tempest_fastapi_sdk import (
     AdminSite,
     AsyncDatabaseManager,
     BaseModel,
+    BaseRepository,
     BaseUserModel,
     UserModelAuthBackend,
     make_admin_router,
@@ -80,8 +81,35 @@ def hide_vault(user: Any, admin: Any, action: AdminPermissionEnum) -> bool:
     return admin.model is not SearchVault
 
 
+class HidingBookRepository(BaseRepository[SearchBook]):
+    """Tenant-style repository whose ``paginate`` hides ``Dune part 0``."""
+
+    def __init__(self, session: Any) -> None:
+        """Bind the repository.
+
+        Args:
+            session (Any): The session.
+        """
+        super().__init__(session, model=SearchBook)
+
+    async def paginate(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Paginate without ``Dune part 0``.
+
+        Args:
+            *args (Any): Forwarded.
+            **kwargs (Any): Forwarded; ``where`` gains the filter.
+
+        Returns:
+            dict[str, Any]: The page.
+        """
+        hidden = SearchBook.title != "Dune part 0"
+        where = kwargs.pop("where", None)
+        kwargs["where"] = hidden if where is None else and_(where, hidden)
+        return await super().paginate(*args, **kwargs)
+
+
 async def _search_world(
-    *, searchable: bool = True
+    *, searchable: bool = True, book_repository: Any = None
 ) -> AsyncIterator[tuple[AsyncClient, list[str]]]:
     """Seed three matching books, one vault row, mount and sign in.
 
@@ -105,7 +133,13 @@ async def _search_world(
         )
         await session.commit()
     site = AdminSite(title="Search")
-    site.register(AdminModel(SearchBook, search_fields=["title"] if searchable else []))
+    site.register(
+        AdminModel(
+            SearchBook,
+            search_fields=["title"] if searchable else [],
+            repository_class=book_repository,
+        )
+    )
     site.register(AdminModel(SearchVault, search_fields=["title"]))
     site.register(AdminModel(SearchPlain))
     app = FastAPI()
@@ -252,3 +286,38 @@ def test_cap_below_one_is_refused() -> None:
             secret_key=SECRET,
             search_results_per_model=0,
         )
+
+
+@pytest.mark.asyncio
+async def test_custom_repository_is_not_bypassed() -> None:
+    async for client, _statements in _search_world(
+        book_repository=HidingBookRepository
+    ):
+        page = await client.get("/admin/search?q=dune")
+        assert "Dune part 0" not in page.text
+        assert page.text.count("Dune part") == 2
+        assert "See all" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_oversized_term_runs_no_query() -> None:
+    from tempest_fastapi_sdk.admin import (
+        ADMIN_SEARCH_MAX_QUERY_LENGTH,
+        ADMIN_SEARCH_MAX_TERMS,
+    )
+
+    async for client, statements in _search_world():
+        for term in (
+            "d" * (ADMIN_SEARCH_MAX_QUERY_LENGTH + 1),
+            " ".join(["dune"] * (ADMIN_SEARCH_MAX_TERMS + 1)),
+        ):
+            statements.clear()
+            page = await client.get("/admin/search", params={"q": term})
+            assert page.status_code == 400
+            assert "too long" in page.text
+            touched = [sql for sql in statements if SearchBook.__tablename__ in sql]
+            assert touched == []
+        at_limit = " ".join(["dune"] * ADMIN_SEARCH_MAX_TERMS)
+        ok = await client.get("/admin/search", params={"q": at_limit})
+        assert ok.status_code == 200
+        assert "Dune part" in ok.text

@@ -19,17 +19,26 @@ from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from tempest_fastapi_sdk.utils.token_types import ACCESS_TOKEN_TYPE
+from tempest_fastapi_sdk.utils.token_types import ACCESS_TOKEN_TYPE, ACT_CLAIM
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.jwt import JWTUtils
 
 AdminImpersonateHandler = Callable[[Any, Any], "str | Awaitable[str]"]
-"""``(operator, target) -> url``: where the browser goes to act as ``target``.
+"""``(operator, account) -> url``: where the browser goes to act as ``account``.
 
-``operator`` is the signed-in admin principal and ``target`` the row of the
-model whose admin declared ``impersonate=``. Sync or async. The URL usually
-carries a credential, so the admin never logs it."""
+``operator`` is the signed-in admin principal and ``account`` what
+``AdminModel(impersonate_account=...)`` resolved from the row (the row itself
+by default) — the identity the admin already checked is not an admin
+account. Sync or async. A handler that enters as anything **other** than
+``account`` bypasses that check and must refuse admin accounts itself. The
+URL usually carries a credential, so the admin never logs it."""
+
+AdminImpersonateAccount = Callable[[Any], "Any | Awaitable[Any]"]
+"""``(row) -> account``: the account a row of the model logs in as.
+
+For ``impersonate=`` on a profile model, ``lambda profile: profile.user``.
+Sync or async; ``None`` means the row has no account (``404``)."""
 
 ADMIN_IMPERSONATION_TTL: Final[timedelta] = timedelta(minutes=15)
 """Default lifetime of the token :func:`make_jwt_impersonation_handler` signs."""
@@ -53,15 +62,19 @@ def make_jwt_impersonation_handler(
 ) -> AdminImpersonateHandler:
     """Build an impersonation handler that signs a short access token.
 
-    The token carries ``sub`` (the target's ``id``), ``typ`` set to
+    The token carries ``sub`` (the ``id`` of the account the admin resolved
+    and checked — see ``AdminModel(impersonate_account=...)``), ``typ`` set to
     :data:`~tempest_fastapi_sdk.ACCESS_TOKEN_TYPE` — so
     :func:`~tempest_fastapi_sdk.make_bearer_token_dependency` and
     :func:`~tempest_fastapi_sdk.make_jwt_user_dependency` accept it like any
     access token signed with the same secret — the target's ``email`` when
     it has one, and ``act = {"sub": <operator id>}``, the RFC 8693 actor
     claim, so the app can tell an impersonated session from the user's own
-    and log the operator behind each request. ``iat`` / ``exp`` come from
-    :meth:`JWTUtils.encode` with ``ttl``.
+    and log the operator behind each request
+    (:func:`~tempest_fastapi_sdk.token_actor` reads it back, so a sensitive
+    route can refuse an impersonated session). ``iat`` / ``exp`` come from
+    :meth:`JWTUtils.encode` with ``ttl``. The token is otherwise an ordinary
+    access token: every route that accepts the user's own token accepts it.
 
     Args:
         jwt (JWTUtils): The helper the app verifies its access tokens with.
@@ -90,11 +103,12 @@ def make_jwt_impersonation_handler(
         raise ValueError("make_jwt_impersonation_handler `ttl` must be positive")
 
     def handler(operator: Any, target: Any) -> str:
-        """Sign the target's token and place it in the redirect URL.
+        """Sign the account's token and place it in the redirect URL.
 
         Args:
             operator (Any): The signed-in admin; its ``id`` goes in ``act``.
-            target (Any): The row to act as; its ``id`` is the ``sub``.
+            target (Any): The account the admin resolved and checked; its
+                ``id`` is the ``sub``.
 
         Returns:
             str: ``redirect_url`` with the token in place.
@@ -102,7 +116,7 @@ def make_jwt_impersonation_handler(
         claims: dict[str, Any] = {
             "sub": str(target.id),
             "typ": ACCESS_TOKEN_TYPE,
-            "act": {"sub": str(operator.id)},
+            ACT_CLAIM: {"sub": str(operator.id)},
         }
         email = getattr(target, "email", None)
         if email:
@@ -117,6 +131,7 @@ __all__: list[str] = [
     "ADMIN_IMPERSONATION_EVENT",
     "ADMIN_IMPERSONATION_TTL",
     "IMPERSONATION_TOKEN_PLACEHOLDER",
+    "AdminImpersonateAccount",
     "AdminImpersonateHandler",
     "make_jwt_impersonation_handler",
 ]

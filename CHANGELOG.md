@@ -77,12 +77,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de uso único) e redireciona com `303`, `no-store` e `no-referrer`. Exige a
   permissão nova `AdminPermissionEnum.IMPERSONATE`, que **não** é concedida
   sem `access_policy` — só uma política que diga sim a ela libera. Alvo fora
-  do `row_scope` responde `404`; alvo que entra no próprio admin
-  (`AdminAuthBackend.is_admin_account`, novo, sobrescrevível: `is_admin` por
-  padrão e o `is_authorized` no `UserModelAuthBackend`) responde `403`. Cada
-  impersonação vai para o log em `INFO` (operador, model, id — nunca a URL)
-  e, com `audit_model`, grava uma entrada `event` (`admin.impersonate`) no
-  alvo antes do redirect. `make_jwt_impersonation_handler(jwt,
+  do `row_scope` responde `404`. `AdminModel(impersonate_account=...)` diz
+  que conta a linha representa (perfil, matrícula); o handler recebe essa
+  conta. Alvo que entra no próprio admin responde `403`: a recusa pergunta
+  `AdminAuthBackend.is_admin_account` (novo, sobrescrevível: `is_admin` por
+  padrão e o `is_authorized` no `UserModelAuthBackend`) sobre a linha e a
+  conta, e `AdminAuthBackend.is_admin_identity` (novo) sobre o `id` que vai
+  na credencial — pega o perfil 1:1 que divide a chave primária com um
+  admin. Cada impersonação vai para o log em `INFO` (operador, model, id —
+  nunca a URL) e, com `audit_model`, grava uma entrada `event`
+  (`admin.impersonate`) no alvo **antes** de o handler rodar: falhou a
+  gravação, nenhuma credencial é emitida. `token_actor(claims)` e
+  `ACT_CLAIM` deixam uma rota sensível recusar sessão impersonada. `make_jwt_impersonation_handler(jwt,
   redirect_url=..., ttl=...)` assina um access token (`typ="access"`, padrão
   15 min) com `act = {"sub": <operador>}` e o põe no lugar de `{token}`.
   Novos: `AdminImpersonateHandler`, `ADMIN_IMPERSONATION_TTL`,
@@ -92,8 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"estimate"` lê `pg_class.reltuples` no PostgreSQL enquanto nada estreita
   a lista e mostra `~N`; com busca, filtro, lens ou `row_scope` diferente de
   `true()`, fora do PostgreSQL e em tabela nunca analisada
-  (`reltuples = -1`), conta exato. `"none"` não conta e pagina só com
-  anterior/próxima. O card do dashboard segue a estratégia.
+  (`reltuples = -1`) e em subclasse de herança de tabela única, conta exato.
+  `"none"` não conta e pagina só com anterior/próxima. O card do dashboard
+  segue a estratégia. Com `repository_class`, as duas caem para `exact`,
+  para não passar ao largo do repositório.
 - Admin: restaurar pelo histórico (#804). Cada entrada `update` da timeline
   de auditoria ganha "Restaurar" (`GET /m/{slug}/{id}/restore/{entry_id}`),
   que abre o form de edição com os valores anteriores — sem gravar; o save
@@ -103,8 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Admin: busca global (#804). Caixa no topo e `GET /search?q=`: busca em
   todo model com `search_fields` com a mesma condição da listagem, até
   `make_admin_router(search_results_per_model=...)` linhas por model
-  (`ADMIN_SEARCH_RESULTS_PER_MODEL`, 5), respeitando `VIEW` e `row_scope`.
-  Termo vazio não consulta.
+  (`ADMIN_SEARCH_RESULTS_PER_MODEL`, 5), respeitando `VIEW`, `row_scope` e o
+  `repository_class`. Termo vazio não consulta; acima de
+  `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) caracteres ou
+  `ADMIN_SEARCH_MAX_TERMS` (8) palavras responde `400` sem consultar.
 
 ### Changed
 

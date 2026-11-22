@@ -74,8 +74,9 @@ class AdminPermissionEnum(BaseStrEnum):
     ``IMPERSONATE`` (entering the app as a row of a model declared with
     ``AdminModel(impersonate=...)``) is the one permission that is **not**
     granted when ``make_admin_router`` runs without an ``access_policy``:
-    acting as another account reaches past the admin's own screens, so it
-    takes a policy that says yes to it by name.
+    acting as another account reaches past the admin's own screens. With a
+    policy, whatever it answers for ``IMPERSONATE`` decides — a deny-list
+    policy ("everything but ``DELETE``") grants it as well.
     """
 
     VIEW = "view"
