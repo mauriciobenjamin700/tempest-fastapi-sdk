@@ -1567,7 +1567,10 @@ uv add "tempest-fastapi-sdk[admin,spreadsheet]"
   (openpyxl, pandas) guarda a fórmula mas não o resultado, e a célula seria
   lida vazia. A prévia recusa o arquivo nomeando as células — `A3: formula
   with no calculated value...` (em pt-BR, `fórmula sem valor calculado`);
-  abrir e salvar no Excel ou LibreOffice grava o valor.
+  abrir e salvar no Excel ou LibreOffice grava o valor. Fórmula que o Excel
+  calculou como texto vazio (`=IF(A2="";"";...)`) é válida e entra vazia, e
+  só as colunas com cabeçalho na linha 1 são conferidas: fórmula numa coluna
+  que o import ignora não recusa o arquivo.
 - **Limites da leitura.** A aba é lida com teto de
   `ADMIN_XLSX_IMPORT_MAX_ROWS` linhas (`ADMIN_IMPORT_MAX_BYTES // 16`,
   32 768) e `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` descompactados

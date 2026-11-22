@@ -357,3 +357,33 @@ async def test_field_locked_for_the_row_is_left_out_and_unchanged(
         )
         assert resp.status_code == 303
         assert len(_tag_ids(await world.article("article_in"))) == 2
+
+
+@pytest.mark.asyncio
+async def test_rerender_looks_up_at_most_the_cap_beyond_the_options(
+    database: AsyncDatabaseManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tempest_fastapi_sdk.admin import router as admin_router
+
+    async for world in open_world(database):
+        async with world.db.get_session_context() as session:
+            extra = [W2Tag(name=f"Extra{i}", company=OWN) for i in range(3)]
+            session.add_all(extra)
+            await session.commit()
+            extra_ids = [str(tag.id) for tag in extra]
+        monkeypatch.setattr(admin_router, "FK_OPTION_CAP", 1)
+        resp = await world.client.post(
+            f"{ARTICLES}/new",
+            data={
+                "csrf_token": world.csrf,
+                "slug": "x",
+                "company": OWN,
+                "status": "draft",
+                "tags": extra_ids,
+            },
+        )
+        assert resp.status_code == 400
+        select_html = resp.text.split('name="tags" multiple', 1)[1].split("</select>")[
+            0
+        ]
+        assert select_html.count("<option") == 2

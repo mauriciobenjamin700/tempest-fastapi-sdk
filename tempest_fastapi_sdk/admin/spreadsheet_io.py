@@ -21,8 +21,11 @@ import asyncio
 import csv
 import importlib.util
 import io
+import posixpath
+import zipfile
 from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Final
+from xml.etree import ElementTree
 
 from tempest_fastapi_sdk.admin.csv_import import ADMIN_IMPORT_MAX_BYTES
 
@@ -157,9 +160,9 @@ class XlsxUncachedFormulaError(Exception):
     """Formula cells of an ``.xlsx`` upload carry no calculated value.
 
     A workbook written by a library (openpyxl, pandas) stores the formula
-    but not its result; read for values, the cell is empty, and importing
-    it would store ``NULL`` without a word. The import refuses instead,
-    naming the cells.
+    but not its result (no ``<v>`` element); read for values, the cell is
+    empty, and importing it would store ``NULL`` without a word. The import
+    refuses instead, naming the cells.
 
     Attributes:
         cells (list[str]): The cell coordinates, in sheet order (``B2``).
@@ -175,52 +178,226 @@ class XlsxUncachedFormulaError(Exception):
         self.cells: list[str] = cells
 
 
-def _uncached_formulas(raw: bytes) -> list[str]:
-    """Find the first tab's formula cells that have no cached value.
+_MAIN_NS: Final[str] = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_RELS_NS: Final[str] = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+_DOC_REL_NS: Final[str] = (
+    "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+)
 
-    Reads the tab twice in read-only mode — formulas, then cached values —
-    and pairs the cells by position.
+
+def _part_path(base: str, target: str) -> str:
+    """Resolve a relationship target against the part that declares it.
 
     Args:
-        raw (bytes): The workbook, already checked by the reader.
+        base (str): Directory of the declaring part (``"xl"``), ``""`` at
+            the package root.
+        target (str): The ``Target`` attribute, absolute (``/xl/...``) or
+            relative to ``base``.
 
     Returns:
-        list[str]: Coordinates of formula cells whose cached value is empty.
+        str: The member name inside the ZIP.
     """
-    from openpyxl import load_workbook
+    if target.startswith("/"):
+        return posixpath.normpath(target.lstrip("/"))
+    return posixpath.normpath(posixpath.join(base, target))
 
-    formulas = load_workbook(io.BytesIO(raw), read_only=True, data_only=False)
-    values = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-    try:
-        formula_sheet = formulas.worksheets[0]
-        value_sheet = values.worksheets[0]
-        formula_sheet.reset_dimensions()
-        value_sheet.reset_dimensions()
-        missing: list[str] = []
-        for formula_row, value_row in zip(
-            formula_sheet.iter_rows(), value_sheet.iter_rows(), strict=False
-        ):
-            for formula_cell, value_cell in zip(formula_row, value_row, strict=False):
-                if (
-                    getattr(formula_cell, "data_type", None) == "f"
-                    and value_cell.value is None
-                ):
-                    missing.append(str(formula_cell.coordinate))
-        return missing
-    finally:
-        formulas.close()
-        values.close()
+
+def _first_sheet_part(archive: zipfile.ZipFile) -> str | None:
+    """Find the ZIP member of the workbook's first worksheet.
+
+    Args:
+        archive (zipfile.ZipFile): The opened workbook.
+
+    Returns:
+        str | None: The member name, or ``None`` when the package does not
+        say (the reader already opened it, so this only skips the check).
+    """
+    root_rels = ElementTree.fromstring(archive.read("_rels/.rels"))
+    workbook = next(
+        (
+            _part_path("", rel.get("Target", ""))
+            for rel in root_rels.iter(f"{_RELS_NS}Relationship")
+            if rel.get("Type", "").endswith("/officeDocument")
+        ),
+        None,
+    )
+    if workbook is None:
+        return None
+    base = posixpath.dirname(workbook)
+    rels_name = posixpath.join(base, "_rels", posixpath.basename(workbook) + ".rels")
+    targets = {
+        rel.get("Id"): rel
+        for rel in ElementTree.fromstring(archive.read(rels_name)).iter(
+            f"{_RELS_NS}Relationship"
+        )
+    }
+    for sheet in ElementTree.fromstring(archive.read(workbook)).iter(
+        f"{_MAIN_NS}sheet"
+    ):
+        rel = targets.get(sheet.get(f"{_DOC_REL_NS}id"))
+        if rel is not None and rel.get("Type", "").endswith("/worksheet"):
+            return _part_path(base, rel.get("Target", ""))
+    return None
+
+
+def _column_letters(reference: str) -> str:
+    """Return the column part of a cell reference (``"AB12"`` → ``"AB"``).
+
+    Args:
+        reference (str): The ``r`` attribute of a cell.
+
+    Returns:
+        str: The column letters.
+    """
+    return "".join(ch for ch in reference if ch.isalpha())
+
+
+def _letters_for(index: int) -> str:
+    """Return the column letters of a 1-based column index.
+
+    Args:
+        index (int): The column index (``1`` is ``A``).
+
+    Returns:
+        str: The letters.
+    """
+    letters = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(ord("A") + remainder) + letters
+    return letters
+
+
+def _column_index(letters: str) -> int:
+    """Return the 1-based index of column letters (``"A"`` is ``1``).
+
+    Args:
+        letters (str): The column letters.
+
+    Returns:
+        int: The index.
+    """
+    index = 0
+    for ch in letters.upper():
+        index = index * 26 + ord(ch) - ord("A") + 1
+    return index
+
+
+def _uncached_formulas(raw: bytes) -> list[str]:
+    """Find formula cells of the first tab that store no calculated value.
+
+    Reads the worksheet's XML once, streaming. A formula cell (``<f>``)
+    counts as cached when its ``<v>`` holds text, or when it is empty on a
+    string-typed cell (``t="str"``): that is how Excel stores a formula that
+    evaluated to empty text, such as ``=IF(A2="","",...)``. No ``<v>``, or
+    an empty one on any other type, is what a library writes without
+    calculating — openpyxl 3.1.5 writes ``<f>1+1</f><v></v>`` with no
+    ``t``. Only the columns that have a header in row 1 are checked: a
+    column the import ignores does not refuse the file.
+
+    Args:
+        raw (bytes): The workbook, already opened and size-checked by the
+            reader.
+
+    Returns:
+        list[str]: Coordinates (``B2``) of the formula cells without a
+        cached value, in sheet order.
+    """
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        part = _first_sheet_part(archive)
+        if part is None or part not in archive.namelist():
+            return []
+        headed: set[str] = set()
+        missing: list[tuple[str, str]] = []
+        row_number = 0
+        column_number = 0
+        with archive.open(part) as stream:
+            for event, element in ElementTree.iterparse(
+                stream, events=("start", "end")
+            ):
+                tag = element.tag
+                if event == "start":
+                    if tag == f"{_MAIN_NS}row":
+                        declared = element.get("r")
+                        row_number = int(declared) if declared else row_number + 1
+                        column_number = 0
+                    continue
+                if tag != f"{_MAIN_NS}c":
+                    if tag == f"{_MAIN_NS}row":
+                        element.clear()
+                    continue
+                reference = element.get("r")
+                if reference:
+                    column_number = _column_index(_column_letters(reference))
+                else:
+                    column_number += 1
+                letters = _letters_for(column_number)
+                value = element.find(f"{_MAIN_NS}v")
+                has_value = (
+                    value is not None or element.find(f"{_MAIN_NS}is") is not None
+                )
+                if row_number == 1:
+                    if has_value:
+                        headed.add(letters)
+                    continue
+                if element.find(f"{_MAIN_NS}f") is None:
+                    continue
+                cached = value is not None and (
+                    bool(value.text) or element.get("t") == "str"
+                )
+                if not cached:
+                    missing.append((letters, f"{letters}{row_number}"))
+        return [cell for letters, cell in missing if letters in headed]
+
+
+def _convert(raw: bytes) -> str:
+    """Read the first tab and turn it into CSV text, in the calling thread.
+
+    Args:
+        raw (bytes): The uploaded workbook.
+
+    Returns:
+        str: The CSV text, header first; ``""`` when the tab has no data
+        row.
+
+    Raises:
+        InvalidSpreadsheetError: When the bytes are not an ``.xlsx``.
+        SpreadsheetTooLargeError: When the workbook passes a reader limit.
+        XlsxUncachedFormulaError: When a formula cell has no cached value.
+    """
+    from tempest_fastapi_sdk.spreadsheet import read_xlsx
+
+    records = read_xlsx(
+        raw,
+        max_rows=ADMIN_XLSX_IMPORT_MAX_ROWS,
+        max_uncompressed_bytes=ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES,
+    )
+    uncached = _uncached_formulas(raw)
+    if uncached:
+        raise XlsxUncachedFormulaError(uncached)
+    if not records:
+        return ""
+    header = list(records[0])
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(header)
+    for record in records:
+        writer.writerow([_cell_text(record.get(name)) for name in header])
+    return buffer.getvalue()
 
 
 async def xlsx_to_csv(raw: bytes) -> str:
     """Read the first tab of an ``.xlsx`` upload as CSV text.
 
     Row 1 is the header, as in a CSV import; blank rows are skipped. The
-    parse runs in a worker thread
-    (:func:`~tempest_fastapi_sdk.spreadsheet.read_xlsx_async`) capped at
+    whole conversion — the reader's parse, capped at
     :data:`ADMIN_XLSX_IMPORT_MAX_ROWS` rows and
-    :data:`ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` decompressed. A formula
-    cell without a cached value refuses the file.
+    :data:`ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` decompressed, and the
+    scan for formulas without a cached value (:func:`_uncached_formulas`) —
+    runs in one worker thread behind the same per-loop semaphore as
+    :func:`~tempest_fastapi_sdk.spreadsheet.read_xlsx_async`. The scan runs
+    only after the reader accepted the file, so it never reads past those
+    limits.
 
     Args:
         raw (bytes): The uploaded workbook.
@@ -233,27 +410,13 @@ async def xlsx_to_csv(raw: bytes) -> str:
         ImportError: When the ``[spreadsheet]`` extra is not installed.
         InvalidSpreadsheetError: When the bytes are not an ``.xlsx``.
         SpreadsheetTooLargeError: When the workbook passes a reader limit.
-        XlsxUncachedFormulaError: When a formula cell has no cached value.
+        XlsxUncachedFormulaError: When a formula cell of a column with a
+            header has no cached value.
     """
-    from tempest_fastapi_sdk.spreadsheet import read_xlsx_async
+    from tempest_fastapi_sdk.spreadsheet.reader import _read_semaphore
 
-    records = await read_xlsx_async(
-        raw,
-        max_rows=ADMIN_XLSX_IMPORT_MAX_ROWS,
-        max_uncompressed_bytes=ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES,
-    )
-    uncached = await asyncio.to_thread(_uncached_formulas, raw)
-    if uncached:
-        raise XlsxUncachedFormulaError(uncached)
-    if not records:
-        return ""
-    header = list(records[0])
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(header)
-    for record in records:
-        writer.writerow([_cell_text(record.get(name)) for name in header])
-    return buffer.getvalue()
+    async with _read_semaphore(None):
+        return await asyncio.to_thread(_convert, raw)
 
 
 __all__: list[str] = [

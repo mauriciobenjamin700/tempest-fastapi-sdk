@@ -2151,7 +2151,9 @@ def make_admin_router(
         principal reaches that the cap left out (a link on the edit form, an
         id on a re-render) is added as one more selected option, read in
         one scoped query, so saving without touching the field keeps it — the
-        foreign-key ``<select>`` does the same. A stored link outside the
+        foreign-key ``<select>`` does the same. At most ``FK_OPTION_CAP`` such
+        ids are looked up, so a forged re-render cannot ask for an unbounded
+        ``IN`` list. A stored link outside the
         scope is not rendered at all; the save keeps it
         (:func:`_parse_m2m`), so the operator neither sees nor removes it.
 
@@ -2200,7 +2202,7 @@ def make_admin_router(
                 value
                 for value in (_identity_value(raw) for raw in selected)
                 if isinstance(value, UUID) and str(value) not in offered
-            ]
+            ][:FK_OPTION_CAP]
             if beyond:
                 extra = select(target.model).where(target.model.id.in_(beyond))
                 if scope is not None:

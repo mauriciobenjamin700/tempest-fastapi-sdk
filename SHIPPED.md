@@ -4894,3 +4894,8 @@ trancam o campo m2m; `_parent_filter_fields` ignora a FK que o admin do
 filho esconde (e a contagem perde o link). Testes novos nos mesmos arquivos,
 mais `tests/spreadsheet/test_writer.py::TestControlCharacters` e a edição em
 massa no caso do bulk de `test_row_scope.py`.
+Segunda reconferência: `_uncached_formulas` lê o XML da primeira aba uma vez
+(stream), conta como cache a `<v>` com texto ou vazia em `t="str"` (o
+`=IF(...;"";...)` do Excel) e só olha colunas com cabeçalho; `_convert` faz
+`read_xlsx` + a varredura numa thread, dentro do `_read_semaphore` do reader;
+o `beyond` do m2m para em `FK_OPTION_CAP` ids.

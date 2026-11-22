@@ -79,8 +79,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   assina; o teto de 512 KiB vale para o upload e para o CSV gerado, e a
   leitura para em `ADMIN_XLSX_IMPORT_MAX_ROWS` (32 768) linhas e
   `ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES` (16 MiB), proporcionais a ele.
-  Fórmula sem valor calculado (planilha gerada por openpyxl/pandas) recusa o
-  arquivo nomeando as células, em vez de virar `NULL`. O
+  Fórmula sem valor calculado (planilha gerada por openpyxl/pandas) numa
+  coluna com cabeçalho recusa o arquivo nomeando as células, em vez de virar
+  `NULL`; fórmula que o Excel calculou como texto vazio passa. A conversão
+  inteira roda numa thread atrás do semáforo do reader e abre o workbook uma
+  vez só. O
   openpyxl é carregado só quando usado; sem o extra o botão some e as rotas
   respondem com a mensagem que nomeia `tempest-fastapi-sdk[spreadsheet]`.
 - Admin: muitos-para-muitos no form (#803). `AdminModel(m2m_fields=[...])`

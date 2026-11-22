@@ -358,3 +358,126 @@ def test_reader_limits_scale_with_the_import_cap() -> None:
         spreadsheet_io.ADMIN_XLSX_IMPORT_MAX_UNCOMPRESSED_BYTES
         == 32 * ADMIN_IMPORT_MAX_BYTES
     )
+
+
+def _with_cell(raw: bytes, reference: str, cell_xml: str) -> bytes:
+    """Replace one cell of the first sheet's XML.
+
+    Args:
+        raw (bytes): An ``.xlsx`` written by openpyxl.
+        reference (str): The cell to replace (``"C2"``).
+        cell_xml (str): The new ``<c>`` element.
+
+    Returns:
+        bytes: The rewritten workbook.
+    """
+    source = zipfile.ZipFile(io.BytesIO(raw))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                text = data.decode()
+                pattern = rf'<c r="{reference}"[^>]*?(/>|>.*?</c>)'
+                text, count = re.subn(pattern, cell_xml, text, count=1)
+                assert count == 1
+                data = text.encode()
+            target.writestr(item, data)
+    return out.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_formula_cached_as_empty_text_is_accepted(world: ScopeWorld) -> None:
+    raw = _with_cell(
+        _workbook([["name", "company", "attachment"], ["Cached", OWN, "x"]]),
+        "C2",
+        '<c r="C2" t="str"><f>IF(1,"","")</f><v></v></c>',
+    )
+    resp = await world.client.post(
+        f"{TICKETS}/import",
+        data={"csrf_token": world.csrf},
+        files={"file": ("t.xlsx", raw, XLSX_MEDIA_TYPE)},
+    )
+    assert resp.status_code == 200
+    assert "1 of 1 row(s) will be imported." in resp.text
+    assert "formula with no calculated value" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_formula_in_a_column_without_header_is_ignored(
+    world: ScopeWorld,
+) -> None:
+    raw = _workbook([["name", "company"], ["Plain", OWN, None, "=1+1"]])
+    resp = await world.client.post(
+        f"{TICKETS}/import",
+        data={"csrf_token": world.csrf},
+        files={"file": ("t.xlsx", raw, XLSX_MEDIA_TYPE)},
+    )
+    assert resp.status_code == 200
+    assert "1 of 1 row(s) will be imported." in resp.text
+
+
+@pytest.mark.asyncio
+async def test_conversion_waits_on_the_reader_semaphore() -> None:
+    import asyncio
+
+    from tempest_fastapi_sdk.spreadsheet import reader
+
+    semaphore = reader._read_semaphore(None)
+    held = reader.DEFAULT_MAX_CONCURRENT_XLSX_READS
+    for _ in range(held):
+        await semaphore.acquire()
+    raw = _workbook([["name"], ["x"]])
+    try:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(xlsx_to_csv(raw), timeout=0.5)
+    finally:
+        for _ in range(held):
+            semaphore.release()
+    assert await xlsx_to_csv(raw) == "name\r\nx\r\n"
+
+
+@pytest.mark.asyncio
+async def test_formula_cell_with_no_value_element_is_refused(
+    world: ScopeWorld,
+) -> None:
+    raw = _with_cell(
+        _workbook([["name", "company", "attachment"], ["Forged", OWN, "x"]]),
+        "C2",
+        '<c r="C2"><f>1+1</f></c>',
+    )
+    resp = await world.client.post(
+        f"{TICKETS}/import",
+        data={"csrf_token": world.csrf},
+        files={"file": ("t.xlsx", raw, XLSX_MEDIA_TYPE)},
+    )
+    assert resp.status_code == 400
+    assert "C2: formula with no calculated value." in resp.text
+
+
+@pytest.mark.asyncio
+async def test_conversion_opens_the_workbook_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import openpyxl
+
+    calls: list[bool] = []
+    original = openpyxl.load_workbook
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        """Count every workbook opened through openpyxl.
+
+        Args:
+            *args (Any): Passed through.
+            **kwargs (Any): Passed through.
+
+        Returns:
+            Any: The workbook.
+        """
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(openpyxl, "load_workbook", counting)
+    raw = _workbook([["name", "company"], ["x", OWN]])
+    assert await xlsx_to_csv(raw) == f"name,company\r\nx,{OWN}\r\n"
+    assert len(calls) == 1
