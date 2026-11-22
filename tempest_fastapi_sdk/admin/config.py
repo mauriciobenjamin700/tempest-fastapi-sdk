@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import ColumnElement
@@ -20,6 +20,8 @@ from tempest_fastapi_sdk.admin.actions import (
     AnyActionHandler,
     resolve_admin_action,
 )
+from tempest_fastapi_sdk.admin.impersonation import AdminImpersonateHandler
+from tempest_fastapi_sdk.core.enums import BaseStrEnum
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, audit_redacted_columns
 from tempest_fastapi_sdk.db.expressions import resolve_filter_key
 from tempest_fastapi_sdk.db.model import BaseModel
@@ -61,6 +63,28 @@ AdminRowScope = Callable[
 signed-in principal may reach, as a SQLAlchemy boolean clause. Every row is
 ``sqlalchemy.true()``, said explicitly; ``None`` (a forgotten ``return``) is
 refused with :class:`AdminRowScopeError`. Sync or async."""
+
+
+class AdminCountStrategyEnum(BaseStrEnum):
+    """How the list view counts the rows behind its pagination.
+
+    ``EXACT`` runs ``COUNT(*)`` on every page, as the list always did.
+    ``ESTIMATE`` reads PostgreSQL's planner statistic
+    (``pg_class.reltuples``) instead, but only while the list shows the
+    whole table: with a search, a filter, a lens or a ``row_scope`` clause
+    other than ``true()``, the statistic describes rows the operator is not
+    looking at, so the count is exact again. Other dialects, and a table
+    PostgreSQL never analyzed (``reltuples = -1``), count exactly too.
+    ``NONE`` counts nothing: the list shows only previous / next.
+    """
+
+    EXACT = "exact"
+    ESTIMATE = "estimate"
+    NONE = "none"
+
+
+AdminCountStrategy = AdminCountStrategyEnum | Literal["exact", "estimate", "none"]
+"""What ``AdminModel(count_strategy=...)`` takes: the enum or its value."""
 
 
 class AdminRowScopeError(RuntimeError):
@@ -447,6 +471,26 @@ class AdminModel(Generic[ModelT]):
                         return false()
                     return TicketModel.company_id == user.company_id
 
+        impersonate (AdminImpersonateHandler | None): Turns a row of this
+            model into a "log in as" target. The detail view gains a button
+            that opens a confirmation page; confirming calls
+            ``impersonate(operator, row)`` (sync or async) and redirects the
+            browser to the URL it returns. Needs
+            ``AdminPermissionEnum.IMPERSONATE``, which no principal has
+            unless ``access_policy`` grants it by name — without an
+            ``access_policy`` the button never shows. The row must be inside
+            ``row_scope``, and a row that is itself an admin account is
+            refused
+            (:meth:`~tempest_fastapi_sdk.admin.AdminAuthBackend.is_admin_account`).
+            Each impersonation is logged at ``INFO`` (operator, model, row — never
+            the URL) and, with ``audit_model`` set, written there as an
+            ``event`` entry before the redirect. See
+            :func:`~tempest_fastapi_sdk.admin.make_jwt_impersonation_handler`.
+        count_strategy (AdminCountStrategy): How the list counts its rows:
+            ``"exact"`` (default), ``"estimate"`` or ``"none"``. See
+            :class:`AdminCountStrategyEnum`. The dashboard card of the model
+            follows the same strategy.
+
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
             or when a field reference cannot be resolved to a column key.
@@ -454,7 +498,9 @@ class AdminModel(Generic[ModelT]):
             tz database knows, or when ``list_filter``, ``search_fields`` or
             a lens' ``filters`` carries a key the repository would refuse
             with ``UnknownFilterKeyException`` (unknown column or operator),
-            or when ``create_handler`` is combined with ``can_create=True``.
+            or when ``create_handler`` is combined with ``can_create=True``,
+            or when ``count_strategy`` is not an :class:`AdminCountStrategyEnum`
+            value.
     """
 
     def __init__(
@@ -493,6 +539,8 @@ class AdminModel(Generic[ModelT]):
         validate_edit: EditValidator | None = None,
         readonly_fields_for: ReadonlyFieldsFor | None = None,
         row_scope: AdminRowScope | None = None,
+        impersonate: AdminImpersonateHandler | None = None,
+        count_strategy: AdminCountStrategy = AdminCountStrategyEnum.EXACT,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -554,6 +602,16 @@ class AdminModel(Generic[ModelT]):
         self.validate_edit: EditValidator | None = validate_edit
         self.readonly_fields_for: ReadonlyFieldsFor | None = readonly_fields_for
         self.row_scope: AdminRowScope | None = row_scope
+        self.impersonate: AdminImpersonateHandler | None = impersonate
+        try:
+            self.count_strategy: AdminCountStrategyEnum = AdminCountStrategyEnum(
+                count_strategy
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"AdminModel `count_strategy` {count_strategy!r} is not one of "
+                f"{', '.join(member.value for member in AdminCountStrategyEnum)}",
+            ) from exc
         if audit_model is not None and (
             not isinstance(audit_model, type)
             or not issubclass(audit_model, BaseAuditLogModel)

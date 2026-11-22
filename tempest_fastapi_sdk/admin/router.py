@@ -30,10 +30,11 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
-from sqlalchemy import JSON, and_, event, or_, select
+from sqlalchemy import JSON, and_, event, or_, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import NoInspectionAvailable
+from sqlalchemy.sql.elements import True_
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import (
@@ -44,7 +45,7 @@ from tempest_fastapi_sdk.admin.actions import (
     SchemaActionHandler,
 )
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
-from tempest_fastapi_sdk.admin.config import AdminModel, Inline
+from tempest_fastapi_sdk.admin.config import AdminCountStrategyEnum, AdminModel, Inline
 from tempest_fastapi_sdk.admin.csv_import import (
     ADMIN_IMPORT_MAX_BYTES,
     ImportOutcome,
@@ -74,6 +75,7 @@ from tempest_fastapi_sdk.admin.forms import (
     to_display_timezone,
 )
 from tempest_fastapi_sdk.admin.i18n import admin_plural, admin_text
+from tempest_fastapi_sdk.admin.impersonation import ADMIN_IMPERSONATION_EVENT
 from tempest_fastapi_sdk.admin.location_map import BRLocationMap
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy,
@@ -113,6 +115,11 @@ from tempest_fastapi_sdk.api.routers.logs import (
     render_entries_markdown,
     resolve_log_files,
     rotated_log_files,
+)
+from tempest_fastapi_sdk.db.audit import (
+    AUDIT_REDACTED,
+    AuditActionEnum,
+    AuditRequestContext,
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.search import like_search_condition
@@ -179,6 +186,12 @@ across a list of addresses stops after twenty.
 ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS: int = 900
 """Length, in seconds, of the default admin ``/login`` failure windows."""
 
+ADMIN_SEARCH_RESULTS_PER_MODEL: int = 5
+"""Rows the global search (``GET {prefix}/search``) lists per model.
+
+The default of ``make_admin_router(search_results_per_model=...)``; the
+model's own list, linked from each group, holds the rest."""
+
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
 STYLESHEET_VERSION_LENGTH: int = 12
@@ -235,22 +248,34 @@ class _Pagination:
         *,
         page: int,
         size: int,
-        total: int,
+        total: int | None,
         query_params: dict[str, str],
+        estimated: bool = False,
+        has_next: bool | None = None,
     ) -> None:
         """Initialize the pagination payload.
 
         Args:
             page (int): Current 1-indexed page.
             size (int): Page size.
-            total (int): Total records.
+            total (int | None): Total records; ``None`` when the list was
+                not counted (``count_strategy="none"``).
             query_params (dict[str, str]): Other query parameters to
                 preserve when rendering page links.
+            estimated (bool): Whether ``total`` is PostgreSQL's estimate.
+            has_next (bool | None): Whether a row exists past this page,
+                known from fetching one row more than the page; ``None``
+                derives it from an exact ``total``.
         """
         self.page: int = page
         self.size: int = size
-        self.total: int = total
+        self.total: int | None = total
+        self.estimated: bool = estimated
         self.pages: int = max(1, (total + size - 1) // size) if total else 1
+        self.has_next: bool = page < self.pages if has_next is None else has_next
+        self.show_nav: bool = (
+            self.pages > 1 if has_next is None else page > 1 or has_next
+        )
         self._query_params: dict[str, str] = query_params
 
     def query_for(self, page: int) -> str:
@@ -290,6 +315,7 @@ def make_admin_router(
     login_ip_throttle: AttemptThrottle | Literal[False] | None = None,
     trusted_ip_header: str | None = None,
     session_revocations: AdminSessionRevocations | None = None,
+    search_results_per_model: int = ADMIN_SEARCH_RESULTS_PER_MODEL,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -317,6 +343,13 @@ def make_admin_router(
       submit (when ``can_edit``).
     * ``POST {prefix}/m/{slug}/{identity}/delete`` — delete row
       (when ``can_delete``).
+    * ``GET/POST {prefix}/m/{slug}/{identity}/impersonate`` — confirm and
+      enter the app as the row (when ``AdminModel(impersonate=...)``).
+    * ``GET  {prefix}/m/{slug}/{identity}/restore/{entry_id}`` — the edit
+      form pre-filled with the values an audit entry replaced (when
+      ``audit_model`` and ``can_edit``).
+    * ``GET  {prefix}/search`` — global search across every model with
+      ``search_fields``.
     * Static files under ``{prefix}/static`` named ``admin_static``.
     * ``GET  {prefix}/_ssr/htmx.js`` — the HTMX bundled in the SDK
       (``ssr/_static/htmx.min.js``), served without a session because the
@@ -453,6 +486,8 @@ def make_admin_router(
             Independently of this, the session is bound to
             :meth:`AdminAuthBackend.credential_fingerprint`, so a password
             change ends every session issued before it, on every replica.
+        search_results_per_model (int): Rows the global search lists per
+            model. Defaults to :data:`ADMIN_SEARCH_RESULTS_PER_MODEL` (5).
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -460,6 +495,7 @@ def make_admin_router(
     Raises:
         ImportError: When the ``[admin]`` extra is not installed, so
             Jinja2 is unavailable to render the templates.
+        ValueError: When ``search_results_per_model`` is below 1.
     """
     try:
         from fastapi.templating import Jinja2Templates
@@ -468,6 +504,8 @@ def make_admin_router(
             "Admin requires the [admin] extra. "
             "Install with `pip install tempest-fastapi-sdk[admin]`."
         ) from exc
+    if search_results_per_model < 1:
+        raise ValueError("make_admin_router `search_results_per_model` must be >= 1")
 
     _mounted_surfaces: tuple[AdminSurfaceEnum, ...] = tuple(
         surface
@@ -722,6 +760,9 @@ def make_admin_router(
                 allowed.add(mounted)
         request.state.tempest_admin_surfaces = frozenset(allowed)
         request.state.tempest_admin_nav = await _visible_nav(principal)
+        request.state.tempest_admin_search = any(
+            entry["searchable"] for entry in request.state.tempest_admin_nav
+        )
         request.state.tempest_admin_maps = await _visible_maps(principal)
         if surface is not None and surface not in allowed:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
@@ -799,6 +840,12 @@ def make_admin_router(
             getattr(request.state, "tempest_admin_maps", []),
         )
         context.setdefault("nav_index_url", f"{prefix}/")
+        context.setdefault(
+            "nav_search_url",
+            f"{prefix}/search"
+            if getattr(request.state, "tempest_admin_search", False)
+            else None,
+        )
         allowed: frozenset[AdminSurfaceEnum] = getattr(
             request.state, "tempest_admin_surfaces", frozenset()
         )
@@ -1218,7 +1265,9 @@ def make_admin_router(
         """Return whether ``principal`` may perform ``action`` on ``admin``.
 
         With no ``access_policy`` configured, everything is allowed (the
-        historical behavior). Otherwise the policy decides.
+        historical behavior) except
+        :attr:`AdminPermissionEnum.IMPERSONATE`, which only a policy can
+        grant. Otherwise the policy decides.
 
         Args:
             principal (Any): The current admin principal.
@@ -1229,7 +1278,7 @@ def make_admin_router(
             bool: ``True`` when permitted.
         """
         if access_policy is None:
-            return True
+            return action is not AdminPermissionEnum.IMPERSONATE
         result = access_policy(principal, admin, action)
         if isinstance(result, bool):
             return result
@@ -1322,7 +1371,9 @@ def make_admin_router(
             principal (Any): The current admin principal.
 
         Returns:
-            list[dict[str, str]]: ``{label, url}`` for each allowed model.
+            list[dict[str, str]]: ``{label, url, searchable}`` for each
+            allowed model; ``searchable`` is ``"1"`` when the model has
+            ``search_fields`` (the global search box shows only then).
         """
         entries: list[dict[str, str]] = []
         for admin in site.iter_models():
@@ -1331,6 +1382,7 @@ def make_admin_router(
                     {
                         "label": admin.get_verbose_name_plural(),
                         "url": f"{prefix}/m/{admin.get_slug()}/",
+                        "searchable": "1" if admin.search_fields else "",
                     }
                 )
         return entries
@@ -2306,9 +2358,10 @@ def make_admin_router(
         for admin in site.iter_models():
             if not await _allows(principal, admin, AdminPermissionEnum.VIEW):
                 continue
+            estimated = False
             try:
-                count = await admin.build_repository(db_session).count(
-                    where=await admin.scope_for(principal)
+                count, estimated = await _count_for_strategy(
+                    admin, db_session, await admin.scope_for(principal)
                 )
             except Exception:
                 logger.exception(
@@ -2320,6 +2373,7 @@ def make_admin_router(
                 {
                     "admin": admin,
                     "count": count,
+                    "count_estimated": estimated,
                     "url": f"{prefix}/m/{admin.get_slug()}/",
                     "new_url": f"{prefix}/m/{admin.get_slug()}/new"
                     if admin.creates
@@ -2740,6 +2794,14 @@ def make_admin_router(
             user's — user keys win on a conflict — and its ordering applies
             only while the user has not clicked a column sort.
 
+            ``count_strategy`` decides the header count. ``"estimate"``
+            reads ``pg_class.reltuples`` only while nothing narrows the
+            list — a search, a filter, a lens or a ``row_scope`` other than
+            ``true()`` makes the statistic describe rows the operator is not
+            looking at, so those count exactly. ``"none"`` and
+            ``"estimate"`` fetch one row past the page to know whether a
+            next page exists.
+
             Two query-parameter sets are carried onto the rendered links so
             navigating never silently drops the user's context: pagination
             links keep search, filters and sort (``active_filters`` already
@@ -2774,19 +2836,57 @@ def make_admin_router(
 
         page = max(1, page)
         size = max(1, admin.page_size)
-        result = await repository.paginate(
-            filters=filters,
-            page=page,
-            page_size=size,
-            order_by=order_key,
-            ascending=ascending,
-            where=_all_of(_search_where(admin, q), await admin.scope_for(principal)),
+        scope = await admin.scope_for(principal)
+        search = _search_where(admin, q)
+        where = _all_of(search, scope)
+        strategy = admin.count_strategy
+        narrowed = (
+            bool(filters)
+            or search is not None
+            or active_lens is not None
+            or not _reaches_every_row(scope)
         )
+        if strategy is AdminCountStrategyEnum.ESTIMATE and narrowed:
+            strategy = AdminCountStrategyEnum.EXACT
+        total: int | None
+        estimated = False
+        has_next: bool | None = None
+        if strategy is AdminCountStrategyEnum.EXACT:
+            result = await repository.paginate(
+                filters=filters,
+                page=page,
+                page_size=size,
+                order_by=order_key,
+                ascending=ascending,
+                where=where,
+            )
+            items = result["items"]
+            total = result["total"]
+        else:
+            fetched = await _page_rows(
+                repository,
+                filters=filters,
+                where=where,
+                order_key=order_key,
+                ascending=ascending,
+                page=page,
+                size=size,
+            )
+            has_next = len(fetched) > size
+            items = fetched[:size]
+            total = None
+            if strategy is AdminCountStrategyEnum.ESTIMATE:
+                estimate = await _estimated_rows(db_session, admin.model)
+                if estimate is None:
+                    total = await repository.count(filters=filters, where=where)
+                else:
+                    total = max(estimate, (page - 1) * size + len(items))
+                    estimated = True
 
         columns = admin.resolved_list_display()
         rows = [
             _RowView(instance, columns, admin.identity_field, admin.display_tzinfo)
-            for instance in result["items"]
+            for instance in items
         ]
 
         query_params: dict[str, str] = {}
@@ -2801,10 +2901,12 @@ def make_admin_router(
             query_params["dir"] = "asc" if active_ascending else "desc"
 
         pagination = _Pagination(
-            page=result["page"],
-            size=result["page_size"],
-            total=result["total"],
+            page=page,
+            size=size,
+            total=total,
             query_params=query_params,
+            estimated=estimated,
+            has_next=has_next,
         )
 
         export_query = urlencode(query_params)
@@ -3749,6 +3851,9 @@ def make_admin_router(
             "has_actors": "created_by" in columns or "updated_by" in columns,
         }
 
+        can_edit = admin.can_edit and await _allows(
+            principal, admin, AdminPermissionEnum.EDIT
+        )
         history: list[dict[str, Any]] = []
         if admin.audit_model is not None:
             audit_model = admin.audit_model
@@ -3761,9 +3866,15 @@ def make_admin_router(
                 .limit(_AUDIT_HISTORY_LIMIT)
             )
             for entry in result.scalars().all():
+                restorable = can_edit and bool(
+                    _restorable_values(admin, instance, entry)
+                )
                 history.append(
                     {
                         "action": entry.action,
+                        "event": _audit_event_name(entry),
+                        "impersonation": _audit_event_name(entry)
+                        == ADMIN_IMPERSONATION_EVENT,
                         "at": entry.created_at,
                         "actor": await _actor(entry.actor) or entry.actor,
                         "changes": [
@@ -3774,6 +3885,11 @@ def make_admin_router(
                             if row["field"] not in hidden_columns
                         ],
                         "context": entry.context,
+                        "restore_url": (
+                            f"{prefix}/m/{slug}/{identity}/restore/{entry.id}"
+                            if restorable
+                            else None
+                        ),
                     }
                 )
 
@@ -3808,12 +3924,16 @@ def make_admin_router(
                 "history": history,
                 "inlines": inlines,
                 "inline_error": inline_error,
-                "can_edit": admin.can_edit
-                and await _allows(principal, admin, AdminPermissionEnum.EDIT),
+                "can_edit": can_edit,
                 "can_delete": admin.can_delete
                 and await _allows(principal, admin, AdminPermissionEnum.DELETE),
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
+                "impersonate_url": (
+                    f"{prefix}/m/{slug}/{identity}/impersonate"
+                    if await _may_impersonate(principal, admin, instance)
+                    else None
+                ),
             },
             status_code=status_code,
         )
@@ -4467,6 +4587,419 @@ def make_admin_router(
         return RedirectResponse(
             url=f"{prefix}/m/{slug}/",
             status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    async def _may_impersonate(
+        principal: Any, admin: AdminModel[Any], instance: Any
+    ) -> bool:
+        """Whether the detail view offers "log in as" for ``instance``.
+
+        Args:
+            principal (Any): The signed-in admin principal.
+            admin (AdminModel[Any]): The row's admin.
+            instance (Any): The row, already loaded inside the scope.
+
+        Returns:
+            bool: ``True`` when the admin declares ``impersonate``, the row
+            is not an admin account and the policy grants
+            ``IMPERSONATE``.
+        """
+        return (
+            admin.impersonate is not None
+            and not auth_backend.is_admin_account(instance)
+            and await _allows(principal, admin, AdminPermissionEnum.IMPERSONATE)
+        )
+
+    async def _impersonation_target(
+        admin: AdminModel[Any],
+        principal: Any,
+        identity: str,
+        db_session: AsyncSession,
+    ) -> Any:
+        """Check ``IMPERSONATE`` and load the target row inside the scope.
+
+        Args:
+            admin (AdminModel[Any]): The admin, with ``impersonate`` set.
+            principal (Any): The reloaded admin principal.
+            identity (str): The row identity from the URL.
+            db_session (AsyncSession): The DB session.
+
+        Returns:
+            Any: The target row.
+
+        Raises:
+            HTTPException: ``403`` when the policy denies ``IMPERSONATE``;
+                ``404`` when the row is missing or outside the scope.
+        """
+        await _require_access(principal, admin, AdminPermissionEnum.IMPERSONATE)
+        instance = await _get_scoped(admin, db_session, principal, identity)
+        if instance is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        return instance
+
+    def _impersonate_page(
+        request: Request,
+        admin: AdminModel[Any],
+        session: AdminSession,
+        principal: Any,
+        instance: Any,
+        identity: str,
+        *,
+        refused: bool = False,
+        form_error: str | None = None,
+        status_code: int = status.HTTP_200_OK,
+    ) -> HTMLResponse:
+        """Render the impersonation confirmation (or its refusal).
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The row's admin.
+            session (AdminSession): The validated session.
+            principal (Any): The signed-in admin.
+            instance (Any): The target row.
+            identity (str): The row identity from the URL.
+            refused (bool): The target is an admin account; no form.
+            form_error (str | None): The handler's refusal message.
+            status_code (int): The response status.
+
+        Returns:
+            HTMLResponse: ``impersonate.html``.
+        """
+        slug = admin.get_slug()
+        response = _render(
+            request,
+            "impersonate.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "identity": identity,
+                "target_label": fk_label(admin, instance),
+                "refused": refused,
+                "form_error": form_error,
+                "action_url": f"{prefix}/m/{slug}/{identity}/impersonate",
+                "back_url": f"{prefix}/m/{slug}/{identity}",
+                "submission_nonce": None if refused else nonces.issue(),
+            },
+            status_code=status_code,
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @router.get("/m/{slug}/{identity}/impersonate", name="admin_impersonate")
+    async def impersonate_form(
+        request: Request,
+        slug: str,
+        identity: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Ask the operator to confirm entering the app as one row.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The row identity from the URL.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The confirmation page, or the refusal (``403``)
+            when the row is an admin account.
+        """
+        admin = _require_admin(slug, lambda a: a.impersonate is not None)
+        principal = await _resolve_principal(request, db_session, session)
+        instance = await _impersonation_target(admin, principal, identity, db_session)
+        refused = auth_backend.is_admin_account(instance)
+        return _impersonate_page(
+            request,
+            admin,
+            session,
+            principal,
+            instance,
+            identity,
+            refused=refused,
+            status_code=status.HTTP_403_FORBIDDEN if refused else status.HTTP_200_OK,
+        )
+
+    @router.post("/m/{slug}/{identity}/impersonate", name="admin_impersonate_submit")
+    async def impersonate_submit(
+        request: Request,
+        slug: str,
+        identity: str,
+        csrf_token: str = Form(...),
+        submission_nonce: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Run the admin's ``impersonate`` handler and redirect to its URL.
+
+        Order: CSRF, the row inside the scope, the admin-account refusal,
+        then the single-use nonce, so a reload of the answer is a no-op.
+        The handler runs next; the audit entry (when the admin has an
+        ``audit_model``) is committed **before** the redirect, so an
+        impersonation that could not be recorded never hands over the URL.
+        The URL is not logged: it usually carries a credential.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The row identity from the URL.
+            csrf_token (str): CSRF token from the form.
+            submission_nonce (str): The confirmation's single-use nonce.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: ``303`` to the handler's URL; the refusal (``403``)
+            for an admin account; the confirmation with the message
+            (``400``) when the handler raises an ``AppException``.
+
+        Raises:
+            TypeError: When the handler returns something that is not a
+                non-empty ``str``.
+        """
+        admin = _require_admin(slug, lambda a: a.impersonate is not None)
+        principal = await _resolve_principal(request, db_session, session)
+        instance = await _impersonation_target(admin, principal, identity, db_session)
+        _check_csrf(session, csrf_token)
+        if auth_backend.is_admin_account(instance):
+            return _impersonate_page(
+                request,
+                admin,
+                session,
+                principal,
+                instance,
+                identity,
+                refused=True,
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+        if not await nonces.consume(session, submission_nonce):
+            return _already_processed(slug)
+        handler = admin.impersonate
+        assert handler is not None
+        try:
+            outcome: Any = handler(principal, instance)
+            if not isinstance(outcome, str) and isinstance(outcome, Awaitable):
+                outcome = await outcome
+        except AppException as exc:
+            await db_session.rollback()
+            await _reload_expired(db_session, principal, instance)
+            return _impersonate_page(
+                request,
+                admin,
+                session,
+                principal,
+                instance,
+                identity,
+                form_error=exc.message,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(outcome, str) or not outcome:
+            raise TypeError(
+                f"AdminModel({admin.model.__name__}).impersonate must return the "
+                f"redirect URL as a non-empty str, got {type(outcome).__name__}",
+            )
+        operator_id = auth_backend.principal_id(principal)
+        target_id = str(getattr(instance, "id", identity))
+        if admin.audit_model is not None:
+            db_session.add(
+                _impersonation_audit_entry(
+                    admin.audit_model,
+                    request,
+                    entity=admin.model.__name__,
+                    entity_id=target_id,
+                    operator_id=operator_id,
+                    operator_name=auth_backend.display_name(principal),
+                    trusted_ip_header=trusted_ip_header,
+                )
+            )
+            await db_session.commit()
+        logger.info(
+            "Admin %s impersonated %s %s",
+            operator_id,
+            slug,
+            target_id,
+        )
+        response = RedirectResponse(url=outcome, status_code=status.HTTP_303_SEE_OTHER)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    @router.get("/m/{slug}/{identity}/restore/{entry_id}", name="admin_restore")
+    async def restore_form(
+        request: Request,
+        slug: str,
+        identity: str,
+        entry_id: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Open the edit form pre-filled with what an audit entry replaced.
+
+        Nothing is written here: the form posts to the ordinary edit
+        submit, so the save goes through ``EDIT``, validation, the FK
+        check, ``row_scope`` and the optimistic lock (the form carries the
+        row's **current** version), and is audited like any other edit.
+        A restored ``<select>`` value that is no longer among the options
+        gets an option of its own, so the browser posts it and the save
+        reports it instead of silently picking the first option.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The row identity from the URL.
+            entry_id (str): The audit entry's id.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The edit form.
+
+        Raises:
+            HTTPException: ``404`` when editing or the audit model is off,
+                the row is missing or outside the scope, the entry is not
+                an update of this row, or none of its fields can be
+                restored; ``403`` when the policy denies ``EDIT``.
+        """
+        admin = _require_admin(slug, lambda a: a.can_edit and a.audit_model is not None)
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermissionEnum.EDIT)
+        instance = await _get_scoped(admin, db_session, principal, identity)
+        if instance is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        audit_model = admin.audit_model
+        assert audit_model is not None
+        try:
+            entry_uuid = UUID(entry_id)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "entry not found") from exc
+        entry = (
+            await db_session.execute(
+                select(audit_model).where(
+                    audit_model.id == entry_uuid,
+                    audit_model.entity == admin.model.__name__,
+                    audit_model.entity_id == str(getattr(instance, "id", identity)),
+                )
+            )
+        ).scalar_one_or_none()
+        values = {} if entry is None else _restorable_values(admin, instance, entry)
+        if entry is None or not values:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "entry not found")
+        at = _localized(entry.created_at, admin.display_tzinfo)
+        form_fields = await _form_fields(
+            admin,
+            db_session,
+            principal,
+            instance=_RestoredRow(instance, values),
+            only=admin.editable_field_names(instance=instance),
+        )
+        for form_field in form_fields:
+            if form_field.name not in values or form_field.widget != "select":
+                continue
+            value = "" if form_field.value is None else str(form_field.value)
+            if value and value not in {option for option, _ in form_field.options}:
+                form_field.options = [*form_field.options, (value, value)]
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "edit",
+                "identity": identity,
+                "form_intro": _t(
+                    "restore.intro",
+                    at=at.strftime("%Y-%m-%d %H:%M")
+                    if isinstance(at, datetime)
+                    else str(at),
+                    fields=", ".join(humanize_field(name) for name in values),
+                ),
+                "form_fields": form_fields,
+                "action_url": f"{prefix}/m/{slug}/{identity}/edit",
+                "back_url": f"{prefix}/m/{slug}/{identity}",
+                "form_error": None,
+                "version_field": _VERSION_FIELD,
+                "version_token": _version_token(admin, instance),
+            },
+        )
+
+    @router.get("/search", name="admin_search")
+    async def global_search(
+        request: Request,
+        q: str = "",
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Search every model with ``search_fields`` at once.
+
+        Each model is searched with the list's own condition
+        (:func:`_search_where`), ANDed with the principal's ``row_scope``,
+        and only when the principal has ``VIEW`` on it; up to
+        ``search_results_per_model`` rows per model link to their detail.
+        A blank term runs no query.
+
+        Args:
+            request (Request): The inbound request.
+            q (str): The search term.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The results page.
+        """
+        principal = await _resolve_principal(request, db_session, session)
+        term = q.strip()
+        groups: list[dict[str, Any]] = []
+        if term:
+            for admin in site.iter_models():
+                if not admin.search_fields:
+                    continue
+                if not await _allows(principal, admin, AdminPermissionEnum.VIEW):
+                    continue
+                search = _search_where(admin, term)
+                if search is None:
+                    continue
+                fetched = await _page_rows(
+                    admin.build_repository(db_session),
+                    filters={},
+                    where=_all_of(search, await admin.scope_for(principal)),
+                    order_key=admin.order_key,
+                    ascending=admin.order_ascending,
+                    page=1,
+                    size=search_results_per_model,
+                )
+                if not fetched:
+                    continue
+                slug = admin.get_slug()
+                groups.append(
+                    {
+                        "label": admin.get_verbose_name_plural(),
+                        "list_url": f"{prefix}/m/{slug}/?{urlencode({'q': term})}",
+                        "more": len(fetched) > search_results_per_model,
+                        "results": [
+                            {
+                                "label": fk_label(admin, row),
+                                "url": f"{prefix}/m/{slug}/"
+                                f"{getattr(row, admin.identity_field)}",
+                            }
+                            for row in fetched[:search_results_per_model]
+                        ],
+                    }
+                )
+        return _render(
+            request,
+            "search.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "query": term,
+                "groups": groups,
+            },
         )
 
     if sql_shell is not None:
@@ -5296,6 +5829,124 @@ def _all_of(*clauses: ColumnElement[bool] | None) -> ColumnElement[bool] | None:
     return and_(*present)
 
 
+def _reaches_every_row(scope: ColumnElement[bool] | None) -> bool:
+    """Whether a resolved ``row_scope`` leaves the table unrestricted.
+
+    Args:
+        scope (ColumnElement[bool] | None): What
+            :meth:`AdminModel.scope_for` returned.
+
+    Returns:
+        bool: ``True`` for no scope and for ``sqlalchemy.true()``.
+    """
+    return scope is None or isinstance(scope, True_)
+
+
+async def _page_rows(
+    repository: Any,
+    *,
+    filters: dict[str, Any],
+    where: ColumnElement[bool] | None,
+    order_key: str | None,
+    ascending: bool,
+    page: int,
+    size: int,
+) -> list[Any]:
+    """Fetch one page plus one row, without counting the result set.
+
+    The query is the one :meth:`BaseRepository.paginate` builds — the same
+    filter pipeline, ``WHERE``, ordering and page-size ceiling — minus its
+    ``COUNT``. The extra row tells the caller whether a next page exists.
+
+    Args:
+        repository (Any): The admin's repository.
+        filters (dict[str, Any]): Repository filters.
+        where (ColumnElement[bool] | None): Search and scope clause.
+        order_key (str | None): Column to order by; ``None`` orders by
+            ``created_at`` descending, as ``paginate`` does.
+        ascending (bool): Order direction.
+        page (int): 1-indexed page.
+        size (int): Rows per page.
+
+    Returns:
+        list[Any]: Up to ``size + 1`` rows.
+    """
+    repository._check_page_size(size)
+    model = repository.model
+    query = select(model)
+    if filters:
+        query = repository._apply_filters(query, filters)
+    query = repository._apply_where(query, where)
+    if order_key is None:
+        query = query.order_by(model.created_at.desc())
+    else:
+        column = repository._resolve_order_column(order_key)
+        query = query.order_by(column if ascending else column.desc())
+    query = query.offset((page - 1) * size).limit(size + 1)
+    result = await repository.session.execute(query)
+    return list(result.unique().scalars().all())
+
+
+async def _estimated_rows(db_session: AsyncSession, model: Any) -> int | None:
+    """Read PostgreSQL's row estimate for ``model``'s table.
+
+    ``pg_class.reltuples`` is what the planner keeps from the last
+    ``VACUUM`` / ``ANALYZE`` (autovacuum runs both), so reading it costs one
+    catalog lookup whatever the table size.
+
+    Args:
+        db_session (AsyncSession): The DB session.
+        model (Any): The mapped model.
+
+    Returns:
+        int | None: The estimate, or ``None`` when the dialect is not
+        PostgreSQL or the table was never analyzed (``reltuples = -1``);
+        the caller then counts exactly.
+    """
+    dialect = db_session.get_bind().dialect
+    if dialect.name != "postgresql":
+        return None
+    name = dialect.identifier_preparer.format_table(model.__table__)
+    result = await db_session.execute(
+        text("SELECT reltuples FROM pg_class WHERE oid = to_regclass(:name)"),
+        {"name": name},
+    )
+    value = result.scalar()
+    if value is None or value < 0:
+        return None
+    return int(value)
+
+
+async def _count_for_strategy(
+    admin: Any,
+    db_session: AsyncSession,
+    scope: ColumnElement[bool] | None,
+) -> tuple[int | None, bool]:
+    """Count a model's reachable rows the way its ``count_strategy`` says.
+
+    Used by the dashboard cards, which show the whole table: no filter or
+    search narrows it, so only the scope decides whether the estimate
+    applies.
+
+    Args:
+        admin (Any): The admin configuration.
+        db_session (AsyncSession): The DB session.
+        scope (ColumnElement[bool] | None): The principal's scope.
+
+    Returns:
+        tuple[int | None, bool]: ``(count, estimated)``; ``(None, False)``
+        under ``count_strategy="none"``.
+    """
+    strategy = admin.count_strategy
+    if strategy is AdminCountStrategyEnum.NONE:
+        return None, False
+    if strategy is AdminCountStrategyEnum.ESTIMATE and _reaches_every_row(scope):
+        estimate = await _estimated_rows(db_session, admin.model)
+        if estimate is not None:
+            return estimate, True
+    return await admin.build_repository(db_session).count(where=scope), False
+
+
 def _search_where(admin: Any, q: str) -> ColumnElement[bool] | None:
     """Build the list search: every word, in any of the ``search_fields``.
 
@@ -5808,6 +6459,176 @@ def _format_audit_changes(action: str, changes: dict[str, Any]) -> list[dict[str
                     }
                 )
     return sorted(rows, key=lambda row: str(row["field"]))
+
+
+def _audit_event_name(entry: Any) -> str | None:
+    """Return the event name an audit entry records, if any.
+
+    Args:
+        entry (Any): A row of the admin's ``audit_model``.
+
+    Returns:
+        str | None: The ``event`` column (with
+        :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`), else
+        ``context["event"]``, else ``None``.
+    """
+    event_name = getattr(entry, "event", None)
+    if isinstance(event_name, str) and event_name:
+        return event_name
+    context = entry.context if isinstance(entry.context, dict) else {}
+    named = context.get("event")
+    return named if isinstance(named, str) else None
+
+
+def _audit_value_for_form(admin: Any, field: str, stored: Any) -> Any:
+    """Turn a value an audit snapshot stored back into a column value.
+
+    :func:`~tempest_fastapi_sdk.db.audit.snapshot_model` stores datetimes,
+    dates and times as ISO 8601 text and UUIDs and decimals as text; the
+    form renders a datetime through the operator's timezone only when it
+    is a ``datetime``, so the temporal ones are parsed back. A value that
+    no longer parses is left as stored, and the save reports it.
+
+    Args:
+        admin (Any): The admin configuration.
+        field (str): The column name.
+        stored (Any): The value from the audit entry.
+
+    Returns:
+        Any: The value to pre-fill.
+    """
+    if not isinstance(stored, str):
+        return stored
+    py = _filter_python_type(admin, field)
+    try:
+        if py is not None and issubclass(py, datetime):
+            return datetime.fromisoformat(stored)
+        if py is not None and issubclass(py, date):
+            return date.fromisoformat(stored)
+        if py is not None and issubclass(py, time):
+            return time.fromisoformat(stored)
+    except ValueError:
+        return stored
+    return stored
+
+
+def _restorable_values(admin: Any, instance: Any, entry: Any) -> dict[str, Any]:
+    """Return the previous values an ``update`` audit entry can restore.
+
+    Only columns the row's edit form takes are restored; upload and
+    password columns, hidden columns (``exclude_fields`` and the model's
+    secrets), read-only ones and values the audit redacted
+    (:data:`~tempest_fastapi_sdk.db.audit.AUDIT_REDACTED`) are left as the
+    row has them now.
+
+    Args:
+        admin (Any): The admin configuration.
+        instance (Any): The row, as stored now.
+        entry (Any): A row of the admin's ``audit_model``.
+
+    Returns:
+        dict[str, Any]: ``{column: previous value}``; empty for any entry
+        that is not an ``update`` or that changed none of those columns.
+    """
+    if entry.action != AuditActionEnum.UPDATE.value or not isinstance(
+        entry.changes, dict
+    ):
+        return {}
+    editable = set(admin.editable_field_names(instance=instance))
+    editable -= set(admin.upload_fields)
+    editable -= admin.hidden_field_names()
+    values: dict[str, Any] = {}
+    for field in sorted(entry.changes):
+        delta = entry.changes[field]
+        if field not in editable or not isinstance(delta, dict):
+            continue
+        if "before" not in delta or delta["before"] == AUDIT_REDACTED:
+            continue
+        values[field] = _audit_value_for_form(admin, field, delta["before"])
+    return values
+
+
+class _RestoredRow:
+    """The stored row with some columns read from an audit entry instead.
+
+    Handed to the edit form's field builder as the row to pre-fill, so the
+    restored columns show their previous value and every other column its
+    current one.
+    """
+
+    def __init__(self, instance: Any, values: dict[str, Any]) -> None:
+        """Initialize the view.
+
+        Args:
+            instance (Any): The stored row.
+            values (dict[str, Any]): Column → previous value.
+        """
+        self._instance: Any = instance
+        self._values: dict[str, Any] = values
+
+    def __getattr__(self, name: str) -> Any:
+        """Read a restored value, falling back to the stored row.
+
+        Args:
+            name (str): The attribute name.
+
+        Returns:
+            Any: The previous value for a restored column, the stored
+            attribute otherwise.
+        """
+        values: dict[str, Any] = self.__dict__.get("_values", {})
+        if name in values:
+            return values[name]
+        return getattr(self.__dict__["_instance"], name)
+
+
+def _impersonation_audit_entry(
+    audit_model: Any,
+    request: Request,
+    *,
+    entity: str,
+    entity_id: str,
+    operator_id: str,
+    operator_name: str,
+    trusted_ip_header: str | None,
+) -> Any:
+    """Build the audit entry recording one impersonation.
+
+    The entry is an ``event`` on the target row, authored by the operator.
+    An audit table with :class:`~tempest_fastapi_sdk.db.audit.AuditRequestMixin`
+    gets the event name and the request's IP and user agent in their own
+    columns; any other keeps the name under ``context["event"]``.
+
+    Args:
+        audit_model (Any): The admin's ``audit_model``.
+        request (Request): The confirming request.
+        entity (str): The target's model name.
+        entity_id (str): The target's id.
+        operator_id (str): The operator's principal id.
+        operator_name (str): The operator's display name.
+        trusted_ip_header (str | None): The router's trusted IP header.
+
+    Returns:
+        Any: The unsaved audit row.
+    """
+    columns = {column.key for column in sa_inspect(audit_model).columns}
+    has_origin = {"event", "ip", "user_agent"} <= columns
+    return audit_model.new_entry(
+        entity=entity,
+        entity_id=entity_id,
+        action=AuditActionEnum.EVENT,
+        changes={},
+        actor=operator_id,
+        context={"event": ADMIN_IMPERSONATION_EVENT, "operator": operator_name},
+        event=ADMIN_IMPERSONATION_EVENT if has_origin else None,
+        request_context=(
+            AuditRequestContext.from_request(
+                request, trusted_ip_header=trusted_ip_header
+            )
+            if has_origin
+            else None
+        ),
+    )
 
 
 def _stamp_audit(instance: Any, actor_id: str, *, creating: bool) -> None:

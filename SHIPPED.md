@@ -4852,3 +4852,23 @@ do schema; `_inserts_in_scope` coleta `session.new | session.dirty` no
 (`_CommittedOutOfScopeError`, mensagem `error.out_of_scope_committed`);
 `_delete_scoped` faz rollback quando o `DELETE` com escopo não pega linha
 e dá `expunge` antes do commit.
+
+### Admin: impersonar, contagem estimada, restaurar pelo histórico e busca global (#804, 2026-11-22)
+
+`AdminModel(impersonate=...)` + `AdminPermissionEnum.IMPERSONATE` (negado sem
+`access_policy`), confirmação com CSRF e nonce, recusa por
+`AdminAuthBackend.is_admin_account`, entrada `event` `admin.impersonate` no
+`audit_model` antes do redirect e log `INFO` sem a URL;
+`make_jwt_impersonation_handler` (access token curto, `act` RFC 8693).
+`AdminModel(count_strategy="exact"|"estimate"|"none")`
+(`AdminCountStrategyEnum`): `reltuples` só sem busca/filtro/lens/escopo
+efetivo, exato no resto; `"none"` busca `page_size + 1`. "Restaurar" na
+timeline (`/restore/{entry_id}`) pré-preenche o form de edição — o save é a
+edição normal. `GET /search` com caixa no topo (`search_results_per_model`).
+Testes: `tests/admin/test_impersonation.py`, `test_count_strategy.py`,
+`test_count_strategy_postgres.py` (docker: zero `count(` com estimate,
+`reltuples = -1` cai para exato), `test_audit_restore.py`,
+`test_global_search.py` (escopo da busca, com a prova sem escopo); as rotas
+novas de `/m/` entraram nos casos de `test_row_scope.py`. Receita: `admin`,
+seções "Entrar como um usuário", "Contagem em tabela grande", "Busca
+global" e "Desfazer pelo histórico".

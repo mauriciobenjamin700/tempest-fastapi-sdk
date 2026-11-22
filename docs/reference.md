@@ -51,6 +51,13 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.ReadonlyFieldsFor
 ::: tempest_fastapi_sdk.admin.config.AdminRowScope
 ::: tempest_fastapi_sdk.admin.config.AdminRowScopeError
+::: tempest_fastapi_sdk.admin.config.AdminCountStrategyEnum
+::: tempest_fastapi_sdk.admin.config.AdminCountStrategy
+::: tempest_fastapi_sdk.admin.impersonation.AdminImpersonateHandler
+::: tempest_fastapi_sdk.admin.impersonation.make_jwt_impersonation_handler
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_TTL
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_EVENT
+::: tempest_fastapi_sdk.admin.impersonation.IMPERSONATION_TOKEN_PLACEHOLDER
 ::: tempest_fastapi_sdk.admin.i18n.AdminLocale
 ::: tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES
 ::: tempest_fastapi_sdk.admin.i18n.DEFAULT_ADMIN_LOCALE
@@ -100,6 +107,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router
+::: tempest_fastapi_sdk.admin.router.ADMIN_SEARCH_RESULTS_PER_MODEL
 ::: tempest_fastapi_sdk.admin.discovery.discover_models
 ::: tempest_fastapi_sdk.admin.session.AdminSession
 ::: tempest_fastapi_sdk.admin.session.AdminSessionRevocations

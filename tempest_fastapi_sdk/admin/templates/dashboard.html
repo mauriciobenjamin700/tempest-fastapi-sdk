@@ -41,7 +41,7 @@
     <article class="tempest-admin-model-card">
       <header class="tempest-admin-model-card__head">
         <h2>{{ entry.admin.get_verbose_name_plural() }}</h2>
-        {% if entry.count is not none %}<span class="tempest-admin-model-card__count">{{ entry.count | number }}</span>{% endif %}
+        {% if entry.count is not none %}<span class="tempest-admin-model-card__count"{% if entry.count_estimated %} title="{{ t('list.records_estimated_hint') }}"{% endif %}>{% if entry.count_estimated %}{{ t("dashboard.count_estimated", count=entry.count | number) }}{% else %}{{ entry.count | number }}{% endif %}</span>{% endif %}
       </header>
       <div class="tempest-admin-model-card__actions">
         <a class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm" href="{{ entry.url }}">{{ t("dashboard.browse") }}</a>

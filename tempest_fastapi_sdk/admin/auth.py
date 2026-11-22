@@ -142,6 +142,25 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         email = getattr(principal, "email", None)
         return str(email) if email else repr(principal)
 
+    def is_admin_account(self, target: Any) -> bool:
+        """Whether ``target`` is an account that can itself use the admin.
+
+        The impersonation flow (``AdminModel(impersonate=...)``) refuses
+        such a target: entering as another operator would turn one admin's
+        grant into another's, and the audit trail would credit the wrong
+        person. The default reads a truthy ``is_admin`` attribute, which is
+        what :class:`~tempest_fastapi_sdk.BaseUserModel` carries; override
+        it when admin access is decided by something else (a role column,
+        a group).
+
+        Args:
+            target (Any): The row the operator asked to enter as.
+
+        Returns:
+            bool: ``True`` to refuse the impersonation.
+        """
+        return bool(getattr(target, "is_admin", False))
+
     def credential_fingerprint(self, principal: PrincipalT) -> str | None:
         """Return a value that changes whenever the principal's credential does.
 
@@ -394,6 +413,24 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         if self.require_mfa and not self.mfa_enabled(user):
             return None
         return user
+
+    def is_admin_account(self, target: Any) -> bool:
+        """Whether ``target`` can sign into the admin itself.
+
+        A row of :attr:`user_model` answers what :meth:`is_authorized`
+        answers, so a backend that authorizes by role refuses impersonating
+        that role too; any row also counts when it carries a truthy
+        ``is_admin``.
+
+        Args:
+            target (Any): The row the operator asked to enter as.
+
+        Returns:
+            bool: ``True`` to refuse the impersonation.
+        """
+        if bool(getattr(target, "is_admin", False)):
+            return True
+        return isinstance(target, self.user_model) and self.is_authorized(target)
 
     def principal_id(self, principal: BaseUserModel) -> str:
         """Return the ``id`` UUID hex for serialization.
