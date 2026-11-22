@@ -22,7 +22,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel as PydanticModel
-from sqlalchemy import ColumnElement, String, and_, event
+from sqlalchemy import ColumnElement, ForeignKey, String, and_, event
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
@@ -41,6 +41,7 @@ from tempest_fastapi_sdk.admin import (
     AdminRowScopeError,
 )
 from tempest_fastapi_sdk.admin.csv_import import sign_import_payload
+from tempest_fastapi_sdk.db.signals import RepositorySignalEnum, connect, disconnect
 from tempest_fastapi_sdk.testing import admin_csrf_token, admin_login
 from tests.admin.row_scope_world import (
     NOTES,
@@ -66,6 +67,10 @@ class ScopeVoucher(BaseModel):
     __tablename__ = "admin_scope_vouchers"
     code: Mapped[str] = mapped_column(String(32), nullable=False)
     company: Mapped[str] = mapped_column(String(32), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_scope_categories.id"), nullable=True
+    )
 
 
 class ScopeAuthored(BaseModel):
@@ -83,6 +88,8 @@ class VoucherSchema(PydanticModel):
 
     code: str
     company: str
+    label: str | None = None
+    category_id: uuid.UUID | None = None
 
 
 async def issue_voucher(
@@ -97,8 +104,50 @@ async def issue_voucher(
     Returns:
         AdminActionResult: A plain success.
     """
-    await ctx.repository.add(ScopeVoucher(code=data.code, company=data.company))
+    await ctx.repository.add(
+        ScopeVoucher(code=data.code, company=data.company, category_id=data.category_id)
+    )
     return AdminActionResult(message="issued")
+
+
+async def upsert_voucher(
+    data: VoucherSchema, ctx: AdminActionContext
+) -> AdminActionResult:
+    """Update the voucher with this code when it exists, else create it.
+
+    Args:
+        data (VoucherSchema): The validated form.
+        ctx (AdminActionContext): The request context.
+
+    Returns:
+        AdminActionResult: A plain success.
+    """
+    existing = await ctx.repository.get_or_none({"code": data.code})
+    if existing is None:
+        await ctx.repository.add(
+            ScopeVoucher(code=data.code, company=data.company, label=data.label)
+        )
+    else:
+        existing.label = data.label
+        await ctx.repository.update(existing)
+    return AdminActionResult(message="upserted")
+
+
+async def issue_and_commit(
+    data: VoucherSchema, ctx: AdminActionContext
+) -> AdminActionResult:
+    """Create a voucher and commit the session by itself.
+
+    Args:
+        data (VoucherSchema): The validated form.
+        ctx (AdminActionContext): The request context.
+
+    Returns:
+        AdminActionResult: A plain success.
+    """
+    ctx.db_session.add(ScopeVoucher(code=data.code, company=data.company))
+    await ctx.db_session.commit()
+    return AdminActionResult(message="committed")
 
 
 def _company(column: Any) -> Any:
@@ -584,3 +633,176 @@ async def test_broken_scope_fails_closed_and_the_dashboard_logs_it(
         assert "could not count admin_scope_categories" in caplog.text
         with pytest.raises(AdminRowScopeError):
             await client.get(f"/admin/m/{ScopeCategory.__tablename__}/")
+
+
+def _voucher_admin(handler: Any) -> AdminModel[Any]:
+    """Register vouchers behind ``handler`` with a per-company scope.
+
+    Args:
+        handler (Any): The ``create_handler`` function.
+
+    Returns:
+        AdminModel[Any]: The admin.
+    """
+    return AdminModel(
+        ScopeVoucher,
+        create_handler=AdminCreateHandler(
+            schema=VoucherSchema, handler=handler, label="Issue"
+        ),
+        row_scope=_company(ScopeVoucher.company),
+    )
+
+
+async def _post_voucher(app: FastAPI, fields: dict[str, str]) -> tuple[int, str]:
+    """Sign in, open the handler form and submit ``fields``.
+
+    Args:
+        app (FastAPI): The app.
+        fields (dict[str, str]): The form values.
+
+    Returns:
+        tuple[int, str]: Status code and body.
+    """
+    path = f"/admin/m/{ScopeVoucher.__tablename__}/new"
+    async with _signed_in(app, path) as (client, csrf):
+        form = await client.get(path)
+        nonce = re.search(r'name="submission_nonce" value="([^"]+)"', form.text)
+        assert nonce is not None
+        resp = await client.post(
+            path,
+            data={"csrf_token": csrf, "submission_nonce": nonce.group(1), **fields},
+        )
+    return resp.status_code, resp.text
+
+
+async def _categories(db: AsyncDatabaseManager) -> tuple[uuid.UUID, uuid.UUID]:
+    """Insert one category per company.
+
+    Args:
+        db (AsyncDatabaseManager): The database.
+
+    Returns:
+        tuple[uuid.UUID, uuid.UUID]: The own and the foreign category ids.
+    """
+    async with db.get_session_context() as session:
+        own = ScopeCategory(name="Own", company=OWN)
+        foreign = ScopeCategory(name="Foreign", company=OTHER)
+        session.add_all([own, foreign])
+        await session.commit()
+        return own.id, foreign.id
+
+
+@pytest.mark.asyncio
+async def test_create_handler_refuses_a_foreign_key_outside_the_scope(
+    database: AsyncDatabaseManager,
+) -> None:
+    await _operator(database)
+    own, foreign = await _categories(database)
+    app = _mount(
+        database,
+        [
+            AdminModel(ScopeCategory, row_scope=_company(ScopeCategory.company)),
+            _voucher_admin(issue_voucher),
+        ],
+    )
+    status_code, body = await _post_voucher(
+        app, {"code": "V-1", "company": OWN, "category_id": str(foreign)}
+    )
+    assert status_code == 400
+    assert FK_MISSING in body
+    assert await _count(database, ScopeVoucher) == 0
+    status_code, body = await _post_voucher(
+        app, {"code": "V-2", "company": OWN, "category_id": str(uuid.uuid4())}
+    )
+    assert status_code == 400
+    assert FK_MISSING in body
+    status_code, _body = await _post_voucher(
+        app, {"code": "V-3", "company": OWN, "category_id": str(own)}
+    )
+    assert status_code == 303
+    assert await _count(database, ScopeVoucher) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_handler_upsert_onto_a_foreign_row_is_rolled_back(
+    database: AsyncDatabaseManager,
+) -> None:
+    await _operator(database)
+    async with database.get_session_context() as session:
+        foreign = ScopeVoucher(code="V-B", company=OTHER, label="original")
+        session.add(foreign)
+        await session.commit()
+        foreign_id = foreign.id
+    app = _mount(database, [_voucher_admin(upsert_voucher)])
+    status_code, body = await _post_voucher(
+        app, {"code": "V-B", "company": OWN, "label": "hijacked"}
+    )
+    assert status_code == 400
+    assert "outside the rows you may manage" in body
+    async with database.get_session_context() as session:
+        repo: BaseRepository[ScopeVoucher] = BaseRepository(session, model=ScopeVoucher)
+        stored = await repo.get_by_id(foreign_id)
+    assert stored.label == "original"
+
+
+@pytest.mark.asyncio
+async def test_create_handler_that_commits_itself_is_reported_truthfully(
+    database: AsyncDatabaseManager, caplog: pytest.LogCaptureFixture
+) -> None:
+    await _operator(database)
+    app = _mount(database, [_voucher_admin(issue_and_commit)])
+    caplog.set_level(logging.ERROR)
+    status_code, body = await _post_voucher(app, {"code": "V-X", "company": OTHER})
+    assert status_code == 400
+    assert "saved this record by itself" in body
+    assert "nothing was saved" not in body
+    assert "admin_scope_vouchers committed a row outside" in caplog.text
+    assert await _count(database, ScopeVoucher) == 1
+
+
+@pytest.mark.asyncio
+async def test_pre_delete_effect_is_undone_when_nothing_is_deleted(
+    world: ScopeWorld,
+) -> None:
+    def move_away(instance: ScopeNote) -> None:
+        """Take the note out of the scope right before the delete.
+
+        Args:
+            instance (ScopeNote): The note about to be deleted.
+        """
+        instance.company = OTHER
+
+    connect(ScopeNote, RepositorySignalEnum.PRE_DELETE, move_away)
+    try:
+        resp = await world.client.post(
+            f"{NOTES}/{world.ids['note_in']}/delete", data={"csrf_token": world.csrf}
+        )
+    finally:
+        disconnect(ScopeNote, RepositorySignalEnum.PRE_DELETE, move_away)
+    assert resp.status_code == 404
+    stored = await world.note("in")
+    assert stored is not None
+    assert stored.company == OWN
+
+
+@pytest.mark.asyncio
+async def test_post_delete_reads_the_deleted_row(world: ScopeWorld) -> None:
+    seen: list[str] = []
+
+    def record(instance: ScopeNote) -> None:
+        """Read a column of the deleted note.
+
+        Args:
+            instance (ScopeNote): The deleted note.
+        """
+        seen.append(instance.body)
+
+    connect(ScopeNote, RepositorySignalEnum.POST_DELETE, record)
+    try:
+        resp = await world.client.post(
+            f"{NOTES}/{world.ids['note_in']}/delete", data={"csrf_token": world.csrf}
+        )
+    finally:
+        disconnect(ScopeNote, RepositorySignalEnum.POST_DELETE, record)
+    assert resp.status_code == 303
+    assert seen == ["NoteInside"]

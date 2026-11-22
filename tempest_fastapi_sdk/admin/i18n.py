@@ -85,6 +85,11 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
             "Someone else saved this record after you opened it. Nothing was saved:"
             " your values are below — review them and save again to overwrite."
         ),
+        "error.out_of_scope_committed": (
+            "The create handler saved this record by itself, and it falls outside"
+            " the rows you may manage. It could not be undone; ask an"
+            " administrator to review it."
+        ),
         "error.out_of_scope": (
             "This record would fall outside the rows you may manage; nothing was saved."
         ),
@@ -421,6 +426,11 @@ ADMIN_MESSAGES: Final[Mapping[str, Mapping[str, str]]] = {
             "Outra pessoa salvou este registro depois que você o abriu. Nada foi"
             " salvo: seus valores estão abaixo — revise e salve de novo para"
             " sobrescrever."
+        ),
+        "error.out_of_scope_committed": (
+            "O handler de criação salvou este registro sozinho, e ele fica fora"
+            " das linhas que você pode gerenciar. Não foi possível desfazer;"
+            " peça a um administrador para revisar."
         ),
         "error.out_of_scope": (
             "Este registro ficaria fora das linhas que você pode gerenciar; nada foi"

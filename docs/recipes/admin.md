@@ -1650,11 +1650,17 @@ mesma transação e, se ela saiu, faz rollback e devolve o form com
 saved.` — o operador da empresa A não cria um ticket da empresa B nem
 "move" um dos seus para lá trocando o `company_id`. O mesmo vale para:
 
-- **`create_handler`**: toda linha do model que o handler insere pela
-  sessão (pelo `ctx.repository` ou por `session.add`) é contada contra o
-  escopo antes do commit. Linha inserida por SQL Core (`insert()`,
-  `bulk_create_values`), ou um handler que dá `commit` sozinho, escapa da
-  checagem.
+- **`create_handler`**: os campos do schema com o nome de uma coluna FK
+  passam pela checagem de FK abaixo antes do handler rodar. Depois, toda
+  linha do model que o handler grava pela sessão — inserida **ou
+  alterada**, como num upsert que edita uma linha existente — é contada
+  contra o escopo antes do commit; fora, rollback. Escapam da checagem:
+  escrita por SQL Core (`insert()`, `update()`, `bulk_create_values`), um
+  service que abre uma sessão própria e linhas de **outros** models que o
+  handler grave. Handler que dá `commit` sozinho já tornou a linha
+  durável: o painel não consegue desfazer, registra em `ERROR` com o model
+  e diz no form que o registro **foi** salvo fora do escopo, em vez de
+  afirmar que nada foi salvo.
 - **activate/deactivate em lote**: se o `is_active` novo tira alguma
   linha do escopo (um escopo que filtra por ele), nada muda e a listagem
   volta com o aviso.
@@ -1662,7 +1668,10 @@ saved.` — o operador da empresa A não cria um ticket da empresa B nem
   uma FK cujo model alvo tem `row_scope` precisa ser uma linha que o
   principal alcança lá. Fora do escopo, o campo recebe `Select a valid
   choice; that record does not exist.` — o mesmo erro de um id que não
-  existe, então um `POST` forjado não descobre ids de outro tenant.
+  existe, então um `POST` forjado não descobre ids de outro tenant. A
+  coluna é conferida contra a sua primeira `ForeignKey`: numa
+  `ForeignKeyConstraint` composta, ou numa coluna com várias FKs, só esse
+  alvo é verificado.
 
 Um arquivo de upload gravado por um create ou edit que acabou recusado é
 apagado (tentativa única; falha vai para o log).
@@ -1674,8 +1683,16 @@ mexer nela mantém a referência — antes o browser mandava a primeira
 opção e o save trocava a referência sem aviso.
 
 No painel de auditoria do detail, o autor de uma alteração aparece pelo
-nome só quando o model de usuário registrado tem `row_scope` e o
-principal alcança esse usuário (com `VIEW`); fora disso, aparece o id.
+nome quando o model de usuário não está registrado no site, ou está sem
+`row_scope`. Com `row_scope`, o nome só aparece se o principal tem `VIEW`
+nesse model e alcança aquele usuário pelo escopo; senão, só o id.
+
+No delete, quando o `DELETE ... AND <escopo>` não apaga nada (a linha
+saiu do escopo depois da leitura), o bloco volta inteiro — o que um
+handler de `PRE_DELETE` gravou na sessão é desfeito —, a resposta é `404`
+e o `POST_DELETE` não dispara. O `POST_DELETE` recebe a instância fora da
+sessão, como no `BaseRepository.delete`, então lê as colunas mesmo com
+`expire_on_commit=True`.
 
 !!! warning "O que o escopo não cobre"
     - O `row_scope` vale nas rotas `/m/{slug}/...` e no que elas mostram de

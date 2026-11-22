@@ -1004,6 +1004,12 @@ def make_admin_router(
         handler = admin.create_handler
         assert handler is not None
         data, errors = parse_schema_submission(handler.schema, form)
+        if data is not None:
+            errors = await _fk_scope_errors(
+                admin, db_session, principal, data.model_dump()
+            )
+            if errors:
+                data = None
         if data is None:
             return await _handler_form(
                 request,
@@ -1036,9 +1042,15 @@ def make_admin_router(
                 principal,
                 partial(handler.handler, data, context),
             )
-        except (AppException, _RowOutOfScopeError) as exc:
+        except (AppException, _RowOutOfScopeError, _CommittedOutOfScopeError) as exc:
             await db_session.rollback()
             await _reload_expired(db_session, principal)
+            if isinstance(exc, AppException):
+                message = exc.message
+            elif isinstance(exc, _CommittedOutOfScopeError):
+                message = _t("error.out_of_scope_committed")
+            else:
+                message = _t("error.out_of_scope")
             return await _handler_form(
                 request,
                 admin,
@@ -1046,9 +1058,7 @@ def make_admin_router(
                 principal,
                 db_session,
                 submitted=form,
-                form_error=exc.message
-                if isinstance(exc, AppException)
-                else _t("error.out_of_scope"),
+                form_error=message,
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
         if result is not None and result.secrets:
@@ -1450,7 +1460,12 @@ def make_admin_router(
         statement is ``DELETE ... WHERE id = :id AND <scope>``, so a row
         that left the scope between the lookup and the delete is not
         removed; ``PRE_DELETE`` / ``POST_DELETE`` handlers still run around
-        it, as :meth:`BaseRepository.delete` runs them.
+        it, as :meth:`BaseRepository.delete` runs them. When the statement
+        deletes nothing, the block is rolled back — whatever a
+        ``PRE_DELETE`` handler wrote in the session is undone — and no
+        ``POST_DELETE`` fires. The instance is expunged before the commit,
+        as the repository does, so a ``POST_DELETE`` handler still reads
+        its columns under ``expire_on_commit=True``.
 
         Args:
             admin (AdminModel[Any]): The row's admin.
@@ -1469,13 +1484,22 @@ def make_admin_router(
         signals = has_handlers(
             admin.model, RepositorySignalEnum.PRE_DELETE
         ) or has_handlers(admin.model, RepositorySignalEnum.POST_DELETE)
-        async with transaction(db_session):
-            if signals:
-                await emit(type(instance), RepositorySignalEnum.PRE_DELETE, instance)
-            deleted = await repository.delete_many({"id": instance.id}, where=scope)
-        if deleted and signals:
+        try:
+            async with transaction(db_session):
+                if signals:
+                    await emit(
+                        type(instance), RepositorySignalEnum.PRE_DELETE, instance
+                    )
+                deleted = await repository.delete_many({"id": instance.id}, where=scope)
+                if not deleted:
+                    raise _RowOutOfScopeError
+                if instance in db_session:
+                    db_session.expunge(instance)
+        except _RowOutOfScopeError:
+            return False
+        if signals:
             await emit(type(instance), RepositorySignalEnum.POST_DELETE, instance)
-        return bool(deleted)
+        return True
 
     async def _toggle_in_scope(
         admin: AdminModel[Any],
@@ -1525,17 +1549,24 @@ def make_admin_router(
         principal: Any,
         run: Callable[[], Awaitable[Any]],
     ) -> Any:
-        """Run code that inserts rows of ``admin.model`` and check each one.
+        """Run a ``create_handler`` and check every row of the model it wrote.
 
-        For a ``create_handler``, which writes through a service and returns
-        no row. With a scope, ``run`` executes inside
-        :func:`~tempest_fastapi_sdk.db.transaction`, every instance of
-        :attr:`AdminModel.model` that becomes persistent in the session is
-        collected (SQLAlchemy's ``pending_to_persistent`` event), and they
-        are counted against the scope in the same transaction before it
-        commits; one outside it raises and rolls everything back. A row
-        inserted through Core (``insert()``, ``bulk_create_values``) or a
-        handler that commits the session itself escapes the check.
+        The handler writes through a service and returns no row. With a
+        scope, ``run`` executes inside
+        :func:`~tempest_fastapi_sdk.db.transaction`; every instance of
+        :attr:`AdminModel.model` the session flushes as new **or changed**
+        (collected on ``before_flush`` from ``session.new`` and
+        ``session.dirty``, so an upsert that edits an existing row counts
+        too) is counted against the scope in the same transaction before
+        it commits, and one outside it raises and rolls everything back.
+
+        Escapes the check: rows written through Core (``insert()``,
+        ``update()``, ``bulk_create_values``), a service that opens a
+        session of its own, and rows of **other** models the handler
+        writes. A handler that commits the session itself has already
+        made its rows durable: the check still runs, and a row outside the
+        scope raises :class:`_CommittedOutOfScopeError` (logged at
+        ``ERROR``) instead of claiming nothing was saved.
 
         Args:
             admin (AdminModel[Any]): The admin the handler creates rows of.
@@ -1547,38 +1578,65 @@ def make_admin_router(
             Any: What ``run`` returned.
 
         Raises:
-            _RowOutOfScopeError: When a created row falls outside the scope.
+            _RowOutOfScopeError: When a written row falls outside the scope;
+                nothing was committed.
+            _CommittedOutOfScopeError: The same, after the handler committed
+                the rows itself.
         """
         scope = await admin.scope_for(principal)
         if scope is None:
             return await run()
-        created: list[Any] = []
+        written: list[Any] = []
+        commits: list[bool] = []
 
-        def _collect(_session: Any, instance: Any) -> None:
-            """Remember a row of the admin's model that was just inserted.
+        def _collect(session: Any, _context: Any, _instances: Any) -> None:
+            """Remember the rows of the admin's model about to be flushed.
+
+            Args:
+                session (Any): The sync session.
+                _context (Any): The flush context (unused).
+                _instances (Any): Deprecated argument (unused).
+            """
+            written.extend(
+                instance
+                for instance in (*session.new, *session.dirty)
+                if isinstance(instance, admin.model)
+            )
+
+        def _committed(_session: Any) -> None:
+            """Note that the session committed while the handler ran.
 
             Args:
                 _session (Any): The sync session (unused).
-                instance (Any): The instance that became persistent.
             """
-            if isinstance(instance, admin.model):
-                created.append(instance)
+            commits.append(True)
 
         sync_session = db_session.sync_session
-        event.listen(sync_session, "pending_to_persistent", _collect)
+        event.listen(sync_session, "before_flush", _collect)
+        event.listen(sync_session, "after_commit", _committed)
         try:
             async with transaction(db_session):
                 result = await run()
                 await db_session.flush()
-                ids = {row.id for row in created}
+                handler_committed = bool(commits)
+                ids = {row.id for row in written}
                 if ids:
                     reachable = await admin.build_repository(db_session).count(
                         {"id": list(ids)}, where=scope
                     )
                     if reachable != len(ids):
+                        if handler_committed:
+                            logger.error(
+                                "create_handler of %s committed a row outside "
+                                "the principal's row_scope; it could not be "
+                                "rolled back",
+                                admin.get_slug(),
+                            )
+                            raise _CommittedOutOfScopeError
                         raise _RowOutOfScopeError
         finally:
-            event.remove(sync_session, "pending_to_persistent", _collect)
+            event.remove(sync_session, "before_flush", _collect)
+            event.remove(sync_session, "after_commit", _committed)
         return result
 
     async def _fk_scope_errors(
@@ -1597,7 +1655,12 @@ def make_admin_router(
         one that does not exist, so a forged ``POST`` learns nothing about
         other tenants' ids. A value equal to what ``current`` already holds
         is not checked, so an edit keeps a reference it cannot see instead
-        of failing on it.
+        of failing on it. A ``create_handler`` form goes through the same
+        check for each schema field named like a foreign-key column.
+
+        The column is matched to its first ``ForeignKey``: a column in a
+        composite ``ForeignKeyConstraint``, or one carrying several
+        foreign keys, is checked against that one target column alone.
 
         Args:
             admin (AdminModel[Any]): The admin being written.
@@ -1621,8 +1684,9 @@ def make_admin_router(
             if referenced is None or referenced.row_scope is None:
                 continue
             target = next(iter(columns[field_name].foreign_keys)).column.name
+            lookup = _identity_value(value) if isinstance(value, str) else value
             found = await referenced.build_repository(db_session).count(
-                {target: value}, where=await referenced.scope_for(principal)
+                {target: lookup}, where=await referenced.scope_for(principal)
             )
             if not found:
                 errors[field_name] = _t("form.error.fk_missing")
@@ -5157,6 +5221,14 @@ class _RowOutOfScopeError(Exception):
 
     Raised inside the write's transaction so the rollback discards it;
     the route turns it into the ``error.out_of_scope`` text on the form.
+    """
+
+
+class _CommittedOutOfScopeError(Exception):
+    """A ``create_handler`` committed a row outside the scope by itself.
+
+    The row is durable, so the form says so instead of claiming nothing was
+    saved, and the router logs it at ``ERROR``.
     """
 
 

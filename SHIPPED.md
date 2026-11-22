@@ -4846,3 +4846,9 @@ dashboard. Testes: `tests/admin/test_row_scope_writes.py`; o modelo
 compartilhado foi para `tests/admin/row_scope_world.py`, e a prova de que
 os casos por rota mordem exige `ScopeLeakError`, não qualquer
 `AssertionError`.
+Segunda rodada: o `create_handler` passa pelo `_fk_scope_errors` nos campos
+do schema; `_inserts_in_scope` coleta `session.new | session.dirty` no
+`before_flush` (upsert conta) e detecta `after_commit` do próprio handler
+(`_CommittedOutOfScopeError`, mensagem `error.out_of_scope_committed`);
+`_delete_scoped` faz rollback quando o `DELETE` com escopo não pega linha
+e dá `expunge` antes do commit.

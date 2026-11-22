@@ -33,15 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   escopo responde `404`; no delete e no delete/activate/deactivate em lote
   a condição está no próprio `DELETE`/`UPDATE`. Create (inclusive por
   `create_handler`), edit, inline, import e activate/deactivate que
-  deixariam a linha fora do escopo voltam sem gravar. FK cujo model alvo
+  deixariam a linha fora do escopo voltam sem gravar; o `create_handler`
+  confere também as linhas que altera (upsert) e os campos de FK do
+  schema, e quando o próprio handler comita fora do escopo o form diz que o
+  registro foi salvo (e loga em `ERROR`). FK cujo model alvo
   tem `row_scope` só aceita uma linha que o principal alcança lá; fora, o
   campo recebe o mesmo erro de um id inexistente. No form de edição, a FK
   que aponta para uma linha fora das opções do `<select>` continua
   selecionada (opção rotulada só com o id). Upload gravado por um create ou
-  edit recusado é apagado. O autor no painel de auditoria aparece pelo nome
-  só quando o principal alcança esse usuário pelo escopo do model de
-  usuário; fora disso, pelo id. Tipos `AdminRowScope` e
-  `AdminRowScopeError`.
+  edit recusado é apagado. Com o model de usuário registrado com
+  `row_scope`, o autor no painel de auditoria aparece pelo nome só quando o
+  principal alcança esse usuário; senão, pelo id (sem `row_scope` ali, o
+  nome aparece como antes). Delete cujo `DELETE ... AND escopo` não apaga
+  nada desfaz o efeito do `PRE_DELETE` e responde `404`. Tipos
+  `AdminRowScope` e `AdminRowScopeError`.
 - Admin: interface em português (#802). `AdminSite(locale="pt-BR")` troca
   todo texto do painel — rótulos, botões, estados vazios, paginação, flash e
   os erros que o router e o form mostram — pelo catálogo

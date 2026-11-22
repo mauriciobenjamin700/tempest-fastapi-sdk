@@ -1680,11 +1680,17 @@ record would fall outside the rows you may manage; nothing was saved.` —
 company A's operator cannot create a company B ticket, nor "move" one of
 theirs there by changing `company_id`. The same applies to:
 
-- **`create_handler`**: every row of the model the handler inserts through
-  the session (via `ctx.repository` or `session.add`) is counted against
-  the scope before the commit. A row inserted through SQL Core
-  (`insert()`, `bulk_create_values`), or a handler that commits on its
-  own, escapes the check.
+- **`create_handler`**: the schema fields named like a foreign-key column
+  go through the foreign-key check below before the handler runs. Then
+  every row of the model the handler writes through the session —
+  inserted **or changed**, as in an upsert that edits an existing row — is
+  counted against the scope before the commit; outside it, rollback.
+  Escaping the check: writes through SQL Core (`insert()`, `update()`,
+  `bulk_create_values`), a service that opens a session of its own, and
+  rows of **other** models the handler writes. A handler that commits on
+  its own has already made the row durable: the panel cannot undo it,
+  logs it at `ERROR` with the model, and says on the form that the record
+  **was** saved outside the scope, instead of claiming nothing was saved.
 - **bulk activate/deactivate**: if the new `is_active` takes any row out
   of the scope (a scope that filters on it), nothing changes and the list
   comes back with the warning.
@@ -1693,6 +1699,9 @@ theirs there by changing `company_id`. The same applies to:
   principal reaches there. Outside the scope the field gets `Select a
   valid choice; that record does not exist.` — the same error as an id
   that does not exist, so a forged `POST` learns no other tenant's ids.
+  The column is checked against its first `ForeignKey`: in a composite
+  `ForeignKeyConstraint`, or on a column with several foreign keys, only
+  that target is verified.
 
 An uploaded file stored by a create or edit that ends up refused is
 deleted (one attempt; a failure goes to the log).
@@ -1703,9 +1712,17 @@ gains one option with the current value, labelled with the id alone, and
 saving without touching it keeps the reference — before, the browser
 posted the first option and the save rewrote the reference silently.
 
-In the detail's audit panel, the author of a change is shown by name only
-when the registered user model has a `row_scope` and the principal
-reaches that user (with `VIEW`); otherwise the id is shown.
+In the detail's audit panel, the author of a change is shown by name when
+the user model is not registered on the site, or has no `row_scope`. With
+a `row_scope`, the name shows only if the principal has `VIEW` on that
+model and reaches that user through the scope; otherwise only the id.
+
+On delete, when the `DELETE ... AND <scope>` removes nothing (the row
+left the scope after it was read), the whole block is rolled back —
+whatever a `PRE_DELETE` handler wrote in the session is undone —, the
+answer is `404` and no `POST_DELETE` fires. `POST_DELETE` receives the
+instance outside the session, as with `BaseRepository.delete`, so it
+reads the columns even with `expire_on_commit=True`.
 
 !!! warning "What the scope does not cover"
     - `row_scope` applies to the `/m/{slug}/...` routes and to what they
