@@ -13,7 +13,7 @@
 {% macro metric_card(card) %}
   <article class="tempest-admin-card tempest-admin-card--{{ card.kind }}{% if card.level %} tempest-admin-card--level-{{ card.level }}{% endif %}"{% if card.level %} data-level="{{ card.level }}"{% endif %}>
     <span class="tempest-admin-card__label">{{ card.label }}</span>
-    {% if card.level %}<span class="tempest-admin-card__level">{{ {"green": "OK", "yellow": "Attention", "red": "Critical"}[card.level] }}</span>{% endif %}
+    {% if card.level %}<span class="tempest-admin-card__level">{% if card.level == "green" %}{{ t("card.level.green") }}{% elif card.level == "yellow" %}{{ t("card.level.yellow") }}{% else %}{{ t("card.level.red") }}{% endif %}</span>{% endif %}
     {% if card.kind == 'value' %}
     <span class="tempest-admin-card__value">{{ card.value | number }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
     {% elif card.kind == 'trend' %}
@@ -21,7 +21,7 @@
     <span class="tempest-admin-card__trend tempest-admin-card__trend--{{ card.direction }}">
       {% if card.direction == 'up' %}↑{% elif card.direction == 'down' %}↓{% else %}→{% endif %}
       {% if card.pct is not none %}{{ '%+.1f' | format(card.pct) }}%{% else %}—{% endif %}
-      <small>vs {{ (card.previous | number) if card.previous is defined else '' }} before</small>
+      <small>{{ t("card.vs_before", previous=(card.previous | number) if card.previous is defined else '') }}</small>
     </span>
     {% else %}
     <ul class="tempest-admin-card__parts">

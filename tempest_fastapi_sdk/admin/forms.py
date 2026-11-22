@@ -23,6 +23,7 @@ from sqlalchemy import JSON
 from sqlalchemy import inspect as sa_inspect
 
 from tempest_fastapi_sdk.admin.display import humanize_field
+from tempest_fastapi_sdk.admin.i18n import DEFAULT_ADMIN_LOCALE, admin_text
 from tempest_fastapi_sdk.utils.password import PasswordUtils, check_password_policy
 
 _DEFAULT_PASSWORD_COLUMN: str = "hashed_password"
@@ -458,6 +459,7 @@ def parse_submission(
     *,
     only: Collection[str] | None = None,
     creating: bool = False,
+    locale: str = DEFAULT_ADMIN_LOCALE,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Coerce a posted form into model kwargs + collect field errors.
 
@@ -470,6 +472,8 @@ def parse_submission(
         creating (bool): Whether the submission creates a row, which also
             reads the model's required secret columns
             (:meth:`AdminModel.insertable_secret_names`).
+        locale (str): Language of the error messages
+            (:data:`~tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES`).
 
     Returns:
         tuple[dict[str, Any], dict[str, str]]: ``(data, errors)`` where
@@ -514,23 +518,27 @@ def parse_submission(
                 if column.nullable:
                     data[name] = None
             else:
-                errors[name] = "This field is required."
+                errors[name] = admin_text(locale, "form.error.required")
             continue
         allowed = admin.choices.get(name)
         if allowed is not None and str(raw) not in {value for value, _ in allowed}:
             label = humanize_field(name)
-            errors[name] = f"Choose one of the listed values for {label}."
+            errors[name] = admin_text(locale, "form.error.choice", label=label)
             continue
         if widget == "json":
             try:
                 data[name] = _json.loads(str(raw))
             except (ValueError, TypeError):
-                errors[name] = f"Invalid JSON for {humanize_field(name)}."
+                errors[name] = admin_text(
+                    locale, "form.error.json", label=humanize_field(name)
+                )
             continue
         try:
             coerced = _coerce_scalar(py, str(raw))
         except (ValueError, TypeError, KeyError):
-            errors[name] = f"Invalid value for {humanize_field(name)}."
+            errors[name] = admin_text(
+                locale, "form.error.invalid", label=humanize_field(name)
+            )
             continue
         if (
             widget == "datetime"
@@ -547,6 +555,7 @@ def parse_password_submission(
     form: Mapping[str, Any],
     *,
     creating: bool,
+    locale: str = DEFAULT_ADMIN_LOCALE,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Read the plaintext typed into each password field.
 
@@ -563,6 +572,8 @@ def parse_password_submission(
         admin (AdminModel[Any]): The admin configuration.
         form (Mapping[str, Any]): The posted form data.
         creating (bool): Whether this is the create form.
+        locale (str): Language of the "required" message; a password
+            policy violation keeps the policy's own message.
 
     Returns:
         tuple[dict[str, str], dict[str, str]]: ``(values, errors)``
@@ -581,7 +592,7 @@ def parse_password_submission(
         plain = raw.strip() if isinstance(raw, str) else ""
         if not plain:
             if creating and not column.nullable:
-                errors[name] = "This field is required."
+                errors[name] = admin_text(locale, "form.error.required")
             continue
         violation = check_password_policy(plain, admin.password_policy)
         if violation is not None:

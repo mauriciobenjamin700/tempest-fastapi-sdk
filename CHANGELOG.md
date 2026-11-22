@@ -20,6 +20,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   o `make_health_router(checks=...)` espera. Lê a revision por
   `current_async(bind=db.engine)` e responde `True` só com uma head na árvore
   e o banco carimbado nela (#805).
+- Admin: escopo por linha (#802). `AdminModel(row_scope=...)` recebe
+  `(principal, admin)` e devolve uma condição SQLAlchemy (`None` libera
+  tudo), sync ou async; ela entra com `AND` em toda rota do model —
+  listagem, contagem (cabeçalho e card do dashboard), export, detail, edit,
+  delete, download de upload, ações em lote e customizadas (ids fora do
+  escopo são descartados), autocomplete, `<select>` e filtro de FK quando o
+  model é o alvo, inline quando é o filho, formset editável e import. Linha
+  fora do escopo responde `404`. Create, edit, inline e import que deixariam
+  a linha fora do escopo voltam sem gravar. Tipo `AdminRowScope`.
+- Admin: interface em português (#802). `AdminSite(locale="pt-BR")` troca
+  todo texto do painel — rótulos, botões, estados vazios, paginação, flash e
+  os erros que o router e o form mostram — pelo catálogo
+  `tempest_fastapi_sdk.admin.i18n` (`ADMIN_MESSAGES`, `ADMIN_LOCALES`,
+  `admin_text`, `admin_plural`, helpers `t`/`tn` nos templates). O padrão é
+  `"en"`, com o texto de antes. Guard `tests/test_admin_i18n_guard.py`.
+- Admin: atalhos no filtro de intervalo de data (#802) — Today, 7 days,
+  30 days, This month, Last month —, calculados no `display_timezone` do
+  model (UTC sem ele), preservando busca, filtros, ordenação e lens. Links,
+  sem JavaScript.
+- Admin: trava otimista no form de edição (#802). O form leva o `updated_at`
+  lido; o save roda `UPDATE ... WHERE updated_at = :lido` na transação da
+  edição e, com zero linhas, devolve o form com `409`, aviso, os valores do
+  operador e a versão atual, sem gravar. Model sem `updated_at` e `POST` sem
+  o campo salvam como antes; inline e ações não levam a trava.
+- `ADMIN_IMPORT_MAX_BYTES`, `ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS`,
+  `ADMIN_IMPORT_PREVIEW_ROWS` em `tempest_fastapi_sdk.admin`.
+
+### Changed
+
+- Admin: o import CSV tem dois passos (#802). `POST /m/{slug}/import`
+  valida e ensaia os inserts numa transação desfeita e mostra a prévia
+  (linhas que entram, as 20 primeiras, erros por linha e campo) sem gravar;
+  `POST /m/{slug}/import/confirm` grava o CSV que veio assinado da prévia
+  (preso ao model e ao operador, válido por 1 hora, nonce de uso único),
+  **tudo ou nada**, e redireciona para a listagem. Antes o upload gravava
+  na hora, linha a linha, e pulava as inválidas. Com erro em qualquer linha
+  o confirmar fica desabilitado e o `POST` também recusa. Arquivo acima de
+  512 KiB responde `400`.
+- `parse_submission`, `parse_password_submission` e `cell_view` aceitam
+  `locale=` (padrão `"en"`); `AdminSite(index_subtitle=None)` usa o texto do
+  catálogo no locale do site.
 
 ### Fixed
 

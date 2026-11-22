@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{% if form_title %}{{ form_title }}{% elif mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %} · {{ site.title }}{% endblock %}
+{% block title %}{% if form_title %}{{ form_title }}{% elif mode == 'create' %}{{ t("form.title.create", model=admin.get_verbose_name()) }}{% else %}{{ t("form.title.edit", model=admin.get_verbose_name()) }}{% endif %} · {{ site.title }}{% endblock %}
 {% block content %}
 <section class="tempest-admin-form">
   <header class="tempest-admin-detail__header">
     <div class="tempest-admin-page-title">
-      <a class="tempest-admin-crumb" href="{{ back_url }}">← Back</a>
-      <h1>{% if form_title %}{{ form_title }}{% elif mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %}</h1>
+      <a class="tempest-admin-crumb" href="{{ back_url }}">← {{ t("form.back") }}</a>
+      <h1>{% if form_title %}{{ form_title }}{% elif mode == 'create' %}{{ t("form.title.create", model=admin.get_verbose_name()) }}{% else %}{{ t("form.title.edit", model=admin.get_verbose_name()) }}{% endif %}</h1>
     </div>
   </header>
   {% if form_intro %}
@@ -17,6 +17,7 @@
   <form method="post" action="{{ action_url }}" class="tempest-admin-form__form"{% if admin.upload_fields %} enctype="multipart/form-data"{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     {% if submission_nonce %}<input type="hidden" name="submission_nonce" value="{{ submission_nonce }}">{% endif %}
+    {% if version_token %}<input type="hidden" name="{{ version_field }}" value="{{ version_token }}">{% endif %}
     {% for hidden_name, hidden_value in hidden_inputs or [] %}<input type="hidden" name="{{ hidden_name }}" value="{{ hidden_value }}">
     {% endfor %}
     {% for f in form_fields %}
@@ -28,17 +29,17 @@
       </label>
       {% else %}
       <label>
-        <span class="tempest-admin-form__label">{{ f.label }}{% if f.required %} <abbr class="tempest-admin-form__req" title="required">*</abbr>{% endif %}</span>
+        <span class="tempest-admin-form__label">{{ f.label }}{% if f.required %} <abbr class="tempest-admin-form__req" title="{{ t('form.required') }}">*</abbr>{% endif %}</span>
         {% if f.widget == 'textarea' %}
         <textarea name="{{ f.name }}" rows="4" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
         {% elif f.widget == 'json' %}
         <textarea name="{{ f.name }}" rows="6" class="tempest-admin-form__json" spellcheck="false" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
-        <small class="tempest-admin-form__hint">JSON — must parse (e.g. <code>{}</code>, <code>[]</code>, <code>"text"</code>).</small>
+        <small class="tempest-admin-form__hint">{{ t("form.json_hint") }} <code>{}</code>, <code>[]</code>, <code>"text"</code>).</small>
         {% elif f.widget == 'time' %}
         <input type="time" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% elif f.widget == 'select' %}
         <select name="{{ f.name }}" {% if f.required %}required{% endif %}>
-          {% if not f.required %}<option value="">— none —</option>{% endif %}
+          {% if not f.required %}<option value="">{{ t("form.none") }}</option>{% endif %}
           {% for val, lbl in f.options %}
           <option value="{{ val }}" {% if (f.value | string) == val %}selected{% endif %}>{{ lbl }}</option>
           {% endfor %}
@@ -47,13 +48,13 @@
         <input type="number" name="{{ f.name }}" value="{{ f.value }}" {% if f.step %}step="{{ f.step }}"{% endif %} {% if f.required %}required{% endif %}>
         {% elif f.widget == 'datetime' %}
         <input type="datetime-local" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
-        {% if f.timezone %}<small class="tempest-admin-form__hint">Timezone: {{ f.timezone }} — stored as UTC.</small>{% endif %}
+        {% if f.timezone %}<small class="tempest-admin-form__hint">{{ t("form.timezone_hint", zone=f.timezone) }}</small>{% endif %}
         {% elif f.widget == 'date' %}
         <input type="date" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% elif f.widget == 'autocomplete' %}
         <div class="tempest-admin-ac" data-field="{{ f.name }}">
           <input type="text" class="tempest-admin-ac__search" name="q"
-                 value="{{ f.display_label }}" placeholder="Search…"
+                 value="{{ f.display_label }}" placeholder="{{ t('common.search_placeholder') }}"
                  autocomplete="off"
                  hx-get="{{ f.autocomplete_url }}"
                  hx-trigger="keyup changed delay:250ms, focus"
@@ -65,10 +66,10 @@
         </div>
         {% elif f.widget == 'password' %}
         <input type="password" name="{{ f.name }}" value="" autocomplete="new-password" {% if f.required %}required{% endif %}>
-        {% if mode == 'edit' %}<small class="tempest-admin-form__hint">Leave blank to keep the current password.</small>{% endif %}
+        {% if mode == 'edit' %}<small class="tempest-admin-form__hint">{{ t("form.password_keep") }}</small>{% endif %}
         {% elif f.widget == 'file' %}
         <input type="file" name="{{ f.name }}" {% if f.accept %}accept="{{ f.accept }}" {% endif %}{% if f.required %}required{% endif %}>
-        {% if f.value %}<small class="tempest-admin-form__hint">Current: {{ f.value }} — choose a file to replace.</small>{% endif %}
+        {% if f.value %}<small class="tempest-admin-form__hint">{{ t("form.file_current", value=f.value) }}</small>{% endif %}
         {% else %}
         <input type="text" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% endif %}
@@ -78,8 +79,8 @@
     </div>
     {% endfor %}
     <div class="tempest-admin-form__actions">
-      <a href="{{ back_url }}" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-form__cancel">Cancel</a>
-      <button type="submit" class="tempest-admin-btn">{% if submit_label %}{{ submit_label }}{% elif mode == 'create' %}Create{% else %}Save{% endif %}</button>
+      <a href="{{ back_url }}" class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-form__cancel">{{ t("form.cancel") }}</a>
+      <button type="submit" class="tempest-admin-btn">{% if submit_label %}{{ submit_label }}{% elif mode == 'create' %}{{ t("form.create") }}{% else %}{{ t("form.save") }}{% endif %}</button>
     </div>
   </form>
 </section>

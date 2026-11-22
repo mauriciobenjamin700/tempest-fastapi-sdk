@@ -9,7 +9,7 @@ import io
 import json
 import logging
 import secrets
-from collections.abc import Callable, Collection
+from collections.abc import Awaitable, Callable, Collection
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from enum import Enum
 from functools import partial
@@ -30,8 +30,9 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
-from sqlalchemy import JSON, or_, select
+from sqlalchemy import JSON, and_, or_, select
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import NoInspectionAvailable
 from starlette.concurrency import run_in_threadpool
 
@@ -44,6 +45,14 @@ from tempest_fastapi_sdk.admin.actions import (
 )
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel, Inline
+from tempest_fastapi_sdk.admin.csv_import import (
+    ADMIN_IMPORT_MAX_BYTES,
+    ImportOutcome,
+    ImportPayloadError,
+    read_import_payload,
+    run_import,
+    sign_import_payload,
+)
 from tempest_fastapi_sdk.admin.dashboard import card_entry
 from tempest_fastapi_sdk.admin.display import (
     cell_view,
@@ -64,6 +73,7 @@ from tempest_fastapi_sdk.admin.forms import (
     schema_form_fields,
     to_display_timezone,
 )
+from tempest_fastapi_sdk.admin.i18n import admin_plural, admin_text
 from tempest_fastapi_sdk.admin.location_map import BRLocationMap
 from tempest_fastapi_sdk.admin.permissions import (
     AdminAccessPolicy,
@@ -106,6 +116,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.search import like_search_condition
+from tempest_fastapi_sdk.db.transaction import transaction
 from tempest_fastapi_sdk.exceptions import AppException
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router
 from tempest_fastapi_sdk.storage import object_download_response
@@ -124,6 +135,7 @@ from tempest_fastapi_sdk.utils.upload import SNIFFABLE_MIMETYPES, sniff_mime
 
 if TYPE_CHECKING:
     from sqlalchemy import ColumnElement
+    from sqlalchemy.engine import CursorResult
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
@@ -165,17 +177,6 @@ across a list of addresses stops after twenty.
 
 ADMIN_LOGIN_THROTTLE_WINDOW_SECONDS: int = 900
 """Length, in seconds, of the default admin ``/login`` failure windows."""
-
-ADMIN_LOGIN_THROTTLED_MESSAGE: str = "Too many failed logins, try again later"
-"""Error shown on the login page when a ``/login`` budget is spent."""
-
-ADMIN_LOGIN_CSRF_MESSAGE: str = "The sign-in form expired, please try again"
-"""Error shown when a ``/login`` submit carries no valid CSRF token.
-
-Worded for the honest case — a form left open past its window, or a page
-restored from the browser cache after the cookie expired — since the
-cross-site case never sees the page.
-"""
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -498,10 +499,13 @@ def make_admin_router(
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     stylesheet_version = _stylesheet_version()
     templates.env.filters["pluralize"] = _pluralize
-    templates.env.filters["cell"] = cell_view
+    templates.env.filters["cell"] = partial(cell_view, locale=site.locale)
     templates.env.filters["field_label"] = humanize_field
     templates.env.filters["number"] = format_number
     templates.env.filters["short_identity"] = short_identity
+    templates.env.globals["t"] = partial(admin_text, site.locale)
+    templates.env.globals["tn"] = partial(admin_plural, site.locale)
+    templates.env.globals["locale"] = site.locale
     resolved_mfa_throttle: AttemptThrottle = mfa_throttle or AttemptThrottle(
         InMemoryThrottleBackend(),
         max_attempts=ADMIN_MFA_THROTTLE_MAX_ATTEMPTS,
@@ -530,6 +534,31 @@ def make_admin_router(
         )
     else:
         resolved_login_ip_throttle = None
+
+    def _t(key: str, /, **params: Any) -> str:
+        """Return the catalog text for ``key`` in the site's locale.
+
+        Args:
+            key (str): The :mod:`~tempest_fastapi_sdk.admin.i18n` key.
+            **params (Any): Values for the text's placeholders.
+
+        Returns:
+            str: The localized text.
+        """
+        return admin_text(site.locale, key, **params)
+
+    def _tn(key: str, count: int, /, **params: Any) -> str:
+        """Return the singular or plural catalog text for ``count``.
+
+        Args:
+            key (str): The catalog key without ``.one`` / ``.other``.
+            count (int): The number the text describes.
+            **params (Any): Further placeholder values.
+
+        Returns:
+            str: The localized text.
+        """
+        return admin_plural(site.locale, key, count, **params)
 
     router = APIRouter(prefix=prefix, include_in_schema=False)
     router.include_router(make_htmx_router(prefix=_SCRIPTS_SUBPATH))
@@ -867,7 +896,7 @@ def make_admin_router(
         """
         query = urlencode(
             {
-                "flash": "This form was already submitted; it did not run again.",
+                "flash": _t("flash.already_submitted"),
                 "flash_cat": "warning",
             }
         )
@@ -1090,7 +1119,7 @@ def make_admin_router(
                 "admin": admin,
                 "mode": "action",
                 "form_title": action.label,
-                "form_intro": f"{len(ids)} row(s) selected.",
+                "form_intro": _tn("action.rows_selected", len(ids)),
                 "form_fields": fields,
                 "hidden_inputs": hidden,
                 "submit_label": action.label,
@@ -1255,7 +1284,7 @@ def make_admin_router(
             permitted action.
         """
         permitted: list[tuple[str, str, str]] = []
-        for entry in _bulk_actions(admin):
+        for entry in _bulk_actions(admin, site.locale):
             value = entry[0]
             if value.startswith("custom:"):
                 custom = admin.get_action(value.removeprefix("custom:"))
@@ -1337,6 +1366,72 @@ def make_admin_router(
         if not secrets.compare_digest(session.csrf_token, token):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf token mismatch")
 
+    async def _get_scoped(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        identity: str,
+    ) -> Any | None:
+        """Load one row by its URL identity, inside the principal's scope.
+
+        Args:
+            admin (AdminModel[Any]): The admin the row belongs to.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            identity (str): The identity segment from the URL.
+
+        Returns:
+            Any | None: The row, or ``None`` when it does not exist **or**
+            falls outside :meth:`AdminModel.scope_for`; callers answer
+            ``404`` for both, so the response never tells them apart.
+        """
+        return await admin.build_repository(db_session).get_or_none(
+            {admin.identity_field: _identity_value(identity)},
+            where=await admin.scope_for(principal),
+        )
+
+    async def _write_in_scope(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        write: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        """Run a row write and refuse it when the row leaves the scope.
+
+        With no scope the write runs as before, committing on its own.
+        With one, it runs inside :func:`~tempest_fastapi_sdk.db.transaction`
+        so the repository only flushes; the written row is then counted
+        against the clause in the same transaction, and a row that no
+        longer matches raises, which rolls the write back before anything
+        is committed. That is what keeps an operator from creating a row
+        for another tenant, or editing one of theirs into it.
+
+        Args:
+            admin (AdminModel[Any]): The admin the row belongs to.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal.
+            write (Callable[[], Awaitable[Any]]): Performs the write and
+                returns the written row.
+
+        Returns:
+            Any: What ``write`` returned.
+
+        Raises:
+            _RowOutOfScopeError: When the written row falls outside the
+                scope; nothing was committed.
+        """
+        scope = await admin.scope_for(principal)
+        if scope is None:
+            return await write()
+        async with transaction(db_session):
+            saved = await write()
+            matches = await admin.build_repository(db_session).count(
+                {"id": saved.id}, where=scope
+            )
+            if not matches:
+                raise _RowOutOfScopeError
+        return saved
+
     async def _resolve_fk_options(
         admin: AdminModel[Any],
         db_session: AsyncSession,
@@ -1374,7 +1469,9 @@ def make_admin_router(
                 principal, referenced, AdminPermissionEnum.VIEW
             ):
                 continue
-            rows = await referenced.build_repository(db_session).list()
+            rows = await referenced.build_repository(db_session).list(
+                where=await referenced.scope_for(principal)
+            )
             options[field_name] = [
                 (str(row.id), fk_label(referenced, row)) for row in rows[:FK_OPTION_CAP]
             ]
@@ -1408,7 +1505,9 @@ def make_admin_router(
             principal, referenced, AdminPermissionEnum.VIEW
         ):
             return []
-        rows = await referenced.build_repository(db_session).list()
+        rows = await referenced.build_repository(db_session).list(
+            where=await referenced.scope_for(principal)
+        )
         return [
             (str(row.id), fk_label(referenced, row)) for row in rows[:FK_OPTION_CAP]
         ]
@@ -1441,15 +1540,36 @@ def make_admin_router(
             kind = _filter_kind(admin, field)
             label = field.replace("_", " ").strip().title()
             if kind == "date":
+                value_from = request.query_params.get(f"filter_{field}_from", "")
+                value_to = request.query_params.get(f"filter_{field}_to", "")
                 specs.append(
                     {
                         "field": field,
                         "label": label,
                         "type": "daterange",
-                        "value_from": request.query_params.get(
-                            f"filter_{field}_from", ""
-                        ),
-                        "value_to": request.query_params.get(f"filter_{field}_to", ""),
+                        "value_from": value_from,
+                        "value_to": value_to,
+                        "shortcuts": [
+                            {
+                                "label": shortcut_label,
+                                "url": _date_shortcut_url(request, field, start, end),
+                                "active": value_from == start.isoformat()
+                                and value_to == end.isoformat(),
+                            }
+                            for shortcut_label, (start, end) in zip(
+                                (
+                                    _t("filter.shortcut.today"),
+                                    _t("filter.shortcut.last_7_days"),
+                                    _t("filter.shortcut.last_30_days"),
+                                    _t("filter.shortcut.this_month"),
+                                    _t("filter.shortcut.last_month"),
+                                ),
+                                _date_shortcut_ranges(
+                                    datetime.now(admin.display_tzinfo or UTC).date()
+                                ),
+                                strict=True,
+                            )
+                        ],
                     }
                 )
                 continue
@@ -1470,7 +1590,7 @@ def make_admin_router(
             if kind in ("bool", "enum", "fk"):
                 active = request.query_params.get(f"filter_{field}", "")
                 if kind == "bool":
-                    pairs = [("true", "Yes"), ("false", "No")]
+                    pairs = [("true", _t("common.yes")), ("false", _t("common.no"))]
                 elif kind == "enum":
                     enum_cls = _filter_python_type(admin, field)
                     pairs = _enum_filter_options(enum_cls) if enum_cls else []
@@ -1578,8 +1698,8 @@ def make_admin_router(
                 continue
             if not await _allows(principal, referenced, AdminPermissionEnum.VIEW):
                 continue
-            current = await referenced.build_repository(db_session).get_or_none(
-                {referenced.identity_field: _identity_value(str(form_field.value))}
+            current = await _get_scoped(
+                referenced, db_session, principal, str(form_field.value)
             )
             if current is not None:
                 form_field.display_label = fk_label(referenced, current)
@@ -1666,7 +1786,7 @@ def make_admin_router(
         """
         blocked = _render_login(
             request,
-            {"user": None, "error": ADMIN_LOGIN_THROTTLED_MESSAGE},
+            {"user": None, "error": _t("login.error.throttled")},
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         )
         blocked.headers["Retry-After"] = str(max(retry_after_seconds, 1))
@@ -1714,7 +1834,7 @@ def make_admin_router(
         if not login_csrf.verify(request, csrf_token):
             return _render_login(
                 request,
-                {"user": None, "error": ADMIN_LOGIN_CSRF_MESSAGE},
+                {"user": None, "error": _t("login.error.csrf")},
                 status_code=status.HTTP_403_FORBIDDEN,
             )
         ip_key = (
@@ -1863,7 +1983,7 @@ def make_admin_router(
                 {
                     "user": None,
                     "session": session,
-                    "error": "Too many invalid codes, try again later",
+                    "error": _t("mfa.error.throttled"),
                 },
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             )
@@ -1873,7 +1993,7 @@ def make_admin_router(
             return _render(
                 request,
                 "mfa.html",
-                {"user": None, "session": session, "error": "Invalid code"},
+                {"user": None, "session": session, "error": _t("mfa.error.invalid")},
                 status_code=status.HTTP_401_UNAUTHORIZED,
             )
         await db_session.commit()
@@ -1913,7 +2033,9 @@ def make_admin_router(
             if not await _allows(principal, admin, AdminPermissionEnum.VIEW):
                 continue
             try:
-                count = await admin.build_repository(db_session).count()
+                count = await admin.build_repository(db_session).count(
+                    where=await admin.scope_for(principal)
+                )
             except Exception:
                 count = None
             models_view.append(
@@ -2380,7 +2502,7 @@ def make_admin_router(
             page_size=size,
             order_by=order_key,
             ascending=ascending,
-            where=_search_where(admin, q),
+            where=_all_of(_search_where(admin, q), await admin.scope_for(principal)),
         )
 
         columns = admin.resolved_list_display()
@@ -2413,7 +2535,7 @@ def make_admin_router(
         if admin.lenses:
             lens_tabs.append(
                 {
-                    "label": "All",
+                    "label": _t("list.lens_all"),
                     "url": f"{prefix}/m/{slug}/",
                     "active": active_lens is None,
                 }
@@ -2509,7 +2631,7 @@ def make_admin_router(
             page_size=export_max_rows,
             order_by=order_key,
             ascending=ascending,
-            where=_search_where(admin, q),
+            where=_all_of(_search_where(admin, q), await admin.scope_for(principal)),
         )
         columns = admin.resolved_list_display()
         items = result["items"]
@@ -2586,6 +2708,89 @@ def make_admin_router(
             },
         )
 
+    def _import_page(
+        request: Request,
+        admin: AdminModel[Any],
+        session: AdminSession,
+        principal: Any,
+        *,
+        outcome: ImportOutcome | None = None,
+        payload: str | None = None,
+        form_error: str | None = None,
+        status_code: int = status.HTTP_200_OK,
+    ) -> HTMLResponse:
+        """Render the import page: the upload form, and a preview when given.
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The admin being imported into.
+            session (AdminSession): The validated session.
+            principal (Any): The signed-in admin.
+            outcome (ImportOutcome | None): The rehearsal to preview.
+            payload (str | None): The signed CSV the confirm form posts;
+                ``None`` leaves the confirm button disabled.
+            form_error (str | None): A message for the whole page.
+            status_code (int): The response status.
+
+        Returns:
+            HTMLResponse: ``import.html``.
+        """
+        slug = admin.get_slug()
+        return _render(
+            request,
+            "import.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "columns": admin.editable_field_names(creating=True),
+                "action_url": f"{prefix}/m/{slug}/import",
+                "confirm_url": f"{prefix}/m/{slug}/import/confirm",
+                "back_url": f"{prefix}/m/{slug}/",
+                "preview": outcome,
+                "payload": payload,
+                "submission_nonce": nonces.issue() if payload else None,
+                "max_bytes": ADMIN_IMPORT_MAX_BYTES,
+                "form_error": form_error,
+            },
+            status_code=status_code,
+        )
+
+    async def _import_pass(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        principal: Any,
+        text: str,
+        *,
+        commit: bool,
+    ) -> ImportOutcome:
+        """Run :func:`run_import` with the principal's scope and audit stamp.
+
+        Args:
+            admin (AdminModel[Any]): The admin being imported into.
+            db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin.
+            text (str): The decoded CSV.
+            commit (bool): Whether to keep the rows when every one went in.
+
+        Returns:
+            ImportOutcome: What the pass found. The principal is reloaded
+            afterwards, since the rollback that ends a rehearsal expires it.
+        """
+        actor_id = auth_backend.principal_id(principal)
+        outcome = await run_import(
+            admin,
+            db_session,
+            text,
+            scope=await admin.scope_for(principal),
+            prepare=partial(_stamp_audit, actor_id=actor_id, creating=True),
+            commit=commit,
+            locale=site.locale,
+        )
+        await _reload_expired(db_session, principal)
+        return outcome
+
     @router.get("/m/{slug}/import", name="admin_import")
     async def import_form(
         request: Request,
@@ -2611,21 +2816,7 @@ def make_admin_router(
         admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.CREATE)
-        return _render(
-            request,
-            "import.html",
-            {
-                "user": principal,
-                "session": session,
-                "user_display": auth_backend.display_name(principal),
-                "admin": admin,
-                "columns": admin.editable_field_names(creating=True),
-                "action_url": f"{prefix}/m/{slug}/import",
-                "back_url": f"{prefix}/m/{slug}/",
-                "result": None,
-                "form_error": None,
-            },
-        )
+        return _import_page(request, admin, session, principal)
 
     @router.post("/m/{slug}/import", name="admin_import_submit")
     async def import_submit(
@@ -2636,12 +2827,15 @@ def make_admin_router(
         db_session: AsyncSession = Depends(_db_session),
         session: AdminSession = Depends(_require_session),
     ) -> HTMLResponse:
-        """Bulk-create rows from an uploaded CSV.
+        """Preview an uploaded CSV without writing anything.
 
-        Each CSV row is validated + coerced with the same rules as the
-        create form; valid rows are inserted (best-effort, one row's
-        failure never aborts the others) and a per-row error report is
-        rendered alongside the created count.
+        Every row is validated with the create form's rules and rehearsed
+        inside a transaction that is rolled back (see :func:`run_import`),
+        so the preview also shows what only the database or the
+        ``row_scope`` would refuse. The page lists how many rows enter, a
+        sample of them, and each refused row's number and field errors.
+        The confirm button posts the CSV back signed; it is disabled while
+        any row has an error or no row would enter.
 
         Args:
             request (Request): The inbound request.
@@ -2652,7 +2846,9 @@ def make_admin_router(
             session (AdminSession): The validated session.
 
         Returns:
-            HTMLResponse: The import template with the result report.
+            HTMLResponse: The import page with the preview (``200``), or
+            with an error (``400``) when the file is larger than
+            :data:`ADMIN_IMPORT_MAX_BYTES` or is not UTF-8 CSV.
 
         Raises:
             HTTPException: ``404`` when import is disabled; ``403`` on
@@ -2667,53 +2863,128 @@ def make_admin_router(
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.CREATE)
         _check_csrf(session, csrf_token)
-
-        form_error: str | None = None
-        result: dict[str, Any] | None = None
+        raw = await file.read(ADMIN_IMPORT_MAX_BYTES + 1)
+        if len(raw) > ADMIN_IMPORT_MAX_BYTES:
+            return _import_page(
+                request,
+                admin,
+                session,
+                principal,
+                form_error=_t(
+                    "import.error.too_large", max_kib=ADMIN_IMPORT_MAX_BYTES // 1024
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         try:
-            raw = await file.read()
             text = raw.decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(text))
+            outcome = await _import_pass(
+                admin, db_session, principal, text, commit=False
+            )
         except (UnicodeDecodeError, csv.Error):
-            form_error = "Could not read the file as UTF-8 CSV."
-        else:
-            repository = admin.build_repository(db_session)
-            actor_id = auth_backend.principal_id(principal)
-            created = 0
-            row_errors: list[dict[str, Any]] = []
-            for line_no, row in enumerate(reader, start=2):
-                data, errors = parse_submission(admin, row, creating=True)
-                if errors:
-                    row_errors.append({"row": line_no, "errors": errors})
-                    continue
-                instance = admin.model(**data)
-                _stamp_audit(instance, actor_id, creating=True)
-                try:
-                    await repository.add(instance)
-                except AppException as exc:
-                    row_errors.append({"row": line_no, "errors": {"": exc.message}})
-                    continue
-                created += 1
-            result = {"created": created, "errors": row_errors}
-            if row_errors:
-                await _reload_expired(db_session, principal)
+            await _reload_expired(db_session, principal)
+            return _import_page(
+                request,
+                admin,
+                session,
+                principal,
+                form_error=_t("import.error.unreadable"),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        payload = (
+            sign_import_payload(
+                secret_key,
+                slug=slug,
+                principal_id=auth_backend.principal_id(principal),
+                text=text,
+            )
+            if outcome.accepted and not outcome.errors
+            else None
+        )
+        return _import_page(
+            request, admin, session, principal, outcome=outcome, payload=payload
+        )
 
-        status_code = status.HTTP_400_BAD_REQUEST if form_error else status.HTTP_200_OK
-        return _render(
-            request,
-            "import.html",
+    @router.post("/m/{slug}/import/confirm", name="admin_import_confirm")
+    async def import_confirm(
+        request: Request,
+        slug: str,
+        csrf_token: str = Form(...),
+        payload: str = Form(...),
+        submission_nonce: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Commit a previewed CSV, all rows or none.
+
+        The CSV comes from the signed ``payload`` the preview rendered, so
+        it is the file that was previewed; a payload signed for another
+        model or operator, altered, or older than
+        :data:`ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS` is refused. The rows
+        are then inserted again, for real, in one transaction: if any row
+        is refused now (the table changed since the preview), nothing is
+        committed and the preview comes back with the errors. The
+        single-use nonce makes a reload of the answer a no-op.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            csrf_token (str): CSRF token from the form.
+            payload (str): The signed CSV.
+            submission_nonce (str): The preview's single-use nonce.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: A redirect to the list with the created count
+            (``303``); the import page with the error (``400``) when the
+            payload is refused or a row fails.
+
+        Raises:
+            HTTPException: ``404`` when import is disabled; ``403`` on
+                CSRF mismatch.
+        """
+        admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermissionEnum.CREATE)
+        _check_csrf(session, csrf_token)
+        try:
+            text = read_import_payload(
+                secret_key,
+                payload,
+                slug=slug,
+                principal_id=auth_backend.principal_id(principal),
+            )
+        except ImportPayloadError:
+            return _import_page(
+                request,
+                admin,
+                session,
+                principal,
+                form_error=_t("import.error.payload"),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        if not await nonces.consume(session, submission_nonce):
+            return _already_processed(slug)
+        outcome = await _import_pass(admin, db_session, principal, text, commit=True)
+        if not outcome.committed:
+            return _import_page(
+                request,
+                admin,
+                session,
+                principal,
+                outcome=outcome,
+                form_error=_t("import.error.not_committed"),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        query = urlencode(
             {
-                "user": principal,
-                "session": session,
-                "user_display": auth_backend.display_name(principal),
-                "admin": admin,
-                "columns": admin.editable_field_names(creating=True),
-                "action_url": f"{prefix}/m/{slug}/import",
-                "back_url": f"{prefix}/m/{slug}/",
-                "result": result,
-                "form_error": form_error,
-            },
-            status_code=status_code,
+                "flash": _tn("import.created", outcome.accepted),
+                "flash_cat": "success",
+            }
+        )
+        return RedirectResponse(
+            url=f"{prefix}/m/{slug}/?{query}",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @router.post("/m/{slug}/new", name="admin_create_submit")
@@ -2746,12 +3017,15 @@ def make_admin_router(
             return await _run_create_handler(
                 request, admin, session, principal, db_session, form
             )
-        data, errors = parse_submission(admin, form, creating=True)
-        errors.update(await _save_uploads(admin, form, data, creating=True))
+        data, errors = parse_submission(admin, form, creating=True, locale=site.locale)
+        errors.update(
+            await _save_uploads(admin, form, data, creating=True, locale=site.locale)
+        )
         passwords, password_errors = parse_password_submission(
             admin,
             form,
             creating=True,
+            locale=site.locale,
         )
         errors.update(password_errors)
         form_error: str | None = None
@@ -2761,9 +3035,17 @@ def make_admin_router(
             apply_password_fields(admin, instance, passwords)
             _stamp_audit(instance, auth_backend.principal_id(principal), creating=True)
             try:
-                saved = await repository.add(instance)
+                saved = await _write_in_scope(
+                    admin,
+                    db_session,
+                    principal,
+                    partial(repository.add, instance),
+                )
             except AppException as exc:
                 form_error = exc.message
+                await _reload_expired(db_session, principal)
+            except _RowOutOfScopeError:
+                form_error = _t("error.out_of_scope")
                 await _reload_expired(db_session, principal)
             else:
                 identity = getattr(saved, admin.identity_field)
@@ -2859,6 +3141,20 @@ def make_admin_router(
         form = await request.form()
         raw_ids = [str(raw) for raw in form.getlist("ids")]
         ids = [_identity_value(raw) for raw in raw_ids]
+        scope = await admin.scope_for(principal)
+        if scope is not None and ids:
+            reachable = {
+                str(row.id)
+                for row in await admin.build_repository(db_session).list(
+                    {"id": ids}, where=scope
+                )
+            }
+            raw_ids = [
+                raw
+                for raw, value in zip(raw_ids, ids, strict=True)
+                if str(value) in reachable
+            ]
+            ids = [_identity_value(raw) for raw in raw_ids]
         redirect_url = f"{prefix}/m/{slug}/"
         if ids and custom is not None:
             admin_action = custom
@@ -2994,9 +3290,7 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown upload field")
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.VIEW)
-        instance = await admin.build_repository(db_session).get_or_none(
-            {admin.identity_field: _identity_value(identity)}
-        )
+        instance = await _get_scoped(admin, db_session, principal, identity)
         key = None if instance is None else getattr(instance, field, None)
         if not key:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no file")
@@ -3040,11 +3334,7 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.VIEW)
-        repository = admin.build_repository(db_session)
-
-        instance = await repository.get_or_none(
-            {admin.identity_field: _identity_value(identity)}
-        )
+        instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
 
@@ -3271,7 +3561,10 @@ def make_admin_router(
             if not await _allows(principal, view_admin, AdminPermissionEnum.VIEW):
                 continue
             repository = view_admin.build_repository(db_session)
-            children = await repository.list({inline.fk_field: parent_id})
+            children = await repository.list(
+                {inline.fk_field: parent_id},
+                where=await view_admin.scope_for(principal),
+            )
             if inline.list_display is not None:
                 display = inline.list_display
             else:
@@ -3401,6 +3694,9 @@ def make_admin_router(
                         )
                 if conditions:
                     stmt = stmt.where(or_(*conditions))
+            scope = await referenced.scope_for(principal)
+            if scope is not None:
+                stmt = stmt.where(scope)
             stmt = stmt.limit(_AUTOCOMPLETE_LIMIT)
             rows = (await db_session.execute(stmt)).scalars().all()
             results = [(str(row.id), fk_label(referenced, row)) for row in rows]
@@ -3437,10 +3733,7 @@ def make_admin_router(
         admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.EDIT)
-        repository = admin.build_repository(db_session)
-        instance = await repository.get_or_none(
-            {admin.identity_field: _identity_value(identity)}
-        )
+        instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         return _render(
@@ -3463,6 +3756,8 @@ def make_admin_router(
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
                 "form_error": None,
+                "version_field": _VERSION_FIELD,
+                "version_token": _version_token(admin, instance),
             },
         )
 
@@ -3487,41 +3782,100 @@ def make_admin_router(
 
         Returns:
             Response: Redirect to the row's detail on success; the
-            re-rendered form (``400``) on validation/integrity errors.
+            re-rendered form (``400``) on validation/integrity errors, and
+            ``409`` when the row changed after the form was opened.
+
+        Notes:
+            Optimistic lock. The edit form carries the row's ``updated_at``
+            as read when it was rendered (:data:`_VERSION_FIELD`). Before
+            any column is assigned, the save issues
+            ``UPDATE ... SET updated_at = updated_at WHERE id = :id AND
+            updated_at = :read`` in the transaction the write then
+            commits; zero rows means another save landed in between, so
+            nothing is written and the form comes back with the
+            operator's values, a warning and the **current** version, so
+            saving again overwrites knowingly. A model without ``updated_at``,
+            or a post without the field, saves as before. The inline
+            formset and the bulk/custom actions take no such lock.
         """
         admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.EDIT)
         _check_csrf(session, csrf_token)
         repository = admin.build_repository(db_session)
-        instance = await repository.get_or_none(
-            {admin.identity_field: _identity_value(identity)}
-        )
+        instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         form = await request.form()
         editable = admin.editable_field_names(instance=instance)
-        data, errors = parse_submission(admin, form, only=editable)
+        data, errors = parse_submission(admin, form, only=editable, locale=site.locale)
         if admin.validate_edit is not None:
             errors.update(admin.validate_edit(instance, form))
         if not errors:
-            errors.update(await _save_uploads(admin, form, data, creating=False))
+            errors.update(
+                await _save_uploads(
+                    admin, form, data, creating=False, locale=site.locale
+                )
+            )
         passwords, password_errors = parse_password_submission(
             admin,
             form,
             creating=False,
+            locale=site.locale,
         )
         errors.update(password_errors)
         form_error: str | None = None
-        if not errors:
+        submitted_version = form.get(_VERSION_FIELD)
+        version_token = (
+            submitted_version
+            if isinstance(submitted_version, str) and submitted_version
+            else None
+        )
+        expected_version = _parse_version(admin, version_token)
+        status_code = status.HTTP_400_BAD_REQUEST
+
+        async def _save() -> Any:
+            """Claim the read version, then assign and persist the edit.
+
+            Returns:
+                Any: The updated row.
+
+            Raises:
+                _EditConflictError: When the row's ``updated_at`` no longer
+                    matches the version the form was opened with.
+            """
+            if expected_version is not None:
+                claimed = await db_session.execute(
+                    sa_update(admin.model)
+                    .where(
+                        admin.model.id == instance.id,
+                        admin.model.updated_at == expected_version,
+                    )
+                    .values(updated_at=admin.model.updated_at)
+                    .execution_options(synchronize_session=False)
+                )
+                if not cast("CursorResult[Any]", claimed).rowcount:
+                    raise _EditConflictError
             for key, value in data.items():
                 setattr(instance, key, value)
             apply_password_fields(admin, instance, passwords)
             _stamp_audit(instance, auth_backend.principal_id(principal), creating=False)
+            return await repository.update(instance)
+
+        if not errors:
             try:
-                await repository.update(instance)
+                await _write_in_scope(admin, db_session, principal, _save)
+            except _EditConflictError:
+                await db_session.rollback()
+                await _reload_expired(db_session, principal, instance)
+                form_error = _t("error.edit_conflict")
+                version_token = _version_token(admin, instance)
+                status_code = status.HTTP_409_CONFLICT
             except AppException as exc:
                 form_error = exc.message
+                await _reload_expired(db_session, principal)
+            except _RowOutOfScopeError:
+                form_error = _t("error.out_of_scope")
                 await _reload_expired(db_session, principal)
             else:
                 return RedirectResponse(
@@ -3549,8 +3903,10 @@ def make_admin_router(
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
                 "form_error": form_error,
+                "version_field": _VERSION_FIELD,
+                "version_token": version_token,
             },
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status_code,
         )
 
     @router.post(
@@ -3625,10 +3981,7 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "editable inline not found")
         await _require_access(principal, child_admin, AdminPermissionEnum.EDIT)
 
-        parent_repo = parent_admin.build_repository(db_session)
-        parent = await parent_repo.get_or_none(
-            {parent_admin.identity_field: _identity_value(identity)}
-        )
+        parent = await _get_scoped(parent_admin, db_session, principal, identity)
         if parent is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         parent_id = getattr(parent, "id", None)
@@ -3668,10 +4021,13 @@ def make_admin_router(
             await _require_access(principal, child_admin, AdminPermissionEnum.DELETE)
         error_rows: list[tuple[str, dict[str, str], dict[str, str]]] = []
         form_error: str | None = None
+        child_scope = await child_admin.scope_for(principal)
 
         async def _owned(key: str) -> Any:
             """Return the child row for ``key`` if it belongs to the parent."""
-            existing = await child_repo.get_or_none({"id": _identity_value(key)})
+            existing = await child_repo.get_or_none(
+                {"id": _identity_value(key)}, where=child_scope
+            )
             if existing is None:
                 return None
             if getattr(existing, inline.fk_field, None) != parent_id:
@@ -3687,7 +4043,9 @@ def make_admin_router(
                 continue
             if is_new and not any(v.strip() for v in values.values()):
                 continue
-            data, errs = parse_submission(child_admin, values, only=names)
+            data, errs = parse_submission(
+                child_admin, values, only=names, locale=site.locale
+            )
             if errs:
                 error_rows.append((key, values, errs))
                 continue
@@ -3696,7 +4054,12 @@ def make_admin_router(
                 if is_new:
                     child = child_admin.model(**data)
                     _stamp_audit(child, actor_id, creating=True)
-                    await child_repo.add(child)
+                    await _write_in_scope(
+                        child_admin,
+                        db_session,
+                        principal,
+                        partial(child_repo.add, child),
+                    )
                 else:
                     existing = await _owned(key)
                     if existing is None:
@@ -3704,9 +4067,17 @@ def make_admin_router(
                     for field_name, value in data.items():
                         setattr(existing, field_name, value)
                     _stamp_audit(existing, actor_id, creating=False)
-                    await child_repo.update(existing)
+                    await _write_in_scope(
+                        child_admin,
+                        db_session,
+                        principal,
+                        partial(child_repo.update, existing),
+                    )
             except AppException as exc:
                 form_error = exc.message
+                error_rows.append((key, values, {}))
+            except _RowOutOfScopeError:
+                form_error = _t("error.out_of_scope")
                 error_rows.append((key, values, {}))
 
         if error_rows or form_error:
@@ -3721,7 +4092,7 @@ def make_admin_router(
                 session,
                 db_session,
                 inline_overrides={child_slug: error_rows},
-                inline_error=form_error or "Some inline rows could not be saved.",
+                inline_error=form_error or _t("detail.inline_error"),
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
         return RedirectResponse(
@@ -3759,13 +4130,10 @@ def make_admin_router(
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermissionEnum.DELETE)
         _check_csrf(session, csrf_token)
-        repository = admin.build_repository(db_session)
-        instance = await repository.get_or_none(
-            {admin.identity_field: _identity_value(identity)}
-        )
+        instance = await _get_scoped(admin, db_session, principal, identity)
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
-        await repository.delete(instance.id)
+        await admin.build_repository(db_session).delete(instance.id)
         return RedirectResponse(
             url=f"{prefix}/m/{slug}/",
             status_code=status.HTTP_303_SEE_OTHER,
@@ -3881,10 +4249,10 @@ def make_admin_router(
                     principal=str(session.principal_id),
                 )
             except SqlShellDenied as exc:
-                context["error_kind"] = "Refused by policy"
+                context["error_kind"] = _t("sql.error.denied")
                 context["error"] = str(exc)
             except SqlShellError as exc:
-                context["error_kind"] = "Statement failed"
+                context["error_kind"] = _t("sql.error.failed")
                 context["error"] = str(exc)
             return _render(request, "sql_shell.html", context)
 
@@ -4287,7 +4655,7 @@ def make_admin_router(
             finally:
                 await file.close()
             return _storage_redirect(
-                "/object", {"key": key, "flash": f"Uploaded {key}."}
+                "/object", {"key": key, "flash": _t("storage.flash.uploaded", key=key)}
             )
 
         @router.post("/storage/object/replace", name="admin_storage_replace")
@@ -4333,7 +4701,7 @@ def make_admin_router(
             finally:
                 await file.close()
             return _storage_redirect(
-                "/object", {"key": key, "flash": f"Replaced {key}."}
+                "/object", {"key": key, "flash": _t("storage.flash.replaced", key=key)}
             )
 
         @router.post("/storage/object/edit", name="admin_storage_edit")
@@ -4374,7 +4742,9 @@ def make_admin_router(
                 return _storage_redirect(
                     "/object", {"key": key, "flash": str(exc), "flash_cat": "error"}
                 )
-            return _storage_redirect("/object", {"key": key, "flash": f"Saved {key}."})
+            return _storage_redirect(
+                "/object", {"key": key, "flash": _t("storage.flash.saved", key=key)}
+            )
 
         @router.post("/storage/object/rename", name="admin_storage_rename")
         async def storage_rename(
@@ -4412,7 +4782,11 @@ def make_admin_router(
                     "/object", {"key": key, "flash": str(exc), "flash_cat": "error"}
                 )
             return _storage_redirect(
-                "/object", {"key": target, "flash": f"Moved {key} to {target}."}
+                "/object",
+                {
+                    "key": target,
+                    "flash": _t("storage.flash.moved", key=key, target=target),
+                },
             )
 
         @router.post("/storage/object/delete", name="admin_storage_delete")
@@ -4453,7 +4827,11 @@ def make_admin_router(
                     },
                 )
             return _storage_redirect(
-                "", {"prefix": _folder_of(key), "flash": f"Deleted {key}."}
+                "",
+                {
+                    "prefix": _folder_of(key),
+                    "flash": _t("storage.flash.deleted", key=key),
+                },
             )
 
     return router
@@ -4506,6 +4884,78 @@ def _localized(value: Any, timezone: tzinfo | None) -> Any:
     if timezone is None or not isinstance(value, datetime):
         return value
     return to_display_timezone(value, timezone)
+
+
+class _RowOutOfScopeError(Exception):
+    """A write left its row outside the principal's ``row_scope``.
+
+    Raised inside the write's transaction so the rollback discards it;
+    the route turns it into the ``error.out_of_scope`` text on the form.
+    """
+
+
+class _EditConflictError(Exception):
+    """The edited row changed after its form was opened."""
+
+
+_VERSION_FIELD: Final[str] = "_row_version"
+"""Hidden edit-form field carrying the ``updated_at`` the form was read at."""
+
+
+def _version_token(admin: Any, instance: Any) -> str | None:
+    """Return the row version an edit form carries.
+
+    Args:
+        admin (Any): The admin configuration.
+        instance (Any): The row being edited.
+
+    Returns:
+        str | None: ``updated_at`` in ISO 8601, or ``None`` when the model
+        has no ``updated_at`` column (or the row holds no value), which
+        turns the lock off for that form.
+    """
+    if "updated_at" not in admin.column_names():
+        return None
+    value = getattr(instance, "updated_at", None)
+    return value.isoformat() if isinstance(value, datetime) else None
+
+
+def _parse_version(admin: Any, token: str | None) -> datetime | None:
+    """Parse the version posted back by an edit form.
+
+    Args:
+        admin (Any): The admin configuration.
+        token (str | None): The posted :data:`_VERSION_FIELD`.
+
+    Returns:
+        datetime | None: The version to claim, or ``None`` — no lock — when
+        the model has no ``updated_at`` or the token is absent or not a
+        datetime.
+    """
+    if token is None or "updated_at" not in admin.column_names():
+        return None
+    try:
+        return datetime.fromisoformat(token)
+    except ValueError:
+        return None
+
+
+def _all_of(*clauses: ColumnElement[bool] | None) -> ColumnElement[bool] | None:
+    """AND the given clauses, skipping ``None``.
+
+    Args:
+        *clauses (ColumnElement[bool] | None): Conditions to combine.
+
+    Returns:
+        ColumnElement[bool] | None: ``None`` when every clause is ``None``,
+        the single clause when only one is set, their ``AND`` otherwise.
+    """
+    present = [clause for clause in clauses if clause is not None]
+    if not present:
+        return None
+    if len(present) == 1:
+        return present[0]
+    return and_(*present)
 
 
 def _search_where(admin: Any, q: str) -> ColumnElement[bool] | None:
@@ -4678,6 +5128,7 @@ async def _save_uploads(
     data: dict[str, Any],
     *,
     creating: bool,
+    locale: str,
 ) -> dict[str, str]:
     """Persist uploaded files and inject their storage keys into ``data``.
 
@@ -4698,6 +5149,7 @@ async def _save_uploads(
         form (Any): The parsed multipart form (Starlette ``FormData``).
         data (dict[str, Any]): The model kwargs being built (mutated).
         creating (bool): Whether this is a create (vs edit) submission.
+        locale (str): Language of the field errors.
 
     Returns:
         dict[str, str]: Field → error message for missing or refused files.
@@ -4715,7 +5167,7 @@ async def _save_uploads(
             )
             first: bytes = await upload.read(_UPLOAD_CHUNK_BYTES)
             refusal = _upload_refusal(
-                admin.upload_accept.get(name), content_type, first
+                admin.upload_accept.get(name), content_type, first, locale=locale
             )
             if refusal is not None:
                 errors[name] = refusal
@@ -4738,12 +5190,12 @@ async def _save_uploads(
         elif creating:
             column = columns.get(name)
             if column is not None and not column.nullable:
-                errors[name] = "This field is required."
+                errors[name] = admin_text(locale, "form.error.required")
     return errors
 
 
 def _upload_refusal(
-    accept: list[str] | None, content_type: str, head: bytes
+    accept: list[str] | None, content_type: str, head: bytes, *, locale: str
 ) -> str | None:
     """Tell why an upload is refused by its field's accepted types.
 
@@ -4752,13 +5204,14 @@ def _upload_refusal(
             ``None`` accepts anything.
         content_type (str): The type the browser declared.
         head (bytes): The file's first bytes.
+        locale (str): Language of the field error.
 
     Returns:
         str | None: The field error, or ``None`` when the file is accepted.
     """
     if accept is None:
         return None
-    message = f"Only {', '.join(accept)} files are accepted."
+    message = admin_text(locale, "form.error.upload_type", types=", ".join(accept))
     if content_type.split(";")[0].strip().lower() not in accept:
         return message
     if set(accept) & SNIFFABLE_MIMETYPES and sniff_mime(head) not in accept:
@@ -4773,11 +5226,8 @@ The list's bulk ``POST`` lacks it, so an action declared with ``schema``
 answers its form; the form's own ``POST`` carries it and runs the action.
 """
 
-_BULK_CONFIRM: Final[str] = "Apply the selected action to the checked rows?"
-"""Confirm prompt of a bulk action that is not ``dangerous``."""
 
-
-def _bulk_confirm_text(label: str, *, dangerous: bool) -> str:
+def _bulk_confirm_text(label: str, *, dangerous: bool, locale: str) -> str:
     """Write the confirm prompt the list shows before running a bulk action.
 
     Args:
@@ -4785,17 +5235,18 @@ def _bulk_confirm_text(label: str, *, dangerous: bool) -> str:
         dangerous (bool): Whether the action is destructive
             (:attr:`~tempest_fastapi_sdk.admin.actions.AdminAction.dangerous`,
             and the built-in delete).
+        locale (str): Language of the prompt.
 
     Returns:
-        str: :data:`_BULK_CONFIRM` for a plain action; for a dangerous one, a
+        str: The generic prompt for a plain action; for a dangerous one, a
         prompt that names the action and says it cannot be undone.
     """
     if not dangerous:
-        return _BULK_CONFIRM
-    return f'Run "{label}" on the checked rows? This cannot be undone.'
+        return admin_text(locale, "list.bulk_confirm")
+    return admin_text(locale, "list.bulk_confirm_dangerous", label=label)
 
 
-def _bulk_actions(admin: Any) -> list[tuple[str, str, str]]:
+def _bulk_actions(admin: Any, locale: str) -> list[tuple[str, str, str]]:
     """Return the bulk actions available for ``admin``.
 
     Activation toggles need ``can_edit`` and ``can_toggle_active`` (every
@@ -4805,6 +5256,8 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str, str]]:
 
     Args:
         admin (Any): The admin configuration.
+        locale (str): Language of the built-in labels and prompts; a custom
+            action keeps the label it was declared with.
 
     Returns:
         list[tuple[str, str, str]]: ``(value, label, confirm)`` per action
@@ -4816,19 +5269,27 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str, str]]:
         can never collide with the built-in ones.
     """
     actions: list[tuple[str, str, str]] = []
+    plain = _bulk_confirm_text("", dangerous=False, locale=locale)
     if admin.can_edit and admin.can_toggle_active:
-        actions.append(("activate", "Activate", _BULK_CONFIRM))
-        actions.append(("deactivate", "Deactivate", _BULK_CONFIRM))
+        actions.append(("activate", admin_text(locale, "list.activate"), plain))
+        actions.append(("deactivate", admin_text(locale, "list.deactivate"), plain))
     if admin.can_delete:
+        delete_label = admin_text(locale, "common.delete")
         actions.append(
-            ("delete", "Delete", _bulk_confirm_text("Delete", dangerous=True))
+            (
+                "delete",
+                delete_label,
+                _bulk_confirm_text(delete_label, dangerous=True, locale=locale),
+            )
         )
     for action in admin.custom_actions():
         actions.append(
             (
                 f"custom:{action.name}",
                 action.label,
-                _bulk_confirm_text(action.label, dangerous=action.dangerous),
+                _bulk_confirm_text(
+                    action.label, dangerous=action.dangerous, locale=locale
+                ),
             )
         )
     return actions
@@ -5228,6 +5689,64 @@ def _coerce_date_bound(
         day = parsed + timedelta(days=1) if end else parsed
         return datetime.combine(day, time(0, 0, 0), tzinfo=zone or UTC).astimezone(UTC)
     return parsed
+
+
+_NON_FILTER_PARAMS: Final[frozenset[str]] = frozenset({"page", "flash", "flash_cat"})
+"""Query parameters a filter link drops: paging restarts, a flash is spent."""
+
+
+def _date_shortcut_ranges(today: date) -> list[tuple[date, date]]:
+    """Return the inclusive day ranges behind the date-filter shortcuts.
+
+    In order: today; the last 7 days and the last 30 days, both ending
+    today; this calendar month; the previous calendar month. The bounds
+    are dates the filter then reads in the model's ``display_timezone``
+    (:func:`_coerce_date_bound`), which is also where ``today`` comes from,
+    so "today" is the operator's day, not UTC's.
+
+    Args:
+        today (date): The current day in the model's display zone.
+
+    Returns:
+        list[tuple[date, date]]: ``(from, to)`` per shortcut, both inclusive.
+    """
+    first_of_month = today.replace(day=1)
+    next_month = (first_of_month + timedelta(days=32)).replace(day=1)
+    last_of_previous = first_of_month - timedelta(days=1)
+    return [
+        (today, today),
+        (today - timedelta(days=6), today),
+        (today - timedelta(days=29), today),
+        (first_of_month, next_month - timedelta(days=1)),
+        (last_of_previous.replace(day=1), last_of_previous),
+    ]
+
+
+def _date_shortcut_url(request: Request, field: str, start: date, end: date) -> str:
+    """Build the list link that applies one date-range shortcut.
+
+    Every other query parameter — search, the other filters, the sort, the
+    lens — is kept as the operator set it; only this field's two bounds
+    are replaced, and paging and a pending flash are dropped.
+
+    Args:
+        request (Request): The list request whose query is kept.
+        field (str): The date column the shortcut filters.
+        start (date): The first day, inclusive.
+        end (date): The last day, inclusive.
+
+    Returns:
+        str: A relative ``?query`` link.
+    """
+    replaced = {f"filter_{field}_from", f"filter_{field}_to"}
+    kept = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key not in replaced and key not in _NON_FILTER_PARAMS
+    ]
+    kept.append((f"filter_{field}_from", start.isoformat()))
+    kept.append((f"filter_{field}_to", end.isoformat()))
+    return "?" + urlencode(kept)
 
 
 def _enum_filter_options(enum_cls: Any) -> list[tuple[str, str]]:

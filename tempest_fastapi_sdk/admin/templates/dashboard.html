@@ -8,19 +8,19 @@
   </header>
 
   {% if metrics %}
-  <div class="tempest-admin-stats" aria-label="System metrics">
+  <div class="tempest-admin-stats" aria-label="{{ t('dashboard.system_metrics') }}">
     <div class="tempest-admin-stat">
-      <span class="tempest-admin-stat__label">CPU</span>
+      <span class="tempest-admin-stat__label">{{ t("dashboard.cpu") }}</span>
       <span class="tempest-admin-stat__value">{{ metrics.cpu_percent }}%</span>
     </div>
     <div class="tempest-admin-stat">
-      <span class="tempest-admin-stat__label">Memory</span>
+      <span class="tempest-admin-stat__label">{{ t("dashboard.memory") }}</span>
       <span class="tempest-admin-stat__value">{{ metrics.mem_percent }}%</span>
-      <span class="tempest-admin-stat__sub">{{ metrics.mem_used_gb }} / {{ metrics.mem_total_gb }} GB</span>
+      <span class="tempest-admin-stat__sub">{{ t("dashboard.memory_usage", used=metrics.mem_used_gb, total=metrics.mem_total_gb) }}</span>
     </div>
     {% if metrics.disk_percent is not none %}
     <div class="tempest-admin-stat">
-      <span class="tempest-admin-stat__label">Disk</span>
+      <span class="tempest-admin-stat__label">{{ t("dashboard.disk") }}</span>
       <span class="tempest-admin-stat__value">{{ metrics.disk_percent }}%</span>
     </div>
     {% endif %}
@@ -28,7 +28,7 @@
   {% endif %}
 
   {% if cards %}
-  <div class="tempest-admin-cards" aria-label="Business metrics">
+  <div class="tempest-admin-cards" aria-label="{{ t('dashboard.business_metrics') }}">
     {% for card in cards %}
     {{ metric_card(card) }}
     {% endfor %}
@@ -44,15 +44,15 @@
         {% if entry.count is not none %}<span class="tempest-admin-model-card__count">{{ entry.count | number }}</span>{% endif %}
       </header>
       <div class="tempest-admin-model-card__actions">
-        <a class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm" href="{{ entry.url }}">Browse</a>
-        {% if entry.new_url %}<a class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm" href="{{ entry.new_url }}">+ New</a>{% endif %}
+        <a class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm" href="{{ entry.url }}">{{ t("dashboard.browse") }}</a>
+        {% if entry.new_url %}<a class="tempest-admin-btn tempest-admin-btn--ghost tempest-admin-btn--sm" href="{{ entry.new_url }}">{{ t("dashboard.new") }}</a>{% endif %}
       </div>
     </article>
     {% endfor %}
   </div>
   {% else %}
-  <p>No models registered. Register an <code>AdminModel</code> on the
-  <code>AdminSite</code> to populate this dashboard.</p>
+  <p>{{ t("dashboard.empty.lead") }} <code>AdminModel</code> {{ t("dashboard.empty.middle") }}
+  <code>AdminSite</code> {{ t("dashboard.empty.tail") }}</p>
   {% endif %}
 </section>
 {% endblock %}

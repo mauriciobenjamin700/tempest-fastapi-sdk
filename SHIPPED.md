@@ -4809,3 +4809,27 @@ cada parte vem de `mimetypes.guess_type` pelo nome, com
 `tests/utils/test_email_attachments.py` (inclui um PDF atravessando socket
 SMTP real). Receita: `email`, seção "Anexos: arquivo em disco ou bytes em
 memória".
+
+### Admin: escopo por linha, português, atalhos de data, prévia do import e trava otimista (#802, 2026-11-22)
+
+`admin/config.py`: `AdminModel(row_scope=...)` + `AdminRowScope` +
+`AdminModel.scope_for`. `admin/router.py`: `_get_scoped` (lookup de linha
+única no escopo, `404` fora) e `_write_in_scope` (escrita dentro de
+`transaction()`, conta a linha contra a condição e faz rollback se saiu) em
+toda rota `/m/{slug}/...`; FK options, autocomplete e inlines usam o escopo
+do model referenciado; bulk filtra os ids antes de agir. `admin/i18n.py`:
+catálogo EN/PT-BR (283 chaves), `admin_text`/`admin_plural`, globals
+`t`/`tn`/`locale` no Jinja; `AdminSite(locale=...)`. Atalhos de data em
+`_date_shortcut_ranges`/`_date_shortcut_url`. `admin/csv_import.py`: prévia
+(`run_import(commit=False)`, transação sempre desfeita, savepoint por linha,
+sem sinais do repositório) e confirmação (`/import/confirm`, payload
+`URLSafeTimedSerializer` preso a slug + principal, 1 h, nonce, tudo ou nada).
+Trava otimista no `edit_submit`: `UPDATE ... SET updated_at = updated_at
+WHERE id AND updated_at = :lido` antes de atribuir, `409` com zero linhas.
+Testes: `tests/admin/test_row_scope.py` (um caso por rota de `/m/{slug}/`
+lida do `router.routes`; rota nova sem caso falha; cada caso falha sem o
+escopo), `test_edit_conflict.py` (inclui a ordem dos statements),
+`test_date_shortcuts.py`, `test_locale.py`, `test_csv_import.py`; guard
+`tests/test_admin_i18n_guard.py`. Receita: `admin`, seções "Escopo por
+linha", "Import CSV", "Atalhos no filtro de data", "Edição simultânea" e
+"Interface em português".

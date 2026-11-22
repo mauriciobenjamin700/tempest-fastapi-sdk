@@ -218,7 +218,7 @@ async def test_csv_import_conflict_rerenders_page_with_row_error(
             files={"file": ("rows.csv", b"code\ntaken\nfresh\n", "text/csv")},
         )
     assert response.status_code == 200, response.text[:400]
-    assert "Conflict creating UniqueThing" in response.text
+    assert "This row conflicts with a stored record" in response.text
     assert "root@example.com" in response.text
 
 
