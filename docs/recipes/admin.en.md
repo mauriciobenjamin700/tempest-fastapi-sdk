@@ -954,6 +954,32 @@ The feed follows the same rules as the rest of the panel:
     panel reads up to `10 × recent_activity` entries per table; when the
     scope hides more than that among the newest, the feed shows fewer than
     asked.
+### Undo from the history (Restore)
+
+Every `update` entry in the timeline gets a **Restore** link. It writes
+nothing: it opens the row's edit form with the values from **before** that
+change already filled in — every other field keeps today's value — and a
+note naming the fields that came from the history. The operator reviews
+and saves through the usual path, so the `EDIT` permission, form
+validation, `validate_edit`, the foreign-key check, `row_scope` and the
+optimistic lock all apply (the form carries the row's **current** version:
+if another save landed after it was opened, the answer is `409`). The new
+timeline entry comes from wherever your other edits are audited — the
+panel does not write audit rows on its own.
+
+The link shows only to principals with `EDIT` on the model, and only on an
+`update` entry with at least one field that can go back. These are left
+out and keep their current value:
+
+- upload fields (`upload_fields`) and password fields (`password_fields`);
+- hidden fields — `exclude_fields` and the model's secrets — and any value
+  the audit stored as `[redacted]`;
+- fields outside the edit form (`readonly_fields`, `readonly_fields_for`).
+
+An old value that is invalid today — an option dropped from `choices`, for
+example — is filled in (the `<select>` gains the option, so the browser
+does not silently post the first one instead) and becomes a field error on
+save, with nothing written.
 
 ## Autocomplete FK (`autocomplete_fields=`)
 
@@ -1136,7 +1162,9 @@ With a scope, the rule is the foreign key's on writes:
 !!! info "Locked field"
     An `m2m_fields` name in `readonly_fields`, or in what
     `readonly_fields_for` returns for the row, leaves the form and the save
-    does not touch its links.
+    does not touch its links. The form the history's **Restore** opens
+    carries the current links like the edit form, so restoring another
+    field unlinks nothing.
 
 ## Related counts on the list (`related_counts=`)
 
@@ -1741,7 +1769,8 @@ app.include_router(
 ```
 
 The policy is asked `(principal, admin, action)` for **every** action —
-`VIEW` / `CREATE` / `EDIT` / `DELETE`. Denying yields `403`; denying
+`VIEW` / `CREATE` / `EDIT` / `DELETE`, and `IMPERSONATE` on a model with
+`impersonate=` (see [Log in as a user](#log-in-as-a-user-impersonate)). Denying yields `403`; denying
 `VIEW` also **hides** the model from the dashboard and the sidebar nav,
 and denying create/edit/delete hides the matching buttons. Enforced
 across list, detail, create, edit, delete, bulk (delete → `DELETE`, rest
@@ -1764,7 +1793,8 @@ It also covers what one model's page shows of **another** model:
     The policy is **additive** to the `AdminModel`'s
     `can_create`/`can_edit`/`can_delete` flags — both must allow.
     Without `access_policy`, nothing changes (every logged-in admin does
-    everything). Sync or `async`.
+    everything), with one exception: `IMPERSONATE` only comes from a policy
+    that grants it. Sync or `async`.
 
 ### One action without `EDIT` on the model (`action_policy=`) *(v0.366.0+)*
 
@@ -2040,6 +2070,220 @@ reads the columns even with `expire_on_commit=True`.
     opens the model and which action it takes; `row_scope` decides
     **which rows**. A support role with `VIEW` and a per-company scope sees
     only its own company's list and gets `404` on any other's detail.
+
+## Log in as a user (`impersonate=`)
+
+Support needs to see the screen the customer sees. The admin does not know
+how your service signs users in, so the job is split: you hand over a
+function that turns `(operator, target)` into the URL that opens the app as
+the target, and the panel owns the rest — the permission, the
+confirmation, the refusal of a target that is itself an admin, the record
+of who entered as whom, and the redirect.
+
+For a service whose login issues `JWTUtils` access tokens, the handler is
+ready-made:
+
+```python
+from datetime import timedelta
+from typing import Any
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminModel,
+    AdminPermissionEnum,
+    JWTUtils,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import make_jwt_impersonation_handler
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import AuditLog, UserModel
+
+app = FastAPI()
+tokens = JWTUtils(settings.JWT_SECRET)
+
+site.register(
+    AdminModel(
+        model=UserModel,
+        audit_model=AuditLog,
+        impersonate=make_jwt_impersonation_handler(
+            tokens,
+            redirect_url="https://app.example.com/impersonate#token={token}",
+            ttl=timedelta(minutes=10),
+        ),
+    )
+)
+
+
+def policy(
+    user: UserModel, admin: AdminModel[Any], action: AdminPermissionEnum
+) -> bool:
+    if action is AdminPermissionEnum.IMPERSONATE:
+        return user.role == "support-lead"
+    return True
+
+
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.ADMIN_SECRET,
+        access_policy=policy,
+    ),
+)
+```
+
+The signed token carries `sub` (the account's `id`), `typ` = `"access"` — so
+`make_bearer_token_dependency` and `make_jwt_user_dependency` on the same
+secret accept it like any access token —, the target's `email` when it has
+one, and `act = {"sub": "<operator id>"}`, the RFC 8693 actor claim: the
+app knows the session is an impersonation and who is behind it. The
+default lifetime is `ADMIN_IMPERSONATION_TTL` (15 minutes). `redirect_url`
+must contain `{token}` (otherwise `ValueError` at construction); prefer
+putting the token in the fragment (`#`), which the browser sends neither to
+the app's server nor in the `Referer`.
+
+Apart from `act`, it is an ordinary access token: **every** route that
+accepts the user's own token accepts this one. For a route that must not run
+under an impersonated session — changing the password, moving money —,
+`token_actor(claims)` returns the operator behind it (`None` on the user's
+own session; a malformed `act` comes back as `"unknown"`, never as `None`):
+
+```python
+from typing import Any
+
+from fastapi import Depends
+
+from tempest_fastapi_sdk import ForbiddenException, token_actor
+
+from src.api.dependencies.auth import bearer
+
+
+async def own_session_only(
+    claims: dict[str, Any] = Depends(bearer),
+) -> dict[str, Any]:
+    if token_actor(claims) is not None:
+        raise ForbiddenException(message="Unavailable while impersonating.")
+    return claims
+```
+
+When `impersonate=` sits on a model that is not the account — a profile, a
+membership —, say which account it stands for with `impersonate_account=`
+(sync or `async`). The handler receives that account, and the admin refusal
+runs on it. The account must have an `id` (that is what goes into the
+credential) and, when its class has a registered admin with a `row_scope`,
+be inside that scope for the operator — otherwise a membership of company A
+would hand out a user of company B. `None`, an account without `id` or one
+outside the scope answer `404`, before any audit. A sync resolver runs
+inside `AsyncSession.run_sync`, so it may read a lazy relationship
+(`membership.user`); an `async` one must load what it reads (`selectinload`,
+`AsyncAttrs.awaitable_attrs`):
+
+```python
+from tempest_fastapi_sdk import AdminModel, JWTUtils
+from tempest_fastapi_sdk.admin import make_jwt_impersonation_handler
+
+from src.admin import site
+from src.core.settings import settings
+from src.db.models import MembershipModel
+
+site.register(
+    AdminModel(
+        model=MembershipModel,
+        impersonate=make_jwt_impersonation_handler(
+            JWTUtils(settings.JWT_SECRET),
+            redirect_url="https://app.example.com/impersonate#token={token}",
+        ),
+        impersonate_account=lambda membership: membership.user,
+    )
+)
+```
+
+Another sign-in mechanism (magic link, cookie session) is just another
+function of the same shape — `handler(operator, account) -> str`, sync or
+`async`:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import UserModel
+from src.services.magic_links import issue_magic_link
+
+
+async def enter_as(operator: UserModel, target: UserModel) -> str:
+    link = await issue_magic_link(target.id, actor_id=operator.id)
+    return f"https://app.example.com/magic#link={link}"
+
+
+site.register(AdminModel(model=UserModel, impersonate=enter_as))
+```
+
+As with the JWT, the credential goes in the fragment: in the path it would
+land in the app server's access log.
+
+!!! danger "The handler enters as the account it received"
+    The admin-target refusal runs on the account the handler receives. A
+    handler that enters as **something else** — `target.owner`, an id read
+    from another table — goes around it and must refuse admin accounts on
+    its own. Put `impersonate=` on the account's model, or use
+    `impersonate_account=`.
+
+The flow in the panel:
+
+1. The row's detail gains a **Log in as** button.
+2. It opens a confirmation page; confirming `POST`s the CSRF token and a
+   single-use nonce — reloading the answer does not enter again, it goes
+   back to the list with the repeated-submission notice.
+3. With `audit_model`, the audit entry is written (committed) **before**
+   the handler runs; if the write fails, the handler does not run — no
+   credential is minted — and the request ends in an error, with no `303`.
+4. The handler runs and the browser gets a `303` to the returned URL, with
+   `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. An
+   `AppException` from the handler comes back to the confirmation with its
+   message and is logged at `WARNING`. When the handler fails (any
+   exception), a second entry, `admin.impersonate.failed` (reason in
+   `context["reason"]`), says nothing was handed over; the timeline shows it
+   as **log in as failed**.
+
+!!! danger "`IMPERSONATE` never comes for free"
+    Without an `access_policy` the admin allows everything — **except**
+    impersonating: the button does not show and the route answers `403`.
+    Acting as another account reaches past the admin's screens (and past
+    its `row_scope` and audit), so only a policy that says yes to
+    `AdminPermissionEnum.IMPERSONATE` grants it. Beware of a policy written
+    as "everything but `DELETE`": it grants `IMPERSONATE` too. `EDIT` is not
+    enough.
+
+More rules on the way:
+
+- **Scope.** The target must be inside the model's `row_scope`; outside it
+  is `404`, as on every row route.
+- **An admin is not a target.** An account that signs into the admin
+  itself is refused (`403`, no form). Three questions go to the backend,
+  any one refuses: `is_admin_account` on the row and on the resolved
+  account (by default a truthy `is_admin`; on `UserModelAuthBackend`, also
+  whatever your `is_authorized` answers — a backend that authorizes by role
+  refuses that role), and `is_admin_identity(session, account_id)` on the
+  `id` that goes into the credential. The last one catches a 1:1 profile
+  sharing its primary key with an admin user: it asks `load_principal` and,
+  when that finds nothing, `load_account` — which on `UserModelAuthBackend`
+  reads the user row even when inactive or without MFA. On your own backend
+  whose `load_principal` filters (inactive, MFA), **override
+  `load_account`**: the default returns `None`, and an admin that
+  `load_principal` drops would pass.
+- **Record.** Every impersonation logs at `INFO` the operator, the model
+  and the target's id — never the URL, which carries the credential. With
+  `audit_model`, it also writes an `event` entry on the target, authored
+  by the operator, **before** the handler (see step 3). With `AuditRequestMixin` on the table, the event
+  (`admin.impersonate`), the IP and the user agent go to their own columns;
+  without it, the name stays in `context["event"]`. The detail's timeline
+  shows the entry as **logged in as**.
 
 ## Field widgets by column type
 
@@ -2449,6 +2693,105 @@ and export; "All" clears it.
     `filters` uses the same dict as the repository (`field__gte`, `name`
     ILIKE, iterable → `IN`, …). The tab slug (`?lens=`) is derived from the
     name (lowercased, hyphenated).
+
+## Counting large tables (`count_strategy=`)
+
+The list runs `COUNT(*)` on every page to show "N records" and "Page X of
+Y". On a table with tens of millions of rows, that count is the expensive
+part of the page. `count_strategy=` changes it:
+
+```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import EventModel, LedgerEntryModel
+
+
+site.register(AdminModel(model=EventModel, count_strategy="estimate"))
+site.register(AdminModel(model=LedgerEntryModel, count_strategy="none"))
+```
+
+- `"exact"` (default): the usual `COUNT`.
+- `"estimate"`: on PostgreSQL, reads `pg_class.reltuples` — the statistic
+  `ANALYZE` (and autovacuum) keeps, one catalog lookup whatever the table
+  size — and the screen shows `~40 records` and `Page 1 of ~4`, with a hint
+  in the `title`. The page fetches one extra row to know whether a next
+  page exists.
+- `"none"`: no count. The screen shows only **Prev** / **Next** and
+  `Page N`; next shows when fetching `page_size + 1` rows brought the extra
+  row.
+
+The model's dashboard card follows the same strategy (`~40`, or no number
+with `"none"`). `AdminCountStrategyEnum` holds the three values if you
+prefer the enum to the string.
+
+!!! info "When `estimate` counts for real"
+    The statistic describes the **whole table**. With a search, a filter, a
+    lens or a `row_scope` other than `true()`, what the operator sees is a
+    different set, and the estimate would be of rows they cannot reach — in
+    the scope case, the size of other tenants' data. Those count exactly
+    (`COUNT` with the same `WHERE`). It also counts exactly outside
+    PostgreSQL (SQLite included), on a table PostgreSQL never analyzed
+    (`reltuples = -1`) and on a single-table-inheritance subclass (the
+    table's statistic counts the sibling classes).
+
+!!! warning "With `repository_class=`, it is `exact`"
+    `estimate` and `none` build their own `SELECT` (and `estimate` reads
+    the catalog), which would go around a `repository_class` that filters —
+    tenant isolation in an overridden `paginate`, for example. With a
+    `repository_class` configured, the list and the card use your
+    repository's `paginate` / `count`, as `exact` does.
+
+Measured on `postgres:16-alpine`, capturing one page's statements: with
+`"estimate"` over 40 analyzed rows the page ran the page `SELECT` and
+`SELECT reltuples FROM pg_class WHERE oid = to_regclass($1)`, no `count(`;
+with `?q=` the `count(*)` came back; on a freshly created table
+(`reltuples = -1`) `count(*)` ran after the catalog read and the header
+came out without `~`.
+
+## Global search
+
+When some model the operator can see has `search_fields`, the panel's top
+bar gains a search box. It goes to `GET /admin/search?q=`, which looks for
+the term in **every** model with `search_fields`, with the list search's
+own condition (each word an `ILIKE`, in any of the fields), and shows up
+to `ADMIN_SEARCH_RESULTS_PER_MODEL` (5) rows per model, each linking to its
+detail. When there are more, the group's **See all** opens the model's
+list already filtered with `?q=`. The cap is adjustable:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserModelAuthBackend, make_admin_router
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+app = FastAPI()
+
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.ADMIN_SECRET,
+        search_results_per_model=10,
+    ),
+)
+```
+
+The search honours what the rest of the panel honours: a model without
+`VIEW` in the `access_policy` is left out, and each model is queried with
+its own `row_scope` — a row outside the scope does not show. A model with
+a `repository_class` is queried through the repository's `paginate` (one
+`COUNT` per model), with the page capped at its `max_page_size`. An
+empty term (or only spaces) renders the page without running a query, and a
+term longer than `ADMIN_SEARCH_MAX_QUERY_LENGTH` (200) characters or with
+more than `ADMIN_SEARCH_MAX_TERMS` (8) words answers `400` with a notice,
+also without a query — each word becomes one `ILIKE` per field of every
+model.
 
 #### 4. Session security defaults
 
@@ -3079,3 +3422,13 @@ control, `custom_css_url`.
 - `AdminSite(recent_activity=N)` turns on the dashboard feed of the latest
   audited changes; the `[spreadsheet]` extra adds `.xlsx` to the export and
   the import.
+- `impersonate=` puts "Log in as" on the detail: the service provides the
+  URL (`make_jwt_impersonation_handler` signs a short access token with
+  `act`), the panel confirms, refuses an admin target, records and
+  redirects — and only with `IMPERSONATE` granted by an `access_policy`.
+- `count_strategy="estimate"` swaps the `COUNT` for PostgreSQL's statistic
+  while nothing narrows the list; `"none"` leaves only previous/next.
+- **Restore** in the history opens the edit form with the previous values;
+  the save is a normal edit, with permission, validation and lock.
+- The top bar's global search looks in every model with `search_fields`,
+  honouring `VIEW` and `row_scope`.

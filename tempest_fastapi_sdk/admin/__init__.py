@@ -30,6 +30,12 @@ from tempest_fastapi_sdk.admin.actions import (
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend as AdminAuthBackend
 from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
+from tempest_fastapi_sdk.admin.config import (
+    AdminCountStrategy as AdminCountStrategy,
+)
+from tempest_fastapi_sdk.admin.config import (
+    AdminCountStrategyEnum as AdminCountStrategyEnum,
+)
 from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
 from tempest_fastapi_sdk.admin.config import AdminRowScope as AdminRowScope
 from tempest_fastapi_sdk.admin.config import (
@@ -67,6 +73,27 @@ from tempest_fastapi_sdk.admin.i18n import (
 from tempest_fastapi_sdk.admin.i18n import AdminLocale as AdminLocale
 from tempest_fastapi_sdk.admin.i18n import admin_plural as admin_plural
 from tempest_fastapi_sdk.admin.i18n import admin_text as admin_text
+from tempest_fastapi_sdk.admin.impersonation import (
+    ADMIN_IMPERSONATION_EVENT as ADMIN_IMPERSONATION_EVENT,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
+    ADMIN_IMPERSONATION_FAILED_EVENT as ADMIN_IMPERSONATION_FAILED_EVENT,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
+    ADMIN_IMPERSONATION_TTL as ADMIN_IMPERSONATION_TTL,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
+    IMPERSONATION_TOKEN_PLACEHOLDER as IMPERSONATION_TOKEN_PLACEHOLDER,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
+    AdminImpersonateAccount as AdminImpersonateAccount,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
+    AdminImpersonateHandler as AdminImpersonateHandler,
+)
+from tempest_fastapi_sdk.admin.impersonation import (
+    make_jwt_impersonation_handler as make_jwt_impersonation_handler,
+)
 from tempest_fastapi_sdk.admin.location_map import BRLocationMap as BRLocationMap
 from tempest_fastapi_sdk.admin.manual_payout import (
     MARK_PAID_ACTION as MARK_PAID_ACTION,
@@ -120,6 +147,15 @@ from tempest_fastapi_sdk.admin.permissions import (
 from tempest_fastapi_sdk.admin.permissions import AdminSurfaceEnum as AdminSurfaceEnum
 from tempest_fastapi_sdk.admin.permissions import (
     AdminSurfacePolicy as AdminSurfacePolicy,
+)
+from tempest_fastapi_sdk.admin.router import (
+    ADMIN_SEARCH_MAX_QUERY_LENGTH as ADMIN_SEARCH_MAX_QUERY_LENGTH,
+)
+from tempest_fastapi_sdk.admin.router import (
+    ADMIN_SEARCH_MAX_TERMS as ADMIN_SEARCH_MAX_TERMS,
+)
+from tempest_fastapi_sdk.admin.router import (
+    ADMIN_SEARCH_RESULTS_PER_MODEL as ADMIN_SEARCH_RESULTS_PER_MODEL,
 )
 from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
 from tempest_fastapi_sdk.admin.session import AdminLoginCSRF as AdminLoginCSRF
@@ -192,17 +228,24 @@ from tempest_fastapi_sdk.admin.tasks import TaskTrigger as TaskTrigger
 from tempest_fastapi_sdk.admin.theme import AdminTheme as AdminTheme
 
 __all__: list[str] = [
+    "ADMIN_IMPERSONATION_EVENT",
+    "ADMIN_IMPERSONATION_FAILED_EVENT",
+    "ADMIN_IMPERSONATION_TTL",
     "ADMIN_IMPORT_MAX_BYTES",
     "ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS",
     "ADMIN_IMPORT_PREVIEW_ROWS",
     "ADMIN_LOCALES",
     "ADMIN_MESSAGES",
+    "ADMIN_SEARCH_MAX_QUERY_LENGTH",
+    "ADMIN_SEARCH_MAX_TERMS",
+    "ADMIN_SEARCH_RESULTS_PER_MODEL",
     "DANGEROUS_TRANSITIONS",
     "DEFAULT_ADMIN_LOCALE",
     "DEFAULT_SIMULATION_TRANSITIONS",
     "DEFAULT_STORAGE_MAX_TEXT_BYTES",
     "DEFAULT_STORAGE_MAX_UPLOAD_BYTES",
     "DEFAULT_STORAGE_PAGE_SIZE",
+    "IMPERSONATION_TOKEN_PLACEHOLDER",
     "MARK_PAID_ACTION",
     "RECEIPT_CONTENT_TYPES",
     "REJECT_ACTION",
@@ -221,7 +264,11 @@ __all__: list[str] = [
     "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
+    "AdminCountStrategy",
+    "AdminCountStrategyEnum",
     "AdminCreateHandler",
+    "AdminImpersonateAccount",
+    "AdminImpersonateHandler",
     "AdminLocale",
     "AdminLoginCSRF",
     "AdminModel",
@@ -289,6 +336,7 @@ __all__: list[str] = [
     "discover_models",
     "guess_storage_content_type",
     "make_admin_router",
+    "make_jwt_impersonation_handler",
     "make_mark_paid_action",
     "make_reject_action",
     "manual_payout_admin",

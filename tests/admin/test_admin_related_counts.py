@@ -242,3 +242,13 @@ async def test_filter_on_a_column_the_child_hides_is_ignored(
         assert child.status_code == 200
         assert "CommentInA" in child.text and "CommentInB" in child.text
         assert "Filtered by" not in child.text
+
+
+@pytest.mark.asyncio
+async def test_counts_render_without_an_exact_row_count(
+    database: AsyncDatabaseManager,
+) -> None:
+    async for world in open_world(database, article_options={"count_strategy": "none"}):
+        page = await world.client.get(f"{ARTICLES}/")
+        assert page.status_code == 200
+        assert _count_cells(page.text) == ["2"]

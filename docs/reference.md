@@ -51,6 +51,15 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.ReadonlyFieldsFor
 ::: tempest_fastapi_sdk.admin.config.AdminRowScope
 ::: tempest_fastapi_sdk.admin.config.AdminRowScopeError
+::: tempest_fastapi_sdk.admin.config.AdminCountStrategyEnum
+::: tempest_fastapi_sdk.admin.config.AdminCountStrategy
+::: tempest_fastapi_sdk.admin.impersonation.AdminImpersonateHandler
+::: tempest_fastapi_sdk.admin.impersonation.AdminImpersonateAccount
+::: tempest_fastapi_sdk.admin.impersonation.make_jwt_impersonation_handler
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_TTL
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_EVENT
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_FAILED_EVENT
+::: tempest_fastapi_sdk.admin.impersonation.IMPERSONATION_TOKEN_PLACEHOLDER
 ::: tempest_fastapi_sdk.admin.i18n.AdminLocale
 ::: tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES
 ::: tempest_fastapi_sdk.admin.i18n.DEFAULT_ADMIN_LOCALE
@@ -101,6 +110,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router
+::: tempest_fastapi_sdk.admin.router.ADMIN_SEARCH_RESULTS_PER_MODEL
+::: tempest_fastapi_sdk.admin.router.ADMIN_SEARCH_MAX_QUERY_LENGTH
+::: tempest_fastapi_sdk.admin.router.ADMIN_SEARCH_MAX_TERMS
 ::: tempest_fastapi_sdk.admin.discovery.discover_models
 ::: tempest_fastapi_sdk.admin.session.AdminSession
 ::: tempest_fastapi_sdk.admin.session.AdminSessionRevocations
@@ -1655,6 +1667,8 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.utils.jwt.JWTUtils
 ::: tempest_fastapi_sdk.utils.token_types.token_type_allowed
 ::: tempest_fastapi_sdk.utils.token_types.token_amr
+::: tempest_fastapi_sdk.utils.token_types.token_actor
+::: tempest_fastapi_sdk.utils.token_types.ACT_CLAIM
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper
 ::: tempest_fastapi_sdk.utils.totp.provisioning_qr_terminal
 ::: tempest_fastapi_sdk.utils.totp.provisioning_qr_data_uri

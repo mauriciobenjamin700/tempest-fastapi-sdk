@@ -6,7 +6,7 @@
   <header class="tempest-admin-list__header">
     <div class="tempest-admin-page-title">
       <h1>{{ admin.get_verbose_name_plural() }}</h1>
-      <span class="tempest-admin-count">{{ tn("list.records", pagination.total) }}</span>
+      {% if pagination.total is not none %}<span class="tempest-admin-count"{% if pagination.estimated %} title="{{ t('list.records_estimated_hint') }}"{% endif %}>{% if pagination.estimated %}{{ tn("list.records_estimated", pagination.total) }}{% else %}{{ tn("list.records", pagination.total) }}{% endif %}</span>{% endif %}
     </div>
     <div class="tempest-admin-list__actions">
       <a class="tempest-admin-btn tempest-admin-btn--ghost" href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">{{ t("list.export_csv") }}</a>
@@ -133,13 +133,13 @@
     })();
   </script>
   {% endif %}
-  {% if pagination.pages > 1 %}
+  {% if pagination.show_nav %}
   <nav class="tempest-admin-list__pagination" aria-label="{{ t('common.pagination') }}">
     {% if pagination.page > 1 %}
     <a href="?{{ pagination.query_for(pagination.page - 1) }}">← {{ t("common.prev") }}</a>
     {% endif %}
-    <span>{{ t("common.page_of", page=pagination.page, pages=pagination.pages) }}</span>
-    {% if pagination.page < pagination.pages %}
+    <span>{% if pagination.total is none %}{{ t("common.page", page=pagination.page) }}{% elif pagination.estimated %}{{ t("common.page_of_estimated", page=pagination.page, pages=pagination.pages) }}{% else %}{{ t("common.page_of", page=pagination.page, pages=pagination.pages) }}{% endif %}</span>
+    {% if pagination.has_next %}
     <a href="?{{ pagination.query_for(pagination.page + 1) }}">{{ t("common.next") }} →</a>
     {% endif %}
   </nav>

@@ -17,6 +17,7 @@ from tempest_fastapi_sdk import (
     AdminModel,
     AdminSite,
     AsyncDatabaseManager,
+    BaseAuditLogModel,
     BaseModel,
     BaseRepository,
     BaseUserModel,
@@ -98,6 +99,44 @@ class ScopeNote(BaseModel):
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("admin_scope_categories.id"), nullable=True
     )
+
+
+class ScopeAudit(BaseAuditLogModel):
+    """Audit table of :class:`ScopeTicket`, read by its history and restore."""
+
+    __tablename__ = "admin_scope_audit"
+
+
+IMPERSONATED: list[str] = []
+"""Ids :func:`impersonate_ticket` was asked to enter as, one per call."""
+
+
+def impersonate_ticket(operator: Any, target: Any) -> str:
+    """Record the target and send the browser to a fixed URL.
+
+    Args:
+        operator (Any): The signed-in admin.
+        target (Any): The row to act as.
+
+    Returns:
+        str: The redirect URL.
+    """
+    IMPERSONATED.append(str(target.id))
+    return f"https://app.example/as/{target.id}"
+
+
+def allow_everything(user: Any, admin: Any, action: Any) -> bool:
+    """Grant every permission, ``IMPERSONATE`` included.
+
+    Args:
+        user (Any): The principal.
+        admin (Any): The admin asked about.
+        action (Any): The permission.
+
+    Returns:
+        bool: Always ``True``.
+    """
+    return True
 
 
 def _company_scope(column: Any) -> Callable[[Any, Any], ColumnElement[bool]]:
@@ -242,6 +281,8 @@ def _build(
             actions=[record_selection],
             can_duplicate=True,
             bulk_edit_fields=["company"],
+            audit_model=ScopeAudit,
+            impersonate=impersonate_ticket,
             row_scope=_async_ticket_scope if scoped else None,
         )
     )
@@ -258,6 +299,7 @@ def _build(
         auth_backend=UserModelAuthBackend(ScopeUser),
         secret_key=SECRET,
         cookie_secure=False,
+        access_policy=allow_everything,
     )
     app = FastAPI()
     app.include_router(router)
@@ -300,6 +342,19 @@ async def _seed(db: AsyncDatabaseManager, upload_root: Path) -> dict[str, uuid.U
         note_in = ScopeNote(body="NoteInside", company=OWN, ticket_id=ticket_in.id)
         note_out = ScopeNote(body="NoteOutside", company=OTHER, ticket_id=ticket_in.id)
         session.add_all([note_in, note_out])
+        audit_in = ScopeAudit(
+            entity="ScopeTicket",
+            entity_id=str(ticket_in.id),
+            action="update",
+            changes={"name": {"before": "TicketBefore", "after": "TicketInside"}},
+        )
+        audit_out = ScopeAudit(
+            entity="ScopeTicket",
+            entity_id=str(ticket_out.id),
+            action="update",
+            changes={"name": {"before": "ForeignBefore", "after": "TicketOutside"}},
+        )
+        session.add_all([audit_in, audit_out])
         await session.commit()
         ids = {
             "operator": user.id,
@@ -309,6 +364,8 @@ async def _seed(db: AsyncDatabaseManager, upload_root: Path) -> dict[str, uuid.U
             "category_out": cat_out.id,
             "note_in": note_in.id,
             "note_out": note_out.id,
+            "audit_in": audit_in.id,
+            "audit_out": audit_out.id,
         }
     (upload_root / "in.txt").write_text("inside")
     (upload_root / "out.txt").write_text("outside")

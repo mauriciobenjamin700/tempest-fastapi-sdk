@@ -27,6 +27,7 @@ from tempest_fastapi_sdk.admin import AdminRowScopeError
 from tempest_fastapi_sdk.admin.csv_import import sign_import_payload
 from tests.admin.row_scope_world import (
     ACTION_IDS,
+    IMPERSONATED,
     NOTES,
     OTHER,
     OWN,
@@ -360,6 +361,60 @@ async def case_delete(world: ScopeWorld) -> None:
     assert await world.note("in") is None
 
 
+async def case_impersonate_form(world: ScopeWorld) -> None:
+    """The confirmation page answers ``404`` outside the scope."""
+    outside = await world.client.get(f"{TICKETS}/{world.ids['ticket_out']}/impersonate")
+    hidden(outside.status_code == 404, "foreign ticket offered for impersonation")
+    inside = await world.client.get(f"{TICKETS}/{world.ids['ticket_in']}/impersonate")
+    assert inside.status_code == 200
+    assert "TicketInside" in inside.text
+
+
+async def case_impersonate_submit(world: ScopeWorld) -> None:
+    """Impersonating outside is ``404`` and never calls the handler."""
+    IMPERSONATED.clear()
+    form = await world.client.get(f"{TICKETS}/{world.ids['ticket_in']}/impersonate")
+    nonce = form.text.split('name="submission_nonce" value="', 1)[1].split('"', 1)[0]
+    outside = await world.client.post(
+        f"{TICKETS}/{world.ids['ticket_out']}/impersonate",
+        data={"csrf_token": world.csrf, "submission_nonce": nonce},
+    )
+    hidden(
+        outside.status_code == 404 and IMPERSONATED == [],
+        "foreign ticket impersonated",
+    )
+    inside = await world.client.post(
+        f"{TICKETS}/{world.ids['ticket_in']}/impersonate",
+        data={"csrf_token": world.csrf, "submission_nonce": nonce},
+    )
+    assert inside.status_code == 303
+    assert inside.headers["location"] == (
+        f"https://app.example/as/{world.ids['ticket_in']}"
+    )
+    assert len(IMPERSONATED) == 1
+    assert IMPERSONATED[0] == str(world.ids["ticket_in"])
+
+
+async def case_restore(world: ScopeWorld) -> None:
+    """Restoring a foreign row's entry is ``404``; an own entry pre-fills."""
+    outside = await world.client.get(
+        f"{TICKETS}/{world.ids['ticket_out']}/restore/{world.ids['audit_out']}"
+    )
+    hidden(
+        outside.status_code == 404 and "ForeignBefore" not in outside.text,
+        "foreign ticket's history restored",
+    )
+    crossed = await world.client.get(
+        f"{TICKETS}/{world.ids['ticket_in']}/restore/{world.ids['audit_out']}"
+    )
+    assert crossed.status_code == 404
+    inside = await world.client.get(
+        f"{TICKETS}/{world.ids['ticket_in']}/restore/{world.ids['audit_in']}"
+    )
+    assert inside.status_code == 200
+    assert 'value="TicketBefore"' in inside.text
+
+
 ScopeCase = Callable[[ScopeWorld], Awaitable[None]]
 
 CASES: dict[tuple[str, str], ScopeCase] = {
@@ -379,6 +434,9 @@ CASES: dict[tuple[str, str], ScopeCase] = {
     ("POST", "/admin/m/{slug}/{identity}/edit"): case_edit_submit,
     ("POST", "/admin/m/{slug}/{identity}/inlines/{child_slug}"): case_inline_submit,
     ("POST", "/admin/m/{slug}/{identity}/delete"): case_delete,
+    ("GET", "/admin/m/{slug}/{identity}/impersonate"): case_impersonate_form,
+    ("POST", "/admin/m/{slug}/{identity}/impersonate"): case_impersonate_submit,
+    ("GET", "/admin/m/{slug}/{identity}/restore/{entry_id}"): case_restore,
 }
 """One case per ``(method, path)`` under ``/m/{slug}/``."""
 

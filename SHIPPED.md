@@ -4899,3 +4899,34 @@ Segunda reconferência: `_uncached_formulas` lê o XML da primeira aba uma vez
 `=IF(...;"";...)` do Excel) e só olha colunas com cabeçalho; `_convert` faz
 `read_xlsx` + a varredura numa thread, dentro do `_read_semaphore` do reader;
 o `beyond` do m2m para em `FK_OPTION_CAP` ids.
+
+### Admin: impersonar, contagem estimada, restaurar pelo histórico e busca global (#804, 2026-11-22)
+
+`AdminModel(impersonate=..., impersonate_account=...)` +
+`AdminPermissionEnum.IMPERSONATE` (negado sem `access_policy`), confirmação
+com CSRF e nonce, recusa por `AdminAuthBackend.is_admin_account` (linha e
+conta) e `is_admin_identity` (o `id` da credencial), entrada `event`
+`admin.impersonate` no `audit_model` antes do handler e log `INFO` sem a URL;
+`make_jwt_impersonation_handler` (access token curto, `act` RFC 8693) e
+`token_actor` / `ACT_CLAIM` para o app recusar sessão impersonada.
+`estimate`/`none` e a busca passam pelo `repository_class` quando há um;
+STI conta exato; busca limita termo (200 caracteres, 8 palavras).
+Testes da revisão: `tests/admin/test_impersonation_hardening.py`.
+`AdminModel(count_strategy="exact"|"estimate"|"none")`
+(`AdminCountStrategyEnum`): `reltuples` só sem busca/filtro/lens/escopo
+efetivo, exato no resto; `"none"` busca `page_size + 1`. "Restaurar" na
+timeline (`/restore/{entry_id}`) pré-preenche o form de edição — o save é a
+edição normal. `GET /search` com caixa no topo (`search_results_per_model`).
+Testes: `tests/admin/test_impersonation.py`, `test_count_strategy.py`,
+`test_count_strategy_postgres.py` (docker: zero `count(` com estimate,
+`reltuples = -1` cai para exato), `test_audit_restore.py`,
+`test_global_search.py` (escopo da busca, com a prova sem escopo); as rotas
+novas de `/m/` entraram nos casos de `test_row_scope.py`. Receita: `admin`,
+seções "Entrar como um usuário", "Contagem em tabela grande", "Busca
+global" e "Desfazer pelo histórico".
+Segunda revisão: `AdminAuthBackend.load_account` (padrão de
+`is_admin_identity` pergunta `is_admin_account` sobre ela), conta resolvida
+exigida no `row_scope` do admin da classe dela e com `id`, resolver sync em
+`run_sync`, entrada `admin.impersonate.failed` quando o handler falha, busca
+por `repository_class` limitada ao `max_page_size`. Testes:
+`tests/admin/test_impersonation_reach.py`.

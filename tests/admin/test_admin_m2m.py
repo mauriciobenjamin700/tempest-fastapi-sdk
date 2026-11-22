@@ -438,3 +438,39 @@ async def test_reachable_link_never_rendered_is_kept_on_save(
             later_id,
             str(world.ids["tag_out"]),
         }
+
+
+@pytest.mark.asyncio
+async def test_restore_form_carries_the_current_links(world: Wave2World) -> None:
+    from tempest_fastapi_sdk.db.audit import AuditActionEnum
+    from tests.admin.wave2_world import W2Audit
+
+    async with world.db.get_session_context() as session:
+        entry = W2Audit.new_entry(
+            entity=W2Article.__name__,
+            entity_id=str(world.ids["article_in"]),
+            action=AuditActionEnum.UPDATE,
+            changes={"status": {"before": "published", "after": "draft"}},
+            actor=str(world.ids["operator"]),
+        )
+        session.add(entry)
+        await session.commit()
+        entry_id = entry.id
+    form = await world.client.get(
+        f"{ARTICLES}/{world.ids['article_in']}/restore/{entry_id}"
+    )
+    assert form.status_code == 200
+    assert f'value="{world.ids["tag_in"]}" selected' in form.text
+    resp = await world.client.post(
+        f"{ARTICLES}/{world.ids['article_in']}/edit",
+        data={
+            "csrf_token": world.csrf,
+            "title": "ArticleInside",
+            "slug": "inside",
+            "company": OWN,
+            "status": "published",
+            "tags": [str(world.ids["tag_in"])],
+        },
+    )
+    assert resp.status_code == 303
+    assert len(_tag_ids(await world.article("article_in"))) == 2
