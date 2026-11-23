@@ -238,7 +238,7 @@ The generated `pyproject.toml` pins the current SDK version with the extras you 
 
     The version has a **single source**: `Settings.VERSION` comes from
     `[project].version` in `pyproject.toml`, read by
-    [`read_project_version`](../../../reference/#tempest_fastapi_sdk.settings.version.read_project_version).
+    [`read_project_version`](../../../reference/admin-data-api/#tempest_fastapi_sdk.settings.version.read_project_version).
     The path is anchored on `settings.py` itself (not the cwd), so the
     value is the project's even when it runs from another directory;
     bumping the release is editing `pyproject.toml`, and

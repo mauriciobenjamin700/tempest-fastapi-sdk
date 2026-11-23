@@ -236,7 +236,7 @@ O `pyproject.toml` gerado fixa a versão atual do SDK com os extras que você pe
 
     A versão tem **uma fonte só**: o `VERSION` do `Settings` sai de
     `[project].version` no `pyproject.toml`, lido por
-    [`read_project_version`](../reference.md#tempest_fastapi_sdk.settings.version.read_project_version).
+    [`read_project_version`](../reference/admin-data-api.md#tempest_fastapi_sdk.settings.version.read_project_version).
     O caminho é ancorado no próprio `settings.py` (não no cwd), então a
     versão é a do projeto mesmo rodando de outro diretório; bumpar a
     release é editar o `pyproject.toml`, e o `/health/readiness` e o

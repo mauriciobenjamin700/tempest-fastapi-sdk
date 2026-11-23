@@ -9,8 +9,9 @@ Parsing the markdown is not enough to catch that. A ``:::`` directive can
 name a module and render every member, and ``mkdocstrings`` filters can
 exclude whole classes of names (an ``!^[a-z_]+$`` filter silently dropped
 every function from the top-level directive). So this guard asserts against
-the **built HTML**: it renders the reference page and checks the anchor ids
-mkdocstrings actually emitted.
+the **built HTML**: it renders the reference pages (one per theme, under
+``site/reference/``) and checks the anchor ids mkdocstrings actually
+emitted.
 
 The build is the slow part, so it runs once per session and the test is
 marked ``docs`` for easy deselection.
@@ -79,7 +80,7 @@ of keeping it as a mapping rather than a bare set.
 
 @pytest.fixture(scope="session")
 def rendered_anchors(built_site: Path) -> frozenset[str]:
-    """Return the reference page's anchor ids from the built site.
+    """Return the anchor ids of every reference page in the built site.
 
     Args:
         built_site (Path): The built ``site/`` directory, from ``conftest``,
@@ -92,10 +93,14 @@ def rendered_anchors(built_site: Path) -> frozenset[str]:
         ``id="tempest_fastapi_sdk..."`` anchor mkdocstrings emitted, which
         is the symbol name as a reader would search for it.
     """
-    page = built_site / "reference" / "index.html"
-    if not page.exists():  # pragma: no cover - unexpected layout
-        pytest.skip("reference page was not built")
-    ids = re.findall(r'id="(tempest_fastapi_sdk[^"]*)"', page.read_text())
+    pages = sorted((built_site / "reference").rglob("index.html"))
+    if len(pages) < 2:  # pragma: no cover - unexpected layout
+        pytest.skip("reference pages were not built")
+    ids = [
+        anchor
+        for page in pages
+        for anchor in re.findall(r'id="(tempest_fastapi_sdk[^"]*)"', page.read_text())
+    ]
     return frozenset(anchor.rsplit(".", 1)[-1] for anchor in ids)
 
 
@@ -122,8 +127,9 @@ def test_public_symbols_are_in_the_reference(
     ]
     assert not missing, (
         f"{module_name}.__all__ exports these but the API reference does not "
-        f"document them: {missing}. Add a `::: <module>.<name>` entry to "
-        f"docs/reference.md (a bare `::: <module>` covers a whole namespace), "
+        f"document them: {missing}. Add a `::: <module>.<name>` entry to the "
+        f"matching page under docs/reference/ (a bare `::: <module>` covers a "
+        f"whole namespace), "
         f"or add the name to ALLOWED_ABSENT with the reason."
     )
 

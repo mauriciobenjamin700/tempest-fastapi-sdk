@@ -79,7 +79,7 @@ Three pieces:
   four status events. The latter goes in `on_status`.
 - **The answer** is `200` once the handler returns, with the event name echoed back —
   `{"ok": true, "event": "message.received"}`, a
-  [`ZapWebhookAckSchema`](../../../reference/#tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema).
+  [`ZapWebhookAckSchema`](../../../reference/integrations-payments/#tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema).
 
 The parameters the route takes:
 

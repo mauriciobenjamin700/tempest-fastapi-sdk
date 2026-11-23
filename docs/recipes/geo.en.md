@@ -569,7 +569,7 @@ asyncio.run(main())
 !!! warning "Public Nominatim usage policy"
     `nominatim.openstreetmap.org` requires a descriptive `User-Agent` and
     caps you at ~1 req/s. On a request path, wrap the backend with
-    [`CachedGeocodingBackend`](../../../reference/#tempest_fastapi_sdk.geo.CachedGeocodingBackend)
+    [`CachedGeocodingBackend`](../../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.CachedGeocodingBackend)
     — the section below builds that cache — or run your own instance before
     scaling up.
 
@@ -578,7 +578,7 @@ asyncio.run(main())
 That policy is why geocoding on a request path must be cached — and the rule
 holds for any address provider, paid or not: geocoding is the kind of call
 the same address asks for again. `CachedGeocodingBackend` wraps any
-[`GeocodingBackend`](../../../reference/#tempest_fastapi_sdk.geo.GeocodingBackend)
+[`GeocodingBackend`](../../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.GeocodingBackend)
 — the `NominatimBackend`, the test's `FakeGeocodingBackend`, a paid provider
 client — and serves hits from the cache without touching the backend:
 
@@ -625,7 +625,7 @@ geocoding:search:v1:<SHA-256 of the normalized text>
 calling the backend — the exact reading lives only in the process that
 received it. The table below is the measured distance between a whole degree
 of latitude at −5° and each finer neighbour
-([`haversine_km`](../../../reference/#tempest_fastapi_sdk.geo.haversine_km)):
+([`haversine_km`](../../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.haversine_km)):
 
 | Places | Cell side |
 | --- | --- |
@@ -694,7 +694,7 @@ The default TTL is 30 days (`DEFAULT_GEOCODE_CACHE_TTL_SECONDS`) and the key
 prefix is `geocoding` (`DEFAULT_GEOCODE_CACHE_KEY_PREFIX`) — tune them for
 your instance with `ttl_seconds=` and `key_prefix=`. Your own store:
 implement
-[`GeocodeCacheStore`](../../../reference/#tempest_fastapi_sdk.geo.GeocodeCacheStore)
+[`GeocodeCacheStore`](../../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.GeocodeCacheStore)
 as a class with `get(key) -> str | None` and `set(key, value, ttl_seconds)`
 — that is the whole contract.
 
@@ -721,7 +721,7 @@ is the backend's own — the cache does not hide what the source answered.
 state into separate columns means parsing it, and address formats are exactly
 the kind of thing that varies. Because `NominatimBackend` asks for
 `addressdetails=1` on both directions, the result carries
-[`GeocodeAddress`](../../../reference/#tempest_fastapi_sdk.geo.GeocodeAddress)
+[`GeocodeAddress`](../../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.GeocodeAddress)
 in `hit.address`, one part per field:
 
 ```python
