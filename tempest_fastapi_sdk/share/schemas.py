@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 
+from tempest_fastapi_sdk.core.enums import BaseStrEnum
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 ALLOWED_URL_SCHEMES: frozenset[str] = frozenset({"http", "https"})
@@ -262,10 +263,103 @@ class SharePreviewSchema(BaseSchema):
         return require_absolute_http_url(value)
 
 
+class ShareFrameLayoutEnum(BaseStrEnum):
+    """Shape of the shareable frame.
+
+    Attributes:
+        STORY: 1080x1920, the status/story format.
+        SQUARE: 1080x1080, for a chat or a group.
+    """
+
+    STORY = "story"
+    SQUARE = "square"
+
+
+class ShareFrameSchema(BaseSchema):
+    """Content of the shareable frame: a QR code with who and what around it.
+
+    Attributes:
+        url (str): Absolute ``http``/``https`` URL the QR code encodes,
+            usually the item's share page.
+        title (str): Main line under the photo — the person's name.
+        subtitle (str | None): Muted line under the title (the route).
+        brand (str | None): Product name next to the logo, in the
+            accent color.
+        caption (str | None): Call to action under the link
+            (``"Escaneie e reserve"``).
+        show_url (bool): Write the URL under the QR code, without the
+            scheme, for whoever cannot scan.
+
+    Every text is collapsed to one line, as on the card.
+    """
+
+    url: str = Field(
+        title="URL",
+        description="Absolute http(s) URL the QR code encodes.",
+        examples=["https://app.example.com/s/42"],
+    )
+    title: str = Field(
+        title="Título",
+        description="Main line, usually the person's name.",
+        examples=["Ana Souza"],
+    )
+    subtitle: str | None = Field(
+        default=None,
+        title="Subtítulo",
+        description="Muted line under the title.",
+        examples=["Teresina → Fortaleza · sexta, 18h", None],
+    )
+    brand: str | None = Field(
+        default=None,
+        title="Marca",
+        description="Product name next to the logo.",
+        examples=["BusCar", None],
+    )
+    caption: str | None = Field(
+        default=None,
+        title="Chamada",
+        description="Call to action under the link.",
+        examples=["Escaneie e reserve sua vaga", None],
+    )
+    show_url: bool = Field(
+        default=True,
+        title="Mostrar link",
+        description="Write the URL under the QR code.",
+    )
+
+    @field_validator("url")
+    @classmethod
+    def _absolute_http_url(cls, value: str) -> str:
+        """Refuse a URL that is relative or not ``http``/``https``.
+
+        Args:
+            value (str): The submitted URL.
+
+        Returns:
+            str: ``value`` unchanged.
+        """
+        return require_absolute_http_url(value)
+
+    @field_validator("title", "subtitle", "brand", "caption")
+    @classmethod
+    def _one_line(cls, value: str | None) -> str | None:
+        """Collapse line breaks and repeated spaces.
+
+        Args:
+            value (str | None): The submitted text.
+
+        Returns:
+            str | None: The text on one line.
+        """
+        return None if value is None else collapse_whitespace(value)
+
+
 __all__: list[str] = [
     "ALLOWED_URL_SCHEMES",
     "ShareCardLineSchema",
     "ShareCardSchema",
+    "ShareFrameLayoutEnum",
+    "ShareFrameSchema",
     "SharePreviewSchema",
     "collapse_whitespace",
     "require_absolute_http_url",

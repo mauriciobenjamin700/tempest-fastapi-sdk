@@ -185,7 +185,7 @@ plugins:
               - "Pix protocol (one contract, many providers)": recipes/pix-protocol.md
               - "Pix refunds (idempotent)": recipes/pix-refund.md
               - "Push (web + mobile)": recipes/push.md
-              - "QR code with a logo (ride link)": recipes/qr-logo.md
+              - "QR code with a logo and a frame (ride link)": recipes/qr-logo.md
               - Query plans (EXPLAIN): recipes/query-plans.md
               - Queue & Tasks: recipes/queue-tasks.md
               - React SPA inside FastAPI: recipes/react-spa.md
@@ -279,7 +279,7 @@ plugins:
             Email transacional: Transactional email
             Web Push: Web Push
             "Push (web + mobile)": "Push (web + mobile)"
-            "QR Code com logo (link de carona)": "QR code with a logo (ride link)"
+            "QR Code com logo e moldura (link de carona)": "QR code with a logo and a frame (ride link)"
             WebAuthn / passkeys: WebAuthn / passkeys
             Logging: Logging
             "Login social (OAuth2/OIDC)": "Social login (OAuth2/OIDC)"
@@ -525,7 +525,7 @@ nav:
       - "Planos de query (EXPLAIN)": recipes/query-plans.md
       - "Protocolo de Pix (um contrato, vários provedores)": recipes/pix-protocol.md
       - "Push (web + mobile)": recipes/push.md
-      - "QR Code com logo (link de carona)": recipes/qr-logo.md
+      - "QR Code com logo e moldura (link de carona)": recipes/qr-logo.md
       - "Receber mensagens do WhatsApp (zap-api)": recipes/zap-inbound.md
       - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md

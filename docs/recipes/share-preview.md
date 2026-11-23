@@ -344,7 +344,7 @@ Uma imagem `python:3.12-slim` não tem fonte TrueType nenhuma. Sem fonte, o
 ```text
 FileNotFoundError: no TrueType font found for the share card. Install one
 (`apt-get install fonts-dejavu-core` on Debian/Ubuntu) or pass font_path= to
-ShareCardRenderer.
+the renderer.
 ```
 
 O SDK não cai na fonte embutida do Pillow de propósito. Medido no Pillow

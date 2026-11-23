@@ -207,11 +207,15 @@ spreadsheet = [
     "openpyxl>=3.1.5",
 ]
 image = [
-    # Re-encoding a user image without its metadata (strip_image_metadata)
-    # and drawing the link-preview card (share.ShareCardRenderer).
+    # Re-encoding a user image without its metadata (strip_image_metadata),
+    # drawing the link-preview card (share.ShareCardRenderer) and the
+    # shareable QR frame (share.ShareFrameRenderer, share.render_qr).
     # Pillow declares no upper bound; the floor matches the one [faces],
     # [genai-vlm] and [genai-image] already use.
     "pillow>=13.0.0",
+    # QR encoding for share.render_qr: pure Python, no dependency, no
+    # upper bound; the floor matches the one [mfa] and [pdf] already use.
+    "segno>=1.6.6",
 ]
 vision = [
     "ort-vision-sdk>=0.12.0",

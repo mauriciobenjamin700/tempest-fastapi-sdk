@@ -4989,3 +4989,22 @@ dispara sem `escape`, esquema de URL, `304` sem render, render fora do loop
 com prova de que dispara sem `to_thread`, margens com texto longo).
 Receita: `docs/recipes/share-preview.md`. Substitui o código à mão do
 TempestTecnology/transport-backend#382.
+
+## QR Code com logo e moldura para compartilhar (#817)
+
+`share/qr.py`: `render_qr` (nível `H`, `micro=False`, logo em quadro branco
+de um módulo), `qr_image`, `decode_logo`, `DEFAULT_QR_LOGO_FRACTION` 0,25 e
+`MAX_QR_LOGO_FRACTION` 0,35, medidos com `zxing-cpp` em imagem limpa e em
+quatro degradadas (até 35% lê em tudo, 40% falha no link de 30 caracteres).
+`share/frame.py`: `ShareFrameRenderer` (layouts em `LAYOUTS`: `STORY`
+1080×1920 e `SQUARE` 1080×1080; foto redonda com anel ou iniciais; QR sem
+borda dentro de um painel branco que serve de zona de silêncio com pelo
+menos 4 módulos). Base comum `_BrandRenderer` em `card.py` (cores, fontes,
+logo, impressão digital, `_fit`/`_clip`, degradê), compartilhada com o
+`ShareCardRenderer`. `segno` entrou no `[image]`. Sem rota pronta: a foto
+vem do serviço, e buscar URL no servidor é SSRF. Testes:
+`tests/share/test_qr.py` (decodifica no padrão e no teto, prova que 40%
+falha) e `tests/share/test_frame.py` (decodifica o QR dentro dos dois
+layouts: com e sem foto, com e sem logo, com texto longo e link UUID).
+Receita: `docs/recipes/qr-logo.md`.
+
