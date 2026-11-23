@@ -556,6 +556,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Compartilhamento (Open Graph)
+
+### `tempest_fastapi_sdk.share`
+
+::: tempest_fastapi_sdk.share
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Computer vision
 
 ### `tempest_fastapi_sdk.vision`

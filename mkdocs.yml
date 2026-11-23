@@ -199,6 +199,7 @@ plugins:
               - Server-Sent Events (SSE): recipes/sse.md
               - Server-side login and signup: recipes/auth-pages.md
               - Server-side sessions: recipes/sessions.md
+              - "Sharing with a preview (Open Graph)": recipes/share-preview.md
               - "Slides, answer keys and Markdown to PDF": recipes/slides.md
               - "Social login (OAuth2/OIDC)": recipes/oauth.md
               - Spreadsheets (.xlsx): recipes/spreadsheets.md
@@ -263,6 +264,7 @@ plugins:
             Cache: Cache
             "Chat (conversas + mensagens)": "Chat (conversations + messages)"
             "Comentários + avaliações": "Comments + ratings"
+            "Compartilhar com prévia (Open Graph)": "Sharing with a preview (Open Graph)"
             "Exemplo integrado (marketplace local)": "Integrated example (local marketplace)"
             "Exemplo integrado (admin completo)": "Integrated example (complete admin)"
             Feature flags: Feature flags
@@ -457,6 +459,7 @@ nav:
       - "Cliente de WebSocket (AsyncAPI)": recipes/asyncapi-client.md
       - "Colunas de enum (seguras nos dois bancos)": recipes/enum-columns.md
       - "Comentários + avaliações": recipes/reviews.md
+      - "Compartilhar com prévia (Open Graph)": recipes/share-preview.md
       - "Console SQL no admin": recipes/admin-sql-console.md
       - "Controle do host (arquivos, comandos, energia)": recipes/hostbridge.md
       - "CSS tipado (StyleSheet e tokens)": recipes/ui-css.md

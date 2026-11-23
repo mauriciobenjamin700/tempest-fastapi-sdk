@@ -134,6 +134,21 @@ def test_the_pdf_extra_brings_its_system_packages(tmp_path: Path) -> None:
     assert "fonts-dejavu-core" in dockerfile
 
 
+def test_the_image_extra_brings_a_font(tmp_path: Path) -> None:
+    """The share card needs a TrueType font a slim image does not ship.
+
+    Args:
+        tmp_path (Path): pytest's per-test temporary directory.
+
+    Without one ``ShareCardRenderer`` refuses to start, so the font is
+    installed for every ``[image]`` pin; Pango stays out, it is the PDF
+    engine's.
+    """
+    dockerfile = (_scaffold(tmp_path, "image") / "Dockerfile").read_text()
+    assert "fonts-dejavu-core" in dockerfile
+    assert "libpango-1.0-0" not in dockerfile
+
+
 def test_a_project_without_pdf_stays_slim(tmp_path: Path) -> None:
     """The stanza is conditional, not unconditional.
 
