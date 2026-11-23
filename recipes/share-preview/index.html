@@ -5540,7 +5540,10 @@ Debian/Ubuntu é o pacote <code>fonts-dejavu-core</code>. Veja
   router chama o resolver pela posição, então o nome do parâmetro é seu.</li>
 <li><strong><code>redirect_url</code></strong> é para onde vai a <strong>pessoa</strong> que clica no link. A página
   leva o navegador até lá com <code>&lt;meta http-equiv="refresh"&gt;</code> e mostra também
-  um link visível (<code>link_text</code>) para quando o refresh estiver bloqueado.</li>
+  um link visível (<code>link_text</code>) para quando o refresh estiver bloqueado. O
+  padrão de <code>link_text</code> é <code>"Open"</code>, em inglês, porque o pacote é publicado
+  para qualquer língua: num app pt-BR, passe <code>link_text="Abrir no app"</code>, como
+  no exemplo.</li>
 <li><strong><code>public_url</code></strong> é a origem pública de onde o link é servido. <code>og:url</code> e a
   URL da imagem são montados em cima dela.</li>
 <li><strong><code>fallback</code></strong> é a prévia mostrada quando o resolver devolve <code>None</code>.</li>
@@ -5763,19 +5766,42 @@ quando o item muda.</p>
 <h2 id="passo-5-o-link-publico-no-ar">Passo 5: o link público no ar<a class="headerlink" href="#passo-5-o-link-publico-no-ar" title="Permanent link">&para;</a></h2>
 <p>O link que o motorista compartilha é <code>https://&lt;domínio&gt;/s/42</code>. Duas formas de
 fazer esse caminho chegar ao backend:</p>
-<p><strong>nginx na frente do app e da API.</strong> Encaminhe o prefixo para o backend e
-deixe o resto com o SPA:</p>
-<div class="language-nginx highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">location</span><span class="w"> </span><span class="s">/s/</span><span class="w"> </span><span class="p">{</span>
+<p><strong>nginx na frente do app e da API.</strong> Encaminhe o prefixo para o backend com
+<code>^~</code> e deixe o resto com o SPA:</p>
+<div class="language-nginx highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">location</span><span class="w"> </span><span class="s">^~</span><span class="w"> </span><span class="s">/s/</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://backend:8000</span><span class="p">;</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w"> </span><span class="nv">$host</span><span class="p">;</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-Proto</span><span class="w"> </span><span class="nv">$scheme</span><span class="p">;</span>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="p">}</span>
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="k">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="kn">root</span><span class="w"> </span><span class="s">/usr/share/nginx/html</span><span class="p">;</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="kn">try_files</span><span class="w"> </span><span class="nv">$uri</span><span class="w"> </span><span class="s">/index.html</span><span class="p">;</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="p">}</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="k">location</span><span class="w"> </span><span class="s">^~</span><span class="w"> </span><span class="s">/api/</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://backend:8000</span><span class="p">;</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w"> </span><span class="nv">$host</span><span class="p">;</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-Proto</span><span class="w"> </span><span class="nv">$scheme</span><span class="p">;</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="p">}</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="k">location</span><span class="w"> </span><span class="p">~</span><span class="sr">*</span><span class="w"> </span><span class="s">\.(png|jpg|jpeg|gif|svg|ico|css|js|webp)</span>$<span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="kn">root</span><span class="w"> </span><span class="s">/usr/share/nginx/html</span><span class="p">;</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="kn">expires</span><span class="w"> </span><span class="s">7d</span><span class="p">;</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">}</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="k">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">    </span><span class="kn">root</span><span class="w"> </span><span class="s">/usr/share/nginx/html</span><span class="p">;</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">    </span><span class="kn">try_files</span><span class="w"> </span><span class="nv">$uri</span><span class="w"> </span><span class="s">/index.html</span><span class="p">;</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="p">}</span>
 </span></code></pre></div>
+<div class="admonition danger">
+<p class="admonition-title">Sem <code>^~</code>, a imagem da prévia some sem erro</p>
+<p>No nginx, um <code>location</code> de regex (o dos estáticos, <code>~* \.(png|...)$</code>)
+vence um prefixo comum como <code>location /s/</code>. O <code>/s/42/og.png</code> termina em
+<code>.png</code>, então cai no bloco dos estáticos, que procura o arquivo no disco
+do SPA e responde <code>404</code>. A página <code>/s/42</code> continua <code>200</code>, e a prévia sai
+sem imagem, sem erro nenhum. O <code>^~</code> diz ao nginx para parar no prefixo e
+não testar as regex. Medido no <code>nginx:alpine</code> 1.31.9 com esta config:
+<code>location /s/</code> deu <code>404</code> no <code>og.png</code>, e <code>location ^~ /s/</code> deu <code>200
+image/png</code>. Use <code>^~</code> também no <code>/api/</code>, onde moram imagens geradas pelo
+backend (como o <a href="../qr-logo/">QR Code</a>).</p>
+</div>
 <p>Nesse caso, <code>public_url</code> é o domínio do app (<code>https://app.example.com</code>),
 porque é ele que aparece no link.</p>
 <p><strong>O backend serve o SPA.</strong> Com

@@ -5415,7 +5415,7 @@ para continuar lendo, e recusa uma fração de logo acima do teto medido.</p>
 <li><code>render_qr(url, logo=...)</code>: o PNG do QR com o logo no centro;</li>
 <li><code>ShareFrameRenderer</code>: a moldura em dois formatos, vertical para o status e
   quadrado para conversa e grupo;</li>
-<li><code>GET /caronas/{trip_id}/qr.png</code> e <code>GET /caronas/{trip_id}/moldura.png</code>,
+<li><code>GET /api/caronas/{trip_id}/qr.png</code> e <code>GET /api/caronas/{trip_id}/moldura.png</code>,
   apontando para a <a href="../share-preview/">página de compartilhamento</a> da carona.</li>
 </ul>
 <h2 id="instalacao">Instalação<a class="headerlink" href="#instalacao" title="Permanent link">&para;</a></h2>
@@ -5653,7 +5653,7 @@ colado no WhatsApp, mostra a prévia com o card.</p>
 </span><span id="__span-3-36"><a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a>    <span class="p">)</span>
 </span><span id="__span-3-37"><a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a>
 </span><span id="__span-3-38"><a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a>
-</span><span id="__span-3-39"><a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/caronas/</span><span class="si">{trip_id}</span><span class="s2">/qr.png"</span><span class="p">,</span> <span class="n">response_class</span><span class="o">=</span><span class="n">Response</span><span class="p">)</span>
+</span><span id="__span-3-39"><a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/api/caronas/</span><span class="si">{trip_id}</span><span class="s2">/qr.png"</span><span class="p">,</span> <span class="n">response_class</span><span class="o">=</span><span class="n">Response</span><span class="p">)</span>
 </span><span id="__span-3-40"><a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">trip_qr</span><span class="p">(</span><span class="n">trip_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Response</span><span class="p">:</span>
 </span><span id="__span-3-41"><a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a>    <span class="k">if</span> <span class="n">trip_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">TRIPS</span><span class="p">:</span>
 </span><span id="__span-3-42"><a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a>        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">)</span>
@@ -5661,7 +5661,7 @@ colado no WhatsApp, mostra a prévia com o card.</p>
 </span><span id="__span-3-44"><a id="__codelineno-3-44" name="__codelineno-3-44" href="#__codelineno-3-44"></a>    <span class="k">return</span> <span class="n">png_response</span><span class="p">(</span><span class="n">png</span><span class="p">)</span>
 </span><span id="__span-3-45"><a id="__codelineno-3-45" name="__codelineno-3-45" href="#__codelineno-3-45"></a>
 </span><span id="__span-3-46"><a id="__codelineno-3-46" name="__codelineno-3-46" href="#__codelineno-3-46"></a>
-</span><span id="__span-3-47"><a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/caronas/</span><span class="si">{trip_id}</span><span class="s2">/moldura.png"</span><span class="p">,</span> <span class="n">response_class</span><span class="o">=</span><span class="n">Response</span><span class="p">)</span>
+</span><span id="__span-3-47"><a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/api/caronas/</span><span class="si">{trip_id}</span><span class="s2">/moldura.png"</span><span class="p">,</span> <span class="n">response_class</span><span class="o">=</span><span class="n">Response</span><span class="p">)</span>
 </span><span id="__span-3-48"><a id="__codelineno-3-48" name="__codelineno-3-48" href="#__codelineno-3-48"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">trip_frame</span><span class="p">(</span>
 </span><span id="__span-3-49"><a id="__codelineno-3-49" name="__codelineno-3-49" href="#__codelineno-3-49"></a>    <span class="n">trip_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 </span><span id="__span-3-50"><a id="__codelineno-3-50" name="__codelineno-3-50" href="#__codelineno-3-50"></a>    <span class="n">layout</span><span class="p">:</span> <span class="n">ShareFrameLayoutEnum</span> <span class="o">=</span> <span class="n">ShareFrameLayoutEnum</span><span class="o">.</span><span class="n">STORY</span><span class="p">,</span>
@@ -5680,8 +5680,14 @@ colado no WhatsApp, mostra a prévia com o card.</p>
 </span><span id="__span-3-63"><a id="__codelineno-3-63" name="__codelineno-3-63" href="#__codelineno-3-63"></a>    <span class="n">png</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="n">renderer</span><span class="o">.</span><span class="n">render</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">layout</span><span class="o">=</span><span class="n">layout</span><span class="p">,</span> <span class="n">photo</span><span class="o">=</span><span class="n">photo</span><span class="p">)</span>
 </span><span id="__span-3-64"><a id="__codelineno-3-64" name="__codelineno-3-64" href="#__codelineno-3-64"></a>    <span class="k">return</span> <span class="n">png_response</span><span class="p">(</span><span class="n">png</span><span class="p">)</span>
 </span></code></pre></div>
-<p><code>GET /caronas/42/moldura.png</code> devolve o vertical, e
-<code>GET /caronas/42/moldura.png?layout=square</code> devolve o quadrado. O FastAPI
+<p>As rotas ficam sob <code>/api/</code> de propósito. Atrás do nginx da
+<a href="../share-preview/#passo-5-o-link-publico-no-ar">página de compartilhamento</a>,
+só <code>/s/</code> e <code>/api/</code> vão para o backend, com <code>^~</code>. Fora deles, um caminho que
+termina em <code>.png</code> cai no bloco de estáticos do SPA. Medido no <code>nginx:alpine</code>
+1.31.9: <code>/caronas/42/qr.png</code> deu <code>404</code>, e <code>/api/caronas/42/qr.png</code> deu
+<code>200 image/png</code>.</p>
+<p><code>GET /api/caronas/42/moldura.png</code> devolve o vertical, e
+<code>GET /api/caronas/42/moldura.png?layout=square</code> devolve o quadrado. O FastAPI
 valida <code>layout</code> contra o enum e responde <code>422</code> para outro valor.</p>
 <p><strong>Fora do event loop.</strong> Desenhar a moldura levou cerca de 105 ms (média de
 10, formato vertical, com foto e logo, Pillow 13.0.0, na máquina de
