@@ -231,7 +231,16 @@ plugins:
               - WebSocket client (AsyncAPI): recipes/asyncapi-client.md
               - WebSocket router: recipes/websocket.md
               - WhatsApp (zap-api): recipes/zap.md
-            - Reference: reference.md
+            - Reference:
+              - reference.md
+              - "Top-level surface": reference/top.md
+              - "Admin, data and API": reference/admin-data-api.md
+              - "AI and computer vision": reference/ai-vision.md
+              - "Documents and files": reference/documents-files.md
+              - "Integrations and payments": reference/integrations-payments.md
+              - "OpenAPI code generation": reference/openapi.md
+              - "Real time and messaging": reference/realtime-messaging.md
+              - "Web, UI and utilities": reference/web-ui-utils.md
             - Learning projects:
               - learning/index.md
               - Marketplace:
@@ -318,6 +327,14 @@ plugins:
             "CSS tipado (StyleSheet e tokens)": "Typed CSS (stylesheet and tokens)"
             "Formulários a partir de schemas Pydantic": "Forms from Pydantic schemas"
             Referência: Reference
+            "Superfície de topo": "Top-level surface"
+            "Admin, dados e API": "Admin, data and API"
+            "IA e visão computacional": "AI and computer vision"
+            "Geração de cliente OpenAPI": "OpenAPI code generation"
+            "Web, UI e utilitários": "Web, UI and utilities"
+            "Integrações e pagamentos": "Integrations and payments"
+            "Tempo real e mensageria": "Real time and messaging"
+            "Documentos e arquivos": "Documents and files"
             "Projetos de aprendizado": Learning projects
             Marketplace: Marketplace
             "Regras de negócio": Business rules
@@ -556,7 +573,16 @@ nav:
       - WebAuthn / passkeys: recipes/webauthn.md
       - WebSocket router: recipes/websocket.md
       - "WhatsApp (zap-api)": recipes/zap.md
-  - Referência: reference.md
+  - Referência:
+      - reference.md
+      - "Superfície de topo": reference/top.md
+      - "Admin, dados e API": reference/admin-data-api.md
+      - "Documentos e arquivos": reference/documents-files.md
+      - "Geração de cliente OpenAPI": reference/openapi.md
+      - "IA e visão computacional": reference/ai-vision.md
+      - "Integrações e pagamentos": reference/integrations-payments.md
+      - "Tempo real e mensageria": reference/realtime-messaging.md
+      - "Web, UI e utilitários": reference/web-ui-utils.md
   - Projetos de aprendizado:
       - learning/index.md
       - Marketplace:

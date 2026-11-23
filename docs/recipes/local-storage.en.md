@@ -13,7 +13,7 @@ change.
 
 What changes is the link. A disk has no endpoint the browser can reach, so
 the "presigned" link points at **your API**, signed with
-[`sign_path`](../../../reference/#tempest_fastapi_sdk.utils.signed_url.sign_path),
+[`sign_path`](../../../reference/web-ui-utils/#tempest_fastapi_sdk.utils.signed_url.sign_path),
 and `make_local_storage_router` serves those routes.
 
 No extra needed: only the standard library and the FastAPI the SDK already

@@ -21,17 +21,24 @@ Por isso ele não tem espelho `.en.md` nem entrada no `nav:`.
    subseção `Exemplos completos`/`Complete examples`.
 4. **Índice da landing.** Receita nova entra na tabela de
    `docs/recipes/index.md` **e** `.en.md`, também em ordem alfabética.
-5. **Referência.** Símbolo público novo ganha stub em `docs/reference.md` (a
-   `reference.en.md` é página-ponteiro, não duplica).
+5. **Referência.** Símbolo público novo ganha stub na página temática certa
+   em `docs/reference/<tema>.md` (o `docs/reference.md` é só o índice). Cada
+   página tem o seu `.en.md`, que é página-ponteiro e não duplica. A
+   referência foi dividida porque numa página só o HTML chegou a 76,7 MB, e
+   o GitHub avisa acima de 50 MB e recusa acima de 100 MB (#820). Grupo novo
+   e pesado (gerador, integração com centenas de schemas) ganha página
+   própria: o `test_site_page_size_guard` falha acima de 35 MB por página.
 6. **Build limpo.** `make docs-build` (mkdocs `--strict`) com zero warning.
    Âncora quebrada sai só como `INFO`, então ao adicionar link cross-page
    confira a âncora no HTML buildado.
 7. **Link para a referência, vindo de página `.en.md`, é caminho do site, não
-   `../reference.md`.** A `reference.en.md` é página-ponteiro sem âncora
-   nenhuma, então um destino `../reference.md#simbolo` escrito na versão EN
-   vira link morto — reportado só como `INFO`, com o `--strict` verde. De
-   `docs/recipes/<p>.en.md` (buildado em `en/recipes/<p>/`) o alvo é
-   `../../../reference/#simbolo`. Confira contando os `../` contra o caminho
+   `../reference/<tema>.md`.** As páginas `.en.md` da referência são
+   ponteiros sem âncora nenhuma, então um destino `.md#simbolo` escrito na
+   versão EN vira link morto — reportado só como `INFO`, com o `--strict`
+   verde. De `docs/recipes/<p>.en.md` (buildado em `en/recipes/<p>/`) o alvo
+   é `../../../reference/<tema>/#simbolo`; na versão PT,
+   `../reference/<tema>.md#simbolo`. A âncora mora numa página só: ache-a
+   com `grep -l 'id="<simbolo>"' site/reference/*/index.html`. Confira contando os `../` contra o caminho
    **buildado**, não contra o `docs/`.
 8. **Âncora de heading acentuado perde o acento.**
    `## 0.274.0 — só o link mais recente` vira
@@ -48,8 +55,9 @@ didática**. Ordenar essas seria a regressão.
 
 Fora do nav, a mesma disciplina vale para listas que o leitor usa como índice:
 tabela de módulos do README, tabela de extras da instalação (com `[all]` por
-último, por ser catch-all) e os grupos temáticos de `docs/reference.md` (com
-`## Superfície de topo` fixa no início). Dentro da referência, os blocos `###`
+último, por ser catch-all) e as páginas temáticas da referência (a Superfície de topo fixa no
+início, as demais em ordem alfabética, no nav e na tabela do
+`docs/reference.md`). Dentro da referência, os blocos `###`
 de módulo e suas entradas `:::` mantêm o agrupamento por submódulo — ali o
 agrupamento é a informação.
 
