@@ -1368,6 +1368,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -3661,6 +3665,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../recipes/qr-logo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR code with a logo and a frame (ride link)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../recipes/query-plans/" class="md-nav__link">
         
   
@@ -4033,6 +4065,34 @@
     
   
     Server-side sessions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/share-preview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing with a preview (Open Graph)
   
 
     
@@ -5574,8 +5634,8 @@
 </tr>
 <tr>
 <td><code>[image]</code></td>
-<td><code>pillow</code></td>
-<td><code>strip_image_metadata</code>: re-encodes a user's photo in the same format without EXIF (GPS, device), XMP, IPTC, ICC and text chunks, with a pixel ceiling against decompression bombs</td>
+<td><code>pillow</code>, <code>segno</code></td>
+<td><code>strip_image_metadata</code>: re-encodes a user's photo in the same format without EXIF (GPS, device), XMP, IPTC, ICC and text chunks, with a pixel ceiling against decompression bombs; <code>ShareCardRenderer</code>: the 1200×630 PNG card of a link preview; <code>render_qr</code> and <code>ShareFrameRenderer</code>: a QR code with a logo and the frame to share (brings <code>segno</code>; card and frame need a TrueType font on the machine, <code>fonts-dejavu-core</code>)</td>
 </tr>
 <tr>
 <td><code>[kurrentdb]</code></td>

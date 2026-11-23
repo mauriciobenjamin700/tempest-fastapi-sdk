@@ -1207,6 +1207,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2083,6 +2087,34 @@
   
   
     <li class="md-nav__item">
+      <a href="share-preview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartilhar com prévia (Open Graph)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="admin-sql-console/" class="md-nav__link">
         
   
@@ -2421,10 +2453,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_42" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_43" >
         
           
-          <label class="md-nav__link" for="__nav_5_42" id="__nav_5_42_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_43" id="__nav_5_43_label" tabindex="">
             
   
   
@@ -2442,8 +2474,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_42">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -3876,6 +3908,34 @@
     
   
     Push (web + mobile)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="qr-logo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Code com logo e moldura (link de carona)
   
 
     
@@ -5734,6 +5794,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <td><code>ReviewService</code>, <code>make_reviews_router</code>, notas 0–5 estrelas com agregação, comentários encadeados</td>
 </tr>
 <tr>
+<td><strong><a href="share-preview/">Compartilhar com prévia (Open Graph) »</a></strong></td>
+<td><code>make_share_router</code> (página com as tags Open Graph escapadas, prévia genérica para item indisponível, URL absoluta obrigatória), <code>ShareCardRenderer</code> (card PNG 1200×630 com a sua marca, <code>ETag</code>/<code>304</code> sem redesenho, <code>?v=</code> por versão), fonte no Docker</td>
+</tr>
+<tr>
 <td><strong><a href="admin-sql-console/">Console SQL no admin »</a></strong></td>
 <td><code>SqlShellService</code> + <code>SqlShellPolicy</code> (capacidades, tabelas permitidas/negadas, teto de linhas, <code>require_where</code>), análise real via <code>sqlglot</code>, auditoria de toda tentativa, página opt-in no admin</td>
 </tr>
@@ -5960,6 +6024,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <tr>
 <td><strong><a href="push/">Push (web + mobile) »</a></strong></td>
 <td><code>DeviceService</code>, <code>PushDispatcher</code>, <code>WebPushTransport</code> / <code>FCMTransport</code>, <code>BaseDeviceTokenModel</code>, <code>make_push_router</code> — uma chamada para navegador e celular, com poda unificada do aparelho morto</td>
+</tr>
+<tr>
+<td><strong><a href="qr-logo/">QR Code com logo e moldura (link de carona) »</a></strong></td>
+<td><code>render_qr</code> (nível <code>H</code>, sem Micro QR, logo com teto medido com <code>zxing-cpp</code>: até 35% do lado lê, 40% já falha), <code>ShareFrameRenderer</code> (moldura vertical para o status e quadrada para conversa: logo, foto redonda, nome, trajeto, QR, link), rotas que apontam para a página de compartilhamento</td>
 </tr>
 <tr>
 <td><strong><a href="zap-inbound/">Receber mensagens do WhatsApp (zap-api) »</a></strong></td>

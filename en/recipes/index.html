@@ -1209,6 +1209,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -3506,6 +3510,34 @@
   
   
     <li class="md-nav__item">
+      <a href="qr-logo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR code with a logo and a frame (ride link)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="query-plans/" class="md-nav__link">
         
   
@@ -3878,6 +3910,34 @@
     
   
     Server-side sessions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="share-preview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing with a preview (Open Graph)
   
 
     
@@ -5909,6 +5969,10 @@ come back here to plug in each capability as you need it.</p>
 <td><code>DeviceService</code>, <code>PushDispatcher</code>, <code>WebPushTransport</code> / <code>FCMTransport</code>, <code>BaseDeviceTokenModel</code>, <code>make_push_router</code> — one call for browsers and phones, with unified pruning of dead devices</td>
 </tr>
 <tr>
+<td><strong><a href="qr-logo/">QR code with a logo and a frame (ride link) »</a></strong></td>
+<td><code>render_qr</code> (level <code>H</code>, no Micro QR, logo ceiling measured with <code>zxing-cpp</code>: up to 35% of the side reads, 40% already fails), <code>ShareFrameRenderer</code> (vertical frame for the status and square for a chat: logo, round photo, name, route, QR code, link), routes pointing at the share page</td>
+</tr>
+<tr>
 <td><strong><a href="query-plans/">Query plans (EXPLAIN) »</a></strong></td>
 <td><code>explain_queries()</code> captures the block and explains on exit, <code>EXPLAIN ANALYZE</code> on PostgreSQL / <code>EXPLAIN QUERY PLAN</code> on SQLite, writes never re-executed, <code>report.slowest</code></td>
 </tr>
@@ -5963,6 +6027,10 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="sessions/">Server-side sessions »</a></strong></td>
 <td><code>SessionMiddleware</code>, <code>SessionAuth</code>, <code>make_session_router</code>, <code>MemorySessionStore</code> / <code>RedisSessionStore</code></td>
+</tr>
+<tr>
+<td><strong><a href="share-preview/">Sharing with a preview (Open Graph) »</a></strong></td>
+<td><code>make_share_router</code> (page with escaped Open Graph tags, generic preview for an unavailable item, required absolute URL), <code>ShareCardRenderer</code> (1200×630 PNG card with your brand, <code>ETag</code>/<code>304</code> without redrawing, <code>?v=</code> per version), font in Docker</td>
 </tr>
 <tr>
 <td><strong><a href="slides/">Slides, answer keys and Markdown to PDF »</a></strong></td>

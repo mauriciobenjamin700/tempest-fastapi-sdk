@@ -1699,6 +1699,20 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ---
 
+## Compartilhamento (Open Graph)
+
+### `tempest_fastapi_sdk.share`
+
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## Computer vision
 
 ### `tempest_fastapi_sdk.vision`
@@ -6845,6 +6859,47 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.371.0] — 2026-11-23
+
+### Added
+
+- `tempest_fastapi_sdk.share`: prévia de link para item compartilhado
+  (WhatsApp, Telegram, Instagram, X) (#814). `make_share_router(resolver,
+  *, public_url, fallback, ...)` serve `GET /s/{id}` com as tags Open Graph
+  e Twitter, `<link rel=canonical>` e o redirecionamento para a tela do app
+  (`<meta http-equiv=refresh>` + link visível), com todo valor escapado;
+  quando o resolver devolve `None`, responde `200` com a prévia `fallback`.
+  Com `renderer=ShareCardRenderer(...)`, serve também
+  `GET /s/{id}/og.png`: card 1200×630 (marca, chamada, título que diminui,
+  quebra e corta, linhas com ícone, etiquetas, rodapé, logo), desenhado em
+  `asyncio.to_thread`, com `ETag` fraco conferido **antes** do desenho
+  (`304` sem renderizar) e `?v=<hash da versão>` no `og:image`, para a rede buscar
+  a imagem nova quando o item muda. `SharePreviewSchema` só aceita URL
+  absoluta `http`/`https` (`javascript:` escapado continua executável em
+  `href`). Texto do card com quebra de linha vira uma linha só (o Pillow
+  recusa medir `\n`). As rotas respondem `GET` e `HEAD` e ficam fora do
+  OpenAPI por padrão. O card usa o extra
+  `[image]` e uma fonte TrueType do sistema; sem fonte, o renderer recusa
+  subir em vez de cair na fonte embutida do Pillow, que no Pillow 13.0.0
+  desenha `ã` e `→` como glifo inexistente. Receita:
+  `docs/recipes/share-preview.md`.
+- `tempest generate --dockerfile` instala `fonts-dejavu-core` quando o
+  projeto fixa o extra `[image]`.
+- `tempest_fastapi_sdk.share.render_qr(url, *, logo=None, logo_fraction=0.25,
+  scale=10, border=4)`: QR Code nível `H` (nunca Micro QR) com o logo no
+  centro num quadro branco (#817). `logo_fraction` acima de
+  `MAX_QR_LOGO_FRACTION` (0,35) dá `ValueError`: medido com `segno` 1.6.6 e
+  `zxing-cpp` 3.1.1, até 35% do lado leu em todos os casos, e 40% já falhou
+  num link de 30 caracteres.
+- `ShareFrameRenderer`: moldura para compartilhar, com o QR no centro, em
+  dois formatos (`ShareFrameLayoutEnum.STORY` 1080×1920 para o status,
+  `SQUARE` 1080×1080 para conversa e grupo). Leva logo e marca, foto da
+  pessoa recortada em círculo (ou as iniciais), nome, subtítulo, o link
+  escrito e uma chamada (`ShareFrameSchema`). Recebe os mesmos argumentos de
+  cor, logo e fonte do `ShareCardRenderer`. A foto entra em `bytes`, nunca
+  por URL.
+- O extra `[image]` passa a trazer `segno>=1.6.6`.
 
 ## [0.370.0] — 2026-11-22
 
@@ -30910,7 +30965,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[genai-rag]` | `trafilatura`, `pymupdf`, `pgvector`, `httpx` | ingestão RAG: scraping web, extração de PDF e embeddings em pgvector |
 | `[geo]` | `httpx` | helpers geoespaciais: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + rotas), `GeoPointMixin` |
 | `[http]` | `httpx` (já vem no pacote base) | `HTTPClient` + `RetryPolicy` + circuit-breaker. O extra é opcional: o `HTTPClient` funciona na instalação base, e declarar o extra só registra a intenção no `pyproject.toml` do serviço |
-| `[image]` | `pillow` | `strip_image_metadata`: recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, com teto de pixels contra decompression bomb |
+| `[image]` | `pillow`, `segno` | `strip_image_metadata`: recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, com teto de pixels contra decompression bomb; `ShareCardRenderer`: o card PNG 1200×630 da prévia de link; `render_qr` e `ShareFrameRenderer`: QR Code com logo e a moldura para compartilhar (traz o `segno`; card e moldura precisam de fonte TrueType na máquina, `fonts-dejavu-core`) |
 | `[kurrentdb]` | `kurrentdbclient` (+ `grpcio`, `grpcio-tools`, `setuptools`, `protobuf`) | backend KurrentDB (antigo EventStoreDB) do event store: `KurrentDBEventStore`. O backend SQL (`SqlEventStore`) não precisa de extra. Entra no `[all]`. Pesa 34 MB numa venv limpa (`kurrentdbclient` 1.3.6: `grpc` 18 MB, `grpc_tools` 7,9 MB, `setuptools` 3,9 MB), porque o cliente pede `grpcio[protobuf]`; `pip-audit` sem advisory na resolução de 2026-11-12. [Receita](recipes/event-sourcing.md) |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth + QR code do cadastro (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
@@ -34637,6 +34692,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Cliente de WebSocket (AsyncAPI) »](asyncapi-client.md)** | `tempest asyncapi-client` — cliente de socket tipado a partir de um documento AsyncAPI 3 |
 | **[Colunas de enum (seguras nos dois bancos) »](enum-columns.md)** | `Mapped[MeuEnum]` guardando o `value`, `ENUM` nativo no PostgreSQL e `CHECK` no SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` para a migration que o autogenerate não vê |
 | **[Comentários + avaliações »](reviews.md)** | `ReviewService`, `make_reviews_router`, notas 0–5 estrelas com agregação, comentários encadeados |
+| **[Compartilhar com prévia (Open Graph) »](share-preview.md)** | `make_share_router` (página com as tags Open Graph escapadas, prévia genérica para item indisponível, URL absoluta obrigatória), `ShareCardRenderer` (card PNG 1200×630 com a sua marca, `ETag`/`304` sem redesenho, `?v=` por versão), fonte no Docker |
 | **[Console SQL no admin »](admin-sql-console.md)** | `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas, `require_where`), análise real via `sqlglot`, auditoria de toda tentativa, página opt-in no admin |
 | **[Controle do host (arquivos, comandos, energia) »](hostbridge.md)** | `HostBridge` + `HostBridgeConfig` / `HostBridgeSettings` (energia, arquivos, PDF, comandos, seletor nativo), `make_hostbridge_router` com auth obrigatória e lado destrutivo opt-in, caminhos WSL/Windows com sandbox |
 | **[CSS tipado (StyleSheet e tokens) »](ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (tokens do `tempest_core` como CSS variables, claro e escuro), `make_css_router` com ETag/304 e URL versionada (`sheet.url()`, cache `immutable`), família da fonte por token, `app_stylesheet`, `cls()` que rejeita classe inexistente |
@@ -34694,6 +34750,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Planos de query (EXPLAIN) »](query-plans.md)** | `explain_queries()` captura o bloco e explica na saída, `EXPLAIN ANALYZE` no PostgreSQL / `EXPLAIN QUERY PLAN` no SQLite, escrita nunca reexecutada, `report.slowest` |
 | **[Protocolo de Pix (um contrato, vários provedores) »](pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` campo por campo, `PaymentStatusEnum` canônico ao lado do `provider_status` cru, os seis `PixEventTypeEnum`, `OpenPixPixProvider` e `MercadoPagoPixProvider`, `PixProviderRouter` para migrar de provedor por fatia de pedidos, `confirm_pix_payment` + `claim_once` para liberar o pedido só depois de reler a cobrança, e uma vez só — e como escrever o seu adapter, com um fake in-memory para testar sem rede |
 | **[Push (web + mobile) »](push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — uma chamada para navegador e celular, com poda unificada do aparelho morto |
+| **[QR Code com logo e moldura (link de carona) »](qr-logo.md)** | `render_qr` (nível `H`, sem Micro QR, logo com teto medido com `zxing-cpp`: até 35% do lado lê, 40% já falha), `ShareFrameRenderer` (moldura vertical para o status e quadrada para conversa: logo, foto redonda, nome, trajeto, QR, link), rotas que apontam para a página de compartilhamento |
 | **[Receber mensagens do WhatsApp (zap-api) »](zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC sobre o corpo cru, `ZapWebhookDelivery` com `inbound` / `status` já parseados pelo `event`, enums (`ZapWebhookEventEnum`, `ZapInboundMediaTypeEnum`, `ZapJidServerEnum`, `ZapOutboundKindEnum`) para despachar sem string solta, camada completa model → repository → service → controller → router sobre `ZapInbox` + mixins (claim, status e envio prontos), `is_forward_transition` contra callback fora de ordem, mídia via `get_message_media` |
 | **[Reconhecimento facial »](faces.md)** | `FaceRecognizer` (detectar / embutir / comparar), `compare_faces`, packs de 16 MB ou 191 MB, sem opencv e sem torch |
 | **[Refresh tokens (rotação/revogação) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotação + detecção de reuso por família |
@@ -90140,6 +90197,299 @@ mesmo: o push mobile é descartado. Só uma chamada direta a
 
 ---
 
+# QR Code com logo e moldura (link de carona)
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/qr-logo/
+
+# QR Code com logo e moldura (link de carona)
+
+Um QR Code impresso no vidro do carro, num cartaz da rodoviária ou numa
+imagem postada no status do WhatsApp leva o passageiro direto à carona. Com o
+logo da marca no centro, ele também diz de quem é o link antes de alguém
+apontar a câmera. E, numa **moldura** com a foto e o nome do motorista, o
+trajeto e o link escrito, a imagem se explica sozinha.
+
+O logo cobre módulos do QR. Quem compensa isso é a **correção de erro**: o
+nível `H` recupera até 30% do símbolo. O `tempest_fastapi_sdk.share` gera o QR
+sempre no nível `H`, cola o logo num quadro branco num tamanho que foi medido
+para continuar lendo, e recusa uma fração de logo acima do teto medido.
+
+Ao final você terá:
+
+- `render_qr(url, logo=...)`: o PNG do QR com o logo no centro;
+- `ShareFrameRenderer`: a moldura em dois formatos, vertical para o status e
+  quadrado para conversa e grupo;
+- `GET /caronas/{trip_id}/qr.png` e `GET /caronas/{trip_id}/moldura.png`,
+  apontando para a [página de compartilhamento](share-preview.md) da carona.
+
+## Instalação
+
+O QR é gerado pelo [`segno`](https://pypi.org/project/segno/) (Python puro,
+sem dependência) e desenhado com o Pillow. Os dois vêm no extra `[image]`:
+
+```bash
+uv add "tempest-fastapi-sdk[image]>=0.371.0"
+```
+
+A moldura escreve texto, então precisa de uma fonte TrueType na máquina, como
+o card da prévia. Veja
+[Fonte no Docker](share-preview.md#fonte-no-docker).
+
+## Passo 1: o QR com o logo
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.share import render_qr
+
+png: bytes = render_qr(
+    "https://app.buscar.com.br/s/42",
+    logo=Path("static/logo.png"),
+)
+Path("qr.png").write_bytes(png)
+```
+
+O resultado, com um logo de 400×400:
+
+![QR Code preto e branco com um quadrado azul arredondado e a letra B amarela no centro](../assets/qr-logo.png)
+
+O que `render_qr` faz por você:
+
+- **Nível `H`, sempre.** Sem pedir, o `segno` 1.6.6 escolheu `L` (7% de
+  recuperação) para os links desta receita, e com `L` não sobra redundância
+  para o logo.
+- **Nunca Micro QR.** O `segno` escolhe Micro QR para texto bem curto (para
+  `"42"` ele gerou um `M1`), e leitores de celular, em geral, não suportam
+  esse formato.
+- **Logo com 25% do lado do QR**, dimensionado contra o QR **sem** a borda,
+  mantendo a proporção, num quadro branco de um módulo. O quadro separa o
+  logo dos módulos em volta.
+- **Teto de 35%.** `logo_fraction` acima de `MAX_QR_LOGO_FRACTION` dá
+  `ValueError`, antes de desenhar.
+
+Os outros parâmetros: `scale` é a quantidade de pixels por módulo. Para
+impressão grande, aumente `scale` em vez de ampliar o PNG pronto, porque a
+ampliação borra as bordas dos módulos. `border` é a margem branca em
+módulos, e 4 é o que a norma pede.
+
+## Quanto logo cabe
+
+Medido com `segno` 1.6.6 e `zxing-cpp` 3.1.1. Configuração: QR nível `H`,
+`scale=10`, logo quadrado e opaco com quadro branco, e dois links, um de 30
+caracteres (versão 4 do QR, 33×33 módulos) e um de 64 (versão 7, 45×45).
+"Degradada" é a imagem reduzida e borrada, em quatro combinações (redução de
+1/2 a 1/4, desfoque gaussiano de 0,6 a 1,0 px), para imitar uma foto de
+câmera:
+
+| Lado do logo (fração do QR) | Área coberta | Link de 30 car.: limpa / degradada | Link de 64 car.: limpa / degradada |
+| --- | --- | --- | --- |
+| 20% | 4% | lê / 4 de 4 | lê / 4 de 4 |
+| 25% | 6% | lê / 4 de 4 | lê / 4 de 4 |
+| 30% | 9% | lê / 4 de 4 | lê / 4 de 4 |
+| 35% | 12% | lê / 4 de 4 | lê / 4 de 4 |
+| 40% | 16% | falha / 0 de 4 | lê / 2 de 4 |
+| 45% | 20% | falha / 0 de 4 | falha / 0 de 4 |
+
+Por isso o padrão é `DEFAULT_QR_LOGO_FRACTION = 0.25`, três degraus abaixo
+da primeira falha (40%), e o teto é `MAX_QR_LOGO_FRACTION = 0.35`, o último valor
+que leu em todos os casos. A folga do padrão é para o que a medição não
+reproduz: reflexo no vidro, impressão em baixa resolução, câmera de celular
+antigo. O teste `tests/share/test_qr.py` decodifica o QR no padrão e no teto,
+nos dois links, e confirma que 40% deixa de ler o link curto.
+
+!!! warning "A medição é de leitor, não de câmera"
+    A tabela foi medida decodificando a imagem com `zxing-cpp`, não
+    apontando um celular. Antes de imprimir em lote, teste o QR final com
+    duas ou três câmeras diferentes, na distância e na luz em que ele vai
+    ser lido.
+
+Duas escolhas fora do logo também pesam:
+
+- **Tamanho do link.** No mesmo tamanho impresso, mais módulos são módulos
+  menores, e a câmera precisa chegar mais perto. Prefira `/s/42` a uma URL
+  com UUID e parâmetros de campanha.
+- **Cores.** A tabela foi medida com módulos pretos em fundo branco, que é o
+  que `render_qr` desenha. Ponha a cor da marca no logo.
+
+## Passo 2: a moldura para compartilhar
+
+A moldura é a imagem que o motorista posta. Ela leva o próprio caminho de
+volta: o QR, para quem vê a imagem noutra tela, e o link escrito, para quem
+não consegue escanear.
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.share import (
+    ShareFrameLayoutEnum,
+    ShareFrameRenderer,
+    ShareFrameSchema,
+)
+
+renderer = ShareFrameRenderer(
+    background=("#0b3d91", "#061f4a"),
+    accent_color="#ffd166",
+    logo=Path("static/logo.png"),
+)
+
+frame = ShareFrameSchema(
+    url="https://app.buscar.com.br/s/42",
+    title="Ana Souza",
+    subtitle="Teresina → Fortaleza · sexta, 18h",
+    brand="BusCar",
+    caption="Escaneie e reserve sua vaga",
+)
+
+story: bytes = renderer.render(
+    frame,
+    layout=ShareFrameLayoutEnum.STORY,
+    photo=Path("ana.jpg").read_bytes(),
+)
+square: bytes = renderer.render(
+    frame,
+    layout=ShareFrameLayoutEnum.SQUARE,
+    photo=Path("ana.jpg").read_bytes(),
+)
+```
+
+| Vertical (`STORY`, 1080×1920), para o status | Quadrado (`SQUARE`, 1080×1080), para conversa e grupo |
+| --- | --- |
+| ![Moldura vertical: logo e BusCar no topo, foto redonda com anel amarelo, nome, trajeto, QR Code com logo num painel branco, link e chamada](../assets/share-frame-story.png) | ![Moldura quadrada: logo e BusCar no topo, foto redonda ao lado do nome e do trajeto, QR Code com logo num painel branco, link e chamada](../assets/share-frame-square.png) |
+
+Pedaço por pedaço:
+
+- **`ShareFrameRenderer`** recebe os mesmos argumentos do `ShareCardRenderer`
+  da prévia: cores, `logo`, `font_path`. Use as mesmas cores nos dois, e o
+  card e a moldura saem com a mesma cara. Cor inválida, logo quebrado e fonte
+  ausente falham **na construção**.
+- **O logo aparece duas vezes**: no topo, ao lado de `brand`, e no centro do
+  QR, com a mesma regra do `render_qr`.
+- **`photo`** é a foto da pessoa, em `bytes`. Ela é recortada no centro, em
+  círculo, com um anel na cor de destaque, e a orientação do EXIF é aplicada.
+  Sem foto, o círculo leva as iniciais de `title` (`"Ana Souza"` vira `AS`).
+  Foto que não abre, ou com mais de `MAX_PHOTO_PIXELS`, dá `ValueError`.
+- **`show_url=True`** escreve o link sem o `https://` embaixo do QR.
+- **Texto longo** diminui e depois é cortado com `…`, e nunca sai da margem.
+  Quebra de linha vira espaço.
+
+O teste `tests/share/test_frame.py` decodifica o QR **dentro** da moldura nos
+dois formatos: com foto e sem foto, com e sem logo, com texto longo e com um
+link de UUID.
+
+!!! tip "Por que a foto vem do seu serviço"
+    `photo` é `bytes`, não URL. Buscar no servidor uma URL que veio do
+    cliente abre caminho para SSRF (o servidor fazendo requisição para onde
+    o atacante quiser). Leia a foto do seu storage, onde ela já foi validada
+    no upload.
+
+## Passo 3: as rotas da carona
+
+O QR aponta para a **página de compartilhamento** da carona (`/s/{id}`, da
+receita [Compartilhar com prévia](share-preview.md)), e não para o app
+direto. Quem escaneia cai no navegador, e a página leva ao app. O mesmo link,
+colado no WhatsApp, mostra a prévia com o card.
+
+```python
+import asyncio
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Response
+
+from tempest_fastapi_sdk.share import (
+    ShareFrameLayoutEnum,
+    ShareFrameRenderer,
+    ShareFrameSchema,
+    render_qr,
+)
+
+PUBLIC_URL: str = "https://app.buscar.com.br"
+LOGO: Path = Path("static/logo.png")
+TRIPS: dict[str, dict[str, str]] = {
+    "42": {
+        "driver": "Ana Souza",
+        "route": "Teresina → Fortaleza · sexta, 18h",
+        "photo": "static/ana.jpg",
+    },
+}
+
+renderer = ShareFrameRenderer(
+    background=("#0b3d91", "#061f4a"),
+    accent_color="#ffd166",
+    logo=LOGO,
+)
+app = FastAPI()
+
+
+def png_response(png: bytes) -> Response:
+    return Response(
+        png,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/caronas/{trip_id}/qr.png", response_class=Response)
+async def trip_qr(trip_id: str) -> Response:
+    if trip_id not in TRIPS:
+        raise HTTPException(status_code=404)
+    png = await asyncio.to_thread(render_qr, f"{PUBLIC_URL}/s/{trip_id}", logo=LOGO)
+    return png_response(png)
+
+
+@app.get("/caronas/{trip_id}/moldura.png", response_class=Response)
+async def trip_frame(
+    trip_id: str,
+    layout: ShareFrameLayoutEnum = ShareFrameLayoutEnum.STORY,
+) -> Response:
+    trip = TRIPS.get(trip_id)
+    if trip is None:
+        raise HTTPException(status_code=404)
+    frame = ShareFrameSchema(
+        url=f"{PUBLIC_URL}/s/{trip_id}",
+        title=trip["driver"],
+        subtitle=trip["route"],
+        brand="BusCar",
+        caption="Escaneie e reserve sua vaga",
+    )
+    photo = Path(trip["photo"]).read_bytes()
+    png = await asyncio.to_thread(renderer.render, frame, layout=layout, photo=photo)
+    return png_response(png)
+```
+
+`GET /caronas/42/moldura.png` devolve o vertical, e
+`GET /caronas/42/moldura.png?layout=square` devolve o quadrado. O FastAPI
+valida `layout` contra o enum e responde `422` para outro valor.
+
+**Fora do event loop.** Desenhar a moldura levou cerca de 105 ms (média de
+10, formato vertical, com foto e logo, Pillow 13.0.0, na máquina de
+desenvolvimento do SDK). O QR sozinho levou cerca de 13 ms (média de 50, link
+de 64 caracteres, logo lido do disco a cada chamada). Os dois vão por
+`asyncio.to_thread`, e o loop continua atendendo as outras requisições.
+
+**Cache curto.** A moldura muda quando a carona muda: horário, foto,
+motorista. Uma hora de `Cache-Control` limita o tempo em que uma imagem velha
+circula. Se o seu modelo tem `updated_at`, ponha `?v=<updated_at>` no link da
+imagem, como a [página de compartilhamento](share-preview.md#passo-4-cache-versao-e-o-whatsapp)
+faz com o card.
+
+## Recap
+
+- **`render_qr(url, logo=...)`** gera o QR no nível `H`, sem Micro QR, com o
+  logo em 25% do lado, num quadro branco. Acima de 35% ele recusa: 40% já
+  falhou na medição.
+- **`ShareFrameRenderer.render(frame, layout=..., photo=...)`** desenha a
+  moldura: logo e marca, foto redonda (ou as iniciais), nome, trajeto, o QR
+  num painel branco, o link escrito e a chamada. `STORY` (1080×1920) é para o
+  status, `SQUARE` (1080×1080) é para conversa e grupo.
+- **O QR aponta para `/s/{id}`**: quem escaneia chega ao app, e o mesmo link
+  tem prévia no WhatsApp.
+- **A foto vem do seu storage**, em `bytes`, nunca de uma URL buscada no
+  servidor.
+- **Antes de imprimir**, teste com câmeras de verdade.
+
+
+---
+
 # Planos de query (EXPLAIN)
 
 Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/query-plans/
@@ -102352,6 +102702,426 @@ Possível. SPA web usa cookie de sessão; mobile do mesmo backend usa `UserAuthS
 - **[Auth flow »](auth-flow.md)** — fluxo JWT bundled (signup / activate / reset). Sessions cobre só login/logout.
 - **[Segurança »](security.md)** — `CSRFMiddleware` pra blindar POST contra ataques cross-site mesmo com SameSite=lax.
 - **[Cache »](cache.md)** — `AsyncRedisManager` e o `client_proxy`, que é o handle certo para store de middleware como o `RedisSessionStore`.
+
+
+---
+
+# Compartilhar com prévia (Open Graph)
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/share-preview/
+
+# Compartilhar com prévia (Open Graph)
+
+Quando alguém cola um link no WhatsApp, no Telegram, no Instagram ou no X, a
+rede busca aquela URL e monta a prévia (imagem, título e descrição) a partir
+das tags **Open Graph** do HTML que voltou. O robô dessas redes **não executa
+JavaScript**: um app SPA devolve um `index.html` vazio, e a prévia sai sem
+nada.
+
+Por isso quem responde o link compartilhado é o **backend**. Ele devolve, por
+item, uma página com as tags prontas e a imagem da prévia. O
+`tempest_fastapi_sdk.share` monta isso a partir de uma função sua, que diz o
+que mostrar de cada item.
+
+Ao final desta receita você terá:
+
+- `GET /s/{id}`: o HTML com `og:title`, `og:description`, `og:image`,
+  `og:url`, `twitter:card` e `<link rel=canonical>`, e o humano levado para a
+  tela do app;
+- `GET /s/{id}/og.png`: um card 1200×630 desenhado com a sua marca, com
+  `ETag` e `304`;
+- uma prévia genérica para o item que não existe mais, sem `500` e sem vazar
+  dado.
+
+## Instalação
+
+A página não precisa de nada além da instalação base. O card PNG usa o
+Pillow, que vem no extra `[image]`:
+
+```bash
+uv add "tempest-fastapi-sdk[image]>=0.371.0"
+```
+
+O card também precisa de uma fonte TrueType instalada na máquina. No
+Debian/Ubuntu é o pacote `fonts-dejavu-core`. Veja
+[Fonte no Docker](#fonte-no-docker).
+
+## Passo 1: a página do item
+
+Você escreve **uma** função: recebe o id que veio na URL e devolve um
+`SharePreviewSchema`, ou `None` quando o item não deve aparecer.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.share import SharePreviewSchema, make_share_router
+
+TRIPS: dict[str, dict[str, str]] = {
+    "42": {"origin": "Teresina", "destination": "Fortaleza", "when": "Sexta, 18h"},
+}
+
+
+async def resolve_trip(item_id: str, /) -> SharePreviewSchema | None:
+    trip = TRIPS.get(item_id)
+    if trip is None:
+        return None
+    return SharePreviewSchema(
+        title=f"Carona {trip['origin']} → {trip['destination']}",
+        description=f"{trip['when']} · reserve sua vaga no app",
+        redirect_url=f"https://app.example.com/caronas/{item_id}",
+    )
+
+
+app = FastAPI()
+app.include_router(
+    make_share_router(
+        resolve_trip,
+        public_url="https://api.example.com",
+        fallback=SharePreviewSchema(
+            title="BusCar",
+            description="Caronas entre cidades",
+            redirect_url="https://app.example.com",
+        ),
+        site_name="BusCar",
+        locale="pt_BR",
+        link_text="Abrir no app",
+    )
+)
+```
+
+Pedaço por pedaço:
+
+- **`resolve_trip`** é o resolver. O `/` depois do `item_id` não é enfeite: o
+  router chama o resolver pela posição, então o nome do parâmetro é seu.
+- **`redirect_url`** é para onde vai a **pessoa** que clica no link. A página
+  leva o navegador até lá com `<meta http-equiv="refresh">` e mostra também
+  um link visível (`link_text`) para quando o refresh estiver bloqueado.
+- **`public_url`** é a origem pública de onde o link é servido. `og:url` e a
+  URL da imagem são montados em cima dela.
+- **`fallback`** é a prévia mostrada quando o resolver devolve `None`.
+- **`site_name`** e **`locale`** são iguais para todo item, por isso ficam no
+  router e não no schema.
+
+Com o app no ar, `GET /s/42` devolve:
+
+```html
+<title>Carona Teresina → Fortaleza</title>
+<link rel="canonical" href="https://api.example.com/s/42">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Carona Teresina → Fortaleza">
+<meta property="og:description" content="Sexta, 18h · reserve sua vaga no app">
+<meta property="og:url" content="https://api.example.com/s/42">
+<meta property="og:site_name" content="BusCar">
+<meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary">
+```
+
+As duas rotas respondem `GET` e `HEAD`, e ficam **fora do OpenAPI** por padrão. São páginas públicas, não API.
+Passe `include_in_schema=True` se quiser vê-las no `/docs`.
+
+!!! warning "Por que `public_url` é obrigatório"
+    O router não monta URL a partir de `request.base_url`. Atrás do nginx,
+    esse valor é o endereço interno (`http://backend:8000`), e o cabeçalho
+    `Host` é o cliente quem escolhe. `og:image` precisa ser absoluta e
+    pública: o robô não tem a página como base para resolver um caminho
+    relativo, e uma imagem que ele não encontra não gera erro nenhum que
+    você veja.
+
+### O que é escapado, e o que é recusado
+
+Todo valor que entra no HTML passa por `html.escape(..., quote=True)`: título,
+descrição, texto alternativo, `site_name`, `locale`, `link_text` e as URLs. O
+nome de um item com `"><script>` vira texto, não código.
+
+Escapar não basta para URL: `javascript:alert(1)` continua executável dentro
+de `href` mesmo escapada. Por isso `redirect_url`, `canonical_url` e
+`image_url` só aceitam URL **absoluta** `http`/`https`. O schema recusa o
+resto (`javascript:`, `data:`, `/caminho`, `//host`) com `ValidationError`,
+antes de existir qualquer HTML.
+
+## Passo 2: o item indisponível
+
+Quando o resolver devolve `None`, a página **continua respondendo `200`**, com
+o texto do `fallback`. `og:url` continua sendo o link compartilhado. O link que
+alguém mandou antes de a carona ser cancelada abre a prévia genérica: nem
+quebra, nem conta o que a carona era.
+
+Devolva `None` para tudo que não deve aparecer: item apagado, privado,
+esgotado ou de outro tenant. Exceção no resolver **não** vira fallback: ela
+sobe e vira `500`. Banco fora do ar é falha, não "item indisponível", e
+engolir isso esconde o problema.
+
+## Passo 3: o card PNG
+
+Passe um `ShareCardRenderer` e preencha `card` na prévia:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.share import (
+    ShareCardLineSchema,
+    ShareCardRenderer,
+    ShareCardSchema,
+    SharePreviewSchema,
+    make_share_router,
+)
+
+TRIPS: dict[str, dict[str, str]] = {
+    "42": {
+        "origin": "Teresina",
+        "destination": "Fortaleza",
+        "when": "Sexta, 21/11 às 18h",
+        "stops": "Piripiri · Sobral",
+        "price": "R$ 80 por vaga",
+        "seats": "3 vagas",
+        "driver": "Ana Souza (4,9)",
+        "updated_at": "2026-11-20T14:03:00+00:00",
+    },
+}
+
+
+async def resolve_trip(item_id: str, /) -> SharePreviewSchema | None:
+    trip = TRIPS.get(item_id)
+    if trip is None:
+        return None
+    route = f"{trip['origin']} → {trip['destination']}"
+    return SharePreviewSchema(
+        title=f"Carona {route}",
+        description=f"{trip['when']} · {trip['price']}",
+        redirect_url=f"https://app.example.com/caronas/{item_id}",
+        version=trip["updated_at"],
+        card=ShareCardSchema(
+            brand="BusCar",
+            kicker="Carona disponível",
+            title=route,
+            lines=[
+                ShareCardLineSchema(icon="→", text=f"Paradas: {trip['stops']}"),
+                ShareCardLineSchema(icon="★", text=trip["when"]),
+            ],
+            chips=[trip["price"], trip["seats"]],
+            footer=f"Motorista: {trip['driver']}",
+        ),
+    )
+
+
+renderer = ShareCardRenderer(
+    background=("#0b3d91", "#061f4a"),
+    accent_color="#ffd166",
+)
+
+app = FastAPI()
+app.include_router(
+    make_share_router(
+        resolve_trip,
+        public_url="https://api.example.com",
+        fallback=SharePreviewSchema(
+            title="BusCar",
+            description="Caronas entre cidades",
+            redirect_url="https://app.example.com",
+        ),
+        renderer=renderer,
+        site_name="BusCar",
+        locale="pt_BR",
+    )
+)
+```
+
+Agora a página ganha `og:image` (com `og:image:width` 1200 e
+`og:image:height` 630) e `twitter:card` vira `summary_large_image`.
+`GET /s/42/og.png` devolve isto:
+
+![Card de compartilhamento 1200x630 com marca, rota, paradas, horário, etiquetas de preço e vagas e o nome do motorista](../assets/share-card.png)
+
+O layout, de cima para baixo:
+
+| Campo | Onde | Quando não cabe |
+| --- | --- | --- |
+| `brand` | topo, cor de destaque | a fonte diminui, depois o texto é cortado com `…` |
+| `kicker` | abaixo da marca, cor suave | a fonte diminui, depois o texto é cortado |
+| `title` | negrito, de 72 px a 48 px numa linha | a fonte diminui até 48 px; se ainda não couber, quebra em duas linhas a 56 px, depois corta |
+| `lines` | ícone na cor de destaque + texto | a linha que não cabe acima das etiquetas é descartada |
+| `chips` | etiquetas arredondadas | a etiqueta que passaria da margem é descartada |
+| `footer` | rodapé, cor suave | a fonte diminui, depois o texto é cortado |
+
+Todo texto do card fica numa linha só: quebra de linha e espaço repetido viram
+um espaço (`"Sai\nsexta"` vira `"Sai sexta"`), e etiqueta vazia é descartada.
+Uma descrição digitada com Enter não derruba a imagem.
+
+Nenhum texto sai da margem. O teste
+`tests/share/test_card.py::TestRender::test_long_text_stays_inside_margins`
+fixa isso com 80 palavras em todos os campos.
+
+O renderer aceita qualquer cor que o Pillow entenda (`"#0b3d91"`,
+`"rgb(11, 61, 145)"`, `"navy"`) e um `logo` (`bytes` ou `Path`, PNG com
+transparência), desenhado no canto superior direito com 72 px de altura e no
+máximo 352 px de largura (um logo mais largo é reduzido até caber). Cor
+inválida, logo que não é imagem e fonte ausente dão erro **na construção**, no
+boot do serviço, e não no primeiro compartilhamento.
+
+!!! tip "O ícone é um caractere da fonte"
+    `icon` é desenhado com a mesma fonte do card. `→`, `★`, `✓` e `·` existem
+    no DejaVu. Emoji colorido não existe, e sai como quadradinho.
+
+### Fora do event loop
+
+Desenhar o card é trabalho de CPU: cerca de 49 ms por card, média de 20
+renders seguidos de um card com todos os campos, no Pillow 13.0.0, na máquina
+de desenvolvimento do SDK (WSL2). O router chama `renderer.render` via `asyncio.to_thread`, e o loop continua
+atendendo as outras requisições enquanto isso. O teste
+`tests/share/test_router.py::TestEventLoop` confirma que o render roda em
+outra thread, e falha se o `to_thread` virar chamada direta.
+
+## Passo 4: cache, versão e o WhatsApp
+
+Duas camadas de cache estão em jogo, e cada uma pede uma coisa.
+
+**O `ETag` evita redesenhar.** `og.png` responde com `ETag` fraco e
+`Cache-Control: public, max-age=600` (mude com `cache_control=`). Quando o
+cliente revalida com `If-None-Match` e a tag bate, a resposta é `304` **sem
+desenhar nada**: custa uma chamada ao resolver e nenhuma renderização. A
+comparação segue a RFC 9110 e aceita `W/"..."`, lista de tags e `*`.
+
+A tag é derivada de:
+
+- `version` da prévia (o seu `updated_at`), ou, sem `version`, do conteúdo do
+  `card`;
+- a impressão digital do renderer (cores, fontes e logo): trocar a cor da
+  marca invalida todos os cards;
+- o id do item.
+
+A tag é **fraca** porque duas réplicas com FreeType diferente podem gerar
+bytes diferentes para o mesmo card. Ela garante "mesmo conteúdo", não "mesmos
+bytes".
+
+**O `?v=` faz a rede buscar a imagem nova.** O robô guarda o que buscou, e a
+chave desse cache é a URL. Por quanto tempo ele guarda, e se revalida, é
+decisão de cada rede, fora do seu controle. Se a URL fosse sempre
+`/s/42/og.png`, a carona editada poderia continuar mostrando a prévia velha,
+com `304` correto ou não. Por isso a página publica a imagem como
+`/s/42/og.png?v=<hash da versão>`. Mudou o `version`, mudou a URL, e para a
+rede é outra imagem.
+
+!!! warning "Preencha `version`"
+    Sem `version`, o hash sai do conteúdo do card. Isso funciona, mas o
+    resolver monta o card inteiro em toda revalidação. Com `updated_at` em
+    `version`, o resolver pode responder rápido, e o hash muda exatamente
+    quando o item muda.
+
+## Passo 5: o link público no ar
+
+O link que o motorista compartilha é `https://<domínio>/s/42`. Duas formas de
+fazer esse caminho chegar ao backend:
+
+**nginx na frente do app e da API.** Encaminhe o prefixo para o backend e
+deixe o resto com o SPA:
+
+```nginx
+location /s/ {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location / {
+    root /usr/share/nginx/html;
+    try_files $uri /index.html;
+}
+```
+
+Nesse caso, `public_url` é o domínio do app (`https://app.example.com`),
+porque é ele que aparece no link.
+
+**O backend serve o SPA.** Com
+[`make_spa_router`](react-spa.md), inclua o router de compartilhamento
+**antes** do SPA. O FastAPI casa as rotas na ordem de registro, então
+`/s/{id}` casa primeiro. Na ordem inversa, o fallback do SPA responde
+`/s/42` com o `index.html`, e a prévia sai vazia.
+
+Para conferir o que o robô vê, faça a mesma requisição que ele faz:
+
+```bash
+curl -s https://app.example.com/s/42 | grep 'property="og:'
+curl -sI https://app.example.com/s/42/og.png
+```
+
+Para forçar uma rede a reler um link já compartilhado, use a ferramenta dela.
+No Facebook é o
+[Sharing Debugger](https://developers.facebook.com/tools/debug/), com
+"Scrape Again".
+
+## Fonte no Docker
+
+Uma imagem `python:3.12-slim` não tem fonte TrueType nenhuma. Sem fonte, o
+`ShareCardRenderer()` **não sobe**:
+
+```text
+FileNotFoundError: no TrueType font found for the share card. Install one
+(`apt-get install fonts-dejavu-core` on Debian/Ubuntu) or pass font_path= to
+the renderer.
+```
+
+O SDK não cai na fonte embutida do Pillow de propósito. Medido no Pillow
+13.0.0, ela desenha `ã` e `→` com a mesma caixa do caractere inexistente
+(`U+F0000`). A prévia em português sairia cheia de quadradinhos, sem erro
+nenhum.
+
+Duas saídas:
+
+- instale a fonte na imagem. O `tempest generate --dockerfile` já gera esta
+  linha quando o projeto fixa o extra `[image]`:
+
+    ```dockerfile
+    RUN apt-get update \
+        && apt-get install -y --no-install-recommends fonts-dejavu-core \
+        && rm -rf /var/lib/apt/lists/*
+    ```
+
+- ou passe o arquivo: `ShareCardRenderer(font_path=Path("fonts/Inter.ttf"),
+  bold_font_path=Path("fonts/Inter-Bold.ttf"))`. Caminho explícito que não
+  existe é erro. O renderer não procura outra fonte no lugar, porque um erro
+  de digitação ali faria produção desenhar com uma fonte diferente da que foi
+  revisada.
+
+Sem `font_path`, o renderer procura nesta ordem: DejaVu do Debian/Ubuntu, do
+Fedora e do Arch, depois Liberation. A lista está em
+`DEFAULT_FONT_CANDIDATES`.
+
+## Só a página, sem Pillow
+
+Tem a imagem pronta num CDN? Não passe `renderer` e preencha `image_url`:
+
+```python
+from tempest_fastapi_sdk.share import SharePreviewSchema
+
+
+async def resolve_product(item_id: str, /) -> SharePreviewSchema | None:
+    return SharePreviewSchema(
+        title="Tênis de corrida",
+        description="R$ 299,90 · frete grátis",
+        redirect_url=f"https://loja.example.com/p/{item_id}",
+        image_url=f"https://cdn.example.com/produtos/{item_id}.jpg",
+    )
+```
+
+Sem `renderer`, a rota `og.png` nem é registrada, e a instalação base basta.
+`image_url` também vale com renderer: quando preenchida, ela vence o card
+gerado.
+
+## Recap
+
+- **`make_share_router(resolver, public_url=..., fallback=...)`** serve
+  `GET /s/{id}` com as tags Open Graph e Twitter, todas escapadas, e o humano
+  redirecionado para `redirect_url`.
+- **`SharePreviewSchema`** recusa URL que não seja absoluta `http`/`https`.
+  Escapar não neutraliza `javascript:`, e recusar neutraliza.
+- **O resolver devolve `None`** para item indisponível. A resposta é `200`
+  com o `fallback`, sem vazar dado. Exceção sobe como `500`.
+- **`ShareCardRenderer`** desenha o card 1200×630 com a sua marca. Texto
+  longo diminui, quebra ou é cortado, e nunca sai da margem. Sem fonte, ele
+  falha no boot em vez de desenhar quadradinhos.
+- **`version`** alimenta o `ETag` (o `304` sem desenho) e o `?v=` da imagem
+  (a URL nova que a rede busca de novo).
+- **`public_url`** vem da configuração, nunca do `Host` da requisição.
 
 
 ---
