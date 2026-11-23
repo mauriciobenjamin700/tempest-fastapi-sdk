@@ -6,7 +6,6 @@
 
 - [tempest-fastapi-sdk](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/)
 - [Tutorial — construindo a feature *Users*](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial/)
-- [Referência da API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)
 - [Roadmap](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/roadmap/)
 - [Guia de migração](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/)
 - [Contribuindo](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/contributing/)
@@ -152,6 +151,18 @@
 - [Cliente de WebSocket (AsyncAPI)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/asyncapi-client/)
 - [WebSocket router](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/websocket/)
 - [WhatsApp pela zap-api](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/zap/)
+
+## Reference
+
+- [Referência da API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)
+- [Referência: Superfície de topo](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/top/)
+- [Referência: Admin, dados e API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/)
+- [Referência: IA e visão computacional](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/)
+- [Referência: Documentos e arquivos](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/)
+- [Referência: Integrações e pagamentos](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/)
+- [Referência: Geração de cliente OpenAPI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/openapi/)
+- [Referência: Tempo real e mensageria](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/)
+- [Referência: Web, UI e utilitários](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/)
 
 ## Learning projects
 

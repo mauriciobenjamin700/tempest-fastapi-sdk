@@ -373,17 +373,20 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../../reference/" class="md-tabs__link">
-        
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
   
   
     
   
   Referência
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -5164,9 +5167,47 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../../reference/" class="md-nav__link">
+    
+    
+      
         
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
   
   
   <span class="md-ellipsis">
@@ -5180,7 +5221,275 @@
   
   
 
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Referência
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referência da API
+  
+
+    
+  </span>
+  
+  
+
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/top/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Superfície de topo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/admin-data-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin, dados e API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/documents-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentos e arquivos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Geração de cliente OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ai-vision/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IA e visão computacional
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/integrations-payments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrações e pagamentos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/realtime-messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tempo real e mensageria
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/web-ui-utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web, UI e utilitários
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -6178,7 +6487,7 @@ OpenStreetMap Nominatim, grátis. Cliente <code>httpx</code> injetado, igual OSR
 <p class="admonition-title">Política do Nominatim público</p>
 <p>O <code>nominatim.openstreetmap.org</code> exige <code>User-Agent</code> descritivo e limita
 a ~1 req/s. Em caminho de request, envolva o backend com
-<a href="../../reference/#tempest_fastapi_sdk.geo.CachedGeocodingBackend"><code>CachedGeocodingBackend</code></a>
+<a href="../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.CachedGeocodingBackend"><code>CachedGeocodingBackend</code></a>
 — a seção abaixo monta esse cache — ou suba uma instância própria antes
 de escalar.</p>
 </div>
@@ -6186,7 +6495,7 @@ de escalar.</p>
 <p>A política acima manda cachear geocoding que passa pelo caminho de request —
 e a regra vale para qualquer provedor de endereço, pago ou não: geocoding é o
 tipo de chamada em que o mesmo endereço é perguntado de novo. O
-<code>CachedGeocodingBackend</code> envolve qualquer <a href="../../reference/#tempest_fastapi_sdk.geo.GeocodingBackend"><code>GeocodingBackend</code></a>
+<code>CachedGeocodingBackend</code> envolve qualquer <a href="../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.GeocodingBackend"><code>GeocodingBackend</code></a>
 — o <code>NominatimBackend</code>, o <code>FakeGeocodingBackend</code> do teste, um cliente de
 provedor pago — e serve hits do cache sem tocar no backend:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
@@ -6226,7 +6535,7 @@ com hash:</p>
 de chamar o backend — a leitura exata fica só no processo que a recebeu. A
 tabela abaixo é a distância medida entre um grau inteiro de latitude a −5° e
 cada vizinho mais fino
-(<a href="../../reference/#tempest_fastapi_sdk.geo.haversine_km"><code>haversine_km</code></a>):</p>
+(<a href="../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.haversine_km"><code>haversine_km</code></a>):</p>
 <table>
 <thead>
 <tr>
@@ -6310,7 +6619,7 @@ cache entre réplicas, no Redis:</p>
 <p>O TTL default é 30 dias (<code>DEFAULT_GEOCODE_CACHE_TTL_SECONDS</code>) e o prefixo de
 chave é <code>geocoding</code> (<code>DEFAULT_GEOCODE_CACHE_KEY_PREFIX</code>) — ajuste para a sua
 instância com <code>ttl_seconds=</code> e <code>key_prefix=</code>. Store seu: implemente
-<a href="../../reference/#tempest_fastapi_sdk.geo.GeocodeCacheStore"><code>GeocodeCacheStore</code></a>
+<a href="../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.GeocodeCacheStore"><code>GeocodeCacheStore</code></a>
 como uma classe com <code>get(key) -&gt; str | None</code> e <code>set(key, value, ttl_seconds)</code>
 — o contrato inteiro.</p>
 <p>Falha de leitura ou escrita no cache, payload que não parseia: tudo é logado
@@ -6334,7 +6643,7 @@ backend — o cache não esconde o que a fonte respondeu.</p>
 e UF em colunas separadas a partir dele é parser de string, e formato de
 endereço é justamente o tipo de coisa que muda. Como <code>NominatimBackend</code> pede
 <code>addressdetails=1</code> nas duas direções, o resultado traz
-<a href="../../reference/#tempest_fastapi_sdk.geo.GeocodeAddress"><code>GeocodeAddress</code></a>
+<a href="../../reference/web-ui-utils/#tempest_fastapi_sdk.geo.GeocodeAddress"><code>GeocodeAddress</code></a>
 em <code>hit.address</code>, cada parte no seu campo:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 </span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
