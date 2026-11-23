@@ -15,7 +15,7 @@ Logo side / QR side     30 chars: clean / degraded  64 chars: clean / degraded
 0.45                    fails / 0 of 4              fails / 0 of 4
 ======================  ==========================  ==========================
 
-:data:`DEFAULT_QR_LOGO_FRACTION` sits two steps below the first failure
+:data:`DEFAULT_QR_LOGO_FRACTION` sits three steps below the first failure
 and :data:`MAX_QR_LOGO_FRACTION` is the last value that read everywhere.
 ``tests/share/test_qr.py`` decodes the output at both.
 

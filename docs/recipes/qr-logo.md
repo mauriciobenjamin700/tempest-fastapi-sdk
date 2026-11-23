@@ -9,7 +9,7 @@ trajeto e o link escrito, a imagem se explica sozinha.
 O logo cobre módulos do QR. Quem compensa isso é a **correção de erro**: o
 nível `H` recupera até 30% do símbolo. O `tempest_fastapi_sdk.share` gera o QR
 sempre no nível `H`, cola o logo num quadro branco num tamanho que foi medido
-para continuar lendo, e recusa um logo maior que o teto medido.
+para continuar lendo, e recusa uma fração de logo acima do teto medido.
 
 Ao final você terá:
 
@@ -25,7 +25,7 @@ O QR é gerado pelo [`segno`](https://pypi.org/project/segno/) (Python puro,
 sem dependência) e desenhado com o Pillow. Os dois vêm no extra `[image]`:
 
 ```bash
-uv add "tempest-fastapi-sdk[image]"
+uv add "tempest-fastapi-sdk[image]>=0.371.0"
 ```
 
 A moldura escreve texto, então precisa de uma fonte TrueType na máquina, como
@@ -87,8 +87,8 @@ câmera:
 | 40% | 16% | falha / 0 de 4 | lê / 2 de 4 |
 | 45% | 20% | falha / 0 de 4 | falha / 0 de 4 |
 
-Por isso o padrão é `DEFAULT_QR_LOGO_FRACTION = 0.25`, dois degraus abaixo
-da primeira falha, e o teto é `MAX_QR_LOGO_FRACTION = 0.35`, o último valor
+Por isso o padrão é `DEFAULT_QR_LOGO_FRACTION = 0.25`, três degraus abaixo
+da primeira falha (40%), e o teto é `MAX_QR_LOGO_FRACTION = 0.35`, o último valor
 que leu em todos os casos. A folga do padrão é para o que a medição não
 reproduz: reflexo no vidro, impressão em baixa resolução, câmera de celular
 antigo. O teste `tests/share/test_qr.py` decodifica o QR no padrão e no teto,

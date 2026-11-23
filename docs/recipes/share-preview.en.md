@@ -26,7 +26,7 @@ The page needs nothing beyond the base install. The PNG card uses Pillow,
 which comes with the `[image]` extra:
 
 ```bash
-uv add "tempest-fastapi-sdk[image]"
+uv add "tempest-fastapi-sdk[image]>=0.371.0"
 ```
 
 The card also needs a TrueType font installed on the machine. On
@@ -110,9 +110,9 @@ API. Pass `include_in_schema=True` to see them in `/docs`.
 !!! warning "Why `public_url` is required"
     The router never builds a URL from `request.base_url`. Behind nginx that
     value is the internal address (`http://backend:8000`), and the `Host`
-    header is the client's to choose. `og:image` must be absolute and public.
-    WhatsApp does not resolve a relative path and drops the image without
-    telling you.
+    header is the client's to choose. `og:image` must be absolute and public:
+    the crawler has no page to resolve a relative path against, and an
+    image it cannot find raises no error you would ever see.
 
 ### What is escaped, and what is refused
 
@@ -225,7 +225,7 @@ The layout, top to bottom:
 | --- | --- | --- |
 | `brand` | top, accent color | the font shrinks, then the text is cut with `…` |
 | `kicker` | under the brand, muted color | the font shrinks, then the text is cut |
-| `title` | bold, from 72 px down to 48 px | the font shrinks, wraps to two lines, then is cut |
+| `title` | bold, from 72 px down to 48 px on one line | the font shrinks to 48 px; if it still does not fit, wraps to two lines at 56 px, then is cut |
 | `lines` | accent-colored icon + text | a line that does not fit above the chips is dropped |
 | `chips` | rounded labels | a chip that would cross the margin is dropped |
 | `footer` | bottom, muted color | the font shrinks, then the text is cut |
@@ -331,7 +331,7 @@ curl -sI https://app.example.com/s/42/og.png
 ```
 
 To force a network to re-read a link already shared, use its tool. For
-Facebook and Instagram that is the
+Facebook that is the
 [Sharing Debugger](https://developers.facebook.com/tools/debug/), with
 "Scrape Again".
 

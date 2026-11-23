@@ -27,7 +27,7 @@ A página não precisa de nada além da instalação base. O card PNG usa o
 Pillow, que vem no extra `[image]`:
 
 ```bash
-uv add "tempest-fastapi-sdk[image]"
+uv add "tempest-fastapi-sdk[image]>=0.371.0"
 ```
 
 O card também precisa de uma fonte TrueType instalada na máquina. No
@@ -111,8 +111,9 @@ Passe `include_in_schema=True` se quiser vê-las no `/docs`.
     O router não monta URL a partir de `request.base_url`. Atrás do nginx,
     esse valor é o endereço interno (`http://backend:8000`), e o cabeçalho
     `Host` é o cliente quem escolhe. `og:image` precisa ser absoluta e
-    pública. O WhatsApp não resolve caminho relativo e descarta a imagem sem
-    avisar.
+    pública: o robô não tem a página como base para resolver um caminho
+    relativo, e uma imagem que ele não encontra não gera erro nenhum que
+    você veja.
 
 ### O que é escapado, e o que é recusado
 
@@ -225,7 +226,7 @@ O layout, de cima para baixo:
 | --- | --- | --- |
 | `brand` | topo, cor de destaque | a fonte diminui, depois o texto é cortado com `…` |
 | `kicker` | abaixo da marca, cor suave | a fonte diminui, depois o texto é cortado |
-| `title` | negrito, de 72 px a 48 px | a fonte diminui, quebra em duas linhas, depois corta |
+| `title` | negrito, de 72 px a 48 px numa linha | a fonte diminui até 48 px; se ainda não couber, quebra em duas linhas a 56 px, depois corta |
 | `lines` | ícone na cor de destaque + texto | a linha que não cabe acima das etiquetas é descartada |
 | `chips` | etiquetas arredondadas | a etiqueta que passaria da margem é descartada |
 | `footer` | rodapé, cor suave | a fonte diminui, depois o texto é cortado |
@@ -332,7 +333,7 @@ curl -sI https://app.example.com/s/42/og.png
 ```
 
 Para forçar uma rede a reler um link já compartilhado, use a ferramenta dela.
-No Facebook e no Instagram é o
+No Facebook é o
 [Sharing Debugger](https://developers.facebook.com/tools/debug/), com
 "Scrape Again".
 

@@ -333,9 +333,10 @@ class ShareCardRenderer(_BrandRenderer):
     """Draws share cards as 1200x630 PNG.
 
     Layout, top to bottom: ``brand`` (accent) with the logo at the right,
-    ``kicker`` (muted), ``title`` (bold, shrinks from 72 to 48 px, wraps
-    to two lines, then is cut with ``…``), the ``lines`` (icon in the
-    accent color + text), the ``chips`` and the ``footer``. Text never
+    ``kicker`` (muted), ``title`` (bold, shrinks from 72 to 48 px on one
+    line, else wraps to two lines at 56 px, then is cut with ``…``), the
+    ``lines`` (icon in the accent color + text), the ``chips`` and the
+    ``footer``. Text never
     leaves the margins: what does not fit shrinks, is cut, or — for
     lines and chips — is dropped.
 

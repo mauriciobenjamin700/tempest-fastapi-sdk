@@ -4,8 +4,9 @@ The Open Graph card (:class:`~tempest_fastapi_sdk.share.ShareCardRenderer`)
 is the preview a link gets; this frame is the **image** someone posts —
 on a status, in a group — carrying its own way back: a QR code for whoever
 sees it on another screen and the link written out for whoever cannot
-scan. :class:`ShareFrameRenderer` shares the card's colors, fonts and
-logo rules, and draws two layouts:
+scan. :class:`ShareFrameRenderer` takes the card's construction
+arguments (colors, fonts, logo) and validates them the same way, and
+draws two layouts:
 
 * :attr:`~tempest_fastapi_sdk.share.ShareFrameLayoutEnum.STORY`, 1080x1920;
 * :attr:`~tempest_fastapi_sdk.share.ShareFrameLayoutEnum.SQUARE`, 1080x1080.

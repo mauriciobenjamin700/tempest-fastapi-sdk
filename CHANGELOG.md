@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.371.0] — 2026-11-23
 
 ### Added
 
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GET /s/{id}/og.png`: card 1200×630 (marca, chamada, título que diminui,
   quebra e corta, linhas com ícone, etiquetas, rodapé, logo), desenhado em
   `asyncio.to_thread`, com `ETag` fraco conferido **antes** do desenho
-  (`304` sem renderizar) e `?v=<versão>` no `og:image`, para a rede buscar
+  (`304` sem renderizar) e `?v=<hash da versão>` no `og:image`, para a rede buscar
   a imagem nova quando o item muda. `SharePreviewSchema` só aceita URL
   absoluta `http`/`https` (`javascript:` escapado continua executável em
   `href`). Texto do card com quebra de linha vira uma linha só (o Pillow
@@ -45,12 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cor, logo e fonte do `ShareCardRenderer`. A foto entra em `bytes`, nunca
   por URL.
 - O extra `[image]` passa a trazer `segno>=1.6.6`.
-
-### Changed
-
-- A mensagem do `FileNotFoundError` de fonte ausente diz "pass font_path= to
-  the renderer" (era "to ShareCardRenderer"), porque o card e a moldura
-  compartilham a resolução de fonte.
 
 ## [0.370.0] — 2026-11-22
 

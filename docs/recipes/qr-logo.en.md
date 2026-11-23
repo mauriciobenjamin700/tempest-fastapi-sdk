@@ -9,7 +9,7 @@ name, the route and the written link, the image explains itself.
 The logo covers modules of the QR code. **Error correction** makes up for
 that: level `H` recovers up to 30% of the symbol. `tempest_fastapi_sdk.share`
 always generates the QR code at level `H`, pastes the logo on a white frame
-at a size that was measured to keep reading, and refuses a logo larger than
+at a size that was measured to keep reading, and refuses a logo fraction above
 the measured ceiling.
 
 By the end you will have:
@@ -28,7 +28,7 @@ Python, no dependencies) and drawn with Pillow. Both come with the `[image]`
 extra:
 
 ```bash
-uv add "tempest-fastapi-sdk[image]"
+uv add "tempest-fastapi-sdk[image]>=0.371.0"
 ```
 
 The frame writes text, so it needs a TrueType font on the machine, like the
@@ -87,8 +87,8 @@ photo:
 | 40% | 16% | fails / 0 of 4 | reads / 2 of 4 |
 | 45% | 20% | fails / 0 of 4 | fails / 0 of 4 |
 
-Hence the default `DEFAULT_QR_LOGO_FRACTION = 0.25`, two steps below the
-first failure, and the ceiling `MAX_QR_LOGO_FRACTION = 0.35`, the last value
+Hence the default `DEFAULT_QR_LOGO_FRACTION = 0.25`, three steps below the
+first failure (40%), and the ceiling `MAX_QR_LOGO_FRACTION = 0.35`, the last value
 that read in every case. The default's margin is for what the measurement
 does not reproduce: glare on the window, low-resolution printing, an old
 phone camera. The test `tests/share/test_qr.py` decodes the QR code at the
