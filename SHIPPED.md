@@ -4970,3 +4970,22 @@ Segunda rodada (mesmo #809): `_read_chunk` lê cada pedaço sob
 fora de `args`). Testes: `tests/storage/tus/test_resilience.py` (corpo
 travado e desconexão como ASGI cru).
 
+## Prévia de link com Open Graph (#814)
+
+`tempest_fastapi_sdk/share/`: `schemas.py` (`SharePreviewSchema`,
+`ShareCardSchema`, `ShareCardLineSchema`; URL só absoluta `http(s)`),
+`page.py` (`render_share_page`, `html.escape` em todo valor), `card.py`
+(`ShareCardRenderer`, `OG_IMAGE_WIDTH`/`HEIGHT`, `DEFAULT_FONT_CANDIDATES`,
+`card_etag`), `router.py` (`make_share_router`, `ShareResolver`). Extra
+`[image]` reusado, sem `[share]` (mesma dependência). Fonte do sistema ou
+`font_path=`, sem fallback para `load_default` (quadradinho em `ã`/`→`,
+medido no Pillow 13.0.0); `tempest generate --dockerfile` instala
+`fonts-dejavu-core` com `[image]`. `304` via `utils._http_cache.is_not_modified`
+antes do render; `ETag` de `version` (ou do JSON do card) + impressão digital
+do renderer + id; `?v=` no `og:image`. Texto do card colapsado a uma linha no schema (`\n` derrubava o `textlength`); logo limitado a `MAX_LOGO_WIDTH`; `GET` + `HEAD` (o `HEAD` fora do OpenAPI, senão o operation id duplica); `404` do `og.png` com `Cache-Control`. Fora do pacote: `site_name`/`locale`
+por item, emoji colorido no ícone, cache de PNG. Testes:
+`tests/share/` (escape parametrizado por `model_fields` com prova de que
+dispara sem `escape`, esquema de URL, `304` sem render, render fora do loop
+com prova de que dispara sem `to_thread`, margens com texto longo).
+Receita: `docs/recipes/share-preview.md`. Substitui o código à mão do
+TempestTecnology/transport-backend#382.

@@ -207,7 +207,8 @@ spreadsheet = [
     "openpyxl>=3.1.5",
 ]
 image = [
-    # Re-encoding a user image without its metadata (strip_image_metadata).
+    # Re-encoding a user image without its metadata (strip_image_metadata)
+    # and drawing the link-preview card (share.ShareCardRenderer).
     # Pillow declares no upper bound; the floor matches the one [faces],
     # [genai-vlm] and [genai-image] already use.
     "pillow>=13.0.0",

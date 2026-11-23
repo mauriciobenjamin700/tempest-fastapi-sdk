@@ -127,6 +127,21 @@ service that generates no documents keeps the smaller image.
 """
 
 
+_SYSTEM_DEPS_IMAGE: str = """# The share card draws text with a TrueType font from
+# the system, and a slim image ships none -- ShareCardRenderer refuses
+# to start rather than draw every accented letter as a box.
+RUN apt-get update \\
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \\
+    && rm -rf /var/lib/apt/lists/*
+
+"""
+"""System packages the ``[image]`` extra needs for the share card.
+
+``strip_image_metadata`` needs none; the font is one small package, so it
+is installed for every ``[image]`` pin rather than guessed from code.
+"""
+
+
 def _system_deps(extras: str) -> str:
     """Build the Dockerfile stanza installing system packages.
 
@@ -141,6 +156,8 @@ def _system_deps(extras: str) -> str:
     pinned = {part.strip() for part in extras.split(",") if part.strip()}
     if "pdf" in pinned or "all" in pinned:
         return _SYSTEM_DEPS_PDF
+    if "image" in pinned:
+        return _SYSTEM_DEPS_IMAGE
     return ""
 
 

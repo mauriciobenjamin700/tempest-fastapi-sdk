@@ -5,6 +5,33 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tempest_fastapi_sdk.share`: prévia de link para item compartilhado
+  (WhatsApp, Telegram, Instagram, X) (#814). `make_share_router(resolver,
+  *, public_url, fallback, ...)` serve `GET /s/{id}` com as tags Open Graph
+  e Twitter, `<link rel=canonical>` e o redirecionamento para a tela do app
+  (`<meta http-equiv=refresh>` + link visível), com todo valor escapado;
+  quando o resolver devolve `None`, responde `200` com a prévia `fallback`.
+  Com `renderer=ShareCardRenderer(...)`, serve também
+  `GET /s/{id}/og.png`: card 1200×630 (marca, chamada, título que diminui,
+  quebra e corta, linhas com ícone, etiquetas, rodapé, logo), desenhado em
+  `asyncio.to_thread`, com `ETag` fraco conferido **antes** do desenho
+  (`304` sem renderizar) e `?v=<versão>` no `og:image`, para a rede buscar
+  a imagem nova quando o item muda. `SharePreviewSchema` só aceita URL
+  absoluta `http`/`https` (`javascript:` escapado continua executável em
+  `href`). Texto do card com quebra de linha vira uma linha só (o Pillow
+  recusa medir `\n`). As rotas respondem `GET` e `HEAD` e ficam fora do
+  OpenAPI por padrão. O card usa o extra
+  `[image]` e uma fonte TrueType do sistema; sem fonte, o renderer recusa
+  subir em vez de cair na fonte embutida do Pillow, que no Pillow 13.0.0
+  desenha `ã` e `→` como glifo inexistente. Receita:
+  `docs/recipes/share-preview.md`.
+- `tempest generate --dockerfile` instala `fonts-dejavu-core` quando o
+  projeto fixa o extra `[image]`.
+
 ## [0.370.0] — 2026-11-22
 
 ### Added
