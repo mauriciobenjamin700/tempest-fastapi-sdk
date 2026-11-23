@@ -1,101 +1,82 @@
-# QR Code com logo (link de carona)
+# QR Code com logo e moldura (link de carona)
 
-Um QR Code impresso no vidro do carro, num cartaz da rodoviária ou na tela
-do motorista leva o passageiro direto à carona. Com o logo da marca no
-centro, ele também diz de quem é o link antes de alguém apontar a câmera.
+Um QR Code impresso no vidro do carro, num cartaz da rodoviária ou numa
+imagem postada no status do WhatsApp leva o passageiro direto à carona. Com o
+logo da marca no centro, ele também diz de quem é o link antes de alguém
+apontar a câmera. E, numa **moldura** com a foto e o nome do motorista, o
+trajeto e o link escrito, a imagem se explica sozinha.
 
 O logo cobre módulos do QR. Quem compensa isso é a **correção de erro**: o
-nível `H` recupera até 30% do símbolo. Esta receita gera o QR no nível `H`,
-cola o logo num quadro branco no centro, num tamanho que foi medido para
-continuar lendo, e serve a imagem numa rota.
+nível `H` recupera até 30% do símbolo. O `tempest_fastapi_sdk.share` gera o QR
+sempre no nível `H`, cola o logo num quadro branco num tamanho que foi medido
+para continuar lendo, e recusa um logo maior que o teto medido.
 
 Ao final você terá:
 
-- `qr_with_logo(url, logo)`: o PNG do QR com o logo no centro;
-- `GET /caronas/{trip_id}/qr.png`: o QR de cada carona, apontando para a
-  [página de compartilhamento](share-preview.md) dela;
-- um teste que decodifica o QR gerado, para o logo nunca crescer além do que
-  lê.
+- `render_qr(url, logo=...)`: o PNG do QR com o logo no centro;
+- `ShareFrameRenderer`: a moldura em dois formatos, vertical para o status e
+  quadrado para conversa e grupo;
+- `GET /caronas/{trip_id}/qr.png` e `GET /caronas/{trip_id}/moldura.png`,
+  apontando para a [página de compartilhamento](share-preview.md) da carona.
 
 ## Instalação
 
-O QR é gerado pelo [`segno`](https://pypi.org/project/segno/), que é Python
-puro e sem dependência. O logo é colado com o Pillow, do extra `[image]`:
+O QR é gerado pelo [`segno`](https://pypi.org/project/segno/) (Python puro,
+sem dependência) e desenhado com o Pillow. Os dois vêm no extra `[image]`:
 
 ```bash
-uv add "tempest-fastapi-sdk[image]" segno
+uv add "tempest-fastapi-sdk[image]"
 ```
+
+A moldura escreve texto, então precisa de uma fonte TrueType na máquina, como
+o card da prévia. Veja
+[Fonte no Docker](share-preview.md#fonte-no-docker).
 
 ## Passo 1: o QR com o logo
 
 ```python
-import io
 from pathlib import Path
 
-import segno
-from PIL import Image
+from tempest_fastapi_sdk.share import render_qr
 
-LOGO_FRACTION: float = 0.25
-QR_SCALE: int = 10
-QR_BORDER: int = 4
-LOGO_PADDING: int = 10
-
-
-def qr_with_logo(url: str, logo: Path, *, logo_fraction: float = LOGO_FRACTION) -> bytes:
-    qr = segno.make(url, error="h", micro=False)
-    buffer = io.BytesIO()
-    qr.save(buffer, kind="png", scale=QR_SCALE, border=QR_BORDER)
-    image = Image.open(buffer).convert("RGB")
-
-    side = qr.symbol_size(scale=QR_SCALE, border=0)[0]
-    logo_side = int(side * logo_fraction)
-    mark = Image.open(logo).convert("RGBA")
-    mark.thumbnail((logo_side, logo_side), Image.Resampling.LANCZOS)
-
-    frame = Image.new(
-        "RGB",
-        (mark.width + 2 * LOGO_PADDING, mark.height + 2 * LOGO_PADDING),
-        "white",
-    )
-    frame.paste(mark, (LOGO_PADDING, LOGO_PADDING), mark)
-    image.paste(
-        frame,
-        ((image.width - frame.width) // 2, (image.height - frame.height) // 2),
-    )
-
-    output = io.BytesIO()
-    image.save(output, format="PNG")
-    return output.getvalue()
+png: bytes = render_qr(
+    "https://app.buscar.com.br/s/42",
+    logo=Path("static/logo.png"),
+)
+Path("qr.png").write_bytes(png)
 ```
 
-O resultado, com o link `https://app.buscar.com.br/s/42` e um logo de 400×400:
+O resultado, com um logo de 400×400:
 
 ![QR Code preto e branco com um quadrado azul arredondado e a letra B amarela no centro](../assets/qr-logo.png)
 
-Pedaço por pedaço:
+O que `render_qr` faz por você:
 
-- **`error="h"`** é o que permite o logo. Sem ele, o `segno` 1.6.6 escolheu
-  `L` (7% de recuperação) para os links desta receita. No `H`, o QR fica mais
-  denso (mais módulos para o mesmo link), e é essa redundância que o logo
-  consome.
-- **`micro=False`** evita o Micro QR, que o `segno` escolhe para textos bem
-  curtos (para `"42"` ele gerou um `M1`) e que leitores de celular, em geral,
-  não suportam.
-- **`symbol_size(..., border=0)`** é o lado do QR **sem** a borda branca. O
-  logo é dimensionado contra esse lado, não contra a imagem inteira.
-- **`thumbnail`** reduz o logo mantendo a proporção. Um logo largo fica
-  baixo, nunca passa do quadrado reservado.
-- **O quadro branco** (`LOGO_PADDING`) separa o logo dos módulos em volta.
-  Sem ele, um logo escuro encostado nos módulos pretos confunde o leitor
-  sobre onde cada módulo termina.
+- **Nível `H`, sempre.** Sem pedir, o `segno` 1.6.6 escolheu `L` (7% de
+  recuperação) para os links desta receita, e com `L` não sobra redundância
+  para o logo.
+- **Nunca Micro QR.** O `segno` escolhe Micro QR para texto bem curto (para
+  `"42"` ele gerou um `M1`), e leitores de celular, em geral, não suportam
+  esse formato.
+- **Logo com 25% do lado do QR**, dimensionado contra o QR **sem** a borda,
+  mantendo a proporção, num quadro branco de um módulo. O quadro separa o
+  logo dos módulos em volta.
+- **Teto de 35%.** `logo_fraction` acima de `MAX_QR_LOGO_FRACTION` dá
+  `ValueError`, antes de desenhar.
+
+Os outros parâmetros: `scale` é a quantidade de pixels por módulo. Para
+impressão grande, aumente `scale` em vez de ampliar o PNG pronto, porque a
+ampliação borra as bordas dos módulos. `border` é a margem branca em
+módulos, e 4 é o que a norma pede.
 
 ## Quanto logo cabe
 
 Medido com `segno` 1.6.6 e `zxing-cpp` 3.1.1. Configuração: QR nível `H`,
-`scale=10`, logo quadrado e opaco com quadro branco de 10 px, e dois links, um
-de 30 caracteres (versão 4 do QR) e um de 64 (versão 7). "Degradada" é a
-imagem reduzida e borrada, em quatro combinações (redução de 1/2 a 1/4,
-desfoque gaussiano de 0,6 a 1,0 px), para imitar uma foto de câmera:
+`scale=10`, logo quadrado e opaco com quadro branco, e dois links, um de 30
+caracteres (versão 4 do QR, 33×33 módulos) e um de 64 (versão 7, 45×45).
+"Degradada" é a imagem reduzida e borrada, em quatro combinações (redução de
+1/2 a 1/4, desfoque gaussiano de 0,6 a 1,0 px), para imitar uma foto de
+câmera:
 
 | Lado do logo (fração do QR) | Área coberta | Link de 30 car.: limpa / degradada | Link de 64 car.: limpa / degradada |
 | --- | --- | --- | --- |
@@ -106,9 +87,12 @@ desfoque gaussiano de 0,6 a 1,0 px), para imitar uma foto de câmera:
 | 40% | 16% | falha / 0 de 4 | lê / 2 de 4 |
 | 45% | 20% | falha / 0 de 4 | falha / 0 de 4 |
 
-O padrão `LOGO_FRACTION = 0.25` fica dois degraus abaixo do primeiro que
-falhou (40%). A folga é para o que a medição não reproduz: reflexo no vidro,
-impressão em baixa resolução, câmera de celular antigo.
+Por isso o padrão é `DEFAULT_QR_LOGO_FRACTION = 0.25`, dois degraus abaixo
+da primeira falha, e o teto é `MAX_QR_LOGO_FRACTION = 0.35`, o último valor
+que leu em todos os casos. A folga do padrão é para o que a medição não
+reproduz: reflexo no vidro, impressão em baixa resolução, câmera de celular
+antigo. O teste `tests/share/test_qr.py` decodifica o QR no padrão e no teto,
+nos dois links, e confirma que 40% deixa de ler o link curto.
 
 !!! warning "A medição é de leitor, não de câmera"
     A tabela foi medida decodificando a imagem com `zxing-cpp`, não
@@ -118,125 +102,184 @@ impressão em baixa resolução, câmera de celular antigo.
 
 Duas escolhas fora do logo também pesam:
 
-- **Tamanho do link.** O link de 30 caracteres virou um QR versão 4 (33×33
-  módulos), e o de 64 virou versão 7 (45×45). No mesmo tamanho impresso,
-  mais módulos são módulos menores, e a câmera precisa chegar mais perto.
-  Prefira `/s/42` a uma URL com UUID e parâmetros de campanha. Na tabela, os
-  dois leram com 25%.
-- **Cores.** A tabela foi medida com módulos pretos em fundo branco. Ponha a
-  cor da marca no logo e deixe o QR em preto e branco. Outra combinação não
-  foi medida.
+- **Tamanho do link.** No mesmo tamanho impresso, mais módulos são módulos
+  menores, e a câmera precisa chegar mais perto. Prefira `/s/42` a uma URL
+  com UUID e parâmetros de campanha.
+- **Cores.** A tabela foi medida com módulos pretos em fundo branco, que é o
+  que `render_qr` desenha. Ponha a cor da marca no logo.
 
-## Passo 2: o QR de cada carona
+## Passo 2: a moldura para compartilhar
 
-O QR deve apontar para a **página de compartilhamento** da carona
-(`/s/{id}`, da receita [Compartilhar com prévia](share-preview.md)), e não
-para o app direto. Quem escaneia cai no navegador, e a página leva ao app. O
-mesmo link, colado no WhatsApp, mostra a prévia com o card.
+A moldura é a imagem que o motorista posta. Ela leva o próprio caminho de
+volta: o QR, para quem vê a imagem noutra tela, e o link escrito, para quem
+não consegue escanear.
 
 ```python
-import io
 from pathlib import Path
 
-import segno
+from tempest_fastapi_sdk.share import (
+    ShareFrameLayoutEnum,
+    ShareFrameRenderer,
+    ShareFrameSchema,
+)
+
+renderer = ShareFrameRenderer(
+    background=("#0b3d91", "#061f4a"),
+    accent_color="#ffd166",
+    logo=Path("static/logo.png"),
+)
+
+frame = ShareFrameSchema(
+    url="https://app.buscar.com.br/s/42",
+    title="Ana Souza",
+    subtitle="Teresina → Fortaleza · sexta, 18h",
+    brand="BusCar",
+    caption="Escaneie e reserve sua vaga",
+)
+
+story: bytes = renderer.render(
+    frame,
+    layout=ShareFrameLayoutEnum.STORY,
+    photo=Path("ana.jpg").read_bytes(),
+)
+square: bytes = renderer.render(
+    frame,
+    layout=ShareFrameLayoutEnum.SQUARE,
+    photo=Path("ana.jpg").read_bytes(),
+)
+```
+
+| Vertical (`STORY`, 1080×1920), para o status | Quadrado (`SQUARE`, 1080×1080), para conversa e grupo |
+| --- | --- |
+| ![Moldura vertical: logo e BusCar no topo, foto redonda com anel amarelo, nome, trajeto, QR Code com logo num painel branco, link e chamada](../assets/share-frame-story.png) | ![Moldura quadrada: logo e BusCar no topo, foto redonda ao lado do nome e do trajeto, QR Code com logo num painel branco, link e chamada](../assets/share-frame-square.png) |
+
+Pedaço por pedaço:
+
+- **`ShareFrameRenderer`** recebe os mesmos argumentos do `ShareCardRenderer`
+  da prévia: cores, `logo`, `font_path`. Use as mesmas cores nos dois, e o
+  card e a moldura saem com a mesma cara. Cor inválida, logo quebrado e fonte
+  ausente falham **na construção**.
+- **O logo aparece duas vezes**: no topo, ao lado de `brand`, e no centro do
+  QR, com a mesma regra do `render_qr`.
+- **`photo`** é a foto da pessoa, em `bytes`. Ela é recortada no centro, em
+  círculo, com um anel na cor de destaque, e a orientação do EXIF é aplicada.
+  Sem foto, o círculo leva as iniciais de `title` (`"Ana Souza"` vira `AS`).
+  Foto que não abre, ou com mais de `MAX_PHOTO_PIXELS`, dá `ValueError`.
+- **`show_url=True`** escreve o link sem o `https://` embaixo do QR.
+- **Texto longo** diminui e depois é cortado com `…`, e nunca sai da margem.
+  Quebra de linha vira espaço.
+
+O teste `tests/share/test_frame.py` decodifica o QR **dentro** da moldura nos
+dois formatos: com foto e sem foto, com e sem logo, com texto longo e com um
+link de UUID.
+
+!!! tip "Por que a foto vem do seu serviço"
+    `photo` é `bytes`, não URL. Buscar no servidor uma URL que veio do
+    cliente abre caminho para SSRF (o servidor fazendo requisição para onde
+    o atacante quiser). Leia a foto do seu storage, onde ela já foi validada
+    no upload.
+
+## Passo 3: as rotas da carona
+
+O QR aponta para a **página de compartilhamento** da carona (`/s/{id}`, da
+receita [Compartilhar com prévia](share-preview.md)), e não para o app
+direto. Quem escaneia cai no navegador, e a página leva ao app. O mesmo link,
+colado no WhatsApp, mostra a prévia com o card.
+
+```python
+import asyncio
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Response
-from PIL import Image
+
+from tempest_fastapi_sdk.share import (
+    ShareFrameLayoutEnum,
+    ShareFrameRenderer,
+    ShareFrameSchema,
+    render_qr,
+)
 
 PUBLIC_URL: str = "https://app.buscar.com.br"
 LOGO: Path = Path("static/logo.png")
-TRIPS: set[str] = {"42"}
-LOGO_FRACTION: float = 0.25
-QR_SCALE: int = 10
-QR_BORDER: int = 4
-LOGO_PADDING: int = 10
+TRIPS: dict[str, dict[str, str]] = {
+    "42": {
+        "driver": "Ana Souza",
+        "route": "Teresina → Fortaleza · sexta, 18h",
+        "photo": "static/ana.jpg",
+    },
+}
 
-
-def qr_with_logo(url: str, logo: Path, *, logo_fraction: float = LOGO_FRACTION) -> bytes:
-    qr = segno.make(url, error="h", micro=False)
-    buffer = io.BytesIO()
-    qr.save(buffer, kind="png", scale=QR_SCALE, border=QR_BORDER)
-    image = Image.open(buffer).convert("RGB")
-    side = qr.symbol_size(scale=QR_SCALE, border=0)[0]
-    logo_side = int(side * logo_fraction)
-    mark = Image.open(logo).convert("RGBA")
-    mark.thumbnail((logo_side, logo_side), Image.Resampling.LANCZOS)
-    frame = Image.new(
-        "RGB",
-        (mark.width + 2 * LOGO_PADDING, mark.height + 2 * LOGO_PADDING),
-        "white",
-    )
-    frame.paste(mark, (LOGO_PADDING, LOGO_PADDING), mark)
-    image.paste(
-        frame,
-        ((image.width - frame.width) // 2, (image.height - frame.height) // 2),
-    )
-    output = io.BytesIO()
-    image.save(output, format="PNG")
-    return output.getvalue()
-
-
+renderer = ShareFrameRenderer(
+    background=("#0b3d91", "#061f4a"),
+    accent_color="#ffd166",
+    logo=LOGO,
+)
 app = FastAPI()
+
+
+def png_response(png: bytes) -> Response:
+    return Response(
+        png,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/caronas/{trip_id}/qr.png", response_class=Response)
 async def trip_qr(trip_id: str) -> Response:
     if trip_id not in TRIPS:
         raise HTTPException(status_code=404)
-    png = qr_with_logo(f"{PUBLIC_URL}/s/{trip_id}", LOGO)
-    return Response(
-        png,
-        media_type="image/png",
-        headers={"Cache-Control": "public, max-age=86400"},
+    png = await asyncio.to_thread(render_qr, f"{PUBLIC_URL}/s/{trip_id}", logo=LOGO)
+    return png_response(png)
+
+
+@app.get("/caronas/{trip_id}/moldura.png", response_class=Response)
+async def trip_frame(
+    trip_id: str,
+    layout: ShareFrameLayoutEnum = ShareFrameLayoutEnum.STORY,
+) -> Response:
+    trip = TRIPS.get(trip_id)
+    if trip is None:
+        raise HTTPException(status_code=404)
+    frame = ShareFrameSchema(
+        url=f"{PUBLIC_URL}/s/{trip_id}",
+        title=trip["driver"],
+        subtitle=trip["route"],
+        brand="BusCar",
+        caption="Escaneie e reserve sua vaga",
     )
+    photo = Path(trip["photo"]).read_bytes()
+    png = await asyncio.to_thread(renderer.render, frame, layout=layout, photo=photo)
+    return png_response(png)
 ```
 
-O QR de uma carona não muda: o link é o mesmo enquanto ela existir. Por isso
-o `Cache-Control` é longo. Gerar um QR com logo levou cerca de 7 ms (média de
-50, link de 64 caracteres, mesma máquina da tabela), então não vale guardar
-em disco, mas também não há por que repetir a cada visita.
+`GET /caronas/42/moldura.png` devolve o vertical, e
+`GET /caronas/42/moldura.png?layout=square` devolve o quadrado. O FastAPI
+valida `layout` contra o enum e responde `422` para outro valor.
 
-Para impressão grande, aumente `QR_SCALE` (pixels por módulo) em vez de
-redimensionar o PNG depois: ampliar a imagem pronta borra as bordas dos
-módulos.
+**Fora do event loop.** Desenhar a moldura levou cerca de 105 ms (média de
+10, formato vertical, com foto e logo, Pillow 13.0.0, na máquina de
+desenvolvimento do SDK). O QR sozinho levou cerca de 13 ms (média de 50, link
+de 64 caracteres, logo lido do disco a cada chamada). Os dois vão por
+`asyncio.to_thread`, e o loop continua atendendo as outras requisições.
 
-## Passo 3: o teste que impede o logo de crescer
-
-O tamanho do logo é o tipo de número que alguém aumenta "só um pouco" para a
-marca aparecer mais. Um teste que **decodifica** o QR gerado transforma
-esse limite em falha de CI:
-
-```python
-import io
-from pathlib import Path
-
-import zxingcpp
-from PIL import Image
-
-from app.qr import qr_with_logo
-
-
-def test_qr_with_logo_still_decodes(tmp_path: Path) -> None:
-    logo = tmp_path / "logo.png"
-    Image.new("RGBA", (300, 300), (11, 61, 145, 255)).save(logo)
-    url = "https://app.buscar.com.br/s/42"
-
-    png = qr_with_logo(url, logo)
-
-    decoded = zxingcpp.read_barcodes(Image.open(io.BytesIO(png)))
-    assert [result.text for result in decoded] == [url]
-```
-
-Instale o leitor só no grupo de desenvolvimento:
-`uv add --dev zxing-cpp`.
+**Cache curto.** A moldura muda quando a carona muda: horário, foto,
+motorista. Uma hora de `Cache-Control` limita o tempo em que uma imagem velha
+circula. Se o seu modelo tem `updated_at`, ponha `?v=<updated_at>` no link da
+imagem, como a [página de compartilhamento](share-preview.md#passo-4-cache-versao-e-o-whatsapp)
+faz com o card.
 
 ## Recap
 
-- **Nível `H`** (`segno.make(url, error="h", micro=False)`) é o que permite
-  cobrir parte do QR com o logo.
-- **Logo com 25% do lado do QR** (6% da área), num quadro branco. Na
-  medição, até 35% leu em todos os casos, e com 40% o link curto já falhou.
-- **O QR aponta para `/s/{id}`**, a página de compartilhamento: quem escaneia
-  chega ao app, e o mesmo link tem prévia no WhatsApp.
-- **Um teste decodifica o QR** com `zxing-cpp`, para o logo não crescer além
-  do que lê.
+- **`render_qr(url, logo=...)`** gera o QR no nível `H`, sem Micro QR, com o
+  logo em 25% do lado, num quadro branco. Acima de 35% ele recusa: 40% já
+  falhou na medição.
+- **`ShareFrameRenderer.render(frame, layout=..., photo=...)`** desenha a
+  moldura: logo e marca, foto redonda (ou as iniciais), nome, trajeto, o QR
+  num painel branco, o link escrito e a chamada. `STORY` (1080×1920) é para o
+  status, `SQUARE` (1080×1080) é para conversa e grupo.
+- **O QR aponta para `/s/{id}`**: quem escaneia chega ao app, e o mesmo link
+  tem prévia no WhatsApp.
+- **A foto vem do seu storage**, em `bytes`, nunca de uma URL buscada no
+  servidor.
 - **Antes de imprimir**, teste com câmeras de verdade.

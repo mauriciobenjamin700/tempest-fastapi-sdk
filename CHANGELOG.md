@@ -31,6 +31,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/recipes/share-preview.md`.
 - `tempest generate --dockerfile` instala `fonts-dejavu-core` quando o
   projeto fixa o extra `[image]`.
+- `tempest_fastapi_sdk.share.render_qr(url, *, logo=None, logo_fraction=0.25,
+  scale=10, border=4)`: QR Code nível `H` (nunca Micro QR) com o logo no
+  centro num quadro branco (#817). `logo_fraction` acima de
+  `MAX_QR_LOGO_FRACTION` (0,35) dá `ValueError`: medido com `segno` 1.6.6 e
+  `zxing-cpp` 3.1.1, até 35% do lado leu em todos os casos, e 40% já falhou
+  num link de 30 caracteres.
+- `ShareFrameRenderer`: moldura para compartilhar, com o QR no centro, em
+  dois formatos (`ShareFrameLayoutEnum.STORY` 1080×1920 para o status,
+  `SQUARE` 1080×1080 para conversa e grupo). Leva logo e marca, foto da
+  pessoa recortada em círculo (ou as iniciais), nome, subtítulo, o link
+  escrito e uma chamada (`ShareFrameSchema`). Recebe os mesmos argumentos de
+  cor, logo e fonte do `ShareCardRenderer`. A foto entra em `bytes`, nunca
+  por URL.
+- O extra `[image]` passa a trazer `segno>=1.6.6`.
+
+### Changed
+
+- A mensagem do `FileNotFoundError` de fonte ausente diz "pass font_path= to
+  the renderer" (era "to ShareCardRenderer"), porque o card e a moldura
+  compartilham a resolução de fonte.
 
 ## [0.370.0] — 2026-11-22
 

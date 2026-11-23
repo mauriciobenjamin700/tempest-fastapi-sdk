@@ -98,7 +98,7 @@ def _resolve_fonts(
     raise FileNotFoundError(
         "no TrueType font found for the share card. Install one "
         "(`apt-get install fonts-dejavu-core` on Debian/Ubuntu) or pass "
-        "font_path= to ShareCardRenderer."
+        "font_path= to the renderer."
     )
 
 
@@ -118,26 +118,13 @@ def _read_logo(logo: bytes | Path | None) -> bytes | None:
     return logo
 
 
-class ShareCardRenderer:
-    """Draws share cards as 1200x630 PNG.
+class _BrandRenderer:
+    """Colors, fonts and logo shared by the share renderers.
 
-    Layout, top to bottom: ``brand`` (accent) with the logo at the right,
-    ``kicker`` (muted), ``title`` (bold, shrinks from 72 to 48 px, wraps
-    to two lines, then is cut with ``…``), the ``lines`` (icon in the
-    accent color + text), the ``chips`` and the ``footer``. Text never
-    leaves the margins: what does not fit shrinks, is cut, or — for
-    lines and chips — is dropped.
-
-    Rendering is CPU-bound and synchronous; the share router calls
-    :meth:`render` through :func:`asyncio.to_thread`.
-
-    Attributes:
-        width (int): Image width, :data:`OG_IMAGE_WIDTH`.
-        height (int): Image height, :data:`OG_IMAGE_HEIGHT`.
+    Resolves everything at construction — a missing font or a bad color
+    fails at boot — and measures text so it never leaves its box: what
+    does not fit shrinks, then is cut with ``…``.
     """
-
-    width: int = OG_IMAGE_WIDTH
-    height: int = OG_IMAGE_HEIGHT
 
     def __init__(
         self,
@@ -163,9 +150,9 @@ class ShareCardRenderer:
             accent_color (str): Brand and line icons.
             chip_color (str): Chip fill.
             chip_text_color (str): Chip text.
-            logo (bytes | Path | None): PNG/JPEG/WebP drawn at the top
-                right, scaled to :data:`LOGO_HEIGHT`; transparency is
-                kept.
+            logo (bytes | Path | None): PNG/JPEG/WebP of the brand;
+                transparency is kept. The card draws it at the top
+                right, scaled to :data:`LOGO_HEIGHT`.
             font_path (Path | None): Regular TrueType font. ``None`` tries
                 :data:`DEFAULT_FONT_CANDIDATES`.
             bold_font_path (Path | None): Bold TrueType font; ``None``
@@ -181,7 +168,7 @@ class ShareCardRenderer:
             from PIL import Image, ImageColor
         except ImportError as exc:
             raise ImportError(
-                "ShareCardRenderer requires the [image] extra (pillow). "
+                f"{type(self).__name__} requires the [image] extra (pillow). "
                 "Install with `pip install tempest-fastapi-sdk[image]`."
             ) from exc
         top, bottom = (
@@ -208,6 +195,7 @@ class ShareCardRenderer:
         self._fonts: dict[tuple[bool, int], FreeTypeFont] = {}
         logo_bytes = _read_logo(logo)
         self._logo: PillowImage | None = None
+        self._logo_source: PillowImage | None = None
         if logo_bytes is not None:
             try:
                 with Image.open(io.BytesIO(logo_bytes)) as source:
@@ -216,6 +204,7 @@ class ShareCardRenderer:
                     image = source.convert("RGBA")
             except (OSError, Image.DecompressionBombError) as exc:
                 raise ValueError(f"logo is not a decodable image: {exc}") from exc
+            self._logo_source = image
             ratio = min(LOGO_HEIGHT / image.height, MAX_LOGO_WIDTH / image.width)
             self._logo = image.resize(
                 (
@@ -318,6 +307,53 @@ class ShareCardRenderer:
         font = self._font(bold=bold, size=current)
         return self._clip(draw, text, font, width), font
 
+    def _paint_background(self, image: "PillowImage") -> None:
+        """Fill ``image`` with the background color or vertical gradient.
+
+        Args:
+            image (PillowImage): The RGB canvas, painted in place.
+        """
+        from PIL import ImageDraw
+
+        draw = ImageDraw.Draw(image)
+        width, height = image.size
+        top = self._colors["background_top"]
+        bottom = self._colors["background_bottom"]
+        for row in range(height):
+            ratio = row / (height - 1)
+            color = (
+                round(top[0] + (bottom[0] - top[0]) * ratio),
+                round(top[1] + (bottom[1] - top[1]) * ratio),
+                round(top[2] + (bottom[2] - top[2]) * ratio),
+            )
+            draw.line([(0, row), (width, row)], fill=color)
+
+
+class ShareCardRenderer(_BrandRenderer):
+    """Draws share cards as 1200x630 PNG.
+
+    Layout, top to bottom: ``brand`` (accent) with the logo at the right,
+    ``kicker`` (muted), ``title`` (bold, shrinks from 72 to 48 px, wraps
+    to two lines, then is cut with ``…``), the ``lines`` (icon in the
+    accent color + text), the ``chips`` and the ``footer``. Text never
+    leaves the margins: what does not fit shrinks, is cut, or — for
+    lines and chips — is dropped.
+
+    Construction arguments are those of the shared base: background,
+    ``text_color``, ``muted_color``, ``accent_color``, ``chip_color``,
+    ``chip_text_color``, ``logo``, ``font_path`` and ``bold_font_path``.
+
+    Rendering is CPU-bound and synchronous; the share router calls
+    :meth:`render` through :func:`asyncio.to_thread`.
+
+    Attributes:
+        width (int): Image width, :data:`OG_IMAGE_WIDTH`.
+        height (int): Image height, :data:`OG_IMAGE_HEIGHT`.
+    """
+
+    width: int = OG_IMAGE_WIDTH
+    height: int = OG_IMAGE_HEIGHT
+
     def _wrap_title(
         self, draw: "PillowDraw", text: str, width: int
     ) -> tuple[list[str], "FreeTypeFont"]:
@@ -398,16 +434,8 @@ class ShareCardRenderer:
 
         width, height = self.width, self.height
         image = Image.new("RGB", (width, height))
+        self._paint_background(image)
         draw = ImageDraw.Draw(image)
-        top, bottom = self._colors["background_top"], self._colors["background_bottom"]
-        for row in range(height):
-            ratio = row / (height - 1)
-            color = (
-                round(top[0] + (bottom[0] - top[0]) * ratio),
-                round(top[1] + (bottom[1] - top[1]) * ratio),
-                round(top[2] + (bottom[2] - top[2]) * ratio),
-            )
-            draw.line([(0, row), (width, row)], fill=color)
         usable = width - 2 * MARGIN
         header_width = usable
         if self._logo is not None:

@@ -25,8 +25,13 @@ HTML per item, from a resolver the service writes, and — with a
         )
     )
 
-The page needs nothing beyond the base install; the renderer needs the
-``[image]`` extra (``pillow``) and a TrueType font on the machine
+For the image someone posts rather than the preview a link gets,
+:class:`ShareFrameRenderer` draws a frame — story or square — with a QR
+code in the middle, and :func:`render_qr` draws the QR code alone, both
+with the brand logo inside the code at a measured, capped size.
+
+The page needs nothing beyond the base install; the renderers need the
+``[image]`` extra (``pillow``, ``segno``) and a TrueType font on the machine
 (``fonts-dejavu-core`` on Debian/Ubuntu). Importing this module needs
 neither: Pillow is imported when a renderer is built.
 
@@ -42,7 +47,15 @@ from tempest_fastapi_sdk.share.card import (
 from tempest_fastapi_sdk.share.card import OG_IMAGE_HEIGHT as OG_IMAGE_HEIGHT
 from tempest_fastapi_sdk.share.card import OG_IMAGE_WIDTH as OG_IMAGE_WIDTH
 from tempest_fastapi_sdk.share.card import ShareCardRenderer as ShareCardRenderer
+from tempest_fastapi_sdk.share.frame import LAYOUTS as LAYOUTS
+from tempest_fastapi_sdk.share.frame import MAX_PHOTO_PIXELS as MAX_PHOTO_PIXELS
+from tempest_fastapi_sdk.share.frame import ShareFrameRenderer as ShareFrameRenderer
 from tempest_fastapi_sdk.share.page import render_share_page as render_share_page
+from tempest_fastapi_sdk.share.qr import (
+    DEFAULT_QR_LOGO_FRACTION as DEFAULT_QR_LOGO_FRACTION,
+)
+from tempest_fastapi_sdk.share.qr import MAX_QR_LOGO_FRACTION as MAX_QR_LOGO_FRACTION
+from tempest_fastapi_sdk.share.qr import render_qr as render_qr
 from tempest_fastapi_sdk.share.router import PNG_MEDIA_TYPE as PNG_MEDIA_TYPE
 from tempest_fastapi_sdk.share.router import ShareResolver as ShareResolver
 from tempest_fastapi_sdk.share.router import make_share_router as make_share_router
@@ -51,19 +64,31 @@ from tempest_fastapi_sdk.share.schemas import (
 )
 from tempest_fastapi_sdk.share.schemas import ShareCardSchema as ShareCardSchema
 from tempest_fastapi_sdk.share.schemas import (
+    ShareFrameLayoutEnum as ShareFrameLayoutEnum,
+)
+from tempest_fastapi_sdk.share.schemas import ShareFrameSchema as ShareFrameSchema
+from tempest_fastapi_sdk.share.schemas import (
     SharePreviewSchema as SharePreviewSchema,
 )
 
 __all__: list[str] = [
     "DEFAULT_FONT_CANDIDATES",
+    "DEFAULT_QR_LOGO_FRACTION",
+    "LAYOUTS",
+    "MAX_PHOTO_PIXELS",
+    "MAX_QR_LOGO_FRACTION",
     "OG_IMAGE_HEIGHT",
     "OG_IMAGE_WIDTH",
     "PNG_MEDIA_TYPE",
     "ShareCardLineSchema",
     "ShareCardRenderer",
     "ShareCardSchema",
+    "ShareFrameLayoutEnum",
+    "ShareFrameRenderer",
+    "ShareFrameSchema",
     "SharePreviewSchema",
     "ShareResolver",
     "make_share_router",
+    "render_qr",
     "render_share_page",
 ]
