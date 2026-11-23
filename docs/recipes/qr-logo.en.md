@@ -18,7 +18,7 @@ By the end you will have:
   middle;
 - `ShareFrameRenderer`: the frame in two shapes, vertical for the status and
   square for a chat or a group;
-- `GET /caronas/{trip_id}/qr.png` and `GET /caronas/{trip_id}/moldura.png`,
+- `GET /api/caronas/{trip_id}/qr.png` and `GET /api/caronas/{trip_id}/moldura.png`,
   pointing at the ride's [share page](share-preview.md).
 
 ## Installation
@@ -230,7 +230,7 @@ def png_response(png: bytes) -> Response:
     )
 
 
-@app.get("/caronas/{trip_id}/qr.png", response_class=Response)
+@app.get("/api/caronas/{trip_id}/qr.png", response_class=Response)
 async def trip_qr(trip_id: str) -> Response:
     if trip_id not in TRIPS:
         raise HTTPException(status_code=404)
@@ -238,7 +238,7 @@ async def trip_qr(trip_id: str) -> Response:
     return png_response(png)
 
 
-@app.get("/caronas/{trip_id}/moldura.png", response_class=Response)
+@app.get("/api/caronas/{trip_id}/moldura.png", response_class=Response)
 async def trip_frame(
     trip_id: str,
     layout: ShareFrameLayoutEnum = ShareFrameLayoutEnum.STORY,
@@ -258,8 +258,15 @@ async def trip_frame(
     return png_response(png)
 ```
 
-`GET /caronas/42/moldura.png` returns the vertical frame, and
-`GET /caronas/42/moldura.png?layout=square` the square one. FastAPI validates
+The routes live under `/api/` on purpose. Behind the nginx of the
+[share page](share-preview.md#step-5-the-public-link-live), only `/s/` and
+`/api/` reach the backend, with `^~`. Outside them, a path ending in `.png`
+lands in the SPA's static block. Measured on `nginx:alpine` 1.31.9:
+`/caronas/42/qr.png` gave `404`, and `/api/caronas/42/qr.png` gave
+`200 image/png`.
+
+`GET /api/caronas/42/moldura.png` returns the vertical frame, and
+`GET /api/caronas/42/moldura.png?layout=square` the square one. FastAPI validates
 `layout` against the enum and answers `422` for any other value.
 
 **Off the event loop.** Drawing the frame took about 105 ms (mean of 10,

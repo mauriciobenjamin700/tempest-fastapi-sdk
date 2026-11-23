@@ -83,7 +83,10 @@ Pedaço por pedaço:
   router chama o resolver pela posição, então o nome do parâmetro é seu.
 - **`redirect_url`** é para onde vai a **pessoa** que clica no link. A página
   leva o navegador até lá com `<meta http-equiv="refresh">` e mostra também
-  um link visível (`link_text`) para quando o refresh estiver bloqueado.
+  um link visível (`link_text`) para quando o refresh estiver bloqueado. O
+  padrão de `link_text` é `"Open"`, em inglês, porque o pacote é publicado
+  para qualquer língua: num app pt-BR, passe `link_text="Abrir no app"`, como
+  no exemplo.
 - **`public_url`** é a origem pública de onde o link é servido. `og:url` e a
   URL da imagem são montados em cima dela.
 - **`fallback`** é a prévia mostrada quando o resolver devolve `None`.
@@ -300,14 +303,25 @@ rede é outra imagem.
 O link que o motorista compartilha é `https://<domínio>/s/42`. Duas formas de
 fazer esse caminho chegar ao backend:
 
-**nginx na frente do app e da API.** Encaminhe o prefixo para o backend e
-deixe o resto com o SPA:
+**nginx na frente do app e da API.** Encaminhe o prefixo para o backend com
+`^~` e deixe o resto com o SPA:
 
 ```nginx
-location /s/ {
+location ^~ /s/ {
     proxy_pass http://backend:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ^~ /api/ {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ~* \.(png|jpg|jpeg|gif|svg|ico|css|js|webp)$ {
+    root /usr/share/nginx/html;
+    expires 7d;
 }
 
 location / {
@@ -315,6 +329,17 @@ location / {
     try_files $uri /index.html;
 }
 ```
+
+!!! danger "Sem `^~`, a imagem da prévia some sem erro"
+    No nginx, um `location` de regex (o dos estáticos, `~* \.(png|...)$`)
+    vence um prefixo comum como `location /s/`. O `/s/42/og.png` termina em
+    `.png`, então cai no bloco dos estáticos, que procura o arquivo no disco
+    do SPA e responde `404`. A página `/s/42` continua `200`, e a prévia sai
+    sem imagem, sem erro nenhum. O `^~` diz ao nginx para parar no prefixo e
+    não testar as regex. Medido no `nginx:alpine` 1.31.9 com esta config:
+    `location /s/` deu `404` no `og.png`, e `location ^~ /s/` deu `200
+    image/png`. Use `^~` também no `/api/`, onde moram imagens geradas pelo
+    backend (como o [QR Code](qr-logo.md)).
 
 Nesse caso, `public_url` é o domínio do app (`https://app.example.com`),
 porque é ele que aparece no link.

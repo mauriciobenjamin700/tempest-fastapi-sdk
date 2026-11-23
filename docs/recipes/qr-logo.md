@@ -16,7 +16,7 @@ Ao final você terá:
 - `render_qr(url, logo=...)`: o PNG do QR com o logo no centro;
 - `ShareFrameRenderer`: a moldura em dois formatos, vertical para o status e
   quadrado para conversa e grupo;
-- `GET /caronas/{trip_id}/qr.png` e `GET /caronas/{trip_id}/moldura.png`,
+- `GET /api/caronas/{trip_id}/qr.png` e `GET /api/caronas/{trip_id}/moldura.png`,
   apontando para a [página de compartilhamento](share-preview.md) da carona.
 
 ## Instalação
@@ -225,7 +225,7 @@ def png_response(png: bytes) -> Response:
     )
 
 
-@app.get("/caronas/{trip_id}/qr.png", response_class=Response)
+@app.get("/api/caronas/{trip_id}/qr.png", response_class=Response)
 async def trip_qr(trip_id: str) -> Response:
     if trip_id not in TRIPS:
         raise HTTPException(status_code=404)
@@ -233,7 +233,7 @@ async def trip_qr(trip_id: str) -> Response:
     return png_response(png)
 
 
-@app.get("/caronas/{trip_id}/moldura.png", response_class=Response)
+@app.get("/api/caronas/{trip_id}/moldura.png", response_class=Response)
 async def trip_frame(
     trip_id: str,
     layout: ShareFrameLayoutEnum = ShareFrameLayoutEnum.STORY,
@@ -253,8 +253,15 @@ async def trip_frame(
     return png_response(png)
 ```
 
-`GET /caronas/42/moldura.png` devolve o vertical, e
-`GET /caronas/42/moldura.png?layout=square` devolve o quadrado. O FastAPI
+As rotas ficam sob `/api/` de propósito. Atrás do nginx da
+[página de compartilhamento](share-preview.md#passo-5-o-link-publico-no-ar),
+só `/s/` e `/api/` vão para o backend, com `^~`. Fora deles, um caminho que
+termina em `.png` cai no bloco de estáticos do SPA. Medido no `nginx:alpine`
+1.31.9: `/caronas/42/qr.png` deu `404`, e `/api/caronas/42/qr.png` deu
+`200 image/png`.
+
+`GET /api/caronas/42/moldura.png` devolve o vertical, e
+`GET /api/caronas/42/moldura.png?layout=square` devolve o quadrado. O FastAPI
 valida `layout` contra o enum e responde `422` para outro valor.
 
 **Fora do event loop.** Desenhar a moldura levou cerca de 105 ms (média de

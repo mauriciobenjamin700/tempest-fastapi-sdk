@@ -83,7 +83,9 @@ Piece by piece:
   name is yours to pick.
 - **`redirect_url`** is where the **person** who clicks the link goes. The
   page sends the browser there with `<meta http-equiv="refresh">` and also
-  shows a visible link (`link_text`) for when refresh is blocked.
+  shows a visible link (`link_text`) for when refresh is blocked. The default
+  `link_text` is `"Open"`; pass your app's own wording (`"Open in the app"`,
+  or `"Abrir no app"` in a pt-BR app).
 - **`public_url`** is the public origin the link is served from. `og:url` and
   the image URL are built on it.
 - **`fallback`** is the preview shown when the resolver returns `None`.
@@ -299,13 +301,24 @@ The link the driver shares is `https://<domain>/s/42`. Two ways to get that
 path to the backend:
 
 **nginx in front of the app and the API.** Forward the prefix to the backend
-and leave the rest to the SPA:
+with `^~` and leave the rest to the SPA:
 
 ```nginx
-location /s/ {
+location ^~ /s/ {
     proxy_pass http://backend:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ^~ /api/ {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ~* \.(png|jpg|jpeg|gif|svg|ico|css|js|webp)$ {
+    root /usr/share/nginx/html;
+    expires 7d;
 }
 
 location / {
@@ -313,6 +326,17 @@ location / {
     try_files $uri /index.html;
 }
 ```
+
+!!! danger "Without `^~`, the preview image disappears with no error"
+    In nginx, a regex `location` (the static one, `~* \.(png|...)$`) beats a
+    plain prefix such as `location /s/`. `/s/42/og.png` ends in `.png`, so it
+    lands in the static block, which looks for the file on the SPA's disk and
+    answers `404`. The `/s/42` page stays `200`, and the preview goes out
+    without an image, with no error anywhere. `^~` tells nginx to stop at the
+    prefix and skip the regexes. Measured on `nginx:alpine` 1.31.9 with this
+    config: `location /s/` gave `404` on `og.png`, and `location ^~ /s/` gave
+    `200 image/png`. Use `^~` on `/api/` too, where backend-generated images
+    live (such as the [QR code](qr-logo.md)).
 
 Here `public_url` is the app's domain (`https://app.example.com`), because
 that is what appears in the link.
