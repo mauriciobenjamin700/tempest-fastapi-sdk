@@ -70,10 +70,14 @@ my-service/
     └── api/
         ├── __init__.py
         ├── app.py                # create_app() — middleware, CORS, exception handlers, build_api_router()
+        ├── docs/                 # texto do OpenAPI, um módulo por router
+        │   ├── __init__.py
+        │   ├── base.py           # EndpointDoc — TypedDict de summary + description
+        │   └── users.py          # um EndpointDoc por handler de routers/users.py
         ├── routers/
         │   ├── __init__.py
         │   ├── api.py            # build_api_router(): o único lugar com /api
-        │   └── users.py          # um router por arquivo, só com o próprio prefixo
+        │   └── users.py          # TempestAPIRouter, um por arquivo, só com o próprio prefixo
         └── dependencies/         # SEMPRE um pacote, nunca um módulo plano
             ├── __init__.py
             ├── auth.py           # dependências X-Token / current_user / require_role
@@ -898,16 +902,80 @@ __all__: list[str] = ["get_user_controller"]
 
 Routers recebem controllers via `Depends` do FastAPI — sem construção inline, sem lógica de negócio, sem chamadas de DB. Um router por arquivo, declarando só o próprio prefixo (`/users`); o `/api` é posto uma vez, no `build_api_router`. Endpoints meta (`/health`, `/tool-spec`) ficam no prefixo raiz.
 
+O texto que o Swagger mostra não fica no router. Ele mora em
+`src/api/docs/users.py`, um `EndpointDoc` por handler, e o router o espalha
+no decorator (`**user_docs.CREATE_USER`). O `EndpointDoc` é o `TypedDict`
+de `summary` + `description` que o `tempest new` já escreve em
+`src/api/docs/base.py` — o porquê está em
+[Padrão de serviço › Texto do OpenAPI fora do router](service-standard.md#texto-do-openapi-fora-do-router):
+
+```python
+# src/api/docs/users.py
+from .base import EndpointDoc
+
+CREATE_USER: EndpointDoc = {
+    "summary": "Cadastra um usuário",
+    "description": (
+        "Cria a conta e devolve o usuário. Responde 409 (USER_EMAIL_TAKEN) quando o e-mail já está em uso."
+    ),
+}
+
+
+GET_USER: EndpointDoc = {
+    "summary": "Busca um usuário",
+    "description": (
+        "Devolve o usuário pelo id. Responde 404 (USER_NOT_FOUND) quando ele não existe."
+    ),
+}
+
+
+UPDATE_USER: EndpointDoc = {
+    "summary": "Atualiza um usuário",
+    "description": (
+        "Aplica uma atualização parcial de nome e e-mail."
+    ),
+}
+
+
+DELETE_USER: EndpointDoc = {
+    "summary": "Desativa um usuário",
+    "description": (
+        "Marca o usuário como inativo, sem apagar a linha."
+    ),
+}
+
+
+LIST_USERS: EndpointDoc = {
+    "summary": "Lista usuários",
+    "description": (
+        "Devolve uma página de usuários, filtrada e ordenada pela query string."
+    ),
+}
+
+__all__: list[str] = ["CREATE_USER", "DELETE_USER", "GET_USER", "LIST_USERS", "UPDATE_USER"]
+```
+
+Reexporte o módulo em `src/api/docs/__init__.py`
+(`from . import users as users`).
+
+O router é um `TempestAPIRouter`, não um `fastapi.APIRouter`: o
+`@raises(...)` logo **abaixo** de cada decorator de rota lista as exceções
+que o fluxo levanta, e o `TempestAPIRouter` as transforma no `responses=`
+da rota — um `ErrorResponseSchema` por status, com um exemplo por `code`.
+Num `APIRouter` comum a mesma tag não faz nada
+([Erros da rota](service-standard.md#erros-da-rota-tempestapirouter-raises)):
+
 ```python
 # src/api/routers/users.py
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
-
-from tempest_fastapi_sdk import BasePaginationSchema
+from fastapi import Depends, status
+from tempest_fastapi_sdk import BasePaginationSchema, TempestAPIRouter, raises
 
 from src.api.dependencies import get_user_controller
+from src.api.docs import users as user_docs
 from src.controllers import UserController
+from src.core.exceptions import UserEmailAlreadyTakenError, UserNotFoundError
 from src.schemas import (
     UserCreateSchema,
     UserFilterSchema,
@@ -916,14 +984,16 @@ from src.schemas import (
 )
 
 
-router = APIRouter(prefix="/users", tags=["users"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/users", tags=["users"])
 
 
 @router.post(
     "",
     response_model=UserResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    **user_docs.CREATE_USER,
 )
+@raises(UserEmailAlreadyTakenError)
 async def create_user(
     data: UserCreateSchema,
     controller: UserController = Depends(get_user_controller),
@@ -931,7 +1001,8 @@ async def create_user(
     return await controller.signup(data)
 
 
-@router.get("/{user_id}", response_model=UserResponseSchema)
+@router.get("/{user_id}", response_model=UserResponseSchema, **user_docs.GET_USER)
+@raises(UserNotFoundError)
 async def get_user(
     user_id: UUID,
     controller: UserController = Depends(get_user_controller),
@@ -939,7 +1010,8 @@ async def get_user(
     return await controller.get_by_id(user_id)
 
 
-@router.patch("/{user_id}", response_model=UserResponseSchema)
+@router.patch("/{user_id}", response_model=UserResponseSchema, **user_docs.UPDATE_USER)
+@raises(UserNotFoundError)
 async def update_user(
     user_id: UUID,
     data: UserUpdateSchema,
@@ -948,7 +1020,12 @@ async def update_user(
     return await controller.update(user_id, data)
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    **user_docs.DELETE_USER,
+)
+@raises(UserNotFoundError)
 async def delete_user(
     user_id: UUID,
     controller: UserController = Depends(get_user_controller),
@@ -956,7 +1033,11 @@ async def delete_user(
     await controller.soft_delete(user_id)
 
 
-@router.get("", response_model=BasePaginationSchema[UserResponseSchema])
+@router.get(
+    "",
+    response_model=BasePaginationSchema[UserResponseSchema],
+    **user_docs.LIST_USERS,
+)
 async def list_users(
     filters: UserFilterSchema = Depends(),
     controller: UserController = Depends(get_user_controller),
@@ -971,7 +1052,7 @@ async def list_users(
     return BasePaginationSchema[UserResponseSchema](**result)
 ```
 
-Monte-o no `build_api_router`, o único lugar onde `/api` aparece:
+Monte-o no `build_api_router`, o único lugar onde `/api` aparece. O agregador continua um `APIRouter` comum: os erros são montados pelo router em que o handler é registrado, e o `include_router` os leva para cima sem mudança:
 
 ```python
 # src/api/routers/api.py

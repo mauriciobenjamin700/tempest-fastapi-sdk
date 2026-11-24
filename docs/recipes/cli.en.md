@@ -2738,24 +2738,24 @@ src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module o
 
 | Code | Where | What it reports |
 | --- | --- | --- |
-| `RTR003` | `routers/` | more than one `APIRouter(...)` in the module — one finding per router after the first |
-| `RTR004` | the whole source | a `prefix` equal to `/api` (or under it) in `APIRouter(...)` or `include_router(...)` outside a `build_api_router` function |
+| `RTR003` | `routers/` | more than one router in the module (`APIRouter(...)`, `TempestAPIRouter(...)` or a project subclass) — one finding per router after the first |
+| `RTR004` | the whole source | a `prefix` equal to `/api` (or under it) in a router construction or `include_router(...)` outside a `build_api_router` function |
 
 In the transport service, `/api` was repeated in 22 `include_router` calls.
 An orders module with two routers and `/api` baked in prints (real output):
 
 ```python
 # src/api/routers/orders.py
-from fastapi import APIRouter
+from tempest_fastapi_sdk import TempestAPIRouter
 
-router: APIRouter = APIRouter(prefix="/api/orders", tags=["orders"])
-admin_router: APIRouter = APIRouter(prefix="/api/admin/orders", tags=["admin"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/api/orders", tags=["orders"])
+admin_router: TempestAPIRouter = TempestAPIRouter(prefix="/api/admin/orders", tags=["admin"])
 ```
 
 ```text
-src/api/routers/orders.py:3: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
-src/api/routers/orders.py:4: RTR003 (warning) a second APIRouter in this module (`admin_router`); one router per file in routers/ — move it to its own module.
-src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+src/api/routers/orders.py:5: RTR003 (warning) a second router in this module (`admin_router`); one router per file in routers/ — move it to its own module.
+src/api/routers/orders.py:5: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
 3 layer finding(s): 0 error(s), 3 warning(s).
 ```
 
@@ -2777,6 +2777,57 @@ def build_api_router() -> APIRouter:
     api.include_router(admin_orders_router)
     return api
 ```
+
+#### Domain router: `TempestAPIRouter` and text in `api/docs` (warning)
+
+| Code | Where | What it reports |
+| --- | --- | --- |
+| `RTR005` | `routers/` | a `fastapi.APIRouter(...)` outside a `build_api_router` function — on an `APIRouter`, `@raises` never becomes `responses=` |
+| `RTR006` | `routers/` | `summary=` or `description=` in a route decorator, a literal or a `SUMMARY_*` constant — one line per keyword |
+
+The `build_api_router` aggregator is left out of `RTR005` on purpose: a
+route's errors are built by the router the handler is registered on, and
+the class of the router that includes it changes nothing. The router with
+both shapes agents used to write (real output):
+
+```python
+# src/api/routers/service_info.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
+
+SUMMARY_INDEX: str = "Describe the service"
+
+router: APIRouter = APIRouter(tags=["root"])
+
+
+@router.get("/", summary=SUMMARY_INDEX, description="Returns the service name.")
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
+    """Placeholder root endpoint returning the service name.
+
+    Args:
+        controller (ServiceInfoController): The injected controller.
+
+    Returns:
+        ServiceInfoSchema: The service title.
+    """
+    return await controller.describe()
+```
+
+```text
+src/api/routers/service_info.py:10: RTR005 (warning) APIRouter(...) builds this router (`router`); build it with `TempestAPIRouter` from tempest_fastapi_sdk, which turns each handler's `@raises(...)` into its `responses=` (a plain APIRouter ignores the tag).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `summary=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `description=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+The right shape — `TempestAPIRouter`, `@raises` below the decorator and an
+`EndpointDoc` in `api/docs/<router>.py` — is in the
+[Service standard](../service-standard.md#route-errors-tempestapirouter-raises).
 
 #### The shape of the suite (warning)
 

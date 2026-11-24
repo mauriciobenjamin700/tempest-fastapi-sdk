@@ -197,7 +197,7 @@ my_api/
 ├── .env.example
 └── src/
     ├── server.py           # programmatic uvicorn + importable app
-    ├── api/                # routers, dependencies, app factory
+    ├── api/                # routers, dependencies, docs (OpenAPI text), app factory
     ├── controllers/        # thin orchestration over the services
     ├── services/           # business logic
     ├── schemas/            # request/response DTOs
@@ -206,6 +206,11 @@ my_api/
     │   └── repositories/
     └── core/               # settings + constants + exceptions
 ```
+
+In `api/`, each domain router is a `TempestAPIRouter` and the text Swagger
+shows lives in `api/docs/<router>.py`, one `EndpointDoc` per handler —
+the why is in the
+[Service standard](../service-standard.md#openapi-text-out-of-the-router).
 
 Bring the service up:
 

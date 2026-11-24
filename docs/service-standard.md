@@ -97,7 +97,8 @@ exceções.
 | Recurso é singleton de processo num lugar só | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (convenção do scaffold) |
 | Providers por camada; router nunca vê `AsyncSession` | `api/dependencies/controllers.py` chama os `build_*` | `RTR001`, `DI001`–`DI003` |
 | `/api` posto num lugar só | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
-| Texto do OpenAPI fora do router | `api/docs/<router>.py`, um `EndpointDoc` por handler | — (convenção do scaffold) |
+| Router de domínio é `TempestAPIRouter` | `TempestAPIRouter(prefix=...)`, nunca `fastapi.APIRouter` | `RTR005` |
+| Texto do OpenAPI fora do router | `api/docs/<router>.py`, um `EndpointDoc` por handler | `RTR006` |
 | Exceções: um módulo por status, contrato no corpo da classe | `core/exceptions/{bad_request,unauthorized,forbidden,not_found,conflict}.py` | `tests/unit/core/test_exceptions_contract.py` |
 | Contrato de exceção congelado | status, `code`, mensagem e `field` de cada classe | `tests/unit/core/test_exceptions_contract.py` |
 | Prosa e constante fora do módulo que usa | `core/constants/` + `core/constants/messages/{errors,successes}.py` | — (convenção do scaffold) |
@@ -106,19 +107,19 @@ exceções.
 | Mapeamento no repository | `map_to_response` | `REPO001` (parcial) |
 | Grafo montado fora do request | `scripts/composition.py` (`build_*`) | `DI003` (`from_session`) |
 | Todo campo de schema documentado | `Field(title=..., description=..., examples=...)` | `lint-schemas` + `tests/unit/architecture/test_schemas.py` |
-| Toda rota declara o que levanta | `responses=error_responses(...)` | `openapi-errors` + `tests/unit/architecture/test_openapi_errors.py` |
+| Toda rota declara o que levanta | `@raises(...)` abaixo do decorator de rota | `openapi-errors` + `tests/unit/architecture/test_openapi_errors.py` |
 | Testes | `Cenário:`/`Esperado:`, que conferem algo; `tests/{unit,integration}/<área>/` | `TST001`–`TST004` |
 | Guards na própria suíte | `tests/unit/architecture/` | `test_layers.py`, `test_openapi_errors.py`, `test_schemas.py` |
 | Avisos falham desde o primeiro commit | `layers_strict = true` em `[tool.tempest]` | `tempest check` |
 
-Os códigos `LAY`, `STR`, `IMP`, `DI`, `RTR003`/`RTR004` e `TST` são
+Os códigos `LAY`, `STR`, `IMP`, `DI`, `RTR003`–`RTR006` e `TST` são
 **avisos**: só derrubam o `tempest check` com `layers_strict = true`, que o
 `pyproject.toml` gerado já liga. A tabela de todos os códigos, com a saída
 real de cada um, está em
 [CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
 
 !!! note "O que não tem gate"
-    Singleton de recurso, `api/docs`, `core/constants` e `db/configs` são
+    Singleton de recurso, `core/constants` e `db/configs` são
     convenção: o scaffold nasce assim e a receita do `CLAUDE.md` ensina
     assim, mas nenhuma regra falha se você desviar. Ficaram de fora porque
     a checagem precisaria julgar intenção (o que é "prosa", o que é
@@ -298,14 +299,15 @@ E o router espalha o dicionário no decorator:
 
 ```python
 # src/api/routers/service_info.py
-from fastapi import APIRouter, Depends
+from fastapi import Depends
+from tempest_fastapi_sdk import TempestAPIRouter
 
 from src.api.dependencies import get_service_info_controller
 from src.api.docs import service_info
 from src.controllers import ServiceInfoController
 from src.schemas import ServiceInfoSchema
 
-router: APIRouter = APIRouter(tags=["root"])
+router: TempestAPIRouter = TempestAPIRouter(tags=["root"])
 
 
 @router.get("/", **service_info.INDEX)
@@ -326,6 +328,51 @@ async def index(
 As duas chaves são os parâmetros `summary` e `description` de
 `APIRouter.get`/`post`, então o mypy confere o espalhamento.
 
+O formato errado é o que aparece quando o texto fica no router: constantes
+`SUMMARY_*` soltas no topo do módulo, ou `summary="..."` escrito no
+decorator. O `tempest check` acusa cada palavra-chave como `RTR006` — e,
+no mesmo arquivo, o `fastapi.APIRouter` como `RTR005` (veja a próxima
+seção):
+
+```python
+# src/api/routers/service_info.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
+
+SUMMARY_INDEX: str = "Describe the service"
+
+router: APIRouter = APIRouter(tags=["root"])
+
+
+@router.get("/", summary=SUMMARY_INDEX, description="Returns the service name.")
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
+    """Placeholder root endpoint returning the service name.
+
+    Args:
+        controller (ServiceInfoController): The injected controller.
+
+    Returns:
+        ServiceInfoSchema: The service title.
+    """
+    return await controller.describe()
+```
+
+```text
+$ tempest lint-layers . --rule RTR005 --rule RTR006
+src/api/routers/service_info.py:10: RTR005 (warning) APIRouter(...) builds this router (`router`); build it with `TempestAPIRouter` from tempest_fastapi_sdk, which turns each handler's `@raises(...)` into its `responses=` (a plain APIRouter ignores the tag).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `summary=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `description=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+Mesmo texto, outro lugar: mova cada par para um `EndpointDoc` em
+`api/docs/service_info.py` e espalhe no decorator, como acima.
+
 ??? info "Por que `EndpointDoc` mora no template e não no SDK"
     O SDK já tem o `RouteDoc` (em `tempest_fastapi_sdk.api.route_docs`),
     mas ele é o catálogo bilíngue das rotas **do próprio SDK**: aceita
@@ -334,6 +381,108 @@ As duas chaves são os parâmetros `summary` e `description` de
     espalhado direto no decorator. Publicá-lo no SDK seria superfície
     pública para um tipo de duas linhas que cada serviço lê do próprio
     `api/docs` — o tipo de wrapper que a gente prefere não depender.
+
+## Erros da rota: `TempestAPIRouter` + `@raises`
+
+**Por quê:** o cliente precisa saber, pelo OpenAPI, quais erros uma rota
+devolve — com o `code` de cada um. A lista mora ao lado do handler, num
+`@raises(...)` logo **abaixo** do decorator de rota, e o
+`TempestAPIRouter` do SDK a transforma no `responses=` da rota. Todo
+router de domínio é um `TempestAPIRouter`, nunca um `fastapi.APIRouter`:
+
+```python
+# src/api/routers/product.py
+from fastapi import Depends, status
+from tempest_fastapi_sdk import TempestAPIRouter, raises
+
+from src.api.dependencies import get_product_controller
+from src.api.docs import product as product_docs
+from src.controllers import ProductController
+from src.core.exceptions import ProductNameTakenException, ProductSkuTakenException
+from src.schemas import ProductCreateSchema, ProductResponseSchema
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/products", tags=["products"])
+
+
+@router.post("", status_code=status.HTTP_201_CREATED, **product_docs.CREATE_PRODUCT)
+@raises(ProductNameTakenException, ProductSkuTakenException)
+async def create_product(
+    data: ProductCreateSchema,
+    controller: ProductController = Depends(get_product_controller),
+) -> ProductResponseSchema:
+    """Create a product.
+
+    Args:
+        data (ProductCreateSchema): The creation payload.
+        controller (ProductController): The injected controller.
+
+    Returns:
+        ProductResponseSchema: The created product.
+    """
+    return await controller.create(data)
+```
+
+O `409` dessa rota sai assim em `app.openapi()["paths"]["/api/products"]["post"]["responses"]`
+(medido com `fastapi` 0.165.0, o piso do SDK, e as duas exceções com
+`code`, `message` e docstring no corpo da classe):
+
+```json
+{
+  "description": "PRODUCT_NAME_TAKEN | PRODUCT_SKU_TAKEN",
+  "content": {
+    "application/json": {
+      "schema": {
+        "$ref": "#/components/schemas/ErrorResponseSchema"
+      },
+      "examples": {
+        "PRODUCT_NAME_TAKEN": {
+          "summary": "Name in use.",
+          "value": {
+            "detail": "A product with this name already exists.",
+            "code": "PRODUCT_NAME_TAKEN",
+            "details": {},
+            "field": "name"
+          }
+        },
+        "PRODUCT_SKU_TAKEN": {
+          "summary": "SKU in use.",
+          "value": {
+            "detail": "A product with this SKU already exists.",
+            "code": "PRODUCT_SKU_TAKEN",
+            "details": {}
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+O `ErrorResponseSchema` entra em `components.schemas` e a resposta o
+referencia por `$ref`; as exceções do mesmo status viram um exemplo cada,
+chaveado pelo `code`.
+
+Três detalhes, todos medidos no mesmo app:
+
+- **Num `fastapi.APIRouter`, o `@raises` não faz nada.** A tag fica no
+  handler, ninguém a lê, e a rota sai só com `200` e `422` — sem erro e sem
+  aviso. Por isso o `tempest check` acusa um `APIRouter` em `routers/` como
+  `RTR005`.
+- **`responses=` explícito vale para sobrescrever um status.** A entrada
+  escrita à mão substitui a gerada para aquele status code **inteira** —
+  some o `$ref` e somem os exemplos daquele status. Use só quando quiser
+  mesmo outro texto para um código.
+- **O agregador continua `APIRouter`.** As respostas são montadas pelo
+  router em que o handler é registrado, e o `include_router` as leva para
+  cima sem mudar nada. Um `TempestAPIRouter` no `build_api_router` não
+  acrescenta nada, e um `APIRouter` de domínio incluído num agregador
+  `TempestAPIRouter` continua sem os erros.
+
+O `tempest check` (passo `openapi-errors`) lê o `@raises` como declaração
+da rota: exceção que o fluxo alcança e não está na lista falha o gate. A
+receita completa, com catálogo de mensagens e `error_responses` para
+routers que não são seus, está em
+[Erros no OpenAPI](recipes/openapi-errors.md).
 
 ## Guards na própria suíte
 

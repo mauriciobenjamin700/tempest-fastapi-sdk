@@ -96,7 +96,8 @@ exception contract.
 | A resource is a process singleton in one place | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (scaffold convention) |
 | Providers per layer; a router never sees `AsyncSession` | `api/dependencies/controllers.py` calls the `build_*` | `RTR001`, `DI001`–`DI003` |
 | `/api` set in one place | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
-| OpenAPI text out of the router | `api/docs/<router>.py`, one `EndpointDoc` per handler | — (scaffold convention) |
+| A domain router is a `TempestAPIRouter` | `TempestAPIRouter(prefix=...)`, never `fastapi.APIRouter` | `RTR005` |
+| OpenAPI text out of the router | `api/docs/<router>.py`, one `EndpointDoc` per handler | `RTR006` |
 | Exceptions: one module per status, contract in the class body | `core/exceptions/{bad_request,unauthorized,forbidden,not_found,conflict}.py` | `tests/unit/core/test_exceptions_contract.py` |
 | Frozen exception contract | status, `code`, message and `field` of each class | `tests/unit/core/test_exceptions_contract.py` |
 | Prose and constants out of the module that uses them | `core/constants/` + `core/constants/messages/{errors,successes}.py` | — (scaffold convention) |
@@ -105,20 +106,20 @@ exception contract.
 | Mapping in the repository | `map_to_response` | `REPO001` (partial) |
 | Graph assembled outside the request | `scripts/composition.py` (`build_*`) | `DI003` (`from_session`) |
 | Every schema field documented | `Field(title=..., description=..., examples=...)` | `lint-schemas` + `tests/unit/architecture/test_schemas.py` |
-| Every route declares what it raises | `responses=error_responses(...)` | `openapi-errors` + `tests/unit/architecture/test_openapi_errors.py` |
+| Every route declares what it raises | `@raises(...)` below the route decorator | `openapi-errors` + `tests/unit/architecture/test_openapi_errors.py` |
 | Tests | `Cenário:`/`Esperado:`, checking something; `tests/{unit,integration}/<area>/` | `TST001`–`TST004` |
 | Guards in the suite itself | `tests/unit/architecture/` | `test_layers.py`, `test_openapi_errors.py`, `test_schemas.py` |
 | Warnings fail from the first commit | `layers_strict = true` under `[tool.tempest]` | `tempest check` |
 
-The `LAY`, `STR`, `IMP`, `DI`, `RTR003`/`RTR004` and `TST` codes are
+The `LAY`, `STR`, `IMP`, `DI`, `RTR003`–`RTR006` and `TST` codes are
 **warnings**: they only fail `tempest check` with `layers_strict = true`,
 which the generated `pyproject.toml` already turns on. The table of every
 code, with each one's real output, is in
 [CLI › Layer rules](recipes/cli.md#layer-rules-tempest-lint-layers).
 
 !!! note "What has no gate"
-    The resource singleton, `api/docs`, `core/constants` and `db/configs`
-    are convention: the scaffold starts that way and the `CLAUDE.md`
+    The resource singleton, `core/constants` and `db/configs` are
+    convention: the scaffold starts that way and the `CLAUDE.md`
     recipe teaches it, but no rule fails when you deviate. They were left
     out because the check would have to judge intent (what is "prose",
     what is a "process resource"), and a rule that broad flags correct
@@ -300,14 +301,15 @@ And the router spreads the dictionary into the decorator:
 
 ```python
 # src/api/routers/service_info.py
-from fastapi import APIRouter, Depends
+from fastapi import Depends
+from tempest_fastapi_sdk import TempestAPIRouter
 
 from src.api.dependencies import get_service_info_controller
 from src.api.docs import service_info
 from src.controllers import ServiceInfoController
 from src.schemas import ServiceInfoSchema
 
-router: APIRouter = APIRouter(tags=["root"])
+router: TempestAPIRouter = TempestAPIRouter(tags=["root"])
 
 
 @router.get("/", **service_info.INDEX)
@@ -328,6 +330,51 @@ async def index(
 Both keys are the `summary` and `description` parameters of
 `APIRouter.get`/`post`, so mypy checks the spread.
 
+The wrong shape is what shows up when the text stays in the router: loose
+`SUMMARY_*` constants at the top of the module, or `summary="..."` written
+in the decorator. `tempest check` reports each keyword as `RTR006` — and,
+in the same file, the `fastapi.APIRouter` as `RTR005` (see the next
+section):
+
+```python
+# src/api/routers/service_info.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
+
+SUMMARY_INDEX: str = "Describe the service"
+
+router: APIRouter = APIRouter(tags=["root"])
+
+
+@router.get("/", summary=SUMMARY_INDEX, description="Returns the service name.")
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
+    """Placeholder root endpoint returning the service name.
+
+    Args:
+        controller (ServiceInfoController): The injected controller.
+
+    Returns:
+        ServiceInfoSchema: The service title.
+    """
+    return await controller.describe()
+```
+
+```text
+$ tempest lint-layers . --rule RTR005 --rule RTR006
+src/api/routers/service_info.py:10: RTR005 (warning) APIRouter(...) builds this router (`router`); build it with `TempestAPIRouter` from tempest_fastapi_sdk, which turns each handler's `@raises(...)` into its `responses=` (a plain APIRouter ignores the tag).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `summary=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `description=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+Same text, another place: move each pair into an `EndpointDoc` in
+`api/docs/service_info.py` and spread it into the decorator, as above.
+
 ??? info "Why `EndpointDoc` lives in the template and not in the SDK"
     The SDK already has `RouteDoc` (in `tempest_fastapi_sdk.api.route_docs`),
     but it is the bilingual catalog of the **SDK's own** routes: it
@@ -337,6 +384,108 @@ Both keys are the `summary` and `description` parameters of
     SDK would be public surface for a two-line type each service reads
     from its own `api/docs` — the kind of wrapper we prefer not to depend
     on.
+
+## Route errors: `TempestAPIRouter` + `@raises`
+
+**Why:** the client needs to know, from the OpenAPI document, which errors
+a route returns — with each one's `code`. The list lives next to the
+handler, in a `@raises(...)` right **below** the route decorator, and the
+SDK's `TempestAPIRouter` turns it into the route's `responses=`. Every
+domain router is a `TempestAPIRouter`, never a `fastapi.APIRouter`:
+
+```python
+# src/api/routers/product.py
+from fastapi import Depends, status
+from tempest_fastapi_sdk import TempestAPIRouter, raises
+
+from src.api.dependencies import get_product_controller
+from src.api.docs import product as product_docs
+from src.controllers import ProductController
+from src.core.exceptions import ProductNameTakenException, ProductSkuTakenException
+from src.schemas import ProductCreateSchema, ProductResponseSchema
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/products", tags=["products"])
+
+
+@router.post("", status_code=status.HTTP_201_CREATED, **product_docs.CREATE_PRODUCT)
+@raises(ProductNameTakenException, ProductSkuTakenException)
+async def create_product(
+    data: ProductCreateSchema,
+    controller: ProductController = Depends(get_product_controller),
+) -> ProductResponseSchema:
+    """Create a product.
+
+    Args:
+        data (ProductCreateSchema): The creation payload.
+        controller (ProductController): The injected controller.
+
+    Returns:
+        ProductResponseSchema: The created product.
+    """
+    return await controller.create(data)
+```
+
+That route's `409` comes out like this in `app.openapi()["paths"]["/api/products"]["post"]["responses"]`
+(measured with `fastapi` 0.165.0, the SDK's floor, and both exceptions
+declaring `code`, `message` and a docstring in the class body):
+
+```json
+{
+  "description": "PRODUCT_NAME_TAKEN | PRODUCT_SKU_TAKEN",
+  "content": {
+    "application/json": {
+      "schema": {
+        "$ref": "#/components/schemas/ErrorResponseSchema"
+      },
+      "examples": {
+        "PRODUCT_NAME_TAKEN": {
+          "summary": "Name in use.",
+          "value": {
+            "detail": "A product with this name already exists.",
+            "code": "PRODUCT_NAME_TAKEN",
+            "details": {},
+            "field": "name"
+          }
+        },
+        "PRODUCT_SKU_TAKEN": {
+          "summary": "SKU in use.",
+          "value": {
+            "detail": "A product with this SKU already exists.",
+            "code": "PRODUCT_SKU_TAKEN",
+            "details": {}
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+`ErrorResponseSchema` lands in `components.schemas` and the response
+points at it through `$ref`; exceptions sharing a status become one
+example each, keyed by `code`.
+
+Three details, all measured on the same app:
+
+- **On a `fastapi.APIRouter`, `@raises` does nothing.** The tag stays on
+  the handler, nobody reads it, and the route comes out with only `200`
+  and `422` — no error, no warning. That is why `tempest check` reports an
+  `APIRouter` in `routers/` as `RTR005`.
+- **An explicit `responses=` is for overriding one status.** The
+  hand-written entry replaces the generated one for that status code
+  **whole** — the `$ref` and that status's examples are gone. Use it only
+  when you really want other text for one code.
+- **The aggregator stays an `APIRouter`.** The responses are built by the
+  router the handler is registered on, and `include_router` carries them
+  up unchanged. A `TempestAPIRouter` in `build_api_router` adds nothing,
+  and a domain `APIRouter` included into a `TempestAPIRouter` aggregator
+  still has no errors.
+
+`tempest check` (the `openapi-errors` step) reads `@raises` as the route's
+declaration: an exception the flow reaches that is missing from the list
+fails the gate. The full recipe, with the message catalog and
+`error_responses` for routers that are not yours, is in
+[OpenAPI errors](recipes/openapi-errors.md).
 
 ## Guards in the suite itself
 
