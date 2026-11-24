@@ -118,10 +118,10 @@ something lives in a module of the package and is re-exported: router
 composition in `router.py`, a factory in `factory.py`, a seed run in
 `runner.py`.
 
-Wrong — the package module builds the router:
+Wrong — the package module, `src/api/routers/admin/__init__.py`, builds
+the router:
 
 ```python
-# src/api/routers/admin/__init__.py
 from fastapi import APIRouter
 
 from .orders import router as orders_router
@@ -131,10 +131,10 @@ admin_router.include_router(orders_router)
 ```
 
 Right — `router.py` builds it, the `__init__.py` re-exports it, and
-`build_api_router` includes `build_admin_router()`:
+`build_api_router` includes `build_admin_router()`. In
+`src/api/routers/admin/router.py`:
 
 ```python
-# src/api/routers/admin/router.py
 from fastapi import APIRouter
 
 from .orders import router as orders_router
@@ -151,8 +151,9 @@ def build_admin_router() -> APIRouter:
     return admin
 ```
 
+And in `src/api/routers/admin/__init__.py`:
+
 ```python
-# src/api/routers/admin/__init__.py
 from .router import build_admin_router as build_admin_router
 
 __all__: list[str] = ["build_admin_router"]
@@ -766,10 +767,9 @@ Extend it through its arguments — never by rewriting a route:
 
 Wrong — a hand-written flow that has to rebuild the password policy, the
 duplicate-email 409, activation and the token pair, and drifts from the
-SDK one release at a time:
+SDK one release at a time (`src/api/routers/auth.py`):
 
 ```python
-# src/api/routers/auth.py
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies import get_auth_controller
@@ -789,10 +789,10 @@ async def login(
 ```
 
 Right — the service is assembled in the composition root and the router
-is mounted in `create_app`, next to the other SDK routers:
+is mounted in `create_app`, next to the other SDK routers. Add the
+builder to `src/scripts/composition.py`:
 
 ```python
-# src/scripts/composition.py
 from tempest_fastapi_sdk import AsyncDatabaseManager, UserAuthService
 
 from src.core import Settings
@@ -820,8 +820,9 @@ def build_auth_service(db: AsyncDatabaseManager, settings: Settings) -> UserAuth
     )
 ```
 
+Then, inside `create_app()` in `src/api/app.py`:
+
 ```python
-# src/api/app.py, inside create_app()
 app.include_router(
     make_auth_router(
         build_auth_service(db, settings),
