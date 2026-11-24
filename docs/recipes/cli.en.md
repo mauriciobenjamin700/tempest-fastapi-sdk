@@ -646,7 +646,7 @@ Extra → generated layer mapping:
 
 | Extra | Files created (under `src/` or `app/`) |
 |-------|------------------------------------------|
-| `[queue]` | `queue/__init__.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/handlers.py` (example subscriber) |
+| `[queue]` | `queue/broker.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/__init__.py` (re-exports only), `queue/handlers.py` (example subscriber) |
 | `[tasks]` / `[tasks-redis]` | `tasks/queue.py` (`tq = TaskQueue.from_settings(settings)` + `get_task_queue`), `tasks/names.py` (`EXAMPLE_TASK_NAME`, `EXAMPLE_SCHEDULE`; imports nothing from the project), `tasks/example.py` (registration only: `@tq.cron(EXAMPLE_SCHEDULE, name=EXAMPLE_TASK_NAME)` calling `scripts/example.py`), `tasks/dispatch.py` (`TaskDispatcher`: the API enqueues by name, with `enqueue_by_name`), `tasks/worker.py` (imports the tasks; `broker`/`scheduler` for `taskiq worker src.tasks.worker:broker`), `tasks/__init__.py` (re-exports queue, names and dispatcher — never a task) |
 
 Both extras generate the same layer: the transport comes from `TASKIQ_BROKER_URL` at runtime. With `[tasks-redis]`, `tempest new` also declares `TASKIQ_BROKER_URL` on `Settings` with a `redis://localhost:6379/0` default and writes the same URL to `.env.example`, because the mixin's default is `amqp://`, which selects RabbitMQ and needs `[tasks]`. If the URL still points at a transport whose extra is not installed, the `ImportError` from `TaskQueue.from_settings` names `TASKIQ_BROKER_URL`, the value it read (password masked) and the URL shape of the other transport.
@@ -2550,13 +2550,14 @@ happens to share a model's name stays clean.
 
 #### Layer in a context package (warning)
 
-Three rules check the shape of the four layers — `controllers/`,
+Four rules check the shape of the four layers — `controllers/`,
 `services/`, `repositories/` and `models/`. They enter as **warnings**:
 
 | Code | Where | What it reports |
 | --- | --- | --- |
 | `LAY001` | `controllers/`, `repositories/`, `models/` | a second class in the module (any name, private ones too) or a module-level function. In `services/` `SVC002` reports it, as an error |
 | `LAY002` | all four layers | a module directly at the layer root: `models/route.py` goes to `models/<context>/route.py`. Any context name is fine; `__init__.py` is exempt |
+| `LAY003` | all four layers | a file name that repeats the layer: `services/orders/checkout_service.py` becomes `services/orders/checkout.py`, and the class inside stays `CheckoutService`. Covers `_controller`, `_service`, `_repository` and `_model` |
 | `REPO002` | `repositories/` | an import of a `*Repository` name from another repository module (an absolute import with a `repositories` segment, or a relative one). A name used only as a class base — the project's base repository — passes |
 
 A `models/route.py` with two models and a repository importing another
@@ -2733,6 +2734,31 @@ src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module o
     a cycle with `src.tasks`.
     That is a case for a declared exception
     (`"IMP002 <path>::<name>": "<reason>"`), not for rewriting the import.
+
+#### What a package holds, and how long a file is (warning)
+
+| Code | Where | What it reports |
+| --- | --- | --- |
+| `INIT001` | every `__init__.py`, source and suite | a statement that does more than re-export: a `def`, a `class`, a call, a constant. A docstring, imports, the `__all__` binding (`+=` too) and an `if`/`try` made only of those (`if TYPE_CHECKING:`, an optional import) pass |
+| `SIZE001` | every module, source and suite | a file over 1000 lines, reported at line 1001. No file is exempt |
+
+An `admin/__init__.py` composing its sub-routers, a service whose file name
+carries the layer, and a 1040-line test file come out like this
+(`tempest lint-layers --rule INIT001 --rule SIZE001 --rule LAY003`, real
+output, exit code `0`):
+
+```text
+src/api/routers/admin/__init__.py:5: INIT001 (warning) `admin_router: APIRouter = APIRouter(prefix="/admin")` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+src/api/routers/admin/__init__.py:6: INIT001 (warning) `admin_router.include_router(orders_router)` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+src/services/orders/checkout_service.py:1: LAY003 (warning) checkout_service.py repeats the layer its directory already names; rename it to checkout.py — the class inside keeps its suffix.
+tests/integration/orders/test_orders.py:1001: SIZE001 (warning) test_orders.py has 1040 lines, over 1000; split it by responsibility — a service into several services, a test file into one file per theme, an __init__.py into a subpackage per domain.
+4 layer finding(s): 0 error(s), 4 warning(s).
+```
+
+The composition moves to `admin/router.py` (`build_admin_router()`),
+re-exported by the `__init__.py`; a factory to `factory.py`; a seed run to
+`runner.py`. A big file splits by responsibility — the service into several
+services, the test into one file per theme.
 
 #### Router: one per file, `/api` once (warning)
 

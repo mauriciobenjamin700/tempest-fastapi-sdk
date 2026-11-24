@@ -353,7 +353,7 @@ my-service/
 ```
 
 
-Each `__init__.py` re-exports its neighbours with a **relative** import (`from .user import UserModel as UserModel`), and the rest of the code imports through the **layer package**: `from src.schemas import UserCreateSchema`, never `from src.schemas.user import UserCreateSchema`. This keeps refactors painless — move files around without breaking imports. `tempest lint-layers` checks both (`IMP001`, `IMP002`) and the layers' shape (`LAY001`, `LAY002`).
+Each `__init__.py` re-exports its neighbours with a **relative** import (`from .user import UserModel as UserModel`), and the rest of the code imports through the **layer package**: `from src.schemas import UserCreateSchema`, never `from src.schemas.user import UserCreateSchema`. This keeps refactors painless — move files around without breaking imports. `tempest lint-layers` checks both (`IMP001`, `IMP002`), that an `__init__.py` does nothing but re-export (`INIT001`), and the layers' shape (`LAY001`–`LAY003`, `SIZE001`).
 
 If your service has no controllers/services/repositories yet, **still ship empty packages with the right names** — uniformity matters more than skipping a directory. Drop `db/`, `utils/`, `queue/` or `tasks/` only when the service genuinely doesn't need persistence/utilities/messaging.
 
@@ -3106,7 +3106,7 @@ async def broadcast(
 Install with `[queue]` (pulls `faststream[rabbit]`). The other transports have their own extra, because `[queue]` carries the RabbitMQ client only: `[queue-kafka]`, `[queue-nats]`, `[queue-redis]`.
 
 ```python
-# src/queue/__init__.py
+# src/queue/broker.py
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager

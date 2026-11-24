@@ -19,7 +19,7 @@ O problema que o FastStream resolve mal: a API muda de forma conforme o transpor
 Instale com `[queue]` (puxa `faststream[rabbit]`). Os outros transportes têm extra próprio, porque o `[queue]` traz só o cliente do RabbitMQ: `[queue-kafka]`, `[queue-nats]`, `[queue-redis]`.
 
 ```python
-# src/queue/__init__.py
+# src/queue/broker.py
 
 from pydantic import BaseModel
 
@@ -50,6 +50,8 @@ async def handle_order_paid(event: OrderPaid) -> None:
 ```
 
 Repare no `event: OrderPaid`: **a anotação de tipo dirige a decodificação**. O FastStream valida o payload recebido nesse modelo Pydantic **antes** do seu handler rodar — mensagem malformada nunca chega no seu código.
+
+O `src/queue/__init__.py` só reexporta — `from .broker import OrderPaid as OrderPaid`, o mesmo para `OrderCancelled` e `mq`, mais o `__all__` — e é por ele que o resto do código importa (`from src.queue import mq`). Definição ou chamada no `__init__.py` acusa `INIT001` no `tempest check`.
 
 Ligue o ciclo de vida no lifespan do FastAPI e publique de qualquer lugar:
 
@@ -126,7 +128,7 @@ from tempest_fastapi_sdk.queue import Consumer, subscribe
 from src.queue import OrderCancelled, OrderPaid, mq
 
 
-# OrderPaid / OrderCancelled definidos no bloco `src/queue/__init__.py` acima.
+# OrderPaid / OrderCancelled definidos no bloco `src/queue/broker.py` acima.
 
 
 class OrdersConsumer(Consumer):
