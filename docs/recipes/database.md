@@ -521,7 +521,8 @@ manager.
 
 ### Ciclo de vida no lifespan
 
-Abra e feche a engine junto com a aplicação:
+Abra e feche a engine junto com a aplicação, e traga o schema para a head
+das migrations **antes** de atender o primeiro request:
 
 ```python
 # src/api/app.py
@@ -531,15 +532,83 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.configs import run_migrations
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Open the database on startup, dispose it on shutdown."""
+    """Migrate the schema, open the database, dispose it on shutdown."""
+    await run_migrations(settings.DATABASE_URL)
     await db.connect()
     yield
     await db.disconnect()
 ```
+
+O `run_migrations` é o mesmo que o `tempest new` gera em
+`src/db/configs/migrations.py`: uma chamada a
+`AlembicHelper.sync_schema_async()` com o caminho absoluto do `alembic.ini`.
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
+
+
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
+```
+
+O scaffold ainda envolve a chamada em
+`if settings.DATABASE_MIGRATE_ON_STARTUP:` — campo do `Settings` gerado, não
+de um mixin do SDK — para desligá-la quando várias réplicas sobem juntas e um
+job roda `tempest db upgrade`.
+
+O `alembic.ini` e o `alembic/env.py` vêm do `AlembicHelper.init(...)` (ou
+`tempest db init`), não escritos à mão — veja
+[Bootstrap, uma vez por projeto](#bootstrap-uma-vez-por-projeto). E o
+`sync_schema_async()` só cria tabela a partir de revision: sem nenhuma
+revision em `alembic/versions/`, ele devolve
+`SchemaSyncOutcomeEnum.NO_MIGRATIONS` e não toca no banco. Gere a revision
+inicial (`tempest db revision -m "initial"`) antes da primeira subida.
+
+!!! danger "Nada de `create_tables()` no lifespan"
+    É a forma que parece equivalente, e não é:
+
+    ```python
+    # src/api/app.py — errado: o schema para de evoluir na segunda subida.
+    from collections.abc import AsyncGenerator
+    from contextlib import asynccontextmanager
+
+    from fastapi import FastAPI
+
+    from src.api.dependencies.resources import db
+
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        """Create the tables on every boot."""
+        await db.connect()
+        await db.create_tables()
+        yield
+        await db.disconnect()
+    ```
+
+    Na primeira subida ela cria tudo. Na seguinte, com uma coluna nova no
+    model, `create_tables()` não acrescenta a coluna, não falha e não avisa
+    — medido no SQLite: a tabela `notes` continua com
+    `['title', 'id', 'is_active', 'created_at', 'updated_at']` depois de o
+    model ganhar `body`. O erro só aparece na primeira query que lê a coluna.
+    `create_tables()` fica em fixture de teste com SQLite em memória, onde o
+    banco nasce e morre no processo — veja
+    [Migrations »](migrations.md#onde-create_tables-e-legitimo).
 
 ### Health check
 
@@ -2675,16 +2744,23 @@ from src.core.settings import settings
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run pending migrations, then serve."""
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
-    await helper.upgrade_async()
+    await helper.sync_schema_async()
     await db.connect()
     yield
     await db.disconnect()
 ```
 
-`upgrade_async()` roda a migration numa thread de trabalho: o `env.py` do SDK
-chama `asyncio.run`, que não aninha dentro do loop do lifespan, então um
-`helper.upgrade()` simples ali levanta `RuntimeError` nomeando o
-`upgrade_async`. Todo comando que roda o `env.py` tem o mesmo par `_async` —
+`sync_schema_async()` é o bootstrap inteiro: banco vazio roda a árvore toda,
+banco criado antes do Alembic é carimbado na revision base e depois migrado,
+e banco já migrado só recebe o que falta — o retorno
+(`SchemaSyncOutcomeEnum`) diz qual dos caminhos rodou. Num projeto gerado
+pelo `tempest new` essa chamada já está em `run_migrations`
+([Ciclo de vida no lifespan](#ciclo-de-vida-no-lifespan)).
+
+Ele roda numa thread de trabalho: o `env.py` do SDK chama `asyncio.run`, que
+não aninha dentro do loop do lifespan, então o `helper.sync_schema()` síncrono
+ali levanta `RuntimeError` nomeando o `sync_schema_async`. Todo comando que
+roda o `env.py` tem o mesmo par `_async` —
 veja [Migrations »](migrations.md#de-codigo-async-use-o-metodo-_async).
 
 !!! warning "Migrações destrutivas: use `safe_upgrade`"

@@ -778,6 +778,13 @@ with TestClient(app) as client:
     print(capped.status_code, capped.json()["details"])
 ```
 
+!!! note "`create_tables()` here is a demo shortcut"
+    The example fits in a single file, so it creates the tables straight
+    in the lifespan. In a service, the lifespan calls `sync_schema_async()`
+    over the Alembic migrations: `create_tables()` adds no column to a
+    table that already exists. See
+    [Migrations »](recipes/migrations.md#3-sync-the-schema-in-the-lifespan).
+
 ```text
 201 Dune
 200 5990

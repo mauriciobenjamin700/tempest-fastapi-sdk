@@ -114,6 +114,13 @@ app.include_router(api)                              # 1) API first
 app.include_router(make_web_app_router("web/dist/wasm"))  # 2) frontend last
 ```
 
+!!! note "`create_tables()` here is a demo shortcut"
+    The example fits in a single file, so it creates the tables straight
+    in the lifespan. In a service, the lifespan calls `sync_schema_async()`
+    over the Alembic migrations: `create_tables()` adds no column to a
+    table that already exists. See
+    [Migrations »](migrations.md#3-sync-the-schema-in-the-lifespan).
+
 ## The frontend (tempestweb)
 
 The tempestweb `web/app.py` (the `make_state` + `view` contract). The handler

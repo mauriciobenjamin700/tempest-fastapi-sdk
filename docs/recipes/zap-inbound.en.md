@@ -739,6 +739,13 @@ app: FastAPI = FastAPI(lifespan=lifespan)
 app.include_router(router)
 ```
 
+!!! note "`create_tables()` here is a demo shortcut"
+    The example fits in a single file, so it creates the tables straight
+    in the lifespan. In a service, the lifespan calls `sync_schema_async()`
+    over the Alembic migrations: `create_tables()` adds no column to a
+    table that already exists. See
+    [Migrations »](migrations.md#3-sync-the-schema-in-the-lifespan).
+
 Running a sequence of deliveries against it:
 
 ```python title="run_service.py"
