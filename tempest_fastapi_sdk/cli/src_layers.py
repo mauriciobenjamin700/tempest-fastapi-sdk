@@ -646,13 +646,13 @@ return :func:`html_response`.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
 from fastapi.responses import Response
+from tempest_fastapi_sdk import TempestAPIRouter
 from tempest_fastapi_sdk.ssr import html_response
 
 from __ROOT__.ui import CSS_URL, HomePage
 
-router: APIRouter = APIRouter(tags=["web"], include_in_schema=False)
+router: TempestAPIRouter = TempestAPIRouter(tags=["web"], include_in_schema=False)
 
 
 @router.get("/")

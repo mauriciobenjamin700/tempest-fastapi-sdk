@@ -23,7 +23,7 @@ runner = CliRunner()
 
 _BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
 _SDK_IMPORT = re.compile(
-    r"^from (tempest_fastapi_sdk[\w.]*) import (.+)$", re.MULTILINE
+    r"^from (tempest_fastapi_sdk[\w.]*) import (\([^)]*\)|.+)$", re.MULTILINE
 )
 
 
@@ -72,7 +72,8 @@ def test_every_sdk_symbol_it_imports_exists(claude_md: str) -> None:
     checked = 0
     for module_name, names in _SDK_IMPORT.findall(claude_md):
         module = importlib.import_module(module_name)
-        for name in (item.strip() for item in names.split(",")):
+        listed = (item.strip() for item in names.strip("()").split(","))
+        for name in (item for item in listed if item):
             assert hasattr(module, name), f"{module_name}.{name} does not exist"
             checked += 1
     assert checked >= 10

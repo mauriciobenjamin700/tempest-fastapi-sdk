@@ -5008,3 +5008,23 @@ falha) e `tests/share/test_frame.py` (decodifica o QR dentro dos dois
 layouts: com e sem foto, com e sem logo, com texto longo e link UUID).
 Receita: `docs/recipes/qr-logo.md`.
 
+
+## `TempestAPIRouter` e `EndpointDoc` no router de domínio (#825, #827)
+
+O scaffold gera o router de domínio com `TempestAPIRouter` (o
+`service_info.py` e o `web.py` do extra `[ssr]`); o `build_api_router`
+continua `APIRouter`, porque a classe do router que inclui não muda as
+respostas (medido: `APIRouter` de domínio num agregador `TempestAPIRouter`
+sai sem os erros; o contrário sai com eles). O passo 7 do `CLAUDE.md` do
+projeto ensina `TempestAPIRouter` + `@raises` abaixo do decorator +
+`EndpointDoc` espalhado. `lint-layers`: `RTR003`/`RTR004` passam a contar
+`TempestAPIRouter` e subclasses do projeto (`openapi_depends.router_classes`);
+avisos novos `RTR005` (`fastapi.APIRouter` em `routers/` fora do
+`build_api_router`) e `RTR006` (`summary=`/`description=` no decorator de
+rota). Guias (`service-standard`, `recommended-architecture`,
+`architecture`, `tutorial`, `first-project`, README) com `api/docs/` na
+árvore e os routers no padrão; `service-standard` ganhou a seção "Erros da
+rota" com o `409` medido (`$ref` para `ErrorResponseSchema` em
+`components.schemas`, um exemplo por `code`; `responses=` explícito
+substitui a entrada do status inteira). Testes:
+`tests/cli/test_layer_lint_routers.py`.

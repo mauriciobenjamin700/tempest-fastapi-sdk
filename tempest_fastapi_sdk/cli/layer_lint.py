@@ -107,12 +107,26 @@ The rules:
   that would close a cycle anyway is a declared exception.
 
 * ``RTR003`` (warning) — a module in ``routers/`` that builds more than
-  one ``APIRouter``; one finding per router after the first. One router
-  per file keeps a domain's routes where its name says.
+  one router; one finding per router after the first. A router is a call
+  to ``APIRouter``, ``TempestAPIRouter`` or a class the project derives
+  from them (:func:`~tempest_fastapi_sdk.cli.openapi_depends.router_classes`).
+  One router per file keeps a domain's routes where its name says.
 * ``RTR004`` (warning) — a ``prefix`` of ``/api`` (or under it) passed to
-  ``APIRouter(...)`` or ``include_router(...)`` anywhere but inside a
+  a router construction or ``include_router(...)`` anywhere but inside a
   ``build_api_router`` function (``routers/api.py``). The ``/api`` prefix
   is set once; a domain router declares only its own prefix.
+* ``RTR005`` (warning) — a module in ``routers/`` that builds a plain
+  ``fastapi.APIRouter`` outside ``build_api_router``. ``@raises`` is only
+  read by ``TempestAPIRouter``: on a plain ``APIRouter`` the tag is inert
+  and the route's error responses are missing from the OpenAPI document.
+  The aggregator in ``build_api_router`` is exempt, since the class of the
+  router a handler is *included* into does not change its responses —
+  only the router it is registered on does.
+* ``RTR006`` (warning) — a route decorator in ``routers/`` passing
+  ``summary=`` or ``description=``. The OpenAPI text of a route lives in
+  an ``EndpointDoc`` constant of ``api/docs/<router>.py`` and is spread
+  into the decorator (``**docs.CREATE_PRODUCT``), so a literal and a
+  ``SUMMARY_*`` constant declared in the router are both reported.
 
 * ``TST001`` (warning) — a test (``test*`` at module level, or a
   ``test*`` method of a ``Test*`` class, in a ``test_*.py`` /
@@ -181,6 +195,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
 
 from tempest_fastapi_sdk.cli.config import load_tempest_table
+from tempest_fastapi_sdk.cli.openapi_depends import router_classes
 
 if TYPE_CHECKING:
     from tempest_cli import StepOptions
@@ -312,7 +327,15 @@ SELF_ASSEMBLY_METHOD: str = "from_session"
 """Function name ``DI003`` reports."""
 
 ROUTER_CLASS: str = "APIRouter"
-"""Callee name ``RTR003`` counts and ``RTR004`` reads the prefix of."""
+"""FastAPI's router class, the one ``RTR005`` reports in ``routers/``.
+
+``RTR003`` and ``RTR004`` count every router class instead —
+:data:`~tempest_fastapi_sdk.cli.openapi_depends.ROUTER_CLASS_NAMES` plus
+the project's own subclasses.
+"""
+
+ROUTE_DOC_KEYWORDS: tuple[str, ...] = ("summary", "description")
+"""Route-decorator keywords ``RTR006`` reports: the keys of ``EndpointDoc``."""
 
 API_PREFIX: str = "/api"
 """The prefix only :data:`API_ROUTER_BUILDER` may set (``RTR004``)."""
@@ -429,6 +452,8 @@ RULES: dict[str, LayerRule] = {
         LayerRule("IMP002", "warning", "submodule import of a re-exported name"),
         LayerRule("RTR003", "warning", "more than one APIRouter in a module"),
         LayerRule("RTR004", "warning", "/api prefix outside build_api_router"),
+        LayerRule("RTR005", "warning", "fastapi.APIRouter in a routers module"),
+        LayerRule("RTR006", "warning", "summary=/description= in a route decorator"),
         LayerRule("TST001", "warning", "test docstring without Cenário/Esperado"),
         LayerRule("TST002", "warning", "test that checks nothing"),
         LayerRule("TST003", "warning", "pytest.raises(Exception)"),
@@ -1743,11 +1768,15 @@ def _assigned_names(module: ast.Module) -> dict[ast.AST, str]:
     return names
 
 
-def _check_router_count(modules: list[_ParsedModule]) -> list[LayerFinding]:
+def _check_router_count(
+    modules: list[_ParsedModule], classes: frozenset[str]
+) -> list[LayerFinding]:
     """Apply ``RTR003`` to the ``routers/`` modules.
 
     Args:
         modules (list[_ParsedModule]): Every module in ``routers/``.
+        classes (frozenset[str]): The router class names, from
+            :func:`~tempest_fastapi_sdk.cli.openapi_depends.router_classes`.
 
     Returns:
         list[LayerFinding]: The violations, in file and line order.
@@ -1759,7 +1788,7 @@ def _check_router_count(modules: list[_ParsedModule]) -> list[LayerFinding]:
             (
                 node
                 for node, _function in _calls_with_function(parsed.tree)
-                if _call_name(node) == ROUTER_CLASS
+                if _call_name(node) in classes
             ),
             key=lambda node: (node.lineno, node.col_offset),
         )
@@ -1772,7 +1801,7 @@ def _check_router_count(modules: list[_ParsedModule]) -> list[LayerFinding]:
                     code="RTR003",
                     subject=name,
                     message=(
-                        f"a second {ROUTER_CLASS} in this module"
+                        "a second router in this module"
                         f"{f' (`{name}`)' if name else ''}; one router per file "
                         f"in routers/ — move it to its own module."
                     ),
@@ -1802,19 +1831,24 @@ def _api_prefix(call: ast.Call) -> str | None:
     return None
 
 
-def _check_api_prefix(modules: list[_ParsedModule]) -> list[LayerFinding]:
+def _check_api_prefix(
+    modules: list[_ParsedModule], classes: frozenset[str]
+) -> list[LayerFinding]:
     """Apply ``RTR004`` to every module of the source root.
 
     Args:
         modules (list[_ParsedModule]): Every module under the scan roots.
+        classes (frozenset[str]): The router class names, from
+            :func:`~tempest_fastapi_sdk.cli.openapi_depends.router_classes`.
 
     Returns:
         list[LayerFinding]: The violations, in file and line order.
     """
     findings: list[LayerFinding] = []
+    callees: set[str] = {*classes, "include_router"}
     for parsed in modules:
         for call, function in _calls_with_function(parsed.tree):
-            if _call_name(call) not in {ROUTER_CLASS, "include_router"}:
+            if _call_name(call) not in callees:
                 continue
             if function == API_ROUTER_BUILDER:
                 continue
@@ -1836,6 +1870,78 @@ def _check_api_prefix(modules: list[_ParsedModule]) -> list[LayerFinding]:
                 )
             )
     return findings
+
+
+def _check_plain_routers(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``RTR005`` to the ``routers/`` modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module in ``routers/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        names = _assigned_names(parsed.tree)
+        for call, function in _calls_with_function(parsed.tree):
+            if _call_name(call) != ROUTER_CLASS or function == API_ROUTER_BUILDER:
+                continue
+            name = names.get(call)
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=call.lineno,
+                    code="RTR005",
+                    subject=name,
+                    message=(
+                        f"{ROUTER_CLASS}(...) builds this router"
+                        f"{f' (`{name}`)' if name else ''}; build it with "
+                        f"`TempestAPIRouter` from tempest_fastapi_sdk, which "
+                        f"turns each handler's `@raises(...)` into its "
+                        f"`responses=` (a plain {ROUTER_CLASS} ignores the tag)."
+                    ),
+                )
+            )
+    return sorted(findings, key=lambda finding: (str(finding.path), finding.line))
+
+
+def _check_route_docs(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``RTR006`` to the ``routers/`` modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module in ``routers/``.
+
+    Returns:
+        list[LayerFinding]: The violations, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        for function in ast.walk(parsed.tree):
+            if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            decorator = _route_decorator(function)
+            if decorator is None:
+                continue
+            for keyword in decorator.keywords:
+                if keyword.arg not in ROUTE_DOC_KEYWORDS:
+                    continue
+                findings.append(
+                    LayerFinding(
+                        path=parsed.path,
+                        line=keyword.value.lineno,
+                        code="RTR006",
+                        subject=function.name,
+                        message=(
+                            f"route `{function.name}` passes `{keyword.arg}=` "
+                            f"in its decorator; keep the OpenAPI text in an "
+                            f"`EndpointDoc` constant of api/docs/<router>.py "
+                            f"and spread it into the decorator "
+                            f"(`**docs.{function.name.upper()}`)."
+                        ),
+                    )
+                )
+    return sorted(findings, key=lambda finding: (str(finding.path), finding.line))
 
 
 def _is_test_file(path: Path) -> bool:
@@ -2593,6 +2699,7 @@ def lint_layers(
         else []
     )
     selected = set(RULES) if rules is None else {*rules, "EXC001", "EXC002"}
+    classes = router_classes(parsed.tree for parsed in source_modules)
     findings = [
         finding
         for finding in (
@@ -2607,8 +2714,10 @@ def lint_layers(
             *_check_self_assembly(source_modules),
             *_check_structure([*source_modules, *test_modules]),
             *_check_imports([*source_modules, *test_modules], project_root(target)),
-            *_check_router_count(router_modules),
-            *_check_api_prefix(source_modules),
+            *_check_router_count(router_modules, classes),
+            *_check_api_prefix(source_modules, classes),
+            *_check_plain_routers(router_modules),
+            *_check_route_docs(router_modules),
             *_check_tests(test_modules),
         )
         if finding.code in selected
@@ -2755,6 +2864,7 @@ __all__: list[str] = [
     "ROUTER_BUILDS_MARKER",
     "ROUTER_CLASS",
     "ROUTE_DECORATORS",
+    "ROUTE_DOC_KEYWORDS",
     "RULES",
     "SCHEMAS_SEGMENT",
     "SELF_ASSEMBLY_METHOD",

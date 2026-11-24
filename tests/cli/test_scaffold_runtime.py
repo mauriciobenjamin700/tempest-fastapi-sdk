@@ -288,11 +288,12 @@ def _write_domain_from_claude_md(project: Path) -> None:
         for block in blocks
         if 'tags=["products"])' in block and "BasePagination" in block
     )
-    pagination_imports = "".join(
-        line + "\n"
-        for line in listing.split("router: APIRouter", 1)[0].splitlines()
-        if "BasePagination" in line
+    pagination_import = re.search(
+        r"from tempest_fastapi_sdk import \([^)]*BasePagination[^)]*\)\n",
+        listing.split("router: TempestAPIRouter", 1)[0],
     )
+    assert pagination_import is not None, listing
+    pagination_imports = pagination_import.group(0)
     router_source = (
         pagination_imports
         + by_path["src/api/routers/product.py"]
@@ -680,6 +681,8 @@ def test_bundle_route_follows_the_recipe_domain_layer_by_layer(
     ]
     assert paths[0] == "src/api/routers/product.py"
     for expected in (
+        "src/api/docs/product.py",
+        "src/api/docs/base.py",
         "src/api/dependencies/controllers.py",
         "src/controllers/products/product.py",
         "src/services/products/product.py",
@@ -690,7 +693,7 @@ def test_bundle_route_follows_the_recipe_domain_layer_by_layer(
         assert expected in paths, paths
     assert not any("service_info" in path for path in paths), paths
     assert not any(path.startswith(".venv") or path == ".env" for path in paths)
-    assert "15 file(s), 635 line(s)" in result.stderr
+    assert "17 file(s), 679 line(s)" in result.stderr
     ambiguous = runner.invoke(cli_app, ["bundle-route", "/api/products"])
     assert ambiguous.exit_code == 2
     assert (
