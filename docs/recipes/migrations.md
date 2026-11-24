@@ -10,20 +10,101 @@ que seu banco está.
 
 ## O bootstrap completo
 
+São três passos, e só o último roda a cada subida. Um projeto gerado pelo
+`tempest new` já sai com os três feitos.
+
+### 1. Gere o ambiente com `AlembicHelper.init`
+
+Não escreva `alembic.ini` nem `alembic/env.py` à mão:
+
 ```python
-# src/db/schema.py
+# scripts/alembic_init.py
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini").init(
+    "alembic",
+    metadata_module="src.db.models",
+    metadata_attr="BaseModel",
+)
+```
+
+```bash
+uv run python scripts/alembic_init.py
+```
+
+O `metadata_module` é o módulo que expõe o `BaseModel` com todo model já
+importado — no projeto do `tempest new`, `src.db.models`; num layout em que
+só `src/db/__init__.py` reexporta o `BaseModel`, `src.db`. `tempest db init`
+faz a mesma chamada. Rodando o script acima num diretório
+vazio, o `alembic.ini` gerado é este:
+
+```ini
+[alembic]
+script_location = %(here)s/alembic
+prepend_sys_path = %(here)s
+path_separator = os
+sqlalchemy.url =
+file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(rev)s_%%(slug)s
+timezone = UTC
+
+[post_write_hooks]
+hooks = ruff_format, ruff_fix
+ruff_format.type = exec
+ruff_format.executable = ruff
+ruff_format.options = format --quiet REVISION_SCRIPT_FILENAME
+ruff_fix.type = exec
+ruff_fix.executable = ruff
+ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME
+```
+
+Três coisas nele que a versão escrita à mão costuma errar:
+
+- **`sqlalchemy.url` vazio.** A credencial não entra no controle de versão;
+  a URL chega pelo `db_url=` do `AlembicHelper` ou, sem ele, pela variável
+  `DATABASE_URL` do ambiente.
+- **Nenhuma seção `[loggers]`/`[handlers]`/`[formatters]`.** O `env.py`
+  gerado só chama o `fileConfig` do logging quando a seção existe, então a
+  migration que roda dentro do processo do serviço não reconfigura a árvore
+  de logging que o `configure_logging` já montou. O bloco padrão do
+  `alembic init -t async` traz `[logger_root]` com `level = WARNING`.
+- **`[post_write_hooks]` com `ruff format` e depois `ruff check --fix`**, para
+  a revision gerada já sair lint-clean. Requer `ruff` no `PATH`.
+
+O `alembic/env.py` gerado é uma chamada a `run_alembic_env(target_metadata)`
+— veja [O `env.py` gerado](#o-envpy-gerado).
+
+### 2. Gere a revision inicial
+
+```bash
+uv run tempest db revision -m "initial"
+```
+
+Sem revision nenhuma, o passo 3 não cria tabela: devolve
+`SchemaSyncOutcomeEnum.NO_MIGRATIONS` e deixa o banco como está. Medido num
+SQLite vazio, antes da primeira revision: `outcome: no_migrations`, zero
+tabelas.
+
+### 3. Sincronize o schema no lifespan
+
+A forma é a que o `tempest new` gera — um `run_migrations` em
+`src/db/configs/migrations.py`, com o caminho **absoluto** do `alembic.ini`
+para o lifespan achá-lo de qualquer diretório:
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
 from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
 
-from src.core.settings import settings
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
 
 
-async def sync_schema() -> SchemaSyncOutcomeEnum:
-    """Bring the database schema in line with the migration tree."""
-    helper: AlembicHelper = AlembicHelper(
-        "alembic.ini",
-        db_url=settings.DATABASE_URL,
-    )
-    return await helper.sync_schema_async()
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
 ```
 
 Chame isso do lifespan e o serviço sobe com o schema certo a partir de
@@ -36,19 +117,54 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.db.schema import sync_schema
+from src.core.settings import settings
+from src.db.configs import run_migrations
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Sync the schema before the first request is served."""
-    outcome = await sync_schema()
+    outcome = await run_migrations(settings.DATABASE_URL)
     print(f"schema: {outcome.value}")
     yield
 
 
 app: FastAPI = FastAPI(lifespan=lifespan)
 ```
+
+Medido com um model, uma revision inicial e o lifespan acima subindo três
+bancos SQLite: o vazio sai `synced` com `alembic_version` e a tabela; o
+criado antes por `create_tables()` sai `adopted`; a segunda subida do
+primeiro sai `synced` sem mudar nada.
+
+### Nada de `create_tables()` no lifespan
+
+```python
+# src/api/app.py — errado: o schema para de evoluir na segunda subida.
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from src.api.dependencies.resources import db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the tables on every boot."""
+    await db.connect()
+    await db.create_tables()
+    yield
+    await db.disconnect()
+```
+
+A primeira subida funciona, e é por isso que essa forma sobrevive à revisão.
+Coluna nova no model não chega ao banco nas subidas seguintes:
+`create_tables()` é `CREATE TABLE IF NOT EXISTS` — o porquê está em
+[Por que `create_tables()` não serve](#por-que-create_tables-nao-serve). A
+regra é uma só: **no lifespan, `run_migrations`; `create_tables()` só em
+fixture de teste com SQLite em memória**
+([Onde `create_tables()` é legítimo](#onde-create_tables-e-legitimo)).
 
 ## De código async, use o método `_async`
 
@@ -629,6 +745,11 @@ falta" é tudo — então ele acerta. Num banco que já rodou, "o que falta" é
 nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
 
 !!! check "Recap"
+    - `alembic.ini` e `alembic/env.py` saem do `AlembicHelper.init(...)` (ou
+      `tempest db init`), nunca à mão; sem revision inicial o
+      `sync_schema_async()` devolve `NO_MIGRATIONS` e não cria tabela.
+    - No lifespan, `run_migrations` (o `sync_schema_async()` do scaffold);
+      nunca `create_tables()`.
     - `sync_schema()` é o bootstrap inteiro: distingue banco vazio, banco que
       precede o Alembic e banco já migrado, e devolve qual caminho tomou.
     - No banco vazio a árvore inteira roda sem o guard destrutivo (não há

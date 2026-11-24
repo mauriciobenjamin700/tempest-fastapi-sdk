@@ -469,6 +469,13 @@ if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
 
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
+
 O que cada rota faz:
 
 - **`admin_create_user`** cria a conta **já ativa**. O caminho é o do
@@ -947,6 +954,13 @@ async def profile(current: UserModel = Depends(get_current_user)) -> AuthUserSch
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
 
 Três linhas fazem o trabalho desta seção:
 

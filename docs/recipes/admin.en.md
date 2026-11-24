@@ -1498,6 +1498,13 @@ if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
 
+!!! note "`create_tables()` here is a demo shortcut"
+    The example fits in a single file, so it creates the tables straight
+    in the lifespan. In a service, the lifespan calls `sync_schema_async()`
+    over the Alembic migrations: `create_tables()` adds no column to a
+    table that already exists. See
+    [Migrations »](migrations.md#3-sync-the-schema-in-the-lifespan).
+
 Each map becomes an entry in the sidebar's **Maps** section, at
 `/admin/maps/<slug>` (the slug comes from the title, accents dropped:
 `usuarios-por-regiao`). Measured with the example, by requests to the panel:

@@ -218,6 +218,13 @@ async def delete_task(task_id: UUID) -> object:
     return html_response(Text(content="", tag="span"), document=False)
 ```
 
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](recipes/migrations.md#3-sincronize-o-schema-no-lifespan).
+
 Rode com `uvicorn app:app --reload` e abra `http://127.0.0.1:8000`.
 
 !!! check "O que este projeto mostra"

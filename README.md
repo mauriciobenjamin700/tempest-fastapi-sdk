@@ -548,7 +548,7 @@ from .models import UserModel as UserModel
 __all__: list[str] = ["BaseModel", "UserModel"]
 ```
 
-> **Tip:** Always import models in `src/db/__init__.py`. SQLAlchemy needs to "see" every model before `BaseModel.metadata` is complete, so Alembic autogenerate and `create_tables()` work correctly. `create_tables()` without an argument only sees `BaseModel.metadata`; a service with its own `DeclarativeBase` calls `create_tables(Base.metadata)`.
+> **Tip:** Always import models in `src/db/__init__.py`. SQLAlchemy needs to "see" every model before `BaseModel.metadata` is complete, so Alembic autogenerate (and the `create_tables()` of test fixtures) work correctly. The schema itself comes from migrations — see [Apply on startup](#apply-on-startup). `create_tables()` without an argument only sees `BaseModel.metadata`; a service with its own `DeclarativeBase` calls `create_tables(Base.metadata)`.
 
 ### 4. Schemas
 
@@ -1740,7 +1740,7 @@ from src.core.settings import settings
 helper = AlembicHelper(config_path="alembic.ini", db_url=settings.DATABASE_URL)
 helper.init(
     directory="alembic",
-    metadata_module="src.db.models",        # exposes BaseModel
+    metadata_module="src.db",               # re-exports BaseModel + every model
     metadata_attr="BaseModel",
     db_url=settings.DATABASE_URL,
 )
@@ -1801,7 +1801,7 @@ from src.core.settings import settings
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run pending migrations before serving traffic."""
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
-    await helper.upgrade_async()
+    await helper.sync_schema_async()
 
     await db.connect()
     yield
@@ -1810,6 +1810,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 Every `AlembicHelper` command that runs `alembic/env.py` has an `*_async` twin
 for code on a running event loop; the sync method raises there, naming it.
+
+`sync_schema_async()` covers an empty database (runs every revision), one
+created before Alembic (stamps the base revision, then upgrades) and one
+already migrated (upgrades). With no revision in `alembic/versions/` it
+returns `SchemaSyncOutcomeEnum.NO_MIGRATIONS` and creates no table, so
+generate the initial revision first. Never call `create_tables()` in the
+lifespan: it is `CREATE TABLE IF NOT EXISTS`, so a column added to a model
+never reaches a table that already exists. It belongs in test fixtures over
+in-memory SQLite.
 
 #### Readiness — database at the migration head
 

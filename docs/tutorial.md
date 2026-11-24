@@ -26,6 +26,8 @@ O layout canônico que todo serviço Python distribuído contra este SDK deve ad
 
 ```text
 my-service/
+├── alembic.ini                   # gerado pelo AlembicHelper.init
+├── alembic/                      # env.py + versions/ (uma revision por mudança de schema)
 ├── main.py                       # one-liner: from src.server import run; run()
 └── src/
     ├── __init__.py               # re-exporta `run` de .server
@@ -36,6 +38,9 @@ my-service/
     │   └── exceptions/           # um módulo por status: not_found.py, conflict.py, ...
     ├── db/
     │   ├── __init__.py           # re-exporta BaseModel + todo modelo
+    │   ├── configs/
+    │   │   ├── __init__.py
+    │   │   └── migrations.py     # run_migrations: sync_schema_async() no lifespan
     │   ├── models/
     │   │   ├── __init__.py       # from .users import UserModel as UserModel
     │   │   └── users/
@@ -191,11 +196,14 @@ from tempest_fastapi_sdk import (
 
 from src.api.dependencies.resources import db
 from src.api.routers import build_api_router
+from src.core.settings import settings
+from src.db.configs import run_migrations
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Connect on startup, dispose on shutdown."""
+    """Migrate the schema and connect on startup, dispose on shutdown."""
+    await run_migrations(settings.DATABASE_URL)
     await db.connect()
     try:
         yield
@@ -312,7 +320,68 @@ from .models import UserModel as UserModel
 __all__: list[str] = ["BaseModel", "UserModel"]
 ```
 
-> **Dica:** Sempre importe os modelos em `src/db/__init__.py`. O SQLAlchemy precisa "ver" todo modelo antes de `BaseModel.metadata` ficar completa, para que o autogenerate do Alembic e o `create_tables()` funcionem corretamente.
+> **Dica:** Sempre importe os modelos em `src/db/__init__.py`. O SQLAlchemy precisa "ver" todo modelo antes de `BaseModel.metadata` ficar completa, para que o autogenerate do Alembic (e o `create_tables()` das fixtures de teste) funcionem corretamente.
+
+#### O schema no banco: migrations
+
+A tabela `user` nasce de uma migration do Alembic, não de `create_tables()`
+no lifespan — `create_tables()` não acrescenta coluna em tabela que já
+existe, então o schema para de acompanhar o model na segunda subida. Gere o
+ambiente do Alembic uma vez, com o `AlembicHelper.init` do SDK em vez de
+escrever `alembic.ini` e `alembic/env.py` à mão:
+
+```python
+# scripts/alembic_init.py
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini").init(
+    "alembic",
+    metadata_module="src.db",
+    metadata_attr="BaseModel",
+)
+```
+
+```bash
+uv run python scripts/alembic_init.py
+uv run tempest db revision -m "create users"
+```
+
+O `metadata_module` é `src.db` porque é ele que reexporta `BaseModel` e
+importa todo model. A revision é obrigatória: sem nenhuma, o passo seguinte
+não cria tabela.
+
+O lifespan do passo 2 chama `run_migrations`, na forma que o `tempest new`
+gera:
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
+
+
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
+```
+
+```python
+# src/db/configs/__init__.py
+from .migrations import ALEMBIC_INI_PATH as ALEMBIC_INI_PATH
+from .migrations import run_migrations as run_migrations
+
+__all__: list[str] = ["ALEMBIC_INI_PATH", "run_migrations"]
+```
+
+`sync_schema_async()` cobre banco vazio (roda todas as revisions), banco
+criado antes do Alembic (carimba a revision base e migra o resto) e banco já
+migrado (aplica só o que falta). O porquê de cada caminho está em
+[Migrations »](recipes/migrations.md).
 
 ### 4. Schemas
 
