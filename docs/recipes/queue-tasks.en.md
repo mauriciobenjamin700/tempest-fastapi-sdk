@@ -19,7 +19,7 @@ The problem FastStream handles poorly: its API changes shape with the transport.
 Install with `[queue]` (pulls `faststream[rabbit]`). The other transports have their own extra, because `[queue]` carries the RabbitMQ client only: `[queue-kafka]`, `[queue-nats]`, `[queue-redis]`.
 
 ```python
-# src/queue/__init__.py
+# src/queue/broker.py
 
 from pydantic import BaseModel
 
@@ -50,6 +50,8 @@ async def handle_order_paid(event: OrderPaid) -> None:
 ```
 
 Note the `event: OrderPaid`: **the type hint drives decoding**. FastStream validates the inbound payload into that Pydantic model **before** your handler runs — a malformed message never reaches your code.
+
+`src/queue/__init__.py` only re-exports — `from .broker import OrderPaid as OrderPaid`, the same for `OrderCancelled` and `mq`, plus `__all__` — and it is what the rest of the code imports from (`from src.queue import mq`). A definition or a call in the `__init__.py` reports `INIT001` in `tempest check`.
 
 Wire the lifecycle into the FastAPI lifespan and publish from anywhere:
 
@@ -126,7 +128,7 @@ from tempest_fastapi_sdk.queue import Consumer, subscribe
 from src.queue import OrderCancelled, OrderPaid, mq
 
 
-# OrderPaid / OrderCancelled defined in the `src/queue/__init__.py` block above.
+# OrderPaid / OrderCancelled defined in the `src/queue/broker.py` block above.
 
 
 class OrdersConsumer(Consumer):

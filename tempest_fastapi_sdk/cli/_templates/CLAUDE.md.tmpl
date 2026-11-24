@@ -93,6 +93,72 @@ Outside an `__init__.py`, import from the **layer package**
 (`from src.services import ProductService`), never from the module the
 class lives in.
 
+**A file is named after what it holds, never after its layer** — the
+directory already says the layer. The class keeps its suffix, because it
+is the name every caller reads (`LAY003`):
+
+| Right | Wrong |
+| --- | --- |
+| `src/services/orders/checkout.py` → `CheckoutService` | `src/services/orders/checkout_service.py` |
+| `src/controllers/orders/checkout.py` → `CheckoutController` | `src/controllers/orders/checkout_controller.py` |
+| `src/db/repositories/orders/order.py` → `OrderRepository` | `src/db/repositories/orders/order_repository.py` |
+
+**No file passes 1000 lines** — code and tests alike, with no list of
+exceptions (`SIZE001`). A big service becomes several services, one per
+responsibility (`services/orders/checkout.py`, `services/orders/refund.py`);
+a big test file becomes one file per theme; a big `__init__.py` becomes a
+subpackage per domain.
+
+### `__init__.py` only re-exports
+
+An `__init__.py` holds a docstring, relative re-exports
+(`from .x import Y as Y`) and `__all__` — **nothing else**: no function, no
+class, no call, no instance, no constant (`INIT001`). Code that assembles
+something lives in a module of the package and is re-exported: router
+composition in `router.py`, a factory in `factory.py`, a seed run in
+`runner.py`.
+
+Wrong — the package module, `src/api/routers/admin/__init__.py`, builds
+the router:
+
+```python
+from fastapi import APIRouter
+
+from .orders import router as orders_router
+
+admin_router: APIRouter = APIRouter(prefix="/admin", tags=["admin"])
+admin_router.include_router(orders_router)
+```
+
+Right — `router.py` builds it, the `__init__.py` re-exports it, and
+`build_api_router` includes `build_admin_router()`. In
+`src/api/routers/admin/router.py`:
+
+```python
+from tempest_fastapi_sdk import TempestAPIRouter
+
+from .orders import router as orders_router
+
+
+def build_admin_router() -> TempestAPIRouter:
+    """Assemble the admin routers under ``/admin``.
+
+    Returns:
+        TempestAPIRouter: ``/admin`` with every admin router included.
+    """
+    admin: TempestAPIRouter = TempestAPIRouter(prefix="/admin", tags=["admin"])
+    admin.include_router(orders_router)
+    return admin
+```
+
+And in `src/api/routers/admin/__init__.py`:
+
+```python
+from .router import build_admin_router as build_admin_router
+
+__all__: list[str] = ["build_admin_router"]
+```
+
 ### Composition root
 
 `src/scripts/composition.py` is the one place the object graph is
@@ -393,6 +459,14 @@ from .product import ProductController as ProductController
 __all__: list[str] = ["ProductController"]
 ```
 
+A controller over **one** service subclasses
+`BaseController[Service, ResponseSchema]`, which passes `get_by_id`,
+`list`, `paginate`, `count`, `update` and `delete` through. One that coordinates
+several services — or reads none, like `ServiceInfoController` —
+subclasses `Controller`, the bare root of the layer, so the router is not
+handed CRUD methods that mean nothing for it. Both come from
+`tempest_fastapi_sdk`; there is no third base.
+
 Keep the controller **even when every method is a pass-through** — it is
 the seam where cross-service coordination lands later, and its presence
 keeps the import graph identical across services. A controller receives
@@ -623,6 +697,7 @@ fails the gate. The suite runs the same checks too, in
 | `RTR002` | error | a route that returns an ORM model |
 | `LAY001` | warning | a second class or a module-level function in `controllers/`, `repositories/` or `models/` |
 | `LAY002` | warning | a module at the root of a layer, outside a context package |
+| `LAY003` | warning | a layer module named after its layer (`checkout_service.py`) |
 | `REPO002` | warning | a repository importing another repository |
 | `DI001` | warning | `AsyncSession` in a service or controller `__init__` |
 | `DI002` | warning | a service taking a `*Service`, or a controller taking a `*Controller` |
@@ -631,6 +706,8 @@ fails the gate. The suite runs the same checks too, in
 | `STR002` | warning | a module-level `_name` function (source and tests) |
 | `IMP001` | warning | an absolute import of a neighbour in `__init__.py` |
 | `IMP002` | warning | importing a submodule for a name a package above re-exports |
+| `INIT001` | warning | an `__init__.py` statement that does more than re-export (source and tests) |
+| `SIZE001` | warning | a module over 1000 lines (source and tests) |
 | `RTR003` | warning | more than one router (`APIRouter`, `TempestAPIRouter`) in a routers module |
 | `RTR004` | warning | a `/api` prefix outside `build_api_router` |
 | `RTR005` | warning | a `fastapi.APIRouter` in a routers module outside `build_api_router` |
@@ -661,6 +738,111 @@ receives a `WalletLedger`, a data layer, instead of the `WalletService`.)
 Two markers still work on their
 line: `# tempest: no-base-service` (`SVC001`) and
 `# tempest: router-builds` (`RTR001`).
+
+## Authentication: mount the SDK's flow, never write one
+
+Signup, activation, login, refresh, logout, `/me`, password reset and
+email change **already exist** in the SDK. A service never writes an
+`AuthService`, an `AuthController`, `/auth/register` / `/auth/login` /
+`/auth/refresh` / `/auth/me` routes, or its own password and token
+tables. It composes these, all exported by `tempest_fastapi_sdk`:
+
+| Piece | What it is |
+| --- | --- |
+| `BaseUserModel` | the base of this project's `UserModel` |
+| `make_user_token_model(...)` / `make_user_refresh_token_model(...)` | the token tables, bound to your user table |
+| `AuthSettings` | the `AUTH_*` knobs; add it to `Settings` next to `JWTSettings` |
+| `UserAuthService` | signup, login, token pair, reset — the whole flow |
+| `make_auth_router(...)` | every auth route, mounted once |
+| `UserAuthService.current_user_dependency(...)` / `make_jwt_user_dependency` | "who is calling?" on your own routes |
+
+Extend it through its arguments — never by rewriting a route:
+
+- `signup_schema=` takes a `SignupSchema` subclass; its fields that are
+  columns of `UserModel` land on the row before the insert.
+- `on_signup=` takes a hook `(session, user, payload)` that runs inside
+  the insert's transaction; raising there undoes the account.
+- `me_response_model=` takes an `AuthUserSchema` subclass, so
+  `GET /auth/me` returns your columns too.
+
+Wrong — a hand-written flow that has to rebuild the password policy, the
+duplicate-email 409, activation and the token pair, and drifts from the
+SDK one release at a time (`src/api/routers/auth.py`):
+
+```python
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_auth_controller
+from src.controllers import AuthController
+from src.schemas import LoginSchema, TokenPairSchema
+
+router: APIRouter = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/login")
+async def login(
+    data: LoginSchema,
+    controller: AuthController = Depends(get_auth_controller),
+) -> TokenPairSchema:
+    """Log a user in by email and password."""
+    return await controller.login(data)
+```
+
+Right — the service is assembled in the composition root and the router
+is mounted in `create_app`, next to the other SDK routers. Add the
+builder to `src/scripts/composition.py`:
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager, UserAuthService
+
+from src.core import Settings
+from src.db.models import UserModel, UserTokenModel
+
+
+def build_auth_service(db: AsyncDatabaseManager, settings: Settings) -> UserAuthService:
+    """Assemble the SDK's auth service over this project's tables.
+
+    Args:
+        db (AsyncDatabaseManager): The process-wide database manager.
+        settings (Settings): Settings composing ``AuthSettings`` and
+            ``JWTSettings``.
+
+    Returns:
+        UserAuthService: The service ``make_auth_router`` serves.
+    """
+    return UserAuthService(
+        db=db,
+        user_model=UserModel,
+        token_model=UserTokenModel,
+        auth_settings=settings,
+        jwt_settings=settings,
+        email=None,
+    )
+```
+
+Then, inside `create_app()` in `src/api/app.py`:
+
+```python
+app.include_router(
+    make_auth_router(
+        build_auth_service(db, settings),
+        session_factory=get_session,
+        prefix="/api/auth",
+    ),
+)
+```
+
+**Pass the whole path as `prefix=` and mount on the app**, not inside
+`build_api_router`. The router writes its own prefix into the refresh
+cookie's `Path` and into the links it builds, and it cannot see a prefix
+added around it: included under the `/api` router with its default
+`/auth`, it serves `/api/auth/login` but sets the refresh cookie with
+`Path=/auth`, which the browser never sends to `/api/auth/refresh`. This
+does not trip `RTR004`, which reads only `APIRouter(prefix=...)` and
+`include_router(prefix=...)`.
+
+The full walkthrough — activation by email, MFA, OAuth, cookie delivery —
+is the [auth flow recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/).
 
 ## Guards: authentication in the route, invariants with `@requires`
 
@@ -921,7 +1103,7 @@ async def run_now(dispatcher: TaskDispatcher = Depends(get_task_dispatcher)) -> 
 | A page envelope for a listing | `BasePaginationSchema` / `BasePaginationFilterSchema` |
 | An error response body | `AppException` subclasses + `register_exception_handlers` |
 | Password hashing, JWT encode/decode | `PasswordUtils`, `JWTUtils` |
-| A signup/login/reset flow | `UserAuthService` + `make_auth_router` |
+| A signup/login/reset flow | `UserAuthService` + `make_auth_router` ([Authentication](#authentication-mount-the-sdks-flow-never-write-one)) |
 | A health endpoint | `make_health_router` |
 | CORS, request ids, rate limiting | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` |
 | Redis caching, cache invalidation | `AsyncRedisManager`, `@cached`, `CacheInvalidator` |
@@ -954,9 +1136,11 @@ than forking the concept — and open an issue upstream for the missing
 - **`async` by default** for anything doing I/O. SQLAlchemy 2.0 style
   (`select()`), never `session.query()`.
 - **Re-export from every `__init__.py`** using a relative
-  `from .x import Y as Y` plus an explicit `__all__: list[str]`, and
-  import from the package level (`from src.schemas import
-  ProductCreateSchema`), never from the submodule.
+  `from .x import Y as Y` plus an explicit `__all__: list[str]` — and
+  nothing else in it — and import from the package level
+  (`from src.schemas import ProductCreateSchema`), never from the
+  submodule.
+- **No file over 1000 lines**, code or test.
 - Collections default to empty: `Field(default_factory=list)` in
   schemas, `Query(default_factory=list)` for repeated query parameters.
 - Routers return schemas, never ORM models.
@@ -992,7 +1176,8 @@ done.
 
 ## Definition of done
 
-- [ ] The change lives in the layer that owns it, in its context package.
+- [ ] The change lives in the layer that owns it, in its context package,
+      in a file named without the layer suffix and under 1000 lines.
 - [ ] Every new function, method and class is typed and documented.
 - [ ] New public symbols are re-exported from their `__init__.py` and
       listed in `__all__`.

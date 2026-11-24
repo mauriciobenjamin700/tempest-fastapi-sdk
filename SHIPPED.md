@@ -5028,3 +5028,24 @@ rota" com o `409` medido (`$ref` para `ErrorResponseSchema` em
 `components.schemas`, um exemplo por `code`; `responses=` explícito
 substitui a entrada do status inteira). Testes:
 `tests/cli/test_layer_lint_routers.py`.
+
+## `__init__` só reexporta, teto de 1000 linhas, nome sem sufixo e auth do SDK (#823, #824, #826)
+
+`cli/layer_lint.py`: avisos `INIT001` (`_check_package_inits`; permitido é
+docstring, import, `pass`, o `__all__` em `=`/`:`/`+=` e `if`/`try` feitos
+só disso), `SIZE001` (`_check_module_size`, `MAX_MODULE_LINES = 1000`, na
+linha 1001) e `LAY003` (`LAYER_FILE_SUFFIXES`, dentro do
+`_check_layer_shape`). Os três leem código e suíte (o `LAY003`, só as
+quatro camadas). O `queue/__init__.py` do `tempest generate --src` virou
+`queue/broker.py` + reexport — era o único `__init__` que violava no
+scaffold com `auth,queue,tasks,ssr,admin,email,minio,cache,sqlite` (medido). `CLAUDE.md.tmpl`: subseções de nome de arquivo, teto e
+`__init__`, base de controller, seção "Authentication" (peças, pontos de
+extensão, par certo × errado, prefixo inteiro no `prefix=` com o router no
+app — medido: com `/auth` default dentro do `/api` o cookie sai
+`Path=/auth` e o refresh responde `401`; não aciona `RTR004`). A receita de
+auth passou a usar `me_response_model` no exemplo completo de
+`signup_schema` + `on_signup`. Testes: `tests/cli/test_layer_lint_packages.py`
+(o `queue/__init__.py` que shippou, composição de router no `__init__`,
+1001 × 1000 linhas, os quatro sufixos, e toda regra de `RULES` listada na
+receita do CLI e no `CLAUDE.md.tmpl`). Docs: `service-standard`,
+`recommended-architecture`, `recipes/cli`, `recipes/queue-tasks`.

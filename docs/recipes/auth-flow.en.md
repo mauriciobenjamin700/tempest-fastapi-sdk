@@ -542,6 +542,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
+    AuthUserSchema,
     SignupSchema,
     UserAuthService,
     ValidationException,
@@ -558,6 +559,13 @@ class ProducerSignupSchema(SignupSchema):
     phone: str = Field(max_length=20)
     is_producer: bool = Field(default=False)
     accept_terms: bool = Field(default=False)
+
+
+class ProducerMeSchema(AuthUserSchema):
+    """What ``GET /auth/me`` returns: the account and this product's columns."""
+
+    phone: str
+    is_producer: bool
 
 
 async def require_terms(
@@ -598,6 +606,7 @@ app.include_router(
         session_factory=db.session_dependency,
         signup_schema=ProducerSignupSchema,
         on_signup=require_terms,
+        me_response_model=ProducerMeSchema,
     ),
 )
 ```
@@ -605,7 +614,9 @@ app.include_router(
 Here `phone` and `is_producer` are columns of `UserModel` (`phone` is
 `NOT NULL` and `UNIQUE`), so they reach the row with no hook at all.
 `accept_terms` is not a column: it stays only on the `payload` `on_signup`
-receives.
+receives. And `me_response_model=ProducerMeSchema` makes `GET /auth/me`
+return both new columns next to the ones `AuthUserSchema` already carries —
+still without `hashed_password`, which neither schema declares.
 
 With `AUTH_AUTO_ACTIVATE=true` in `.env` the account is born active and signup already returns the JWT pair. Under the default (`false`) the same call answers `"activation_required":true` with `access_token` and `refresh_token` set to `null`, and the pair only comes out of `POST /auth/activate/{token}`:
 

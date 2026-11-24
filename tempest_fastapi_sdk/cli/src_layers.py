@@ -28,8 +28,20 @@ _QUEUE_INIT = '''\
 
 A single :class:`AsyncQueueManager` owns the broker for the whole
 process. Routers and services reach it through :func:`get_broker`;
-connect/disconnect run from the app lifespan.
+connect/disconnect run from the app lifespan. The wiring lives in
+``broker.py``: an ``__init__.py`` only re-exports.
 """
+
+from .broker import broker as broker
+from .broker import broker_manager as broker_manager
+from .broker import get_broker as get_broker
+
+__all__: list[str] = ["broker", "broker_manager", "get_broker"]
+'''
+
+
+_QUEUE_BROKER = '''\
+"""The process-wide FastStream broker and the manager that owns it."""
 
 from __future__ import annotations
 
@@ -61,7 +73,7 @@ def get_broker() -> AsyncQueueManager:
     return broker_manager
 
 
-__all__: list[str] = ["broker", "broker_manager", "get_broker"]
+__all__: list[str] = ["RABBITMQ_URL", "broker", "broker_manager", "get_broker"]
 '''
 
 
@@ -677,6 +689,7 @@ __all__: list[str] = ["router"]
 LAYER_FILES: dict[str, dict[str, str]] = {
     "queue": {
         "queue/__init__.py": _QUEUE_INIT,
+        "queue/broker.py": _QUEUE_BROKER,
         "queue/handlers.py": _QUEUE_HANDLERS,
     },
     "ssr": {

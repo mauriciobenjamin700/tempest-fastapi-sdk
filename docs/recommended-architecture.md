@@ -111,6 +111,35 @@ __all__: list[str] = ["RouteModel", "StopModel"]
 O nome do contexto é livre: a lista que o `CLAUDE.md` do projeto sugere
 guia, não restringe.
 
+### O nome do arquivo não repete a camada
+
+O diretório já diz a camada; o arquivo diz o que ele guarda. A classe
+mantém o sufixo, porque é o nome que todo call site lê:
+
+| ✅ Certo | ❌ Errado |
+| --- | --- |
+| `services/orders/checkout.py` → `CheckoutService` | `services/orders/checkout_service.py` |
+| `controllers/orders/checkout.py` → `CheckoutController` | `controllers/orders/checkout_controller.py` |
+| `db/repositories/orders/order.py` → `OrderRepository` | `db/repositories/orders/order_repository.py` |
+
+O controller herda de uma das duas bases do SDK, as mesmas que o scaffold
+usa: `BaseController[Service, Schema]` quando passa o CRUD de **um**
+service, e `Controller` quando coordena vários (ou nenhum, como o
+`ServiceInfoController` que o `tempest new` gera).
+
+### Até 1000 linhas por arquivo
+
+Código **e** teste, sem lista de exceção. Arquivo grande é ruim de mudar e
+de revisar: o service grande vira vários, um por responsabilidade
+(`services/orders/checkout.py`, `services/orders/refund.py`); o arquivo de
+teste grande vira um por tema; o `__init__.py` grande vira pacote por
+domínio.
+
+| Código | Acusa |
+| --- | --- |
+| `LAY003` | módulo de uma das quatro camadas com o sufixo dela no nome (`_controller`, `_service`, `_repository`, `_model`) |
+| `SIZE001` | módulo do código ou da suíte com mais de 1000 linhas, acusado na linha 1001 |
+
 ## 2. Import pelo pacote da camada; `__init__` relativo
 
 **Por quê:** o caminho interno de um pacote é detalhe dele. Quem importa
@@ -146,6 +175,50 @@ class InvoiceController(BaseController[InvoiceService, InvoiceResponseSchema]):
 | --- | --- |
 | `IMP001` | `__init__.py` importando módulo do próprio pacote com caminho absoluto |
 | `IMP002` | import pelo submódulo de um nome que um pacote acima já reexporta (seguido de forma transitiva, inclusive por `import *`) |
+| `INIT001` | `__init__.py` com algo além de reexport e `__all__`: `def`, `class`, chamada, constante |
+
+O `__init__.py` **só reexporta**. Código que monta alguma coisa mora num
+módulo do pacote e é reexportado: composição de router em `router.py`,
+factory em `factory.py`, orquestração de seed em `runner.py`.
+
+❌ O pacote monta o router:
+
+```python
+# src/api/routers/admin/__init__.py
+from fastapi import APIRouter
+
+from .orders import router as orders_router
+
+admin_router: APIRouter = APIRouter(prefix="/admin", tags=["admin"])
+admin_router.include_router(orders_router)
+```
+
+✅ O `router.py` monta; o `__init__.py` reexporta:
+
+```python
+# src/api/routers/admin/router.py
+from tempest_fastapi_sdk import TempestAPIRouter
+
+from .orders import router as orders_router
+
+
+def build_admin_router() -> TempestAPIRouter:
+    """Assemble the admin routers under ``/admin``.
+
+    Returns:
+        TempestAPIRouter: ``/admin`` with every admin router included.
+    """
+    admin: TempestAPIRouter = TempestAPIRouter(prefix="/admin", tags=["admin"])
+    admin.include_router(orders_router)
+    return admin
+```
+
+```python
+# src/api/routers/admin/__init__.py
+from .router import build_admin_router as build_admin_router
+
+__all__: list[str] = ["build_admin_router"]
+```
 
 !!! warning "Quando o pacote fecharia ciclo"
     A sugestão do `IMP002` é o pacote mais alto que reexporta o nome **sem
@@ -556,8 +629,9 @@ Depois ataque **uma família por PR**, cada uma com `--rule` até zerar:
 1. **`IMP001`/`IMP002`** primeiro: é mecânico, não muda comportamento e
    deixa as próximas mudanças mais baratas — mover arquivo não quebra mais
    import.
-2. **`LAY001`/`LAY002`**: mover cada classe para o pacote de contexto,
-   reexportando relativo. Com o passo 1 feito, os call sites não mudam.
+2. **`LAY001`–`LAY003`** e **`INIT001`**: mover cada classe para o pacote
+   de contexto, num arquivo sem o sufixo da camada, e tirar o que não é
+   reexport dos `__init__.py`, reexportando relativo. Com o passo 1 feito, os call sites não mudam.
 3. **`DI001`–`DI003`**: criar o `scripts/composition.py` e fazer os
    providers chamarem os `build_*`; apagar os `from_session`.
 4. **`RTR003`–`RTR006`**: criar o `routers/api.py` e tirar o `/api` dos
@@ -594,6 +668,8 @@ aviso que voltar derruba o `tempest check`.
 
 - **Uma classe por arquivo**, em `<camada>/<contexto>/`; o pacote reexporta
   relativo e o resto importa pelo pacote.
+- **Arquivo sem o sufixo da camada e com até 1000 linhas**; o `__init__.py`
+  só reexporta.
 - **Service recebe repository; controller recebe service.** O grafo é
   montado no `scripts/composition.py`, e ninguém tem `from_session`.
 - **Repository não importa repository.**

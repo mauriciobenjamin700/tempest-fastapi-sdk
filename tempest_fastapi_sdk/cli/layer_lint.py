@@ -65,6 +65,11 @@ The rules:
   instead of under a context subpackage: ``services/order.py`` belongs in
   ``services/<context>/order.py``. Any context name is accepted;
   ``__init__.py`` is exempt.
+* ``LAY003`` (warning) — a module of a layer directory whose name repeats
+  the layer (:data:`LAYER_FILE_SUFFIXES`): ``services/orders/
+  checkout_service.py`` belongs in ``services/orders/checkout.py``, which
+  still defines ``CheckoutService``. Same for ``_controller``,
+  ``_repository`` and ``_model``.
 * ``REPO002`` (warning) — a module in ``repositories/`` imports a
   ``*Repository`` name from another repository module (an absolute import
   whose path has a ``repositories`` segment, or a relative import). A
@@ -105,6 +110,18 @@ The rules:
   ancestor that binds the name and does not contain the importing module,
   so a module never imports its own package's ``__init__``; an import
   that would close a cycle anyway is a declared exception.
+* ``INIT001`` (warning) — a statement of an ``__init__.py`` (source and
+  tests) that does more than re-export: a ``def``, a ``class``, a call
+  (``RabbitBroker(url)``, ``router.include_router(...)``), a constant.
+  What stays is a docstring, imports, the ``__all__`` binding, and an
+  ``if`` / ``try`` holding only those (``if TYPE_CHECKING:``, an
+  optional import). Router composition goes to ``router.py``, a factory
+  to ``factory.py``, a seed run to ``runner.py``, each re-exported.
+* ``SIZE001`` (warning) — a module of the source root or of ``tests/``
+  longer than :data:`MAX_MODULE_LINES` lines, reported at the first line
+  past the limit. There is no list of files the limit skips: a big
+  service splits by responsibility, a big test file by theme, a big
+  ``__init__.py`` into a subpackage per domain.
 
 * ``RTR003`` (warning) — a module in ``routers/`` that builds more than
   one router; one finding per router after the first. A router is a call
@@ -406,6 +423,28 @@ REPOSITORY_SUFFIX: str = "Repository"
 STR_ENUM_BASE: str = "BaseStrEnum"
 """The SDK base class whose subclasses ``ENUM001`` reads."""
 
+LAYER_FILE_SUFFIXES: dict[str, str] = {
+    "controllers": "_controller",
+    "services": "_service",
+    "repositories": "_repository",
+    "models": "_model",
+}
+"""The file-name suffix ``LAY003`` reports in each layer directory.
+
+The directory already says the layer, so ``services/orders/checkout.py``
+holds ``CheckoutService``; ``checkout_service.py`` repeats it. The class
+keeps its suffix — it is the name every caller reads.
+"""
+
+MAX_MODULE_LINES: int = 1000
+"""The most lines a source or test module may have before ``SIZE001``."""
+
+PACKAGE_INIT: str = "__init__.py"
+"""File name of a package module, the only one ``INIT001`` reads."""
+
+EXPORT_LIST: str = "__all__"
+"""Module-level name an ``__init__.py`` may bind besides its imports."""
+
 SKIPPED_DIRS: frozenset[str] = frozenset(
     {"tests", "node_modules", "__pycache__", "site-packages"}
 )
@@ -442,6 +481,7 @@ RULES: dict[str, LayerRule] = {
         LayerRule("RTR002", "error", "route that returns an ORM model"),
         LayerRule("LAY001", "warning", "second class or a function in a layer module"),
         LayerRule("LAY002", "warning", "layer module outside a context package"),
+        LayerRule("LAY003", "warning", "layer module named after its layer"),
         LayerRule("REPO002", "warning", "repository importing another repository"),
         LayerRule("DI001", "warning", "AsyncSession in a service or controller"),
         LayerRule("DI002", "warning", "collaborator of the same layer injected"),
@@ -450,6 +490,8 @@ RULES: dict[str, LayerRule] = {
         LayerRule("STR002", "warning", "private module-level function"),
         LayerRule("IMP001", "warning", "absolute import of a neighbour in __init__"),
         LayerRule("IMP002", "warning", "submodule import of a re-exported name"),
+        LayerRule("INIT001", "warning", "__init__.py doing more than re-exporting"),
+        LayerRule("SIZE001", "warning", f"module longer than {MAX_MODULE_LINES} lines"),
         LayerRule("RTR003", "warning", "more than one APIRouter in a module"),
         LayerRule("RTR004", "warning", "/api prefix outside build_api_router"),
         LayerRule("RTR005", "warning", "fastapi.APIRouter in a routers module"),
@@ -1404,7 +1446,7 @@ def _check_router_returns(
 def _check_layer_shape(
     layers: dict[str, list[Path]],
 ) -> list[LayerFinding]:
-    """Apply ``LAY001`` and ``LAY002`` to the layer directories.
+    """Apply ``LAY001``, ``LAY002`` and ``LAY003`` to the layer directories.
 
     Args:
         layers (dict[str, list[Path]]): Each :data:`LAYER_DIRS` name to
@@ -1419,6 +1461,21 @@ def _check_layer_shape(
             for path in _python_files([directory]):
                 if path.name == "__init__.py":
                     continue
+                bare = path.stem.removesuffix(LAYER_FILE_SUFFIXES[name])
+                if bare and bare != path.stem:
+                    findings.append(
+                        LayerFinding(
+                            path=path,
+                            line=1,
+                            code="LAY003",
+                            message=(
+                                f"{path.name} repeats the layer its directory "
+                                f"already names; rename it to "
+                                f"{bare}.py — the class "
+                                f"inside keeps its suffix."
+                            ),
+                        )
+                    )
                 if path.parent == directory:
                     findings.append(
                         LayerFinding(
@@ -2425,6 +2482,129 @@ def _check_structure(modules: list[_ParsedModule]) -> list[LayerFinding]:
     return findings
 
 
+def _binds_export_list(statement: ast.stmt) -> bool:
+    """Tell whether a statement only binds :data:`EXPORT_LIST`.
+
+    Args:
+        statement (ast.stmt): A module-level statement.
+
+    Returns:
+        bool: True for ``__all__ = ...``, ``__all__: list[str] = ...`` and
+        ``__all__ += ...``.
+    """
+    if isinstance(statement, ast.Assign):
+        targets = statement.targets
+    elif isinstance(statement, ast.AnnAssign | ast.AugAssign):
+        targets = [statement.target]
+    else:
+        return False
+    return all(
+        isinstance(target, ast.Name) and target.id == EXPORT_LIST for target in targets
+    )
+
+
+def _only_reexports(statement: ast.stmt) -> bool:
+    """Tell whether a statement is allowed in an ``__init__.py``.
+
+    An import, a docstring, ``pass`` and the :data:`EXPORT_LIST` binding
+    are; so is an ``if`` (``if TYPE_CHECKING:``) or a ``try`` (an
+    optional import) whose every branch holds only those.
+
+    Args:
+        statement (ast.stmt): A module-level statement.
+
+    Returns:
+        bool: True when the statement only re-exports.
+    """
+    if isinstance(statement, ast.Import | ast.ImportFrom | ast.Pass):
+        return True
+    if _is_docstring(statement) or _binds_export_list(statement):
+        return True
+    if isinstance(statement, ast.If):
+        branches = [statement.body, statement.orelse]
+    elif isinstance(statement, ast.Try):
+        branches = [
+            statement.body,
+            statement.orelse,
+            statement.finalbody,
+            *(handler.body for handler in statement.handlers),
+        ]
+    else:
+        return False
+    return all(_only_reexports(inner) for branch in branches for inner in branch)
+
+
+def _check_package_inits(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``INIT001`` to the ``__init__.py`` of source and test packages.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under the scan roots
+            and the project's ``tests/``.
+
+    Returns:
+        list[LayerFinding]: One finding per statement that is not a
+        re-export, in file and line order.
+    """
+    findings: list[LayerFinding] = []
+    for parsed in modules:
+        if parsed.path.name != PACKAGE_INIT:
+            continue
+        for statement in parsed.tree.body:
+            if _only_reexports(statement):
+                continue
+            name = (
+                statement.name
+                if isinstance(
+                    statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+                )
+                else None
+            )
+            what = f"`{name or parsed.lines[statement.lineno - 1].strip()}`"
+            findings.append(
+                LayerFinding(
+                    path=parsed.path,
+                    line=statement.lineno,
+                    code="INIT001",
+                    subject=name,
+                    message=(
+                        f"{what} does work in __init__.py, which only "
+                        f"re-exports (`from .x import Y as Y`) and binds "
+                        f"`__all__`; move it to a module of the package "
+                        f"(router.py, factory.py, runner.py) and re-export it."
+                    ),
+                )
+            )
+    return findings
+
+
+def _check_module_size(modules: list[_ParsedModule]) -> list[LayerFinding]:
+    """Apply ``SIZE001`` to source and test modules.
+
+    Args:
+        modules (list[_ParsedModule]): Every module under the scan roots
+            and the project's ``tests/``.
+
+    Returns:
+        list[LayerFinding]: One finding per module over
+        :data:`MAX_MODULE_LINES`, at the first line past the limit.
+    """
+    return [
+        LayerFinding(
+            path=parsed.path,
+            line=MAX_MODULE_LINES + 1,
+            code="SIZE001",
+            message=(
+                f"{parsed.path.name} has {len(parsed.lines)} lines, over "
+                f"{MAX_MODULE_LINES}; split it by responsibility — a service "
+                f"into several services, a test file into one file per theme, "
+                f"an __init__.py into a subpackage per domain."
+            ),
+        )
+        for parsed in modules
+        if len(parsed.lines) > MAX_MODULE_LINES
+    ]
+
+
 def _exceptions_dict(module: ast.Module) -> ast.Dict | None:
     """Return the dict literal assigned to :data:`EXCEPTIONS_NAME`.
 
@@ -2714,6 +2894,8 @@ def lint_layers(
             *_check_self_assembly(source_modules),
             *_check_structure([*source_modules, *test_modules]),
             *_check_imports([*source_modules, *test_modules], project_root(target)),
+            *_check_package_inits([*source_modules, *test_modules]),
+            *_check_module_size([*source_modules, *test_modules]),
             *_check_router_count(router_modules, classes),
             *_check_api_prefix(source_modules, classes),
             *_check_plain_routers(router_modules),

@@ -92,10 +92,15 @@ exceções.
 | Regra | Como fica | Quem cobra hoje |
 | --- | --- | --- |
 | Uma classe de camada por arquivo, por contexto | `src/<camada>/<contexto>/<arquivo>.py`, só a classe + `logger` + `__all__` | `LAY001`, `LAY002` |
+| Nome de arquivo sem o sufixo da camada | `services/orders/checkout.py` → `CheckoutService` (nunca `checkout_service.py`) | `LAY003` |
+| Até 1000 linhas por arquivo, código e teste, sem lista de exceção | service grande vira vários por responsabilidade; teste grande, um arquivo por tema | `SIZE001` |
 | Sem `def` aninhado nem `_x` de módulo, em `src` e `tests` | callback com estado vira objeto chamável | `STR001`, `STR002` |
 | `__init__` com import relativo; fora dele, import do pacote | `from .x import Y` / `from src.services import X` | `IMP001`, `IMP002` |
+| `__init__.py` só reexporta | `from .x import Y as Y` + `__all__`; montagem em `router.py`, `factory.py`, `runner.py` | `INIT001` |
 | Recurso é singleton de processo num lugar só | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (convenção do scaffold) |
 | Providers por camada; router nunca vê `AsyncSession` | `api/dependencies/controllers.py` chama os `build_*` | `RTR001`, `DI001`–`DI003` |
+| Controller herda da base do SDK | `BaseController[Service, Schema]` (um service) ou `Controller` (vários, ou nenhum) | — (convenção do scaffold) |
+| Login e cadastro vêm do SDK | `UserAuthService` + `make_auth_router(..., prefix="/api/auth")` | — (sem gate) |
 | `/api` posto num lugar só | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
 | Router de domínio é `TempestAPIRouter` | `TempestAPIRouter(prefix=...)`, nunca `fastapi.APIRouter` | `RTR005` |
 | Texto do OpenAPI fora do router | `api/docs/<router>.py`, um `EndpointDoc` por handler | `RTR006` |
@@ -112,7 +117,7 @@ exceções.
 | Guards na própria suíte | `tests/unit/architecture/` | `test_layers.py`, `test_openapi_errors.py`, `test_schemas.py` |
 | Avisos falham desde o primeiro commit | `layers_strict = true` em `[tool.tempest]` | `tempest check` |
 
-Os códigos `LAY`, `STR`, `IMP`, `DI`, `RTR003`–`RTR006` e `TST` são
+Os códigos `LAY`, `STR`, `IMP`, `INIT`, `SIZE`, `DI`, `RTR003`–`RTR006` e `TST` são
 **avisos**: só derrubam o `tempest check` com `layers_strict = true`, que o
 `pyproject.toml` gerado já liga. A tabela de todos os códigos, com a saída
 real de cada um, está em
@@ -124,6 +129,191 @@ real de cada um, está em
     assim, mas nenhuma regra falha se você desviar. Ficaram de fora porque
     a checagem precisaria julgar intenção (o que é "prosa", o que é
     "recurso de processo"), e regra larga demais acusa código correto.
+
+    A base do controller e o fluxo de auth também ficaram sem gate. O
+    `Controller` não tem método nenhum, então herdar dele não muda o que
+    roda; o que a convenção protege — controller recebe service, nunca
+    sessão nem outro controller — já é o `DI001`/`DI002`. E uma rota
+    `/login` escrita à mão não se distingue, lendo a sintaxe, de uma que
+    tem motivo para existir (um proxy para outro provedor): o gate
+    precisaria julgar intenção de novo.
+
+## `__init__.py` só reexporta
+
+**Por quê:** o `__init__.py` roda no import de qualquer módulo do pacote.
+Uma função, um router composto ou uma factory ali dentro roda para quem só
+queria um schema, fica fora do índice de arquivos (ninguém procura
+`build_admin_router` em `__init__.py`) e abre a porta para ciclo de import.
+O pacote guarda docstring, reexport relativo e `__all__` — mais nada.
+
+❌ O pacote monta o router:
+
+```python
+# src/api/routers/admin/__init__.py
+from fastapi import APIRouter
+
+from .orders import router as orders_router
+
+admin_router: APIRouter = APIRouter(prefix="/admin", tags=["admin"])
+admin_router.include_router(orders_router)
+```
+
+✅ O `router.py` monta, o `__init__.py` reexporta, e o `build_api_router`
+inclui `build_admin_router()`:
+
+```python
+# src/api/routers/admin/router.py
+from tempest_fastapi_sdk import TempestAPIRouter
+
+from .orders import router as orders_router
+
+
+def build_admin_router() -> TempestAPIRouter:
+    """Assemble the admin routers under ``/admin``.
+
+    Returns:
+        TempestAPIRouter: ``/admin`` with every admin router included.
+    """
+    admin: TempestAPIRouter = TempestAPIRouter(prefix="/admin", tags=["admin"])
+    admin.include_router(orders_router)
+    return admin
+```
+
+```python
+# src/api/routers/admin/__init__.py
+from .router import build_admin_router as build_admin_router
+
+__all__: list[str] = ["build_admin_router"]
+```
+
+Factory vai para `factory.py` (`src/integrations/payment/factory.py`), a
+orquestração de seed para `runner.py` (`src/db/seed/runner.py`), cada um
+reexportado do mesmo jeito. O `INIT001` acusa cada statement que faz mais
+que reexportar — `def`, `class`, chamada, constante —, no código e na suíte;
+`if TYPE_CHECKING:` e import opcional em `try` passam quando só importam.
+
+## Autenticação: monte a do SDK, não escreva a sua
+
+**Por quê:** cadastro, ativação, login, refresh, logout, `/me`, troca de
+senha e de e-mail já existem no SDK, com a política de senha, o 409 de
+e-mail duplicado, a revogação de sessão e o par JWT acertados. Um
+`AuthService` escrito à mão reconstrói cada um desses e passa a driftar
+uma release por vez.
+
+O serviço compõe as peças, todas exportadas por `tempest_fastapi_sdk`:
+`BaseUserModel` (a base do `UserModel`), `make_user_token_model(...)` e
+`make_user_refresh_token_model(...)` (as tabelas de token), `AuthSettings`
+(no `Settings`, ao lado do `JWTSettings`), `UserAuthService`,
+`make_auth_router(...)` e, nas rotas do próprio serviço,
+`UserAuthService.current_user_dependency(...)` ou
+`make_jwt_user_dependency`.
+
+❌ Rotas de auth escritas à mão:
+
+```python
+# src/api/routers/auth.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_auth_controller
+from src.controllers import AuthController
+from src.schemas import LoginSchema, TokenPairSchema
+
+router: APIRouter = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/login")
+async def login(
+    data: LoginSchema,
+    controller: AuthController = Depends(get_auth_controller),
+) -> TokenPairSchema:
+    """Log a user in by email and password."""
+    return await controller.login(data)
+```
+
+✅ O service sai do composition root e o router é montado no `create_app`,
+como os outros routers do SDK:
+
+```python
+# src/scripts/composition.py
+from tempest_fastapi_sdk import AsyncDatabaseManager, UserAuthService
+
+from src.core import Settings
+from src.db.models import UserModel, UserTokenModel
+
+
+def build_auth_service(db: AsyncDatabaseManager, settings: Settings) -> UserAuthService:
+    """Assemble the SDK's auth service over this project's tables.
+
+    Args:
+        db (AsyncDatabaseManager): The process-wide database manager.
+        settings (Settings): Settings composing ``AuthSettings`` and
+            ``JWTSettings``.
+
+    Returns:
+        UserAuthService: The service ``make_auth_router`` serves.
+    """
+    return UserAuthService(
+        db=db,
+        user_model=UserModel,
+        token_model=UserTokenModel,
+        auth_settings=settings,
+        jwt_settings=settings,
+        email=None,
+    )
+```
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import make_auth_router
+
+from src.api.dependencies import db, get_session
+from src.core import settings
+from src.scripts import build_auth_service
+
+
+def create_app() -> FastAPI:
+    """Build the application with the SDK's auth routes under ``/api/auth``.
+
+    Returns:
+        FastAPI: The configured application.
+    """
+    app = FastAPI()
+    app.include_router(
+        make_auth_router(
+            build_auth_service(db, settings),
+            session_factory=get_session,
+            prefix="/api/auth",
+        ),
+    )
+    return app
+```
+
+Para estender sem reescrever rota: `signup_schema=` (subclasse de
+`SignupSchema`; campo que é coluna entra na linha antes do insert),
+`on_signup=` (hook `(session, user, payload)` dentro da transação do
+insert) e `me_response_model=` (subclasse de `AuthUserSchema`, devolvida
+pelo `GET /auth/me`). Os três aparecem juntos num exemplo completo na
+[receita de auth](recipes/auth-flow.md#conta-que-nasce-com-mais-que-e-mail-e-senha-v02780).
+
+!!! warning "O prefixo inteiro vai no `prefix=`, com o router montado no app"
+    O `make_auth_router` escreve o próprio prefixo no `Path` do cookie de
+    refresh e nas URLs que ele monta, e não enxerga prefixo posto em volta
+    dele. Medido com `AUTH_TOKEN_DELIVERY=cookie`, login seguido de
+    `POST /api/auth/refresh` com o cookie jar do cliente:
+
+    | `make_auth_router(...)` | `POST /api/auth/login` | cookie de refresh | `POST /api/auth/refresh` |
+    | --- | --- | --- | --- |
+    | `/auth` default, incluído num `APIRouter(prefix="/api")` | `200` | `Path=/auth` | `401` |
+    | `prefix="/api/auth"`, `app.include_router(...)` | `200` | `Path=/api/auth` | `200` |
+
+    Incluído dentro do `build_api_router` com o `/auth` default, a rota
+    responde em `/api/auth/login`, mas o cookie sai com `Path=/auth` e o
+    browser nunca o manda para `/api/auth/refresh`. Montar no app com
+    `prefix="/api/auth"` não aciona o `RTR004`, que só lê o `prefix=` de
+    `APIRouter(...)` e de `include_router(...)` — medido com
+    `tempest lint-layers` sobre um projeto do `tempest new --extras auth`
+    com essa montagem no `create_app`.
 
 ## Exceções: um módulo por status, contrato no corpo
 
@@ -600,5 +790,11 @@ Ligue o `layers_strict = true` quando os avisos zerarem.
 - **`db/configs`** guarda o `make_db_manager` (`hide_parameters=True`) e o
   `run_migrations` do boot.
 - **`api/docs`** guarda o `EndpointDoc` de cada handler.
+- **`__init__.py` só reexporta**; composição em `router.py`, factory em
+  `factory.py`, seed em `runner.py`. Arquivo sem o sufixo da camada e
+  com até 1000 linhas.
+- **Auth é a do SDK**: `UserAuthService` + `make_auth_router(..., prefix="/api/auth")`
+  montado no app, estendido por `signup_schema`, `on_signup` e
+  `me_response_model`.
 - **`layers_strict = true`** e os guards em `tests/unit/architecture/`
   fazem o `tempest check` e o `pytest` falharem no primeiro desvio.

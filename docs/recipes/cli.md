@@ -640,7 +640,7 @@ Mapeamento extra → camada gerada:
 
 | Extra | Arquivos criados (sob `src/` ou `app/`) |
 |-------|------------------------------------------|
-| `[queue]` | `queue/__init__.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/handlers.py` (subscriber de exemplo) |
+| `[queue]` | `queue/broker.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/__init__.py` (só reexporta), `queue/handlers.py` (subscriber de exemplo) |
 | `[tasks]` / `[tasks-redis]` | `tasks/queue.py` (`tq = TaskQueue.from_settings(settings)` + `get_task_queue`), `tasks/names.py` (`EXAMPLE_TASK_NAME`, `EXAMPLE_SCHEDULE`; não importa nada do projeto), `tasks/example.py` (só o registro: `@tq.cron(EXAMPLE_SCHEDULE, name=EXAMPLE_TASK_NAME)` chamando `scripts/example.py`), `tasks/dispatch.py` (`TaskDispatcher`: a API enfileira pelo nome, com `enqueue_by_name`), `tasks/worker.py` (importa as tasks; `broker`/`scheduler` para `taskiq worker src.tasks.worker:broker`), `tasks/__init__.py` (reexporta fila, nomes e dispatcher — nunca uma task) |
 
 Os dois extras geram a mesma camada: o transporte sai do `TASKIQ_BROKER_URL` em runtime. Com `[tasks-redis]`, o `tempest new` também declara `TASKIQ_BROKER_URL` no `Settings` com default `redis://localhost:6379/0` e escreve a mesma URL no `.env.example`, porque o default do mixin é `amqp://`, que escolhe o RabbitMQ e exige `[tasks]`. Se mesmo assim a URL apontar para um transporte cujo extra não está instalado, o `ImportError` do `TaskQueue.from_settings` nomeia o `TASKIQ_BROKER_URL`, o valor lido (senha mascarada) e a URL do outro transporte.
@@ -2539,13 +2539,14 @@ tem o mesmo nome de um model continua limpo.
 
 #### Camada em pacote de contexto (aviso)
 
-Três regras cobram a forma das quatro camadas — `controllers/`,
+Quatro regras cobram a forma das quatro camadas — `controllers/`,
 `services/`, `repositories/` e `models/`. Entram como **aviso**:
 
 | Código | Onde | O que acusa |
 | --- | --- | --- |
 | `LAY001` | `controllers/`, `repositories/`, `models/` | segunda classe no módulo (qualquer nome, privada também) ou função de módulo. Em `services/` quem acusa é o `SVC002`, como erro |
 | `LAY002` | as quatro camadas | módulo direto na raiz da camada: `models/route.py` vai para `models/<contexto>/route.py`. Qualquer nome de contexto vale; `__init__.py` fica de fora |
+| `LAY003` | as quatro camadas | nome de arquivo que repete a camada: `services/orders/checkout_service.py` vira `services/orders/checkout.py`, e a classe dentro continua `CheckoutService`. Vale para `_controller`, `_service`, `_repository` e `_model` |
 | `REPO002` | `repositories/` | import de um nome `*Repository` de outro módulo de repository (import absoluto com segmento `repositories`, ou relativo). Nome usado só como base de classe — o repository base do projeto — passa |
 
 Um `models/route.py` com dois models e um repository que importa outro
@@ -2720,6 +2721,31 @@ src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module o
     importar o pacote `api.dependencies` fecharia ciclo com `src.tasks`. Esse é o caso da exceção
     declarada (`"IMP002 <caminho>::<nome>": "<motivo>"`), não de reescrever o
     import.
+
+#### O que um pacote guarda e o tamanho do arquivo (aviso)
+
+| Código | Onde | O que acusa |
+| --- | --- | --- |
+| `INIT001` | todo `__init__.py`, do código e da suíte | statement que faz mais que reexportar: `def`, `class`, chamada, constante. Passam docstring, import, o `__all__` (inclusive `+=`) e `if`/`try` feitos só disso (`if TYPE_CHECKING:`, import opcional) |
+| `SIZE001` | todo módulo, do código e da suíte | arquivo com mais de 1000 linhas, acusado na linha 1001. Não há lista de arquivos isentos |
+
+Um `admin/__init__.py` que compõe os sub-routers, um service com o sufixo da
+camada no nome e um arquivo de teste de 1040 linhas saem assim
+(`tempest lint-layers --rule INIT001 --rule SIZE001 --rule LAY003`, saída
+real, exit code `0`):
+
+```text
+src/api/routers/admin/__init__.py:5: INIT001 (warning) `admin_router: APIRouter = APIRouter(prefix="/admin")` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+src/api/routers/admin/__init__.py:6: INIT001 (warning) `admin_router.include_router(orders_router)` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+src/services/orders/checkout_service.py:1: LAY003 (warning) checkout_service.py repeats the layer its directory already names; rename it to checkout.py — the class inside keeps its suffix.
+tests/integration/orders/test_orders.py:1001: SIZE001 (warning) test_orders.py has 1040 lines, over 1000; split it by responsibility — a service into several services, a test file into one file per theme, an __init__.py into a subpackage per domain.
+4 layer finding(s): 0 error(s), 4 warning(s).
+```
+
+A composição vai para `admin/router.py` (`build_admin_router()`), reexportada
+pelo `__init__.py`; uma factory, para `factory.py`; a orquestração de seed,
+para `runner.py`. O arquivo grande se quebra por responsabilidade — o
+service em vários services, o teste em um arquivo por tema.
 
 #### Router: um por arquivo, `/api` uma vez (aviso)
 

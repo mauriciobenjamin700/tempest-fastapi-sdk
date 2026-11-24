@@ -966,7 +966,8 @@ def lint_layers_cmd(
 
     Warnings (#616): LAY001, a second class or a module-level function in
     a controllers/, repositories/ or models/ module; LAY002, a module at
-    the root of a layer instead of in a context package; REPO002, a
+    the root of a layer instead of in a context package; LAY003, a layer
+    module whose name repeats the layer (``checkout_service.py``); REPO002, a
     repository importing another repository. DI001, a service or
     controller ``__init__`` taking ``AsyncSession``; DI002, a service
     taking a ``*Service`` or a controller taking a ``*Controller``;
@@ -974,7 +975,9 @@ def lint_layers_cmd(
     another; STR002, a module-level ``_name`` function — both in the
     source and in ``tests/``. IMP001, an absolute import of a neighbour in
     ``__init__.py``; IMP002, a submodule import of a name a package above
-    re-exports. RTR003, a second router in a routers/ module; RTR004, a
+    re-exports; INIT001, an ``__init__.py`` statement that does more than
+    re-export; SIZE001, a module over 1000 lines. RTR003, a second router
+    in a routers/ module; RTR004, a
     ``/api`` prefix outside ``build_api_router``; RTR005, a plain
     ``fastapi.APIRouter`` in a routers/ module (``@raises`` needs
     ``TempestAPIRouter``); RTR006, ``summary=`` / ``description=`` in a

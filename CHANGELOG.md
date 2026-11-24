@@ -16,6 +16,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sem aviso. `RTR006` acusa `summary=` ou `description=` no decorator de
   rota (literal ou constante `SUMMARY_*`): o texto mora num `EndpointDoc`
   de `api/docs/<router>.py`, espalhado no decorator.
+- `tempest check` / `tempest lint-layers`: três avisos novos (#823, #824).
+  `INIT001` acusa statement de `__init__.py` (do código e da suíte) que faz
+  mais que reexportar — `def`, `class`, chamada, constante; passam
+  docstring, import, o `__all__` (inclusive `+=`) e `if`/`try` feitos só
+  disso (`if TYPE_CHECKING:`, import opcional). `SIZE001` acusa módulo do
+  código ou da suíte com mais de 1000 linhas, na linha 1001, sem lista de
+  isentos. `LAY003` acusa módulo de `controllers/`, `services/`,
+  `repositories/` ou `models/` com o sufixo da camada no nome
+  (`checkout_service.py` → `checkout.py`; a classe continua
+  `CheckoutService`). Como o `tempest new` liga `layers_strict = true`, os
+  três derrubam o `tempest check` de projeto novo.
+- O `CLAUDE.md` que o `tempest new` escreve ganhou as regras que faltavam:
+  `__init__.py` só reexporta (com o par certo × errado de composição de
+  router), arquivo sem o sufixo da camada, teto de 1000 linhas, qual base
+  de controller usar (`BaseController[Service, Schema]` para um service,
+  `Controller` para vários ou nenhum) e a seção "Authentication" — o fluxo
+  de auth do SDK (`UserAuthService` + `make_auth_router`) não se
+  reimplementa, estende-se por `signup_schema`, `on_signup` e
+  `me_response_model`, e monta-se no app com `prefix="/api/auth"` (#826).
 
 ### Changed
 
@@ -40,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `recommended-architecture`, `architecture`, `tutorial`,
   `getting-started/first-project` e README: `api/docs/` na árvore e os
   routers de exemplo com `TempestAPIRouter`, `@raises` e `EndpointDoc`.
+
+### Fixed
+
+- `tempest generate --src` com `[queue]` escrevia o broker, o manager e o
+  `get_broker` dentro de `src/queue/__init__.py`; agora moram em
+  `src/queue/broker.py`, e o `__init__.py` só reexporta. Os nomes
+  importados de `src.queue` não mudam.
 
 ## [0.371.0] — 2026-11-23
 

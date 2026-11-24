@@ -112,6 +112,35 @@ __all__: list[str] = ["RouteModel", "StopModel"]
 The context name is free: the list the project's `CLAUDE.md` suggests is a
 guide, not a limit.
 
+### The file name does not repeat the layer
+
+The directory already says the layer; the file says what it holds. The
+class keeps its suffix, because it is the name every call site reads:
+
+| ✅ Right | ❌ Wrong |
+| --- | --- |
+| `services/orders/checkout.py` → `CheckoutService` | `services/orders/checkout_service.py` |
+| `controllers/orders/checkout.py` → `CheckoutController` | `controllers/orders/checkout_controller.py` |
+| `db/repositories/orders/order.py` → `OrderRepository` | `db/repositories/orders/order_repository.py` |
+
+A controller inherits one of the SDK's two bases, the same ones the
+scaffold uses: `BaseController[Service, Schema]` when it passes **one**
+service's CRUD through, and `Controller` when it coordinates several (or
+none, like the `ServiceInfoController` that `tempest new` writes).
+
+### At most 1000 lines per file
+
+Code **and** tests, with no exception list. A big file is hard to change
+and to review: a big service becomes several, one per responsibility
+(`services/orders/checkout.py`, `services/orders/refund.py`); a big test
+file becomes one per theme; a big `__init__.py` becomes a subpackage per
+domain.
+
+| Code | Reports |
+| --- | --- |
+| `LAY003` | a module of one of the four layers carrying that layer's suffix in its name (`_controller`, `_service`, `_repository`, `_model`) |
+| `SIZE001` | a source or test module over 1000 lines, reported at line 1001 |
+
 ## 2. Import through the layer package; relative `__init__`
 
 **Why:** a package's internal path is its own business. Code importing
@@ -147,6 +176,50 @@ class InvoiceController(BaseController[InvoiceService, InvoiceResponseSchema]):
 | --- | --- |
 | `IMP001` | an `__init__.py` importing a module of its own package by absolute path |
 | `IMP002` | importing a name from its submodule when a package above already re-exports it (followed transitively, through `import *` too) |
+| `INIT001` | an `__init__.py` holding more than re-exports and `__all__`: a `def`, a `class`, a call, a constant |
+
+An `__init__.py` **only re-exports**. Code that assembles something lives in
+a module of the package and is re-exported: router composition in
+`router.py`, a factory in `factory.py`, a seed run in `runner.py`.
+
+❌ The package builds the router:
+
+```python
+# src/api/routers/admin/__init__.py
+from fastapi import APIRouter
+
+from .orders import router as orders_router
+
+admin_router: APIRouter = APIRouter(prefix="/admin", tags=["admin"])
+admin_router.include_router(orders_router)
+```
+
+✅ `router.py` builds it; the `__init__.py` re-exports it:
+
+```python
+# src/api/routers/admin/router.py
+from tempest_fastapi_sdk import TempestAPIRouter
+
+from .orders import router as orders_router
+
+
+def build_admin_router() -> TempestAPIRouter:
+    """Assemble the admin routers under ``/admin``.
+
+    Returns:
+        TempestAPIRouter: ``/admin`` with every admin router included.
+    """
+    admin: TempestAPIRouter = TempestAPIRouter(prefix="/admin", tags=["admin"])
+    admin.include_router(orders_router)
+    return admin
+```
+
+```python
+# src/api/routers/admin/__init__.py
+from .router import build_admin_router as build_admin_router
+
+__all__: list[str] = ["build_admin_router"]
+```
 
 !!! warning "When the package would close a cycle"
     `IMP002` suggests the top-most package that re-exports the name
@@ -559,8 +632,9 @@ Then take on **one family per PR**, each with `--rule` until it reaches zero:
 1. **`IMP001`/`IMP002`** first: it is mechanical, changes no behaviour and
    makes the next changes cheaper — moving a file no longer breaks an
    import.
-2. **`LAY001`/`LAY002`**: move each class into its context package,
-   re-exporting relatively. With step 1 done, the call sites do not change.
+2. **`LAY001`–`LAY003`** and **`INIT001`**: move each class into its
+   context package, in a file without the layer suffix, and take what is
+   not a re-export out of the `__init__.py` files, re-exporting relatively. With step 1 done, the call sites do not change.
 3. **`DI001`–`DI003`**: create `scripts/composition.py` and make the
    providers call the `build_*` functions; delete the `from_session`s.
 4. **`RTR003`–`RTR006`**: create `routers/api.py` and take `/api` out of the
@@ -597,6 +671,8 @@ warning that comes back fails `tempest check`.
 
 - **One class per file**, in `<layer>/<context>/`; the package re-exports
   relatively and the rest imports through the package.
+- **A file named without the layer suffix, at most 1000 lines**; the
+  `__init__.py` only re-exports.
 - **A service receives repositories; a controller receives services.** The
   graph is assembled in `scripts/composition.py`, and nobody has a
   `from_session`.
