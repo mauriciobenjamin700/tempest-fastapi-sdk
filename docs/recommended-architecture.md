@@ -197,18 +197,18 @@ admin_router.include_router(orders_router)
 
 ```python
 # src/api/routers/admin/router.py
-from fastapi import APIRouter
+from tempest_fastapi_sdk import TempestAPIRouter
 
 from .orders import router as orders_router
 
 
-def build_admin_router() -> APIRouter:
+def build_admin_router() -> TempestAPIRouter:
     """Assemble the admin routers under ``/admin``.
 
     Returns:
-        APIRouter: ``/admin`` with every admin router included.
+        TempestAPIRouter: ``/admin`` with every admin router included.
     """
-    admin: APIRouter = APIRouter(prefix="/admin", tags=["admin"])
+    admin: TempestAPIRouter = TempestAPIRouter(prefix="/admin", tags=["admin"])
     admin.include_router(orders_router)
     return admin
 ```
