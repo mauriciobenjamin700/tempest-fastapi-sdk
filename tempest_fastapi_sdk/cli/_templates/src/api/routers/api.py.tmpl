@@ -1,8 +1,14 @@
 """The API router: every domain router, mounted once under ``/api``.
 
 ``/api`` is set here and nowhere else. A domain router declares only its
-own prefix (``APIRouter(prefix="/products")``) and is included below;
-``tempest check`` reports a ``/api`` prefix anywhere else (``RTR004``).
+own prefix (``TempestAPIRouter(prefix="/products")``) and is included
+below; ``tempest check`` reports a ``/api`` prefix anywhere else
+(``RTR004``).
+
+This aggregator stays a plain ``fastapi.APIRouter``: the error
+``responses=`` a ``@raises`` produces are built by the router the handler
+is registered on, and ``include_router`` carries them up unchanged, so a
+``TempestAPIRouter`` here would add nothing.
 """
 
 from __future__ import annotations

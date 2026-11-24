@@ -5,6 +5,42 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tempest lint-layers` / `tempest check`: dois avisos novos para o router
+  de domínio (#825, #827). `RTR005` acusa `fastapi.APIRouter(...)` num
+  módulo de `routers/` fora do `build_api_router` — num `APIRouter` o
+  `@raises(...)` não vira `responses=` e os erros da rota somem do OpenAPI
+  sem aviso. `RTR006` acusa `summary=` ou `description=` no decorator de
+  rota (literal ou constante `SUMMARY_*`): o texto mora num `EndpointDoc`
+  de `api/docs/<router>.py`, espalhado no decorator.
+
+### Changed
+
+- O scaffold do `tempest new` gera o router de domínio com
+  `TempestAPIRouter` (`src/api/routers/service_info.py` e, com `[ssr]`,
+  `src/api/routers/web.py`); o `build_api_router` continua `APIRouter`. O
+  `CLAUDE.md` do projeto ensina `TempestAPIRouter` + `@raises(...)` abaixo
+  do decorator + `**docs.X` no passo 7 e na paginação (#825).
+- `RTR003` e `RTR004` passam a reconhecer `TempestAPIRouter` e as
+  subclasses de router do projeto; antes só `fastapi.APIRouter` contava. A
+  mensagem do `RTR003` diz "a second router" em vez de "a second APIRouter".
+- **Projeto com `layers_strict = true`** (o padrão do `tempest new`) que use
+  `fastapi.APIRouter` ou `summary=` no router passa a falhar o
+  `tempest check` com `RTR005`/`RTR006`. Troque por `TempestAPIRouter` e
+  mova o texto para `api/docs/<router>.py`, ou declare a exceção em
+  `tests/architecture_exceptions.py`.
+
+### Documentation
+
+- `service-standard`: seção "Erros da rota" com o OpenAPI medido de uma
+  rota com `@raises` e par certo × errado do texto OpenAPI.
+  `recommended-architecture`, `architecture`, `tutorial`,
+  `getting-started/first-project` e README: `api/docs/` na árvore e os
+  routers de exemplo com `TempestAPIRouter`, `@raises` e `EndpointDoc`.
+
 ## [0.371.0] — 2026-11-23
 
 ### Added

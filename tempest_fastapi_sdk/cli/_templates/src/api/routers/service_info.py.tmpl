@@ -1,15 +1,24 @@
-"""``GET /api/`` — the placeholder root endpoint, one router per module."""
+"""``GET /api/`` — the placeholder root endpoint, one router per module.
+
+A domain router is a :class:`~tempest_fastapi_sdk.TempestAPIRouter`, not
+a plain ``fastapi.APIRouter``: it turns the ``@raises(...)`` under each
+route decorator into that route's error ``responses=`` (a plain
+``APIRouter`` ignores the tag, and ``tempest check`` reports one here as
+``RTR005``). The OpenAPI text of each route lives in
+``src/api/docs/service_info.py`` and is spread into the decorator.
+"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
+from tempest_fastapi_sdk import TempestAPIRouter
 
 from src.api.dependencies import get_service_info_controller
 from src.api.docs import service_info
 from src.controllers import ServiceInfoController
 from src.schemas import ServiceInfoSchema
 
-router: APIRouter = APIRouter(tags=["root"])
+router: TempestAPIRouter = TempestAPIRouter(tags=["root"])
 
 
 @router.get("/", **service_info.INDEX)

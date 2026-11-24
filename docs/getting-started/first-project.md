@@ -197,7 +197,7 @@ minha_api/
 ├── .env.example
 └── src/
     ├── server.py           # uvicorn programático + app importável
-    ├── api/                # routers, dependencies, factory do app
+    ├── api/                # routers, dependencies, docs (texto do OpenAPI), factory do app
     ├── controllers/        # orquestração fina sobre os services
     ├── services/           # lógica de negócio
     ├── schemas/            # DTOs de request/response
@@ -206,6 +206,11 @@ minha_api/
     │   └── repositories/
     └── core/               # settings + constants + exceptions
 ```
+
+Em `api/`, cada router de domínio é um `TempestAPIRouter` e o texto que o
+Swagger mostra mora em `api/docs/<router>.py`, um `EndpointDoc` por
+handler — o porquê está no
+[Padrão de serviço](../service-standard.md#texto-do-openapi-fora-do-router).
 
 Suba o serviço:
 

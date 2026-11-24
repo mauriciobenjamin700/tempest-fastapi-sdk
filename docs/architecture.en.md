@@ -58,7 +58,7 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     │   ├── app.py                   # create_app() factory — middleware + handlers + wiring (thin)
     │   ├── routers/                 # HTTP endpoints, no business logic
     │   ├── dependencies/            # PACKAGE (auth.py + resources.py + controllers.py / services.py)
-    │   └── docs/                    # OpenAPI customization
+    │   └── docs/                    # OpenAPI text: one EndpointDoc per handler (<router>.py)
     ├── controllers/<context>/       # Orchestrate between services — one class per module
     ├── services/<context>/          # Business logic layer
     ├── schemas/                     # Pydantic v2 request/response DTOs
@@ -83,6 +83,14 @@ one class per module, and every `__init__.py` re-exports with a relative
 import. Why each of these shapes, with the wrong and the right example and
 the `tempest check` code that enforces it, is in
 [Recommended architecture](recommended-architecture.md).
+
+In `api/`, every domain router is a `TempestAPIRouter` with `@raises(...)`
+below the route decorator, and the text Swagger shows lives in
+`api/docs/<router>.py`, one `EndpointDoc` per handler — never `summary=`
+in the decorator. The why, with the measured OpenAPI, is in the Service
+standard:
+[OpenAPI text out of the router](service-standard.md#openapi-text-out-of-the-router)
+and [Route errors](service-standard.md#route-errors-tempestapirouter-raises).
 
 !!! tip "`db/configs/names.py` rules out a class of error"
     Holding each table name in a constant makes `__tablename__` and the
@@ -363,13 +371,14 @@ def get_user_controller(
 
 
 # src/api/routers/users.py
-from fastapi import APIRouter, Depends, status
+from fastapi import Depends, status
+from tempest_fastapi_sdk import TempestAPIRouter
 
 from src.api.dependencies.controllers import get_user_controller
 from src.controllers.user_controller import UserController
 from src.schemas.user import UserCreate, UserResponse
 
-router = APIRouter(prefix="/users", tags=["users"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/users", tags=["users"])
 
 
 @router.post(
@@ -480,7 +489,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, status
+from fastapi import Depends, FastAPI, status
 from fastapi.testclient import TestClient
 from pydantic import Field
 from sqlalchemy import ForeignKey, String
@@ -497,7 +506,9 @@ from tempest_fastapi_sdk import (
     BaseSchema,
     BaseService,
     NotFoundException,
+    TempestAPIRouter,
     ValidationException,
+    raises,
     register_exception_handlers,
 )
 
@@ -692,10 +703,11 @@ def get_product_controller(
     return ProductController(service)
 
 
-router: APIRouter = APIRouter(prefix="/api/products", tags=["products"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/api/products", tags=["products"])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
+@raises(CategoryNotFoundError, ProductPriceAboveLimitError)
 async def create_product(
     data: ProductCreateSchema,
     controller: ProductController = Depends(get_product_controller),
@@ -713,6 +725,7 @@ async def create_product(
 
 
 @router.get("/{product_id}")
+@raises(ProductNotFoundError)
 async def get_product(
     product_id: UUID,
     controller: ProductController = Depends(get_product_controller),
@@ -1087,7 +1100,7 @@ as an **error**:
 
 The file-shape rules — context package, import through the layer, what
 services and controllers receive, one router per file, the suite — enter as
-**warnings** (`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`/`RTR004`, `STR*`,
+**warnings** (`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`–`RTR006`, `STR*`,
 `TST*`) and are in [Recommended architecture](recommended-architecture.md).
 
 Run over a `src/` with a `FamilyService` whose `__init__` only calls

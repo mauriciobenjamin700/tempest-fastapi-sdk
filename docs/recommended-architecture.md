@@ -239,7 +239,7 @@ combinar dois repositories é exatamente o trabalho do service.
 | --- | --- |
 | `REPO002` | import de um `*Repository` dentro de `repositories/` (o nome usado só como base de classe — o repository base do projeto — passa) |
 
-## 5. Um router por arquivo; `/api` uma vez
+## 5. Um router por arquivo; `/api` uma vez; `TempestAPIRouter`
 
 **Por quê:** com o `/api` repetido em cada `include_router` (22 vezes, no
 transport), mudar o prefixo da API ou montar um domínio fora dela vira caça
@@ -271,10 +271,90 @@ def build_api_router() -> APIRouter:
     return api
 ```
 
+O router de domínio tem forma também. O texto do Swagger mora em
+`api/docs/<router>.py`, um `EndpointDoc` por handler, e não em constantes
+`SUMMARY_*` no topo do router; e o router é um `TempestAPIRouter`, que
+transforma o `@raises(...)` abaixo do decorator no `responses=` da rota —
+num `fastapi.APIRouter` a mesma tag não faz nada.
+
+❌ Antes:
+
+```python
+# src/api/routers/orders.py
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_order_controller
+from src.controllers import OrderController
+from src.schemas import OrderResponseSchema
+
+SUMMARY_GET_ORDER: str = "Busca um pedido"
+
+router: APIRouter = APIRouter(prefix="/orders", tags=["orders"])
+
+
+@router.get("/{order_id}", summary=SUMMARY_GET_ORDER)
+async def get_order(
+    order_id: UUID,
+    controller: OrderController = Depends(get_order_controller),
+) -> OrderResponseSchema:
+    """Busca um pedido."""
+    return await controller.get_by_id(order_id)
+```
+
+✅ Depois:
+
+```python
+# src/api/docs/orders.py
+from .base import EndpointDoc
+
+GET_ORDER: EndpointDoc = {
+    "summary": "Busca um pedido",
+    "description": "Devolve o pedido pelo id. Responde 404 (ORDER_NOT_FOUND) quando ele não existe.",
+}
+```
+
+```python
+# src/api/routers/orders.py
+from uuid import UUID
+
+from fastapi import Depends
+from tempest_fastapi_sdk import TempestAPIRouter, raises
+
+from src.api.dependencies import get_order_controller
+from src.api.docs import orders as order_docs
+from src.controllers import OrderController
+from src.core.exceptions import OrderNotFoundException
+from src.schemas import OrderResponseSchema
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/orders", tags=["orders"])
+
+
+@router.get("/{order_id}", **order_docs.GET_ORDER)
+@raises(OrderNotFoundException)
+async def get_order(
+    order_id: UUID,
+    controller: OrderController = Depends(get_order_controller),
+) -> OrderResponseSchema:
+    """Busca um pedido."""
+    return await controller.get_by_id(order_id)
+```
+
+O porquê de cada metade, com o OpenAPI medido que o `@raises` produz, está
+no Padrão de serviço:
+[Texto do OpenAPI fora do router](service-standard.md#texto-do-openapi-fora-do-router)
+e
+[Erros da rota](service-standard.md#erros-da-rota-tempestapirouter-raises).
+O agregador do `build_api_router` continua `APIRouter`: quem monta os
+erros é o router em que o handler é registrado.
+
 | Código | Acusa |
 | --- | --- |
-| `RTR003` | mais de um `APIRouter(...)` num módulo de `routers/` |
+| `RTR003` | mais de um router (`APIRouter(...)`, `TempestAPIRouter(...)` ou subclasse do projeto) num módulo de `routers/` |
 | `RTR004` | `prefix` `/api` (ou abaixo dele) fora de uma função `build_api_router` |
+| `RTR005` | `fastapi.APIRouter(...)` num módulo de `routers/`, fora do `build_api_router` |
+| `RTR006` | `summary=` ou `description=` no decorator de uma rota em `routers/` |
 
 ## 6. Sem função aninhada nem helper privado de módulo
 
@@ -480,8 +560,9 @@ Depois ataque **uma família por PR**, cada uma com `--rule` até zerar:
    reexportando relativo. Com o passo 1 feito, os call sites não mudam.
 3. **`DI001`–`DI003`**: criar o `scripts/composition.py` e fazer os
    providers chamarem os `build_*`; apagar os `from_session`.
-4. **`RTR003`/`RTR004`**: criar o `routers/api.py` e tirar o `/api` dos
-   domínios.
+4. **`RTR003`–`RTR006`**: criar o `routers/api.py` e tirar o `/api` dos
+   domínios; trocar o `APIRouter` de cada domínio por `TempestAPIRouter`
+   e mover `summary=`/`description=` para `api/docs/<router>.py`.
 5. **`STR001`/`STR002`**: callbacks com estado viram classe; argumento fixo
    vira `partial`.
 6. **`TST001`–`TST004`**: a suíte — de longe a maior conta no transport
@@ -516,7 +597,9 @@ aviso que voltar derruba o `tempest check`.
 - **Service recebe repository; controller recebe service.** O grafo é
   montado no `scripts/composition.py`, e ninguém tem `from_session`.
 - **Repository não importa repository.**
-- **Um router por arquivo**, e o `/api` só no `build_api_router`.
+- **Um router por arquivo**, e o `/api` só no `build_api_router`; o
+  router de domínio é `TempestAPIRouter`, com `@raises` e o texto em
+  `api/docs`.
 - **Sem função aninhada nem `_helper` de módulo**, no código e na suíte.
 - **Task é só registro**, com nome fixo; a API enfileira pelo nome.
 - **Schema documentado**, conferido por `assert_schema_metadata`.

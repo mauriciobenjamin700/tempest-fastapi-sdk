@@ -463,11 +463,15 @@ builder from `src/scripts/__init__.py` and the provider from
 
 ### 7. Router (`src/api/routers/`)
 
-One router per module, declaring only its own prefix:
+One router per module, declaring only its own prefix, built with
+`TempestAPIRouter` from `tempest_fastapi_sdk` — never `fastapi.APIRouter`
+(`tempest check` reports one as `RTR005`).
 
 The text Swagger shows lives in `src/api/docs/product.py`, one
 `EndpointDoc` per handler, re-exported as a module from
-`src/api/docs/__init__.py` (`from . import product as product`):
+`src/api/docs/__init__.py` (`from . import product as product`). Never
+write `summary=` / `description=` in the route decorator, nor a
+`SUMMARY_*` constant at the top of the router (`RTR006`):
 
 ```python
 # src/api/docs/product.py
@@ -480,16 +484,24 @@ CREATE_PRODUCT: EndpointDoc = {
         "(PRODUCT_NAME_TAKEN) when the name is already in use."
     ),
 }
+
+LIST_PRODUCTS: EndpointDoc = {
+    "summary": "List products",
+    "description": "Returns one page of products, ordered as requested.",
+}
 ```
 
-The router spreads it into the decorator and declares, in `responses=`,
-every exception its flow raises — `tempest check` fails on one it can
-reach but does not declare (`openapi-errors`):
+The router spreads it into the decorator and declares, with `@raises`
+**below** the route decorator, every exception its flow raises —
+`tempest check` fails on one it can reach but does not declare
+(`openapi-errors`). `TempestAPIRouter` turns the tag into the route's
+error `responses=`, each status with `ErrorResponseSchema` as a `$ref`
+and one example per exception:
 
 ```python
 # src/api/routers/product.py
-from fastapi import APIRouter, Depends, status
-from tempest_fastapi_sdk import error_responses
+from fastapi import Depends, status
+from tempest_fastapi_sdk import TempestAPIRouter, raises
 
 from src.api.dependencies import get_product_controller
 from src.api.docs import product as product_docs
@@ -497,15 +509,11 @@ from src.controllers import ProductController
 from src.core.exceptions import ProductNameTakenException
 from src.schemas import ProductCreateSchema, ProductResponseSchema
 
-router: APIRouter = APIRouter(prefix="/products", tags=["products"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/products", tags=["products"])
 
 
-@router.post(
-    "",
-    status_code=status.HTTP_201_CREATED,
-    responses=error_responses(ProductNameTakenException),
-    **product_docs.CREATE_PRODUCT,
-)
+@router.post("", status_code=status.HTTP_201_CREATED, **product_docs.CREATE_PRODUCT)
+@raises(ProductNameTakenException)
 async def create_product(
     data: ProductCreateSchema,
     controller: ProductController = Depends(get_product_controller),
@@ -522,7 +530,14 @@ async def create_product(
     return await controller.create(data)
 ```
 
-Mount it in `build_api_router`, the only place `/api` is written:
+`responses=` on the decorator is left for overriding one status code:
+an explicit entry replaces the generated one for that status, whole —
+the `ErrorResponseSchema` and the examples included.
+
+Mount it in `build_api_router`, the only place `/api` is written. The
+aggregator stays a plain `APIRouter`: the responses are built by the
+router the handler is registered on, and `include_router` carries them
+up unchanged.
 
 ```python
 # src/api/routers/api.py
@@ -616,8 +631,10 @@ fails the gate. The suite runs the same checks too, in
 | `STR002` | warning | a module-level `_name` function (source and tests) |
 | `IMP001` | warning | an absolute import of a neighbour in `__init__.py` |
 | `IMP002` | warning | importing a submodule for a name a package above re-exports |
-| `RTR003` | warning | more than one `APIRouter` in a routers module |
+| `RTR003` | warning | more than one router (`APIRouter`, `TempestAPIRouter`) in a routers module |
 | `RTR004` | warning | a `/api` prefix outside `build_api_router` |
+| `RTR005` | warning | a `fastapi.APIRouter` in a routers module outside `build_api_router` |
+| `RTR006` | warning | `summary=` / `description=` in a route decorator |
 | `TST001` | warning | a test docstring without `Cenário:` and `Esperado:` |
 | `TST002` | warning | a test that checks nothing |
 | `TST003` | warning | `pytest.raises(Exception)` |
@@ -763,17 +780,22 @@ always a change in that file too.
 Use the SDK envelope; do not invent a page shape.
 
 ```python
-from fastapi import APIRouter, Depends
-from tempest_fastapi_sdk import BasePaginationFilterSchema, BasePaginationSchema
+from fastapi import Depends
+from tempest_fastapi_sdk import (
+    BasePaginationFilterSchema,
+    BasePaginationSchema,
+    TempestAPIRouter,
+)
 
 from src.api.dependencies import get_product_controller
+from src.api.docs import product as product_docs
 from src.controllers import ProductController
 from src.schemas import ProductResponseSchema
 
-router: APIRouter = APIRouter(prefix="/products", tags=["products"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/products", tags=["products"])
 
 
-@router.get("")
+@router.get("", **product_docs.LIST_PRODUCTS)
 async def list_products(
     filters: BasePaginationFilterSchema = Depends(),
     controller: ProductController = Depends(get_product_controller),
