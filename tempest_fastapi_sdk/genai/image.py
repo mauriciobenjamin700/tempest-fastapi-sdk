@@ -28,7 +28,7 @@ import io
 import secrets
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
@@ -41,6 +41,13 @@ from tempest_fastapi_sdk.genai.schemas import (
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    from PIL.Image import Image as PILImage
+
+type ImageSource = str | Path | bytes | bytearray | PILImage | NDArray[Any]
+"""Supported input image forms accepted by :meth:`ImageGenerator.edit`."""
 
 _MAX_SEED: int = 2**32 - 1
 
@@ -527,7 +534,7 @@ class ImageGenerator:
     async def edit(
         self,
         prompt: str,
-        image: Any,
+        image: ImageSource,
         *,
         strength: float = 0.8,
         config: ImageGenerationConfig | None = None,
@@ -548,7 +555,7 @@ class ImageGenerator:
 
         Args:
             prompt (str): What the result should depict.
-            image (Any): The starting image — a path, ``bytes``, a
+            image (ImageSource): The starting image — a path, ``bytes``, a
                 ``PIL.Image`` or a NumPy array.
             strength (float): How far to move from the input, ``0..1``.
                 Low values keep the composition; ``1.0`` ignores the input
@@ -582,4 +589,5 @@ __all__: list[str] = [
     "ImageDiffusionPipeline",
     "ImageGenerator",
     "ImagePipelineOutput",
+    "ImageSource",
 ]

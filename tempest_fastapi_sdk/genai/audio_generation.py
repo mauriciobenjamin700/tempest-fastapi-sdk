@@ -51,8 +51,9 @@ import inspect
 import io
 import secrets
 import wave
-from collections.abc import Awaitable, Sequence
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Awaitable, Callable, Sequence
+from contextlib import AbstractContextManager
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
@@ -66,7 +67,20 @@ from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
 _MAX_SEED: int = 2**32 - 1
+
+
+class TorchProbeModule(Protocol):
+    """Minimal ``torch`` module surface used by :func:`text_features_problem`."""
+
+    Tensor: type[object]
+
+    def no_grad(self) -> AbstractContextManager[object]:
+        """Disable gradient tracking during the text-encoder probe."""
+        ...
 
 
 class AudioPipelineOutput(Protocol):
@@ -143,11 +157,11 @@ def _require_diffusers() -> tuple[Any, Any]:
     return torch, diffusers
 
 
-def check_audio_pipeline(pipeline: Any) -> None:
+def check_audio_pipeline(pipeline: Callable[..., object]) -> None:
     """Refuse a pipeline this generator cannot drive.
 
     Args:
-        pipeline (Any): A loaded diffusers pipeline.
+        pipeline (Callable[..., object]): A loaded diffusers pipeline.
 
     Raises:
         ValueError: When the pipeline's call does not take
@@ -159,7 +173,7 @@ def check_audio_pipeline(pipeline: Any) -> None:
             puts the method back on ``GPT2Model`` passes it.
     """
     name = type(pipeline).__name__
-    parameters = inspect.signature(pipeline.__call__).parameters
+    parameters = inspect.signature(pipeline).parameters
     if AUDIO_LENGTH_KEYWORD not in parameters:
         raise ValueError(
             f"{name} is not an AudioLDM-family pipeline (its call takes no "
@@ -180,7 +194,7 @@ def check_audio_pipeline(pipeline: Any) -> None:
         )
 
 
-def text_features_problem(pipeline: Any, torch: Any) -> str | None:
+def text_features_problem(pipeline: object, torch: TorchProbeModule) -> str | None:
     """Probe a CLAP text encoder once and say why the pipeline cannot use it.
 
     ``MusicLDMPipeline`` calls ``text_encoder.get_text_features(...)`` and
@@ -202,8 +216,8 @@ def text_features_problem(pipeline: Any, torch: Any) -> str | None:
     the pipeline, 8 MiB stay allocated with the exception still held.
 
     Args:
-        pipeline (Any): A loaded diffusers pipeline, already on its device.
-        torch (Any): The imported ``torch`` module.
+        pipeline (object): A loaded diffusers pipeline, already on its device.
+        torch (TorchProbeModule): The imported ``torch`` module.
 
     Returns:
         str | None: Why the pipeline would fail, or ``None`` when it can
@@ -236,11 +250,11 @@ def text_features_problem(pipeline: Any, torch: Any) -> str | None:
     )
 
 
-def pipeline_sample_rate(pipeline: Any) -> int:
+def pipeline_sample_rate(pipeline: object) -> int:
     """Read the output sample rate a pipeline declares.
 
     Args:
-        pipeline (Any): A loaded diffusers audio pipeline.
+        pipeline (object): A loaded diffusers audio pipeline.
 
     Returns:
         int: Samples per second, from the vocoder config (AudioLDM family)
@@ -257,7 +271,7 @@ def pipeline_sample_rate(pipeline: Any) -> int:
     raise ValueError(f"{type(pipeline).__name__} declares no sampling_rate")
 
 
-def encode_wav(samples: Any, sample_rate: int) -> tuple[bytes, int, float]:
+def encode_wav(samples: ArrayLike, sample_rate: int) -> tuple[bytes, int, float]:
     """Encode a float waveform as a 16-bit PCM WAV.
 
     Values are clipped to ``[-1, 1]`` before scaling, so an overshooting
@@ -265,8 +279,8 @@ def encode_wav(samples: Any, sample_rate: int) -> tuple[bytes, int, float]:
     ``±inf`` saturates, since casting them to ``int16`` is undefined.
 
     Args:
-        samples (Any): A NumPy-compatible array, ``(frames,)`` for mono or
-            ``(channels, frames)`` for multi-channel.
+        samples (ArrayLike): A NumPy-compatible array, ``(frames,)`` for mono
+            or ``(channels, frames)`` for multi-channel.
         sample_rate (int): Samples per second.
 
     Returns:
@@ -604,6 +618,7 @@ __all__: list[str] = [
     "AudioGenerator",
     "AudioPipelineOutput",
     "SupportsAudioGeneration",
+    "TorchProbeModule",
     "check_audio_pipeline",
     "encode_wav",
     "pipeline_sample_rate",

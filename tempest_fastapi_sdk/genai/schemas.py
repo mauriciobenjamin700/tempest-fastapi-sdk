@@ -699,7 +699,7 @@ keyword has to be chosen at call time rather than hard-coded.
 """
 
 
-def precision_kwarg(dtype: Any) -> dict[str, Any]:
+def precision_kwarg[DtypeT](dtype: DtypeT) -> dict[str, DtypeT]:
     """Return the ``from_pretrained`` precision keyword for this install.
 
     Passing ``torch_dtype`` to a modern ``transformers`` still works, and
@@ -713,10 +713,10 @@ def precision_kwarg(dtype: Any) -> dict[str, Any]:
     the image path keeps sending ``torch_dtype``.
 
     Args:
-        dtype (Any): The resolved ``torch`` dtype to load the weights under.
+        dtype (DtypeT): The resolved ``torch`` dtype to load the weights under.
 
     Returns:
-        dict[str, Any]: A single-entry kwargs dict, keyed ``dtype`` on
+        dict[str, DtypeT]: A single-entry kwargs dict, keyed ``dtype`` on
         transformers >= 4.56 and ``torch_dtype`` below it. With no
         ``transformers`` installed there is nothing to load either, so the
         current name is returned rather than raising here — the real

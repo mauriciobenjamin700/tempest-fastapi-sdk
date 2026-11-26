@@ -18,36 +18,44 @@ for the metrics counterpart see
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from tempest_fastapi_sdk.admin.dashboard import (
     MetricCard,
     MetricPartition,
     MetricValue,
 )
-from tempest_fastapi_sdk.genai.inventory import runtime_report
+from tempest_fastapi_sdk.genai.inventory import ModelRuntimeReport, runtime_report
+from tempest_fastapi_sdk.genai.registry import ModelRegistry
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-def _report(models: Any, *, probe: bool) -> Any:
+def _report(
+    models: ModelRegistry | Mapping[str, object] | Sequence[object],
+    *,
+    probe: bool,
+) -> ModelRuntimeReport:
     """Build the inventory from whatever the caller handed us.
 
     Args:
-        models (Any): A ``ModelRegistry``, or a dict/list of handles.
+        models (ModelRegistry | Mapping[str, object] | Sequence[object]): A
+            ``ModelRegistry``, or a mapping/sequence of handles.
         probe (bool): Whether to read the host memory picture.
 
     Returns:
         ModelRuntimeReport: The inventory.
     """
-    if hasattr(models, "inventory"):
+    if isinstance(models, ModelRegistry):
         return models.inventory(probe=probe)
     return runtime_report(models, probe=probe)
 
 
 def make_model_cards(
-    models: Any,
+    models: ModelRegistry | Mapping[str, object] | Sequence[object],
     *,
     include_vram: bool = True,
 ) -> list[MetricCard]:
@@ -64,9 +72,9 @@ def make_model_cards(
     models load.
 
     Args:
-        models (Any): A
-            :class:`~tempest_fastapi_sdk.genai.ModelRegistry`, or a dict or
-            list of model handles you hold yourself.
+        models (ModelRegistry | Mapping[str, object] | Sequence[object]): A
+            :class:`~tempest_fastapi_sdk.genai.ModelRegistry`, or a mapping or
+            sequence of model handles you hold yourself.
         include_vram (bool): Add the free-VRAM card. It is the only one
             that probes the host, so drop it on a CPU-only box or when the
             dashboard should stay free of NVML reads.
