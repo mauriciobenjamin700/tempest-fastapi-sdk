@@ -60,11 +60,11 @@ PermissionResolver = Callable[[Any], set[str] | Awaitable[set[str]]]
 SuperuserPredicate = Callable[[Any], bool]
 
 
-def _default_superuser(user: Any) -> bool:
+def _default_superuser(user: object) -> bool:
     """Treat a user with a truthy ``is_admin`` attribute as superuser.
 
     Args:
-        user (Any): The user under evaluation.
+        user (object): The user under evaluation.
 
     Returns:
         bool: ``True`` when ``user.is_admin`` is truthy.
@@ -72,13 +72,13 @@ def _default_superuser(user: Any) -> bool:
     return bool(getattr(user, "is_admin", False))
 
 
-def _default_resolver(user: Any) -> set[str]:
+def _default_resolver(user: object) -> set[str]:
     """Read static permissions from a ``permissions`` attribute.
 
     Accepts any iterable of strings; missing attribute → empty set.
 
     Args:
-        user (Any): The user whose static permissions to read.
+        user (object): The user whose static permissions to read.
 
     Returns:
         set[str]: The permission strings the user holds.
@@ -194,11 +194,11 @@ class PermissionRegistry:
                 matched.extend(checks)
         return matched
 
-    async def _static_permissions(self, user: Any) -> set[str]:
+    async def _static_permissions(self, user: object) -> set[str]:
         """Resolve the user's static permission set, awaiting if needed.
 
         Args:
-            user (Any): The user under evaluation.
+            user (object): The user under evaluation.
 
         Returns:
             set[str]: The static permission strings.
@@ -210,19 +210,19 @@ class PermissionRegistry:
 
     async def has_perm(
         self,
-        user: Any,
+        user: object,
         permission: str,
-        obj: Any = None,
+        obj: object = None,
     ) -> bool:
         """Return whether ``user`` holds ``permission`` (on ``obj``).
 
         See the module docstring for the full resolution order.
 
         Args:
-            user (Any): The user under evaluation (``None`` → denied).
+            user (object): The user under evaluation (``None`` → denied).
             permission (str): The permission string, e.g.
                 ``"order.delete"``.
-            obj (Any): The target object for an object-level check, or
+            obj (object): The target object for an object-level check, or
                 ``None`` for a model-level check.
 
         Returns:
@@ -252,18 +252,18 @@ class PermissionRegistry:
 
     async def check_permission(
         self,
-        user: Any,
+        user: object,
         permission: str,
-        obj: Any = None,
+        obj: object = None,
         *,
         message: str | None = None,
     ) -> None:
         """Raise :class:`ForbiddenException` unless the permission holds.
 
         Args:
-            user (Any): The user under evaluation.
+            user (object): The user under evaluation.
             permission (str): The permission string.
-            obj (Any): The target object, or ``None``.
+            obj (object): The target object, or ``None``.
             message (str | None): Override for the forbidden message.
 
         Raises:
@@ -298,18 +298,18 @@ def permission(
 
 
 async def has_perm(
-    user: Any,
+    user: object,
     permission: str,
-    obj: Any = None,
+    obj: object = None,
     *,
     registry: PermissionRegistry | None = None,
 ) -> bool:
     """Module-level :meth:`PermissionRegistry.has_perm`.
 
     Args:
-        user (Any): The user under evaluation.
+        user (object): The user under evaluation.
         permission (str): The permission string.
-        obj (Any): The target object, or ``None``.
+        obj (object): The target object, or ``None``.
         registry (PermissionRegistry | None): Target registry; ``None``
             uses :data:`default_registry`.
 
@@ -320,9 +320,9 @@ async def has_perm(
 
 
 async def check_permission(
-    user: Any,
+    user: object,
     permission: str,
-    obj: Any = None,
+    obj: object = None,
     *,
     registry: PermissionRegistry | None = None,
     message: str | None = None,
@@ -330,9 +330,9 @@ async def check_permission(
     """Module-level :meth:`PermissionRegistry.check_permission`.
 
     Args:
-        user (Any): The user under evaluation.
+        user (object): The user under evaluation.
         permission (str): The permission string.
-        obj (Any): The target object, or ``None``.
+        obj (object): The target object, or ``None``.
         registry (PermissionRegistry | None): Target registry; ``None``
             uses :data:`default_registry`.
         message (str | None): Override for the forbidden message.
@@ -353,12 +353,12 @@ class PermissionMixin:
     ``user.has_perm(...)`` call site from the roadmap.
     """
 
-    async def has_perm(self, permission: str, obj: Any = None) -> bool:
+    async def has_perm(self, permission: str, obj: object = None) -> bool:
         """Return whether this user holds ``permission`` (on ``obj``).
 
         Args:
             permission (str): The permission string.
-            obj (Any): The target object, or ``None``.
+            obj (object): The target object, or ``None``.
 
         Returns:
             bool: ``True`` when the permission is granted.
