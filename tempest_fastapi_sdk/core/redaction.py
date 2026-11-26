@@ -12,9 +12,9 @@ the filter on every handler it installs when called with ``redact=True``.
 
 import logging
 import re
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, overload
 
 REDACTED: str = "[REDACTED]"
 """The default text that replaces every redacted value."""
@@ -130,8 +130,21 @@ _RECORD_FIELDS: frozenset[str] = frozenset(
 ) | {"message", "asctime", "taskName"}
 """Attribute names every ``LogRecord`` carries, i.e. not ``extra=`` keys."""
 
-_PLAIN_TYPES: tuple[type, ...] = (bool, int, float, type(None))
-"""Scalars that cannot carry text and are kept as they are."""
+type RedactedValue = (
+    bool
+    | int
+    | float
+    | str
+    | list[RedactedValue]
+    | dict[Hashable, RedactedValue]
+    | None
+)
+"""What :meth:`RedactionPolicy.redact_value` returns, at any depth.
+
+A scalar that cannot carry text, a redacted string (every other object is
+rendered with ``str`` first), a list (from any list, tuple or set) or a
+dict whose keys are the input's keys, unchanged.
+"""
 
 _EXCEPTION_FORMATTER: logging.Formatter = logging.Formatter()
 """Renders ``exc_info`` the way the stdlib formatter would."""
@@ -358,7 +371,21 @@ class RedactionPolicy:
             text = pattern.sub(self.replacement, text)
         return text
 
-    def redact_value(self, value: Any) -> Any:
+    @overload
+    def redact_value[K: Hashable](
+        self, value: Mapping[K, object]
+    ) -> dict[K, RedactedValue]: ...
+
+    @overload
+    def redact_value[T](
+        self,
+        value: list[T] | set[T] | tuple[object, ...] | frozenset[object],
+    ) -> list[RedactedValue]: ...
+
+    @overload
+    def redact_value(self, value: object) -> RedactedValue: ...
+
+    def redact_value(self, value: object) -> object:
         """Redact a value of any shape, recursing into containers.
 
         Mappings have sensitive keys replaced and the remaining values
@@ -371,14 +398,16 @@ class RedactionPolicy:
         past.
 
         Args:
-            value (Any): The value to redact.
+            value (object): The value to redact.
 
         Returns:
-            Any: A redacted copy. The input is never mutated.
+            RedactedValue: A redacted copy — a ``dict`` with the same keys
+            for a mapping, a ``list`` for any other container. The input
+            is never mutated.
         """
         return self._redact(value, 0)
 
-    def _redact(self, value: Any, depth: int) -> Any:
+    def _redact(self, value: Any, depth: int) -> RedactedValue:
         """Redact ``value`` at a given nesting depth.
 
         Args:
@@ -387,9 +416,9 @@ class RedactionPolicy:
                 :data:`_MAX_DEPTH` the value is redacted as text.
 
         Returns:
-            Any: A redacted copy of ``value``.
+            RedactedValue: A redacted copy of ``value``.
         """
-        if isinstance(value, _PLAIN_TYPES):
+        if value is None or isinstance(value, bool | int | float):
             return value
         if isinstance(value, str):
             return self.redact_text(value)
@@ -518,6 +547,7 @@ __all__: list[str] = [
     "EMAIL_PATTERN",
     "JWT_PATTERN",
     "REDACTED",
+    "RedactedValue",
     "RedactionFilter",
     "RedactionPolicy",
     "redact_capability_url",

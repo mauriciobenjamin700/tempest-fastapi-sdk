@@ -16,7 +16,7 @@ never leaks ``"Class.MEMBER"``.
 """
 
 from enum import Enum
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final, Self, overload
 
 _MISSING: Final[object] = object()
 """Sentinel marking "no default supplied" in :meth:`_EnumHelpers.from_value`.
@@ -25,8 +25,13 @@ A distinct object is required so that ``None`` remains a valid explicit
 default a caller can ask for.
 """
 
+if TYPE_CHECKING:
+    _HelpersBase = Enum
+else:
+    _HelpersBase = object
 
-class _EnumHelpers:
+
+class _EnumHelpers(_HelpersBase):
     """Mixin adding introspection helpers to an :class:`~enum.Enum`.
 
     Not meant to be used directly; mix it into an ``Enum`` subclass
@@ -38,6 +43,12 @@ class _EnumHelpers:
     **value**, never ``"Class.MEMBER"``. Sitting first in the MRO — ahead
     of the mixed-in value type and of ``Enum`` — makes this the single
     implementation both bases inherit.
+
+    To the type checker the mixin derives from :class:`~enum.Enum`, so the
+    helpers are typed against the members (``from_value`` returns ``Self``)
+    instead of ``Any``. At runtime it derives from :class:`object`: an empty
+    ``Enum`` base would make the metaclass resolve ``__str__`` and
+    ``__format__`` differently, and the mixin must stay first in the MRO.
     """
 
     def __str__(self) -> str:
@@ -55,7 +66,7 @@ class _EnumHelpers:
             :class:`BaseStrEnum`, its decimal form for a
             :class:`BaseIntEnum`.
         """
-        return str(self.value)  # type: ignore[attr-defined]
+        return str(self.value)
 
     def __format__(self, format_spec: str) -> str:
         """Format the member's value under ``format_spec``.
@@ -72,7 +83,7 @@ class _EnumHelpers:
         Returns:
             str: The formatted value.
         """
-        return format(self.value, format_spec)  # type: ignore[attr-defined]
+        return format(self.value, format_spec)
 
     @classmethod
     def values(cls) -> list[Any]:
@@ -83,7 +94,7 @@ class _EnumHelpers:
             concrete element type is ``str`` for :class:`BaseStrEnum`
             and ``int`` for :class:`BaseIntEnum`.
         """
-        return [member.value for member in cls]  # type: ignore[attr-defined]
+        return [member.value for member in cls]
 
     @classmethod
     def keys(cls) -> list[str]:
@@ -92,7 +103,7 @@ class _EnumHelpers:
         Returns:
             list[str]: The member names, in definition order.
         """
-        return list(cls.__members__.keys())  # type: ignore[attr-defined]
+        return list(cls.__members__.keys())
 
     @classmethod
     def choices(cls) -> list[tuple[Any, str]]:
@@ -107,7 +118,7 @@ class _EnumHelpers:
             order. The value element is ``str`` for :class:`BaseStrEnum`
             and ``int`` for :class:`BaseIntEnum`.
         """
-        return [(member.value, member.name) for member in cls]  # type: ignore[attr-defined]
+        return [(member.value, member.name) for member in cls]
 
     @classmethod
     def to_dict(cls) -> dict[str, Any]:
@@ -116,7 +127,7 @@ class _EnumHelpers:
         Returns:
             dict[str, Any]: Mapping of each member name to its value.
         """
-        return {member.name: member.value for member in cls}  # type: ignore[attr-defined]
+        return {member.name: member.value for member in cls}
 
     @classmethod
     def has_value(cls, value: Any) -> bool:
@@ -128,7 +139,7 @@ class _EnumHelpers:
         Returns:
             bool: ``True`` if a member carries this value, else ``False``.
         """
-        return value in cls._value2member_map_  # type: ignore[attr-defined]
+        return value in cls._value2member_map_
 
     @classmethod
     def has_key(cls, key: str) -> bool:
@@ -140,10 +151,18 @@ class _EnumHelpers:
         Returns:
             bool: ``True`` if a member has this name, else ``False``.
         """
-        return key in cls.__members__  # type: ignore[attr-defined]
+        return key in cls.__members__
+
+    @overload
+    @classmethod
+    def from_value(cls, value: object) -> Self: ...
+
+    @overload
+    @classmethod
+    def from_value[D](cls, value: object, *, default: D) -> Self | D: ...
 
     @classmethod
-    def from_value(cls, value: Any, *, default: Any = _MISSING) -> Any:
+    def from_value(cls, value: object, *, default: object = _MISSING) -> object:
         """Resolve a member from a raw value or member name.
 
         Lookup order:
@@ -153,26 +172,27 @@ class _EnumHelpers:
            ``"RED"`` and ``"red"`` resolve to ``Color.RED``).
 
         Args:
-            value (Any): The raw value or member name to resolve.
-            default (Any): Returned when ``value`` matches no member. When
+            value (object): The raw value or member name to resolve.
+            default (D): Returned when ``value`` matches no member. When
                 omitted, an unmatched ``value`` raises ``ValueError``
                 instead. Pass ``default=None`` to opt into a ``None``
                 fallback explicitly.
 
         Returns:
-            Any: The matching enum member, or ``default`` when supplied
-            and nothing matched.
+            Self | D: The matching enum member, or ``default`` when supplied
+            and nothing matched. Without ``default`` the return is the
+            member type alone.
 
         Raises:
             ValueError: If ``value`` matches no member and no ``default``
                 was supplied.
         """
         try:
-            return cls(value)  # type: ignore[call-arg]
+            return cls(value)
         except ValueError:
             pass
         if isinstance(value, str):
-            members: dict[str, Any] = cls.__members__  # type: ignore[attr-defined]
+            members = cls.__members__
             member = members.get(value) or members.get(value.upper())
             if member is not None:
                 return member
@@ -181,7 +201,7 @@ class _EnumHelpers:
         raise ValueError(f"{value!r} is not a valid {cls.__name__}")
 
 
-class BaseStrEnum(_EnumHelpers, str, Enum):  # noqa: UP042
+class BaseStrEnum(_EnumHelpers, str, Enum):  # type: ignore[misc]  # noqa: UP042
     """Base class for string-valued enums.
 
     Mixing in ``str`` makes every member a genuine string instance, so
@@ -199,7 +219,7 @@ class BaseStrEnum(_EnumHelpers, str, Enum):  # noqa: UP042
     """
 
 
-class BaseIntEnum(_EnumHelpers, int, Enum):
+class BaseIntEnum(_EnumHelpers, int, Enum):  # type: ignore[misc]
     """Base class for integer-valued enums.
 
     Mixing in ``int`` makes every member a genuine integer instance, so
