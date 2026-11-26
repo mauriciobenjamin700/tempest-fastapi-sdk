@@ -5057,11 +5057,16 @@ receita do CLI e no `CLAUDE.md.tmpl`). Docs: `service-standard`,
 `ServiceAccountTokenProvider` — JWT bearer RS256 sobre `pyjwt` +
 `cryptography`, cache com lock), `client.py` (`GoogleDriveClient` — Drive v3
 `files.list`/`get`/`delete` e upload resumível com retomada por `308` +
-`Range` e backoff em `429`/`5xx`; `escape_query_value`) e `storage.py`
+`Range`, leitura de um pedaço à frente para o último `PUT` sempre levar
+bytes e total, backoff em `429`/`5xx`/`403` de limite de taxa com
+`Retry-After`, `404` de sessão como `upload_session_not_found`;
+`escape_query_value`) e `storage.py`
 (`GoogleDriveUploadStorage`, o `UploadStorage` para
 `UploadUtils(backend=...)`: key em `appProperties`, key repetida substitui o
 conteúdo do mesmo arquivo, `presigned_url` levanta
-`PresignedUrlUnsupportedException`, `web_view_link`). Settings:
+`PresignedUrlUnsupportedException`, `web_view_link`). O download do admin
+redireciona para o link de todo backend que implementa
+`SupportsWebViewLink` (`utils/storage_backends.py`). Settings:
 `GoogleDriveSettings` + `GoogleDriveStorageKwargs` em
 `settings/google_drive.py`. Exceções `GoogleDriveException`,
 `GoogleDriveFolderNotFoundException` e `PresignedUrlUnsupportedException`.

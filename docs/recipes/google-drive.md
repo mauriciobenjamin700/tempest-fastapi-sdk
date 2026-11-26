@@ -178,7 +178,10 @@ nada casou.
     A [documentação de propriedades](https://developers.google.com/workspace/drive/api/guides/properties)
     limita cada propriedade a 124 bytes (nome + valor, em UTF-8). Com
     `tempest_key` sobram 113 bytes para a key; mais que isso é recusado
-    com `InvalidFileTypeException` **antes** de qualquer requisição. A key
+    com `ValidationException` (`422`, `code="VALIDATION_ERROR"`) **antes**
+    de qualquer requisição — a mensagem diz quantos bytes a propriedade
+    ocupa e cita o limite de 124, e `details` traz `property`, `bytes` e
+    `limit_bytes`. O mesmo vale para cada par de `metadata=`. A key
     gerada pelo `UploadUtils` (uuid + extensão) cabe com folga; cuidado com
     `keep_original_name=True` e nomes longos.
 
@@ -209,33 +212,105 @@ que você quer é o link do Drive (num painel interno, por exemplo), use
 também carrega esse `webViewLink`. Ele é **permanente** e só abre para quem
 tem acesso ao arquivo no Drive.
 
+### Download no painel admin
+
+O painel admin (`make_admin_router`) com `upload_fields` usa o mesmo backend.
+A rota de download de um campo de upload pede `presigned_url` e, quando o
+backend não tem URL pré-assinada — devolveu `None` **ou** levantou
+`PresignedUrlUnsupportedException` —, procura um link permanente: se o
+backend implementa o protocolo `SupportsWebViewLink`
+(`async def web_view_link(self, key: str, /) -> str | None`), a rota
+responde `303` para esse link. O `GoogleDriveUploadStorage` implementa, então
+o download no admin **redireciona para o link do Drive**, que só abre para
+quem tem acesso ao arquivo lá. Sem link (arquivo apagado no Drive, ou um
+backend seu sem `web_view_link`), a rota cai no caminho de sempre: arquivo
+local, ou `404` "file not available".
+
+Um backend seu que também queira isso só precisa do método:
+
+```python
+from tempest_fastapi_sdk.utils import SupportsWebViewLink
+
+
+class MyStorage:
+    """Exemplo: um backend com link permanente por key."""
+
+    async def web_view_link(self, key: str) -> str | None:
+        """Devolve o link permanente do arquivo, ou None."""
+        return f"https://files.example.com/{key}"
+
+
+assert isinstance(MyStorage(), SupportsWebViewLink)
+```
+
 ## Upload resumível, em pedaços
 
 O backend usa o [upload resumível](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable)
 do Drive v3:
 
 - O stream sobe em pedaços múltiplos de 256 KiB (`chunk_size=`, padrão 8 MiB)
-  — a memória fica em um pedaço, não no arquivo.
+  — a memória fica em pouco mais de um pedaço (um pedaço mais o chunk que o
+  backend lê à frente), não no arquivo.
 - Cada pedaço que não é o último vai com `Content-Range: bytes a-b/*`; o
   Drive responde `308` com o header `Range` dizendo quanto guardou, e o
   próximo pedaço começa logo depois. Bytes que o Drive não guardou são
   reenviados; o resto, não.
-- `429` e `5xx` num pedaço são repetidos com backoff exponencial (0,5 s,
-  1 s, 2 s…, até 16 s), depois de perguntar à sessão quanto ela tem — até
-  `max_retries` vezes (padrão 5). O arquivo inteiro nunca é reenviado.
-- O `content_validator` roda no primeiro pedaço **antes** de a sessão ser
-  aberta, e o `max_size_bytes` interrompe o stream no meio. Segundo o guia
-  do Google, o arquivo só passa a existir quando o último pedaço chega,
-  então uma escrita interrompida não deixa arquivo na pasta.
+- O backend lê **um pedaço à frente**: um pedaço só sai com `/*` quando já se
+  sabe que vêm mais bytes depois dele. Por isso o último `PUT` sempre leva
+  bytes **e** o total (`bytes a-b/<total>`), inclusive quando o tamanho é
+  múltiplo exato do pedaço (256 KiB, 512 KiB, 8 MiB…). Um `PUT` vazio
+  `bytes */<total>` é também a forma de **consultar** a sessão; terminar o
+  upload com ele deixava um fake HTTP que o trata como consulta preso em
+  `upload_stalled`. A exceção é o arquivo de **0 bytes**, que não tem byte
+  para levar: ele fecha com `bytes */0`.
+- São repetidos com backoff exponencial (0,5 s, 1 s, 2 s…, até 16 s), até
+  `max_retries` vezes (padrão 5): `429`, `5xx`, erro de transporte e
+  **`403` de limite de taxa** — o Drive informa cota estourada como `403` com
+  `reason` `rateLimitExceeded` ou `userRateLimitExceeded`
+  ([tratamento de erros](https://developers.google.com/workspace/drive/api/guides/handle-errors)).
+  Outro `403` (`insufficientFilePermissions`, `storageQuotaExceeded`…) sobe
+  na hora. Vale para chamada de metadado e para pedaço; num pedaço, o
+  backend pergunta à sessão quanto ela tem antes de repetir. O arquivo
+  inteiro nunca é reenviado.
+- **`Retry-After`:** num `429` ou `503` com esse header em segundos, a
+  espera é a que o Drive pediu, limitada a `backoff_max_seconds` (16 s por
+  padrão); header ausente ou em formato de data cai no backoff exponencial.
+- Um `308` que não avança nada (o Drive guardou zero bytes do pedaço) espera o
+  backoff antes de reenviar; depois de `max_retries` respostas assim em
+  sequência, vira `GoogleDriveException` com `reason="upload_stalled"`. Um
+  `308` dizendo que o Drive tem **menos** do que ele já tinha confirmado —
+  bytes que o backend já descartou da memória — não tem conserto e sobe na
+  hora com `reason="upload_range_regressed"`.
+- Um `404` num pedaço ou na consulta significa que a **sessão resumível**
+  expirou ou se perdeu: vira `GoogleDriveException` com
+  `reason="upload_session_not_found"` e uma mensagem dizendo para enviar de
+  novo — não o `GoogleDriveFolderNotFoundException`, que fica para o `404`
+  da busca e da abertura da sessão.
+- A primeira leitura do stream acontece **antes** de a sessão ser aberta.
+  Então o `content_validator` do `UploadUtils.save(...)` (e o `validator` de
+  quem chama `storage.write_stream(...)` direto), que roda no primeiro
+  chunk, recusa sem abrir sessão nenhuma. O `max_size_bytes` interrompe o
+  stream no meio, e a sessão é abandonada antes do último pedaço. Pelo
+  [guia do upload resumível](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable),
+  o arquivo é criado quando a sessão se completa, então uma escrita
+  interrompida **deve** não deixar arquivo na pasta — isso não foi medido
+  contra o Google real.
+- Quando a escrita falha, por qualquer motivo, o backend fecha (`aclose`) o
+  gerador que você passou, então o `finally` dele roda na hora.
 
 ## Erros
 
 | Situação | Exceção | Status |
 | --- | --- | --- |
 | Pasta não existe ou não foi compartilhada (`404`) | `GoogleDriveFolderNotFoundException` — a mensagem nomeia a pasta e o `client_email` com quem compartilhar | `502` |
+| Sessão resumível expirou ou se perdeu (`404` num pedaço) | `GoogleDriveException`, `reason="upload_session_not_found"` | `502` |
+| Retries esgotados (`429`, `5xx`, `403` de limite de taxa) | `GoogleDriveException` com o `status` e o `reason` da última resposta | `502` |
+| Sessão parou de aceitar bytes / perdeu bytes confirmados | `GoogleDriveException`, `reason="upload_stalled"` / `"upload_range_regressed"` | `502` |
+| `private_key` do JSON não é uma chave PEM RSA | `GoogleDriveException`, `reason="invalid_private_key"`, antes de qualquer requisição; a mensagem nomeia o `client_email` e nunca a chave | `502` |
 | Qualquer outra recusa do Drive ou do endpoint de token | `GoogleDriveException`, com `details={"status": <http>, "reason": <error.errors[0].reason>}` (ou o `error` OAuth, como `invalid_grant`) | `502` |
 | `presigned_url` | `PresignedUrlUnsupportedException` | `501` |
-| Validador rejeitou / key longa demais | `InvalidFileTypeException` | `415` |
+| Validador rejeitou | `InvalidFileTypeException` | `415` |
+| Key (ou propriedade de `metadata`) passa de 124 bytes | `ValidationException` | `422` |
 | Stream passou de `max_size_bytes` | `FileTooLargeException` | `413` |
 
 O Drive responde `404` tanto para pasta inexistente quanto para pasta que a
@@ -285,14 +360,21 @@ A suíte confere **o fio**, com `httpx.MockTransport`: o JWT (decodificado com
 a chave pública de um par RSA gerado no teste — `alg`, `kid`, `iss`, `scope`,
 `aud`, `iat`, `exp`), o corpo do POST de token, o cache e a troca única sob
 concorrência, os headers e o `Content-Range` de cada pedaço, a retomada
-depois de um `308` curto, o retry de `503`/`429`, a busca escapada,
-`supportsAllDrives` em toda chamada e o mapeamento de erro.
+depois de um `308` curto, o fechamento com bytes e total num tamanho
+múltiplo exato do pedaço (contra um fake que trata `bytes */<total>` vazio
+como consulta), o backoff de um `308` sem avanço e o erro imediato de um
+`308` que recua, o retry de `503`/`429` e de `403` de limite de taxa, o
+`Retry-After` e o seu teto, o `404` de sessão, a busca escapada,
+`supportsAllDrives` em toda chamada, o mapeamento de erro e o redirect do
+download do admin para o `web_view_link`.
 
 **Não medido contra o Google real** (não há credencial neste repositório):
 cota de service account em Meu Drive, o comportamento em Shared Drive, o
 limite de 124 bytes de propriedade, a validade de uma semana da sessão
-resumível e o momento em que o arquivo passa a existir — tudo isso vem da
-documentação oficial linkada acima. O teste
+resumível, o momento em que o arquivo passa a existir, se o Drive fecha o
+upload de 0 bytes com o `PUT` vazio `bytes */0`, o formato real do `403` de
+limite de taxa e do `404` de sessão expirada, e se o Drive manda
+`Retry-After` — tudo isso vem da documentação oficial linkada acima. O teste
 `tests/integrations/storage/google_drive/test_live.py` faz a volta completa
 (sobe, sobrescreve, confere `exists`, apaga) quando
 `TEST_GOOGLE_DRIVE_CREDENTIALS` e `TEST_GOOGLE_DRIVE_FOLDER_ID` estão no
@@ -314,7 +396,11 @@ uv run pytest -m network tests/integrations/storage/google_drive/test_live.py
 - A key mora em `appProperties`; key repetida substitui o conteúdo do mesmo
   arquivo; `delete` apaga sem lixeira.
 - `presigned_url` levanta `PresignedUrlUnsupportedException`; o link do
-  Drive está em `web_view_link` e em `UploadResult.url`.
+  Drive está em `web_view_link` e em `UploadResult.url`, e o download do
+  admin redireciona para ele.
+- O último pedaço sempre leva bytes e o total; `429`, `5xx` e `403` de
+  limite de taxa são repetidos, respeitando `Retry-After`; `404` no meio do
+  upload é sessão perdida, não pasta.
 - Recusa do Drive vira `GoogleDriveException` com status e `reason`; pasta
   não compartilhada vira `GoogleDriveFolderNotFoundException` dizendo com
   quem compartilhar.
