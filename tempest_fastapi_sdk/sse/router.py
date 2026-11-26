@@ -174,13 +174,13 @@ def make_sse_router(
     )
     async def issue_ticket(
         request: Request,
-        user: Any = Depends(current_user),
+        user: object = Depends(current_user),
     ) -> SSETicketResponseSchema:
         """Sign a ticket for the caller's channel.
 
         Args:
             request (Request): The request being served.
-            user (Any): The authenticated user.
+            user (object): The authenticated user.
 
         Returns:
             SSETicketResponseSchema: The ticket and its lifetime.
@@ -201,13 +201,13 @@ def make_sse_router(
     )
     async def stream(
         request: Request,
-        fallback: Any = Depends(fallback_user or _no_fallback_user),
+        fallback: object = Depends(fallback_user or _no_fallback_user),
     ) -> StreamingResponse:
         """Subscribe the caller to the channel its credential names.
 
         Args:
             request (Request): The request being served.
-            fallback (Any): What ``fallback_user`` resolved, or ``None``.
+            fallback (object): What ``fallback_user`` resolved, or ``None``.
 
         Returns:
             StreamingResponse: The SSE response.
