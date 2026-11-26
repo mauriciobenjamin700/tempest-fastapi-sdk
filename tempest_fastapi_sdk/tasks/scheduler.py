@@ -238,16 +238,16 @@ class AsyncTaskScheduler:
 
     def register(
         self,
-        func: Any,
+        func: Callable[_P, _R],
         *,
         schedule: list[dict[str, Any]],
         task_name: str | None = None,
         **labels: Any,
-    ) -> AsyncTaskiqDecoratedTask[Any, Any]:
+    ) -> AsyncTaskiqDecoratedTask[_P, _R]:
         """Register ``func`` as a scheduled task without decorator syntax.
 
         Args:
-            func (Any): The async callable to register.
+            func (Callable[_P, _R]): The async callable to register.
             schedule (list[dict[str, Any]]): The schedule list (see
                 :meth:`schedule` for the format). Any ``cron_offset`` is
                 normalized the same way.
@@ -257,7 +257,8 @@ class AsyncTaskScheduler:
                 ``broker.task``.
 
         Returns:
-            AsyncTaskiqDecoratedTask[Any, Any]: The registered task.
+            AsyncTaskiqDecoratedTask[_P, _R]: The registered task,
+            preserving ``func``'s parameters and return type.
 
         Raises:
             ValueError: When an entry's ``cron_offset`` is a string that

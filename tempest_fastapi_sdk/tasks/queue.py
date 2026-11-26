@@ -37,6 +37,7 @@ from typing import (
     runtime_checkable,
 )
 
+from tempest_fastapi_sdk.settings import TaskIQSettings
 from tempest_fastapi_sdk.tasks.cron import (
     normalize_cron_offset,
     normalize_schedule,
@@ -831,30 +832,43 @@ class TaskQueue:
     def _with_settings_heartbeat(queue: TaskQueue, settings: object) -> TaskQueue:
         """Enable the heartbeat the settings ask for, if any.
 
+        Reads the three heartbeat fields directly when ``settings`` is a
+        :class:`~tempest_fastapi_sdk.settings.TaskIQSettings` instance, and
+        falls back to ``getattr`` for plain objects that only satisfy
+        :class:`TaskIQSettingsLike`.
+
         Args:
             queue (TaskQueue): The queue :meth:`from_settings` built.
             settings (object): The settings object; the three heartbeat
-                fields are optional on it.
+                fields are optional on objects outside
+                :class:`~tempest_fastapi_sdk.settings.TaskIQSettings`.
 
         Returns:
             TaskQueue: ``queue``, with the heartbeat enabled when either
             file setting is non-empty.
         """
-        worker_file: str = str(
-            getattr(settings, "TASKIQ_WORKER_HEARTBEAT_FILE", "") or ""
-        ).strip()
-        scheduler_file: str = str(
-            getattr(settings, "TASKIQ_SCHEDULER_HEARTBEAT_FILE", "") or ""
-        ).strip()
-        if not worker_file and not scheduler_file:
-            return queue
-        seconds: int = int(
-            getattr(
-                settings,
-                "TASKIQ_HEARTBEAT_SECONDS",
-                int(DEFAULT_HEARTBEAT_EVERY.total_seconds()),
+        if isinstance(settings, TaskIQSettings):
+            worker_file: str = settings.TASKIQ_WORKER_HEARTBEAT_FILE.strip()
+            scheduler_file: str = settings.TASKIQ_SCHEDULER_HEARTBEAT_FILE.strip()
+            if not worker_file and not scheduler_file:
+                return queue
+            seconds: int = settings.TASKIQ_HEARTBEAT_SECONDS
+        else:
+            worker_file = str(
+                getattr(settings, "TASKIQ_WORKER_HEARTBEAT_FILE", "") or ""
+            ).strip()
+            scheduler_file = str(
+                getattr(settings, "TASKIQ_SCHEDULER_HEARTBEAT_FILE", "") or ""
+            ).strip()
+            if not worker_file and not scheduler_file:
+                return queue
+            seconds = int(
+                getattr(
+                    settings,
+                    "TASKIQ_HEARTBEAT_SECONDS",
+                    int(DEFAULT_HEARTBEAT_EVERY.total_seconds()),
+                )
             )
-        )
         queue.enable_heartbeat(
             worker_file=worker_file or None,
             scheduler_file=scheduler_file or None,
