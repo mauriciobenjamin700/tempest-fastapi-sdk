@@ -632,7 +632,7 @@ o valor substitui o default, então inclua os do SDK:
 ```python
 """Alembic environment script with one extra revision hook."""
 
-from typing import Any
+from collections.abc import Iterable
 
 from alembic.operations.ops import MigrationScript
 from alembic.runtime.migration import MigrationContext
@@ -647,16 +647,12 @@ from src.db.models import BaseModel
 
 def skip_empty_revisions(
     context: MigrationContext,
-    revision: Any,
-    directives: list[Any],
+    revision: str | Iterable[str | None],
+    directives: list[MigrationScript],
 ) -> None:
     """Não escreve arquivo quando o autogenerate não acha mudança."""
     script = directives[0]
-    if (
-        isinstance(script, MigrationScript)
-        and script.upgrade_ops is not None
-        and script.upgrade_ops.is_empty()
-    ):
+    if script.upgrade_ops is not None and script.upgrade_ops.is_empty():
         directives[:] = []
 
 

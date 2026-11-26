@@ -43,7 +43,7 @@ On SQLite the same operation rebuilds the table through
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
@@ -61,6 +61,7 @@ from alembic.operations.ops import (
     MigrationScript,
     ModifyTableOps,
 )
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy.sql.elements import conv
 
 from tempest_fastapi_sdk.db.datetime_type import UtcDateTime
@@ -1425,8 +1426,8 @@ def render_enum_types(
 
 
 def sync_enum_types(
-    context: Any,
-    revision: str | tuple[str, ...],
+    context: MigrationContext,
+    revision: str | Iterable[str | None],
     directives: list[MigrationScript],
 ) -> None:
     """Append :class:`ReplaceEnumOp` for every enum whose members changed.
@@ -1453,8 +1454,9 @@ def sync_enum_types(
     where the enum name sits.
 
     Args:
-        context (Any): Alembic's ``MigrationContext``.
-        revision (str | tuple[str, ...]): The revision being generated.
+        context (MigrationContext): Alembic's ``MigrationContext``.
+        revision (str | Iterable[str | None]): The revision being
+            generated.
         directives (list[MigrationScript]): The scripts to amend.
     """
     if not directives:
@@ -1561,8 +1563,8 @@ def _drop_enum_type_swaps(op_list: list[Any], names: set[str]) -> None:
 
 
 def sqlite_enum_checks(
-    context: Any,
-    revision: str | tuple[str, ...],
+    context: MigrationContext,
+    revision: str | Iterable[str | None],
     directives: list[MigrationScript],
 ) -> None:
     """Give every enum column its own SQLite ``CHECK``, and drop it with the column.
@@ -1592,8 +1594,9 @@ def sqlite_enum_checks(
     :func:`~tempest_fastapi_sdk.db.alembic_hooks.compose_hooks`.
 
     Args:
-        context (Any): Alembic's ``MigrationContext``.
-        revision (str | tuple[str, ...]): The revision being generated.
+        context (MigrationContext): Alembic's ``MigrationContext``.
+        revision (str | Iterable[str | None]): The revision being
+            generated.
         directives (list[MigrationScript]): The scripts to amend.
     """
     if not directives:
@@ -1964,8 +1967,8 @@ def _enum_holders(tables: Sequence[sa.Table]) -> dict[_TypeKey, set[_ColumnKey]]
 
 
 def create_enum_types_on_add_column(
-    context: Any,
-    revision: str | tuple[str, ...],
+    context: MigrationContext,
+    revision: str | Iterable[str | None],
     directives: list[MigrationScript],
 ) -> None:
     """Put :class:`CreateEnumTypeOp` ahead of an ``add_column`` with a new enum.
@@ -1987,8 +1990,9 @@ def create_enum_types_on_add_column(
     exists is never recreated, and it is a no-op outside PostgreSQL.
 
     Args:
-        context (Any): Alembic's ``MigrationContext``.
-        revision (str | tuple[str, ...]): The revision being generated.
+        context (MigrationContext): Alembic's ``MigrationContext``.
+        revision (str | Iterable[str | None]): The revision being
+            generated.
         directives (list[MigrationScript]): The scripts to amend.
     """
     if not directives:
@@ -2046,8 +2050,8 @@ def _added_enum_types(operation: Any) -> list[sa.Enum]:
 
 
 def drop_enum_types_on_downgrade(
-    context: Any,
-    revision: str | tuple[str, ...],
+    context: MigrationContext,
+    revision: str | Iterable[str | None],
     directives: list[MigrationScript],
 ) -> None:
     """Append :class:`DropEnumTypeOp` after the tables and columns a downgrade drops.
@@ -2072,8 +2076,9 @@ def drop_enum_types_on_downgrade(
     :func:`~tempest_fastapi_sdk.db.alembic_hooks.compose_hooks`.
 
     Args:
-        context (Any): Alembic's ``MigrationContext``.
-        revision (str | tuple[str, ...]): The revision being generated.
+        context (MigrationContext): Alembic's ``MigrationContext``.
+        revision (str | Iterable[str | None]): The revision being
+            generated.
         directives (list[MigrationScript]): The scripts to amend.
     """
     if not directives:
