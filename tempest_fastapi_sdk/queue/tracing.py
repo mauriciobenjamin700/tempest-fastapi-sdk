@@ -28,13 +28,16 @@ extra at all.
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from tempest_fastapi_sdk.core.context import (
     clear_request_id,
     get_request_id,
     set_request_id,
 )
+
+if TYPE_CHECKING:
+    from faststream import BaseMiddleware
 
 TRACEPARENT_HEADER: Final[str] = "traceparent"
 """W3C header carrying the trace and span the message was published from."""
@@ -211,11 +214,11 @@ class consume_span:  # noqa: N801
                 clear_request_id(self._token)
 
 
-def make_tracing_middleware() -> Any:
+def make_tracing_middleware() -> type[BaseMiddleware]:
     """Build the FastStream middleware that opens a span per consume.
 
     Returns:
-        Any: A ``faststream.BaseMiddleware`` subclass.
+        type[BaseMiddleware]: A ``faststream.BaseMiddleware`` subclass.
 
     Raises:
         ImportError: When the ``[queue]`` extra is not installed.
@@ -223,9 +226,10 @@ def make_tracing_middleware() -> Any:
     from tempest_fastapi_sdk.queue.broker import _require
     from tempest_fastapi_sdk.queue.reliability import _message_channel
 
-    faststream = _require("faststream", "queue")
+    _require("faststream", "queue")
+    from faststream import BaseMiddleware
 
-    class _TracingMiddleware(faststream.BaseMiddleware):  # type: ignore[misc,name-defined]
+    class _TracingMiddleware(BaseMiddleware):
         """Open a linked span and restore the request id around a consume."""
 
         async def consume_scope(self, call_next: Any, msg: Any) -> Any:

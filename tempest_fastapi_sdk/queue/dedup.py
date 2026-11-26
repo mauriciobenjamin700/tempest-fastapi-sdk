@@ -45,6 +45,9 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 if TYPE_CHECKING:
+    from faststream import BaseMiddleware
+
+if TYPE_CHECKING:
     from collections.abc import MutableMapping
 
 DEFAULT_DEDUP_TTL_SECONDS: Final[int] = 86_400
@@ -357,7 +360,7 @@ def make_dedup_middleware(
     store: DedupStore,
     *,
     ttl_seconds: int = DEFAULT_DEDUP_TTL_SECONDS,
-) -> Any:
+) -> type[BaseMiddleware]:
     """Build a FastStream middleware that runs each id at most once.
 
     Args:
@@ -367,16 +370,17 @@ def make_dedup_middleware(
             will run as if it were new.
 
     Returns:
-        Any: A ``faststream.BaseMiddleware`` subclass.
+        type[BaseMiddleware]: A ``faststream.BaseMiddleware`` subclass.
 
     Raises:
         ImportError: When the ``[queue]`` extra is not installed.
     """
     from tempest_fastapi_sdk.queue.broker import _require
 
-    faststream = _require("faststream", "queue")
+    _require("faststream", "queue")
+    from faststream import BaseMiddleware
 
-    class _DedupMiddleware(faststream.BaseMiddleware):  # type: ignore[misc,name-defined]
+    class _DedupMiddleware(BaseMiddleware):
         """Claim, run, then mark done — or release so a retry retries."""
 
         async def consume_scope(self, call_next: Any, msg: Any) -> Any:
