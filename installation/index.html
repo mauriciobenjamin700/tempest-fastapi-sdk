@@ -1373,6 +1373,8 @@
       
         
       
+        
+      
     
     
     
@@ -3030,6 +3032,34 @@
     
   
     Geração de imagem (local)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/google-drive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Drive (uploads)
   
 
     
@@ -5933,6 +5963,11 @@
 <td><code>[geo]</code></td>
 <td><code>httpx</code></td>
 <td>helpers geoespaciais: <code>haversine_km</code>, <code>estimate_travel</code>, <code>NominatimBackend</code>/<code>OSRMBackend</code> (geocoding + rotas), <code>GeoPointMixin</code></td>
+</tr>
+<tr>
+<td><code>[google-drive]</code></td>
+<td><code>httpx</code>, <code>pyjwt</code>, <code>cryptography</code></td>
+<td>backend de upload no Google Drive via service account: <code>GoogleDriveUploadStorage</code> (para <code>UploadUtils(backend=...)</code>), <code>GoogleDriveClient</code>, <code>ServiceAccountTokenProvider</code>, <code>GoogleDriveSettings</code> — <a href="../recipes/google-drive/">receita</a></td>
 </tr>
 <tr>
 <td><code>[http]</code></td>

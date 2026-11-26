@@ -1214,6 +1214,8 @@
       
         
       
+        
+      
     
     
     
@@ -2875,6 +2877,34 @@
     
   
     Geração de imagem (local)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="google-drive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Drive (uploads)
   
 
     
@@ -6185,6 +6215,10 @@ aqui pra plugar cada capacidade conforme precisar.</p>
 <tr>
 <td><strong><a href="image-generation/">Geração de imagem (local) »</a></strong></td>
 <td><code>ImageGenerator</code> (diffusers local — <code>generate</code> / <code>edit</code> img2img), <code>ImageGenerationConfig</code>, <code>GeneratedImage</code> com a seed que reproduz, <code>make_genai_router(image_generator=...)</code> → <code>POST /image</code></td>
+</tr>
+<tr>
+<td><strong><a href="google-drive/">Google Drive (uploads) »</a></strong></td>
+<td><code>GoogleDriveUploadStorage</code> como backend do <code>UploadUtils</code> via service account (JWT bearer sobre <code>httpx</code> + <code>pyjwt</code>), upload resumível em pedaços de 256 KiB com retry, key em <code>appProperties</code>, key repetida substitui o conteúdo, <code>GoogleDriveSettings</code></td>
 </tr>
 <tr>
 <td><strong><a href="permission-guards/">Guards de permissão (@requires) »</a></strong></td>

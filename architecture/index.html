@@ -1478,6 +1478,8 @@
       
         
       
+        
+      
     
     
     
@@ -3135,6 +3137,34 @@
     
   
     Geração de imagem (local)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/google-drive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Drive (uploads)
   
 
     
@@ -5924,7 +5954,7 @@
 </tbody>
 </table>
 </div>
-<p>O repository <strong>DEVE</strong> ser uma subclasse (ou instância) de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseRepository&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.BaseRepository"><code>BaseRepository[ModelType]</code></a>. O service <strong>DEVE</strong> ser uma subclasse de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseService&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.BaseService"><code>BaseService[RepositoryT, ResponseT]</code></a>. O controller <strong>DEVE</strong> ser uma subclasse de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseController&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.BaseController"><code>BaseController[ServiceT, ResponseT]</code></a> — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde — ou, quando orquestra vários services sem CRUD de um recurso só, de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Controller&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.Controller"><code>Controller</code></a> (veja <a href="#controller-que-orquestra-controller">Controller que orquestra</a>).</p>
+<p>O repository <strong>DEVE</strong> ser uma subclasse (ou instância) de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseRepository&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.BaseRepository"><code>BaseRepository[ModelType, ResponseT]</code></a> (ou <code>BaseRepository[ModelType]</code>, com <code>ResponseT</code> opcional). O service <strong>DEVE</strong> ser uma subclasse de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseService&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.BaseService"><code>BaseService[RepositoryT, ResponseT]</code></a>. O controller <strong>DEVE</strong> ser uma subclasse de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseController&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.BaseController"><code>BaseController[ServiceT]</code></a> — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde — ou, quando orquestra vários services sem CRUD de um recurso só, de <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Controller&lt;/span&gt;" href="../reference/top/#tempest_fastapi_sdk.Controller"><code>Controller</code></a> (veja <a href="#controller-que-orquestra-controller">Controller que orquestra</a>).</p>
 <h2 id="layout-obrigatorio-do-projeto">Layout obrigatório do projeto<a class="headerlink" href="#layout-obrigatorio-do-projeto" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>&lt;service&gt;/
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── main.py                          # ONE-LINER: from src.server import run; run()
@@ -6153,7 +6183,7 @@ cada uma.</p>
 </tbody>
 </table>
 <h2 id="camadas-de-controllers-services">Camadas de controllers &amp; services<a class="headerlink" href="#camadas-de-controllers-services" title="Permanent link">&para;</a></h2>
-<p><code>BaseService[RepositoryT, ResponseT]</code> e <code>BaseController[ServiceT, ResponseT]</code> são esqueletos genéricos que casam com o fatiamento do SDK (router → controller → service → repository). Eles expõem métodos CRUD pass-through para que endpoints simples possam herdar deles sem sobrescrever nada; você sobrescreve apenas os métodos que precisam de orquestração.</p>
+<p><code>BaseService[RepositoryT, ResponseT]</code> e <code>BaseController[ServiceT]</code> são esqueletos genéricos que casam com o fatiamento do SDK (router → controller → service → repository). Eles expõem métodos CRUD pass-through para que endpoints simples possam herdar deles sem sobrescrever nada; você sobrescreve apenas os métodos que precisam de orquestração.</p>
 <p>O que você herda ao subclassear <code>BaseService[RepositoryT, ResponseT]</code>:</p>
 <table>
 <thead>
@@ -6206,8 +6236,8 @@ cada uma.</p>
 </tr>
 </tbody>
 </table>
-<p><code>map_to_response</code> é aguardado com <code>await</code> quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método.</p>
-<p>O que você herda ao subclassear <code>BaseController[ServiceT, ResponseT]</code>:</p>
+<p><code>map_to_response</code> é aguardado com <code>await</code> quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método. Quando o repository declara o 2º parâmetro genérico (<code>BaseRepository[ModelType, ResponseT]</code>), <code>map_to_response</code> fica tipado com <code>ResponseT</code> e o <code>BaseService</code> amarra o próprio tipo de resposta ao do repository (o <code>basedpyright</code> recusa divergência no call site).</p>
+<p>O que você herda ao subclassear <code>BaseController[ServiceT]</code> (as formas <code>BaseController[ServiceT, ResponseT]</code> e <code>BaseController[ServiceT, ResponseT, UpdateT]</code> continuam aceitas por compatibilidade, mas os métodos pass-through leem os tipos de resposta e update direto de <code>ServiceT</code>):</p>
 <table>
 <thead>
 <tr>
@@ -6240,7 +6270,7 @@ cada uma.</p>
 <tr>
 <td><code>update(id, data)</code></td>
 <td><code>service.update</code></td>
-<td>Igual.</td>
+<td>Recebe o <code>UpdateT</code> do service e devolve o <code>ResponseT</code> dele.</td>
 </tr>
 <tr>
 <td><code>delete(id)</code></td>
@@ -6251,7 +6281,7 @@ cada uma.</p>
 </table>
 <div class="admonition tip">
 <p class="admonition-title">Tipando o payload de <code>update</code> ponta a ponta</p>
-<p>O 3º parâmetro genérico é o schema de update, e ele precisa ser o <strong>mesmo</strong> nas duas camadas: um service declarado como <code>BaseService[Repo, Resp, MeuUpdateSchema]</code> encaixa em <code>BaseController[MeuService, Resp, MeuUpdateSchema]</code>. Omitir o 3º parâmetro em qualquer uma delas cai no default <code>BaseSchema</code>, e o <code>data</code> de <code>update</code> chega sem tipo preciso.</p>
+<p>O 3º parâmetro genérico do <code>BaseService</code> é o schema de update (<code>BaseService[Repo, Resp, MeuUpdateSchema]</code>). Como <code>BaseController[MeuService]</code> deriva tanto o retorno quanto o <code>data</code> de <code>update</code> direto do service, basta passar o service uma vez — não precisa repetir o schema de resposta nem o de update no controller (repeti-los em <code>BaseController[MeuService, Resp, MeuUpdateSchema]</code> continua aceito por compatibilidade).</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseController</span><span class="p">,</span> <span class="n">BaseService</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.repositories</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoinPackRepository</span>
@@ -6264,10 +6294,8 @@ cada uma.</p>
 </span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="sd">"""Service tipado sobre o schema de update concreto."""</span>
 </span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
 </span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">CoinPackController</span><span class="p">(</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">BaseController</span><span class="p">[</span><span class="n">CoinPackService</span><span class="p">,</span> <span class="n">CoinPackResponseSchema</span><span class="p">,</span> <span class="n">CoinPackUpdateSchema</span><span class="p">]</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="p">):</span>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">    </span><span class="sd">"""Controller que repete o mesmo schema de update."""</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">CoinPackController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">CoinPackService</span><span class="p">]):</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="sd">"""Controller deriva resposta e update direto do service."""</span>
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Requer 0.167.1+</p>
@@ -6308,7 +6336,7 @@ cada uma.</p>
 </span><span id="__span-5-31"><a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.user_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">UserService</span>
 </span><span id="__span-5-32"><a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>
 </span><span id="__span-5-33"><a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>
-</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="k">class</span><span class="w"> </span><span class="nc">UserController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">UserService</span><span class="p">,</span> <span class="n">UserResponse</span><span class="p">]):</span>
+</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="k">class</span><span class="w"> </span><span class="nc">UserController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">UserService</span><span class="p">]):</span>
 </span><span id="__span-5-35"><a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="w">    </span><span class="sd">"""Thin orchestration over UserService."""</span>
 </span><span id="__span-5-36"><a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>
 </span><span id="__span-5-37"><a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">signup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">UserCreate</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">UserResponse</span><span class="p">:</span>
@@ -6380,7 +6408,7 @@ dela, então <code>isinstance(controller, Controller)</code> vale para os dois.<
 <tbody>
 <tr>
 <td>repassa o CRUD de um recurso, via um service</td>
-<td><code>BaseController[ServiceT, ResponseT, UpdateT]</code></td>
+<td><code>BaseController[ServiceT]</code></td>
 </tr>
 <tr>
 <td>coordena vários services, sem CRUD de recurso único</td>
@@ -6553,7 +6581,7 @@ de permissão roda, e o que o router devolve.</p>
 </span><span id="__span-7-96"><a id="__codelineno-7-96" name="__codelineno-7-96" href="#__codelineno-7-96"></a>        <span class="p">)</span>
 </span><span id="__span-7-97"><a id="__codelineno-7-97" name="__codelineno-7-97" href="#__codelineno-7-97"></a>
 </span><span id="__span-7-98"><a id="__codelineno-7-98" name="__codelineno-7-98" href="#__codelineno-7-98"></a>
-</span><span id="__span-7-99"><a id="__codelineno-7-99" name="__codelineno-7-99" href="#__codelineno-7-99"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">]):</span>
+</span><span id="__span-7-99"><a id="__codelineno-7-99" name="__codelineno-7-99" href="#__codelineno-7-99"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
 </span><span id="__span-7-100"><a id="__codelineno-7-100" name="__codelineno-7-100" href="#__codelineno-7-100"></a><span class="w">    </span><span class="sd">"""Data access for products; owns the response mapper."""</span>
 </span><span id="__span-7-101"><a id="__codelineno-7-101" name="__codelineno-7-101" href="#__codelineno-7-101"></a>
 </span><span id="__span-7-102"><a id="__codelineno-7-102" name="__codelineno-7-102" href="#__codelineno-7-102"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -6624,7 +6652,7 @@ de permissão roda, e o que o router devolve.</p>
 </span><span id="__span-7-167"><a id="__codelineno-7-167" name="__codelineno-7-167" href="#__codelineno-7-167"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">repository</span><span class="o">.</span><span class="n">map_to_response</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
 </span><span id="__span-7-168"><a id="__codelineno-7-168" name="__codelineno-7-168" href="#__codelineno-7-168"></a>
 </span><span id="__span-7-169"><a id="__codelineno-7-169" name="__codelineno-7-169" href="#__codelineno-7-169"></a>
-</span><span id="__span-7-170"><a id="__codelineno-7-170" name="__codelineno-7-170" href="#__codelineno-7-170"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
+</span><span id="__span-7-170"><a id="__codelineno-7-170" name="__codelineno-7-170" href="#__codelineno-7-170"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">]):</span>
 </span><span id="__span-7-171"><a id="__codelineno-7-171" name="__codelineno-7-171" href="#__codelineno-7-171"></a><span class="w">    </span><span class="sd">"""Product use cases; a pass-through for now."""</span>
 </span><span id="__span-7-172"><a id="__codelineno-7-172" name="__codelineno-7-172" href="#__codelineno-7-172"></a>
 </span><span id="__span-7-173"><a id="__codelineno-7-173" name="__codelineno-7-173" href="#__codelineno-7-173"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">ProductCreateSchema</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProductResponseSchema</span><span class="p">:</span>
@@ -7000,7 +7028,7 @@ passa pela mesma checagem.</p>
 </span><span id="__span-10-35"><a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
 </span><span id="__span-10-36"><a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>
 </span><span id="__span-10-37"><a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>
-</span><span id="__span-10-38"><a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">]):</span>
+</span><span id="__span-10-38"><a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
 </span><span id="__span-10-39"><a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a><span class="w">    </span><span class="sd">"""Data access for products."""</span>
 </span><span id="__span-10-40"><a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>
 </span><span id="__span-10-41"><a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -7027,7 +7055,7 @@ passa pela mesma checagem.</p>
 </span><span id="__span-10-62"><a id="__codelineno-10-62" name="__codelineno-10-62" href="#__codelineno-10-62"></a><span class="w">    </span><span class="sd">"""Business rules for products."""</span>
 </span><span id="__span-10-63"><a id="__codelineno-10-63" name="__codelineno-10-63" href="#__codelineno-10-63"></a>
 </span><span id="__span-10-64"><a id="__codelineno-10-64" name="__codelineno-10-64" href="#__codelineno-10-64"></a>
-</span><span id="__span-10-65"><a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
+</span><span id="__span-10-65"><a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">]):</span>
 </span><span id="__span-10-66"><a id="__codelineno-10-66" name="__codelineno-10-66" href="#__codelineno-10-66"></a><span class="w">    </span><span class="sd">"""Product use cases."""</span>
 </span><span id="__span-10-67"><a id="__codelineno-10-67" name="__codelineno-10-67" href="#__codelineno-10-67"></a>
 </span><span id="__span-10-68"><a id="__codelineno-10-68" name="__codelineno-10-68" href="#__codelineno-10-68"></a>    <span class="nd">@requires</span><span class="p">(</span><span class="n">require_admin</span><span class="p">)</span>

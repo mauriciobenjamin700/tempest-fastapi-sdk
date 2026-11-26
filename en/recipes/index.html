@@ -1216,6 +1216,8 @@
       
         
       
+        
+      
     
     
     
@@ -2457,6 +2459,34 @@
     
   
     Geolocation (distance + time)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="google-drive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Drive (uploads)
   
 
     
@@ -6128,6 +6158,10 @@ come back here to plug in each capability as you need it.</p>
 <tr>
 <td><strong><a href="geo/">Geolocation (distance + travel time) »</a></strong></td>
 <td><code>haversine_km</code>, <code>estimate_travel</code>, <code>OSRMBackend</code>, <code>NominatimBackend</code>, <code>GeoPointMixin</code> / <code>GeoRepositoryMixin</code>, <code>CachedGeocodingBackend</code> (pluggable geocoding cache)</td>
+</tr>
+<tr>
+<td><strong><a href="google-drive/">Google Drive (uploads) »</a></strong></td>
+<td><code>GoogleDriveUploadStorage</code> as an <code>UploadUtils</code> backend through a service account (JWT bearer over <code>httpx</code> + <code>pyjwt</code>), resumable upload in 256 KiB pieces with retries, key in <code>appProperties</code>, a repeated key replaces the content, <code>GoogleDriveSettings</code></td>
 </tr>
 <tr>
 <td><strong><a href="hostbridge/">Host control (files, commands, power) »</a></strong></td>

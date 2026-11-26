@@ -1,6 +1,6 @@
 # tempest-fastapi-sdk
 
-> tempest-fastapi-sdk holds the shared FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 building blocks used across Tempest services. Core: BaseAppSettings (+ composable settings mixins), BaseModel, BaseRepository[Model], BaseService, BaseController, base/pagination schemas, the AppException hierarchy + handlers (with an i18n message catalog and OpenAPI error documentation), AsyncDatabaseManager and AlembicHelper. Batteries: JWT/OAuth2 auth with a bundled signup/login/reset flow and TOTP MFA, a Django-style admin site, typed SSR pages, Server-Sent Events and WebSockets, Redis cache, FastStream queues and TaskIQ tasks (retries + dead letters), MinIO/S3 storage and uploads, Web Push, feature flags, audit trail, rate limiting and idempotency middleware, Prometheus metrics and OpenTelemetry tracing, self-hosted generative AI (local LLM, embeddings, RAG, speech), geolocation, Brazilian document/phone/PIX validation, and a `tempest` CLI that scaffolds services and generates typed clients from an OpenAPI spec. Python >= 3.12. Optional features ship as extras: [cli-ops], [cli], [auth], [email], [upload], [cache], [websocket], [webpush], [metrics], [queue], [queue-kafka], [queue-nats], [queue-redis], [tasks], [tasks-redis], [admin], [admin-sql], [minio], [storage-encryption], [http], [oidc], [openapi], [prometheus], [mfa], [webauthn], [firebase], [fastmcp], [pdf], [pdf-read], [pdf-layout], [slides], [slides-mermaid], [spreadsheet], [image], [vision], [genai], [genai-quant], [genai-rag], [genai-audio], [genai-tts-coqui], [genai-diarization], [faces], [genai-ollama], [genai-hosted], [genai-chroma], [genai-structured], [genai-onnx], [genai-vlm], [genai-hub], [genai-image], [genai-sound], [modelops], [modelops-compose], [modelops-onnx], [modelops-sklearn], [geo], [ssr], [sqlite], [postgres], [kurrentdb], [otel], [tests], [all].
+> tempest-fastapi-sdk holds the shared FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 building blocks used across Tempest services. Core: BaseAppSettings (+ composable settings mixins), BaseModel, BaseRepository[Model], BaseService, BaseController, base/pagination schemas, the AppException hierarchy + handlers (with an i18n message catalog and OpenAPI error documentation), AsyncDatabaseManager and AlembicHelper. Batteries: JWT/OAuth2 auth with a bundled signup/login/reset flow and TOTP MFA, a Django-style admin site, typed SSR pages, Server-Sent Events and WebSockets, Redis cache, FastStream queues and TaskIQ tasks (retries + dead letters), MinIO/S3 storage and uploads, Web Push, feature flags, audit trail, rate limiting and idempotency middleware, Prometheus metrics and OpenTelemetry tracing, self-hosted generative AI (local LLM, embeddings, RAG, speech), geolocation, Brazilian document/phone/PIX validation, and a `tempest` CLI that scaffolds services and generates typed clients from an OpenAPI spec. Python >= 3.12. Optional features ship as extras: [cli-ops], [cli], [auth], [email], [upload], [cache], [websocket], [webpush], [metrics], [queue], [queue-kafka], [queue-nats], [queue-redis], [tasks], [tasks-redis], [admin], [admin-sql], [minio], [storage-encryption], [http], [oidc], [openapi], [prometheus], [mfa], [webauthn], [firebase], [fastmcp], [pdf], [pdf-read], [pdf-layout], [slides], [slides-mermaid], [spreadsheet], [image], [vision], [genai], [genai-quant], [genai-rag], [genai-audio], [genai-tts-coqui], [genai-diarization], [faces], [genai-ollama], [genai-hosted], [genai-chroma], [genai-structured], [genai-onnx], [genai-vlm], [genai-hub], [genai-image], [genai-sound], [modelops], [modelops-compose], [modelops-onnx], [modelops-sklearn], [geo], [google-drive], [ssr], [sqlite], [postgres], [kurrentdb], [otel], [tests], [all].
 
 
 ---
@@ -764,7 +764,7 @@ from src.db.models import UserModel
 from src.schemas import UserResponseSchema
 
 
-class UserRepository(BaseRepository[UserModel]):
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
     """Data-access layer for users."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -794,9 +794,10 @@ O repo base te dá 20+ métodos de graça — veja a [tabela de referência](ref
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
+from src.schemas import UserResponseSchema
 
 
-class UserRepository(BaseRepository[UserModel]):
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
     # ... __init__ and mappers above ...
 
     # ──────── custom queries on top of the inherited bulk + read methods ────────
@@ -919,7 +920,7 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
 
 Mesmo quando não há orquestração a fazer, `controllers/` existe como um **pass-through fino** para que o grafo de imports fique uniforme entre os serviços. No dia em que um caso de uso precisar coordenar dois services (ou fazer fan-out para uma fila), o controller já está lá.
 
-Herde de `BaseController[ServiceT, ResponseT]`. A base encaminha `get_by_id`, `list`, `paginate`, `count` e `delete` para o service por você — você só declara métodos que adicionam coordenação entre services ou que não existem no service (casos de uso custom como `signup`):
+Herde de `BaseController[ServiceT]` (a forma antiga `BaseController[ServiceT, ResponseT]` continua aceita por compatibilidade, mas os métodos pass-through leem os tipos de resposta e update direto do service). A base encaminha `get_by_id`, `list`, `paginate`, `count`, `update` e `delete` para o service por você — você só declara métodos que adicionam coordenação entre services ou que não existem no service (casos de uso custom como `signup`):
 
 ```python
 # src/controllers/users/user.py
@@ -931,7 +932,7 @@ from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
 from src.services import UserService
 
 
-class UserController(BaseController[UserService, UserResponseSchema]):
+class UserController(BaseController[UserService]):
     """Orchestrate user use cases.
 
     Today every method is a thin pass-through to ``UserService``. As
@@ -969,7 +970,7 @@ from src.schemas import UserCreateSchema, UserResponseSchema
 from src.services import UserService
 
 
-class UserController(BaseController[UserService, UserResponseSchema]):
+class UserController(BaseController[UserService]):
     # ... methods above ...
 
     async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
@@ -1746,6 +1747,183 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/
 # Guia de migração
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
+
+## 0.373.0 — `BaseController` e `BaseService` ligam `ResponseT` à camada de baixo
+
+Antes, `BaseController` declarava o próprio `ResponseT` independente do service e convertia o retorno com `cast("ResponseT", ...)` — um controller que repetia o schema errado passava no `mypy --strict` e devolvia o schema do service em runtime (#838):
+
+```python
+from typing import Any
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseController, BaseSchema, BaseService
+
+
+class UserResponseSchema(BaseSchema):
+    email: str
+
+
+class OrderResponseSchema(BaseSchema):
+    total: int
+
+
+class UserService(BaseService[Any, UserResponseSchema]):
+    pass
+
+
+class WrongController(BaseController[UserService, OrderResponseSchema]):
+    pass
+
+
+async def total(controller: WrongController, id: UUID) -> int:
+    return (await controller.get_by_id(id)).total  # docs-guard: skip
+```
+
+Agora `get_by_id`, `list` e `update` em `BaseController` leem o tipo de resposta (e, no `update`, o schema de update) direto do `ServiceT`. No exemplo acima, o `mypy --strict` recusa com `"UserResponseSchema" has no attribute "total"  [attr-defined]` e o `basedpyright` com `Cannot access attribute "total" for class "UserResponseSchema"`.
+
+As formas existentes `BaseController[Service, Resp]`, `BaseController[Service, Resp, Update]` e `BaseRepository[Model]` continuam aceitas por compatibilidade quando concordam com o service. A forma recomendada fica mais curta e amarra também o repository:
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    BaseController,
+    BaseModel,
+    BaseRepository,
+    BaseResponseSchema,
+    BaseSchema,
+    BaseService,
+)
+
+
+class UserModel(BaseModel):
+    __tablename__ = "migration_users_example"
+
+    email: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class UserResponseSchema(BaseResponseSchema):
+    email: str
+
+
+class UserUpdateSchema(BaseSchema):
+    email: str | None = None
+
+
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
+    def map_to_response(self, instance: UserModel) -> UserResponseSchema:
+        return UserResponseSchema.model_validate(instance)
+
+
+class UserService(
+    BaseService[UserRepository, UserResponseSchema, UserUpdateSchema]
+):
+    pass
+
+
+class UserController(BaseController[UserService]):
+    pass
+```
+
+Se um controller seu falhar após a atualização:
+
+- **Controller apontava para o schema errado:** corrija o service ou passe só `BaseController[SeuService]`, deixando a resposta e o update virem do service.
+- **Controller 2-arg sobre service 3-arg chamando `update`:** `controller.update(id, payload)` agora exige o `UpdateT` do service em vez de aceitar qualquer `BaseSchema`; passe o schema de update concreto.
+- **Service com `BaseRepository[Model, Resp]` diferente do `ResponseT` do service:** no `basedpyright`, o call site passa a recusar o acesso aos métodos de leitura/mapeamento até os dois concordarem.
+
+## 0.373.0 — `ObjectStat.raw` pode ser `None`
+
+`ObjectStat.raw` agora é anotado `minio.datatypes.Object | None` (#836). Em runtime nada mudou: o `AsyncMinIOClient` continua preenchendo o `Object` do `minio`, e o `LocalObjectStorageClient` e o `FakeObjectStorageClient` continuam devolvendo `None`, como já faziam. O que muda é o checker: leitura sem checagem, como `stat.raw.version_id`, passa a ser `error: Item "None" of "Object | None" has no attribute "version_id"  [union-attr]` no mypy. Antes ele aceitava a linha, que levantava `AttributeError` contra o backend local e o fake.
+
+Estreite antes de ler:
+
+```python
+from tempest_fastapi_sdk.storage import ObjectStat
+
+
+def version_of(stat: ObjectStat) -> str | None:
+    if stat.raw is None:
+        return None
+    return stat.raw.version_id
+```
+
+Se você já fazia essa checagem e silenciava o `unreachable` do mypy (`warn_unreachable`) com `# type: ignore`, o ignore deixa de ser necessário.
+
+## 0.373.0 — `same_site` do `SignedCookieSessionStore` tipado como `Literal`
+
+O parâmetro `same_site` de `SignedCookieSessionStore` era `str` e passa a ser `SameSite` (`Literal["lax", "strict", "none"]`, exportado em `tempest_fastapi_sdk`). Valor fora dos três agora levanta `ValueError` na construção, em vez de `AssertionError` no primeiro login. O mypy recusa (`arg-type`) duas formas que antes passavam:
+
+- **Variável `str`:** anote-a como `SameSite`, ou leia o valor de um campo de settings já tipado assim (o `SESSION_COOKIE_SAMESITE` do `SessionSettings` é `SessionCookieSameSite`, o mesmo `Literal`).
+- **Grafia com maiúscula (`"Lax"`, `"Strict"`):** escreva em minúscula. Em runtime ela continua aceita e é guardada em minúscula, então o cabeçalho `Set-Cookie` passa de `SameSite=Strict` para `SameSite=strict`.
+
+```python
+from tempest_fastapi_sdk import SameSite
+from tempest_fastapi_sdk.admin import SignedCookieSessionStore
+
+policy: SameSite = "strict"
+store: SignedCookieSessionStore = SignedCookieSessionStore(
+    "change-me-to-a-32-byte-secret-key!!",
+    same_site=policy,
+)
+```
+
+## 0.373.0 — `BaseUserModel` sem colunas fantasmas
+
+`BaseUserModel` declarava `totp_secret`, `totp_enabled_at`, `totp_last_step` e `name` só para o checker. Em runtime essas colunas vêm de `MFAMixin` e `NameMixin`, então um model sem o mixin passava no `mypy --strict` e levantava `AttributeError` na linha:
+
+```python
+from tempest_fastapi_sdk import BaseUserModel
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+def label(user: UserModel) -> str:
+    return user.name  # docs-guard: skip
+```
+
+Agora o `mypy --strict` recusa essa linha com `"UserModel" has no attribute "name"  [attr-defined]`. O código já quebrava em runtime; a mudança só move o erro para o checker. Escolha uma das duas saídas:
+
+- **O model tem a coluna:** herde o mixin (`class UserModel(NameMixin, BaseUserModel)`, ou `MFAMixin` para os `totp_*`) e gere a migration.
+- **A função aceita qualquer `BaseUserModel`:** estreite antes de ler.
+
+```python
+from datetime import datetime
+
+from tempest_fastapi_sdk import BaseUserModel, MFAMixin, NameMixin
+
+
+def display(user: BaseUserModel) -> str:
+    if isinstance(user, NameMixin):
+        return user.name
+    return user.email
+
+
+def enabled_at(user: BaseUserModel) -> datetime | None:
+    if isinstance(user, MFAMixin):
+        return user.totp_enabled_at
+    return None
+```
+
+O SDK passou a ler as colunas do mesmo jeito, e isso muda três comportamentos para model **sem** o mixin:
+
+- `UserAuthService.mfa_enroll` levanta `TypeError` antes de gravar qualquer linha. Antes devolvia um segredo sem coluna onde morar e gravava os recovery codes. `mfa_confirm` responde `422` (`MFA not initialized`), e `mfa_disable` / `mfa_reset`, que levantavam `AttributeError`, respondem `422` (`MFA not active`).
+- Model que declara a **própria** coluna `name`, sem `NameMixin`, registra a passkey (`WebAuthnService.register_begin`) com o e-mail como `display_name`. Para manter o nome, troque a coluna própria por `NameMixin`.
+- `tempest user create --require-mfa` e `tempest user mfa-reset` exigem `MFAMixin` na classe; colunas `totp_*` declaradas à mão não bastam mais.
+
+## 0.373.0 — quebras de runtime fora do checker e tipos públicos estreitados
+
+Três mudanças desta release quebram em **runtime**, não só no type-checker:
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `recall_prompt(memory, ...)` | Chama `memory.search(user_id=..., query=..., top_k=...)` — o método que `ChatMemory` e `PgChatMemory` têm — em vez de `memory.recall(...)`, que nenhuma classe do SDK tinha. Memória própria que implementava só `recall` agora levanta `AttributeError` (antes devolvia `""` em silêncio); falha de um backend com `search` continua devolvendo `""`, com um `WARNING` no logger `tempest_fastapi_sdk.agents.memory` | Implemente `search(*, user_id, query, top_k)` devolvendo os `MemoryHit`, ou passe um `ChatMemory`/`PgChatMemory`. O Protocol `SupportsMemorySearch` descreve o formato |
+| Agente e `AIChatPipeline` com ferramentas | Decidem por `isinstance(generator, ToolCallingBackend)`, que exige `chat` **e** `chat_with_tools`. Um dublê só com `chat_with_tools` deixa de rodar o loop de ferramentas | Dê ao dublê também `async def chat(self, messages, /) -> str` |
+| `FakePixProvider.parse_webhook(event)` | Recebe `object` e levanta `TypeError` (`parse_webhook expects a mapping, got str.`) para o que não for `Mapping` | Passe o corpo do webhook já decodificado como `dict` |
+
+O resto das mudanças de tipo desta release (#839, #841, #842 e a parte de settings de #843) só aparece no `mypy`/`basedpyright`: retornos e parâmetros públicos que eram `Any` ganharam tipo, e os `*_kwargs()` dos settings devolvem `TypedDict` — leitura por chave e o splat `**` continuam funcionando; quebra só quem inseria chave nova no dict devolvido. Cada item, com a nota de migração própria, está no [changelog](changelog.md) da 0.373.0.
 
 ## 0.372.0 — cinco regras novas no `tempest check` e `RuntimeError` sem URL no `AlembicHelper`
 
@@ -5157,6 +5335,377 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.373.0] — 2026-11-26
+
+### Added
+
+- **Google Drive como backend do `UploadUtils`** (extra novo `[google-drive]`
+  = `httpx`, `pyjwt`, `cryptography`, já cobertos pelo `[all]`):
+  `tempest_fastapi_sdk.integrations.storage.google_drive`.
+  - `GoogleDriveUploadStorage` implementa `UploadStorage`:
+    `UploadUtils(backend=GoogleDriveUploadStorage.from_service_account(...))`
+    funciona sem mudar a rota. A key vai em `appProperties` (`tempest_key`)
+    e é buscada com o valor escapado para a sintaxe de busca do Drive;
+    gravar uma key que já existe substitui o conteúdo do mesmo arquivo
+    (mesmo id); `delete` apaga sem lixeira todo arquivo da key;
+    `presigned_url` levanta `PresignedUrlUnsupportedException` (`501`);
+    `web_view_link` e `UploadResult.url` trazem o `webViewLink`.
+  - `GoogleDriveClient` sobre `httpx` injetável: upload resumível em
+    pedaços múltiplos de 256 KiB, retomada pelo `Range` do `308`, retry com
+    backoff para `429`/`5xx` por pedaço (sem reenviar o arquivo),
+    `supportsAllDrives=true` em toda chamada à API.
+    - O stream é lido um pedaço à frente, então o último `PUT` sempre leva
+      bytes e o total — um tamanho múltiplo exato do pedaço não termina
+      mais num `PUT` vazio `bytes */<total>`, que o protocolo também usa
+      como consulta (contra um fake HTTP que o trata assim, 512 KiB com
+      pedaço de 256 KiB terminava em `upload_stalled`). O arquivo de 0 bytes
+      continua fechando com `bytes */0`.
+    - `403` com `reason` `rateLimitExceeded`/`userRateLimitExceeded` é
+      repetido como `429`/`5xx`, em chamada de metadado e em pedaço
+      (`RATE_LIMIT_REASONS`); `Retry-After` em segundos de um `429`/`503`
+      substitui o backoff, limitado a `backoff_max_seconds`
+      (`RETRY_AFTER_STATUSES`).
+    - `308` sem avanço espera o backoff antes de reenviar (antes reenviava
+      na hora); `308` que recua para antes do que o cliente já descartou
+      sobe na hora como `upload_range_regressed`.
+    - `404` num pedaço ou na consulta vira `GoogleDriveException` com
+      `reason="upload_session_not_found"` (sessão expirada), e não mais
+      `GoogleDriveFolderNotFoundException`, que fica para o `404` da busca
+      e da abertura da sessão.
+    - Upload que falha fecha (`aclose`) o gerador passado pelo chamador.
+  - Key ou propriedade de `metadata` acima de 124 bytes levanta
+    `ValidationException` (`422`, a mensagem cita o limite) em vez de
+    `InvalidFileTypeException` (`415`); `private_key` que não é PEM RSA
+    levanta `GoogleDriveException` com `reason="invalid_private_key"` antes
+    de qualquer requisição, sem a chave na mensagem.
+  - Protocolo `SupportsWebViewLink` (`tempest_fastapi_sdk.utils` e o topo):
+    backend com link permanente por key. A rota de download de
+    `upload_fields` do admin trata `PresignedUrlUnsupportedException` como
+    "sem URL pré-assinada" e, quando o backend implementa o protocolo,
+    responde `303` para o link (no Drive, o `webViewLink`); sem link, segue
+    o caminho de antes (arquivo local ou `404`).
+  - `ServiceAccountTokenProvider` (JWT bearer RS256 com `pyjwt` +
+    `cryptography`, cache até perto do `expires_in`, uma troca só sob
+    concorrência) atrás do protocolo `AccessTokenProvider`;
+    `ServiceAccountCredentials` (arquivo ou JSON inline, o inline vence).
+  - `GoogleDriveSettings` (`GOOGLE_DRIVE_CREDENTIALS_PATH`,
+    `GOOGLE_DRIVE_CREDENTIALS_JSON`, `GOOGLE_DRIVE_FOLDER_ID`,
+    `GOOGLE_DRIVE_DRIVE_ID`) com `google_drive_kwargs()` devolvendo o
+    `TypedDict` `GoogleDriveStorageKwargs`.
+  - Exceções `GoogleDriveException` (`502`, `GOOGLE_DRIVE_ERROR`, com
+    `status` e `reason` do corpo do Google), `GoogleDriveFolderNotFoundException`
+    (`502`, `GOOGLE_DRIVE_FOLDER_NOT_FOUND`, a mensagem diz com qual
+    `client_email` compartilhar) e `PresignedUrlUnsupportedException`
+    (`501`, `PRESIGNED_URL_UNSUPPORTED`).
+  - Receita bilíngue `recipes/google-drive`. Testado no fio com
+    `httpx.MockTransport`; não medido contra o Google real (o teste live
+    `test_live.py` roda só com `TEST_GOOGLE_DRIVE_CREDENTIALS` e
+    `TEST_GOOGLE_DRIVE_FOLDER_ID`).
+
+### Changed
+
+- **`UploadStorage.presigned_url` documenta as duas formas de "não tenho
+  URL pré-assinada"**: devolver `None` (disco local) ou levantar
+  `PresignedUrlUnsupportedException` (Google Drive). Quem chama com qualquer
+  backend trata as duas — o admin passou a tratar.
+- **Regra de tipagem — parâmetros públicos sem `Any` pelado em `queue`, `tasks`, `admin`, `authz` e `checks`** (#842): todos os 54 parâmetros públicos `Any` pelado nesses cinco subpacotes foram substituídos por tipos concretos, genéricos, protocolos ou `object`:
+  - **`queue` (17):** `Consumer` passa a ser genérico em `MessageT` (default `Any` via `typing_extensions.TypeVar`), tipando `Consumer.handle(message: MessageT)` mantendo compatibilidade com subclasses sem parâmetro de tipo; `replay_headers` recebe `Mapping[str, Any] | None`; os quatro middlewares FastStream (`_DedupMiddleware`, `_DeadLetterMiddleware`, `_MetricsMiddleware`, `_TracingMiddleware`) tipam `consume_scope(call_next: AsyncFuncAny, msg: StreamMessage[Any])` sob `TYPE_CHECKING`; `QueuePublisher.publish`, `MessageBroker.publish`, `AsyncQueueManager.publish`, `_schema_entry` (`entry`), `message_key`, `delivery_attempt` e `detect_transport` recebem `object`.
+  - **`admin` (13):** `AdminModel.readonly_field_names_for` passa a receber `ModelT` (e `editable_field_names(..., instance: ModelT | None = None)`); `parse_schema_submission` recebe `form: Mapping[str, Any]` (alinhado com `parse_submission` e `parse_password_submission`); o handler interno de `make_jwt_impersonation_handler` tipa `operator` e `target` com o protocolo privado `_HasId` (`@property def id(self) -> object`); `AdminAuthBackend.is_admin_account`, `UserModelAuthBackend.is_admin_account`, `AdminModel.scope_for`, `cell_view`, `format_number`, `short_identity`, `fk_label`, `duplicate_values` e `apply_password_fields` recebem `object`.
+  - **`authz` (9):** `PermissionRegistry.has_perm`, `PermissionRegistry.check_permission`, `has_perm`, `check_permission` e `PermissionMixin.has_perm` recebem `user: object` e `obj: object = None`.
+  - **`checks` (8):** `check_secrets`, `check_debug`, `check_cors`, `check_database`, `check_bind_host`, `CheckRegistry.run`, `run_checks` e `run_system_checks` recebem `context: object`.
+  - **`tasks` (7):** `StageMap.status`, `is_running`, `owns`, `mark` (`record` e `result`), `cancel` e `snapshot` recebem `object`.
+  - **Nota de migração:** `AdminModel.readonly_field_names_for`, `parse_schema_submission(form=...)` e `replay_headers(headers=...)` estreitaram o tipo aceito em checagem estática (para `ModelT`, `Mapping[str, Any]` e `Mapping[str, Any] | None`, respectivamente); chamadas com objetos de outros tipos passam a exigir o tipo esperado sob `mypy`.
+- **Mappers `*_kwargs()` de `tempest_fastapi_sdk.settings` passam a devolver
+  `TypedDict` específicos em vez de `dict[str, Any]`** (primeira fatia de #843;
+  e `MinIOSettings.model_post_init(context)` passa a aceitar `object` em vez de
+  `Any`, #842): todos os 24 mappers restantes (`logging_kwargs`,
+  `database_kwargs`, `redis_kwargs`, `jwt_kwargs`, `email_kwargs`,
+  `upload_kwargs`, `webpush_kwargs`, `firebase_kwargs`, `kafka_kwargs`,
+  `google_kwargs`, `github_kwargs`, `local_storage_kwargs`, `storage_kwargs`,
+  `minio_kwargs`, `anthropic_kwargs`, `openai_kwargs`, `openai_speech_kwargs`,
+  `deepseek_kwargs`, `gemini_kwargs`, `hosted_kwargs`, `openpix_kwargs`,
+  `mercado_pago_kwargs`, `revenuecat_kwargs`, `hostbridge_kwargs`) agora
+  devolvem 21 novos `TypedDict` definidos em
+  `tempest_fastapi_sdk.settings.kwargs` e re-exportados em
+  `tempest_fastapi_sdk.settings` (`LoggingKwargs`, `DatabaseKwargs`,
+  `RedisKwargs`, `JWTKwargs`, `EmailKwargs`, `UploadKwargs`, `WebPushKwargs`,
+  `FirebaseKwargs`, `KafkaKwargs`, `GoogleOAuthKwargs`, `GitHubOAuthKwargs`,
+  `LocalStorageKwargs`, `StorageKwargs`, `AnthropicKwargs`, `OpenAIKwargs`,
+  `OpenAISpeechKwargs`, `DeepSeekKwargs`, `GeminiKwargs`, `HostedGenAIKwargs`,
+  `HTTPClientKwargs`, `HostBridgeKwargs`), protegidos pelo guard
+  `tests/test_settings_kwargs_typeddict_guard.py`.
+  - **Nota de migração:** `TypedDict` é compatível com leitura por chave e com
+    splat `Target(**settings.xxx_kwargs())`, mas o type-checker passa a recusar
+    quem muta o dicionário retornado inserindo chaves fora do formato esperado
+    pelo construtor alvo.
+- **Regra de tipagem — nenhum parâmetro público `Any` pelado (guard + `vision`,
+  `genai`, `modelops`)** (#842): criado o guard AST
+  `tests/test_public_any_param_guard.py` (com `*args: Any, **kwargs: Any` de
+  passthrough explicitamente excluídos e allowlist temporária para os demais
+  subpacotes) e resolvidos todos os 50 parâmetros públicos `Any` pelado de
+  `vision` (3), `genai` (21) e `modelops` (26), sem exceções na allowlist:
+  - **`vision`:** `make_vision_router` tipa `classifier`, `detector` e
+    `segmenter` com o novo protocolo genérico `AsyncVisionTask[ResultT]`
+    parametrizado com `ClassificationResults`, `DetectionResults` e
+    `SegmentationResults` (re-exportado em `tempest_fastapi_sdk.vision`).
+  - **`genai`:** `make_model_cards` aceita
+    `ModelRegistry | Mapping[str, object] | Sequence[object]` (e
+    `runtime_report` aceita `Mapping[str, object] | Sequence[object]`);
+    `precision_kwarg` passa a ser genérico em `DtypeT` devolvendo
+    `dict[str, DtypeT]`; `ImageGenerator.edit` aceita o novo alias
+    `ImageSource`; `count_tokens` / `count_message_tokens` /
+    `truncate_messages` aceitam o novo protocolo `TokenEncoder`;
+    `build_prefix_allowed_tokens_fn` aceita o novo protocolo
+    `StructuredTokenizer`; `encode_wav` aceita `numpy.typing.ArrayLike`;
+    `check_audio_pipeline` aceita `Callable[..., object]`;
+    `text_features_problem` aceita `pipeline: object` e o novo protocolo
+    `TorchProbeModule`; `make_voice_router` tipa `user_id: UUID` nas rotas de
+    perfil; `anthropic_usage`, `TokenUsage.from_payload`, `is_document_part`,
+    `describe_model`, `pipeline_sample_rate` e as rotas `chat`/`chat_stream` de
+    `make_ai_chat_router` passam a aceitar `object`.
+  - **`modelops`:** novo módulo `modelops/protocols.py` (re-exportado em
+    `tempest_fastapi_sdk.modelops`) com `HasValues`, `TabularInput`,
+    `SklearnEstimator`, `SupportsAvailableProviders` e `TorchExampleInput`;
+    `benchmark_torch`, `export_torch_to_onnx` e `analyze_torch` aceitam
+    `torch.nn.Module` (sob `TYPE_CHECKING`) e `TorchExampleInput`;
+    `default_providers` aceita `SupportsAvailableProviders`; helpers
+    scikit-learn (`export_sklearn_to_onnx`, `verify_sklearn_onnx`,
+    `edge_bundle`, `export_sklearn_to_compact`, `edge_pipeline`) aceitam
+    `SklearnEstimator` e `TabularInput` (com `Literal[False]` explícito em
+    `verify_samples` onde suportado); `predict_compact`, `OnnxPredictor.predict`,
+    `baseline_from_samples`, `PredictionMonitor.observe` e
+    `edge_pipeline_from_pickle` aceitam `TabularInput`.
+  - **Nota de migração:** consumidores que passavam objetos de teste ou
+    estruturas fora do contrato esperado em `vision`, `genai` ou `modelops`
+    passam a receber erro estático no mypy/basedpyright e devem satisfazer o
+    protocolo ou tipo concreto correspondente.
+- **Parâmetros públicos sem `Any` pelado — subpacotes restantes** (#842): os 47
+  parâmetros públicos `Any` pelado em `api`, `app_errors`, `chat`, `core`, `db`,
+  `geo`, `integrations`, `mcp`, `privacy`, `rooms`, `sse`, `ssr`, `storage`,
+  `testing`, `ui` e `utils` foram substituídos por construções concretas (zero
+  exceções na allowlist):
+  - **Protocolos do SDK:** `ChatMessageLike` (`ChatService.receipt_counts`),
+    `PaginationEnvelopeLike` (`pagination_for`), `FormRequestLike`
+    (`parse_form`), `PasswordSettingsLike` (`PasswordPolicy.from_settings`),
+    exportados nos respectivos módulos e referenciados na documentação de API.
+  - **Apelidos nomeados (`utils.http_client`):** `HTTPRequestData`,
+    `HTTPRequestContent`, `HTTPFileContent`, `HTTPFilePart` e
+    `HTTPRequestFiles` em `HTTPClient.request`, `stream` e `stream_bytes`
+    (com `json: object = None`).
+  - **Tipos concretos e `TypeVar`:** `haversine_distance_sql` passa a exigir
+    `SQLColumnExpression[float]` para `latitude` e `longitude`; `db.signals.emit`
+    amarra `model_class: type[ModelT]` e `instance: ModelT`; o handler HTML de
+    `register_html_error_handlers` recebe `exc: Exception`.
+  - **`object` para entradas genuinamente arbitrárias ou estreitadas em
+    runtime:** `WebhookSender.send(payload)`, `make_app_error_router`
+    (`session`/`user_id`, passando a resolver `user_id` anônimo via dependência
+    interna em vez de default `None`), `_EnumHelpers.has_value(value)`,
+    `render_enum_types(obj)`, `type_bound_check_include_object` (`object_`,
+    `compare_to`), `build_filter_condition(value)`, `PixProvider.parse_webhook`
+    (protocolo e adapters `MercadoPagoPixProvider`, `OpenPixPixProvider` e
+    `FakePixProvider`, que agora levanta `TypeError` se receber algo que não
+    seja `Mapping`), `principal_key(principal)`, `SubjectGraph` (`condition`,
+    `export`, `count`, `erase`), `RoomRegistry.relay_json(data)`,
+    `RoomSession.handle_json(message)`, `make_sse_router` (`user`, `fallback`),
+    `make_tus_router` (`user` nas 4 rotas) e `DataTable.cell_text(value)`.
+  - **Nota de migração:** consumidores que passavam objetos sem os atributos
+    exigidos pelos novos protocolos (`ChatMessageLike`,
+    `PaginationEnvelopeLike`, `FormRequestLike`, `PasswordSettingsLike`),
+    valores não-SQL a `haversine_distance_sql`, instâncias de outra classe a
+    `db.signals.emit` ou formatos fora de `HTTPRequest*` a `HTTPClient` passam
+    a receber erro do type checker.
+- **Regra de tipagem — nenhum retorno público `-> Any`** (#839): 40 retornos
+  públicos `-> Any` do pacote foram tipados com construções concretas (além dos
+  2 `BaseRepository.map_to_*` já resolvidos em #838; restam na allowlist apenas
+  os 4 overrides de `faststream.BaseMiddleware.consume_scope`, que declaram
+  `Any` upstream no `faststream 0.7.5`), protegidos pelo novo guard
+  `tests/test_public_any_return_guard.py`:
+  - **Genéricos / `Self`:** `BaseStrEnum.from_value` / `BaseIntEnum.from_value`
+    passam a devolver `Self` (ou `Self | D` quando `default=` é passado);
+    `Agent.run_structured` passa a ser genérico em `OutputT: BaseModel`
+    devolvendo `StructuredRun[OutputT]`; `ManualPayoutService` passa a ser
+    genérico em `PayoutModelT` (default `BaseManualPayoutModel`), tipando
+    `mark_paid` e `reject`; `AdminAuthBackend.load_account` devolve
+    `PrincipalT | None`; `TaskDef[TaskReturnT]` (default `object`) tipa
+    `TaskDef.run` e `TaskQueue.register` devolve
+    `Task[Any, TaskReturnT] | dict[str, Task[Any, Any]]`;
+    `BaseJobModel.new_job` devolve `Self`.
+  - **Tipos concretos e apelidos:** `as_spec_ir` (`SpecIR`),
+    `ModelRegistry.inventory` (`ModelRuntimeReport` e `hardware: HardwareInfo | None`),
+    `AlembicHelper.revision` / `revision_async`
+    (`Script | list[Script | None] | None`), `F.resolve` (`SQLColumnExpression[Any]`),
+    `to_rabbit_queue` (`RabbitQueue`), `to_rabbit_exchange` (`RabbitExchange`),
+    `resolve_channel` (`str | RabbitQueue`), fábricas de middleware de fila
+    (`type[BaseMiddleware]`), `FirebaseAuth.app` (`firebase_admin.App`),
+    `RedactionPolicy.redact_value` (novo apelido `RedactedValue` + overloads
+    preservando `dict`/`list`), `FullHelpTyperGroup.main` (`object`),
+    `stream_messages` (`StreamingResponse`), `guarded_receive` (`Message`),
+    `tool_spec` (`dict[str, Any]`), `_PinnedAdapter.proxy_manager_for`
+    (`urllib3.ProxyManager`), `_EgressSession.request` (`requests.Response`).
+  - **Protocolos do SDK:** `ImageGenerator.pipeline` (`ImageDiffusionPipeline` /
+    `ImagePipelineOutput`), `AudioGenerator.pipeline` (`AudioDiffusionPipeline`
+    / `AudioPipelineOutput`), `build_prefix_allowed_tokens_fn`
+    (`PrefixAllowedTokensFn` / `TokenIdSequence`), `build_url_fetcher`
+    (`UrlFetcher` / `UrlFetcherResponse`), `MessageBroker.publisher`
+    (`QueuePublisher`) e `publish` em `MessageBroker` / `AsyncQueueManager` /
+    `Publisher` (`PublishResult`).
+  - **Nota de migração:** consumidores que acessavam atributos sem estreitar o
+    tipo sobre retornos antes anotados como `Any` (por exemplo `TaskQueue.register`
+    ou `publish` de fila) passam a receber erro do mypy e devem estreitar com
+    `isinstance` ou tipar a definição explicitamente.
+- `BaseController` deixou de devolver o próprio `ResponseT` por `cast` sem
+  prova e `BaseService` / `BaseRepository` agora amarram o tipo de resposta
+  entre si (#838). Antes, um `WrongController(BaseController[UserService,
+  OrderResponseSchema])` passava no `mypy --strict` e entregava
+  `UserResponseSchema` em runtime; os pass-throughs `get_by_id`, `list` e
+  `update` do `BaseController` agora extraem o tipo de resposta (e de update,
+  no `update`) direto do `ServiceT`, sem `cast`, e `BaseController[Service]`
+  com um argumento só passa a ser suficiente (`BaseController[Service, Resp]`
+  e `BaseController[Service, Resp, Update]` continuam aceitos por
+  compatibilidade via defaults de `TypeVar`). `BaseRepository` (e
+  `TenantScopedRepository`) ganhou um segundo parâmetro genérico covariante
+  opcional `ResponseT` (default `Any`, mantendo `BaseRepository[Model]`
+  compatível): `map_to_response` passa a devolver
+  `ResponseT | Awaitable[ResponseT]` (e `map_to_schema` devolve `object`),
+  removendo os `-> Any` públicos e os `type: ignore[no-any-return]` de
+  `BaseService._map_to_response`. Quando o repository declara
+  `BaseRepository[Model, Resp]`, o `basedpyright` recusa divergência entre o
+  `ResponseT` do service e o do repository no call site. **Quebra de tipo**
+  para controllers cujo `ResponseT` ou `UpdateT` discordava do service (e para
+  subclasses que sobrescrevem `BaseController.update` sob `basedpyright`
+  estrito, onde o parâmetro de método genérico acusa
+  `reportIncompatibleMethodOverride`); veja o guia de migração.
+- `ObjectStat.raw` passa a ser `minio.datatypes.Object | None` (#836). O
+  `LocalObjectStorageClient` e o `FakeObjectStorageClient` sempre devolveram
+  `raw=None`, escondido por `type: ignore[arg-type]` nos dois construtores:
+  o checker do consumidor aceitava `stat.raw.version_id` e a chamada
+  levantava `AttributeError` contra esses backends. Agora o mypy acusa
+  `union-attr` no acesso sem checagem; quem lê `.raw` estreita contra
+  `None` antes (no `AsyncMinIOClient` ele nunca é `None`).
+- `SignedCookieSessionStore(same_site=...)` passa a ser tipado
+  `SameSite` (`Literal["lax", "strict", "none"]`) em vez de `str`, e o
+  atributo `same_site` também (#837). Quem passa uma variável `str` ou
+  `"Lax"` vê o mypy recusar a chamada (`arg-type`); em runtime o valor
+  continua aceito sem diferenciar maiúscula e é guardado em minúscula, então
+  `same_site="Strict"` escreve `SameSite=strict` no `Set-Cookie`, e não mais
+  `SameSite=Strict`.
+- **Quebra de tipo:** `BaseUserModel` deixou de declarar `totp_secret`,
+  `totp_enabled_at`, `totp_last_step` e `name` só para o checker (bloco
+  `if TYPE_CHECKING:`) (#835). As colunas existem em runtime só com
+  `MFAMixin` / `NameMixin`, então o `mypy --strict` aceitava `user.name`
+  num model sem `NameMixin` e a linha levantava `AttributeError`. Agora a
+  mesma linha é erro de tipo (`"UserModel" has no attribute "name"
+  [attr-defined]`). Herde o mixin ou estreite com
+  `isinstance(user, NameMixin)` / `isinstance(user, MFAMixin)`; veja o guia
+  de migração.
+- O SDK lê essas colunas por `isinstance` com o mixin em vez de
+  `getattr(user, "...", None)` (`UserAuthService`, `UserModelAuthBackend`,
+  `WebAuthnService.register_begin`, `tempest user set-password`). Model que
+  declara a própria coluna `name` sem `NameMixin` passa a registrar a
+  passkey com o e-mail como `display_name`. `tempest user create
+  --require-mfa` e `tempest user mfa-reset` exigem `MFAMixin` na classe em
+  vez de procurar o atributo `totp_enabled_at`.
+- **Estreitamento de parâmetros de backend (`Any` → Protocol/tipo concreto)** (#841):
+  parâmetros que antes aceitavam `Any` ou eram lidos por `getattr`/`cast`
+  passam a usar os Protocols e tipos existentes no pacote:
+  - `agents/builtin.py`: `retrieve_tool` (`SupportsRetrieve`), `speak_tool`
+    (`SpeechSynthesizer`), `transcribe_audio_tool` (`SpeechTranscriber`,
+    cujo parâmetro `audio` foi alargado para `bytes | str | Path` — o que
+    todos os backends do SDK já aceitam — e lê `result.language` direto),
+    `generate_image_tool` (`SupportsImageGeneration`), `describe_image_tool`
+    (`SupportsVisionGenerate`) e `web_search_tool` (`SupportsWebRetrieve`).
+    Os três novos Protocols (`SupportsImageGeneration`,
+    `SupportsVisionGenerate` e `SupportsWebRetrieve`) são exportados em
+    `tempest_fastapi_sdk.agents`.
+  - `agents/search_tools.py`: `name_search_tool` aceita
+    `FuzzyIndex[Any] | SemanticNameIndex[Any] | HybridNameIndex[Any]` e
+    `_score_note` aceita `FuzzyMatch[Any] | NameMatch[Any]`, com narrowing
+    por `isinstance(..., FuzzyIndex)` / `isinstance(..., FuzzyMatch)` em vez
+    de `getattr`/`inspect.isawaitable`.
+  - `agents/agent.py` e `genai/pipeline.py`: o probe de tool calling usa
+    `isinstance(self.generator, ToolCallingBackend)` em vez de
+    `getattr(..., "chat_with_tools", None)` + `callable`, e
+    `AIChatPipeline._run_tool_loop` recebe `generator: ToolCallingBackend`.
+    Dublês que implementam só `chat_with_tools` sem `chat` deixam de casar
+    com `ToolCallingBackend`.
+  - `queue/broker.py`: `MessageBroker.declare_retry_topology`
+    (`RetryTopology`), `dead_letter` (`DeadLetterSink`), `deduplicate`
+    (`DedupStore`) e `enable_metrics` (`QueueMetrics`).
+  - `genai/metrics.py` e `genai/inventory.py`: `GenAIMetrics.observe_inventory`
+    recebe `ModelRuntimeReport` (lendo `report.hardware` direto) e
+    `describe_model` testa `isinstance(model, Unloadable)`.
+  - `api/dependencies/rate_limit.py` e `api/server.py`: `_resolve_store` usa
+    `isinstance(store, RateLimitStore)` sem `cast`, e `run_server` lê
+    `settings.SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` direto quando
+    `settings is not None`.
+  - `tasks/queue.py`, `tasks/manager.py` e `tasks/scheduler.py`:
+    `TaskQueue._with_settings_heartbeat` estreita com
+    `isinstance(settings, TaskIQSettings)` (mantendo o fallback `getattr`
+    para objetos `TaskIQSettingsLike` alheios);
+    `AsyncTaskBrokerManager.register_task` e `AsyncTaskScheduler.register`
+    passam a preservar `ParamSpec`/`TypeVar`
+    (`Callable[_P, _R] -> AsyncTaskiqDecoratedTask[_P, _R]`).
+  - Dublês de consumidor que não implementavam o método exigido pelo Protocol
+    passam a ser acusados pelo type-checker.
+
+### Fixed
+
+- Os hooks de migração do Alembic (`sync_enum_types`, `sqlite_enum_checks`,
+  `create_enum_types_on_add_column`, `drop_enum_types_on_downgrade`,
+  `reorder_base_columns_first` e `backfill_non_nullable_defaults`) agora
+  passam direto em `context.configure(process_revision_directives=...)` sob
+  `mypy --strict` (#840). Os quatro hooks de enum declaravam
+  `context: Any` e `revision: str | tuple[str, ...]`, mais estreito que o
+  `_GetRevArg` do Alembic (`str | Iterable[str | None] | Iterable[str]`):
+  por contravariância de parâmetro de callback, passar qualquer um deles
+  direto a `context.configure(...)` falhava com `[arg-type]` (4 erros no
+  `env.py` mínimo), e o caminho só passava via `compose_hooks` porque o
+  alias `ProcessRevisionDirectives` apagava `revision` e `directives` para
+  `Any` / `list[Any]`. Os seis hooks e o alias `ProcessRevisionDirectives`
+  passam a usar `(MigrationContext, str | Iterable[str | None],
+  list[MigrationScript]) -> None`, intercambiável nos dois sentidos com o
+  `ProcessRevisionDirectiveFn` do Alembic (medido no piso/lock 1.19.1 e no
+  1.20.1), e o exemplo `skip_empty_revisions` da receita de migrations foi
+  atualizado para a mesma assinatura.
+- `recall_prompt` voltou a lembrar (#834). Chamava `memory.recall(...)`, que
+  nenhuma classe do pacote tem — `ChatMemory` e `PgChatMemory` expõem
+  `search(*, user_id, query, top_k, ...)` —, e o `except Exception` engolia o
+  `AttributeError`: com o `ChatMemory` que a receita passa, o bloco voltava
+  sempre vazio e o agente rodava sem memória e sem aviso. Agora chama
+  `memory.search(user_id=..., query=..., top_k=...)`, e o parâmetro deixou de
+  ser `Any`: é o novo `SupportsMemorySearch` (exportado em
+  `tempest_fastapi_sdk.agents`), que `ChatMemory` e `PgChatMemory` satisfazem
+  e que o mypy recusa num objeto sem `search`. Falha do backend continua
+  devolvendo `""`, mas registra um `WARNING` com traceback no logger
+  `tempest_fastapi_sdk.agents.memory`; `AttributeError` e `TypeError` (erro
+  de contrato) propagam. Memória própria que implementava `recall(query, *,
+  user_id, top_k)` precisa passar a implementar
+  `search(*, user_id, query, top_k)`: com `recall` ela agora levanta
+  `AttributeError` em vez de funcionar. A receita `agents-advanced` passa a indexar a lembrança antes
+  de consultá-la e a passar `min_similarity=0.3`: medido com o
+  `all-MiniLM-L6-v2`, a lembrança do exemplo pontua 0,455 (PT) / 0,39 (EN)
+  contra o objetivo, abaixo do piso padrão de 0,55, e o bloco que a página
+  mostrava não saía nem com a chamada certa.
+- `SignedCookieSessionStore` com `same_site` fora de `lax`/`strict`/`none`
+  levanta `ValueError` (`same_site must be one of 'lax', 'strict' or 'none';
+  got 'foo'`) na construção; antes era aceito e o primeiro login caía num
+  `AssertionError` do Starlette dentro de `set_cookie` (#837).
+- Admin com `AdminAuthBackend` cujo principal não é model (uma entrada de
+  LDAP, por exemplo): o painel de auditoria do detalhe e o feed de atividade
+  do dashboard levantavam `AttributeError: type object 'LdapEntry' has no
+  attribute 'get_table_name'` ao nomear o autor de uma mudança. O autor
+  passa a ser nomeado por `display_name`, como o principal de um model não
+  registrado. O mesmo valia para um `impersonate_account` que devolve um
+  objeto que não é model: a página de "entrar como" levantava o mesmo erro, e
+  agora aceita a conta como a de um model não registrado (#837).
+- `UserAuthService.mfa_enroll` num model sem `MFAMixin` levanta
+  `TypeError` antes de escrever qualquer linha. Antes devolvia um segredo
+  que não tinha coluna onde morar e gravava os 10 recovery codes; e
+  `mfa_disable` / `mfa_reset` levantavam `AttributeError` (500). Agora
+  `mfa_confirm` responde `ValidationException` (`MFA not initialized`) e
+  `mfa_disable` / `mfa_reset` `ValidationException` (`MFA not active`),
+  como para um usuário com o mixin que nunca se inscreveu (#835).
 
 ## [0.372.0] — 2026-11-26
 
@@ -29345,6 +29894,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[genai-quant]` | `bitsandbytes` | quantização 4/8-bit dos modelos locais do `[genai]` |
 | `[genai-rag]` | `trafilatura`, `pymupdf`, `pgvector`, `httpx` | ingestão RAG: scraping web, extração de PDF e embeddings em pgvector |
 | `[geo]` | `httpx` | helpers geoespaciais: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + rotas), `GeoPointMixin` |
+| `[google-drive]` | `httpx`, `pyjwt`, `cryptography` | backend de upload no Google Drive via service account: `GoogleDriveUploadStorage` (para `UploadUtils(backend=...)`), `GoogleDriveClient`, `ServiceAccountTokenProvider`, `GoogleDriveSettings` — [receita](recipes/google-drive.md) |
 | `[http]` | `httpx` (já vem no pacote base) | `HTTPClient` + `RetryPolicy` + circuit-breaker. O extra é opcional: o `HTTPClient` funciona na instalação base, e declarar o extra só registra a intenção no `pyproject.toml` do serviço |
 | `[image]` | `pillow`, `segno` | `strip_image_metadata`: recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, com teto de pixels contra decompression bomb; `ShareCardRenderer`: o card PNG 1200×630 da prévia de link; `render_qr` e `ShareFrameRenderer`: QR Code com logo e a moldura para compartilhar (traz o `segno`; card e moldura precisam de fonte TrueType na máquina, `fonts-dejavu-core`) |
 | `[kurrentdb]` | `kurrentdbclient` (+ `grpcio`, `grpcio-tools`, `setuptools`, `protobuf`) | backend KurrentDB (antigo EventStoreDB) do event store: `KurrentDBEventStore`. O backend SQL (`SqlEventStore`) não precisa de extra. Entra no `[all]`. Pesa 34 MB numa venv limpa (`kurrentdbclient` 1.3.6: `grpc` 18 MB, `grpc_tools` 7,9 MB, `setuptools` 3,9 MB), porque o cliente pede `grpcio[protobuf]`; `pip-audit` sem advisory na resolução de 2026-11-12. [Receita](recipes/event-sourcing.md) |
@@ -30483,7 +31033,7 @@ flowchart LR
     | **Repository** | Queries SQLAlchemy async cruas, CRUD + filtro + paginação | Regras de domínio, HTTP |
     | **UI** (quando o serviço entrega HTML) | Páginas, componentes, formulários e folha de estilo — *como isso aparece* | DB, controllers, services, HTTP |
 
-O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository]. O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde — ou, quando orquestra vários services sem CRUD de um recurso só, de [`Controller`][tempest_fastapi_sdk.Controller] (veja [Controller que orquestra](#controller-que-orquestra-controller)).
+O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType, ResponseT]`][tempest_fastapi_sdk.BaseRepository] (ou `BaseRepository[ModelType]`, com `ResponseT` opcional). O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde — ou, quando orquestra vários services sem CRUD de um recurso só, de [`Controller`][tempest_fastapi_sdk.Controller] (veja [Controller que orquestra](#controller-que-orquestra-controller)).
 
 ## Layout obrigatório do projeto
 
@@ -30691,7 +31241,7 @@ True
 ## Camadas de controllers & services
 
 
-`BaseService[RepositoryT, ResponseT]` e `BaseController[ServiceT, ResponseT]` são esqueletos genéricos que casam com o fatiamento do SDK (router → controller → service → repository). Eles expõem métodos CRUD pass-through para que endpoints simples possam herdar deles sem sobrescrever nada; você sobrescreve apenas os métodos que precisam de orquestração.
+`BaseService[RepositoryT, ResponseT]` e `BaseController[ServiceT]` são esqueletos genéricos que casam com o fatiamento do SDK (router → controller → service → repository). Eles expõem métodos CRUD pass-through para que endpoints simples possam herdar deles sem sobrescrever nada; você sobrescreve apenas os métodos que precisam de orquestração.
 
 O que você herda ao subclassear `BaseService[RepositoryT, ResponseT]`:
 
@@ -30706,9 +31256,9 @@ O que você herda ao subclassear `BaseService[RepositoryT, ResponseT]`:
 | `update(id, data)` | `ResponseT` | Busca por id, copia os campos presentes em `data` (tipado por `UpdateT`, o 3º parâmetro genérico opcional — default `BaseSchema`) na instância, persiste e mapeia. `to_dict()` descarta unset/`None`, então serve PUT e PATCH. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
-`map_to_response` é aguardado com `await` quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método.
+`map_to_response` é aguardado com `await` quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método. Quando o repository declara o 2º parâmetro genérico (`BaseRepository[ModelType, ResponseT]`), `map_to_response` fica tipado com `ResponseT` e o `BaseService` amarra o próprio tipo de resposta ao do repository (o `basedpyright` recusa divergência no call site).
 
-O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
+O que você herda ao subclassear `BaseController[ServiceT]` (as formas `BaseController[ServiceT, ResponseT]` e `BaseController[ServiceT, ResponseT, UpdateT]` continuam aceitas por compatibilidade, mas os métodos pass-through leem os tipos de resposta e update direto de `ServiceT`):
 
 | Método | Encaminha para | Notas |
 | --- | --- | --- |
@@ -30716,11 +31266,11 @@ O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
 | `list(filters, order_by, ascending)` | `service.list` | Igual. |
 | `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Igual. |
 | `count(filters)` | `service.count` | Igual. |
-| `update(id, data)` | `service.update` | Igual. |
+| `update(id, data)` | `service.update` | Recebe o `UpdateT` do service e devolve o `ResponseT` dele. |
 | `delete(id)` | `service.delete` | Igual. |
 
 !!! tip "Tipando o payload de `update` ponta a ponta"
-    O 3º parâmetro genérico é o schema de update, e ele precisa ser o **mesmo** nas duas camadas: um service declarado como `BaseService[Repo, Resp, MeuUpdateSchema]` encaixa em `BaseController[MeuService, Resp, MeuUpdateSchema]`. Omitir o 3º parâmetro em qualquer uma delas cai no default `BaseSchema`, e o `data` de `update` chega sem tipo preciso.
+    O 3º parâmetro genérico do `BaseService` é o schema de update (`BaseService[Repo, Resp, MeuUpdateSchema]`). Como `BaseController[MeuService]` deriva tanto o retorno quanto o `data` de `update` direto do service, basta passar o service uma vez — não precisa repetir o schema de resposta nem o de update no controller (repeti-los em `BaseController[MeuService, Resp, MeuUpdateSchema]` continua aceito por compatibilidade).
 
     ```python
     from tempest_fastapi_sdk import BaseController, BaseService
@@ -30735,10 +31285,8 @@ O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
         """Service tipado sobre o schema de update concreto."""
 
 
-    class CoinPackController(
-        BaseController[CoinPackService, CoinPackResponseSchema, CoinPackUpdateSchema]
-    ):
-        """Controller que repete o mesmo schema de update."""
+    class CoinPackController(BaseController[CoinPackService]):
+        """Controller deriva resposta e update direto do service."""
     ```
 
     !!! warning "Requer 0.167.1+"
@@ -30780,7 +31328,7 @@ from src.schemas.user import UserCreate, UserResponse
 from src.services.user_service import UserService
 
 
-class UserController(BaseController[UserService, UserResponse]):
+class UserController(BaseController[UserService]):
     """Thin orchestration over UserService."""
 
     async def signup(self, data: UserCreate) -> UserResponse:
@@ -30848,7 +31396,7 @@ dela, então `isinstance(controller, Controller)` vale para os dois.
 
 | O seu controller… | Herde |
 | --- | --- |
-| repassa o CRUD de um recurso, via um service | `BaseController[ServiceT, ResponseT, UpdateT]` |
+| repassa o CRUD de um recurso, via um service | `BaseController[ServiceT]` |
 | coordena vários services, sem CRUD de recurso único | `Controller` |
 
 ```python
@@ -31022,7 +31570,7 @@ class CategoryRepository(BaseRepository[CategoryModel]):
         )
 
 
-class ProductRepository(BaseRepository[ProductModel]):
+class ProductRepository(BaseRepository[ProductModel, ProductResponseSchema]):
     """Data access for products; owns the response mapper."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -31093,7 +31641,7 @@ class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
         return self.repository.map_to_response(instance)
 
 
-class ProductController(BaseController[ProductService, ProductResponseSchema]):
+class ProductController(BaseController[ProductService]):
     """Product use cases; a pass-through for now."""
 
     async def create(self, data: ProductCreateSchema) -> ProductResponseSchema:
@@ -31435,7 +31983,7 @@ class ProductResponseSchema(BaseResponseSchema):
     name: str
 
 
-class ProductRepository(BaseRepository[ProductModel]):
+class ProductRepository(BaseRepository[ProductModel, ProductResponseSchema]):
     """Data access for products."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -31462,7 +32010,7 @@ class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
     """Business rules for products."""
 
 
-class ProductController(BaseController[ProductService, ProductResponseSchema]):
+class ProductController(BaseController[ProductService]):
     """Product use cases."""
 
     @requires(require_admin)
@@ -31721,8 +32269,10 @@ mantém o sufixo, porque é o nome que todo call site lê:
 | `db/repositories/orders/order.py` → `OrderRepository` | `db/repositories/orders/order_repository.py` |
 
 O controller herda de uma das duas bases do SDK, as mesmas que o scaffold
-usa: `BaseController[Service, Schema]` quando passa o CRUD de **um**
-service, e `Controller` quando coordena vários (ou nenhum, como o
+usa: `BaseController[Service]` quando passa o CRUD de **um**
+service (os tipos de resposta e update vêm direto do service; a forma
+`BaseController[Service, Schema]` continua aceita por compatibilidade), e
+`Controller` quando coordena vários (ou nenhum, como o
 `ServiceInfoController` que o `tempest new` gera).
 
 ### Até 1000 linhas por arquivo
@@ -31761,11 +32311,10 @@ __all__: list[str] = ["InvoiceService", "ProductService"]
 # src/controllers/billing/invoice.py
 from tempest_fastapi_sdk import BaseController
 
-from src.schemas import InvoiceResponseSchema
 from src.services import InvoiceService
 
 
-class InvoiceController(BaseController[InvoiceService, InvoiceResponseSchema]):
+class InvoiceController(BaseController[InvoiceService]):
     """Coordenação de faturas."""
 ```
 
@@ -32390,7 +32939,7 @@ exceções.
 | `__init__.py` só reexporta | `from .x import Y as Y` + `__all__`; montagem em `router.py`, `factory.py`, `runner.py` | `INIT001` |
 | Recurso é singleton de processo num lugar só | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (convenção do scaffold) |
 | Providers por camada; router nunca vê `AsyncSession` | `api/dependencies/controllers.py` chama os `build_*` | `RTR001`, `DI001`–`DI003` |
-| Controller herda da base do SDK | `BaseController[Service, Schema]` (um service) ou `Controller` (vários, ou nenhum) | — (convenção do scaffold) |
+| Controller herda da base do SDK | `BaseController[Service]` (um service) ou `Controller` (vários, ou nenhum) | — (convenção do scaffold) |
 | Login e cadastro vêm do SDK | `UserAuthService` + `make_auth_router(..., prefix="/api/auth")` | — (sem gate) |
 | `/api` posto num lugar só | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
 | Router de domínio é `TempestAPIRouter` | `TempestAPIRouter(prefix=...)`, nunca `fastapi.APIRouter` | `RTR005` |
@@ -33623,6 +34172,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Frontend tempestweb + SDK »](tempestweb-frontend.md)** | Frontend tempestweb chamando o backend do SDK: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, mesma origem vs CORS |
 | **[Geolocalização (distância + tempo) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin`, `CachedGeocodingBackend` (cache de geocoding plugável) |
 | **[Geração de imagem (local) »](image-generation.md)** | `ImageGenerator` (diffusers local — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` com a seed que reproduz, `make_genai_router(image_generator=...)` → `POST /image` |
+| **[Google Drive (uploads) »](google-drive.md)** | `GoogleDriveUploadStorage` como backend do `UploadUtils` via service account (JWT bearer sobre `httpx` + `pyjwt`), upload resumível em pedaços de 256 KiB com retry, key em `appProperties`, key repetida substitui o conteúdo, `GoogleDriveSettings` |
 | **[Guards de permissão (@requires) »](permission-guards.md)** | `@requires` + guards `(user) -> user` (com `meta: dict[str, Any]` opcional via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
 | **[Helpers brasileiros »](br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone, incluindo só-celular (`is_valid_mobile_phone_br`, `MobilePhoneBRField`) e `parse_phone_br` (DDD, número, E.164) |
 | **[HTTP client (saída) »](http-client.md)** | `HTTPClient` — httpx tipado com retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
@@ -38819,8 +39369,9 @@ mudança de construtor.
 
 ### Recall — semântico, entre execuções
 
-```python title="recall_run.py" hl_lines="19"
+```python title="recall_run.py" hl_lines="15 17 31"
 import asyncio
+from datetime import UTC, datetime
 
 from advanced_setup import BASE_PROMPT, build_generator
 
@@ -38831,8 +39382,19 @@ from tempest_fastapi_sdk.genai.rag import ChatMemory
 
 async def main() -> None:
     """Blend possibly-relevant past conversations into the prompt."""
-    chat_memory = ChatMemory(Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2))
-    goal = "Agende uma call com o cliente."
+    chat_memory = ChatMemory(
+        Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2),
+        min_similarity=0.3,
+    )
+    await chat_memory.index(
+        user_id="u1",
+        chat_id="earlier-chat",
+        message_id="m1",
+        role="user",
+        content="eles preferem reuniões de manhã",
+        created_at=datetime.now(UTC),
+    )
+    goal = "Agende uma reunião com o cliente."
 
     agent = Agent(
         build_generator(),
@@ -38855,14 +39417,34 @@ Possibly relevant from earlier conversations:
 - eles preferem reuniões de manhã
 ```
 
-Reaproveita o `ChatMemory` (Chroma/pgvector) que o SDK já tem. Repare no
+Reaproveita a memória de conversa que o SDK já tem: o `ChatMemory`
+(Chroma) ou o `PgChatMemory` (pgvector) — `recall_prompt` chama o `search`
+de qualquer um dos dois, e aceita qualquer objeto com essa forma
+(`SupportsMemorySearch`). Numa aplicação, o `index` roda a cada mensagem
+trocada, e o `recall_prompt` na conversa seguinte; aqui os dois estão no
+mesmo arquivo para o exemplo rodar sozinho.
+
+!!! tip "Calibre o `min_similarity` para o seu embedder"
+    O piso padrão do `ChatMemory` é `0.55`. Com o `all-MiniLM-L6-v2`, a
+    lembrança deste exemplo pontua `0.455` contra o objetivo — abaixo do
+    piso, e o bloco volta vazio. Por isso o exemplo passa
+    `min_similarity=0.3`. Meça a similaridade com o seu modelo
+    (`await chat_memory.search(user_id=..., query=..., min_similarity=0.0)`
+    devolve o `similarity` de cada hit) antes de escolher o piso.
+
+Repare no
 cabeçalho: **"possivelmente relevante"**. Recall traz o que *parece*
 relacionado, e apresentar isso como fato é como um agente passa a afirmar
 com convicção algo que ninguém escreveu.
 
-!!! check "Falha de recall não derruba o agente"
-    Se o vector store estiver fora, `recall_prompt` devolve string vazia e a
-    execução segue. Recall é melhoria, não requisito.
+!!! check "Falha de recall não derruba o agente — e não passa calada"
+    Se o vector store estiver fora, `recall_prompt` registra um `WARNING` no
+    logger `tempest_fastapi_sdk.agents.memory`, com o traceback, devolve
+    string vazia e a execução segue. Recall é melhoria, não requisito. Erro
+    de contrato é outra coisa: um objeto sem `search` (ou cujo `search` não
+    aceita `user_id`, `query` e `top_k`) levanta `AttributeError` /
+    `TypeError`, porque engolir isso deixava o agente rodando sem memória e
+    sem aviso nenhum.
 
 ### Combinando
 
@@ -65983,6 +66565,421 @@ Pedaço por pedaço:
 
 ---
 
+# Google Drive (uploads)
+
+Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/google-drive/
+
+# Google Drive (uploads)
+
+Seu serviço recebe arquivos — contratos, comprovantes, fotos — e a empresa
+quer vê-los numa pasta do Google Drive, não num bucket S3. Esta receita liga
+o `UploadUtils` a uma pasta (ou a um Shared Drive) da empresa por meio de uma
+**service account**: sem login de usuário, sem tela de consentimento.
+
+O backend é o `GoogleDriveUploadStorage`. Ele implementa o mesmo protocolo
+`UploadStorage` do disco local e do MinIO, então a sua rota de upload não
+muda nada: só o objeto passado em `backend=`.
+
+```bash
+uv add "tempest-fastapi-sdk[upload,google-drive]>=0.373.0"
+```
+
+O extra `[google-drive]` traz `pyjwt` e `cryptography` (o `httpx` já vem no
+pacote base). Não há `google-api-python-client` nem `google-auth`: a troca de
+token de uma service account é um JWT assinado e um POST, e o SDK faz isso
+sozinho.
+
+## Passo 1 — Crie a service account e habilite a Drive API
+
+No [Google Cloud console](https://console.cloud.google.com/):
+
+1. Escolha (ou crie) um projeto.
+2. Em **APIs e serviços → Biblioteca**, habilite a **Google Drive API**.
+3. Em **IAM e administrador → Contas de serviço**, crie uma conta de serviço.
+4. Na conta criada, **Chaves → Adicionar chave → JSON**. O navegador baixa um
+   arquivo assim (valores encurtados):
+
+```json
+{
+  "type": "service_account",
+  "project_id": "minha-empresa",
+  "private_key_id": "3f2a…",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----\n",
+  "client_email": "uploader@minha-empresa.iam.gserviceaccount.com",
+  "token_uri": "https://oauth2.googleapis.com/token"
+}
+```
+
+!!! warning "Esse arquivo é uma senha"
+    Quem tem o JSON age como a conta de serviço. Guarde-o no gerenciador de
+    segredos do seu deploy, nunca no repositório. O SDK nunca escreve a
+    chave, o JWT assinado nem o token de acesso em log ou em mensagem de
+    erro, e o `repr` das credenciais esconde a chave privada.
+
+## Passo 2 — Compartilhe a pasta com o `client_email`
+
+A service account só enxerga o que for compartilhado com ela. Pegue o
+`client_email` do JSON e:
+
+- **Shared Drive (recomendado):** adicione a conta como membro do Shared
+  Drive, com papel de **Gerente de conteúdo** (ou superior — o `delete` apaga
+  arquivos).
+- **Pasta comum:** compartilhe a pasta com a conta como **Editor**.
+
+O **id da pasta** é o último segmento da URL dela:
+`https://drive.google.com/drive/folders/`**`1AbCdEfGhIjKlMnOp`**.
+
+!!! info "Por que Shared Drive"
+    Arquivo enviado pela service account para uma pasta de **Meu Drive** de
+    uma pessoa pertence à service account, e a documentação e os fóruns do
+    Google descrevem que service accounts não têm cota de armazenamento
+    própria — o upload é recusado com `storageQuotaExceeded`. Num Shared
+    Drive o arquivo pertence ao drive da empresa. Isto **não foi medido**
+    neste repositório (não há credencial real aqui); leia
+    [Shared drives overview](https://developers.google.com/workspace/drive/api/guides/about-shareddrives)
+    antes de decidir. Toda chamada do SDK à API do Drive envia `supportsAllDrives=true`,
+    então as duas formas funcionam do lado do cliente.
+
+## Passo 3 — Configure as settings
+
+Componha o mixin `GoogleDriveSettings`:
+
+| Variável | O que é |
+| --- | --- |
+| `GOOGLE_DRIVE_CREDENTIALS_PATH` | caminho do JSON da service account |
+| `GOOGLE_DRIVE_CREDENTIALS_JSON` | o JSON inteiro, inline (vence o caminho quando os dois existem) |
+| `GOOGLE_DRIVE_FOLDER_ID` | a pasta onde os arquivos são gravados |
+| `GOOGLE_DRIVE_DRIVE_ID` | opcional: o Shared Drive que contém a pasta — as buscas ficam restritas a ele |
+
+```bash
+GOOGLE_DRIVE_CREDENTIALS_PATH=/run/secrets/drive-sa.json
+GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOp
+```
+
+`settings.google_drive_kwargs()` devolve um `GoogleDriveStorageKwargs`
+(`TypedDict`) pronto para o splat em
+`GoogleDriveUploadStorage.from_service_account(...)` — o type-checker confere
+o splat contra a assinatura.
+
+## Passo 4 — Ligue no `UploadUtils`
+
+Um serviço completo:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, UploadFile
+
+from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk.integrations.storage.google_drive import (
+    GoogleDriveUploadStorage,
+)
+from tempest_fastapi_sdk.settings import GoogleDriveSettings
+
+
+class Settings(GoogleDriveSettings):
+    """Settings do serviço: só o Google Drive, neste exemplo."""
+
+
+settings: Settings = Settings()
+storage: GoogleDriveUploadStorage = GoogleDriveUploadStorage.from_service_account(
+    **settings.google_drive_kwargs()
+)
+uploads: UploadUtils = UploadUtils(
+    backend=storage,
+    max_size_bytes=20 * 1024 * 1024,
+    allowed_extensions={"pdf", "png", "jpg"},
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Fecha o cliente HTTP que o backend criou."""
+    yield
+    await storage.aclose()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+
+
+@app.post("/api/contracts")
+async def upload_contract(file: UploadFile) -> dict[str, str]:
+    """Valida e envia o contrato para a pasta do Drive."""
+    key = await uploads.save(file, subdir="contracts")
+    return {"key": str(key)}
+
+
+@app.delete("/api/contracts/{name}")
+async def delete_contract(name: str) -> dict[str, bool]:
+    """Apaga o contrato do Drive (sem passar pela lixeira)."""
+    return {"deleted": await uploads.delete(f"contracts/{name}")}
+```
+
+Pedaço por pedaço:
+
+- **`from_service_account(...)`** lê o JSON, cria um `httpx.AsyncClient`
+  próprio e monta o `GoogleDriveClient` com o
+  `ServiceAccountTokenProvider`. Por ter criado o cliente, o backend o fecha
+  no `aclose()` — daí o `lifespan`. Passe `http_client=` para reusar um
+  cliente seu (aí quem fecha é você).
+- **`UploadUtils(backend=storage, ...)`** continua validando extensão, MIME,
+  tamanho e magic bytes antes de qualquer byte sair do serviço.
+- **`uploads.save(...)`** devolve a *key* (`contracts/<uuid>.pdf`). É ela que
+  você guarda no banco, igual ao disco local e ao MinIO.
+
+## Como a key vira arquivo
+
+O Drive identifica arquivo por **id**, não por caminho, e aceita dois
+arquivos com o mesmo nome na mesma pasta. Então o backend:
+
+- grava a key em `appProperties` (propriedades privadas do app), sob
+  `tempest_key`;
+- usa o último segmento da key como `name`, só para quem navega na pasta;
+- acha o arquivo com a busca
+  `'<pasta>' in parents and appProperties has { key='tempest_key' and value='<key>' } and trashed = false`,
+  com aspas e barra invertida da key **escapadas** para a sintaxe de busca do
+  Drive.
+
+`exists(key)` responde se a busca acha algo; `delete(key)` apaga de vez
+(`files.delete`, sem lixeira) todo arquivo que casar e devolve `False` quando
+nada casou.
+
+!!! note "Limite da key"
+    A [documentação de propriedades](https://developers.google.com/workspace/drive/api/guides/properties)
+    limita cada propriedade a 124 bytes (nome + valor, em UTF-8). Com
+    `tempest_key` sobram 113 bytes para a key; mais que isso é recusado
+    com `ValidationException` (`422`, `code="VALIDATION_ERROR"`) **antes**
+    de qualquer requisição — a mensagem diz quantos bytes a propriedade
+    ocupa e cita o limite de 124, e `details` traz `property`, `bytes` e
+    `limit_bytes`. O mesmo vale para cada par de `metadata=`. A key
+    gerada pelo `UploadUtils` (uuid + extensão) cabe com folga; cuidado com
+    `keep_original_name=True` e nomes longos.
+
+### Mesma key duas vezes: o conteúdo é substituído
+
+Gravar uma key que já existe **substitui o conteúdo do mesmo arquivo**: mesmo
+id, mesmo link, mídia nova (`files.update` resumível). Nenhum arquivo novo é
+criado, e `exists` continua achando um só — o mesmo comportamento do disco
+local e do MinIO ao sobrescrever.
+
+!!! warning "Duas escritas simultâneas de uma key nova"
+    Até onde a documentação do Drive mostra, não há criação condicional
+    (não medido). Se duas requisições gravarem a
+    **mesma key nova** ao mesmo tempo, as duas podem criar arquivo. Nesse
+    caso `exists` responde `True`, a próxima escrita substitui o primeiro e
+    `delete` apaga todos. A key padrão do `UploadUtils` (uuid) não colide.
+
+## `presigned_url` levanta erro
+
+O Drive **não tem URL pré-assinada**: ele entrega o arquivo a quem tem
+permissão no Drive, não por um link temporário assinado. Por isso
+`storage.presigned_url(key)` levanta `PresignedUrlUnsupportedException`
+(`501`, `code="PRESIGNED_URL_UNSUPPORTED"`) em vez de devolver um link
+permanente que alguém trataria como temporário.
+
+Para servir o arquivo ao seu usuário, faça uma rota autenticada sua. Quando o
+que você quer é o link do Drive (num painel interno, por exemplo), use
+`await storage.web_view_link(key)`; o `UploadResult.url` de cada escrita
+também carrega esse `webViewLink`. Ele é **permanente** e só abre para quem
+tem acesso ao arquivo no Drive.
+
+### Download no painel admin
+
+O painel admin (`make_admin_router`) com `upload_fields` usa o mesmo backend.
+A rota de download de um campo de upload pede `presigned_url` e, quando o
+backend não tem URL pré-assinada — devolveu `None` **ou** levantou
+`PresignedUrlUnsupportedException` —, procura um link permanente: se o
+backend implementa o protocolo `SupportsWebViewLink`
+(`async def web_view_link(self, key: str, /) -> str | None`), a rota
+responde `303` para esse link. O `GoogleDriveUploadStorage` implementa, então
+o download no admin **redireciona para o link do Drive**, que só abre para
+quem tem acesso ao arquivo lá. Sem link (arquivo apagado no Drive, ou um
+backend seu sem `web_view_link`), a rota cai no caminho de sempre: arquivo
+local, ou `404` "file not available".
+
+Um backend seu que também queira isso só precisa do método:
+
+```python
+from tempest_fastapi_sdk.utils import SupportsWebViewLink
+
+
+class MyStorage:
+    """Exemplo: um backend com link permanente por key."""
+
+    async def web_view_link(self, key: str) -> str | None:
+        """Devolve o link permanente do arquivo, ou None."""
+        return f"https://files.example.com/{key}"
+
+
+assert isinstance(MyStorage(), SupportsWebViewLink)
+```
+
+## Upload resumível, em pedaços
+
+O backend usa o [upload resumível](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable)
+do Drive v3:
+
+- O stream sobe em pedaços múltiplos de 256 KiB (`chunk_size=`, padrão 8 MiB)
+  — a memória fica em pouco mais de um pedaço (um pedaço mais o chunk que o
+  backend lê à frente), não no arquivo.
+- Cada pedaço que não é o último vai com `Content-Range: bytes a-b/*`; o
+  Drive responde `308` com o header `Range` dizendo quanto guardou, e o
+  próximo pedaço começa logo depois. Bytes que o Drive não guardou são
+  reenviados; o resto, não.
+- O backend lê **um pedaço à frente**: um pedaço só sai com `/*` quando já se
+  sabe que vêm mais bytes depois dele. Por isso o último `PUT` sempre leva
+  bytes **e** o total (`bytes a-b/<total>`), inclusive quando o tamanho é
+  múltiplo exato do pedaço (256 KiB, 512 KiB, 8 MiB…). Um `PUT` vazio
+  `bytes */<total>` é também a forma de **consultar** a sessão; terminar o
+  upload com ele deixava um fake HTTP que o trata como consulta preso em
+  `upload_stalled`. A exceção é o arquivo de **0 bytes**, que não tem byte
+  para levar: ele fecha com `bytes */0`.
+- São repetidos com backoff exponencial (0,5 s, 1 s, 2 s…, até 16 s), até
+  `max_retries` vezes (padrão 5): `429`, `5xx`, erro de transporte e
+  **`403` de limite de taxa** — o Drive informa cota estourada como `403` com
+  `reason` `rateLimitExceeded` ou `userRateLimitExceeded`
+  ([tratamento de erros](https://developers.google.com/workspace/drive/api/guides/handle-errors)).
+  Outro `403` (`insufficientFilePermissions`, `storageQuotaExceeded`…) sobe
+  na hora. Vale para chamada de metadado e para pedaço; num pedaço, o
+  backend pergunta à sessão quanto ela tem antes de repetir. O arquivo
+  inteiro nunca é reenviado.
+- **`Retry-After`:** num `429` ou `503` com esse header em segundos, a
+  espera é a que o Drive pediu, limitada a `backoff_max_seconds` (16 s por
+  padrão); header ausente ou em formato de data cai no backoff exponencial.
+- Um `308` que não avança nada (o Drive guardou zero bytes do pedaço) espera o
+  backoff antes de reenviar; depois de `max_retries` respostas assim em
+  sequência, vira `GoogleDriveException` com `reason="upload_stalled"`. Um
+  `308` dizendo que o Drive tem **menos** do que ele já tinha confirmado —
+  bytes que o backend já descartou da memória — não tem conserto e sobe na
+  hora com `reason="upload_range_regressed"`.
+- Um `404` num pedaço ou na consulta significa que a **sessão resumível**
+  expirou ou se perdeu: vira `GoogleDriveException` com
+  `reason="upload_session_not_found"` e uma mensagem dizendo para enviar de
+  novo — não o `GoogleDriveFolderNotFoundException`, que fica para o `404`
+  da busca e da abertura da sessão.
+- A primeira leitura do stream acontece **antes** de a sessão ser aberta.
+  Então o `content_validator` do `UploadUtils.save(...)` (e o `validator` de
+  quem chama `storage.write_stream(...)` direto), que roda no primeiro
+  chunk, recusa sem abrir sessão nenhuma. O `max_size_bytes` interrompe o
+  stream no meio, e a sessão é abandonada antes do último pedaço. Pelo
+  [guia do upload resumível](https://developers.google.com/workspace/drive/api/guides/manage-uploads#resumable),
+  o arquivo é criado quando a sessão se completa, então uma escrita
+  interrompida **deve** não deixar arquivo na pasta — isso não foi medido
+  contra o Google real.
+- Quando a escrita falha, por qualquer motivo, o backend fecha (`aclose`) o
+  gerador que você passou, então o `finally` dele roda na hora.
+
+## Erros
+
+| Situação | Exceção | Status |
+| --- | --- | --- |
+| Pasta não existe ou não foi compartilhada (`404`) | `GoogleDriveFolderNotFoundException` — a mensagem nomeia a pasta e o `client_email` com quem compartilhar | `502` |
+| Sessão resumível expirou ou se perdeu (`404` num pedaço) | `GoogleDriveException`, `reason="upload_session_not_found"` | `502` |
+| Retries esgotados (`429`, `5xx`, `403` de limite de taxa) | `GoogleDriveException` com o `status` e o `reason` da última resposta | `502` |
+| Sessão parou de aceitar bytes / perdeu bytes confirmados | `GoogleDriveException`, `reason="upload_stalled"` / `"upload_range_regressed"` | `502` |
+| `private_key` do JSON não é uma chave PEM RSA | `GoogleDriveException`, `reason="invalid_private_key"`, antes de qualquer requisição; a mensagem nomeia o `client_email` e nunca a chave | `502` |
+| Qualquer outra recusa do Drive ou do endpoint de token | `GoogleDriveException`, com `details={"status": <http>, "reason": <error.errors[0].reason>}` (ou o `error` OAuth, como `invalid_grant`) | `502` |
+| `presigned_url` | `PresignedUrlUnsupportedException` | `501` |
+| Validador rejeitou | `InvalidFileTypeException` | `415` |
+| Key (ou propriedade de `metadata`) passa de 124 bytes | `ValidationException` | `422` |
+| Stream passou de `max_size_bytes` | `FileTooLargeException` | `413` |
+
+Pela [documentação de erros](https://developers.google.com/workspace/drive/api/guides/handle-errors), o Drive deve responder `404` tanto
+para pasta inexistente quanto para pasta que a conta não enxerga (não medido
+aqui), por isso a mensagem fala do caso mais comum: compartilhar.
+
+## Trocar a service account por outro token
+
+A troca de token fica atrás do protocolo `AccessTokenProvider`, um método só
+(`async def access_token(self) -> str`). Um provedor de token OAuth de
+usuário entra no lugar do `ServiceAccountTokenProvider` sem mudar o cliente:
+
+```python
+import httpx
+
+from tempest_fastapi_sdk.integrations.storage.google_drive import (
+    GoogleDriveClient,
+    GoogleDriveUploadStorage,
+)
+
+
+class StaticTokenProvider:
+    """Exemplo: um token obtido fora do SDK."""
+
+    def __init__(self, token: str) -> None:
+        """Guarda o token."""
+        self.token: str = token
+
+    async def access_token(self) -> str:
+        """Devolve o token guardado."""
+        return self.token
+
+
+http: httpx.AsyncClient = httpx.AsyncClient()
+client: GoogleDriveClient = GoogleDriveClient(
+    token_provider=StaticTokenProvider("ya29.…"),
+    http_client=http,
+)
+storage: GoogleDriveUploadStorage = GoogleDriveUploadStorage(
+    client, folder_id="1AbCdEfGhIjKlMnOp"
+)
+```
+
+## O que foi medido e o que não foi
+
+A suíte confere **o fio**, com `httpx.MockTransport`: o JWT (decodificado com
+a chave pública de um par RSA gerado no teste — `alg`, `kid`, `iss`, `scope`,
+`aud`, `iat`, `exp`), o corpo do POST de token, o cache e a troca única sob
+concorrência, os headers e o `Content-Range` de cada pedaço, a retomada
+depois de um `308` curto, o fechamento com bytes e total num tamanho
+múltiplo exato do pedaço (contra um fake que trata `bytes */<total>` vazio
+como consulta), o backoff de um `308` sem avanço e o erro imediato de um
+`308` que recua, o retry de `503`/`429` e de `403` de limite de taxa, o
+`Retry-After` e o seu teto, o `404` de sessão, a busca escapada,
+`supportsAllDrives` em toda chamada, o mapeamento de erro e o redirect do
+download do admin para o `web_view_link`.
+
+**Não medido contra o Google real** (não há credencial neste repositório):
+cota de service account em Meu Drive, o comportamento em Shared Drive, o
+limite de 124 bytes de propriedade, a validade de uma semana da sessão
+resumível, o momento em que o arquivo passa a existir, se o Drive fecha o
+upload de 0 bytes com o `PUT` vazio `bytes */0`, o formato real do `403` de
+limite de taxa e do `404` de sessão expirada, e se o Drive manda
+`Retry-After` — tudo isso vem da documentação oficial linkada acima. O teste
+`tests/integrations/storage/google_drive/test_live.py` faz a volta completa
+(sobe, sobrescreve, confere `exists`, apaga) quando
+`TEST_GOOGLE_DRIVE_CREDENTIALS` e `TEST_GOOGLE_DRIVE_FOLDER_ID` estão no
+ambiente:
+
+```bash
+TEST_GOOGLE_DRIVE_CREDENTIALS=/caminho/sa.json \
+TEST_GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOp \
+uv run pytest -m network tests/integrations/storage/google_drive/test_live.py
+```
+
+## Recap
+
+- `uv add "tempest-fastapi-sdk[upload,google-drive]>=0.373.0"`, service account com
+  chave JSON, Drive API habilitada, pasta (de preferência num Shared Drive)
+  compartilhada com o `client_email`.
+- `GoogleDriveSettings` + `GoogleDriveUploadStorage.from_service_account(**settings.google_drive_kwargs())`.
+- `UploadUtils(backend=storage)` — a rota de upload não muda.
+- A key mora em `appProperties`; key repetida substitui o conteúdo do mesmo
+  arquivo; `delete` apaga sem lixeira.
+- `presigned_url` levanta `PresignedUrlUnsupportedException`; o link do
+  Drive está em `web_view_link` e em `UploadResult.url`, e o download do
+  admin redireciona para ele.
+- O último pedaço sempre leva bytes e o total; `429`, `5xx` e `403` de
+  limite de taxa são repetidos, respeitando `Retry-After`; `404` no meio do
+  upload é sessão perdida, não pasta.
+- Recusa do Drive vira `GoogleDriveException` com status e `reason`; pasta
+  não compartilhada vira `GoogleDriveFolderNotFoundException` dizendo com
+  quem compartilhar.
+
+
+---
+
 # Controle do host (arquivos, comandos, energia)
 
 Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/hostbridge/
@@ -79547,7 +80544,7 @@ o valor substitui o default, então inclua os do SDK:
 ```python
 """Alembic environment script with one extra revision hook."""
 
-from typing import Any
+from collections.abc import Iterable
 
 from alembic.operations.ops import MigrationScript
 from alembic.runtime.migration import MigrationContext
@@ -79562,16 +80559,12 @@ from src.db.models import BaseModel
 
 def skip_empty_revisions(
     context: MigrationContext,
-    revision: Any,
-    directives: list[Any],
+    revision: str | Iterable[str | None],
+    directives: list[MigrationScript],
 ) -> None:
     """Não escreve arquivo quando o autogenerate não acha mudança."""
     script = directives[0]
-    if (
-        isinstance(script, MigrationScript)
-        and script.upgrade_ops is not None
-        and script.upgrade_ops.is_empty()
-    ):
+    if script.upgrade_ops is not None and script.upgrade_ops.is_empty():
         directives[:] = []
 
 
@@ -113722,6 +114715,11 @@ Requer o extra `[upload]` (e `[minio]` quando usar MinIO).
     no `UploadUtils` antes de qualquer byte ir pro backend — o storage só
     recebe dados já validados.
 
+!!! info "Google Drive"
+    Para gravar numa pasta (ou Shared Drive) do Google Drive, passe um
+    `GoogleDriveUploadStorage` em `backend=` — veja a receita
+    [Google Drive (uploads)](google-drive.md).
+
 ## Disco local
 
 ```python
@@ -118503,7 +119501,7 @@ A referência é dividida por tema: numa página só, o HTML passava de 70 MB.
 | **[Documentos e arquivos »](reference/documents-files.md)** | PDF, planilhas, slides, exportação e apagamento de dados (LGPD), registro de artefatos e a prévia de compartilhamento. |
 | **[Geração de cliente OpenAPI »](reference/openapi.md)** | O gerador de clientes tipados a partir de um documento OpenAPI (`tempest openapi-client`). |
 | **[IA e visão computacional »](reference/ai-vision.md)** | Agentes, modelos generativos self-hosted, modelops (export, bench, quantização), visão computacional, reconhecimento facial e busca aproximada de texto. |
-| **[Integrações e pagamentos »](reference/integrations-payments.md)** | O contrato canônico de pagamentos, os provedores (Mercado Pago, OpenPix, RevenueCat), a carteira com saque Pix, o gateway de WhatsApp e o relatório de erros de app. |
+| **[Integrações e pagamentos »](reference/integrations-payments.md)** | O contrato canônico de pagamentos, os provedores (Mercado Pago, OpenPix, RevenueCat), o backend de upload do Google Drive, a carteira com saque Pix, o gateway de WhatsApp e o relatório de erros de app. |
 | **[Tempo real e mensageria »](reference/realtime-messaging.md)** | Fila e tarefas, WebSocket, SSE, Web Push, chat, comentários, event sourcing, feature flags e MCP. |
 | **[Web, UI e utilitários »](reference/web-ui-utils.md)** | Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, system checks e as ferramentas de teste. |
 
@@ -118903,6 +119901,9 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ---
 
@@ -118941,6 +119942,9 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.settings`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -119134,6 +120138,8 @@ PDF, planilhas, slides, exportação e apagamento de dados (LGPD), registro de a
 
 ### `tempest_fastapi_sdk.pdf`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -119547,6 +120553,14 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
+## Google Drive (uploads)
+
+### `tempest_fastapi_sdk.integrations.storage.google_drive`
+
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+
 ---
 
 ## Carteira e saque Pix
@@ -119612,6 +120626,11 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -119997,6 +121016,8 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
     options:
       show_root_toc_entry: false
       show_submodules: false
@@ -120201,9 +121222,11 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 
 ### `tempest_fastapi_sdk.ui.forms`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
@@ -120296,6 +121319,7 @@ _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tem
 
 ### `tempest_fastapi_sdk.utils`
 
+_(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_
 _(Auto-generated API reference — see https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)_

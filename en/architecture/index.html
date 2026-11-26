@@ -1480,6 +1480,8 @@
       
         
       
+        
+      
     
     
     
@@ -2717,6 +2719,34 @@
     
   
     Geolocation (distance + time)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/google-drive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Drive (uploads)
   
 
     
@@ -5926,7 +5956,7 @@
 </tbody>
 </table>
 </div>
-<p>The repository <strong>MUST</strong> be a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseRepository&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.BaseRepository"><code>BaseRepository[ModelType]</code></a> subclass (or instance). The service <strong>MUST</strong> be a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseService&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.BaseService"><code>BaseService[RepositoryT, ResponseT]</code></a> subclass. The controller <strong>MUST</strong> be a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseController&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.BaseController"><code>BaseController[ServiceT, ResponseT]</code></a> subclass — even when every method is a pass-through, because the controller is the seam to add cross-service coordination later — or, when it orchestrates several services with no single-resource CRUD, a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Controller&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.Controller"><code>Controller</code></a> subclass (see <a href="#a-controller-that-orchestrates-controller">A controller that orchestrates</a>).</p>
+<p>The repository <strong>MUST</strong> be a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseRepository&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.BaseRepository"><code>BaseRepository[ModelType, ResponseT]</code></a> subclass (or instance; <code>ResponseT</code> is optional). The service <strong>MUST</strong> be a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseService&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.BaseService"><code>BaseService[RepositoryT, ResponseT]</code></a> subclass. The controller <strong>MUST</strong> be a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;BaseController&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.BaseController"><code>BaseController[ServiceT]</code></a> subclass — even when every method is a pass-through, because the controller is the seam to add cross-service coordination later — or, when it orchestrates several services with no single-resource CRUD, a <a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Controller&lt;/span&gt;" href="../../reference/top/#tempest_fastapi_sdk.Controller"><code>Controller</code></a> subclass (see <a href="#a-controller-that-orchestrates-controller">A controller that orchestrates</a>).</p>
 <h2 id="mandatory-project-layout">Mandatory project layout<a class="headerlink" href="#mandatory-project-layout" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>&lt;service&gt;/
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── main.py                          # ONE-LINER: from src.server import run; run()
@@ -6154,7 +6184,7 @@ origin as the API. The two live together:
 </tbody>
 </table>
 <h2 id="controllers-services-layering">Controllers &amp; services layering<a class="headerlink" href="#controllers-services-layering" title="Permanent link">&para;</a></h2>
-<p><code>BaseService[RepositoryT, ResponseT]</code> and <code>BaseController[ServiceT, ResponseT]</code> are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.</p>
+<p><code>BaseService[RepositoryT, ResponseT]</code> and <code>BaseController[ServiceT]</code> are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.</p>
 <p>What you inherit by subclassing <code>BaseService[RepositoryT, ResponseT]</code>:</p>
 <table>
 <thead>
@@ -6207,8 +6237,8 @@ origin as the API. The two live together:
 </tr>
 </tbody>
 </table>
-<p><code>map_to_response</code> is <code>await</code>-ed when it returns a coroutine, so async mappers work transparently — no method override needed.</p>
-<p>What you inherit by subclassing <code>BaseController[ServiceT, ResponseT]</code>:</p>
+<p><code>map_to_response</code> is <code>await</code>-ed when it returns a coroutine, so async mappers work transparently — no method override needed. When the repository declares its optional 2<sup>nd</sup> generic parameter (<code>BaseRepository[ModelType, ResponseT]</code>), <code>map_to_response</code> is typed with <code>ResponseT</code> and <code>BaseService</code> ties its response type to the repository's (<code>basedpyright</code> rejects a mismatch at the call site).</p>
+<p>What you inherit by subclassing <code>BaseController[ServiceT]</code> (the older <code>BaseController[ServiceT, ResponseT]</code> and <code>BaseController[ServiceT, ResponseT, UpdateT]</code> forms remain accepted for compatibility, while pass-through methods read both response and update types straight from <code>ServiceT</code>):</p>
 <table>
 <thead>
 <tr>
@@ -6241,7 +6271,7 @@ origin as the API. The two live together:
 <tr>
 <td><code>update(id, data)</code></td>
 <td><code>service.update</code></td>
-<td>Same.</td>
+<td>Accepts the service's <code>UpdateT</code> and returns its <code>ResponseT</code>.</td>
 </tr>
 <tr>
 <td><code>delete(id)</code></td>
@@ -6252,7 +6282,7 @@ origin as the API. The two live together:
 </table>
 <div class="admonition tip">
 <p class="admonition-title">Typing the <code>update</code> payload end to end</p>
-<p>The 3<sup>rd</sup> generic parameter is the update schema, and it must be the <strong>same</strong> on both layers: a service declared as <code>BaseService[Repo, Resp, MyUpdateSchema]</code> fits <code>BaseController[MyService, Resp, MyUpdateSchema]</code>. Omit the 3<sup>rd</sup> parameter on either one and it falls back to the <code>BaseSchema</code> default, leaving <code>update</code>'s <code>data</code> loosely typed.</p>
+<p>The 3<sup>rd</sup> generic parameter of <code>BaseService</code> is the update schema (<code>BaseService[Repo, Resp, MyUpdateSchema]</code>). Because <code>BaseController[MyService]</code> derives both the return type and <code>update</code>'s <code>data</code> type directly from the service, you only need to pass the service once — there is no need to repeat the response or update schema on the controller (repeating them in <code>BaseController[MyService, Resp, MyUpdateSchema]</code> stays accepted for compatibility).</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseController</span><span class="p">,</span> <span class="n">BaseService</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.repositories</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoinPackRepository</span>
@@ -6265,10 +6295,8 @@ origin as the API. The two live together:
 </span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="sd">"""Service typed over the concrete update schema."""</span>
 </span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
 </span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">CoinPackController</span><span class="p">(</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">BaseController</span><span class="p">[</span><span class="n">CoinPackService</span><span class="p">,</span> <span class="n">CoinPackResponseSchema</span><span class="p">,</span> <span class="n">CoinPackUpdateSchema</span><span class="p">]</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="p">):</span>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">    </span><span class="sd">"""Controller repeating the same update schema."""</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">CoinPackController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">CoinPackService</span><span class="p">]):</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="sd">"""Controller derives both response and update types from the service."""</span>
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Requires 0.167.1+</p>
@@ -6309,7 +6337,7 @@ origin as the API. The two live together:
 </span><span id="__span-5-31"><a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services.user_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">UserService</span>
 </span><span id="__span-5-32"><a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>
 </span><span id="__span-5-33"><a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>
-</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="k">class</span><span class="w"> </span><span class="nc">UserController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">UserService</span><span class="p">,</span> <span class="n">UserResponse</span><span class="p">]):</span>
+</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="k">class</span><span class="w"> </span><span class="nc">UserController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">UserService</span><span class="p">]):</span>
 </span><span id="__span-5-35"><a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="w">    </span><span class="sd">"""Thin orchestration over UserService."""</span>
 </span><span id="__span-5-36"><a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>
 </span><span id="__span-5-37"><a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">signup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">UserCreate</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">UserResponse</span><span class="p">:</span>
@@ -6382,7 +6410,7 @@ repository). <code>BaseController</code> is its CRUD specialization, so
 <tbody>
 <tr>
 <td>passes one resource's CRUD through, via one service</td>
-<td><code>BaseController[ServiceT, ResponseT, UpdateT]</code></td>
+<td><code>BaseController[ServiceT]</code></td>
 </tr>
 <tr>
 <td>coordinates several services, with no single-resource CRUD</td>
@@ -6555,7 +6583,7 @@ what the router returns.</p>
 </span><span id="__span-7-96"><a id="__codelineno-7-96" name="__codelineno-7-96" href="#__codelineno-7-96"></a>        <span class="p">)</span>
 </span><span id="__span-7-97"><a id="__codelineno-7-97" name="__codelineno-7-97" href="#__codelineno-7-97"></a>
 </span><span id="__span-7-98"><a id="__codelineno-7-98" name="__codelineno-7-98" href="#__codelineno-7-98"></a>
-</span><span id="__span-7-99"><a id="__codelineno-7-99" name="__codelineno-7-99" href="#__codelineno-7-99"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">]):</span>
+</span><span id="__span-7-99"><a id="__codelineno-7-99" name="__codelineno-7-99" href="#__codelineno-7-99"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
 </span><span id="__span-7-100"><a id="__codelineno-7-100" name="__codelineno-7-100" href="#__codelineno-7-100"></a><span class="w">    </span><span class="sd">"""Data access for products; owns the response mapper."""</span>
 </span><span id="__span-7-101"><a id="__codelineno-7-101" name="__codelineno-7-101" href="#__codelineno-7-101"></a>
 </span><span id="__span-7-102"><a id="__codelineno-7-102" name="__codelineno-7-102" href="#__codelineno-7-102"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -6626,7 +6654,7 @@ what the router returns.</p>
 </span><span id="__span-7-167"><a id="__codelineno-7-167" name="__codelineno-7-167" href="#__codelineno-7-167"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">repository</span><span class="o">.</span><span class="n">map_to_response</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
 </span><span id="__span-7-168"><a id="__codelineno-7-168" name="__codelineno-7-168" href="#__codelineno-7-168"></a>
 </span><span id="__span-7-169"><a id="__codelineno-7-169" name="__codelineno-7-169" href="#__codelineno-7-169"></a>
-</span><span id="__span-7-170"><a id="__codelineno-7-170" name="__codelineno-7-170" href="#__codelineno-7-170"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
+</span><span id="__span-7-170"><a id="__codelineno-7-170" name="__codelineno-7-170" href="#__codelineno-7-170"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">]):</span>
 </span><span id="__span-7-171"><a id="__codelineno-7-171" name="__codelineno-7-171" href="#__codelineno-7-171"></a><span class="w">    </span><span class="sd">"""Product use cases; a pass-through for now."""</span>
 </span><span id="__span-7-172"><a id="__codelineno-7-172" name="__codelineno-7-172" href="#__codelineno-7-172"></a>
 </span><span id="__span-7-173"><a id="__codelineno-7-173" name="__codelineno-7-173" href="#__codelineno-7-173"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">ProductCreateSchema</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProductResponseSchema</span><span class="p">:</span>
@@ -7004,7 +7032,7 @@ CLI command — goes through the same check.</p>
 </span><span id="__span-10-35"><a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
 </span><span id="__span-10-36"><a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>
 </span><span id="__span-10-37"><a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>
-</span><span id="__span-10-38"><a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">]):</span>
+</span><span id="__span-10-38"><a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductRepository</span><span class="p">(</span><span class="n">BaseRepository</span><span class="p">[</span><span class="n">ProductModel</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
 </span><span id="__span-10-39"><a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a><span class="w">    </span><span class="sd">"""Data access for products."""</span>
 </span><span id="__span-10-40"><a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>
 </span><span id="__span-10-41"><a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -7031,7 +7059,7 @@ CLI command — goes through the same check.</p>
 </span><span id="__span-10-62"><a id="__codelineno-10-62" name="__codelineno-10-62" href="#__codelineno-10-62"></a><span class="w">    </span><span class="sd">"""Business rules for products."""</span>
 </span><span id="__span-10-63"><a id="__codelineno-10-63" name="__codelineno-10-63" href="#__codelineno-10-63"></a>
 </span><span id="__span-10-64"><a id="__codelineno-10-64" name="__codelineno-10-64" href="#__codelineno-10-64"></a>
-</span><span id="__span-10-65"><a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">,</span> <span class="n">ProductResponseSchema</span><span class="p">]):</span>
+</span><span id="__span-10-65"><a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProductController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">ProductService</span><span class="p">]):</span>
 </span><span id="__span-10-66"><a id="__codelineno-10-66" name="__codelineno-10-66" href="#__codelineno-10-66"></a><span class="w">    </span><span class="sd">"""Product use cases."""</span>
 </span><span id="__span-10-67"><a id="__codelineno-10-67" name="__codelineno-10-67" href="#__codelineno-10-67"></a>
 </span><span id="__span-10-68"><a id="__codelineno-10-68" name="__codelineno-10-68" href="#__codelineno-10-68"></a>    <span class="nd">@requires</span><span class="p">(</span><span class="n">require_admin</span><span class="p">)</span>

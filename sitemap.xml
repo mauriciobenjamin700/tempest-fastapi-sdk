@@ -477,6 +477,13 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/geo/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/google-drive/</loc>
+        <lastmod>2026-11-26</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/google-drive/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/google-drive/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/hostbridge/</loc>
         <lastmod>2026-11-26</lastmod>
         <changefreq>daily</changefreq>
@@ -1546,6 +1553,13 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/geo/"/>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/geo/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/google-drive/</loc>
+        <lastmod>2026-11-26</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/google-drive/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/google-drive/"/>
     </url>
     <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/hostbridge/</loc>

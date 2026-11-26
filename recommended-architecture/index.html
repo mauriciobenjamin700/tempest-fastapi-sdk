@@ -1433,6 +1433,8 @@
       
         
       
+        
+      
     
     
     
@@ -3090,6 +3092,34 @@
     
   
     Geração de imagem (local)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/google-drive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Drive (uploads)
   
 
     
@@ -5944,8 +5974,10 @@ mantém o sufixo, porque é o nome que todo call site lê:</p>
 </tbody>
 </table>
 <p>O controller herda de uma das duas bases do SDK, as mesmas que o scaffold
-usa: <code>BaseController[Service, Schema]</code> quando passa o CRUD de <strong>um</strong>
-service, e <code>Controller</code> quando coordena vários (ou nenhum, como o
+usa: <code>BaseController[Service]</code> quando passa o CRUD de <strong>um</strong>
+service (os tipos de resposta e update vêm direto do service; a forma
+<code>BaseController[Service, Schema]</code> continua aceita por compatibilidade), e
+<code>Controller</code> quando coordena vários (ou nenhum, como o
 <code>ServiceInfoController</code> que o <code>tempest new</code> gera).</p>
 <h3 id="ate-1000-linhas-por-arquivo">Até 1000 linhas por arquivo<a class="headerlink" href="#ate-1000-linhas-por-arquivo" title="Permanent link">&para;</a></h3>
 <p>Código <strong>e</strong> teste, sem lista de exceção. Arquivo grande é ruim de mudar e
@@ -5988,12 +6020,11 @@ pacote:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># src/controllers/billing/invoice.py</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseController</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.schemas</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvoiceResponseSchema</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvoiceService</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.services</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvoiceService</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
 </span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="k">class</span><span class="w"> </span><span class="nc">InvoiceController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">InvoiceService</span><span class="p">,</span> <span class="n">InvoiceResponseSchema</span><span class="p">]):</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="sd">"""Coordenação de faturas."""</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">InvoiceController</span><span class="p">(</span><span class="n">BaseController</span><span class="p">[</span><span class="n">InvoiceService</span><span class="p">]):</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="sd">"""Coordenação de faturas."""</span>
 </span></code></pre></div>
 <table>
 <thead>

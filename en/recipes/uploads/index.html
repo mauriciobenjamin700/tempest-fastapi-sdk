@@ -1216,6 +1216,8 @@
       
         
       
+        
+      
     
     
     
@@ -2457,6 +2459,34 @@
     
   
     Geolocation (distance + time)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../google-drive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Drive (uploads)
   
 
     
@@ -5845,6 +5875,12 @@ at the end.</p>
 <p>Size, extension, MIME, magic bytes, and <code>content_validator</code> are checked
 in <code>UploadUtils</code> before any byte reaches the backend — the storage only
 ever receives validated data.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Google Drive</p>
+<p>To write into a Google Drive folder (or Shared Drive), pass a
+<code>GoogleDriveUploadStorage</code> as <code>backend=</code> — see the
+<a href="../google-drive/">Google Drive (uploads)</a> recipe.</p>
 </div>
 <h2 id="local-disk">Local disk<a class="headerlink" href="#local-disk" title="Permanent link">&para;</a></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">UploadFile</span>
