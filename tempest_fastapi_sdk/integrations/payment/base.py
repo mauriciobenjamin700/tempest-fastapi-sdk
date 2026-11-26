@@ -356,14 +356,15 @@ class PixProvider(Protocol):
         """
         ...
 
-    def parse_webhook(self, event: Any) -> PixPaymentEvent:
+    def parse_webhook(self, event: object) -> PixPaymentEvent:
         """Turn a verified provider delivery into a canonical event.
 
         Args:
-            event (Any): Whatever the provider's own verifier produces —
-                an ``OpenPixWebhookEvent``, a ``StripeWebhookEvent``, and so
-                on. Typed ``Any`` because the input type is the one part of
-                this contract that is genuinely per-provider.
+            event (object): Whatever the provider's own verifier produces —
+                an ``OpenPixWebhookEvent``, a ``MercadoPagoOrderDelivery``,
+                and so on. Typed ``object`` because the input type is the one
+                part of this contract that is genuinely per-provider; each
+                adapter narrows and validates with ``isinstance``.
 
         Returns:
             PixPaymentEvent: The canonical event.

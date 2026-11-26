@@ -583,14 +583,14 @@ class OpenPixPixProvider:
             raw=refund,
         )
 
-    def parse_webhook(self, event: Any) -> PixPaymentEvent:
+    def parse_webhook(self, event: object) -> PixPaymentEvent:
         """Turn a verified OpenPix delivery into a canonical event.
 
         Args:
-            event (Any): An
+            event (object): An
                 :class:`~...payment.openpix.OpenPixWebhookEvent`, as
                 produced by ``make_openpix_webhook_dependency``. Typed
-                ``Any`` because the protocol cannot name a per-provider
+                ``object`` because the protocol cannot name a per-provider
                 type.
 
         Returns:
