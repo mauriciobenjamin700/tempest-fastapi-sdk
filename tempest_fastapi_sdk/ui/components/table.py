@@ -259,11 +259,11 @@ class DataTable(Component):
                 return str(title)
         return _humanize(column)
 
-    def cell_text(self, value: Any) -> str:
+    def cell_text(self, value: object) -> str:
         """Format one cell value as text.
 
         Args:
-            value (Any): The raw value read from the row.
+            value (object): The raw value read from the row.
 
         Returns:
             str: The rendered cell text. ``None`` becomes

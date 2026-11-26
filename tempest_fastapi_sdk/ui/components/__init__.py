@@ -47,6 +47,9 @@ from tempest_fastapi_sdk.ui.components.nav import NavBar as NavBar
 from tempest_fastapi_sdk.ui.components.nav import NavItem as NavItem
 from tempest_fastapi_sdk.ui.components.pagination import Pagination as Pagination
 from tempest_fastapi_sdk.ui.components.pagination import (
+    PaginationEnvelopeLike as PaginationEnvelopeLike,
+)
+from tempest_fastapi_sdk.ui.components.pagination import (
     pagination_for as pagination_for,
 )
 from tempest_fastapi_sdk.ui.components.styles import (
@@ -72,6 +75,7 @@ __all__: list[str] = [
     "NavBar",
     "NavItem",
     "Pagination",
+    "PaginationEnvelopeLike",
     "TableColumn",
     "component_stylesheet",
     "pagination_for",
