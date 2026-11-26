@@ -639,7 +639,7 @@ replaces the default, so include the SDK's:
 ```python
 """Alembic environment script with one extra revision hook."""
 
-from typing import Any
+from collections.abc import Iterable
 
 from alembic.operations.ops import MigrationScript
 from alembic.runtime.migration import MigrationContext
@@ -654,16 +654,12 @@ from src.db.models import BaseModel
 
 def skip_empty_revisions(
     context: MigrationContext,
-    revision: Any,
-    directives: list[Any],
+    revision: str | Iterable[str | None],
+    directives: list[MigrationScript],
 ) -> None:
     """Write no file when autogenerate finds no change."""
     script = directives[0]
-    if (
-        isinstance(script, MigrationScript)
-        and script.upgrade_ops is not None
-        and script.upgrade_ops.is_empty()
-    ):
+    if script.upgrade_ops is not None and script.upgrade_ops.is_empty():
         directives[:] = []
 
 

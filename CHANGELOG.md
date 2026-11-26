@@ -103,6 +103,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Os hooks de migração do Alembic (`sync_enum_types`, `sqlite_enum_checks`,
+  `create_enum_types_on_add_column`, `drop_enum_types_on_downgrade`,
+  `reorder_base_columns_first` e `backfill_non_nullable_defaults`) agora
+  passam direto em `context.configure(process_revision_directives=...)` sob
+  `mypy --strict` (#840). Os quatro hooks de enum declaravam
+  `context: Any` e `revision: str | tuple[str, ...]`, mais estreito que o
+  `_GetRevArg` do Alembic (`str | Iterable[str | None] | Iterable[str]`):
+  por contravariância de parâmetro de callback, passar qualquer um deles
+  direto a `context.configure(...)` falhava com `[arg-type]` (4 erros no
+  `env.py` mínimo), e o caminho só passava via `compose_hooks` porque o
+  alias `ProcessRevisionDirectives` apagava `revision` e `directives` para
+  `Any` / `list[Any]`. Os seis hooks e o alias `ProcessRevisionDirectives`
+  passam a usar `(MigrationContext, str | Iterable[str | None],
+  list[MigrationScript]) -> None`, intercambiável nos dois sentidos com o
+  `ProcessRevisionDirectiveFn` do Alembic (medido no piso/lock 1.19.1 e no
+  1.20.1), e o exemplo `skip_empty_revisions` da receita de migrations foi
+  atualizado para a mesma assinatura.
 - `recall_prompt` voltou a lembrar (#834). Chamava `memory.recall(...)`, que
   nenhuma classe do pacote tem — `ChatMemory` e `PgChatMemory` expõem
   `search(*, user_id, query, top_k, ...)` —, e o `except Exception` engolia o
