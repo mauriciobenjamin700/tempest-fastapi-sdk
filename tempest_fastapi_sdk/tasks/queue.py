@@ -180,6 +180,7 @@ if TYPE_CHECKING:
         RetryPolicy,
         TaskMetrics,
     )
+    from tempest_fastapi_sdk.tasks.oop import TaskDef
     from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler
 
 logger = logging.getLogger("tempest_fastapi_sdk.tasks")
@@ -1065,7 +1066,9 @@ class TaskQueue:
         handle: AsyncTaskiqTask[Any] = await kicker.kiq(*args, **kwargs)
         return handle
 
-    def register(self, definition: Any) -> Any:
+    def register[TaskReturnT](
+        self, definition: TaskDef[TaskReturnT]
+    ) -> Task[Any, TaskReturnT] | dict[str, Task[Any, Any]]:
         """Register a class-based :class:`~tempest_fastapi_sdk.tasks.TaskDef`.
 
         Reads the definition's task bindings (constructor form or grouped
@@ -1078,12 +1081,12 @@ class TaskQueue:
         retry, silently.
 
         Args:
-            definition (TaskDef): The task-definition instance.
+            definition (TaskDef[TaskReturnT]): The task-definition instance.
 
         Returns:
-            Task | dict[str, Task]: A single :class:`Task` for the
-            constructor form, or a ``dict`` keyed by method name for the
-            grouped form.
+            Task[Any, TaskReturnT] | dict[str, Task[Any, Any]]: A single
+            :class:`Task` for the constructor form, or a ``dict`` keyed by
+            method name for the grouped form.
 
         Notes:
             TaskIQ needs a plain function with a settable ``__name__``,
