@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -630,17 +631,25 @@ def test_a_renamed_sink_type_checks(tmp_path: Path) -> None:
     was measured by hand (``uvx basedpyright@1.40.2``: three errors before,
     zero after) and is recorded in the PR rather than asserted here.
 
+    Runs mypy in a clean subprocess rather than ``mypy.api.run`` in-process
+    so a scaffolded ``src/`` path left on ``sys.path`` by an earlier CLI
+    test on the same xdist worker cannot leak ``src.core.settings`` into
+    the analysis (#855).
+
     Args:
         tmp_path (Path): pytest's per-test temporary directory.
     """
-    mypy_api = pytest.importorskip("mypy.api", reason="mypy is a dev-group dependency")
+    pytest.importorskip("mypy", reason="mypy is a dev-group dependency")
     module = tmp_path / "consumer_sinks.py"
     module.write_text(SINK_CONSUMER_SNIPPET, encoding="utf-8")
-    root: str = str(PACKAGE_ROOT.parent)
-    digest: str = hashlib.sha256(root.encode("utf-8")).hexdigest()[:12]
+    root: Path = PACKAGE_ROOT.parent
+    digest: str = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
     cache: Path = Path(tempfile.gettempdir()) / f"tempest-mypy-{digest}-sinks"
-    stdout, _stderr, _status = mypy_api.run(
+    completed: subprocess.CompletedProcess[str] = subprocess.run(
         [
+            sys.executable,
+            "-m",
+            "mypy",
             str(module),
             "--strict",
             "--no-error-summary",
@@ -650,7 +659,11 @@ def test_a_renamed_sink_type_checks(tmp_path: Path) -> None:
             str(cache),
             "--python-executable",
             sys.executable,
-        ]
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    errors = [line for line in stdout.splitlines() if ": error:" in line]
+    errors = [line for line in completed.stdout.splitlines() if ": error:" in line]
     assert not errors, "\n".join(errors)

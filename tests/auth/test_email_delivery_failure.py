@@ -413,6 +413,7 @@ class TestUniform202:
     ) -> None:
         await seed_user(session, "ana@acme.com")
         caplog.set_level(logging.ERROR)
+        caplog.clear()
         async with build_client(engine, build_service(broken_mailer)) as client:
             await client.post(
                 "/auth/password-reset/request", json={"email": "ana@acme.com"}
