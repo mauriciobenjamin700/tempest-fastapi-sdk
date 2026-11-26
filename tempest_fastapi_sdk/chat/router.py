@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.api.dependencies._session import session_provider_for
@@ -916,7 +917,7 @@ def make_chat_router(
         conversation_id: UUID,
         user_id: UUID = Depends(current_user_id),
         service: ChatService = Depends(_stream_service),
-    ) -> Any:
+    ) -> StreamingResponse:
         """Subscribe to live messages for a conversation over SSE.
 
         The service's session is function-scoped on purpose: see
@@ -929,8 +930,8 @@ def make_chat_router(
                 first byte is streamed.
 
         Returns:
-            Any: A ``text/event-stream`` response fanned by the broker,
-            which ends when the caller's membership does.
+            StreamingResponse: A ``text/event-stream`` response fanned by
+            the broker, which ends when the caller's membership does.
 
         Raises:
             ForbiddenException: When the caller is not a participant.
