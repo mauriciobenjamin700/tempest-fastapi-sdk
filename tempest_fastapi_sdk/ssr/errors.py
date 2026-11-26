@@ -157,12 +157,12 @@ def register_html_error_handlers(
             ExceptionHandler: The dispatching handler.
         """
 
-        async def handler(request: Request, exc: Any) -> Response:
+        async def handler(request: Request, exc: Exception) -> Response:
             """Run the JSON handler, then reshape the answer for HTML routes.
 
             Args:
                 request (Request): The failing request.
-                exc (Any): The exception raised.
+                exc (Exception): The exception raised.
 
             Returns:
                 Response: The JSON response for API routes; an error page
