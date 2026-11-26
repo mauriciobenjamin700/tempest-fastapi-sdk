@@ -1,6 +1,7 @@
 """Tests for the 500 envelope passing through the app's middleware stack."""
 
 from collections.abc import AsyncIterator, Callable
+from typing import ClassVar
 
 import pytest
 from fastapi import FastAPI
@@ -297,19 +298,54 @@ class TestEachFailureIsHandledOnce:
 
 
 class FrozenError(Exception):
-    """An exception that refuses new attributes, like ``minio.error.S3Error``."""
+    """An exception that refuses new attributes, like ``minio.error.S3Error``.
+
+    It lets through the three attributes the interpreter's own machinery
+    assigns, exactly as ``S3Error._EXC_MUTABLES`` does (pinned by
+    :class:`TestTheFrozenDoubleMatchesS3Error`). Refusing ``__traceback__``
+    too made the double stricter than the class it models: once any test in
+    the same worker installs a global OpenTelemetry ``TracerProvider``
+    (``tests/genai/test_tracing.py``, ``tests/queue/test_tracing.py``),
+    FastAPI wraps the endpoint in ``contextlib``, whose ``__exit__`` assigns
+    ``exc.__traceback__`` — the ``AttributeError`` then replaced the
+    exception before the envelope middleware saw it, and the two tests
+    below failed depending on the xdist distribution (#819).
+    """
+
+    EXC_MUTABLES: ClassVar[frozenset[str]] = frozenset(
+        {"__traceback__", "__cause__", "__context__"}
+    )
 
     def __setattr__(self, name: str, value: object) -> None:
-        """Refuse every attribute assignment.
+        """Refuse every attribute assignment but the interpreter's own.
 
         Args:
             name (str): The attribute name.
-            value (object): The value, ignored.
+            value (object): The value to store when ``name`` is one of
+                :attr:`EXC_MUTABLES`.
 
         Raises:
-            AttributeError: Always.
+            AttributeError: For any other attribute, including the flag
+                ``_mark_enveloped`` tries first.
         """
+        if name in self.EXC_MUTABLES:
+            object.__setattr__(self, name, value)
+            return
         raise AttributeError(f"{type(self).__name__} is frozen")
+
+
+class TestTheFrozenDoubleMatchesS3Error:
+    """The test double lets through what ``S3Error`` lets through (#819)."""
+
+    def test_the_mutable_attributes_match(self) -> None:
+        """Cenário: o ``S3Error`` do minio instalado e o dublê ``FrozenError``.
+
+        Esperado: os dois deixam mutar o mesmo conjunto de atributos, então o
+        dublê não volta a recusar o ``__traceback__`` que o ``contextlib``
+        atribui sob telemetria.
+        """
+        error_module = pytest.importorskip("minio.error")
+        assert frozenset(error_module.S3Error._EXC_MUTABLES) == FrozenError.EXC_MUTABLES
 
 
 class TestAFrozenExceptionIsHandledOnce:
