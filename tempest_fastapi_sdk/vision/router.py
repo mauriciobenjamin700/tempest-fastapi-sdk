@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import io
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 
 from fastapi import APIRouter, UploadFile
 
@@ -35,7 +35,35 @@ from tempest_fastapi_sdk.vision.schemas import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Awaitable, Sequence
+
+    from ort_vision_sdk import (
+        ClassificationResults,
+        DetectionResults,
+        SegmentationResults,
+    )
+
+
+class AsyncVisionTask[ResultT](Protocol):
+    """Async vision task contract accepted by :func:`make_vision_router`.
+
+    Satisfied by ``ort-vision-sdk`` task objects (``Classifier``, ``Detector``,
+    ``Segmenter``) as well as custom or test doubles exposing
+    ``async_predict``.
+    """
+
+    def async_predict(self, image: bytes, /) -> Awaitable[Sequence[ResultT]]:
+        """Run inference on encoded image bytes and return one or more results.
+
+        Args:
+            image (bytes): Encoded image bytes read from the upload.
+
+        Returns:
+            Awaitable[Sequence[ResultT]]: Sequence whose first element is
+            mapped into the HTTP response schema.
+        """
+        ...
+
 
 DEFAULT_MAX_IMAGE_UPLOAD_BYTES: int = 20 * 1024 * 1024
 """Largest image upload :func:`make_vision_router` accepts, in bytes (20 MiB).
@@ -114,9 +142,9 @@ def _image_load_errors() -> tuple[type[BaseException], ...]:
 
 def make_vision_router(
     *,
-    classifier: Any = None,
-    detector: Any = None,
-    segmenter: Any = None,
+    classifier: AsyncVisionTask[ClassificationResults] | None = None,
+    detector: AsyncVisionTask[DetectionResults] | None = None,
+    segmenter: AsyncVisionTask[SegmentationResults] | None = None,
     prefix: str = "/api/vision",
     tags: Sequence[str] | None = None,
     max_upload_bytes: int = DEFAULT_MAX_IMAGE_UPLOAD_BYTES,
@@ -135,12 +163,13 @@ def make_vision_router(
     ``500``.
 
     Args:
-        classifier (Any): A loaded ``Classifier`` (mounts ``POST /classify``),
-            or ``None`` to omit it.
-        detector (Any): A loaded ``Detector`` (mounts ``POST /detect``), or
-            ``None``.
-        segmenter (Any): A loaded ``Segmenter`` (mounts ``POST /segment``), or
-            ``None``.
+        classifier (AsyncVisionTask[ClassificationResults] | None): A loaded
+            ``Classifier`` (mounts ``POST /classify``), or ``None`` to omit
+            it.
+        detector (AsyncVisionTask[DetectionResults] | None): A loaded
+            ``Detector`` (mounts ``POST /detect``), or ``None``.
+        segmenter (AsyncVisionTask[SegmentationResults] | None): A loaded
+            ``Segmenter`` (mounts ``POST /segment``), or ``None``.
         prefix (str): Route prefix.
         tags (Sequence[str] | None): OpenAPI tags (defaults to ``["vision"]``).
         max_upload_bytes (int): Largest upload, in bytes. Defaults to
@@ -181,15 +210,18 @@ def make_vision_router(
     route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=list(tags or ["vision"]))
 
-    async def _predict(task: Any, file: UploadFile) -> Any:
+    async def _predict[ResultT](
+        task: AsyncVisionTask[ResultT],
+        file: UploadFile,
+    ) -> ResultT:
         """Read, bound-check and run one uploaded image through ``task``.
 
         Args:
-            task (Any): The loaded task object.
+            task (AsyncVisionTask[ResultT]): The loaded task object.
             file (UploadFile): The uploaded image.
 
         Returns:
-            Any: The first ``Results`` of ``task.async_predict``.
+            ResultT: The first ``Results`` of ``task.async_predict``.
 
         Raises:
             UploadTooLargeException: When the upload is too large (``413``).
@@ -252,5 +284,6 @@ def make_vision_router(
 __all__: list[str] = [
     "DEFAULT_MAX_IMAGE_PIXELS",
     "DEFAULT_MAX_IMAGE_UPLOAD_BYTES",
+    "AsyncVisionTask",
     "make_vision_router",
 ]
