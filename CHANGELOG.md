@@ -80,6 +80,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     estruturas fora do contrato esperado em `vision`, `genai` ou `modelops`
     passam a receber erro estático no mypy/basedpyright e devem satisfazer o
     protocolo ou tipo concreto correspondente.
+- **Parâmetros públicos sem `Any` pelado — subpacotes restantes** (#842): os 47
+  parâmetros públicos `Any` pelado em `api`, `app_errors`, `chat`, `core`, `db`,
+  `geo`, `integrations`, `mcp`, `privacy`, `rooms`, `sse`, `ssr`, `storage`,
+  `testing`, `ui` e `utils` foram substituídos por construções concretas (zero
+  exceções na allowlist):
+  - **Protocolos do SDK:** `ChatMessageLike` (`ChatService.receipt_counts`),
+    `PaginationEnvelopeLike` (`pagination_for`), `FormRequestLike`
+    (`parse_form`), `PasswordSettingsLike` (`PasswordPolicy.from_settings`),
+    exportados nos respectivos módulos e referenciados na documentação de API.
+  - **Apelidos nomeados (`utils.http_client`):** `HTTPRequestData`,
+    `HTTPRequestContent`, `HTTPFileContent`, `HTTPFilePart` e
+    `HTTPRequestFiles` em `HTTPClient.request`, `stream` e `stream_bytes`
+    (com `json: object = None`).
+  - **Tipos concretos e `TypeVar`:** `haversine_distance_sql` passa a exigir
+    `SQLColumnExpression[float]` para `latitude` e `longitude`; `db.signals.emit`
+    amarra `model_class: type[ModelT]` e `instance: ModelT`; o handler HTML de
+    `register_html_error_handlers` recebe `exc: Exception`.
+  - **`object` para entradas genuinamente arbitrárias ou estreitadas em
+    runtime:** `WebhookSender.send(payload)`, `make_app_error_router`
+    (`session`/`user_id`, passando a resolver `user_id` anônimo via dependência
+    interna em vez de default `None`), `_EnumHelpers.has_value(value)`,
+    `render_enum_types(obj)`, `type_bound_check_include_object` (`object_`,
+    `compare_to`), `build_filter_condition(value)`, `PixProvider.parse_webhook`
+    (protocolo e adapters `MercadoPagoPixProvider`, `OpenPixPixProvider` e
+    `FakePixProvider`, que agora levanta `TypeError` se receber algo que não
+    seja `Mapping`), `principal_key(principal)`, `SubjectGraph` (`condition`,
+    `export`, `count`, `erase`), `RoomRegistry.relay_json(data)`,
+    `RoomSession.handle_json(message)`, `make_sse_router` (`user`, `fallback`),
+    `make_tus_router` (`user` nas 4 rotas) e `DataTable.cell_text(value)`.
+  - **Nota de migração:** consumidores que passavam objetos sem os atributos
+    exigidos pelos novos protocolos (`ChatMessageLike`,
+    `PaginationEnvelopeLike`, `FormRequestLike`, `PasswordSettingsLike`),
+    valores não-SQL a `haversine_distance_sql`, instâncias de outra classe a
+    `db.signals.emit` ou formatos fora de `HTTPRequest*` a `HTTPClient` passam
+    a receber erro do type checker.
 - **Regra de tipagem — nenhum retorno público `-> Any`** (#839): 40 retornos
   públicos `-> Any` do pacote foram tipados com construções concretas (além dos
   2 `BaseRepository.map_to_*` já resolvidos em #838; restam na allowlist apenas
