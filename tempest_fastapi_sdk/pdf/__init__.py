@@ -38,6 +38,8 @@ from tempest_fastapi_sdk.pdf.assets import (
 )
 from tempest_fastapi_sdk.pdf.assets import AssetPolicy as AssetPolicy
 from tempest_fastapi_sdk.pdf.assets import AssetRefused as AssetRefused
+from tempest_fastapi_sdk.pdf.assets import UrlFetcher as UrlFetcher
+from tempest_fastapi_sdk.pdf.assets import UrlFetcherResponse as UrlFetcherResponse
 from tempest_fastapi_sdk.pdf.assets import build_url_fetcher as build_url_fetcher
 from tempest_fastapi_sdk.pdf.documents import BUNDLED_DOCUMENTS as BUNDLED_DOCUMENTS
 from tempest_fastapi_sdk.pdf.documents import Branding as Branding
@@ -148,6 +150,8 @@ __all__: list[str] = [
     "ReportDocument",
     "Signatory",
     "TemplateNotFound",
+    "UrlFetcher",
+    "UrlFetcherResponse",
     "VoucherDocument",
     "build_url_fetcher",
     "bundled_document_names",

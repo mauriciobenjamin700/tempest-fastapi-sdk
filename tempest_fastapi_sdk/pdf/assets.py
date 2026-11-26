@@ -27,7 +27,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Protocol, cast
 from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
 
@@ -197,7 +197,113 @@ class AssetPolicy:
         raise AssertionError("unreachable")  # pragma: no cover
 
 
-def build_url_fetcher(policy: AssetPolicy, *, fail_on_errors: bool = True) -> Any:
+class UrlFetcherResponse(Protocol):
+    """Subset of ``weasyprint.urls.URLFetcherResponse`` returned by a fetcher.
+
+    WeasyPrint does not ship a ``py.typed`` marker, so callers receive this
+    protocol instead of ``Any`` and keep typed access to the response bytes
+    and media type.
+    """
+
+    url: str
+    status: int
+
+    @property
+    def content_type(self) -> str:
+        """MIME media type of the fetched asset."""
+        ...
+
+    def read(self) -> bytes:
+        """Read the fetched asset bytes."""
+        ...
+
+    def close(self) -> None:
+        """Close the underlying stream."""
+        ...
+
+
+class UrlFetcher(Protocol):
+    """Callable returned by :func:`build_url_fetcher` for WeasyPrint.
+
+    Attributes:
+        _fail_on_errors (bool): Read by WeasyPrint to decide whether a
+            failed fetch aborts the render or is only logged.
+    """
+
+    _fail_on_errors: bool
+
+    def __call__(self, url: str, /) -> UrlFetcherResponse:
+        """Resolve one URL under the configured :class:`AssetPolicy`."""
+        ...
+
+
+class _PolicyUrlFetcher:
+    """URL fetcher enforcing an :class:`AssetPolicy` for WeasyPrint."""
+
+    def __init__(self, policy: AssetPolicy, *, fail_on_errors: bool) -> None:
+        """Bind ``policy`` and WeasyPrint's ``_fail_on_errors`` flag.
+
+        Args:
+            policy (AssetPolicy): The policy to enforce.
+            fail_on_errors (bool): Whether fetch failures abort rendering.
+        """
+        self._policy: AssetPolicy = policy
+        self._fail_on_errors: bool = fail_on_errors
+
+    def __call__(self, url: str) -> UrlFetcherResponse:
+        """Resolve one URL under the policy.
+
+        Args:
+            url (str): The URL the document referenced.
+
+        Returns:
+            UrlFetcherResponse: A ``URLFetcherResponse`` carrying the asset.
+
+        Raises:
+            AssetRefused: When the policy denies the URL.
+        """
+        from weasyprint.urls import URLFetcher, URLFetcherResponse
+
+        scheme = urlsplit(url).scheme.lower()
+        if scheme == "data":
+            return cast(
+                "UrlFetcherResponse",
+                URLFetcher(allowed_protocols=("data",)).fetch(url),
+            )
+        if scheme == "file":
+            path = self._policy.resolve_local_path(url)
+            payload = path.read_bytes()
+            if len(payload) > self._policy.max_bytes:
+                self._policy.refuse(
+                    url, f"asset is larger than {self._policy.max_bytes} bytes"
+                )
+            return cast(
+                "UrlFetcherResponse",
+                URLFetcherResponse(
+                    url,
+                    body=payload,
+                    headers={
+                        "Content-Type": _guess_mime(path) or "application/octet-stream"
+                    },
+                ),
+            )
+        if scheme in ("http", "https"):
+            if not self._policy.allow_remote:
+                self._policy.refuse(url, "remote assets are not allowed by this policy")
+            return cast(
+                "UrlFetcherResponse",
+                URLFetcher(
+                    timeout=self._policy.remote_timeout,
+                    allowed_protocols=("http", "https"),
+                ).fetch(url),
+            )
+        self._policy.refuse(url, f"scheme {scheme!r} is not allowed")
+        raise AssertionError("unreachable")  # pragma: no cover
+
+
+def build_url_fetcher(
+    policy: AssetPolicy, *, fail_on_errors: bool = True
+) -> UrlFetcher:
     """Build the fetch callable the renderer consults for every URL.
 
     The returned callable carries ``_fail_on_errors``, which WeasyPrint
@@ -218,51 +324,10 @@ def build_url_fetcher(policy: AssetPolicy, *, fail_on_errors: bool = True) -> An
             something.
 
     Returns:
-        Any: A ``(url) -> URLFetcherResponse`` callable matching
+        UrlFetcher: A ``(url) -> UrlFetcherResponse`` callable matching
         WeasyPrint's ``url_fetcher`` contract.
     """
-
-    def _fetch(url: str) -> Any:
-        """Resolve one URL under the policy.
-
-        Args:
-            url (str): The URL the document referenced.
-
-        Returns:
-            Any: A ``URLFetcherResponse`` carrying the asset.
-
-        Raises:
-            AssetRefused: When the policy denies the URL.
-        """
-        from weasyprint.urls import URLFetcher, URLFetcherResponse
-
-        scheme = urlsplit(url).scheme.lower()
-        if scheme == "data":
-            return URLFetcher(allowed_protocols=("data",)).fetch(url)
-        if scheme == "file":
-            path = policy.resolve_local_path(url)
-            payload = path.read_bytes()
-            if len(payload) > policy.max_bytes:
-                policy.refuse(url, f"asset is larger than {policy.max_bytes} bytes")
-            return URLFetcherResponse(
-                url,
-                body=payload,
-                headers={
-                    "Content-Type": _guess_mime(path) or "application/octet-stream"
-                },
-            )
-        if scheme in ("http", "https"):
-            if not policy.allow_remote:
-                policy.refuse(url, "remote assets are not allowed by this policy")
-            return URLFetcher(
-                timeout=policy.remote_timeout,
-                allowed_protocols=("http", "https"),
-            ).fetch(url)
-        policy.refuse(url, f"scheme {scheme!r} is not allowed")
-        raise AssertionError("unreachable")  # pragma: no cover
-
-    _fetch._fail_on_errors = fail_on_errors  # type: ignore[attr-defined]
-    return _fetch
+    return _PolicyUrlFetcher(policy, fail_on_errors=fail_on_errors)
 
 
 def _guess_mime(path: Path) -> str | None:
@@ -285,5 +350,7 @@ __all__: list[str] = [
     "DEFAULT_REMOTE_TIMEOUT",
     "AssetPolicy",
     "AssetRefused",
+    "UrlFetcher",
+    "UrlFetcherResponse",
     "build_url_fetcher",
 ]

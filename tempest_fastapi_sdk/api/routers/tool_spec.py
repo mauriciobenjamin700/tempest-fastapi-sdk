@@ -9,7 +9,6 @@ mapping or a (potentially async) provider.
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -60,8 +59,9 @@ def make_tool_spec_router(
     router = APIRouter(tags=[tag])
 
     if callable(spec):
-        provider_callable: Callable[..., Any] = spec
-        is_coro = inspect.iscoroutinefunction(provider_callable)
+        provider_callable: Callable[[], dict[str, Any] | Awaitable[dict[str, Any]]] = (
+            spec
+        )
 
         @router.get(
             path,
@@ -69,9 +69,9 @@ def make_tool_spec_router(
             description=route_docs.description("tool_spec.tool_spec"),
             response_model=response_model,
         )
-        async def tool_spec() -> Any:
+        async def tool_spec() -> dict[str, Any]:
             result = provider_callable()
-            if is_coro or inspect.isawaitable(result):
+            if isinstance(result, Awaitable):
                 return await result
             return result
     else:

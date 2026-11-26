@@ -54,13 +54,16 @@ import time
 from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import WebSocket, status
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from tempest_fastapi_sdk.settings import WebSocketSettings
 from tempest_fastapi_sdk.websockets.schemas import WSEnvelope
+
+if TYPE_CHECKING:
+    from starlette.types import Message
 
 HEARTBEAT_TIMEOUT_CODE: int = 4408
 """Close code for a peer that went silent past the deadline.
@@ -169,7 +172,16 @@ def _install_frame_guard(
     """
     original = ws.receive
 
-    async def guarded_receive() -> Any:
+    async def guarded_receive() -> Message:
+        """Receive the next frame the handler should see.
+
+        Returns:
+            Message: The ASGI message, with ``pong`` frames swallowed.
+
+        Raises:
+            WebSocketDisconnect: With ``1009`` when the frame is over the
+                size cap.
+        """
         while True:
             message = await original()
             if message.get("type") != "websocket.receive":

@@ -796,8 +796,14 @@ def requires(
         if is_async:
 
             @functools.wraps(fn)
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                """Run the guards, then await the decorated coroutine."""
+            async def async_wrapper(*args: Any, **kwargs: Any) -> object:
+                """Run the guards, then await the decorated coroutine.
+
+                Returns:
+                    object: Whatever the coroutine returned. The wrapper
+                    never reads it; the caller sees ``fn``'s own type
+                    because ``decorator`` returns ``F``.
+                """
                 bound, user = _bind_user(sig, param, owner, args, kwargs)
                 payload = _build_meta(bound, param, static_meta, include_args)
                 for guard, takes_meta in zip(guards, wants_meta, strict=True):
@@ -814,8 +820,13 @@ def requires(
         else:
 
             @functools.wraps(fn)
-            def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            def sync_wrapper(*args: Any, **kwargs: Any) -> object:
                 """Run the guards, then call the decorated function.
+
+                Returns:
+                    object: Whatever ``fn`` returned, passed through
+                    unread; the caller sees ``fn``'s own type because
+                    ``decorator`` returns ``F``.
 
                 Raises:
                     TempestPermissionError: When a guard returned an

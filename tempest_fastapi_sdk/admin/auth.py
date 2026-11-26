@@ -162,7 +162,9 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         """
         return bool(getattr(target, "is_admin", False))
 
-    async def load_account(self, session: AsyncSession, account_id: str) -> Any:
+    async def load_account(
+        self, session: AsyncSession, account_id: str
+    ) -> PrincipalT | None:
         """Load the account with ``account_id`` without any sign-in filter.
 
         :meth:`is_admin_identity` asks :meth:`is_admin_account` about what
@@ -170,14 +172,15 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         inactive, revoked, missing MFA — is still recognised as an admin.
         The default returns ``None`` (the base class does not know where
         accounts live); a backend whose :meth:`load_principal` filters
-        should override it.
+        should override it. The account is the same kind of object the
+        backend signs in, only without the sign-in filter.
 
         Args:
             session (AsyncSession): A live DB session.
             account_id (str): The account's id, as text.
 
         Returns:
-            Any: The account, or ``None`` when unknown.
+            PrincipalT | None: The account, or ``None`` when unknown.
         """
         return None
 

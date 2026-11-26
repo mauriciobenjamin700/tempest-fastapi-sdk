@@ -18,6 +18,8 @@ PDF, planilhas, slides, exportação e apagamento de dados (LGPD), registro de a
 ::: tempest_fastapi_sdk.pdf.renderer.DEFAULT_MAX_CONCURRENT_RENDERS
 ::: tempest_fastapi_sdk.pdf.assets.AssetPolicy
 ::: tempest_fastapi_sdk.pdf.assets.AssetRefused
+::: tempest_fastapi_sdk.pdf.assets.UrlFetcher
+::: tempest_fastapi_sdk.pdf.assets.UrlFetcherResponse
 ::: tempest_fastapi_sdk.pdf.assets.build_url_fetcher
 ::: tempest_fastapi_sdk.pdf.assets.DEFAULT_MAX_ASSET_BYTES
 ::: tempest_fastapi_sdk.pdf.assets.DEFAULT_REMOTE_TIMEOUT

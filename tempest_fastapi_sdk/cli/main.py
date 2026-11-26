@@ -100,7 +100,7 @@ class FullHelpTyperGroup(TyperGroup):
     screen immediately.
     """
 
-    def main(self, *args: Any, **kwargs: Any) -> Any:
+    def main(self, *args: Any, **kwargs: Any) -> object:
         """Run the CLI, expanding usage errors into full help output.
 
         Parsing is delegated to Click with ``standalone_mode`` forced
@@ -116,7 +116,7 @@ class FullHelpTyperGroup(TyperGroup):
                 :meth:`click.Group.main`.
 
         Returns:
-            Any: The command return value when ``standalone_mode`` is
+            object: The command return value when ``standalone_mode`` is
             explicitly requested by the caller; otherwise the process
             exits.
 
@@ -128,7 +128,7 @@ class FullHelpTyperGroup(TyperGroup):
         standalone_mode = kwargs.get("standalone_mode", True)
         kwargs["standalone_mode"] = False
         try:
-            result = super().main(*args, **kwargs)
+            result: object = super().main(*args, **kwargs)
         except _USAGE_ERRORS as error:
             self._show_usage_error_with_help(cast("click.UsageError", error))
             if not standalone_mode:

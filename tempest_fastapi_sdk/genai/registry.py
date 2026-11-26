@@ -18,9 +18,13 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.genai.inventory import ModelRuntimeReport
+    from tempest_fastapi_sdk.genai.schemas import HardwareInfo
 
 
 @runtime_checkable
@@ -232,9 +236,9 @@ class ModelRegistry:
     def inventory(
         self,
         *,
-        hardware: Any | None = None,
+        hardware: HardwareInfo | None = None,
         probe: bool = True,
-    ) -> Any:
+    ) -> ModelRuntimeReport:
         """Report what this registry is holding in memory right now.
 
         The capacity ceiling says how many models *may* be live; this says
@@ -242,8 +246,8 @@ class ModelRegistry:
         the question an operator actually asks when a card fills up.
 
         Args:
-            hardware (Any | None): A ``HardwareInfo`` snapshot to reuse
-                instead of probing the host again.
+            hardware (HardwareInfo | None): A ``HardwareInfo`` snapshot to
+                reuse instead of probing the host again.
             probe (bool): When no snapshot is given, probe the host.
                 ``False`` skips it, which makes this call pure bookkeeping.
 
