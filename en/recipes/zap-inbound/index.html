@@ -6640,6 +6640,14 @@ it accepts the <code>send-text</code> with one outbox row per <code>idempotency-
 </span><span id="__span-8-241"><a id="__codelineno-8-241" name="__codelineno-8-241" href="#__codelineno-8-241"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">lifespan</span><span class="o">=</span><span class="n">lifespan</span><span class="p">)</span>
 </span><span id="__span-8-242"><a id="__codelineno-8-242" name="__codelineno-8-242" href="#__codelineno-8-242"></a><span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">router</span><span class="p">)</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> here is a demo shortcut</p>
+<p>The example fits in a single file, so it creates the tables straight
+in the lifespan. In a service, the lifespan calls <code>sync_schema_async()</code>
+over the Alembic migrations: <code>create_tables()</code> adds no column to a
+table that already exists. See
+<a href="../migrations/#3-sync-the-schema-in-the-lifespan">Migrations »</a>.</p>
+</div>
 <p>Running a sequence of deliveries against it:</p>
 <div class="language-python highlight"><span class="filename">run_service.py</span><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.testclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">TestClient</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>

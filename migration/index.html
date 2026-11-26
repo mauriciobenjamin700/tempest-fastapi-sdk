@@ -5495,6 +5495,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#03720-cinco-regras-novas-no-tempest-check-e-runtimeerror-sem-url-no-alembichelper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.372.0 — cinco regras novas no tempest check e RuntimeError sem URL no AlembicHelper
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#03660-routingbackend-exige-route_through-e-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -8054,6 +8065,47 @@
 
 <h1 id="guia-de-migracao">Guia de migração<a class="headerlink" href="#guia-de-migracao" title="Permanent link">&para;</a></h1>
 <p>Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela <strong>de onde</strong> você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.</p>
+<h2 id="03720-cinco-regras-novas-no-tempest-check-e-runtimeerror-sem-url-no-alembichelper">0.372.0 — cinco regras novas no <code>tempest check</code> e <code>RuntimeError</code> sem URL no <code>AlembicHelper</code><a class="headerlink" href="#03720-cinco-regras-novas-no-tempest-check-e-runtimeerror-sem-url-no-alembichelper" title="Permanent link">&para;</a></h2>
+<p>O <code>tempest check</code> (e o <code>tempest lint-layers</code>) ganhou cinco regras, todas de severidade <code>warning</code>. Com <code>layers_strict = true</code> em <code>[tool.tempest]</code>, que é o padrão do <code>tempest new</code>, aviso também derruba o comando: num projeto gerado com só três avisos plantados, <code>tempest lint-layers</code> imprimiu <code>3 layer finding(s): 0 error(s), 3 warning(s).</code> e saiu com código <code>1</code>; com <code>layers_strict = false</code>, com código <code>0</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Regra</th>
+<th>O que acusa</th>
+<th>O que fazer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INIT001</code></td>
+<td><code>def</code>, <code>class</code>, chamada ou constante em <code>__init__.py</code></td>
+<td>Mova para um módulo do pacote (<code>router.py</code>, <code>factory.py</code>, <code>runner.py</code>) e deixe o <code>__init__.py</code> só com <code>from .x import Y as Y</code> e <code>__all__</code></td>
+</tr>
+<tr>
+<td><code>SIZE001</code></td>
+<td>Módulo do código ou da suíte com mais de 1000 linhas</td>
+<td>Divida por responsabilidade: um service em vários, um arquivo de teste em um por tema</td>
+</tr>
+<tr>
+<td><code>LAY003</code></td>
+<td>Arquivo de <code>controllers/</code>, <code>services/</code>, <code>repositories/</code> ou <code>models/</code> com o sufixo da camada no nome (<code>checkout_service.py</code>)</td>
+<td>Renomeie para <code>checkout.py</code>; a classe continua <code>CheckoutService</code></td>
+</tr>
+<tr>
+<td><code>RTR005</code></td>
+<td><code>fastapi.APIRouter(...)</code> num router de domínio, fora do <code>build_api_router</code></td>
+<td>Troque por <code>TempestAPIRouter</code> (<code>from tempest_fastapi_sdk import TempestAPIRouter</code>), que transforma o <code>@raises(...)</code> em <code>responses=</code></td>
+</tr>
+<tr>
+<td><code>RTR006</code></td>
+<td><code>summary=</code> ou <code>description=</code> no decorator da rota</td>
+<td>Mova o texto para uma constante <code>EndpointDoc</code> em <code>api/docs/&lt;router&gt;.py</code> e espalhe com <code>**docs.NOME</code></td>
+</tr>
+</tbody>
+</table>
+<p>Para migrar aos poucos, declare o caso em <code>tests/architecture_exceptions.py</code>, com o motivo (veja <a href="../recommended-architecture/#excecao-declarada">Exceção declarada</a>), ou desligue <code>layers_strict</code> enquanto corrige.</p>
+<p><code>RTR003</code> e <code>RTR004</code> passaram a reconhecer <code>TempestAPIRouter</code> e as subclasses de router do projeto, então podem aparecer achados novos em routers que antes passavam.</p>
+<p><strong><code>AlembicHelper</code> sem URL:</strong> sem <code>db_url=</code> e sem <code>DATABASE_URL</code> resolvível, <code>current</code>, <code>current_async</code>, <code>has_existing_schema</code>, <code>adopt</code>, <code>sync_schema</code> e <code>sync_schema_async</code> levantam <code>RuntimeError</code> (<code>DATABASE_URL is empty. ...</code>) em vez de <code>sqlalchemy.exc.ArgumentError</code>. Em <code>sync_schema</code> e <code>sync_schema_async</code> isso vale quando há ao menos uma revision: sem nenhuma, os dois devolvem <code>no_migrations</code> antes de ler a URL, como já faziam. Quem capturava <code>ArgumentError</code> nesse caminho troca para <code>RuntimeError</code>.</p>
 <h2 id="03660-routingbackend-exige-route_through-e-matrix">0.366.0 — <code>RoutingBackend</code> exige <code>route_through</code> e <code>matrix</code><a class="headerlink" href="#03660-routingbackend-exige-route_through-e-matrix" title="Permanent link">&para;</a></h2>
 <p>O protocolo <code>RoutingBackend</code> ganhou dois métodos: <code>route_through</code> (rota com
 paradas, <a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/785" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #785">#785</a>) e <code>matrix</code> (que a ETA da localização ao vivo usa, <a class="magiclink magiclink-github magiclink-issue" href="https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/786" title="GitHub Issue: mauriciobenjamin700/tempest-fastapi-sdk #786">#786</a>). O

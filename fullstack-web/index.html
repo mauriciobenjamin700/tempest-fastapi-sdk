@@ -6042,6 +6042,14 @@ HTMX troca no lugar:</p>
 </span><span id="__span-4-69"><a id="__codelineno-4-69" name="__codelineno-4-69" href="#__codelineno-4-69"></a>        <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
 </span><span id="__span-4-70"><a id="__codelineno-4-70" name="__codelineno-4-70" href="#__codelineno-4-70"></a>    <span class="k">return</span> <span class="n">html_response</span><span class="p">(</span><span class="n">Text</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">tag</span><span class="o">=</span><span class="s2">"span"</span><span class="p">),</span> <span class="n">document</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> aqui é atalho de demonstração</p>
+<p>O exemplo cabe num arquivo só, então cria as tabelas direto no
+lifespan. Num serviço, o lifespan chama <code>sync_schema_async()</code> sobre as
+migrations do Alembic: <code>create_tables()</code> não acrescenta coluna em
+tabela que já existe. Veja
+<a href="../recipes/migrations/#3-sincronize-o-schema-no-lifespan">Migrations »</a>.</p>
+</div>
 <p>Rode com <code>uvicorn app:app --reload</code> e abra <code>http://127.0.0.1:8000</code>.</p>
 <div class="admonition check">
 <p class="admonition-title">O que este projeto mostra</p>

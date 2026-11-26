@@ -5937,7 +5937,7 @@ before writing any file:</p>
 </span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>├── .env.example
 </span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>└── src/
 </span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    ├── server.py           # programmatic uvicorn + importable app
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    ├── api/                # routers, dependencies, app factory
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    ├── api/                # routers, dependencies, docs (OpenAPI text), app factory
 </span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    ├── controllers/        # thin orchestration over the services
 </span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    ├── services/           # business logic
 </span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    ├── schemas/            # request/response DTOs
@@ -5946,6 +5946,10 @@ before writing any file:</p>
 </span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    │   └── repositories/
 </span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    └── core/               # settings + constants + exceptions
 </span></code></pre></div>
+<p>In <code>api/</code>, each domain router is a <code>TempestAPIRouter</code> and the text Swagger
+shows lives in <code>api/docs/&lt;router&gt;.py</code>, one <code>EndpointDoc</code> per handler —
+the why is in the
+<a href="../../service-standard/#openapi-text-out-of-the-router">Service standard</a>.</p>
 <p>Bring the service up:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>main.py
 </span></code></pre></div>

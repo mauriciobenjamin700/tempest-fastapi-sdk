@@ -7715,6 +7715,14 @@ Registre um <code>BRLocationMap</code> por mapa em <code>AdminSite(location_maps
 </span><span id="__span-28-71"><a id="__codelineno-28-71" name="__codelineno-28-71" href="#__codelineno-28-71"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
 </span><span id="__span-28-72"><a id="__codelineno-28-72" name="__codelineno-28-72" href="#__codelineno-28-72"></a>    <span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">"127.0.0.1"</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8000</span><span class="p">)</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> aqui é atalho de demonstração</p>
+<p>O exemplo cabe num arquivo só, então cria as tabelas direto no
+lifespan. Num serviço, o lifespan chama <code>sync_schema_async()</code> sobre as
+migrations do Alembic: <code>create_tables()</code> não acrescenta coluna em
+tabela que já existe. Veja
+<a href="../migrations/#3-sincronize-o-schema-no-lifespan">Migrations »</a>.</p>
+</div>
 <p>Cada mapa vira uma entrada na seção <strong>Maps</strong> da barra lateral, em
 <code>/admin/maps/&lt;slug&gt;</code> (o slug sai do título, sem acento:
 <code>usuarios-por-regiao</code>). Medido com o exemplo, por requisição ao painel:</p>

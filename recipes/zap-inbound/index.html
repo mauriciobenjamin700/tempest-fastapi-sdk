@@ -6634,6 +6634,14 @@ aceita o <code>send-text</code> com uma linha de outbox por <code>idempotency-ke
 </span><span id="__span-8-241"><a id="__codelineno-8-241" name="__codelineno-8-241" href="#__codelineno-8-241"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">lifespan</span><span class="o">=</span><span class="n">lifespan</span><span class="p">)</span>
 </span><span id="__span-8-242"><a id="__codelineno-8-242" name="__codelineno-8-242" href="#__codelineno-8-242"></a><span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">router</span><span class="p">)</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> aqui é atalho de demonstração</p>
+<p>O exemplo cabe num arquivo só, então cria as tabelas direto no
+lifespan. Num serviço, o lifespan chama <code>sync_schema_async()</code> sobre as
+migrations do Alembic: <code>create_tables()</code> não acrescenta coluna em
+tabela que já existe. Veja
+<a href="../migrations/#3-sincronize-o-schema-no-lifespan">Migrations »</a>.</p>
+</div>
 <p>Rodando uma sequência de entregas contra ele:</p>
 <div class="language-python highlight"><span class="filename">rodar_servico.py</span><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.testclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">TestClient</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>

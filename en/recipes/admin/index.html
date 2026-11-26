@@ -7743,6 +7743,14 @@ state and city tables, and how many rows have no location yet. Register one
 </span><span id="__span-28-71"><a id="__codelineno-28-71" name="__codelineno-28-71" href="#__codelineno-28-71"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
 </span><span id="__span-28-72"><a id="__codelineno-28-72" name="__codelineno-28-72" href="#__codelineno-28-72"></a>    <span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">"127.0.0.1"</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8000</span><span class="p">)</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> here is a demo shortcut</p>
+<p>The example fits in a single file, so it creates the tables straight
+in the lifespan. In a service, the lifespan calls <code>sync_schema_async()</code>
+over the Alembic migrations: <code>create_tables()</code> adds no column to a
+table that already exists. See
+<a href="../migrations/#3-sync-the-schema-in-the-lifespan">Migrations »</a>.</p>
+</div>
 <p>Each map becomes an entry in the sidebar's <strong>Maps</strong> section, at
 <code>/admin/maps/&lt;slug&gt;</code> (the slug comes from the title, accents dropped:
 <code>usuarios-por-regiao</code>). Measured with the example, by requests to the panel:</p>

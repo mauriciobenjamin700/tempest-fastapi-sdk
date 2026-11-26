@@ -2680,10 +2680,32 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#o-que-um-pacote-guarda-e-o-tamanho-do-arquivo-aviso" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        O que um pacote guarda e o tamanho do arquivo (aviso)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#router-um-por-arquivo-api-uma-vez-aviso" class="md-nav__link">
     <span class="md-ellipsis">
       
         Router: um por arquivo, /api uma vez (aviso)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#router-de-dominio-tempestapirouter-e-texto-em-apidocs-aviso" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Router de domínio: TempestAPIRouter e texto em api/docs (aviso)
       
     </span>
   </a>
@@ -7060,7 +7082,7 @@ atrás do profile <code>prod</code>:
 <tbody>
 <tr>
 <td><code>[queue]</code></td>
-<td><code>queue/__init__.py</code> (<code>RabbitBroker</code> + <code>AsyncQueueManager</code> + <code>get_broker</code>), <code>queue/handlers.py</code> (subscriber de exemplo)</td>
+<td><code>queue/broker.py</code> (<code>RabbitBroker</code> + <code>AsyncQueueManager</code> + <code>get_broker</code>), <code>queue/__init__.py</code> (só reexporta), <code>queue/handlers.py</code> (subscriber de exemplo)</td>
 </tr>
 <tr>
 <td><code>[tasks]</code> / <code>[tasks-redis]</code></td>
@@ -8768,7 +8790,7 @@ extra <code>[cli]</code> declara <code>tempest-cli&gt;=0.7.0</code>, então ele 
 do SDK, e ali o <code>--rule</code> sai com exit code <code>2</code>.</p>
 </div>
 <h4 id="camada-em-pacote-de-contexto-aviso">Camada em pacote de contexto (aviso)<a class="headerlink" href="#camada-em-pacote-de-contexto-aviso" title="Permanent link">&para;</a></h4>
-<p>Três regras cobram a forma das quatro camadas — <code>controllers/</code>,
+<p>Quatro regras cobram a forma das quatro camadas — <code>controllers/</code>,
 <code>services/</code>, <code>repositories/</code> e <code>models/</code>. Entram como <strong>aviso</strong>:</p>
 <table>
 <thead>
@@ -8788,6 +8810,11 @@ do SDK, e ali o <code>--rule</code> sai com exit code <code>2</code>.</p>
 <td><code>LAY002</code></td>
 <td>as quatro camadas</td>
 <td>módulo direto na raiz da camada: <code>models/route.py</code> vai para <code>models/&lt;contexto&gt;/route.py</code>. Qualquer nome de contexto vale; <code>__init__.py</code> fica de fora</td>
+</tr>
+<tr>
+<td><code>LAY003</code></td>
+<td>as quatro camadas</td>
+<td>nome de arquivo que repete a camada: <code>services/orders/checkout_service.py</code> vira <code>services/orders/checkout.py</code>, e a classe dentro continua <code>CheckoutService</code>. Vale para <code>_controller</code>, <code>_service</code>, <code>_repository</code> e <code>_model</code></td>
 </tr>
 <tr>
 <td><code>REPO002</code></td>
@@ -8985,6 +9012,42 @@ importar o pacote <code>api.dependencies</code> fecharia ciclo com <code>src.tas
 declarada (<code>"IMP002 &lt;caminho&gt;::&lt;nome&gt;": "&lt;motivo&gt;"</code>), não de reescrever o
 import.</p>
 </div>
+<h4 id="o-que-um-pacote-guarda-e-o-tamanho-do-arquivo-aviso">O que um pacote guarda e o tamanho do arquivo (aviso)<a class="headerlink" href="#o-que-um-pacote-guarda-e-o-tamanho-do-arquivo-aviso" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Código</th>
+<th>Onde</th>
+<th>O que acusa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INIT001</code></td>
+<td>todo <code>__init__.py</code>, do código e da suíte</td>
+<td>statement que faz mais que reexportar: <code>def</code>, <code>class</code>, chamada, constante. Passam docstring, import, o <code>__all__</code> (inclusive <code>+=</code>) e <code>if</code>/<code>try</code> feitos só disso (<code>if TYPE_CHECKING:</code>, import opcional)</td>
+</tr>
+<tr>
+<td><code>SIZE001</code></td>
+<td>todo módulo, do código e da suíte</td>
+<td>arquivo com mais de 1000 linhas, acusado na linha 1001. Não há lista de arquivos isentos</td>
+</tr>
+</tbody>
+</table>
+<p>Um <code>admin/__init__.py</code> que compõe os sub-routers, um service com o sufixo da
+camada no nome e um arquivo de teste de 1040 linhas saem assim
+(<code>tempest lint-layers --rule INIT001 --rule SIZE001 --rule LAY003</code>, saída
+real, exit code <code>0</code>):</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-131-1"><a id="__codelineno-131-1" name="__codelineno-131-1" href="#__codelineno-131-1"></a>src/api/routers/admin/__init__.py:5: INIT001 (warning) `admin_router: APIRouter = APIRouter(prefix="/admin")` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+</span><span id="__span-131-2"><a id="__codelineno-131-2" name="__codelineno-131-2" href="#__codelineno-131-2"></a>src/api/routers/admin/__init__.py:6: INIT001 (warning) `admin_router.include_router(orders_router)` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+</span><span id="__span-131-3"><a id="__codelineno-131-3" name="__codelineno-131-3" href="#__codelineno-131-3"></a>src/services/orders/checkout_service.py:1: LAY003 (warning) checkout_service.py repeats the layer its directory already names; rename it to checkout.py — the class inside keeps its suffix.
+</span><span id="__span-131-4"><a id="__codelineno-131-4" name="__codelineno-131-4" href="#__codelineno-131-4"></a>tests/integration/orders/test_orders.py:1001: SIZE001 (warning) test_orders.py has 1040 lines, over 1000; split it by responsibility — a service into several services, a test file into one file per theme, an __init__.py into a subpackage per domain.
+</span><span id="__span-131-5"><a id="__codelineno-131-5" name="__codelineno-131-5" href="#__codelineno-131-5"></a>4 layer finding(s): 0 error(s), 4 warning(s).
+</span></code></pre></div>
+<p>A composição vai para <code>admin/router.py</code> (<code>build_admin_router()</code>), reexportada
+pelo <code>__init__.py</code>; uma factory, para <code>factory.py</code>; a orquestração de seed,
+para <code>runner.py</code>. O arquivo grande se quebra por responsabilidade — o
+service em vários services, o teste em um arquivo por tema.</p>
 <h4 id="router-um-por-arquivo-api-uma-vez-aviso">Router: um por arquivo, <code>/api</code> uma vez (aviso)<a class="headerlink" href="#router-um-por-arquivo-api-uma-vez-aviso" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
@@ -8998,44 +9061,104 @@ import.</p>
 <tr>
 <td><code>RTR003</code></td>
 <td><code>routers/</code></td>
-<td>mais de um <code>APIRouter(...)</code> no módulo — um achado por router depois do primeiro</td>
+<td>mais de um router no módulo (<code>APIRouter(...)</code>, <code>TempestAPIRouter(...)</code> ou subclasse do projeto) — um achado por router depois do primeiro</td>
 </tr>
 <tr>
 <td><code>RTR004</code></td>
 <td>todo o código</td>
-<td><code>prefix</code> igual a <code>/api</code> (ou abaixo dele) em <code>APIRouter(...)</code> ou <code>include_router(...)</code> fora de uma função <code>build_api_router</code></td>
+<td><code>prefix</code> igual a <code>/api</code> (ou abaixo dele) numa construção de router ou em <code>include_router(...)</code> fora de uma função <code>build_api_router</code></td>
 </tr>
 </tbody>
 </table>
 <p>No transport, <code>/api</code> estava repetido em 22 <code>include_router</code>. Um router de
 pedidos com dois routers e o <code>/api</code> embutido sai assim (saída real):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-131-1"><a id="__codelineno-131-1" name="__codelineno-131-1" href="#__codelineno-131-1"></a><span class="c1"># src/api/routers/orders.py</span>
-</span><span id="__span-131-2"><a id="__codelineno-131-2" name="__codelineno-131-2" href="#__codelineno-131-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
-</span><span id="__span-131-3"><a id="__codelineno-131-3" name="__codelineno-131-3" href="#__codelineno-131-3"></a>
-</span><span id="__span-131-4"><a id="__codelineno-131-4" name="__codelineno-131-4" href="#__codelineno-131-4"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"orders"</span><span class="p">])</span>
-</span><span id="__span-131-5"><a id="__codelineno-131-5" name="__codelineno-131-5" href="#__codelineno-131-5"></a><span class="n">admin_router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/admin/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"admin"</span><span class="p">])</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-132-1"><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a><span class="c1"># src/api/routers/orders.py</span>
+</span><span id="__span-132-2"><a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">TempestAPIRouter</span>
+</span><span id="__span-132-3"><a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>
+</span><span id="__span-132-4"><a id="__codelineno-132-4" name="__codelineno-132-4" href="#__codelineno-132-4"></a><span class="n">router</span><span class="p">:</span> <span class="n">TempestAPIRouter</span> <span class="o">=</span> <span class="n">TempestAPIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"orders"</span><span class="p">])</span>
+</span><span id="__span-132-5"><a id="__codelineno-132-5" name="__codelineno-132-5" href="#__codelineno-132-5"></a><span class="n">admin_router</span><span class="p">:</span> <span class="n">TempestAPIRouter</span> <span class="o">=</span> <span class="n">TempestAPIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/admin/orders"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"admin"</span><span class="p">])</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-132-1"><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a>src/api/routers/orders.py:3: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
-</span><span id="__span-132-2"><a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a>src/api/routers/orders.py:4: RTR003 (warning) a second APIRouter in this module (`admin_router`); one router per file in routers/ — move it to its own module.
-</span><span id="__span-132-3"><a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
-</span><span id="__span-132-4"><a id="__codelineno-132-4" name="__codelineno-132-4" href="#__codelineno-132-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-133-1"><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a>src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+</span><span id="__span-133-2"><a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a>src/api/routers/orders.py:5: RTR003 (warning) a second router in this module (`admin_router`); one router per file in routers/ — move it to its own module.
+</span><span id="__span-133-3"><a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>src/api/routers/orders.py:5: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+</span><span id="__span-133-4"><a id="__codelineno-133-4" name="__codelineno-133-4" href="#__codelineno-133-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
 </span></code></pre></div>
 <p>A forma que as duas regras pedem: cada domínio num arquivo, só com o próprio
 prefixo (<code>/orders</code>, <code>/admin/orders</code>), e o <code>/api</code> posto uma vez:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-133-1"><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a><span class="c1"># src/api/routers/api.py</span>
-</span><span id="__span-133-2"><a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
-</span><span id="__span-133-3"><a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>
-</span><span id="__span-133-4"><a id="__codelineno-133-4" name="__codelineno-133-4" href="#__codelineno-133-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.admin_orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">admin_orders_router</span>
-</span><span id="__span-133-5"><a id="__codelineno-133-5" name="__codelineno-133-5" href="#__codelineno-133-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">orders_router</span>
-</span><span id="__span-133-6"><a id="__codelineno-133-6" name="__codelineno-133-6" href="#__codelineno-133-6"></a>
-</span><span id="__span-133-7"><a id="__codelineno-133-7" name="__codelineno-133-7" href="#__codelineno-133-7"></a>
-</span><span id="__span-133-8"><a id="__codelineno-133-8" name="__codelineno-133-8" href="#__codelineno-133-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_api_router</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">APIRouter</span><span class="p">:</span>
-</span><span id="__span-133-9"><a id="__codelineno-133-9" name="__codelineno-133-9" href="#__codelineno-133-9"></a><span class="w">    </span><span class="sd">"""Monta o router da API: todo domínio fica sob ``/api``."""</span>
-</span><span id="__span-133-10"><a id="__codelineno-133-10" name="__codelineno-133-10" href="#__codelineno-133-10"></a>    <span class="n">api</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api"</span><span class="p">)</span>
-</span><span id="__span-133-11"><a id="__codelineno-133-11" name="__codelineno-133-11" href="#__codelineno-133-11"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">orders_router</span><span class="p">)</span>
-</span><span id="__span-133-12"><a id="__codelineno-133-12" name="__codelineno-133-12" href="#__codelineno-133-12"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">admin_orders_router</span><span class="p">)</span>
-</span><span id="__span-133-13"><a id="__codelineno-133-13" name="__codelineno-133-13" href="#__codelineno-133-13"></a>    <span class="k">return</span> <span class="n">api</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-134-1"><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a><span class="c1"># src/api/routers/api.py</span>
+</span><span id="__span-134-2"><a id="__codelineno-134-2" name="__codelineno-134-2" href="#__codelineno-134-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
+</span><span id="__span-134-3"><a id="__codelineno-134-3" name="__codelineno-134-3" href="#__codelineno-134-3"></a>
+</span><span id="__span-134-4"><a id="__codelineno-134-4" name="__codelineno-134-4" href="#__codelineno-134-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.admin_orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">admin_orders_router</span>
+</span><span id="__span-134-5"><a id="__codelineno-134-5" name="__codelineno-134-5" href="#__codelineno-134-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.routers.orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span> <span class="k">as</span> <span class="n">orders_router</span>
+</span><span id="__span-134-6"><a id="__codelineno-134-6" name="__codelineno-134-6" href="#__codelineno-134-6"></a>
+</span><span id="__span-134-7"><a id="__codelineno-134-7" name="__codelineno-134-7" href="#__codelineno-134-7"></a>
+</span><span id="__span-134-8"><a id="__codelineno-134-8" name="__codelineno-134-8" href="#__codelineno-134-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_api_router</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">APIRouter</span><span class="p">:</span>
+</span><span id="__span-134-9"><a id="__codelineno-134-9" name="__codelineno-134-9" href="#__codelineno-134-9"></a><span class="w">    </span><span class="sd">"""Monta o router da API: todo domínio fica sob ``/api``."""</span>
+</span><span id="__span-134-10"><a id="__codelineno-134-10" name="__codelineno-134-10" href="#__codelineno-134-10"></a>    <span class="n">api</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api"</span><span class="p">)</span>
+</span><span id="__span-134-11"><a id="__codelineno-134-11" name="__codelineno-134-11" href="#__codelineno-134-11"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">orders_router</span><span class="p">)</span>
+</span><span id="__span-134-12"><a id="__codelineno-134-12" name="__codelineno-134-12" href="#__codelineno-134-12"></a>    <span class="n">api</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">admin_orders_router</span><span class="p">)</span>
+</span><span id="__span-134-13"><a id="__codelineno-134-13" name="__codelineno-134-13" href="#__codelineno-134-13"></a>    <span class="k">return</span> <span class="n">api</span>
 </span></code></pre></div>
+<h4 id="router-de-dominio-tempestapirouter-e-texto-em-apidocs-aviso">Router de domínio: <code>TempestAPIRouter</code> e texto em <code>api/docs</code> (aviso)<a class="headerlink" href="#router-de-dominio-tempestapirouter-e-texto-em-apidocs-aviso" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Código</th>
+<th>Onde</th>
+<th>O que acusa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RTR005</code></td>
+<td><code>routers/</code></td>
+<td><code>fastapi.APIRouter(...)</code> fora de uma função <code>build_api_router</code> — num <code>APIRouter</code> o <code>@raises</code> não vira <code>responses=</code></td>
+</tr>
+<tr>
+<td><code>RTR006</code></td>
+<td><code>routers/</code></td>
+<td><code>summary=</code> ou <code>description=</code> no decorator de uma rota, literal ou constante <code>SUMMARY_*</code> — uma linha por palavra-chave</td>
+</tr>
+</tbody>
+</table>
+<p>O agregador do <code>build_api_router</code> fica de fora do <code>RTR005</code> de propósito: os
+erros de uma rota são montados pelo router em que o handler é registrado, e a
+classe do router que o inclui não muda nada. O router com as duas formas que
+agentes escreviam (saída real):</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-135-1"><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a><span class="c1"># src/api/routers/service_info.py</span>
+</span><span id="__span-135-2"><a id="__codelineno-135-2" name="__codelineno-135-2" href="#__codelineno-135-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">Depends</span>
+</span><span id="__span-135-3"><a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a>
+</span><span id="__span-135-4"><a id="__codelineno-135-4" name="__codelineno-135-4" href="#__codelineno-135-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_service_info_controller</span>
+</span><span id="__span-135-5"><a id="__codelineno-135-5" name="__codelineno-135-5" href="#__codelineno-135-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.controllers</span><span class="w"> </span><span class="kn">import</span> <span class="n">ServiceInfoController</span>
+</span><span id="__span-135-6"><a id="__codelineno-135-6" name="__codelineno-135-6" href="#__codelineno-135-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.schemas</span><span class="w"> </span><span class="kn">import</span> <span class="n">ServiceInfoSchema</span>
+</span><span id="__span-135-7"><a id="__codelineno-135-7" name="__codelineno-135-7" href="#__codelineno-135-7"></a>
+</span><span id="__span-135-8"><a id="__codelineno-135-8" name="__codelineno-135-8" href="#__codelineno-135-8"></a><span class="n">SUMMARY_INDEX</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"Describe the service"</span>
+</span><span id="__span-135-9"><a id="__codelineno-135-9" name="__codelineno-135-9" href="#__codelineno-135-9"></a>
+</span><span id="__span-135-10"><a id="__codelineno-135-10" name="__codelineno-135-10" href="#__codelineno-135-10"></a><span class="n">router</span><span class="p">:</span> <span class="n">APIRouter</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"root"</span><span class="p">])</span>
+</span><span id="__span-135-11"><a id="__codelineno-135-11" name="__codelineno-135-11" href="#__codelineno-135-11"></a>
+</span><span id="__span-135-12"><a id="__codelineno-135-12" name="__codelineno-135-12" href="#__codelineno-135-12"></a>
+</span><span id="__span-135-13"><a id="__codelineno-135-13" name="__codelineno-135-13" href="#__codelineno-135-13"></a><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/"</span><span class="p">,</span> <span class="n">summary</span><span class="o">=</span><span class="n">SUMMARY_INDEX</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Returns the service name."</span><span class="p">)</span>
+</span><span id="__span-135-14"><a id="__codelineno-135-14" name="__codelineno-135-14" href="#__codelineno-135-14"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">index</span><span class="p">(</span>
+</span><span id="__span-135-15"><a id="__codelineno-135-15" name="__codelineno-135-15" href="#__codelineno-135-15"></a>    <span class="n">controller</span><span class="p">:</span> <span class="n">ServiceInfoController</span> <span class="o">=</span> <span class="n">Depends</span><span class="p">(</span><span class="n">get_service_info_controller</span><span class="p">),</span>
+</span><span id="__span-135-16"><a id="__codelineno-135-16" name="__codelineno-135-16" href="#__codelineno-135-16"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ServiceInfoSchema</span><span class="p">:</span>
+</span><span id="__span-135-17"><a id="__codelineno-135-17" name="__codelineno-135-17" href="#__codelineno-135-17"></a><span class="w">    </span><span class="sd">"""Placeholder root endpoint returning the service name.</span>
+</span><span id="__span-135-18"><a id="__codelineno-135-18" name="__codelineno-135-18" href="#__codelineno-135-18"></a>
+</span><span id="__span-135-19"><a id="__codelineno-135-19" name="__codelineno-135-19" href="#__codelineno-135-19"></a><span class="sd">    Args:</span>
+</span><span id="__span-135-20"><a id="__codelineno-135-20" name="__codelineno-135-20" href="#__codelineno-135-20"></a><span class="sd">        controller (ServiceInfoController): The injected controller.</span>
+</span><span id="__span-135-21"><a id="__codelineno-135-21" name="__codelineno-135-21" href="#__codelineno-135-21"></a>
+</span><span id="__span-135-22"><a id="__codelineno-135-22" name="__codelineno-135-22" href="#__codelineno-135-22"></a><span class="sd">    Returns:</span>
+</span><span id="__span-135-23"><a id="__codelineno-135-23" name="__codelineno-135-23" href="#__codelineno-135-23"></a><span class="sd">        ServiceInfoSchema: The service title.</span>
+</span><span id="__span-135-24"><a id="__codelineno-135-24" name="__codelineno-135-24" href="#__codelineno-135-24"></a><span class="sd">    """</span>
+</span><span id="__span-135-25"><a id="__codelineno-135-25" name="__codelineno-135-25" href="#__codelineno-135-25"></a>    <span class="k">return</span> <span class="k">await</span> <span class="n">controller</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-136-1"><a id="__codelineno-136-1" name="__codelineno-136-1" href="#__codelineno-136-1"></a>src/api/routers/service_info.py:10: RTR005 (warning) APIRouter(...) builds this router (`router`); build it with `TempestAPIRouter` from tempest_fastapi_sdk, which turns each handler's `@raises(...)` into its `responses=` (a plain APIRouter ignores the tag).
+</span><span id="__span-136-2"><a id="__codelineno-136-2" name="__codelineno-136-2" href="#__codelineno-136-2"></a>src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `summary=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/&lt;router&gt;.py and spread it into the decorator (`**docs.INDEX`).
+</span><span id="__span-136-3"><a id="__codelineno-136-3" name="__codelineno-136-3" href="#__codelineno-136-3"></a>src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `description=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/&lt;router&gt;.py and spread it into the decorator (`**docs.INDEX`).
+</span><span id="__span-136-4"><a id="__codelineno-136-4" name="__codelineno-136-4" href="#__codelineno-136-4"></a>3 layer finding(s): 0 error(s), 3 warning(s).
+</span></code></pre></div>
+<p>A forma certa — <code>TempestAPIRouter</code>, <code>@raises</code> abaixo do decorator e um
+<code>EndpointDoc</code> em <code>api/docs/&lt;router&gt;.py</code> — está em
+<a href="../../service-standard/#erros-da-rota-tempestapirouter-raises">Padrão de serviço</a>.</p>
 <h4 id="a-forma-da-suite-aviso">A forma da suíte (aviso)<a class="headerlink" href="#a-forma-da-suite-aviso" title="Permanent link">&para;</a></h4>
 <p>As quatro regras <code>TST</code> leem os arquivos que o pytest coleta no <code>tests/</code> do
 projeto (<code>test_*.py</code> e <code>*_test.py</code>):</p>
@@ -9066,31 +9189,31 @@ projeto (<code>test_*.py</code> e <code>*_test.py</code>):</p>
 </tbody>
 </table>
 <p>Este arquivo tem as quatro (saída real):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-134-1"><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a><span class="c1"># tests/test_orders.py</span>
-</span><span id="__span-134-2"><a id="__codelineno-134-2" name="__codelineno-134-2" href="#__codelineno-134-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">uuid4</span>
-</span><span id="__span-134-3"><a id="__codelineno-134-3" name="__codelineno-134-3" href="#__codelineno-134-3"></a>
-</span><span id="__span-134-4"><a id="__codelineno-134-4" name="__codelineno-134-4" href="#__codelineno-134-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
-</span><span id="__span-134-5"><a id="__codelineno-134-5" name="__codelineno-134-5" href="#__codelineno-134-5"></a>
-</span><span id="__span-134-6"><a id="__codelineno-134-6" name="__codelineno-134-6" href="#__codelineno-134-6"></a>
-</span><span id="__span-134-7"><a id="__codelineno-134-7" name="__codelineno-134-7" href="#__codelineno-134-7"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span><span class="s2">"order_id"</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())])</span>
-</span><span id="__span-134-8"><a id="__codelineno-134-8" name="__codelineno-134-8" href="#__codelineno-134-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_order_is_created</span><span class="p">(</span><span class="n">order_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-134-9"><a id="__codelineno-134-9" name="__codelineno-134-9" href="#__codelineno-134-9"></a><span class="w">    </span><span class="sd">"""The order is created."""</span>
-</span><span id="__span-134-10"><a id="__codelineno-134-10" name="__codelineno-134-10" href="#__codelineno-134-10"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-</span><span id="__span-134-11"><a id="__codelineno-134-11" name="__codelineno-134-11" href="#__codelineno-134-11"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">order_id</span><span class="p">)</span>
-</span><span id="__span-134-12"><a id="__codelineno-134-12" name="__codelineno-134-12" href="#__codelineno-134-12"></a>
-</span><span id="__span-134-13"><a id="__codelineno-134-13" name="__codelineno-134-13" href="#__codelineno-134-13"></a>
-</span><span id="__span-134-14"><a id="__codelineno-134-14" name="__codelineno-134-14" href="#__codelineno-134-14"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_receipt_is_sent</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-134-15"><a id="__codelineno-134-15" name="__codelineno-134-15" href="#__codelineno-134-15"></a><span class="w">    </span><span class="sd">"""Cenário: um pedido pago.</span>
-</span><span id="__span-134-16"><a id="__codelineno-134-16" name="__codelineno-134-16" href="#__codelineno-134-16"></a>
-</span><span id="__span-134-17"><a id="__codelineno-134-17" name="__codelineno-134-17" href="#__codelineno-134-17"></a><span class="sd">    Esperado: o recibo sai sem erro.</span>
-</span><span id="__span-134-18"><a id="__codelineno-134-18" name="__codelineno-134-18" href="#__codelineno-134-18"></a><span class="sd">    """</span>
-</span><span id="__span-134-19"><a id="__codelineno-134-19" name="__codelineno-134-19" href="#__codelineno-134-19"></a>    <span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-137-1"><a id="__codelineno-137-1" name="__codelineno-137-1" href="#__codelineno-137-1"></a><span class="c1"># tests/test_orders.py</span>
+</span><span id="__span-137-2"><a id="__codelineno-137-2" name="__codelineno-137-2" href="#__codelineno-137-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">uuid4</span>
+</span><span id="__span-137-3"><a id="__codelineno-137-3" name="__codelineno-137-3" href="#__codelineno-137-3"></a>
+</span><span id="__span-137-4"><a id="__codelineno-137-4" name="__codelineno-137-4" href="#__codelineno-137-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+</span><span id="__span-137-5"><a id="__codelineno-137-5" name="__codelineno-137-5" href="#__codelineno-137-5"></a>
+</span><span id="__span-137-6"><a id="__codelineno-137-6" name="__codelineno-137-6" href="#__codelineno-137-6"></a>
+</span><span id="__span-137-7"><a id="__codelineno-137-7" name="__codelineno-137-7" href="#__codelineno-137-7"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span><span class="s2">"order_id"</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())])</span>
+</span><span id="__span-137-8"><a id="__codelineno-137-8" name="__codelineno-137-8" href="#__codelineno-137-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_order_is_created</span><span class="p">(</span><span class="n">order_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-137-9"><a id="__codelineno-137-9" name="__codelineno-137-9" href="#__codelineno-137-9"></a><span class="w">    </span><span class="sd">"""The order is created."""</span>
+</span><span id="__span-137-10"><a id="__codelineno-137-10" name="__codelineno-137-10" href="#__codelineno-137-10"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+</span><span id="__span-137-11"><a id="__codelineno-137-11" name="__codelineno-137-11" href="#__codelineno-137-11"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">order_id</span><span class="p">)</span>
+</span><span id="__span-137-12"><a id="__codelineno-137-12" name="__codelineno-137-12" href="#__codelineno-137-12"></a>
+</span><span id="__span-137-13"><a id="__codelineno-137-13" name="__codelineno-137-13" href="#__codelineno-137-13"></a>
+</span><span id="__span-137-14"><a id="__codelineno-137-14" name="__codelineno-137-14" href="#__codelineno-137-14"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_receipt_is_sent</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-137-15"><a id="__codelineno-137-15" name="__codelineno-137-15" href="#__codelineno-137-15"></a><span class="w">    </span><span class="sd">"""Cenário: um pedido pago.</span>
+</span><span id="__span-137-16"><a id="__codelineno-137-16" name="__codelineno-137-16" href="#__codelineno-137-16"></a>
+</span><span id="__span-137-17"><a id="__codelineno-137-17" name="__codelineno-137-17" href="#__codelineno-137-17"></a><span class="sd">    Esperado: o recibo sai sem erro.</span>
+</span><span id="__span-137-18"><a id="__codelineno-137-18" name="__codelineno-137-18" href="#__codelineno-137-18"></a><span class="sd">    """</span>
+</span><span id="__span-137-19"><a id="__codelineno-137-19" name="__codelineno-137-19" href="#__codelineno-137-19"></a>    <span class="nb">str</span><span class="p">(</span><span class="n">uuid4</span><span class="p">())</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-135-1"><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a>tests/test_orders.py:6: TST004 (warning) parametrize puts a `uuid4()` drawn at import into the test id; each pytest-xdist worker collects different ids and the run aborts — use fixed literals.
-</span><span id="__span-135-2"><a id="__codelineno-135-2" name="__codelineno-135-2" href="#__codelineno-135-2"></a>tests/test_orders.py:7: TST001 (warning) `test_order_is_created` docstring lacks Cenário:, Esperado:; say the situation the test builds (Cenário:) and what it proves (Esperado:).
-</span><span id="__span-135-3"><a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a>tests/test_orders.py:9: TST003 (warning) pytest.raises(Exception) passes for any bug; name the exception the code raises (and `match=` its message when it matters).
-</span><span id="__span-135-4"><a id="__codelineno-135-4" name="__codelineno-135-4" href="#__codelineno-135-4"></a>tests/test_orders.py:13: TST002 (warning) `test_receipt_is_sent` checks nothing (no assert, no pytest.raises, no assert_* call); a test that cannot fail proves nothing.
-</span><span id="__span-135-5"><a id="__codelineno-135-5" name="__codelineno-135-5" href="#__codelineno-135-5"></a>4 layer finding(s): 0 error(s), 4 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-138-1"><a id="__codelineno-138-1" name="__codelineno-138-1" href="#__codelineno-138-1"></a>tests/test_orders.py:6: TST004 (warning) parametrize puts a `uuid4()` drawn at import into the test id; each pytest-xdist worker collects different ids and the run aborts — use fixed literals.
+</span><span id="__span-138-2"><a id="__codelineno-138-2" name="__codelineno-138-2" href="#__codelineno-138-2"></a>tests/test_orders.py:7: TST001 (warning) `test_order_is_created` docstring lacks Cenário:, Esperado:; say the situation the test builds (Cenário:) and what it proves (Esperado:).
+</span><span id="__span-138-3"><a id="__codelineno-138-3" name="__codelineno-138-3" href="#__codelineno-138-3"></a>tests/test_orders.py:9: TST003 (warning) pytest.raises(Exception) passes for any bug; name the exception the code raises (and `match=` its message when it matters).
+</span><span id="__span-138-4"><a id="__codelineno-138-4" name="__codelineno-138-4" href="#__codelineno-138-4"></a>tests/test_orders.py:13: TST002 (warning) `test_receipt_is_sent` checks nothing (no assert, no pytest.raises, no assert_* call); a test that cannot fail proves nothing.
+</span><span id="__span-138-5"><a id="__codelineno-138-5" name="__codelineno-138-5" href="#__codelineno-138-5"></a>4 layer finding(s): 0 error(s), 4 warning(s).
 </span></code></pre></div>
 <div class="admonition info">
 <p class="admonition-title">Quando o valor sorteado quebra o <code>pytest -n</code></p>
@@ -9110,15 +9233,15 @@ acusa quando viram texto ou entram em <code>ids=</code> / <code>id=</code>.</p>
 entra como aviso numa release e vira erro na seguinte — assim um serviço
 existente tem uma release inteira para migrar. Para migrar uma regra por
 vez, selecione-a com <code>--rule</code> (repetível, aceita minúsculas):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-136-1"><a id="__codelineno-136-1" name="__codelineno-136-1" href="#__codelineno-136-1"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w">              </span><span class="c1"># só uma regra</span>
-</span><span id="__span-136-2"><a id="__codelineno-136-2" name="__codelineno-136-2" href="#__codelineno-136-2"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w"> </span>--rule<span class="w"> </span>RTR001
-</span><span id="__span-136-3"><a id="__codelineno-136-3" name="__codelineno-136-3" href="#__codelineno-136-3"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--strict<span class="w">                   </span><span class="c1"># aviso também derruba</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-139-1"><a id="__codelineno-139-1" name="__codelineno-139-1" href="#__codelineno-139-1"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w">              </span><span class="c1"># só uma regra</span>
+</span><span id="__span-139-2"><a id="__codelineno-139-2" name="__codelineno-139-2" href="#__codelineno-139-2"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--rule<span class="w"> </span>SVC002<span class="w"> </span>--rule<span class="w"> </span>RTR001
+</span><span id="__span-139-3"><a id="__codelineno-139-3" name="__codelineno-139-3" href="#__codelineno-139-3"></a>tempest<span class="w"> </span>lint-layers<span class="w"> </span>--strict<span class="w">                   </span><span class="c1"># aviso também derruba</span>
 </span></code></pre></div>
 <p>O <code>tempest check</code> roda o passo sem <code>--rule</code>. Para o gate derrubar em aviso
 também, ligue no <code>pyproject.toml</code> — o <code>--strict</code>/<code>--no-strict</code> da linha de
 comando vence a config:</p>
-<div class="language-toml highlight"><pre><span></span><code><span id="__span-137-1"><a id="__codelineno-137-1" name="__codelineno-137-1" href="#__codelineno-137-1"></a><span class="k">[tool.tempest]</span>
-</span><span id="__span-137-2"><a id="__codelineno-137-2" name="__codelineno-137-2" href="#__codelineno-137-2"></a><span class="n">layers_strict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-140-1"><a id="__codelineno-140-1" name="__codelineno-140-1" href="#__codelineno-140-1"></a><span class="k">[tool.tempest]</span>
+</span><span id="__span-140-2"><a id="__codelineno-140-2" name="__codelineno-140-2" href="#__codelineno-140-2"></a><span class="n">layers_strict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 </span></code></pre></div>
 <p><strong>Exceção que o projeto assume fica num lugar só</strong>, com motivo, revisada no
 diff como código: o dict <code>ARCHITECTURE_EXCEPTIONS</code> em
@@ -9127,22 +9250,22 @@ as violações daquele código no arquivo) ou <code>"&lt;CÓDIGO&gt; &lt;caminho
 (só a que fala daquele nome — a classe, <code>Classe.método</code> ou a função). O
 caminho é relativo à raiz do projeto. O arquivo também é lido com <code>ast</code>,
 nunca importado:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-138-1"><a id="__codelineno-138-1" name="__codelineno-138-1" href="#__codelineno-138-1"></a><span class="sd">"""Exceções de arquitetura que o projeto assume, cada uma com motivo."""</span>
-</span><span id="__span-138-2"><a id="__codelineno-138-2" name="__codelineno-138-2" href="#__codelineno-138-2"></a>
-</span><span id="__span-138-3"><a id="__codelineno-138-3" name="__codelineno-138-3" href="#__codelineno-138-3"></a><span class="n">ARCHITECTURE_EXCEPTIONS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-138-4"><a id="__codelineno-138-4" name="__codelineno-138-4" href="#__codelineno-138-4"></a>    <span class="s2">"SVC001 src/services/catalogue/catalogue.py::CatalogueService"</span><span class="p">:</span> <span class="p">(</span>
-</span><span id="__span-138-5"><a id="__codelineno-138-5" name="__codelineno-138-5" href="#__codelineno-138-5"></a>        <span class="s2">"catálogo estático, sem repository para o BaseService"</span>
-</span><span id="__span-138-6"><a id="__codelineno-138-6" name="__codelineno-138-6" href="#__codelineno-138-6"></a>    <span class="p">),</span>
-</span><span id="__span-138-7"><a id="__codelineno-138-7" name="__codelineno-138-7" href="#__codelineno-138-7"></a>    <span class="s2">"REPO001 src/db/repositories/legacy/legacy.py"</span><span class="p">:</span> <span class="s2">"wrapper mantido até a 2.0"</span><span class="p">,</span>
-</span><span id="__span-138-8"><a id="__codelineno-138-8" name="__codelineno-138-8" href="#__codelineno-138-8"></a><span class="p">}</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-141-1"><a id="__codelineno-141-1" name="__codelineno-141-1" href="#__codelineno-141-1"></a><span class="sd">"""Exceções de arquitetura que o projeto assume, cada uma com motivo."""</span>
+</span><span id="__span-141-2"><a id="__codelineno-141-2" name="__codelineno-141-2" href="#__codelineno-141-2"></a>
+</span><span id="__span-141-3"><a id="__codelineno-141-3" name="__codelineno-141-3" href="#__codelineno-141-3"></a><span class="n">ARCHITECTURE_EXCEPTIONS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-141-4"><a id="__codelineno-141-4" name="__codelineno-141-4" href="#__codelineno-141-4"></a>    <span class="s2">"SVC001 src/services/catalogue/catalogue.py::CatalogueService"</span><span class="p">:</span> <span class="p">(</span>
+</span><span id="__span-141-5"><a id="__codelineno-141-5" name="__codelineno-141-5" href="#__codelineno-141-5"></a>        <span class="s2">"catálogo estático, sem repository para o BaseService"</span>
+</span><span id="__span-141-6"><a id="__codelineno-141-6" name="__codelineno-141-6" href="#__codelineno-141-6"></a>    <span class="p">),</span>
+</span><span id="__span-141-7"><a id="__codelineno-141-7" name="__codelineno-141-7" href="#__codelineno-141-7"></a>    <span class="s2">"REPO001 src/db/repositories/legacy/legacy.py"</span><span class="p">:</span> <span class="s2">"wrapper mantido até a 2.0"</span><span class="p">,</span>
+</span><span id="__span-141-8"><a id="__codelineno-141-8" name="__codelineno-141-8" href="#__codelineno-141-8"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>Com esse arquivo, um <code>src/services/catalogue/catalogue.py</code> que define
 <code>CatalogueService</code> (sem <code>BaseService</code>) e uma função de módulo
 <code>load_items</code>, e nenhum <code>legacy.py</code>, o <code>tempest lint-layers</code> sai assim
 (saída real, exit code <code>1</code> por causa do <code>SVC002</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-139-1"><a id="__codelineno-139-1" name="__codelineno-139-1" href="#__codelineno-139-1"></a>src/services/catalogue/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
-</span><span id="__span-139-2"><a id="__codelineno-139-2" name="__codelineno-139-2" href="#__codelineno-139-2"></a>tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
-</span><span id="__span-139-3"><a id="__codelineno-139-3" name="__codelineno-139-3" href="#__codelineno-139-3"></a>2 layer finding(s): 1 error(s), 1 warning(s).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-142-1"><a id="__codelineno-142-1" name="__codelineno-142-1" href="#__codelineno-142-1"></a>src/services/catalogue/catalogue.py:5: SVC002 module-level function `load_items` in services/; move it to utils/, or make it a method of the service that uses it.
+</span><span id="__span-142-2"><a id="__codelineno-142-2" name="__codelineno-142-2" href="#__codelineno-142-2"></a>tests/architecture_exceptions.py:7: EXC002 (warning) `REPO001 src/db/repositories/legacy/legacy.py` matches no finding; the code it excused is gone or moved — delete the entry, or fix its path.
+</span><span id="__span-142-3"><a id="__codelineno-142-3" name="__codelineno-142-3" href="#__codelineno-142-3"></a>2 layer finding(s): 1 error(s), 1 warning(s).
 </span></code></pre></div>
 <p>O <code>SVC001</code> do <code>CatalogueService</code> sumiu, porque a exceção o cobre. A entrada
 de <code>REPO001</code> não casa com nada e vira o aviso <code>EXC002</code>: exceção não
@@ -9187,28 +9310,28 @@ todas de uma vez.</p>
 metadado só existe depois que o Pydantic montou o modelo. Por isso ela
 <strong>importa</strong> o pacote de schemas (<code>src.schemas</code>, ou <code>app.schemas</code>), em vez de
 ler o código como o <code>lint-layers</code>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-140-1"><a id="__codelineno-140-1" name="__codelineno-140-1" href="#__codelineno-140-1"></a><span class="c1"># src/schemas/order.py</span>
-</span><span id="__span-140-2"><a id="__codelineno-140-2" name="__codelineno-140-2" href="#__codelineno-140-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
-</span><span id="__span-140-3"><a id="__codelineno-140-3" name="__codelineno-140-3" href="#__codelineno-140-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSchema</span>
-</span><span id="__span-140-4"><a id="__codelineno-140-4" name="__codelineno-140-4" href="#__codelineno-140-4"></a>
-</span><span id="__span-140-5"><a id="__codelineno-140-5" name="__codelineno-140-5" href="#__codelineno-140-5"></a>
-</span><span id="__span-140-6"><a id="__codelineno-140-6" name="__codelineno-140-6" href="#__codelineno-140-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">AddressSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
-</span><span id="__span-140-7"><a id="__codelineno-140-7" name="__codelineno-140-7" href="#__codelineno-140-7"></a><span class="w">    </span><span class="sd">"""Endereço de entrega."""</span>
-</span><span id="__span-140-8"><a id="__codelineno-140-8" name="__codelineno-140-8" href="#__codelineno-140-8"></a>
-</span><span id="__span-140-9"><a id="__codelineno-140-9" name="__codelineno-140-9" href="#__codelineno-140-9"></a>    <span class="n">city</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Cidade"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Cidade da entrega."</span><span class="p">)</span>
-</span><span id="__span-140-10"><a id="__codelineno-140-10" name="__codelineno-140-10" href="#__codelineno-140-10"></a>
-</span><span id="__span-140-11"><a id="__codelineno-140-11" name="__codelineno-140-11" href="#__codelineno-140-11"></a>
-</span><span id="__span-140-12"><a id="__codelineno-140-12" name="__codelineno-140-12" href="#__codelineno-140-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderCreateSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
-</span><span id="__span-140-13"><a id="__codelineno-140-13" name="__codelineno-140-13" href="#__codelineno-140-13"></a><span class="w">    </span><span class="sd">"""Pedido novo."""</span>
-</span><span id="__span-140-14"><a id="__codelineno-140-14" name="__codelineno-140-14" href="#__codelineno-140-14"></a>
-</span><span id="__span-140-15"><a id="__codelineno-140-15" name="__codelineno-140-15" href="#__codelineno-140-15"></a>    <span class="n">total_cents</span><span class="p">:</span> <span class="nb">int</span>
-</span><span id="__span-140-16"><a id="__codelineno-140-16" name="__codelineno-140-16" href="#__codelineno-140-16"></a>    <span class="n">address</span><span class="p">:</span> <span class="n">AddressSchema</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Endereço"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Onde entregar."</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-143-1"><a id="__codelineno-143-1" name="__codelineno-143-1" href="#__codelineno-143-1"></a><span class="c1"># src/schemas/order.py</span>
+</span><span id="__span-143-2"><a id="__codelineno-143-2" name="__codelineno-143-2" href="#__codelineno-143-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
+</span><span id="__span-143-3"><a id="__codelineno-143-3" name="__codelineno-143-3" href="#__codelineno-143-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSchema</span>
+</span><span id="__span-143-4"><a id="__codelineno-143-4" name="__codelineno-143-4" href="#__codelineno-143-4"></a>
+</span><span id="__span-143-5"><a id="__codelineno-143-5" name="__codelineno-143-5" href="#__codelineno-143-5"></a>
+</span><span id="__span-143-6"><a id="__codelineno-143-6" name="__codelineno-143-6" href="#__codelineno-143-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">AddressSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
+</span><span id="__span-143-7"><a id="__codelineno-143-7" name="__codelineno-143-7" href="#__codelineno-143-7"></a><span class="w">    </span><span class="sd">"""Endereço de entrega."""</span>
+</span><span id="__span-143-8"><a id="__codelineno-143-8" name="__codelineno-143-8" href="#__codelineno-143-8"></a>
+</span><span id="__span-143-9"><a id="__codelineno-143-9" name="__codelineno-143-9" href="#__codelineno-143-9"></a>    <span class="n">city</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Cidade"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Cidade da entrega."</span><span class="p">)</span>
+</span><span id="__span-143-10"><a id="__codelineno-143-10" name="__codelineno-143-10" href="#__codelineno-143-10"></a>
+</span><span id="__span-143-11"><a id="__codelineno-143-11" name="__codelineno-143-11" href="#__codelineno-143-11"></a>
+</span><span id="__span-143-12"><a id="__codelineno-143-12" name="__codelineno-143-12" href="#__codelineno-143-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrderCreateSchema</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
+</span><span id="__span-143-13"><a id="__codelineno-143-13" name="__codelineno-143-13" href="#__codelineno-143-13"></a><span class="w">    </span><span class="sd">"""Pedido novo."""</span>
+</span><span id="__span-143-14"><a id="__codelineno-143-14" name="__codelineno-143-14" href="#__codelineno-143-14"></a>
+</span><span id="__span-143-15"><a id="__codelineno-143-15" name="__codelineno-143-15" href="#__codelineno-143-15"></a>    <span class="n">total_cents</span><span class="p">:</span> <span class="nb">int</span>
+</span><span id="__span-143-16"><a id="__codelineno-143-16" name="__codelineno-143-16" href="#__codelineno-143-16"></a>    <span class="n">address</span><span class="p">:</span> <span class="n">AddressSchema</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Endereço"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Onde entregar."</span><span class="p">)</span>
 </span></code></pre></div>
 <p><code>tempest lint-schemas</code> (com <code>src/schemas/__init__.py</code> exportando os dois;
 saída real, exit code <code>1</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-141-1"><a id="__codelineno-141-1" name="__codelineno-141-1" href="#__codelineno-141-1"></a>src.schemas.order.AddressSchema.city: missing examples
-</span><span id="__span-141-2"><a id="__codelineno-141-2" name="__codelineno-141-2" href="#__codelineno-141-2"></a>src.schemas.order.OrderCreateSchema.total_cents: missing title, description, examples
-</span><span id="__span-141-3"><a id="__codelineno-141-3" name="__codelineno-141-3" href="#__codelineno-141-3"></a>2 schema field(s) without documentation.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-144-1"><a id="__codelineno-144-1" name="__codelineno-144-1" href="#__codelineno-144-1"></a>src.schemas.order.AddressSchema.city: missing examples
+</span><span id="__span-144-2"><a id="__codelineno-144-2" name="__codelineno-144-2" href="#__codelineno-144-2"></a>src.schemas.order.OrderCreateSchema.total_cents: missing title, description, examples
+</span><span id="__span-144-3"><a id="__codelineno-144-3" name="__codelineno-144-3" href="#__codelineno-144-3"></a>2 schema field(s) without documentation.
 </span></code></pre></div>
 <ul>
 <li>O campo <strong>folha</strong> (um valor: <code>str</code>, <code>int</code>, enum, <code>list[str]</code>) precisa dos
@@ -9225,17 +9348,17 @@ saída real, exit code <code>1</code>):</p>
 <p>O mesmo check roda <strong>dentro da suíte</strong>, que é como o projeto do
 <code>tempest new</code> o cobra a cada <code>tempest check</code> — o scaffold já traz este
 teste:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-142-1"><a id="__codelineno-142-1" name="__codelineno-142-1" href="#__codelineno-142-1"></a><span class="c1"># tests/unit/architecture/test_schemas.py</span>
-</span><span id="__span-142-2"><a id="__codelineno-142-2" name="__codelineno-142-2" href="#__codelineno-142-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">src.schemas</span>
-</span><span id="__span-142-3"><a id="__codelineno-142-3" name="__codelineno-142-3" href="#__codelineno-142-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">assert_schema_metadata</span>
-</span><span id="__span-142-4"><a id="__codelineno-142-4" name="__codelineno-142-4" href="#__codelineno-142-4"></a>
-</span><span id="__span-142-5"><a id="__codelineno-142-5" name="__codelineno-142-5" href="#__codelineno-142-5"></a>
-</span><span id="__span-142-6"><a id="__codelineno-142-6" name="__codelineno-142-6" href="#__codelineno-142-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_exported_schemas_carry_metadata</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-142-7"><a id="__codelineno-142-7" name="__codelineno-142-7" href="#__codelineno-142-7"></a><span class="w">    </span><span class="sd">"""Cenário: os schemas que ``src.schemas`` exporta.</span>
-</span><span id="__span-142-8"><a id="__codelineno-142-8" name="__codelineno-142-8" href="#__codelineno-142-8"></a>
-</span><span id="__span-142-9"><a id="__codelineno-142-9" name="__codelineno-142-9" href="#__codelineno-142-9"></a><span class="sd">    Esperado: todo campo traz ``title``, ``description`` e ``examples``.</span>
-</span><span id="__span-142-10"><a id="__codelineno-142-10" name="__codelineno-142-10" href="#__codelineno-142-10"></a><span class="sd">    """</span>
-</span><span id="__span-142-11"><a id="__codelineno-142-11" name="__codelineno-142-11" href="#__codelineno-142-11"></a>    <span class="n">assert_schema_metadata</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">schemas</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-145-1"><a id="__codelineno-145-1" name="__codelineno-145-1" href="#__codelineno-145-1"></a><span class="c1"># tests/unit/architecture/test_schemas.py</span>
+</span><span id="__span-145-2"><a id="__codelineno-145-2" name="__codelineno-145-2" href="#__codelineno-145-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">src.schemas</span>
+</span><span id="__span-145-3"><a id="__codelineno-145-3" name="__codelineno-145-3" href="#__codelineno-145-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">assert_schema_metadata</span>
+</span><span id="__span-145-4"><a id="__codelineno-145-4" name="__codelineno-145-4" href="#__codelineno-145-4"></a>
+</span><span id="__span-145-5"><a id="__codelineno-145-5" name="__codelineno-145-5" href="#__codelineno-145-5"></a>
+</span><span id="__span-145-6"><a id="__codelineno-145-6" name="__codelineno-145-6" href="#__codelineno-145-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_exported_schemas_carry_metadata</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-145-7"><a id="__codelineno-145-7" name="__codelineno-145-7" href="#__codelineno-145-7"></a><span class="w">    </span><span class="sd">"""Cenário: os schemas que ``src.schemas`` exporta.</span>
+</span><span id="__span-145-8"><a id="__codelineno-145-8" name="__codelineno-145-8" href="#__codelineno-145-8"></a>
+</span><span id="__span-145-9"><a id="__codelineno-145-9" name="__codelineno-145-9" href="#__codelineno-145-9"></a><span class="sd">    Esperado: todo campo traz ``title``, ``description`` e ``examples``.</span>
+</span><span id="__span-145-10"><a id="__codelineno-145-10" name="__codelineno-145-10" href="#__codelineno-145-10"></a><span class="sd">    """</span>
+</span><span id="__span-145-11"><a id="__codelineno-145-11" name="__codelineno-145-11" href="#__codelineno-145-11"></a>    <span class="n">assert_schema_metadata</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">schemas</span><span class="p">)</span>
 </span></code></pre></div>
 <hr />
 <h2 id="recap_2">Recap<a class="headerlink" href="#recap_2" title="Permanent link">&para;</a></h2>

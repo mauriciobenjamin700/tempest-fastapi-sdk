@@ -5823,6 +5823,14 @@ deduplicar POSTs, e o build do frontend servido por <code>make_web_app_router</c
 </span><span id="__span-1-73"><a id="__codelineno-1-73" name="__codelineno-1-73" href="#__codelineno-1-73"></a><span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">api</span><span class="p">)</span>                              <span class="c1"># 1) API primeiro</span>
 </span><span id="__span-1-74"><a id="__codelineno-1-74" name="__codelineno-1-74" href="#__codelineno-1-74"></a><span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">make_web_app_router</span><span class="p">(</span><span class="s2">"web/dist/wasm"</span><span class="p">))</span>  <span class="c1"># 2) frontend por último</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> aqui é atalho de demonstração</p>
+<p>O exemplo cabe num arquivo só, então cria as tabelas direto no
+lifespan. Num serviço, o lifespan chama <code>sync_schema_async()</code> sobre as
+migrations do Alembic: <code>create_tables()</code> não acrescenta coluna em
+tabela que já existe. Veja
+<a href="../migrations/#3-sincronize-o-schema-no-lifespan">Migrations »</a>.</p>
+</div>
 <h2 id="o-frontend-tempestweb">O frontend (tempestweb)<a class="headerlink" href="#o-frontend-tempestweb" title="Permanent link">&para;</a></h2>
 <p>O <code>web/app.py</code> do tempestweb (contrato <code>make_state</code> + <code>view</code>). O handler é
 <code>async</code> e chama a API com <code>tempestweb.native.http.request</code> — um cliente

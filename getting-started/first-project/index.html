@@ -5935,7 +5935,7 @@ antes de escrever qualquer arquivo:</p>
 </span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>├── .env.example
 </span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>└── src/
 </span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    ├── server.py           # uvicorn programático + app importável
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    ├── api/                # routers, dependencies, factory do app
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    ├── api/                # routers, dependencies, docs (texto do OpenAPI), factory do app
 </span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    ├── controllers/        # orquestração fina sobre os services
 </span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    ├── services/           # lógica de negócio
 </span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    ├── schemas/            # DTOs de request/response
@@ -5944,6 +5944,10 @@ antes de escrever qualquer arquivo:</p>
 </span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    │   └── repositories/
 </span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    └── core/               # settings + constants + exceptions
 </span></code></pre></div>
+<p>Em <code>api/</code>, cada router de domínio é um <code>TempestAPIRouter</code> e o texto que o
+Swagger mostra mora em <code>api/docs/&lt;router&gt;.py</code>, um <code>EndpointDoc</code> por
+handler — o porquê está no
+<a href="../../service-standard/#texto-do-openapi-fora-do-router">Padrão de serviço</a>.</p>
 <p>Suba o serviço:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>main.py
 </span></code></pre></div>

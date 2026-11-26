@@ -6062,6 +6062,14 @@ writes <strong>the order and the event in the same transaction</strong>.</p>
 </span><span id="__span-4-182"><a id="__codelineno-4-182" name="__codelineno-4-182" href="#__codelineno-4-182"></a>    <span class="p">)</span>
 </span><span id="__span-4-183"><a id="__codelineno-4-183" name="__codelineno-4-183" href="#__codelineno-4-183"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"recorded"</span><span class="p">:</span> <span class="n">new_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">}</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> here is a demo shortcut</p>
+<p>The example fits in a single file, so it creates the tables straight
+in the lifespan. In a service, the lifespan calls <code>sync_schema_async()</code>
+over the Alembic migrations: <code>create_tables()</code> adds no column to a
+table that already exists. See
+<a href="../migrations/#3-sync-the-schema-in-the-lifespan">Migrations »</a>.</p>
+</div>
 <p>Piece by piece:</p>
 <ul>
 <li><code>make_token_dependency(TOKEN_SECRET)</code> compares the <code>X-Token</code> header with

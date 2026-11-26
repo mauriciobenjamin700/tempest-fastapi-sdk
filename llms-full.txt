@@ -175,6 +175,8 @@ O layout canônico que todo serviço Python distribuído contra este SDK deve ad
 
 ```text
 my-service/
+├── alembic.ini                   # gerado pelo AlembicHelper.init
+├── alembic/                      # env.py + versions/ (uma revision por mudança de schema)
 ├── main.py                       # one-liner: from src.server import run; run()
 └── src/
     ├── __init__.py               # re-exporta `run` de .server
@@ -185,6 +187,9 @@ my-service/
     │   └── exceptions/           # um módulo por status: not_found.py, conflict.py, ...
     ├── db/
     │   ├── __init__.py           # re-exporta BaseModel + todo modelo
+    │   ├── configs/
+    │   │   ├── __init__.py
+    │   │   └── migrations.py     # run_migrations: sync_schema_async() no lifespan
     │   ├── models/
     │   │   ├── __init__.py       # from .users import UserModel as UserModel
     │   │   └── users/
@@ -214,10 +219,14 @@ my-service/
     └── api/
         ├── __init__.py
         ├── app.py                # create_app() — middleware, CORS, exception handlers, build_api_router()
+        ├── docs/                 # texto do OpenAPI, um módulo por router
+        │   ├── __init__.py
+        │   ├── base.py           # EndpointDoc — TypedDict de summary + description
+        │   └── users.py          # um EndpointDoc por handler de routers/users.py
         ├── routers/
         │   ├── __init__.py
         │   ├── api.py            # build_api_router(): o único lugar com /api
-        │   └── users.py          # um router por arquivo, só com o próprio prefixo
+        │   └── users.py          # TempestAPIRouter, um por arquivo, só com o próprio prefixo
         └── dependencies/         # SEMPRE um pacote, nunca um módulo plano
             ├── __init__.py
             ├── auth.py           # dependências X-Token / current_user / require_role
@@ -340,11 +349,14 @@ from tempest_fastapi_sdk import (
 
 from src.api.dependencies.resources import db
 from src.api.routers import build_api_router
+from src.core.settings import settings
+from src.db.configs import run_migrations
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Connect on startup, dispose on shutdown."""
+    """Migrate the schema and connect on startup, dispose on shutdown."""
+    await run_migrations(settings.DATABASE_URL)
     await db.connect()
     try:
         yield
@@ -461,7 +473,68 @@ from .models import UserModel as UserModel
 __all__: list[str] = ["BaseModel", "UserModel"]
 ```
 
-> **Dica:** Sempre importe os modelos em `src/db/__init__.py`. O SQLAlchemy precisa "ver" todo modelo antes de `BaseModel.metadata` ficar completa, para que o autogenerate do Alembic e o `create_tables()` funcionem corretamente.
+> **Dica:** Sempre importe os modelos em `src/db/__init__.py`. O SQLAlchemy precisa "ver" todo modelo antes de `BaseModel.metadata` ficar completa, para que o autogenerate do Alembic (e o `create_tables()` das fixtures de teste) funcionem corretamente.
+
+#### O schema no banco: migrations
+
+A tabela `user` nasce de uma migration do Alembic, não de `create_tables()`
+no lifespan — `create_tables()` não acrescenta coluna em tabela que já
+existe, então o schema para de acompanhar o model na segunda subida. Gere o
+ambiente do Alembic uma vez, com o `AlembicHelper.init` do SDK em vez de
+escrever `alembic.ini` e `alembic/env.py` à mão:
+
+```python
+# scripts/alembic_init.py
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini").init(
+    "alembic",
+    metadata_module="src.db",
+    metadata_attr="BaseModel",
+)
+```
+
+```bash
+uv run python scripts/alembic_init.py
+uv run tempest db revision -m "create users"
+```
+
+O `metadata_module` é `src.db` porque é ele que reexporta `BaseModel` e
+importa todo model. A revision é obrigatória: sem nenhuma, o passo seguinte
+não cria tabela.
+
+O lifespan do passo 2 chama `run_migrations`, na forma que o `tempest new`
+gera:
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
+
+
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
+```
+
+```python
+# src/db/configs/__init__.py
+from .migrations import ALEMBIC_INI_PATH as ALEMBIC_INI_PATH
+from .migrations import run_migrations as run_migrations
+
+__all__: list[str] = ["ALEMBIC_INI_PATH", "run_migrations"]
+```
+
+`sync_schema_async()` cobre banco vazio (roda todas as revisions), banco
+criado antes do Alembic (carimba a revision base e migra o resto) e banco já
+migrado (aplica só o que falta). O porquê de cada caminho está em
+[Migrations »](recipes/migrations.md).
 
 ### 4. Schemas
 
@@ -978,16 +1051,80 @@ __all__: list[str] = ["get_user_controller"]
 
 Routers recebem controllers via `Depends` do FastAPI — sem construção inline, sem lógica de negócio, sem chamadas de DB. Um router por arquivo, declarando só o próprio prefixo (`/users`); o `/api` é posto uma vez, no `build_api_router`. Endpoints meta (`/health`, `/tool-spec`) ficam no prefixo raiz.
 
+O texto que o Swagger mostra não fica no router. Ele mora em
+`src/api/docs/users.py`, um `EndpointDoc` por handler, e o router o espalha
+no decorator (`**user_docs.CREATE_USER`). O `EndpointDoc` é o `TypedDict`
+de `summary` + `description` que o `tempest new` já escreve em
+`src/api/docs/base.py` — o porquê está em
+[Padrão de serviço › Texto do OpenAPI fora do router](service-standard.md#texto-do-openapi-fora-do-router):
+
+```python
+# src/api/docs/users.py
+from .base import EndpointDoc
+
+CREATE_USER: EndpointDoc = {
+    "summary": "Cadastra um usuário",
+    "description": (
+        "Cria a conta e devolve o usuário. Responde 409 (USER_EMAIL_TAKEN) quando o e-mail já está em uso."
+    ),
+}
+
+
+GET_USER: EndpointDoc = {
+    "summary": "Busca um usuário",
+    "description": (
+        "Devolve o usuário pelo id. Responde 404 (USER_NOT_FOUND) quando ele não existe."
+    ),
+}
+
+
+UPDATE_USER: EndpointDoc = {
+    "summary": "Atualiza um usuário",
+    "description": (
+        "Aplica uma atualização parcial de nome e e-mail."
+    ),
+}
+
+
+DELETE_USER: EndpointDoc = {
+    "summary": "Desativa um usuário",
+    "description": (
+        "Marca o usuário como inativo, sem apagar a linha."
+    ),
+}
+
+
+LIST_USERS: EndpointDoc = {
+    "summary": "Lista usuários",
+    "description": (
+        "Devolve uma página de usuários, filtrada e ordenada pela query string."
+    ),
+}
+
+__all__: list[str] = ["CREATE_USER", "DELETE_USER", "GET_USER", "LIST_USERS", "UPDATE_USER"]
+```
+
+Reexporte o módulo em `src/api/docs/__init__.py`
+(`from . import users as users`).
+
+O router é um `TempestAPIRouter`, não um `fastapi.APIRouter`: o
+`@raises(...)` logo **abaixo** de cada decorator de rota lista as exceções
+que o fluxo levanta, e o `TempestAPIRouter` as transforma no `responses=`
+da rota — um `ErrorResponseSchema` por status, com um exemplo por `code`.
+Num `APIRouter` comum a mesma tag não faz nada
+([Erros da rota](service-standard.md#erros-da-rota-tempestapirouter-raises)):
+
 ```python
 # src/api/routers/users.py
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
-
-from tempest_fastapi_sdk import BasePaginationSchema
+from fastapi import Depends, status
+from tempest_fastapi_sdk import BasePaginationSchema, TempestAPIRouter, raises
 
 from src.api.dependencies import get_user_controller
+from src.api.docs import users as user_docs
 from src.controllers import UserController
+from src.core.exceptions import UserEmailAlreadyTakenError, UserNotFoundError
 from src.schemas import (
     UserCreateSchema,
     UserFilterSchema,
@@ -996,14 +1133,16 @@ from src.schemas import (
 )
 
 
-router = APIRouter(prefix="/users", tags=["users"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/users", tags=["users"])
 
 
 @router.post(
     "",
     response_model=UserResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    **user_docs.CREATE_USER,
 )
+@raises(UserEmailAlreadyTakenError)
 async def create_user(
     data: UserCreateSchema,
     controller: UserController = Depends(get_user_controller),
@@ -1011,7 +1150,8 @@ async def create_user(
     return await controller.signup(data)
 
 
-@router.get("/{user_id}", response_model=UserResponseSchema)
+@router.get("/{user_id}", response_model=UserResponseSchema, **user_docs.GET_USER)
+@raises(UserNotFoundError)
 async def get_user(
     user_id: UUID,
     controller: UserController = Depends(get_user_controller),
@@ -1019,7 +1159,8 @@ async def get_user(
     return await controller.get_by_id(user_id)
 
 
-@router.patch("/{user_id}", response_model=UserResponseSchema)
+@router.patch("/{user_id}", response_model=UserResponseSchema, **user_docs.UPDATE_USER)
+@raises(UserNotFoundError)
 async def update_user(
     user_id: UUID,
     data: UserUpdateSchema,
@@ -1028,7 +1169,12 @@ async def update_user(
     return await controller.update(user_id, data)
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    **user_docs.DELETE_USER,
+)
+@raises(UserNotFoundError)
 async def delete_user(
     user_id: UUID,
     controller: UserController = Depends(get_user_controller),
@@ -1036,7 +1182,11 @@ async def delete_user(
     await controller.soft_delete(user_id)
 
 
-@router.get("", response_model=BasePaginationSchema[UserResponseSchema])
+@router.get(
+    "",
+    response_model=BasePaginationSchema[UserResponseSchema],
+    **user_docs.LIST_USERS,
+)
 async def list_users(
     filters: UserFilterSchema = Depends(),
     controller: UserController = Depends(get_user_controller),
@@ -1051,7 +1201,7 @@ async def list_users(
     return BasePaginationSchema[UserResponseSchema](**result)
 ```
 
-Monte-o no `build_api_router`, o único lugar onde `/api` aparece:
+Monte-o no `build_api_router`, o único lugar onde `/api` aparece. O agregador continua um `APIRouter` comum: os erros são montados pelo router em que o handler é registrado, e o `include_router` os leva para cima sem mudança:
 
 ```python
 # src/api/routers/api.py
@@ -1596,6 +1746,24 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/
 # Guia de migração
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
+
+## 0.372.0 — cinco regras novas no `tempest check` e `RuntimeError` sem URL no `AlembicHelper`
+
+O `tempest check` (e o `tempest lint-layers`) ganhou cinco regras, todas de severidade `warning`. Com `layers_strict = true` em `[tool.tempest]`, que é o padrão do `tempest new`, aviso também derruba o comando: num projeto gerado com só três avisos plantados, `tempest lint-layers` imprimiu `3 layer finding(s): 0 error(s), 3 warning(s).` e saiu com código `1`; com `layers_strict = false`, com código `0`.
+
+| Regra | O que acusa | O que fazer |
+| --- | --- | --- |
+| `INIT001` | `def`, `class`, chamada ou constante em `__init__.py` | Mova para um módulo do pacote (`router.py`, `factory.py`, `runner.py`) e deixe o `__init__.py` só com `from .x import Y as Y` e `__all__` |
+| `SIZE001` | Módulo do código ou da suíte com mais de 1000 linhas | Divida por responsabilidade: um service em vários, um arquivo de teste em um por tema |
+| `LAY003` | Arquivo de `controllers/`, `services/`, `repositories/` ou `models/` com o sufixo da camada no nome (`checkout_service.py`) | Renomeie para `checkout.py`; a classe continua `CheckoutService` |
+| `RTR005` | `fastapi.APIRouter(...)` num router de domínio, fora do `build_api_router` | Troque por `TempestAPIRouter` (`from tempest_fastapi_sdk import TempestAPIRouter`), que transforma o `@raises(...)` em `responses=` |
+| `RTR006` | `summary=` ou `description=` no decorator da rota | Mova o texto para uma constante `EndpointDoc` em `api/docs/<router>.py` e espalhe com `**docs.NOME` |
+
+Para migrar aos poucos, declare o caso em `tests/architecture_exceptions.py`, com o motivo (veja [Exceção declarada](recommended-architecture.md#excecao-declarada)), ou desligue `layers_strict` enquanto corrige.
+
+`RTR003` e `RTR004` passaram a reconhecer `TempestAPIRouter` e as subclasses de router do projeto, então podem aparecer achados novos em routers que antes passavam.
+
+**`AlembicHelper` sem URL:** sem `db_url=` e sem `DATABASE_URL` resolvível, `current`, `current_async`, `has_existing_schema`, `adopt`, `sync_schema` e `sync_schema_async` levantam `RuntimeError` (`DATABASE_URL is empty. ...`) em vez de `sqlalchemy.exc.ArgumentError`. Em `sync_schema` e `sync_schema_async` isso vale quando há ao menos uma revision: sem nenhuma, os dois devolvem `no_migrations` antes de ler a URL, como já faziam. Quem capturava `ArgumentError` nesse caminho troca para `RuntimeError`.
 
 ## 0.366.0 — `RoutingBackend` exige `route_through` e `matrix`
 
@@ -4989,6 +5157,89 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.372.0] — 2026-11-26
+
+### Added
+
+- `tempest lint-layers` / `tempest check`: dois avisos novos para o router
+  de domínio (#825, #827). `RTR005` acusa `fastapi.APIRouter(...)` num
+  módulo de `routers/` fora do `build_api_router` — num `APIRouter` o
+  `@raises(...)` não vira `responses=` e os erros da rota somem do OpenAPI
+  sem aviso. `RTR006` acusa `summary=` ou `description=` no decorator de
+  rota (literal ou constante `SUMMARY_*`): o texto mora num `EndpointDoc`
+  de `api/docs/<router>.py`, espalhado no decorator.
+- `tempest check` / `tempest lint-layers`: três avisos novos (#823, #824).
+  `INIT001` acusa statement de `__init__.py` (do código e da suíte) que faz
+  mais que reexportar — `def`, `class`, chamada, constante; passam
+  docstring, import, o `__all__` (inclusive `+=`) e `if`/`try` feitos só
+  disso (`if TYPE_CHECKING:`, import opcional). `SIZE001` acusa módulo do
+  código ou da suíte com mais de 1000 linhas, na linha 1001, sem lista de
+  isentos. `LAY003` acusa módulo de `controllers/`, `services/`,
+  `repositories/` ou `models/` com o sufixo da camada no nome
+  (`checkout_service.py` → `checkout.py`; a classe continua
+  `CheckoutService`). Como o `tempest new` liga `layers_strict = true`, os
+  três derrubam o `tempest check` de projeto novo.
+- O `CLAUDE.md` que o `tempest new` escreve ganhou as regras que faltavam:
+  `__init__.py` só reexporta (com o par certo × errado de composição de
+  router), arquivo sem o sufixo da camada, teto de 1000 linhas, qual base
+  de controller usar (`BaseController[Service, Schema]` para um service,
+  `Controller` para vários ou nenhum) e a seção "Authentication" — o fluxo
+  de auth do SDK (`UserAuthService` + `make_auth_router`) não se
+  reimplementa, estende-se por `signup_schema`, `on_signup` e
+  `me_response_model`, e monta-se no app com `prefix="/api/auth"` (#826).
+
+### Changed
+
+- O scaffold do `tempest new` gera o router de domínio com
+  `TempestAPIRouter` (`src/api/routers/service_info.py` e, com `[ssr]`,
+  `src/api/routers/web.py`); o `build_api_router` continua `APIRouter`. O
+  `CLAUDE.md` do projeto ensina `TempestAPIRouter` + `@raises(...)` abaixo
+  do decorator + `**docs.X` no passo 7 e na paginação (#825).
+- `RTR003` e `RTR004` passam a reconhecer `TempestAPIRouter` e as
+  subclasses de router do projeto; antes só `fastapi.APIRouter` contava. A
+  mensagem do `RTR003` diz "a second router" em vez de "a second APIRouter".
+- **Projeto com `layers_strict = true`** (o padrão do `tempest new`) que use
+  `fastapi.APIRouter` ou `summary=` no router passa a falhar o
+  `tempest check` com `RTR005`/`RTR006`. Troque por `TempestAPIRouter` e
+  mova o texto para `api/docs/<router>.py`, ou declare a exceção em
+  `tests/architecture_exceptions.py`.
+
+### Documentation
+
+- `recipes/database`, `recipes/migrations`, `tutorial` e README: o `lifespan`
+  sincroniza o schema com `AlembicHelper.sync_schema_async()` em vez de
+  `db.create_tables()`, que não aplica `ALTER TABLE` numa tabela que já
+  existe; `create_tables()` fica para fixture de teste e demo de um
+  arquivo só (#828). `migration`: nota da 0.372.0.
+- `service-standard`: seção "Erros da rota" com o OpenAPI medido de uma
+  rota com `@raises` e par certo × errado do texto OpenAPI.
+  `recommended-architecture`, `architecture`, `tutorial`,
+  `getting-started/first-project` e README: `api/docs/` na árvore e os
+  routers de exemplo com `TempestAPIRouter`, `@raises` e `EndpointDoc`.
+
+### Fixed
+
+- `tempest generate --src` com `[queue]` escrevia o broker, o manager e o
+  `get_broker` dentro de `src/queue/__init__.py`; agora moram em
+  `src/queue/broker.py`, e o `__init__.py` só reexporta. Os nomes
+  importados de `src.queue` não mudam.
+- `AlembicHelper`: sem `db_url=` e sem `DATABASE_URL` resolvível (nem no
+  ambiente nem em `src/core/settings.py`), as leituras (`current`,
+  `current_async`, `has_existing_schema`, `adopt`, `sync_schema`,
+  `sync_schema_async`) levantavam
+  `sqlalchemy.exc.ArgumentError: Could not parse SQLAlchemy URL from given URL string`
+  (#832). O `alembic.ini` gerado pelo SDK deixa `sqlalchemy.url =` vazio, o
+  Alembic devolve `""` e a checagem era `is None`. Agora levantam
+  `RuntimeError` com a mesma mensagem do `upgrade`
+  (`DATABASE_URL is empty. Set it on the environment, in src/core/settings.py, or pass --database-url to the CLI.`),
+  que sai de uma constante só, `MISSING_DATABASE_URL_MESSAGE` em
+  `tempest_fastapi_sdk.db.migrations`. **Correção de contrato:** o tipo da
+  exceção muda de `ArgumentError` para `RuntimeError`, que é o que as
+  docstrings sempre documentaram; quem captura `ArgumentError` nesse caminho
+  deixa de capturar.
+  `sync_schema` e `sync_schema_async` só chegam à URL com ao menos uma
+  revision; sem nenhuma, devolvem `no_migrations` antes, como já faziam.
 
 ## [0.371.0] — 2026-11-23
 
@@ -30000,7 +30251,7 @@ minha_api/
 ├── .env.example
 └── src/
     ├── server.py           # uvicorn programático + app importável
-    ├── api/                # routers, dependencies, factory do app
+    ├── api/                # routers, dependencies, docs (texto do OpenAPI), factory do app
     ├── controllers/        # orquestração fina sobre os services
     ├── services/           # lógica de negócio
     ├── schemas/            # DTOs de request/response
@@ -30009,6 +30260,11 @@ minha_api/
     │   └── repositories/
     └── core/               # settings + constants + exceptions
 ```
+
+Em `api/`, cada router de domínio é um `TempestAPIRouter` e o texto que o
+Swagger mostra mora em `api/docs/<router>.py`, um `EndpointDoc` por
+handler — o porquê está no
+[Padrão de serviço](../service-standard.md#texto-do-openapi-fora-do-router).
 
 Suba o serviço:
 
@@ -30241,7 +30497,7 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     │   ├── app.py                   # factory create_app() — middleware + handlers + wiring (magro)
     │   ├── routers/                 # endpoints HTTP, sem lógica de negócio
     │   ├── dependencies/            # PACOTE (auth.py + resources.py + controllers.py / services.py)
-    │   └── docs/                    # customização do OpenAPI
+    │   └── docs/                    # texto do OpenAPI: um EndpointDoc por handler (<router>.py)
     ├── controllers/<contexto>/      # orquestra entre services — uma classe por módulo
     ├── services/<contexto>/         # camada de lógica de negócio
     ├── schemas/                     # DTOs de request/response Pydantic v2
@@ -30266,6 +30522,14 @@ uma classe por módulo, e todo `__init__.py` reexporta com import relativo. O
 porquê de cada uma dessas formas, com o exemplo errado e o certo e o código
 do `tempest check` que a cobra, está em
 [Arquitetura recomendada](recommended-architecture.md).
+
+Em `api/`, todo router de domínio é um `TempestAPIRouter` com
+`@raises(...)` abaixo do decorator de rota, e o texto que o Swagger mostra
+mora em `api/docs/<router>.py`, um `EndpointDoc` por handler — nunca
+`summary=` no decorator. O porquê, com o OpenAPI medido, está no Padrão de
+serviço:
+[Texto do OpenAPI fora do router](service-standard.md#texto-do-openapi-fora-do-router)
+e [Erros da rota](service-standard.md#erros-da-rota-tempestapirouter-raises).
 
 !!! tip "`db/configs/names.py` evita uma classe de erro"
     Guardar o nome de cada tabela numa constante faz o `__tablename__` e
@@ -30547,13 +30811,14 @@ def get_user_controller(
 
 
 # src/api/routers/users.py
-from fastapi import APIRouter, Depends, status
+from fastapi import Depends, status
+from tempest_fastapi_sdk import TempestAPIRouter
 
 from src.api.dependencies.controllers import get_user_controller
 from src.controllers.user_controller import UserController
 from src.schemas.user import UserCreate, UserResponse
 
-router = APIRouter(prefix="/users", tags=["users"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/users", tags=["users"])
 
 
 @router.post(
@@ -30663,7 +30928,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, status
+from fastapi import Depends, FastAPI, status
 from fastapi.testclient import TestClient
 from pydantic import Field
 from sqlalchemy import ForeignKey, String
@@ -30680,7 +30945,9 @@ from tempest_fastapi_sdk import (
     BaseSchema,
     BaseService,
     NotFoundException,
+    TempestAPIRouter,
     ValidationException,
+    raises,
     register_exception_handlers,
 )
 
@@ -30875,10 +31142,11 @@ def get_product_controller(
     return ProductController(service)
 
 
-router: APIRouter = APIRouter(prefix="/api/products", tags=["products"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/api/products", tags=["products"])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
+@raises(CategoryNotFoundError, ProductPriceAboveLimitError)
 async def create_product(
     data: ProductCreateSchema,
     controller: ProductController = Depends(get_product_controller),
@@ -30896,6 +31164,7 @@ async def create_product(
 
 
 @router.get("/{product_id}")
+@raises(ProductNotFoundError)
 async def get_product(
     product_id: UUID,
     controller: ProductController = Depends(get_product_controller),
@@ -30960,6 +31229,13 @@ with TestClient(app) as client:
     )
     print(capped.status_code, capped.json()["details"])
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](recipes/migrations.md#3-sincronize-o-schema-no-lifespan).
 
 ```text
 201 Dune
@@ -31260,7 +31536,7 @@ Parte destas regras tem gate; parte não. O `tempest lint-layers` (e o passo
 
 As regras de forma de arquivo — pacote de contexto, import pela camada, o
 que service e controller recebem, um router por arquivo, a suíte — entram
-como **aviso** (`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`/`RTR004`, `STR*`,
+como **aviso** (`LAY*`, `IMP*`, `DI*`, `REPO002`, `RTR003`–`RTR006`, `STR*`,
 `TST*`) e estão em [Arquitetura recomendada](recommended-architecture.md).
 
 Rodado sobre um `src/` com um `FamilyService` cujo `__init__` só chama
@@ -31433,6 +31709,35 @@ __all__: list[str] = ["RouteModel", "StopModel"]
 O nome do contexto é livre: a lista que o `CLAUDE.md` do projeto sugere
 guia, não restringe.
 
+### O nome do arquivo não repete a camada
+
+O diretório já diz a camada; o arquivo diz o que ele guarda. A classe
+mantém o sufixo, porque é o nome que todo call site lê:
+
+| ✅ Certo | ❌ Errado |
+| --- | --- |
+| `services/orders/checkout.py` → `CheckoutService` | `services/orders/checkout_service.py` |
+| `controllers/orders/checkout.py` → `CheckoutController` | `controllers/orders/checkout_controller.py` |
+| `db/repositories/orders/order.py` → `OrderRepository` | `db/repositories/orders/order_repository.py` |
+
+O controller herda de uma das duas bases do SDK, as mesmas que o scaffold
+usa: `BaseController[Service, Schema]` quando passa o CRUD de **um**
+service, e `Controller` quando coordena vários (ou nenhum, como o
+`ServiceInfoController` que o `tempest new` gera).
+
+### Até 1000 linhas por arquivo
+
+Código **e** teste, sem lista de exceção. Arquivo grande é ruim de mudar e
+de revisar: o service grande vira vários, um por responsabilidade
+(`services/orders/checkout.py`, `services/orders/refund.py`); o arquivo de
+teste grande vira um por tema; o `__init__.py` grande vira pacote por
+domínio.
+
+| Código | Acusa |
+| --- | --- |
+| `LAY003` | módulo de uma das quatro camadas com o sufixo dela no nome (`_controller`, `_service`, `_repository`, `_model`) |
+| `SIZE001` | módulo do código ou da suíte com mais de 1000 linhas, acusado na linha 1001 |
+
 ## 2. Import pelo pacote da camada; `__init__` relativo
 
 **Por quê:** o caminho interno de um pacote é detalhe dele. Quem importa
@@ -31468,6 +31773,50 @@ class InvoiceController(BaseController[InvoiceService, InvoiceResponseSchema]):
 | --- | --- |
 | `IMP001` | `__init__.py` importando módulo do próprio pacote com caminho absoluto |
 | `IMP002` | import pelo submódulo de um nome que um pacote acima já reexporta (seguido de forma transitiva, inclusive por `import *`) |
+| `INIT001` | `__init__.py` com algo além de reexport e `__all__`: `def`, `class`, chamada, constante |
+
+O `__init__.py` **só reexporta**. Código que monta alguma coisa mora num
+módulo do pacote e é reexportado: composição de router em `router.py`,
+factory em `factory.py`, orquestração de seed em `runner.py`.
+
+❌ O pacote monta o router:
+
+```python
+# src/api/routers/admin/__init__.py
+from fastapi import APIRouter
+
+from .orders import router as orders_router
+
+admin_router: APIRouter = APIRouter(prefix="/admin", tags=["admin"])
+admin_router.include_router(orders_router)
+```
+
+✅ O `router.py` monta; o `__init__.py` reexporta:
+
+```python
+# src/api/routers/admin/router.py
+from tempest_fastapi_sdk import TempestAPIRouter
+
+from .orders import router as orders_router
+
+
+def build_admin_router() -> TempestAPIRouter:
+    """Assemble the admin routers under ``/admin``.
+
+    Returns:
+        TempestAPIRouter: ``/admin`` with every admin router included.
+    """
+    admin: TempestAPIRouter = TempestAPIRouter(prefix="/admin", tags=["admin"])
+    admin.include_router(orders_router)
+    return admin
+```
+
+```python
+# src/api/routers/admin/__init__.py
+from .router import build_admin_router as build_admin_router
+
+__all__: list[str] = ["build_admin_router"]
+```
 
 !!! warning "Quando o pacote fecharia ciclo"
     A sugestão do `IMP002` é o pacote mais alto que reexporta o nome **sem
@@ -31561,7 +31910,7 @@ combinar dois repositories é exatamente o trabalho do service.
 | --- | --- |
 | `REPO002` | import de um `*Repository` dentro de `repositories/` (o nome usado só como base de classe — o repository base do projeto — passa) |
 
-## 5. Um router por arquivo; `/api` uma vez
+## 5. Um router por arquivo; `/api` uma vez; `TempestAPIRouter`
 
 **Por quê:** com o `/api` repetido em cada `include_router` (22 vezes, no
 transport), mudar o prefixo da API ou montar um domínio fora dela vira caça
@@ -31593,10 +31942,90 @@ def build_api_router() -> APIRouter:
     return api
 ```
 
+O router de domínio tem forma também. O texto do Swagger mora em
+`api/docs/<router>.py`, um `EndpointDoc` por handler, e não em constantes
+`SUMMARY_*` no topo do router; e o router é um `TempestAPIRouter`, que
+transforma o `@raises(...)` abaixo do decorator no `responses=` da rota —
+num `fastapi.APIRouter` a mesma tag não faz nada.
+
+❌ Antes:
+
+```python
+# src/api/routers/orders.py
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_order_controller
+from src.controllers import OrderController
+from src.schemas import OrderResponseSchema
+
+SUMMARY_GET_ORDER: str = "Busca um pedido"
+
+router: APIRouter = APIRouter(prefix="/orders", tags=["orders"])
+
+
+@router.get("/{order_id}", summary=SUMMARY_GET_ORDER)
+async def get_order(
+    order_id: UUID,
+    controller: OrderController = Depends(get_order_controller),
+) -> OrderResponseSchema:
+    """Busca um pedido."""
+    return await controller.get_by_id(order_id)
+```
+
+✅ Depois:
+
+```python
+# src/api/docs/orders.py
+from .base import EndpointDoc
+
+GET_ORDER: EndpointDoc = {
+    "summary": "Busca um pedido",
+    "description": "Devolve o pedido pelo id. Responde 404 (ORDER_NOT_FOUND) quando ele não existe.",
+}
+```
+
+```python
+# src/api/routers/orders.py
+from uuid import UUID
+
+from fastapi import Depends
+from tempest_fastapi_sdk import TempestAPIRouter, raises
+
+from src.api.dependencies import get_order_controller
+from src.api.docs import orders as order_docs
+from src.controllers import OrderController
+from src.core.exceptions import OrderNotFoundException
+from src.schemas import OrderResponseSchema
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/orders", tags=["orders"])
+
+
+@router.get("/{order_id}", **order_docs.GET_ORDER)
+@raises(OrderNotFoundException)
+async def get_order(
+    order_id: UUID,
+    controller: OrderController = Depends(get_order_controller),
+) -> OrderResponseSchema:
+    """Busca um pedido."""
+    return await controller.get_by_id(order_id)
+```
+
+O porquê de cada metade, com o OpenAPI medido que o `@raises` produz, está
+no Padrão de serviço:
+[Texto do OpenAPI fora do router](service-standard.md#texto-do-openapi-fora-do-router)
+e
+[Erros da rota](service-standard.md#erros-da-rota-tempestapirouter-raises).
+O agregador do `build_api_router` continua `APIRouter`: quem monta os
+erros é o router em que o handler é registrado.
+
 | Código | Acusa |
 | --- | --- |
-| `RTR003` | mais de um `APIRouter(...)` num módulo de `routers/` |
+| `RTR003` | mais de um router (`APIRouter(...)`, `TempestAPIRouter(...)` ou subclasse do projeto) num módulo de `routers/` |
 | `RTR004` | `prefix` `/api` (ou abaixo dele) fora de uma função `build_api_router` |
+| `RTR005` | `fastapi.APIRouter(...)` num módulo de `routers/`, fora do `build_api_router` |
+| `RTR006` | `summary=` ou `description=` no decorator de uma rota em `routers/` |
 
 ## 6. Sem função aninhada nem helper privado de módulo
 
@@ -31798,12 +32227,14 @@ Depois ataque **uma família por PR**, cada uma com `--rule` até zerar:
 1. **`IMP001`/`IMP002`** primeiro: é mecânico, não muda comportamento e
    deixa as próximas mudanças mais baratas — mover arquivo não quebra mais
    import.
-2. **`LAY001`/`LAY002`**: mover cada classe para o pacote de contexto,
-   reexportando relativo. Com o passo 1 feito, os call sites não mudam.
+2. **`LAY001`–`LAY003`** e **`INIT001`**: mover cada classe para o pacote
+   de contexto, num arquivo sem o sufixo da camada, e tirar o que não é
+   reexport dos `__init__.py`, reexportando relativo. Com o passo 1 feito, os call sites não mudam.
 3. **`DI001`–`DI003`**: criar o `scripts/composition.py` e fazer os
    providers chamarem os `build_*`; apagar os `from_session`.
-4. **`RTR003`/`RTR004`**: criar o `routers/api.py` e tirar o `/api` dos
-   domínios.
+4. **`RTR003`–`RTR006`**: criar o `routers/api.py` e tirar o `/api` dos
+   domínios; trocar o `APIRouter` de cada domínio por `TempestAPIRouter`
+   e mover `summary=`/`description=` para `api/docs/<router>.py`.
 5. **`STR001`/`STR002`**: callbacks com estado viram classe; argumento fixo
    vira `partial`.
 6. **`TST001`–`TST004`**: a suíte — de longe a maior conta no transport
@@ -31835,10 +32266,14 @@ aviso que voltar derruba o `tempest check`.
 
 - **Uma classe por arquivo**, em `<camada>/<contexto>/`; o pacote reexporta
   relativo e o resto importa pelo pacote.
+- **Arquivo sem o sufixo da camada e com até 1000 linhas**; o `__init__.py`
+  só reexporta.
 - **Service recebe repository; controller recebe service.** O grafo é
   montado no `scripts/composition.py`, e ninguém tem `from_session`.
 - **Repository não importa repository.**
-- **Um router por arquivo**, e o `/api` só no `build_api_router`.
+- **Um router por arquivo**, e o `/api` só no `build_api_router`; o
+  router de domínio é `TempestAPIRouter`, com `@raises` e o texto em
+  `api/docs`.
 - **Sem função aninhada nem `_helper` de módulo**, no código e na suíte.
 - **Task é só registro**, com nome fixo; a API enfileira pelo nome.
 - **Schema documentado**, conferido por `assert_schema_metadata`.
@@ -31948,12 +32383,18 @@ exceções.
 | Regra | Como fica | Quem cobra hoje |
 | --- | --- | --- |
 | Uma classe de camada por arquivo, por contexto | `src/<camada>/<contexto>/<arquivo>.py`, só a classe + `logger` + `__all__` | `LAY001`, `LAY002` |
+| Nome de arquivo sem o sufixo da camada | `services/orders/checkout.py` → `CheckoutService` (nunca `checkout_service.py`) | `LAY003` |
+| Até 1000 linhas por arquivo, código e teste, sem lista de exceção | service grande vira vários por responsabilidade; teste grande, um arquivo por tema | `SIZE001` |
 | Sem `def` aninhado nem `_x` de módulo, em `src` e `tests` | callback com estado vira objeto chamável | `STR001`, `STR002` |
 | `__init__` com import relativo; fora dele, import do pacote | `from .x import Y` / `from src.services import X` | `IMP001`, `IMP002` |
+| `__init__.py` só reexporta | `from .x import Y as Y` + `__all__`; montagem em `router.py`, `factory.py`, `runner.py` | `INIT001` |
 | Recurso é singleton de processo num lugar só | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (convenção do scaffold) |
 | Providers por camada; router nunca vê `AsyncSession` | `api/dependencies/controllers.py` chama os `build_*` | `RTR001`, `DI001`–`DI003` |
+| Controller herda da base do SDK | `BaseController[Service, Schema]` (um service) ou `Controller` (vários, ou nenhum) | — (convenção do scaffold) |
+| Login e cadastro vêm do SDK | `UserAuthService` + `make_auth_router(..., prefix="/api/auth")` | — (sem gate) |
 | `/api` posto num lugar só | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
-| Texto do OpenAPI fora do router | `api/docs/<router>.py`, um `EndpointDoc` por handler | — (convenção do scaffold) |
+| Router de domínio é `TempestAPIRouter` | `TempestAPIRouter(prefix=...)`, nunca `fastapi.APIRouter` | `RTR005` |
+| Texto do OpenAPI fora do router | `api/docs/<router>.py`, um `EndpointDoc` por handler | `RTR006` |
 | Exceções: um módulo por status, contrato no corpo da classe | `core/exceptions/{bad_request,unauthorized,forbidden,not_found,conflict}.py` | `tests/unit/core/test_exceptions_contract.py` |
 | Contrato de exceção congelado | status, `code`, mensagem e `field` de cada classe | `tests/unit/core/test_exceptions_contract.py` |
 | Prosa e constante fora do módulo que usa | `core/constants/` + `core/constants/messages/{errors,successes}.py` | — (convenção do scaffold) |
@@ -31962,23 +32403,208 @@ exceções.
 | Mapeamento no repository | `map_to_response` | `REPO001` (parcial) |
 | Grafo montado fora do request | `scripts/composition.py` (`build_*`) | `DI003` (`from_session`) |
 | Todo campo de schema documentado | `Field(title=..., description=..., examples=...)` | `lint-schemas` + `tests/unit/architecture/test_schemas.py` |
-| Toda rota declara o que levanta | `responses=error_responses(...)` | `openapi-errors` + `tests/unit/architecture/test_openapi_errors.py` |
+| Toda rota declara o que levanta | `@raises(...)` abaixo do decorator de rota | `openapi-errors` + `tests/unit/architecture/test_openapi_errors.py` |
 | Testes | `Cenário:`/`Esperado:`, que conferem algo; `tests/{unit,integration}/<área>/` | `TST001`–`TST004` |
 | Guards na própria suíte | `tests/unit/architecture/` | `test_layers.py`, `test_openapi_errors.py`, `test_schemas.py` |
 | Avisos falham desde o primeiro commit | `layers_strict = true` em `[tool.tempest]` | `tempest check` |
 
-Os códigos `LAY`, `STR`, `IMP`, `DI`, `RTR003`/`RTR004` e `TST` são
+Os códigos `LAY`, `STR`, `IMP`, `INIT`, `SIZE`, `DI`, `RTR003`–`RTR006` e `TST` são
 **avisos**: só derrubam o `tempest check` com `layers_strict = true`, que o
 `pyproject.toml` gerado já liga. A tabela de todos os códigos, com a saída
 real de cada um, está em
 [CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
 
 !!! note "O que não tem gate"
-    Singleton de recurso, `api/docs`, `core/constants` e `db/configs` são
+    Singleton de recurso, `core/constants` e `db/configs` são
     convenção: o scaffold nasce assim e a receita do `CLAUDE.md` ensina
     assim, mas nenhuma regra falha se você desviar. Ficaram de fora porque
     a checagem precisaria julgar intenção (o que é "prosa", o que é
     "recurso de processo"), e regra larga demais acusa código correto.
+
+    A base do controller e o fluxo de auth também ficaram sem gate. O
+    `Controller` não tem método nenhum, então herdar dele não muda o que
+    roda; o que a convenção protege — controller recebe service, nunca
+    sessão nem outro controller — já é o `DI001`/`DI002`. E uma rota
+    `/login` escrita à mão não se distingue, lendo a sintaxe, de uma que
+    tem motivo para existir (um proxy para outro provedor): o gate
+    precisaria julgar intenção de novo.
+
+## `__init__.py` só reexporta
+
+**Por quê:** o `__init__.py` roda no import de qualquer módulo do pacote.
+Uma função, um router composto ou uma factory ali dentro roda para quem só
+queria um schema, fica fora do índice de arquivos (ninguém procura
+`build_admin_router` em `__init__.py`) e abre a porta para ciclo de import.
+O pacote guarda docstring, reexport relativo e `__all__` — mais nada.
+
+❌ O pacote monta o router:
+
+```python
+# src/api/routers/admin/__init__.py
+from fastapi import APIRouter
+
+from .orders import router as orders_router
+
+admin_router: APIRouter = APIRouter(prefix="/admin", tags=["admin"])
+admin_router.include_router(orders_router)
+```
+
+✅ O `router.py` monta, o `__init__.py` reexporta, e o `build_api_router`
+inclui `build_admin_router()`:
+
+```python
+# src/api/routers/admin/router.py
+from tempest_fastapi_sdk import TempestAPIRouter
+
+from .orders import router as orders_router
+
+
+def build_admin_router() -> TempestAPIRouter:
+    """Assemble the admin routers under ``/admin``.
+
+    Returns:
+        TempestAPIRouter: ``/admin`` with every admin router included.
+    """
+    admin: TempestAPIRouter = TempestAPIRouter(prefix="/admin", tags=["admin"])
+    admin.include_router(orders_router)
+    return admin
+```
+
+```python
+# src/api/routers/admin/__init__.py
+from .router import build_admin_router as build_admin_router
+
+__all__: list[str] = ["build_admin_router"]
+```
+
+Factory vai para `factory.py` (`src/integrations/payment/factory.py`), a
+orquestração de seed para `runner.py` (`src/db/seed/runner.py`), cada um
+reexportado do mesmo jeito. O `INIT001` acusa cada statement que faz mais
+que reexportar — `def`, `class`, chamada, constante —, no código e na suíte;
+`if TYPE_CHECKING:` e import opcional em `try` passam quando só importam.
+
+## Autenticação: monte a do SDK, não escreva a sua
+
+**Por quê:** cadastro, ativação, login, refresh, logout, `/me`, troca de
+senha e de e-mail já existem no SDK, com a política de senha, o 409 de
+e-mail duplicado, a revogação de sessão e o par JWT acertados. Um
+`AuthService` escrito à mão reconstrói cada um desses e passa a driftar
+uma release por vez.
+
+O serviço compõe as peças, todas exportadas por `tempest_fastapi_sdk`:
+`BaseUserModel` (a base do `UserModel`), `make_user_token_model(...)` e
+`make_user_refresh_token_model(...)` (as tabelas de token), `AuthSettings`
+(no `Settings`, ao lado do `JWTSettings`), `UserAuthService`,
+`make_auth_router(...)` e, nas rotas do próprio serviço,
+`UserAuthService.current_user_dependency(...)` ou
+`make_jwt_user_dependency`.
+
+❌ Rotas de auth escritas à mão:
+
+```python
+# src/api/routers/auth.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_auth_controller
+from src.controllers import AuthController
+from src.schemas import LoginSchema, TokenPairSchema
+
+router: APIRouter = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/login")
+async def login(
+    data: LoginSchema,
+    controller: AuthController = Depends(get_auth_controller),
+) -> TokenPairSchema:
+    """Log a user in by email and password."""
+    return await controller.login(data)
+```
+
+✅ O service sai do composition root e o router é montado no `create_app`,
+como os outros routers do SDK:
+
+```python
+# src/scripts/composition.py
+from tempest_fastapi_sdk import AsyncDatabaseManager, UserAuthService
+
+from src.core import Settings
+from src.db.models import UserModel, UserTokenModel
+
+
+def build_auth_service(db: AsyncDatabaseManager, settings: Settings) -> UserAuthService:
+    """Assemble the SDK's auth service over this project's tables.
+
+    Args:
+        db (AsyncDatabaseManager): The process-wide database manager.
+        settings (Settings): Settings composing ``AuthSettings`` and
+            ``JWTSettings``.
+
+    Returns:
+        UserAuthService: The service ``make_auth_router`` serves.
+    """
+    return UserAuthService(
+        db=db,
+        user_model=UserModel,
+        token_model=UserTokenModel,
+        auth_settings=settings,
+        jwt_settings=settings,
+        email=None,
+    )
+```
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import make_auth_router
+
+from src.api.dependencies import db, get_session
+from src.core import settings
+from src.scripts import build_auth_service
+
+
+def create_app() -> FastAPI:
+    """Build the application with the SDK's auth routes under ``/api/auth``.
+
+    Returns:
+        FastAPI: The configured application.
+    """
+    app = FastAPI()
+    app.include_router(
+        make_auth_router(
+            build_auth_service(db, settings),
+            session_factory=get_session,
+            prefix="/api/auth",
+        ),
+    )
+    return app
+```
+
+Para estender sem reescrever rota: `signup_schema=` (subclasse de
+`SignupSchema`; campo que é coluna entra na linha antes do insert),
+`on_signup=` (hook `(session, user, payload)` dentro da transação do
+insert) e `me_response_model=` (subclasse de `AuthUserSchema`, devolvida
+pelo `GET /auth/me`). Os três aparecem juntos num exemplo completo na
+[receita de auth](recipes/auth-flow.md#conta-que-nasce-com-mais-que-e-mail-e-senha-v02780).
+
+!!! warning "O prefixo inteiro vai no `prefix=`, com o router montado no app"
+    O `make_auth_router` escreve o próprio prefixo no `Path` do cookie de
+    refresh e nas URLs que ele monta, e não enxerga prefixo posto em volta
+    dele. Medido com `AUTH_TOKEN_DELIVERY=cookie`, login seguido de
+    `POST /api/auth/refresh` com o cookie jar do cliente:
+
+    | `make_auth_router(...)` | `POST /api/auth/login` | cookie de refresh | `POST /api/auth/refresh` |
+    | --- | --- | --- | --- |
+    | `/auth` default, incluído num `APIRouter(prefix="/api")` | `200` | `Path=/auth` | `401` |
+    | `prefix="/api/auth"`, `app.include_router(...)` | `200` | `Path=/api/auth` | `200` |
+
+    Incluído dentro do `build_api_router` com o `/auth` default, a rota
+    responde em `/api/auth/login`, mas o cookie sai com `Path=/auth` e o
+    browser nunca o manda para `/api/auth/refresh`. Montar no app com
+    `prefix="/api/auth"` não aciona o `RTR004`, que só lê o `prefix=` de
+    `APIRouter(...)` e de `include_router(...)` — medido com
+    `tempest lint-layers` sobre um projeto do `tempest new --extras auth`
+    com essa montagem no `create_app`.
 
 ## Exceções: um módulo por status, contrato no corpo
 
@@ -32154,14 +32780,15 @@ E o router espalha o dicionário no decorator:
 
 ```python
 # src/api/routers/service_info.py
-from fastapi import APIRouter, Depends
+from fastapi import Depends
+from tempest_fastapi_sdk import TempestAPIRouter
 
 from src.api.dependencies import get_service_info_controller
 from src.api.docs import service_info
 from src.controllers import ServiceInfoController
 from src.schemas import ServiceInfoSchema
 
-router: APIRouter = APIRouter(tags=["root"])
+router: TempestAPIRouter = TempestAPIRouter(tags=["root"])
 
 
 @router.get("/", **service_info.INDEX)
@@ -32182,6 +32809,51 @@ async def index(
 As duas chaves são os parâmetros `summary` e `description` de
 `APIRouter.get`/`post`, então o mypy confere o espalhamento.
 
+O formato errado é o que aparece quando o texto fica no router: constantes
+`SUMMARY_*` soltas no topo do módulo, ou `summary="..."` escrito no
+decorator. O `tempest check` acusa cada palavra-chave como `RTR006` — e,
+no mesmo arquivo, o `fastapi.APIRouter` como `RTR005` (veja a próxima
+seção):
+
+```python
+# src/api/routers/service_info.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
+
+SUMMARY_INDEX: str = "Describe the service"
+
+router: APIRouter = APIRouter(tags=["root"])
+
+
+@router.get("/", summary=SUMMARY_INDEX, description="Returns the service name.")
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
+    """Placeholder root endpoint returning the service name.
+
+    Args:
+        controller (ServiceInfoController): The injected controller.
+
+    Returns:
+        ServiceInfoSchema: The service title.
+    """
+    return await controller.describe()
+```
+
+```text
+$ tempest lint-layers . --rule RTR005 --rule RTR006
+src/api/routers/service_info.py:10: RTR005 (warning) APIRouter(...) builds this router (`router`); build it with `TempestAPIRouter` from tempest_fastapi_sdk, which turns each handler's `@raises(...)` into its `responses=` (a plain APIRouter ignores the tag).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `summary=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `description=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+Mesmo texto, outro lugar: mova cada par para um `EndpointDoc` em
+`api/docs/service_info.py` e espalhe no decorator, como acima.
+
 ??? info "Por que `EndpointDoc` mora no template e não no SDK"
     O SDK já tem o `RouteDoc` (em `tempest_fastapi_sdk.api.route_docs`),
     mas ele é o catálogo bilíngue das rotas **do próprio SDK**: aceita
@@ -32190,6 +32862,108 @@ As duas chaves são os parâmetros `summary` e `description` de
     espalhado direto no decorator. Publicá-lo no SDK seria superfície
     pública para um tipo de duas linhas que cada serviço lê do próprio
     `api/docs` — o tipo de wrapper que a gente prefere não depender.
+
+## Erros da rota: `TempestAPIRouter` + `@raises`
+
+**Por quê:** o cliente precisa saber, pelo OpenAPI, quais erros uma rota
+devolve — com o `code` de cada um. A lista mora ao lado do handler, num
+`@raises(...)` logo **abaixo** do decorator de rota, e o
+`TempestAPIRouter` do SDK a transforma no `responses=` da rota. Todo
+router de domínio é um `TempestAPIRouter`, nunca um `fastapi.APIRouter`:
+
+```python
+# src/api/routers/product.py
+from fastapi import Depends, status
+from tempest_fastapi_sdk import TempestAPIRouter, raises
+
+from src.api.dependencies import get_product_controller
+from src.api.docs import product as product_docs
+from src.controllers import ProductController
+from src.core.exceptions import ProductNameTakenException, ProductSkuTakenException
+from src.schemas import ProductCreateSchema, ProductResponseSchema
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/products", tags=["products"])
+
+
+@router.post("", status_code=status.HTTP_201_CREATED, **product_docs.CREATE_PRODUCT)
+@raises(ProductNameTakenException, ProductSkuTakenException)
+async def create_product(
+    data: ProductCreateSchema,
+    controller: ProductController = Depends(get_product_controller),
+) -> ProductResponseSchema:
+    """Create a product.
+
+    Args:
+        data (ProductCreateSchema): The creation payload.
+        controller (ProductController): The injected controller.
+
+    Returns:
+        ProductResponseSchema: The created product.
+    """
+    return await controller.create(data)
+```
+
+O `409` dessa rota sai assim em `app.openapi()["paths"]["/api/products"]["post"]["responses"]`
+(medido com `fastapi` 0.165.0, o piso do SDK, e as duas exceções com
+`code`, `message` e docstring no corpo da classe):
+
+```json
+{
+  "description": "PRODUCT_NAME_TAKEN | PRODUCT_SKU_TAKEN",
+  "content": {
+    "application/json": {
+      "schema": {
+        "$ref": "#/components/schemas/ErrorResponseSchema"
+      },
+      "examples": {
+        "PRODUCT_NAME_TAKEN": {
+          "summary": "Name in use.",
+          "value": {
+            "detail": "A product with this name already exists.",
+            "code": "PRODUCT_NAME_TAKEN",
+            "details": {},
+            "field": "name"
+          }
+        },
+        "PRODUCT_SKU_TAKEN": {
+          "summary": "SKU in use.",
+          "value": {
+            "detail": "A product with this SKU already exists.",
+            "code": "PRODUCT_SKU_TAKEN",
+            "details": {}
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+O `ErrorResponseSchema` entra em `components.schemas` e a resposta o
+referencia por `$ref`; as exceções do mesmo status viram um exemplo cada,
+chaveado pelo `code`.
+
+Três detalhes, todos medidos no mesmo app:
+
+- **Num `fastapi.APIRouter`, o `@raises` não faz nada.** A tag fica no
+  handler, ninguém a lê, e a rota sai só com `200` e `422` — sem erro e sem
+  aviso. Por isso o `tempest check` acusa um `APIRouter` em `routers/` como
+  `RTR005`.
+- **`responses=` explícito vale para sobrescrever um status.** A entrada
+  escrita à mão substitui a gerada para aquele status code **inteira** —
+  some o `$ref` e somem os exemplos daquele status. Use só quando quiser
+  mesmo outro texto para um código.
+- **O agregador continua `APIRouter`.** As respostas são montadas pelo
+  router em que o handler é registrado, e o `include_router` as leva para
+  cima sem mudar nada. Um `TempestAPIRouter` no `build_api_router` não
+  acrescenta nada, e um `APIRouter` de domínio incluído num agregador
+  `TempestAPIRouter` continua sem os erros.
+
+O `tempest check` (passo `openapi-errors`) lê o `@raises` como declaração
+da rota: exceção que o fluxo alcança e não está na lista falha o gate. A
+receita completa, com catálogo de mensagens e `error_responses` para
+routers que não são seus, está em
+[Erros no OpenAPI](recipes/openapi-errors.md).
 
 ## Guards na própria suíte
 
@@ -32307,6 +33081,12 @@ Ligue o `layers_strict = true` quando os avisos zerarem.
 - **`db/configs`** guarda o `make_db_manager` (`hide_parameters=True`) e o
   `run_migrations` do boot.
 - **`api/docs`** guarda o `EndpointDoc` de cada handler.
+- **`__init__.py` só reexporta**; composição em `router.py`, factory em
+  `factory.py`, seed em `runner.py`. Arquivo sem o sufixo da camada e
+  com até 1000 linhas.
+- **Auth é a do SDK**: `UserAuthService` + `make_auth_router(..., prefix="/api/auth")`
+  montado no app, estendido por `signup_schema`, `on_signup` e
+  `me_response_model`.
 - **`layers_strict = true`** e os guards em `tests/unit/architecture/`
   fazem o `tempest check` e o `pytest` falharem no primeiro desvio.
 
@@ -34415,6 +35195,13 @@ app.include_router(
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
 
 Cada mapa vira uma entrada na seção **Maps** da barra lateral, em
 `/admin/maps/<slug>` (o slug sai do título, sem acento:
@@ -43438,6 +44225,13 @@ if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
 
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
+
 O que cada rota faz:
 
 - **`admin_create_user`** cria a conta **já ativa**. O caminho é o do
@@ -43497,6 +44291,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
+    AuthUserSchema,
     SignupSchema,
     UserAuthService,
     ValidationException,
@@ -43513,6 +44308,13 @@ class ProducerSignupSchema(SignupSchema):
     phone: str = Field(max_length=20)
     is_producer: bool = Field(default=False)
     accept_terms: bool = Field(default=False)
+
+
+class ProducerMeSchema(AuthUserSchema):
+    """O que o ``GET /auth/me`` devolve: a conta e as colunas deste produto."""
+
+    phone: str
+    is_producer: bool
 
 
 async def require_terms(
@@ -43553,13 +44355,17 @@ app.include_router(
         session_factory=db.session_dependency,
         signup_schema=ProducerSignupSchema,
         on_signup=require_terms,
+        me_response_model=ProducerMeSchema,
     ),
 )
 ```
 
 Aqui `phone` e `is_producer` são colunas do `UserModel` (`phone` é
 `NOT NULL` e `UNIQUE`), então chegam à linha sem hook nenhum. `accept_terms`
-não é coluna: fica só no `payload` que o `on_signup` recebe.
+não é coluna: fica só no `payload` que o `on_signup` recebe. E o
+`me_response_model=ProducerMeSchema` faz o `GET /auth/me` devolver as duas
+colunas novas junto das que o `AuthUserSchema` já traz — e continua sem o
+`hashed_password`, que nenhum dos dois schemas declara.
 
 Com `AUTH_AUTO_ACTIVATE=true` no `.env` a conta nasce ativa e o signup já devolve o par de JWT. No default (`false`) a mesma chamada responde `"activation_required":true` com `access_token` e `refresh_token` em `null`, e o par só sai no `POST /auth/activate/{token}`:
 
@@ -43916,6 +44722,13 @@ async def profile(current: UserModel = Depends(get_current_user)) -> AuthUserSch
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
 
 Três linhas fazem o trabalho desta seção:
 
@@ -49062,7 +49875,7 @@ Mapeamento extra → camada gerada:
 
 | Extra | Arquivos criados (sob `src/` ou `app/`) |
 |-------|------------------------------------------|
-| `[queue]` | `queue/__init__.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/handlers.py` (subscriber de exemplo) |
+| `[queue]` | `queue/broker.py` (`RabbitBroker` + `AsyncQueueManager` + `get_broker`), `queue/__init__.py` (só reexporta), `queue/handlers.py` (subscriber de exemplo) |
 | `[tasks]` / `[tasks-redis]` | `tasks/queue.py` (`tq = TaskQueue.from_settings(settings)` + `get_task_queue`), `tasks/names.py` (`EXAMPLE_TASK_NAME`, `EXAMPLE_SCHEDULE`; não importa nada do projeto), `tasks/example.py` (só o registro: `@tq.cron(EXAMPLE_SCHEDULE, name=EXAMPLE_TASK_NAME)` chamando `scripts/example.py`), `tasks/dispatch.py` (`TaskDispatcher`: a API enfileira pelo nome, com `enqueue_by_name`), `tasks/worker.py` (importa as tasks; `broker`/`scheduler` para `taskiq worker src.tasks.worker:broker`), `tasks/__init__.py` (reexporta fila, nomes e dispatcher — nunca uma task) |
 
 Os dois extras geram a mesma camada: o transporte sai do `TASKIQ_BROKER_URL` em runtime. Com `[tasks-redis]`, o `tempest new` também declara `TASKIQ_BROKER_URL` no `Settings` com default `redis://localhost:6379/0` e escreve a mesma URL no `.env.example`, porque o default do mixin é `amqp://`, que escolhe o RabbitMQ e exige `[tasks]`. Se mesmo assim a URL apontar para um transporte cujo extra não está instalado, o `ImportError` do `TaskQueue.from_settings` nomeia o `TASKIQ_BROKER_URL`, o valor lido (senha mascarada) e a URL do outro transporte.
@@ -50961,13 +51774,14 @@ tem o mesmo nome de um model continua limpo.
 
 #### Camada em pacote de contexto (aviso)
 
-Três regras cobram a forma das quatro camadas — `controllers/`,
+Quatro regras cobram a forma das quatro camadas — `controllers/`,
 `services/`, `repositories/` e `models/`. Entram como **aviso**:
 
 | Código | Onde | O que acusa |
 | --- | --- | --- |
 | `LAY001` | `controllers/`, `repositories/`, `models/` | segunda classe no módulo (qualquer nome, privada também) ou função de módulo. Em `services/` quem acusa é o `SVC002`, como erro |
 | `LAY002` | as quatro camadas | módulo direto na raiz da camada: `models/route.py` vai para `models/<contexto>/route.py`. Qualquer nome de contexto vale; `__init__.py` fica de fora |
+| `LAY003` | as quatro camadas | nome de arquivo que repete a camada: `services/orders/checkout_service.py` vira `services/orders/checkout.py`, e a classe dentro continua `CheckoutService`. Vale para `_controller`, `_service`, `_repository` e `_model` |
 | `REPO002` | `repositories/` | import de um nome `*Repository` de outro módulo de repository (import absoluto com segmento `repositories`, ou relativo). Nome usado só como base de classe — o repository base do projeto — passa |
 
 Um `models/route.py` com dois models e um repository que importa outro
@@ -51143,28 +51957,53 @@ src/services/__init__.py:1: IMP001 (warning) `src.services.orders` is a module o
     declarada (`"IMP002 <caminho>::<nome>": "<motivo>"`), não de reescrever o
     import.
 
+#### O que um pacote guarda e o tamanho do arquivo (aviso)
+
+| Código | Onde | O que acusa |
+| --- | --- | --- |
+| `INIT001` | todo `__init__.py`, do código e da suíte | statement que faz mais que reexportar: `def`, `class`, chamada, constante. Passam docstring, import, o `__all__` (inclusive `+=`) e `if`/`try` feitos só disso (`if TYPE_CHECKING:`, import opcional) |
+| `SIZE001` | todo módulo, do código e da suíte | arquivo com mais de 1000 linhas, acusado na linha 1001. Não há lista de arquivos isentos |
+
+Um `admin/__init__.py` que compõe os sub-routers, um service com o sufixo da
+camada no nome e um arquivo de teste de 1040 linhas saem assim
+(`tempest lint-layers --rule INIT001 --rule SIZE001 --rule LAY003`, saída
+real, exit code `0`):
+
+```text
+src/api/routers/admin/__init__.py:5: INIT001 (warning) `admin_router: APIRouter = APIRouter(prefix="/admin")` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+src/api/routers/admin/__init__.py:6: INIT001 (warning) `admin_router.include_router(orders_router)` does work in __init__.py, which only re-exports (`from .x import Y as Y`) and binds `__all__`; move it to a module of the package (router.py, factory.py, runner.py) and re-export it.
+src/services/orders/checkout_service.py:1: LAY003 (warning) checkout_service.py repeats the layer its directory already names; rename it to checkout.py — the class inside keeps its suffix.
+tests/integration/orders/test_orders.py:1001: SIZE001 (warning) test_orders.py has 1040 lines, over 1000; split it by responsibility — a service into several services, a test file into one file per theme, an __init__.py into a subpackage per domain.
+4 layer finding(s): 0 error(s), 4 warning(s).
+```
+
+A composição vai para `admin/router.py` (`build_admin_router()`), reexportada
+pelo `__init__.py`; uma factory, para `factory.py`; a orquestração de seed,
+para `runner.py`. O arquivo grande se quebra por responsabilidade — o
+service em vários services, o teste em um arquivo por tema.
+
 #### Router: um por arquivo, `/api` uma vez (aviso)
 
 | Código | Onde | O que acusa |
 | --- | --- | --- |
-| `RTR003` | `routers/` | mais de um `APIRouter(...)` no módulo — um achado por router depois do primeiro |
-| `RTR004` | todo o código | `prefix` igual a `/api` (ou abaixo dele) em `APIRouter(...)` ou `include_router(...)` fora de uma função `build_api_router` |
+| `RTR003` | `routers/` | mais de um router no módulo (`APIRouter(...)`, `TempestAPIRouter(...)` ou subclasse do projeto) — um achado por router depois do primeiro |
+| `RTR004` | todo o código | `prefix` igual a `/api` (ou abaixo dele) numa construção de router ou em `include_router(...)` fora de uma função `build_api_router` |
 
 No transport, `/api` estava repetido em 22 `include_router`. Um router de
 pedidos com dois routers e o `/api` embutido sai assim (saída real):
 
 ```python
 # src/api/routers/orders.py
-from fastapi import APIRouter
+from tempest_fastapi_sdk import TempestAPIRouter
 
-router: APIRouter = APIRouter(prefix="/api/orders", tags=["orders"])
-admin_router: APIRouter = APIRouter(prefix="/api/admin/orders", tags=["admin"])
+router: TempestAPIRouter = TempestAPIRouter(prefix="/api/orders", tags=["orders"])
+admin_router: TempestAPIRouter = TempestAPIRouter(prefix="/api/admin/orders", tags=["admin"])
 ```
 
 ```text
-src/api/routers/orders.py:3: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
-src/api/routers/orders.py:4: RTR003 (warning) a second APIRouter in this module (`admin_router`); one router per file in routers/ — move it to its own module.
-src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+src/api/routers/orders.py:4: RTR004 (warning) prefix `/api/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
+src/api/routers/orders.py:5: RTR003 (warning) a second router in this module (`admin_router`); one router per file in routers/ — move it to its own module.
+src/api/routers/orders.py:5: RTR004 (warning) prefix `/api/admin/orders` set outside build_api_router(); mount the domain routers under `/api` once, in routers/api.py, and give each router only its own prefix.
 3 layer finding(s): 0 error(s), 3 warning(s).
 ```
 
@@ -51186,6 +52025,57 @@ def build_api_router() -> APIRouter:
     api.include_router(admin_orders_router)
     return api
 ```
+
+#### Router de domínio: `TempestAPIRouter` e texto em `api/docs` (aviso)
+
+| Código | Onde | O que acusa |
+| --- | --- | --- |
+| `RTR005` | `routers/` | `fastapi.APIRouter(...)` fora de uma função `build_api_router` — num `APIRouter` o `@raises` não vira `responses=` |
+| `RTR006` | `routers/` | `summary=` ou `description=` no decorator de uma rota, literal ou constante `SUMMARY_*` — uma linha por palavra-chave |
+
+O agregador do `build_api_router` fica de fora do `RTR005` de propósito: os
+erros de uma rota são montados pelo router em que o handler é registrado, e a
+classe do router que o inclui não muda nada. O router com as duas formas que
+agentes escreviam (saída real):
+
+```python
+# src/api/routers/service_info.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import get_service_info_controller
+from src.controllers import ServiceInfoController
+from src.schemas import ServiceInfoSchema
+
+SUMMARY_INDEX: str = "Describe the service"
+
+router: APIRouter = APIRouter(tags=["root"])
+
+
+@router.get("/", summary=SUMMARY_INDEX, description="Returns the service name.")
+async def index(
+    controller: ServiceInfoController = Depends(get_service_info_controller),
+) -> ServiceInfoSchema:
+    """Placeholder root endpoint returning the service name.
+
+    Args:
+        controller (ServiceInfoController): The injected controller.
+
+    Returns:
+        ServiceInfoSchema: The service title.
+    """
+    return await controller.describe()
+```
+
+```text
+src/api/routers/service_info.py:10: RTR005 (warning) APIRouter(...) builds this router (`router`); build it with `TempestAPIRouter` from tempest_fastapi_sdk, which turns each handler's `@raises(...)` into its `responses=` (a plain APIRouter ignores the tag).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `summary=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+src/api/routers/service_info.py:13: RTR006 (warning) route `index` passes `description=` in its decorator; keep the OpenAPI text in an `EndpointDoc` constant of api/docs/<router>.py and spread it into the decorator (`**docs.INDEX`).
+3 layer finding(s): 0 error(s), 3 warning(s).
+```
+
+A forma certa — `TempestAPIRouter`, `@raises` abaixo do decorator e um
+`EndpointDoc` em `api/docs/<router>.py` — está em
+[Padrão de serviço](../service-standard.md#erros-da-rota-tempestapirouter-raises).
 
 #### A forma da suíte (aviso)
 
@@ -51795,6 +52685,13 @@ async def delete_task(task_id: UUID) -> object:
         await session.commit()
     return html_response(Text(content="", tag="span"), document=False)
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](recipes/migrations.md#3-sincronize-o-schema-no-lifespan).
 
 Rode com `uvicorn app:app --reload` e abra `http://127.0.0.1:8000`.
 
@@ -55496,7 +56393,8 @@ manager.
 
 ### Ciclo de vida no lifespan
 
-Abra e feche a engine junto com a aplicação:
+Abra e feche a engine junto com a aplicação, e traga o schema para a head
+das migrations **antes** de atender o primeiro request:
 
 ```python
 # src/api/app.py
@@ -55506,15 +56404,83 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.configs import run_migrations
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Open the database on startup, dispose it on shutdown."""
+    """Migrate the schema, open the database, dispose it on shutdown."""
+    await run_migrations(settings.DATABASE_URL)
     await db.connect()
     yield
     await db.disconnect()
 ```
+
+O `run_migrations` é o mesmo que o `tempest new` gera em
+`src/db/configs/migrations.py`: uma chamada a
+`AlembicHelper.sync_schema_async()` com o caminho absoluto do `alembic.ini`.
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
+
+
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
+```
+
+O scaffold ainda envolve a chamada em
+`if settings.DATABASE_MIGRATE_ON_STARTUP:` — campo do `Settings` gerado, não
+de um mixin do SDK — para desligá-la quando várias réplicas sobem juntas e um
+job roda `tempest db upgrade`.
+
+O `alembic.ini` e o `alembic/env.py` vêm do `AlembicHelper.init(...)` (ou
+`tempest db init`), não escritos à mão — veja
+[Bootstrap, uma vez por projeto](#bootstrap-uma-vez-por-projeto). E o
+`sync_schema_async()` só cria tabela a partir de revision: sem nenhuma
+revision em `alembic/versions/`, ele devolve
+`SchemaSyncOutcomeEnum.NO_MIGRATIONS` e não toca no banco. Gere a revision
+inicial (`tempest db revision -m "initial"`) antes da primeira subida.
+
+!!! danger "Nada de `create_tables()` no lifespan"
+    É a forma que parece equivalente, e não é:
+
+    ```python
+    # src/api/app.py — errado: o schema para de evoluir na segunda subida.
+    from collections.abc import AsyncGenerator
+    from contextlib import asynccontextmanager
+
+    from fastapi import FastAPI
+
+    from src.api.dependencies.resources import db
+
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        """Create the tables on every boot."""
+        await db.connect()
+        await db.create_tables()
+        yield
+        await db.disconnect()
+    ```
+
+    Na primeira subida ela cria tudo. Na seguinte, com uma coluna nova no
+    model, `create_tables()` não acrescenta a coluna, não falha e não avisa
+    — medido no SQLite: a tabela `notes` continua com
+    `['title', 'id', 'is_active', 'created_at', 'updated_at']` depois de o
+    model ganhar `body`. O erro só aparece na primeira query que lê a coluna.
+    `create_tables()` fica em fixture de teste com SQLite em memória, onde o
+    banco nasce e morre no processo — veja
+    [Migrations »](migrations.md#onde-create_tables-e-legitimo).
 
 ### Health check
 
@@ -57650,16 +58616,23 @@ from src.core.settings import settings
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run pending migrations, then serve."""
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
-    await helper.upgrade_async()
+    await helper.sync_schema_async()
     await db.connect()
     yield
     await db.disconnect()
 ```
 
-`upgrade_async()` roda a migration numa thread de trabalho: o `env.py` do SDK
-chama `asyncio.run`, que não aninha dentro do loop do lifespan, então um
-`helper.upgrade()` simples ali levanta `RuntimeError` nomeando o
-`upgrade_async`. Todo comando que roda o `env.py` tem o mesmo par `_async` —
+`sync_schema_async()` é o bootstrap inteiro: banco vazio roda a árvore toda,
+banco criado antes do Alembic é carimbado na revision base e depois migrado,
+e banco já migrado só recebe o que falta — o retorno
+(`SchemaSyncOutcomeEnum`) diz qual dos caminhos rodou. Num projeto gerado
+pelo `tempest new` essa chamada já está em `run_migrations`
+([Ciclo de vida no lifespan](#ciclo-de-vida-no-lifespan)).
+
+Ele roda numa thread de trabalho: o `env.py` do SDK chama `asyncio.run`, que
+não aninha dentro do loop do lifespan, então o `helper.sync_schema()` síncrono
+ali levanta `RuntimeError` nomeando o `sync_schema_async`. Todo comando que
+roda o `env.py` tem o mesmo par `_async` —
 veja [Migrations »](migrations.md#de-codigo-async-use-o-metodo-_async).
 
 !!! warning "Migrações destrutivas: use `safe_upgrade`"
@@ -71788,6 +72761,13 @@ async def kestra_callback(data: CallbackSchema) -> dict[str, bool]:
     return {"recorded": new_id is not None}
 ```
 
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
+
 Pedaço por pedaço:
 
 - `make_token_dependency(TOKEN_SECRET)` compara o header `X-Token` com
@@ -77945,20 +78925,101 @@ que seu banco está.
 
 ## O bootstrap completo
 
+São três passos, e só o último roda a cada subida. Um projeto gerado pelo
+`tempest new` já sai com os três feitos.
+
+### 1. Gere o ambiente com `AlembicHelper.init`
+
+Não escreva `alembic.ini` nem `alembic/env.py` à mão:
+
 ```python
-# src/db/schema.py
+# scripts/alembic_init.py
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini").init(
+    "alembic",
+    metadata_module="src.db.models",
+    metadata_attr="BaseModel",
+)
+```
+
+```bash
+uv run python scripts/alembic_init.py
+```
+
+O `metadata_module` é o módulo que expõe o `BaseModel` com todo model já
+importado — no projeto do `tempest new`, `src.db.models`; num layout em que
+só `src/db/__init__.py` reexporta o `BaseModel`, `src.db`. `tempest db init`
+faz a mesma chamada. Rodando o script acima num diretório
+vazio, o `alembic.ini` gerado é este:
+
+```ini
+[alembic]
+script_location = %(here)s/alembic
+prepend_sys_path = %(here)s
+path_separator = os
+sqlalchemy.url =
+file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(rev)s_%%(slug)s
+timezone = UTC
+
+[post_write_hooks]
+hooks = ruff_format, ruff_fix
+ruff_format.type = exec
+ruff_format.executable = ruff
+ruff_format.options = format --quiet REVISION_SCRIPT_FILENAME
+ruff_fix.type = exec
+ruff_fix.executable = ruff
+ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME
+```
+
+Três coisas nele que a versão escrita à mão costuma errar:
+
+- **`sqlalchemy.url` vazio.** A credencial não entra no controle de versão;
+  a URL chega pelo `db_url=` do `AlembicHelper` ou, sem ele, pela variável
+  `DATABASE_URL` do ambiente.
+- **Nenhuma seção `[loggers]`/`[handlers]`/`[formatters]`.** O `env.py`
+  gerado só chama o `fileConfig` do logging quando a seção existe, então a
+  migration que roda dentro do processo do serviço não reconfigura a árvore
+  de logging que o `configure_logging` já montou. O bloco padrão do
+  `alembic init -t async` traz `[logger_root]` com `level = WARNING`.
+- **`[post_write_hooks]` com `ruff format` e depois `ruff check --fix`**, para
+  a revision gerada já sair lint-clean. Requer `ruff` no `PATH`.
+
+O `alembic/env.py` gerado é uma chamada a `run_alembic_env(target_metadata)`
+— veja [O `env.py` gerado](#o-envpy-gerado).
+
+### 2. Gere a revision inicial
+
+```bash
+uv run tempest db revision -m "initial"
+```
+
+Sem revision nenhuma, o passo 3 não cria tabela: devolve
+`SchemaSyncOutcomeEnum.NO_MIGRATIONS` e deixa o banco como está. Medido num
+SQLite vazio, antes da primeira revision: `outcome: no_migrations`, zero
+tabelas.
+
+### 3. Sincronize o schema no lifespan
+
+A forma é a que o `tempest new` gera — um `run_migrations` em
+`src/db/configs/migrations.py`, com o caminho **absoluto** do `alembic.ini`
+para o lifespan achá-lo de qualquer diretório:
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
 from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
 
-from src.core.settings import settings
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
 
 
-async def sync_schema() -> SchemaSyncOutcomeEnum:
-    """Bring the database schema in line with the migration tree."""
-    helper: AlembicHelper = AlembicHelper(
-        "alembic.ini",
-        db_url=settings.DATABASE_URL,
-    )
-    return await helper.sync_schema_async()
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
 ```
 
 Chame isso do lifespan e o serviço sobe com o schema certo a partir de
@@ -77971,19 +79032,54 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.db.schema import sync_schema
+from src.core.settings import settings
+from src.db.configs import run_migrations
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Sync the schema before the first request is served."""
-    outcome = await sync_schema()
+    outcome = await run_migrations(settings.DATABASE_URL)
     print(f"schema: {outcome.value}")
     yield
 
 
 app: FastAPI = FastAPI(lifespan=lifespan)
 ```
+
+Medido com um model, uma revision inicial e o lifespan acima subindo três
+bancos SQLite: o vazio sai `synced` com `alembic_version` e a tabela; o
+criado antes por `create_tables()` sai `adopted`; a segunda subida do
+primeiro sai `synced` sem mudar nada.
+
+### Nada de `create_tables()` no lifespan
+
+```python
+# src/api/app.py — errado: o schema para de evoluir na segunda subida.
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from src.api.dependencies.resources import db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the tables on every boot."""
+    await db.connect()
+    await db.create_tables()
+    yield
+    await db.disconnect()
+```
+
+A primeira subida funciona, e é por isso que essa forma sobrevive à revisão.
+Coluna nova no model não chega ao banco nas subidas seguintes:
+`create_tables()` é `CREATE TABLE IF NOT EXISTS` — o porquê está em
+[Por que `create_tables()` não serve](#por-que-create_tables-nao-serve). A
+regra é uma só: **no lifespan, `run_migrations`; `create_tables()` só em
+fixture de teste com SQLite em memória**
+([Onde `create_tables()` é legítimo](#onde-create_tables-e-legitimo)).
 
 ## De código async, use o método `_async`
 
@@ -78564,6 +79660,11 @@ falta" é tudo — então ele acerta. Num banco que já rodou, "o que falta" é
 nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
 
 !!! check "Recap"
+    - `alembic.ini` e `alembic/env.py` saem do `AlembicHelper.init(...)` (ou
+      `tempest db init`), nunca à mão; sem revision inicial o
+      `sync_schema_async()` devolve `NO_MIGRATIONS` e não cria tabela.
+    - No lifespan, `run_migrations` (o `sync_schema_async()` do scaffold);
+      nunca `create_tables()`.
     - `sync_schema()` é o bootstrap inteiro: distingue banco vazio, banco que
       precede o Alembic e banco já migrado, e devolve qual caminho tomou.
     - No banco vazio a árvore inteira roda sem o guard destrutivo (não há
@@ -81387,6 +82488,13 @@ async def n8n_callback(data: CallbackSchema) -> dict[str, bool]:
     )
     return {"recorded": new_id is not None}
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
 
 Pedaço por pedaço:
 
@@ -88860,7 +89968,7 @@ O problema que o FastStream resolve mal: a API muda de forma conforme o transpor
 Instale com `[queue]` (puxa `faststream[rabbit]`). Os outros transportes têm extra próprio, porque o `[queue]` traz só o cliente do RabbitMQ: `[queue-kafka]`, `[queue-nats]`, `[queue-redis]`.
 
 ```python
-# src/queue/__init__.py
+# src/queue/broker.py
 
 from pydantic import BaseModel
 
@@ -88891,6 +89999,8 @@ async def handle_order_paid(event: OrderPaid) -> None:
 ```
 
 Repare no `event: OrderPaid`: **a anotação de tipo dirige a decodificação**. O FastStream valida o payload recebido nesse modelo Pydantic **antes** do seu handler rodar — mensagem malformada nunca chega no seu código.
+
+O `src/queue/__init__.py` só reexporta — `from .broker import OrderPaid as OrderPaid`, o mesmo para `OrderCancelled` e `mq`, mais o `__all__` — e é por ele que o resto do código importa (`from src.queue import mq`). Definição ou chamada no `__init__.py` acusa `INIT001` no `tempest check`.
 
 Ligue o ciclo de vida no lifespan do FastAPI e publique de qualquer lugar:
 
@@ -88967,7 +90077,7 @@ from tempest_fastapi_sdk.queue import Consumer, subscribe
 from src.queue import OrderCancelled, OrderPaid, mq
 
 
-# OrderPaid / OrderCancelled definidos no bloco `src/queue/__init__.py` acima.
+# OrderPaid / OrderCancelled definidos no bloco `src/queue/broker.py` acima.
 
 
 class OrdersConsumer(Consumer):
@@ -92023,6 +93133,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app: FastAPI = FastAPI(lifespan=lifespan)
 app.include_router(router)
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
 
 Rodando uma sequência de entregas contra ele:
 
@@ -100088,6 +101205,13 @@ async def home(user: UserModel = current_user) -> dict[str, str]:
     """Só quem tem sessão chega aqui."""
     return {"hello": user.email}
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
 
 Rode com `uv run uvicorn app:app` e abra `http://localhost:8000/`. O que acontece, medido com o `TestClient`:
 
@@ -108579,6 +109703,13 @@ async def create_task(payload: TaskIn) -> TaskOut:
 app.include_router(api)                              # 1) API primeiro
 app.include_router(make_web_app_router("web/dist/wasm"))  # 2) frontend por último
 ```
+
+!!! note "`create_tables()` aqui é atalho de demonstração"
+    O exemplo cabe num arquivo só, então cria as tabelas direto no
+    lifespan. Num serviço, o lifespan chama `sync_schema_async()` sobre as
+    migrations do Alembic: `create_tables()` não acrescenta coluna em
+    tabela que já existe. Veja
+    [Migrations »](migrations.md#3-sincronize-o-schema-no-lifespan).
 
 ## O frontend (tempestweb)
 

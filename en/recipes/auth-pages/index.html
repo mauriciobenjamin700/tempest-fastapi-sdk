@@ -5902,6 +5902,14 @@
 </span><span id="__span-1-78"><a id="__codelineno-1-78" name="__codelineno-1-78" href="#__codelineno-1-78"></a><span class="w">    </span><span class="sd">"""Only someone with a session gets here."""</span>
 </span><span id="__span-1-79"><a id="__codelineno-1-79" name="__codelineno-1-79" href="#__codelineno-1-79"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"hello"</span><span class="p">:</span> <span class="n">user</span><span class="o">.</span><span class="n">email</span><span class="p">}</span>
 </span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>create_tables()</code> here is a demo shortcut</p>
+<p>The example fits in a single file, so it creates the tables straight
+in the lifespan. In a service, the lifespan calls <code>sync_schema_async()</code>
+over the Alembic migrations: <code>create_tables()</code> adds no column to a
+table that already exists. See
+<a href="../migrations/#3-sync-the-schema-in-the-lifespan">Migrations »</a>.</p>
+</div>
 <p>Run it with <code>uv run uvicorn app:app</code> and open <code>http://localhost:8000/</code>. What happens, measured with <code>TestClient</code>:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>GET  /                      → 303 /login?next=/
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>GET  /signup                → 200 (the form)

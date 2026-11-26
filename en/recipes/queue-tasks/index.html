@@ -6149,7 +6149,7 @@
 <p>The problem FastStream handles poorly: its API changes shape with the transport. You subscribe with <code>@broker.subscriber("q")</code> and publish with <code>broker.publish(msg, queue="q")</code> on RabbitMQ, <code>topic=</code> on Kafka, <code>subject=</code> on NATS. Confusing and non-portable.</p>
 <p><code>MessageBroker</code> hides that behind <strong>one</strong> concept: a <strong>channel</strong> (a string). You publish to a channel and everyone subscribed to it receives the message.</p>
 <p>Install with <code>[queue]</code> (pulls <code>faststream[rabbit]</code>). The other transports have their own extra, because <code>[queue]</code> carries the RabbitMQ client only: <code>[queue-kafka]</code>, <code>[queue-nats]</code>, <code>[queue-redis]</code>.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># src/queue/__init__.py</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># src/queue/broker.py</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
@@ -6179,6 +6179,7 @@
 </span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="k">await</span> <span class="n">mark_order_paid</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">order_id</span><span class="p">,</span> <span class="n">event</span><span class="o">.</span><span class="n">user_id</span><span class="p">)</span>
 </span></code></pre></div>
 <p>Note the <code>event: OrderPaid</code>: <strong>the type hint drives decoding</strong>. FastStream validates the inbound payload into that Pydantic model <strong>before</strong> your handler runs — a malformed message never reaches your code.</p>
+<p><code>src/queue/__init__.py</code> only re-exports — <code>from .broker import OrderPaid as OrderPaid</code>, the same for <code>OrderCancelled</code> and <code>mq</code>, plus <code>__all__</code> — and it is what the rest of the code imports from (<code>from src.queue import mq</code>). A definition or a call in the <code>__init__.py</code> reports <code>INIT001</code> in <code>tempest check</code>.</p>
 <p>Wire the lifecycle into the FastAPI lifespan and publish from anywhere:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># src/api/app.py</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncGenerator</span>
@@ -6247,7 +6248,7 @@ constructor; override <code>handle</code>:</p>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.queue</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderCancelled</span><span class="p">,</span> <span class="n">OrderPaid</span><span class="p">,</span> <span class="n">mq</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># OrderPaid / OrderCancelled defined in the `src/queue/__init__.py` block above.</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># OrderPaid / OrderCancelled defined in the `src/queue/broker.py` block above.</span>
 </span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
 </span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">OrdersConsumer</span><span class="p">(</span><span class="n">Consumer</span><span class="p">):</span>
