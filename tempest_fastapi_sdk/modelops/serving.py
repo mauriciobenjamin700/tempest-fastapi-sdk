@@ -40,6 +40,8 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from tempest_fastapi_sdk.modelops.protocols import TabularInput
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTRA_OP_THREADS: int = 1
@@ -384,7 +386,7 @@ class OnnxPredictor:
         except Exception:
             logger.warning("warm-up of %s failed", info.path, exc_info=True)
 
-    def predict(self, features: Any) -> Prediction:
+    def predict(self, features: TabularInput) -> Prediction:
         """Predict for a batch of rows.
 
         Example:
@@ -396,8 +398,8 @@ class OnnxPredictor:
         model and run the rows through another.
 
         Args:
-            features (Any): A 2-D array, nested sequence, or DataFrame.
-                A single row must still be wrapped: ``[[...]]``.
+            features (TabularInput): A 2-D array, nested sequence, or
+                DataFrame. A single row must still be wrapped: ``[[...]]``.
 
         Returns:
             Prediction: Labels, probabilities when the graph has them,

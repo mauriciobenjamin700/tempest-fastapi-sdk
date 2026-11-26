@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.modelops._fs import size_mb
 from tempest_fastapi_sdk.modelops.schemas import (
@@ -28,6 +28,14 @@ from tempest_fastapi_sdk.modelops.schemas import (
     StaticModelMetrics,
     TensorSpec,
 )
+
+if TYPE_CHECKING:
+    from torch.nn import Module as TorchModule
+
+    from tempest_fastapi_sdk.modelops.protocols import (
+        SupportsAvailableProviders,
+        TorchExampleInput,
+    )
 
 
 def _require_onnx() -> Any:
@@ -80,11 +88,12 @@ filtered out unless the caller asks for it explicitly.
 """
 
 
-def default_providers(onnxruntime: Any) -> list[str]:
+def default_providers(onnxruntime: SupportsAvailableProviders) -> list[str]:
     """Return the local execution providers, in priority order.
 
     Args:
-        onnxruntime (Any): The imported ``onnxruntime`` module.
+        onnxruntime (SupportsAvailableProviders): The imported ``onnxruntime``
+            module.
 
     Returns:
         list[str]: Available providers minus the remote ones.
@@ -257,11 +266,11 @@ def analyze_ort(
 
 
 def analyze_torch(
-    module: Any,
+    module: TorchModule,
     *,
     name: str | None = None,
     path: str | Path | None = None,
-    example_input: Any = None,
+    example_input: TorchExampleInput | None = None,
 ) -> StaticModelMetrics:
     """Count parameters and (optionally) FLOPs of a live ``nn.Module``.
 
@@ -276,12 +285,13 @@ def analyze_torch(
       input and expect it to cost one forward pass.
 
     Args:
-        module (Any): The ``torch.nn.Module`` to inspect.
+        module (TorchModule): The ``torch.nn.Module`` to inspect.
         name (str | None): Display name. Defaults to the class name.
         path (str | Path | None): Checkpoint path, when the module came
             from one, so the report can carry its on-disk size.
-        example_input (Any): A tensor (or tuple of tensors) to run through
-            the module for the FLOP count. Omit to skip counting.
+        example_input (TorchExampleInput | None): A tensor (or tuple of
+            tensors) to run through the module for the FLOP count. Omit to
+            skip counting.
 
     Returns:
         StaticModelMetrics: Parameter counts, size and — when

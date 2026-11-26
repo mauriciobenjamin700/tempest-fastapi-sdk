@@ -61,6 +61,8 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from tempest_fastapi_sdk.modelops.protocols import TabularInput
+
 _URL_PREFIXES: tuple[str, ...] = ("http://", "https://", "ftp://", "s3://", "gs://")
 """Schemes refused outright.
 
@@ -384,7 +386,7 @@ def load_sklearn_artifact(
 
 def edge_pipeline_from_pickle(
     path: str | Path,
-    samples: Any,
+    samples: TabularInput,
     output_dir: str | Path,
     *,
     key: str | None = None,
@@ -416,8 +418,8 @@ def edge_pipeline_from_pickle(
 
     Args:
         path (str | Path): Local path to the pickle.
-        samples (Any): Training rows, used to trace the export and build
-            the drift baseline.
+        samples (TabularInput): Training rows, used to trace the export and
+            build the drift baseline.
         output_dir (str | Path): Package directory to create.
         key (str | None): Entry to take when the pickle holds a dict.
         expected_sha256 (str | None): The SHA-256 the pickle must have,

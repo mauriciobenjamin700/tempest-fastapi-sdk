@@ -242,11 +242,11 @@ def document_part(
     }
 
 
-def is_document_part(part: Any) -> bool:
+def is_document_part(part: object) -> bool:
     """Tell whether a content part is a document (an OpenAI ``file`` part).
 
     Args:
-        part (Any): One item of a message's ``content`` list.
+        part (object): One item of a message's ``content`` list.
 
     Returns:
         bool: ``True`` for a dict whose ``type`` is ``"file"``, the shape
