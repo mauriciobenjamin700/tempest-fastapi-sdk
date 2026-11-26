@@ -14,7 +14,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from starlette.responses import Response
@@ -46,7 +46,7 @@ told apart from one that never existed.
 """
 
 
-def principal_key(principal: Any) -> str | None:
+def principal_key(principal: object) -> str | None:
     """Derive the stable identity a session is bound to.
 
     The principal is whatever ``mount_mcp(principal=...)`` resolved, a new
@@ -61,7 +61,7 @@ def principal_key(principal: Any) -> str | None:
     * A ``str``, ``int`` or ``UUID`` is keyed by its type and value.
 
     Args:
-        principal (Any): The resolved principal of the current request.
+        principal (object): The resolved principal of the current request.
 
     Returns:
         str | None: The owner key, or ``None`` for an anonymous caller.
