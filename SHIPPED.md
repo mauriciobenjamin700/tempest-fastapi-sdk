@@ -767,7 +767,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   chromadb):** `ChromaVectorStore` (ephemeral / persistent / injected client)
   and `ChatMemory` — recency-aware per-user long-term memory over a Chroma
   collection, `index()` embeds + upserts and evicts the oldest past a soft
-  per-user quota, `recall()` returns scored `MemoryHit`s over any
+  per-user quota, `search()` returns scored `MemoryHit`s over any
   `SupportsEmbed`. Uses `PersistentClient` (embedded, no HTTP server), so the
   `chromadb` server advisory PYSEC-2026-311 is not reachable through the SDK.
   **Chunk identity + re-index (v0.300.0):** every SDK store and

@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import logging
+import sys
+import tempfile
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -19,6 +26,7 @@ from tempest_fastapi_sdk.agents import (
     scratchpad,
     scratchpad_tools,
 )
+from tempest_fastapi_sdk.genai.rag import ChatMemory, MemoryHit
 
 
 def _call(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -258,42 +266,198 @@ class TestFactsPrompt:
         assert "plan: pro" in agent.system_prompt
 
 
+class _TableEmbedder:
+    """Deterministic embedder: maps each text to a canned vector."""
+
+    def __init__(self, table: dict[str, list[float]]) -> None:
+        """Keep the text-to-vector table.
+
+        Args:
+            table (dict[str, list[float]]): Vector per known text; anything
+                else embeds to a near-zero vector that matches nothing.
+        """
+        self.table = table
+
+    async def embed(
+        self,
+        texts: str | list[str],
+        *,
+        batch_size: int = 32,
+    ) -> list[list[float]]:
+        """Return one canned vector per text.
+
+        Args:
+            texts (str | list[str]): One text or many.
+            batch_size (int): Ignored.
+
+        Returns:
+            list[list[float]]: The vectors.
+        """
+        items = [texts] if isinstance(texts, str) else list(texts)
+        return [list(self.table.get(text, [0.001, 0.001])) for text in items]
+
+
+def _chat_memory(table: dict[str, list[float]]) -> ChatMemory:
+    """Build a ``ChatMemory`` over a fresh in-process Chroma collection.
+
+    Args:
+        table (dict[str, list[float]]): The embedder's vectors.
+
+    Returns:
+        ChatMemory: The memory under test.
+    """
+    chromadb = pytest.importorskip("chromadb")
+    client: Any = chromadb.EphemeralClient(
+        settings=chromadb.config.Settings(anonymized_telemetry=False),
+    )
+    return ChatMemory(
+        _TableEmbedder(table),
+        client=client,
+        collection_name=f"recall-{uuid.uuid4().hex}",
+    )
+
+
+RECALL_CONSUMER_SNIPPET: str = """
+from typing import Any
+
+from tempest_fastapi_sdk.agents import recall_prompt
+from tempest_fastapi_sdk.genai.rag import ChatMemory, PgChatMemory
+
+
+class OnlyRecall:
+    async def recall(self, query: str, *, user_id: str, top_k: int = 4) -> list[Any]:
+        return []
+
+
+async def main(chroma: ChatMemory, pg: PgChatMemory) -> None:
+    await recall_prompt(chroma, "goal", user_id="u1")
+    await recall_prompt(pg, "goal", user_id="u1")
+    await recall_prompt(OnlyRecall(), "goal", user_id="u1")
+"""
+"""Both shipped memories, and the ``recall``-shaped object the old docstring invited."""
+
+
 class TestRecallPrompt:
     @pytest.mark.asyncio
-    async def test_renders_the_hits(self) -> None:
-        class Hit:
-            def __init__(self, content: str) -> None:
-                self.content = content
+    async def test_recalls_from_a_real_chat_memory(self) -> None:
+        memory = _chat_memory(
+            {
+                "they prefer morning meetings": [1.0, 0.0],
+                "schedule a call": [1.0, 0.0],
+            }
+        )
+        await memory.index(
+            user_id="u1",
+            chat_id="c1",
+            message_id="m1",
+            role="user",
+            content="they prefer morning meetings",
+            created_at=datetime.now(UTC),
+        )
 
-        class Memory:
-            async def recall(
-                self,
-                query: str,
-                *,
-                user_id: str,
-                top_k: int = 4,
-            ) -> list[Hit]:
-                return [Hit("they prefer morning meetings")]
+        block = await recall_prompt(memory, "schedule a call", user_id="u1")
 
-        block = await recall_prompt(Memory(), "schedule a call", user_id="u1")
-        assert "morning meetings" in block
+        assert "they prefer morning meetings" in block
         assert "Possibly relevant" in block
 
     @pytest.mark.asyncio
     async def test_no_hits_changes_nothing(self) -> None:
-        class Empty:
-            async def recall(self, query: str, **_kwargs: Any) -> list[Any]:
-                return []
+        memory = _chat_memory({"schedule a call": [1.0, 0.0]})
 
-        assert await recall_prompt(Empty(), "q", user_id="u1") == ""
+        assert await recall_prompt(memory, "schedule a call", user_id="u1") == ""
 
     @pytest.mark.asyncio
-    async def test_a_broken_backend_never_stops_the_agent(self) -> None:
+    async def test_passes_user_and_top_k_to_search(self) -> None:
+        seen: list[tuple[str, str, int]] = []
+
+        class Spy:
+            async def search(
+                self,
+                *,
+                user_id: str,
+                query: str,
+                top_k: int,
+            ) -> list[MemoryHit]:
+                seen.append((user_id, query, top_k))
+                return []
+
+        await recall_prompt(Spy(), "q", user_id="u7", top_k=2)
+
+        assert seen == [("u7", "q", 2)]
+
+    @pytest.mark.asyncio
+    async def test_a_broken_backend_is_logged_not_silent(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         class Broken:
-            async def recall(self, query: str, **_kwargs: Any) -> list[Any]:
+            async def search(
+                self,
+                *,
+                user_id: str,
+                query: str,
+                top_k: int,
+            ) -> list[MemoryHit]:
                 raise RuntimeError("vector store down")
 
-        assert await recall_prompt(Broken(), "q", user_id="u1") == ""
+        with caplog.at_level(
+            logging.WARNING, logger="tempest_fastapi_sdk.agents.memory"
+        ):
+            assert await recall_prompt(Broken(), "q", user_id="u1") == ""
+
+        assert any(
+            record.levelno == logging.WARNING
+            and "vector store down" in record.getMessage()
+            for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_contract_error_is_not_swallowed(self) -> None:
+        class OnlyRecall:
+            async def recall(self, query: str, *, user_id: str) -> list[MemoryHit]:
+                return []
+
+        with pytest.raises(AttributeError):
+            await recall_prompt(OnlyRecall(), "q", user_id="u1")  # type: ignore[arg-type]
+
+    def test_mypy_accepts_both_memories_and_refuses_a_recall_object(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """``ChatMemory`` and ``PgChatMemory`` type-check; ``OnlyRecall`` does not.
+
+        Before #834 the parameter was ``Any``, so mypy accepted all three —
+        including the object whose ``recall`` the function then failed to
+        find at runtime.
+
+        Args:
+            tmp_path (Path): pytest's per-test temporary directory.
+        """
+        mypy_api = pytest.importorskip(
+            "mypy.api", reason="mypy is a dev-group dependency"
+        )
+        module = tmp_path / "consumer_recall.py"
+        module.write_text(RECALL_CONSUMER_SNIPPET, encoding="utf-8")
+        root: str = str(Path(__file__).resolve().parents[2])
+        digest: str = hashlib.sha256(root.encode("utf-8")).hexdigest()[:12]
+        cache: Path = Path(tempfile.gettempdir()) / f"tempest-mypy-{digest}-recall"
+        stdout, _stderr, _status = mypy_api.run(
+            [
+                str(module),
+                "--strict",
+                "--no-error-summary",
+                "--hide-error-context",
+                "--no-color-output",
+                "--cache-dir",
+                str(cache),
+                "--python-executable",
+                sys.executable,
+            ]
+        )
+        errors = [line for line in stdout.splitlines() if ": error:" in line]
+        assert len(errors) == 1, "\n".join(errors)
+        assert "consumer_recall.py:16:" in errors[0]
+        assert "[arg-type]" in errors[0]
 
 
 class TestLayersTogether:

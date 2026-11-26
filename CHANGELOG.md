@@ -17,6 +17,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `union-attr` no acesso sem checagem; quem lê `.raw` estreita contra
   `None` antes (no `AsyncMinIOClient` ele nunca é `None`).
 
+### Fixed
+
+- `recall_prompt` voltou a lembrar (#834). Chamava `memory.recall(...)`, que
+  nenhuma classe do pacote tem — `ChatMemory` e `PgChatMemory` expõem
+  `search(*, user_id, query, top_k, ...)` —, e o `except Exception` engolia o
+  `AttributeError`: com o `ChatMemory` que a receita passa, o bloco voltava
+  sempre vazio e o agente rodava sem memória e sem aviso. Agora chama
+  `memory.search(user_id=..., query=..., top_k=...)`, e o parâmetro deixou de
+  ser `Any`: é o novo `SupportsMemorySearch` (exportado em
+  `tempest_fastapi_sdk.agents`), que `ChatMemory` e `PgChatMemory` satisfazem
+  e que o mypy recusa num objeto sem `search`. Falha do backend continua
+  devolvendo `""`, mas registra um `WARNING` com traceback no logger
+  `tempest_fastapi_sdk.agents.memory`; `AttributeError` e `TypeError` (erro
+  de contrato) propagam. Memória própria que implementava `recall(query, *,
+  user_id, top_k)` precisa passar a implementar
+  `search(*, user_id, query, top_k)`: com `recall` ela agora levanta
+  `AttributeError` em vez de funcionar. A receita `agents-advanced` passa a indexar a lembrança antes
+  de consultá-la e a passar `min_similarity=0.3`: medido com o
+  `all-MiniLM-L6-v2`, a lembrança do exemplo pontua 0,455 (PT) / 0,39 (EN)
+  contra o objetivo, abaixo do piso padrão de 0,55, e o bloco que a página
+  mostrava não saía nem com a chamada certa.
+
 ## [0.372.0] — 2026-11-26
 
 ### Added
