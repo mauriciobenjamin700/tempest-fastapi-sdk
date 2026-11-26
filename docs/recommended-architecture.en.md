@@ -124,8 +124,10 @@ class keeps its suffix, because it is the name every call site reads:
 | `db/repositories/orders/order.py` → `OrderRepository` | `db/repositories/orders/order_repository.py` |
 
 A controller inherits one of the SDK's two bases, the same ones the
-scaffold uses: `BaseController[Service, Schema]` when it passes **one**
-service's CRUD through, and `Controller` when it coordinates several (or
+scaffold uses: `BaseController[Service]` when it passes **one**
+service's CRUD through (its response and update schemas come straight from
+the service; `BaseController[Service, Schema]` stays accepted for
+compatibility), and `Controller` when it coordinates several (or
 none, like the `ServiceInfoController` that `tempest new` writes).
 
 ### At most 1000 lines per file
@@ -164,11 +166,10 @@ __all__: list[str] = ["InvoiceService", "ProductService"]
 # src/controllers/billing/invoice.py
 from tempest_fastapi_sdk import BaseController
 
-from src.schemas import InvoiceResponseSchema
 from src.services import InvoiceService
 
 
-class InvoiceController(BaseController[InvoiceService, InvoiceResponseSchema]):
+class InvoiceController(BaseController[InvoiceService]):
     """Invoice coordination."""
 ```
 

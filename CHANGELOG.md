@@ -9,12 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Regra de tipagem — nenhum retorno público `-> Any`** (#839): 40 dos 46
-  retornos públicos `-> Any` do pacote foram tipados com construções
-  concretas (4 overrides de `faststream.BaseMiddleware.consume_scope`
-  permanecem na allowlist por devolverem `Any` upstream no `faststream 0.7.5`,
-  e `BaseRepository.map_to_schema` / `map_to_response` ficam na allowlist
-  temporária para #838), protegidos pelo novo guard
+- **Regra de tipagem — nenhum retorno público `-> Any`** (#839): 40 retornos
+  públicos `-> Any` do pacote foram tipados com construções concretas (além dos
+  2 `BaseRepository.map_to_*` já resolvidos em #838; restam na allowlist apenas
+  os 4 overrides de `faststream.BaseMiddleware.consume_scope`, que declaram
+  `Any` upstream no `faststream 0.7.5`), protegidos pelo novo guard
   `tests/test_public_any_return_guard.py`:
   - **Genéricos / `Self`:** `BaseStrEnum.from_value` / `BaseIntEnum.from_value`
     passam a devolver `Self` (ou `Self | D` quando `default=` é passado);
@@ -49,6 +48,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     tipo sobre retornos antes anotados como `Any` (por exemplo `TaskQueue.register`
     ou `publish` de fila) passam a receber erro do mypy e devem estreitar com
     `isinstance` ou tipar a definição explicitamente.
+- `BaseController` deixou de devolver o próprio `ResponseT` por `cast` sem
+  prova e `BaseService` / `BaseRepository` agora amarram o tipo de resposta
+  entre si (#838). Antes, um `WrongController(BaseController[UserService,
+  OrderResponseSchema])` passava no `mypy --strict` e entregava
+  `UserResponseSchema` em runtime; os pass-throughs `get_by_id`, `list` e
+  `update` do `BaseController` agora extraem o tipo de resposta (e de update,
+  no `update`) direto do `ServiceT`, sem `cast`, e `BaseController[Service]`
+  com um argumento só passa a ser suficiente (`BaseController[Service, Resp]`
+  e `BaseController[Service, Resp, Update]` continuam aceitos por
+  compatibilidade via defaults de `TypeVar`). `BaseRepository` (e
+  `TenantScopedRepository`) ganhou um segundo parâmetro genérico covariante
+  opcional `ResponseT` (default `Any`, mantendo `BaseRepository[Model]`
+  compatível): `map_to_response` passa a devolver
+  `ResponseT | Awaitable[ResponseT]` (e `map_to_schema` devolve `object`),
+  removendo os `-> Any` públicos e os `type: ignore[no-any-return]` de
+  `BaseService._map_to_response`. Quando o repository declara
+  `BaseRepository[Model, Resp]`, o `basedpyright` recusa divergência entre o
+  `ResponseT` do service e o do repository no call site. **Quebra de tipo**
+  para controllers cujo `ResponseT` ou `UpdateT` discordava do service (e para
+  subclasses que sobrescrevem `BaseController.update` sob `basedpyright`
+  estrito, onde o parâmetro de método genérico acusa
+  `reportIncompatibleMethodOverride`); veja o guia de migração.
 - `ObjectStat.raw` passa a ser `minio.datatypes.Object | None` (#836). O
   `LocalObjectStorageClient` e o `FakeObjectStorageClient` sempre devolveram
   `raw=None`, escondido por `type: ignore[arg-type]` nos dois construtores:

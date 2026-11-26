@@ -12,10 +12,9 @@ optional extras. Generated modules (module docstring containing
 ``Do not edit by hand``) are exempt, as are private helpers (leading ``_``)
 and non-bare container types like ``dict[str, Any]``.
 
-Only upstream overrides whose base class declares ``-> Any`` (plus temporary
-entries owned by a parallel issue) belong in :data:`ALLOWED_ANY_RETURNS`, each
-with its reason. Stale allowlist entries fail the test so exceptions do not
-outlive the override or issue that needed them.
+Only upstream overrides whose base class declares ``-> Any`` belong in
+:data:`ALLOWED_ANY_RETURNS`, each with its reason. Stale allowlist entries fail
+the test so exceptions do not outlive the override that needed them.
 
 Blind spot: return types that resolve to ``Any`` indirectly (through an
 untyped third-party import or a missing annotation) are outside AST scope.
@@ -39,12 +38,6 @@ GENERATED_MARKER: str = "Do not edit by hand"
 """Phrase in the module docstring of every generated module."""
 
 ALLOWED_ANY_RETURNS: dict[str, str] = {
-    "tempest_fastapi_sdk/db/repository.py::BaseRepository.map_to_schema": (
-        "resolvido em #838"
-    ),
-    "tempest_fastapi_sdk/db/repository.py::BaseRepository.map_to_response": (
-        "resolvido em #838"
-    ),
     (
         "tempest_fastapi_sdk/queue/dedup.py::"
         "make_dedup_middleware._DedupMiddleware.consume_scope"
