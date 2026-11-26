@@ -50,15 +50,18 @@ def run_server(
     resolved_host: str = (
         host
         if host is not None
-        else getattr(settings, "SERVER_HOST", None) or "127.0.0.1"
+        else (settings.SERVER_HOST if settings is not None else "127.0.0.1")
+        or "127.0.0.1"
     )
     resolved_port: int = (
-        port if port is not None else getattr(settings, "SERVER_PORT", None) or 8000
+        port
+        if port is not None
+        else (settings.SERVER_PORT if settings is not None else 8000) or 8000
     )
     resolved_reload: bool = (
         reload
         if reload is not None
-        else bool(getattr(settings, "SERVER_RELOAD", False))
+        else (settings.SERVER_RELOAD if settings is not None else False)
     )
 
     uvicorn.run(

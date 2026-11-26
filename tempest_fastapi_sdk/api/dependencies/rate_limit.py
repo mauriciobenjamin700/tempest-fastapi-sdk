@@ -23,7 +23,7 @@ import hashlib
 import inspect
 import json
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
-from typing import Any, cast
+from typing import Any
 
 from fastapi import Request, Response
 
@@ -174,11 +174,11 @@ def _resolve_store(
         request (Request): The request being served.
 
     Returns:
-        RateLimitStore: The store to count in. An object with a ``hit``
-        method is taken as the store; anything else is called.
+        RateLimitStore: The store to count in. A :class:`RateLimitStore`
+        instance is returned directly; anything else is called.
     """
-    if hasattr(store, "hit"):
-        return cast("RateLimitStore", store)
+    if isinstance(store, RateLimitStore):
+        return store
     return store(request)
 
 
