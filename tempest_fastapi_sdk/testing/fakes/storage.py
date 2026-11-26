@@ -340,7 +340,7 @@ class FakeObjectStorageClient(_Steerable):
             content_type=stored.content_type,
             last_modified=stored.last_modified,
             metadata=dict(stored.metadata),
-            raw=None,  # type: ignore[arg-type]
+            raw=None,
         )
 
     async def stream_object(
