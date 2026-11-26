@@ -56,7 +56,10 @@ if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
 
     from tempest_fastapi_sdk.queue.consumer import Consumer
+    from tempest_fastapi_sdk.queue.dedup import DedupStore
+    from tempest_fastapi_sdk.queue.reliability import QueueMetrics
     from tempest_fastapi_sdk.settings import KafkaSettings
+    from tempest_fastapi_sdk.tasks.observability import DeadLetterSink
 
 logger = logging.getLogger("tempest_fastapi_sdk.queue")
 
@@ -1047,7 +1050,7 @@ class MessageBroker:
         await self.broker.declare_exchange(to_rabbit_exchange(exchange))
         self._declared_exchanges.add(exchange.name)
 
-    async def declare_retry_topology(self, topology: Any) -> None:
+    async def declare_retry_topology(self, topology: RetryTopology) -> None:
         """Declare and **bind** the three queues of a retry chain.
 
         Declaring the queues is not enough. Each one has to be bound to
@@ -1064,7 +1067,7 @@ class MessageBroker:
         Call it after :meth:`connect`, since it needs a live channel.
 
         Args:
-            topology (Any): The
+            topology (RetryTopology): The
                 :class:`~tempest_fastapi_sdk.queue.RetryTopology` built
                 by :func:`~tempest_fastapi_sdk.queue.retry_queues`.
 
@@ -1104,7 +1107,7 @@ class MessageBroker:
 
     def dead_letter(
         self,
-        sink: Any,
+        sink: DeadLetterSink,
         *,
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
@@ -1122,7 +1125,7 @@ class MessageBroker:
         Call it **before** :meth:`connect`.
 
         Args:
-            sink (Any): Where dead events go.
+            sink (DeadLetterSink): Where dead events go.
             max_attempts (int): Deliveries to allow before reporting.
                 Must match the
                 :class:`~tempest_fastapi_sdk.queue.ConsumerRetryPolicy`
@@ -1134,7 +1137,7 @@ class MessageBroker:
 
     def deduplicate(
         self,
-        store: Any,
+        store: DedupStore,
         *,
         ttl_seconds: int = DEFAULT_DEDUP_TTL_SECONDS,
     ) -> None:
@@ -1153,7 +1156,7 @@ class MessageBroker:
         Call it **before** :meth:`connect`.
 
         Args:
-            store (Any): A
+            store (DedupStore): A
                 :class:`~tempest_fastapi_sdk.queue.DedupStore` —
                 ``MemoryDedupStore`` for a single replica,
                 ``RedisDedupStore`` for more than one.
@@ -1183,13 +1186,13 @@ class MessageBroker:
         """
         self.broker.add_middleware(make_tracing_middleware())
 
-    def enable_metrics(self, metrics: Any) -> None:
+    def enable_metrics(self, metrics: QueueMetrics) -> None:
         """Publish consume counts and durations for every channel.
 
         Call it **before** :meth:`connect`.
 
         Args:
-            metrics (Any): A
+            metrics (QueueMetrics): A
                 :class:`~tempest_fastapi_sdk.queue.QueueMetrics`.
         """
         self.broker.add_middleware(metrics.middleware())
