@@ -19,7 +19,7 @@ additionally needs torch.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.modelops._fs import size_mb, size_ratio
 from tempest_fastapi_sdk.modelops.schemas import (
@@ -34,6 +34,11 @@ from tempest_fastapi_sdk.modelops.static import (
     analyze_onnx,
     default_providers,
 )
+
+if TYPE_CHECKING:
+    from torch.nn import Module as TorchModule
+
+    from tempest_fastapi_sdk.modelops.protocols import TorchExampleInput
 
 ORT_CONFIG_SUFFIXES: tuple[str, ...] = (
     ".required_operators.config",
@@ -271,10 +276,10 @@ def _config_files(ort_path: Path) -> list[str]:
 
 
 def export_torch_to_onnx(
-    module: Any,
+    module: TorchModule,
     output_path: str | Path,
     *,
-    example_input: Any,
+    example_input: TorchExampleInput,
     opset: int = 17,
     input_names: list[str] | None = None,
     output_names: list[str] | None = None,
@@ -286,13 +291,13 @@ def export_torch_to_onnx(
     """Export a ``torch.nn.Module`` to ONNX.
 
     Args:
-        module (Any): Module to export. It is switched to ``eval()`` first;
-            exporting a module in training mode bakes dropout and the
+        module (TorchModule): Module to export. It is switched to ``eval()``
+            first; exporting a module in training mode bakes dropout and the
             batch-norm training path into the graph.
         output_path (str | Path): Where to write the ``.onnx`` file.
-        example_input (Any): A tensor, or tuple of tensors, tracing runs
-            through the model. Its shapes become the graph's fixed shapes
-            unless ``dynamic_axes`` says otherwise.
+        example_input (TorchExampleInput): A tensor, or tuple of tensors,
+            tracing runs through the model. Its shapes become the graph's
+            fixed shapes unless ``dynamic_axes`` says otherwise.
         opset (int): ONNX opset. Newer is more expressive; older is more
             portable — mobile runtimes and third-party converters often lag,
             and ``12`` remains the safest floor for those.

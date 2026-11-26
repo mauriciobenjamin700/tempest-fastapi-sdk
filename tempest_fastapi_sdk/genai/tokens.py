@@ -15,11 +15,24 @@ persisting when you need per-user accounting, not a local re-count.
 
 from __future__ import annotations
 
+from collections.abc import Sized
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 DEFAULT_PER_MESSAGE_OVERHEAD: int = 4
 """Rough per-message token overhead (role tags + separators), tiktoken-style."""
+
+
+class TokenEncoder(Protocol):
+    """Minimal tokenizer interface used by the token-counting helpers.
+
+    Satisfied by HuggingFace ``AutoTokenizer``, ``tiktoken`` encodings, and
+    lightweight test doubles exposing ``encode(text) -> Sized``.
+    """
+
+    def encode(self, text: str, /) -> Sized:
+        """Encode ``text`` into a sequence of tokens."""
+        ...
 
 
 def _cache_hit_tokens(payload: dict[str, Any]) -> int:
@@ -100,7 +113,7 @@ class TokenUsage:
         )
 
     @classmethod
-    def from_payload(cls, payload: Any) -> TokenUsage | None:
+    def from_payload(cls, payload: object) -> TokenUsage | None:
         """Build a usage from a provider's ``usage`` object.
 
         Reads the OpenAI-compatible spelling (``prompt_tokens`` /
@@ -115,7 +128,7 @@ class TokenUsage:
         one.
 
         Args:
-            payload (Any): The ``usage`` object from the response, or
+            payload (object): The ``usage`` object from the response, or
                 ``None`` when the response carried none.
 
         Returns:
@@ -142,13 +155,13 @@ class TokenUsage:
         )
 
 
-def count_tokens(text: str, tokenizer: Any) -> int:
+def count_tokens(text: str, tokenizer: TokenEncoder) -> int:
     """Count the tokens in ``text`` using ``tokenizer``.
 
     Args:
         text (str): The text to measure.
-        tokenizer (Any): Anything exposing ``encode(text) -> sequence`` (e.g.
-            a HuggingFace ``AutoTokenizer``).
+        tokenizer (TokenEncoder): Anything exposing ``encode(text) -> Sized``
+            (e.g. a HuggingFace ``AutoTokenizer``).
 
     Returns:
         int: The number of tokens.
@@ -158,7 +171,7 @@ def count_tokens(text: str, tokenizer: Any) -> int:
 
 def count_message_tokens(
     messages: list[dict[str, Any]],
-    tokenizer: Any,
+    tokenizer: TokenEncoder,
     *,
     per_message_overhead: int = DEFAULT_PER_MESSAGE_OVERHEAD,
 ) -> int:
@@ -166,7 +179,7 @@ def count_message_tokens(
 
     Args:
         messages (list[dict[str, Any]]): Chat turns with a ``content`` string.
-        tokenizer (Any): Tokenizer exposing ``encode``.
+        tokenizer (TokenEncoder): Tokenizer exposing ``encode``.
         per_message_overhead (int): Tokens added per message for role tags and
             separators the chat template injects.
 
@@ -182,7 +195,7 @@ def count_message_tokens(
 def truncate_messages(
     messages: list[dict[str, Any]],
     max_tokens: int,
-    tokenizer: Any,
+    tokenizer: TokenEncoder,
     *,
     keep_system: bool = True,
     per_message_overhead: int = DEFAULT_PER_MESSAGE_OVERHEAD,
@@ -204,7 +217,7 @@ def truncate_messages(
     Args:
         messages (list[dict[str, Any]]): The full chat history.
         max_tokens (int): The token budget to fit within.
-        tokenizer (Any): Tokenizer exposing ``encode``.
+        tokenizer (TokenEncoder): Tokenizer exposing ``encode``.
         keep_system (bool): Always retain ``system`` messages.
         per_message_overhead (int): Per-message overhead used in the estimate.
 
@@ -280,6 +293,7 @@ def _flatten(groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
 
 __all__: list[str] = [
     "DEFAULT_PER_MESSAGE_OVERHEAD",
+    "TokenEncoder",
     "TokenUsage",
     "count_message_tokens",
     "count_tokens",

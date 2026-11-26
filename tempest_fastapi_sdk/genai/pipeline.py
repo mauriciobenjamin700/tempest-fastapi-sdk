@@ -729,11 +729,11 @@ async def _anonymous_caller() -> None:
     return None
 
 
-def _as_owner(value: Any) -> str | UUID | None:
+def _as_owner(value: object) -> str | UUID | None:
     """Coerce what a ``current_user_id`` dependency returned to an owner key.
 
     Args:
-        value (Any): The dependency's return value (a ``UUID``, a string,
+        value (object): The dependency's return value (a ``UUID``, a string,
             an integer id, or ``None`` for an anonymous caller).
 
     Returns:
@@ -818,13 +818,13 @@ def make_ai_chat_router(
     )
     async def chat(
         body: AIChatRequestSchema,
-        user_id: Any = user_dep,
+        user_id: object = user_dep,
     ) -> AIChatResult:
         """Produce a full grounded reply for one chat turn.
 
         Args:
             body (AIChatRequestSchema): The turn request.
-            user_id (Any): The caller, resolved by ``current_user_id``.
+            user_id (object): The caller, resolved by ``current_user_id``.
 
         Returns:
             AIChatResult: The reply and everything produced with it.
@@ -846,13 +846,13 @@ def make_ai_chat_router(
     )
     async def chat_stream(
         body: AIChatRequestSchema,
-        user_id: Any = user_dep,
+        user_id: object = user_dep,
     ) -> StreamingResponse:
         """Stream the reply token-by-token over SSE.
 
         Args:
             body (AIChatRequestSchema): The turn request.
-            user_id (Any): The caller, resolved by ``current_user_id``.
+            user_id (object): The caller, resolved by ``current_user_id``.
 
         Returns:
             StreamingResponse: A ``text/event-stream`` of token events,

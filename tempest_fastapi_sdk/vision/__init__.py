@@ -49,6 +49,7 @@ from tempest_fastapi_sdk.vision.router import (
 from tempest_fastapi_sdk.vision.router import (
     DEFAULT_MAX_IMAGE_UPLOAD_BYTES as DEFAULT_MAX_IMAGE_UPLOAD_BYTES,
 )
+from tempest_fastapi_sdk.vision.router import AsyncVisionTask as AsyncVisionTask
 from tempest_fastapi_sdk.vision.router import make_vision_router as make_vision_router
 from tempest_fastapi_sdk.vision.schemas import (
     BoundingBoxSchema as BoundingBoxSchema,
@@ -126,6 +127,7 @@ def __getattr__(name: str) -> Any:
 __all__: list[str] = [
     "DEFAULT_MAX_IMAGE_PIXELS",
     "DEFAULT_MAX_IMAGE_UPLOAD_BYTES",
+    "AsyncVisionTask",
     "BoundingBoxSchema",
     "ClassProbabilitySchema",
     "ClassificationSchema",

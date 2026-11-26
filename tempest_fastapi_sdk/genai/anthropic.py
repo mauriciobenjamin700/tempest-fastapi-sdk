@@ -444,7 +444,7 @@ def to_anthropic_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return translated
 
 
-def anthropic_usage(payload: Any) -> TokenUsage | None:
+def anthropic_usage(payload: object) -> TokenUsage | None:
     """Read a Messages API ``usage`` object into a :class:`TokenUsage`.
 
     ``input_tokens`` there is only the **uncached** remainder; the prompt
@@ -458,7 +458,7 @@ def anthropic_usage(payload: Any) -> TokenUsage | None:
     Messages API bills above the base input rate.
 
     Args:
-        payload (Any): The ``usage`` object, or ``None``.
+        payload (object): The ``usage`` object, or ``None``.
 
     Returns:
         TokenUsage | None: The usage, or ``None`` when ``payload`` is not a
