@@ -617,7 +617,7 @@ from src.db.models import UserModel
 from src.schemas import UserResponseSchema
 
 
-class UserRepository(BaseRepository[UserModel]):
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
     """Data-access layer for users."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -647,9 +647,10 @@ The base repo gives you 20+ methods for free — see the [reference table](../..
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
+from src.schemas import UserResponseSchema
 
 
-class UserRepository(BaseRepository[UserModel]):
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
     # ... __init__ and mappers above ...
 
     # ──────── custom queries on top of the inherited bulk + read methods ────────
@@ -772,7 +773,7 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
 
 Even when there's no orchestration to do, `controllers/` exists as a **thin pass-through** so the import graph stays uniform across services. The day a use case needs to coordinate two services (or fan out to a queue), the controller is already there.
 
-Inherit from `BaseController[ServiceT, ResponseT]`. The base forwards `get_by_id`, `list`, `paginate`, `count` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
+Inherit from `BaseController[ServiceT]` (the older `BaseController[ServiceT, ResponseT]` form stays accepted for compatibility, while pass-through methods derive both response and update types straight from the service). The base forwards `get_by_id`, `list`, `paginate`, `count`, `update` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
 
 ```python
 # src/controllers/users/user.py
@@ -784,7 +785,7 @@ from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
 from src.services import UserService
 
 
-class UserController(BaseController[UserService, UserResponseSchema]):
+class UserController(BaseController[UserService]):
     """Orchestrate user use cases.
 
     Today every method is a thin pass-through to ``UserService``. As
@@ -822,7 +823,7 @@ from src.schemas import UserCreateSchema, UserResponseSchema
 from src.services import UserService
 
 
-class UserController(BaseController[UserService, UserResponseSchema]):
+class UserController(BaseController[UserService]):
     # ... methods above ...
 
     async def signup(self, data: UserCreateSchema) -> UserResponseSchema:

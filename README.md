@@ -779,7 +779,7 @@ from src.db.models import UserModel
 from src.schemas import UserResponseSchema
 
 
-class UserRepository(BaseRepository[UserModel]):
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
     """Data-access layer for users."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -934,7 +934,7 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
 
 Even when there's no orchestration to do, `controllers/` exists as a **thin pass-through** so the import graph stays uniform across services. The day a use case needs to coordinate two services (or fan out to a queue), the controller is already there.
 
-Inherit from `BaseController[ServiceT, ResponseT]`. The base forwards `get_by_id`, `list`, `paginate`, `count`, `update` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
+Inherit from `BaseController[ServiceT]` (the older `BaseController[ServiceT, ResponseT]` form stays accepted for compatibility, while pass-through methods read both response and update types straight from the service). The base forwards `get_by_id`, `list`, `paginate`, `count`, `update` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
 
 ```python
 # src/controllers/users/user.py
@@ -946,7 +946,7 @@ from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
 from src.services import UserService
 
 
-class UserController(BaseController[UserService, UserResponseSchema]):
+class UserController(BaseController[UserService]):
     """Orchestrate user use cases.
 
     Today every method is a thin pass-through to ``UserService``. As
@@ -984,7 +984,7 @@ from src.schemas import UserCreateSchema, UserResponseSchema
 from src.services import UserService
 
 
-class UserController(BaseController[UserService, UserResponseSchema]):
+class UserController(BaseController[UserService]):
     # ... methods above ...
 
     async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
@@ -2642,9 +2642,9 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 
 ### Controllers & services layering recipe
 
-`BaseService[RepositoryT, ResponseT]` and `BaseController[ServiceT, ResponseT]` are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.
+`BaseService[RepositoryT, ResponseT]` and `BaseController[ServiceT]` are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.
 
-`BaseService[RepositoryT, ResponseT]` accepts an optional third type argument — `BaseService[RepositoryT, ResponseT, UpdateT]` — that types the `update` payload (defaults to `BaseSchema`, so the two-argument form keeps working). What you inherit by subclassing it:
+`BaseService[RepositoryT, ResponseT]` accepts an optional third type argument — `BaseService[RepositoryT, ResponseT, UpdateT]` — that types the `update` payload (defaults to `BaseSchema`, so the two-argument form keeps working). When the repository declares its optional second type argument (`BaseRepository[ModelType, ResponseT]`), `map_to_response` is typed with `ResponseT` and `BaseService` ties its response type to it. What you inherit by subclassing `BaseService`:
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -2659,7 +2659,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 
 `map_to_response` is `await`-ed when it returns a coroutine, so async mappers work transparently — no method override needed.
 
-What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
+What you inherit by subclassing `BaseController[ServiceT]` (the older `BaseController[ServiceT, ResponseT]` and `BaseController[ServiceT, ResponseT, UpdateT]` forms remain accepted for compatibility, while pass-through methods read response and update types straight from `ServiceT`):
 
 | Method | Forwards to | Notes |
 | --- | --- | --- |
@@ -2667,7 +2667,7 @@ What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
 | `list(filters, order_by, ascending)` | `service.list` | Same. |
 | `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Same. |
 | `count(filters)` | `service.count` | Same. |
-| `update(id, data)` | `service.update` | `data` typed by the optional 3rd generic param `UpdateT` (defaults to `BaseSchema`). |
+| `update(id, data)` | `service.update` | `data` and return type come from `service.update`. |
 | `delete(id)` | `service.delete` | Same. |
 
 When a use case needs domain rules, override the inherited method in the service. When a use case needs to coordinate more than one service, override the inherited method (or add a new one) in the controller. The router never grows — it only depends on the controller.
@@ -2708,7 +2708,7 @@ from src.schemas.user import UserCreate, UserResponse
 from src.services.user_service import UserService
 
 
-class UserController(BaseController[UserService, UserResponse]):
+class UserController(BaseController[UserService]):
     """Thin orchestration over UserService."""
 
     async def signup(self, data: UserCreate) -> UserResponse:
