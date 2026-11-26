@@ -14,7 +14,6 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any
 
 from tempest_fastapi_sdk.exceptions.payment import (
     PixRefundExceedsBalanceException,
@@ -286,11 +285,11 @@ class FakePixProvider(_Steerable):
             raise KeyError(charge_id)
         return sum(refund.amount_cents for refund in self._refunds.get(charge_id, []))
 
-    def parse_webhook(self, event: Any) -> PixPaymentEvent:
+    def parse_webhook(self, event: object) -> PixPaymentEvent:
         """Turn this fake's delivery shape into a canonical event.
 
         Args:
-            event (Any): A mapping with ``charge_id`` and, optionally,
+            event (object): A mapping with ``charge_id`` and, optionally,
                 ``status`` (a :class:`PaymentStatusEnum` or its value). Defaults
                 to a paid event, because that is the delivery a checkout
                 test is usually after.
@@ -299,10 +298,15 @@ class FakePixProvider(_Steerable):
             PixPaymentEvent: The canonical event.
 
         Raises:
+            TypeError: When ``event`` is not a mapping.
             KeyError: When no charge carries that id.
             BaseException: Whatever :meth:`fail_next` queued.
         """
         self._record("parse_webhook")
+        if not isinstance(event, Mapping):
+            raise TypeError(
+                f"parse_webhook expects a mapping, got {type(event).__name__}."
+            )
         charge_id = str(event["charge_id"])
         status = PaymentStatusEnum(event.get("status", PaymentStatusEnum.PAID))
         charge = self._transition(charge_id, status)
