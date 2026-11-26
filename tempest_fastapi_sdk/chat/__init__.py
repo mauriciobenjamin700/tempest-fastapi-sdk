@@ -127,6 +127,7 @@ from tempest_fastapi_sdk.chat.schemas import (
 from tempest_fastapi_sdk.chat.service import (
     PARTICIPANT_REMOVED_EVENT as PARTICIPANT_REMOVED_EVENT,
 )
+from tempest_fastapi_sdk.chat.service import ChatMessageLike as ChatMessageLike
 from tempest_fastapi_sdk.chat.service import ChatService as ChatService
 
 __all__: list[str] = [
@@ -144,6 +145,7 @@ __all__: list[str] = [
     "BaseMessageAttachmentModel",
     "BaseMessageModel",
     "BaseMessageReactionModel",
+    "ChatMessageLike",
     "ChatService",
     "ConversationCreateSchema",
     "ConversationKindEnum",
