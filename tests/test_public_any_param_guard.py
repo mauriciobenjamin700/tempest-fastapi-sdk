@@ -21,9 +21,9 @@ optional extras. Generated modules (module docstring containing
 and non-bare container types like ``dict[str, Any]``.
 
 Exceptions belong in :data:`ALLOWED_ANY_PARAMS`, keyed by
-``<rel_path>::<qualname>(<param>)``, each with a non-empty reason (genuine
-upstream overrides whose base class declares ``Any``, or items still pending
-in #842). Stale allowlist entries fail the test so exceptions shrink and never
+``<rel_path>::<qualname>(<param>)``, each with a non-empty reason (only
+genuine upstream overrides whose base class declares ``Any``; empty since
+#842 was finished). Stale allowlist entries fail the test so exceptions shrink and never
 outlive the code that needed them.
 
 Blind spot: parameter annotations that resolve to ``Any`` indirectly (through
@@ -48,156 +48,7 @@ REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 GENERATED_MARKER: str = "Do not edit by hand"
 """Phrase in the module docstring of every generated module."""
 
-ALLOWED_ANY_PARAMS: dict[str, str] = {
-    (
-        "tempest_fastapi_sdk/api/webhooks.py::WebhookSender.send(payload)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/app_errors/router.py::"
-        "make_app_error_router.list_app_errors(session)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/app_errors/router.py::"
-        "make_app_error_router.report_app_error(session)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/app_errors/router.py::"
-        "make_app_error_router.report_app_error(user_id)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/chat/service.py::ChatService.receipt_counts(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/core/enums.py::_EnumHelpers.has_value(value)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/db/enum_migrations.py::render_enum_types(obj)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/db/enum_migrations.py::"
-        "type_bound_check_include_object.include_object(compare_to)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/db/enum_migrations.py::"
-        "type_bound_check_include_object.include_object(object_)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/db/expressions.py::build_filter_condition(value)"
-    ): "pendente em #842",
-    ("tempest_fastapi_sdk/db/signals.py::emit(instance)"): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/geo/db.py::haversine_distance_sql(latitude)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/geo/db.py::haversine_distance_sql(longitude)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/integrations/payment/adapters/mercado_pago.py::"
-        "MercadoPagoPixProvider.parse_webhook(event)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/integrations/payment/adapters/openpix.py::"
-        "OpenPixPixProvider.parse_webhook(event)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/integrations/payment/base.py::"
-        "PixProvider.parse_webhook(event)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/mcp/_sessions.py::principal_key(principal)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/privacy/graph.py::SubjectGraph.condition(subject_id)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/privacy/graph.py::SubjectGraph.count(subject_id)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/privacy/graph.py::SubjectGraph.erase(subject_id)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/privacy/graph.py::SubjectGraph.export(subject_id)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/rooms/registry.py::RoomRegistry.relay_json(data)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/rooms/session.py::RoomSession.handle_json(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/sse/router.py::make_sse_router.issue_ticket(user)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/sse/router.py::make_sse_router.stream(fallback)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/ssr/errors.py::"
-        "register_html_error_handlers.wrap.handler(exc)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/storage/tus/router.py::make_tus_router.create_upload(user)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/storage/tus/router.py::"
-        "make_tus_router.discard_upload(user)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/storage/tus/router.py::make_tus_router.upload_offset(user)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/storage/tus/router.py::make_tus_router.write_chunk(user)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/testing/fakes/payment.py::"
-        "FakePixProvider.parse_webhook(event)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/ui/components/pagination.py::pagination_for(envelope)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/ui/components/table.py::DataTable.cell_text(value)"
-    ): "pendente em #842",
-    ("tempest_fastapi_sdk/ui/forms/parse.py::parse_form(request)"): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.request(content)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.request(data)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.request(files)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.request(json)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream(content)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream(data)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream(files)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream(json)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream_bytes(content)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream_bytes(data)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream_bytes(files)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.stream_bytes(json)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/utils/password.py::PasswordPolicy.from_settings(settings)"
-    ): "pendente em #842",
-}
+ALLOWED_ANY_PARAMS: dict[str, str] = {}
 """Explicitly permitted bare ``Any`` parameters, keyed by ``path::qualname(param)``."""
 
 

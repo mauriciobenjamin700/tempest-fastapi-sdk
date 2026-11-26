@@ -286,8 +286,8 @@ mexer neles. Todos rodam dentro do `make check`.
   concreto sob `TYPE_CHECKING`, apelido nomeado (`JsonValue`, `TabularInput`,
   `ImageSource`), `Protocol` do SDK ou `object`. `*args: Any, **kwargs: Any` de
   passthrough puro ficam fora do guard. Exceções vivem em `ALLOWED_ANY_PARAMS`
-  com motivo (overrides de upstream ou itens pendentes de #842), e entrada
-  obsoleta falha. Guard: `tests/test_public_any_param_guard.py`.
+  com motivo, só para override de upstream cujo parâmetro já é `Any` lá (hoje
+  vazia), e entrada obsoleta falha. Guard: `tests/test_public_any_param_guard.py`.
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
   mypy aceita `alias`, pyright/basedpyright não —
