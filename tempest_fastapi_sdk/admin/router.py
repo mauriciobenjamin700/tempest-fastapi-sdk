@@ -140,6 +140,7 @@ from tempest_fastapi_sdk.db.audit import (
     snapshot_model,
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
+from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.search import like_search_condition
 from tempest_fastapi_sdk.db.signals import RepositorySignalEnum, emit, has_handlers
 from tempest_fastapi_sdk.db.transaction import transaction
@@ -167,7 +168,6 @@ if TYPE_CHECKING:
 
     from tempest_fastapi_sdk.db.audit import BaseAuditLogModel
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
-    from tempest_fastapi_sdk.db.model import BaseModel
     from tempest_fastapi_sdk.spreadsheet import CellValue
 
 
@@ -2088,7 +2088,10 @@ def make_admin_router(
         name is shown only for a user the signed-in principal may ``VIEW``
         and reaches through that scope; any other author is shown by id, so
         neither the audit panel nor the dashboard feed reads another
-        tenant's users.
+        tenant's users. A principal that is not a model (an LDAP entry, an
+        IAM identity) has no admin and so no scope: it is named by
+        :meth:`AdminAuthBackend.display_name`, like the principal of a model
+        that is not registered.
 
         Args:
             principal (Any): The signed-in admin principal.
@@ -2103,7 +2106,7 @@ def make_admin_router(
         actor = await auth_backend.load_principal(db_session, str(uid))
         if actor is None:
             return str(uid)
-        actor_admin = site.get(cast("type[BaseModel]", type(actor)))
+        actor_admin = site.get(type(actor)) if isinstance(actor, BaseModel) else None
         if actor_admin is not None and actor_admin.row_scope is not None:
             if not await _allows(principal, actor_admin, AdminPermissionEnum.VIEW):
                 return str(uid)
@@ -5727,7 +5730,8 @@ def make_admin_router(
         what it reads itself. When the account's class has a registered
         admin with a ``row_scope``, the account must be inside that scope for
         the operator — otherwise a row of tenant A could hand out a user of
-        tenant B.
+        tenant B. An account that is not a model has no admin to scope it
+        and is returned as is, like one of an unregistered model.
 
         Args:
             admin (AdminModel[Any]): The row's admin.
@@ -5751,7 +5755,9 @@ def make_admin_router(
             return None
         if account is instance:
             return account
-        account_admin = site.get(cast("type[BaseModel]", type(account)))
+        if not isinstance(account, BaseModel):
+            return account
+        account_admin = site.get(type(account))
         if account_admin is None:
             return account
         scope = await account_admin.scope_for(principal)

@@ -20,6 +20,24 @@ def version_of(stat: ObjectStat) -> str | None:
 
 Se você já fazia essa checagem e silenciava o `unreachable` do mypy (`warn_unreachable`) com `# type: ignore`, o ignore deixa de ser necessário.
 
+## Unreleased — `same_site` do `SignedCookieSessionStore` tipado como `Literal`
+
+O parâmetro `same_site` de `SignedCookieSessionStore` era `str` e passa a ser `SameSite` (`Literal["lax", "strict", "none"]`, exportado em `tempest_fastapi_sdk`). Valor fora dos três agora levanta `ValueError` na construção, em vez de `AssertionError` no primeiro login. O mypy recusa (`arg-type`) duas formas que antes passavam:
+
+- **Variável `str`:** anote-a como `SameSite`, ou leia o valor de um campo de settings já tipado assim (o `SESSION_COOKIE_SAMESITE` do `SessionSettings` é `SessionCookieSameSite`, o mesmo `Literal`).
+- **Grafia com maiúscula (`"Lax"`, `"Strict"`):** escreva em minúscula. Em runtime ela continua aceita e é guardada em minúscula, então o cabeçalho `Set-Cookie` passa de `SameSite=Strict` para `SameSite=strict`.
+
+```python
+from tempest_fastapi_sdk import SameSite
+from tempest_fastapi_sdk.admin import SignedCookieSessionStore
+
+policy: SameSite = "strict"
+store: SignedCookieSessionStore = SignedCookieSessionStore(
+    "change-me-to-a-32-byte-secret-key!!",
+    same_site=policy,
+)
+```
+
 ## 0.372.0 — cinco regras novas no `tempest check` e `RuntimeError` sem URL no `AlembicHelper`
 
 O `tempest check` (e o `tempest lint-layers`) ganhou cinco regras, todas de severidade `warning`. Com `layers_strict = true` em `[tool.tempest]`, que é o padrão do `tempest new`, aviso também derruba o comando: num projeto gerado com só três avisos plantados, `tempest lint-layers` imprimiu `3 layer finding(s): 0 error(s), 3 warning(s).` e saiu com código `1`; com `layers_strict = false`, com código `0`.
