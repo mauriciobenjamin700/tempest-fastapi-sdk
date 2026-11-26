@@ -35,7 +35,7 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from typing import Any, cast
 
-from sqlalchemy import and_, func, not_, or_
+from sqlalchemy import SQLColumnExpression, and_, func, not_, or_
 from sqlalchemy.orm import QueryableAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -381,34 +381,38 @@ class F:
     def __init__(
         self,
         name: str,
-        _builder: Callable[[type[Any]], Any] | None = None,
+        _builder: Callable[[type[Any]], SQLColumnExpression[Any]] | None = None,
     ) -> None:
         """Initialize a column reference.
 
         Args:
             name (str): The column name on the target model.
-            _builder (Callable[[type[Any]], Any] | None): Internal —
-                the expression builder; defaults to reading the column.
+            _builder (Callable[[type[Any]], SQLColumnExpression[Any]] | None):
+                Internal — the expression builder; defaults to reading the
+                column.
         """
         self.name: str = name
-        self._builder: Callable[[type[Any]], Any] = _builder or (
+        self._builder: Callable[[type[Any]], SQLColumnExpression[Any]] = _builder or (
             lambda model: getattr(model, name)
         )
 
-    def resolve(self, model: type[Any]) -> Any:
+    def resolve(self, model: type[Any]) -> SQLColumnExpression[Any]:
         """Resolve to a SQLAlchemy column expression against ``model``.
 
         Args:
             model (type[Any]): The model class to bind the column to.
 
         Returns:
-            Any: The resolved SQLAlchemy expression.
+            SQLColumnExpression[Any]: The mapped attribute for a bare
+            ``F("name")``, or the arithmetic expression built on it. Both
+            the ORM attribute and a core ``ColumnElement`` are
+            ``SQLColumnExpression``.
         """
         return self._builder(model)
 
     def _combine(
         self,
-        op: Callable[[Any, Any], Any],
+        op: Callable[[Any, Any], SQLColumnExpression[Any]],
         other: Any,
         *,
         reflected: bool = False,
@@ -416,7 +420,9 @@ class F:
         """Return a new ``F`` applying ``op`` against ``other``.
 
         Args:
-            op (Callable[[Any, Any], Any]): The binary operator.
+            op (Callable[[Any, Any], SQLColumnExpression[Any]]): The binary
+                operator; one operand is always a column expression, so the
+                result is one too.
             other (Any): The right-hand operand (value or ``F``).
             reflected (bool): Whether ``self`` is the right-hand side
                 (``other op self``) for reflected operators.
@@ -425,7 +431,15 @@ class F:
             F: A new lazily-resolved expression.
         """
 
-        def builder(model: type[Any]) -> Any:
+        def builder(model: type[Any]) -> SQLColumnExpression[Any]:
+            """Resolve both operands against ``model`` and apply ``op``.
+
+            Args:
+                model (type[Any]): The model class to bind the columns to.
+
+            Returns:
+                SQLColumnExpression[Any]: The combined expression.
+            """
             left = self._builder(model)
             right = other.resolve(model) if isinstance(other, F) else other
             return op(right, left) if reflected else op(left, right)
