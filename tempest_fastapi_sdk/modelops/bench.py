@@ -630,10 +630,10 @@ def benchmark_torch(
         analyze_torch(module, name=name, example_input=args) if collect_static else None
     )
 
-    def run() -> Any:
+    def run() -> None:
         """Run one forward pass without building a graph."""
         with torch.no_grad():
-            return module(*args)
+            module(*args)
 
     def cuda_memory() -> float | None:
         """Return currently allocated CUDA memory in MB."""
