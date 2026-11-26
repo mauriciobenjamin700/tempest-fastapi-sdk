@@ -10,7 +10,7 @@ from contextlib import redirect_stdout
 from importlib import resources
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Final, TypeVar
 
 from alembic import command
 from alembic.config import Config
@@ -127,6 +127,21 @@ def _upgrade_section(source: str) -> str:
         return source
     end = source.find("def downgrade", start)
     return source[start:] if end == -1 else source[start:end]
+
+
+MISSING_DATABASE_URL_MESSAGE: Final[str] = (
+    "DATABASE_URL is empty. Set it on the environment, in "
+    "src/core/settings.py, or pass --database-url to the CLI."
+)
+"""The error raised when no source resolves a database URL.
+
+Shared by :meth:`AlembicHelper._read` (``current``, ``has_existing_schema``,
+``sync_schema`` and the other reads) and by
+:func:`~tempest_fastapi_sdk.db.alembic_env.run_alembic_env` (``upgrade``,
+``downgrade``, ``stamp``), so both paths name the same three places to set
+the URL. It does not mention ``alembic.ini``: the ini the SDK generates leaves
+``sqlalchemy.url`` empty on purpose.
+"""
 
 
 def _resolve_runtime_database_url() -> str | None:
@@ -970,12 +985,17 @@ class AlembicHelper:
             _T: Whatever ``operation`` returned.
 
         Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured, so
-                there is no database to read from.
+            RuntimeError: With :data:`MISSING_DATABASE_URL_MESSAGE` when no
+                source resolves ``sqlalchemy.url`` — neither ``db_url=``,
+                the ini, ``DATABASE_URL`` nor ``src/core/settings.py``. The
+                SDK-generated ini holds the option empty, which Alembic
+                returns as ``""``, so the check is on falsiness: an
+                ``is None`` check let ``""`` through to ``create_engine``,
+                which raised SQLAlchemy's ``ArgumentError`` (#832).
         """
         url = self.config.get_main_option("sqlalchemy.url")
-        if url is None:
-            raise RuntimeError("sqlalchemy.url is not configured in alembic.ini")
+        if not url:
+            raise RuntimeError(MISSING_DATABASE_URL_MESSAGE)
         try:
             engine = create_engine(_strip_async_driver(url))
         except (NoSuchModuleError, ModuleNotFoundError):
@@ -1062,8 +1082,9 @@ class AlembicHelper:
             CommandError: When ``alembic_version`` holds more than one row
                 (unmerged branches stamped in the database), as Alembic's
                 ``get_current_revision`` does.
-            RuntimeError: When ``sqlalchemy.url`` is not configured and no
-                ``bind`` was passed, so there is no database to read the
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`) and no ``bind`` was
+                passed, so there is no database to read the
                 revision from, or when the async-only fallback is needed
                 inside a running loop.
         """
@@ -1093,8 +1114,9 @@ class AlembicHelper:
 
         Raises:
             CommandError: When ``alembic_version`` holds more than one row.
-            RuntimeError: When ``sqlalchemy.url`` is not configured and no
-                ``bind`` was passed.
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`) and no ``bind`` was
+                passed.
         """
         if bind is not None:
             return await _read_on_async_bind(bind, _read_current_revision)
@@ -1118,8 +1140,9 @@ class AlembicHelper:
             bool: ``True`` when at least one non-Alembic table exists.
 
         Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured and no
-                ``bind`` was passed, or when the async-only fallback is
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`) and no ``bind`` was
+                passed, or when the async-only fallback is
                 needed inside a running loop.
         """
         if bind is not None:
@@ -1142,8 +1165,9 @@ class AlembicHelper:
             bool: ``True`` when at least one non-Alembic table exists.
 
         Raises:
-            RuntimeError: When ``sqlalchemy.url`` is not configured and no
-                ``bind`` was passed.
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`) and no ``bind`` was
+                passed.
         """
         if bind is not None:
             return await _read_on_async_bind(bind, _has_application_tables)
@@ -1219,7 +1243,8 @@ class AlembicHelper:
         Raises:
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
-            RuntimeError: When ``sqlalchemy.url`` is not configured, or when
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`), or when
                 called from a running event loop (await
                 :meth:`adopt_async`).
         """
@@ -1240,7 +1265,8 @@ class AlembicHelper:
         Raises:
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
-            RuntimeError: When ``sqlalchemy.url`` is not configured.
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`).
         """
         return await asyncio.to_thread(self.adopt)
 
@@ -1288,7 +1314,8 @@ class AlembicHelper:
                 application tables and ``force`` is ``False``.
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
-            RuntimeError: When ``sqlalchemy.url`` is not configured, or when
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`), or when
                 called from a running event loop (await
                 :meth:`sync_schema_async`).
         """
@@ -1322,7 +1349,8 @@ class AlembicHelper:
                 application tables and ``force`` is ``False``.
             AmbiguousBaseRevisionError: When adoption is needed but the
                 tree has no single root to stamp.
-            RuntimeError: When ``sqlalchemy.url`` is not configured.
+            RuntimeError: When no source resolves the database URL
+                (:data:`MISSING_DATABASE_URL_MESSAGE`).
         """
         return await asyncio.to_thread(self.sync_schema, force=force)
 
