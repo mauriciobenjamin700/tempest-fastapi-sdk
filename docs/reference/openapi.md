@@ -89,6 +89,11 @@ O gerador de clientes tipados a partir de um documento OpenAPI (`tempest openapi
 ::: tempest_fastapi_sdk.utils.storage_backends.LocalUploadStorage
 ::: tempest_fastapi_sdk.utils.storage_backends.MinIOUploadStorage
 ::: tempest_fastapi_sdk.utils.http_client.HTTPClient
+::: tempest_fastapi_sdk.utils.http_client.HTTPFileContent
+::: tempest_fastapi_sdk.utils.http_client.HTTPFilePart
+::: tempest_fastapi_sdk.utils.http_client.HTTPRequestContent
+::: tempest_fastapi_sdk.utils.http_client.HTTPRequestData
+::: tempest_fastapi_sdk.utils.http_client.HTTPRequestFiles
 ::: tempest_fastapi_sdk.utils.http_client.CircuitOpenError
 ::: tempest_fastapi_sdk.utils.retry.RetryLogger
 ::: tempest_fastapi_sdk.utils.retry.RetryPolicy

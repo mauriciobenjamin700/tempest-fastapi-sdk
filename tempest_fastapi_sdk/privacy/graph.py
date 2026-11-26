@@ -380,7 +380,7 @@ class SubjectGraph:
     def condition(
         self,
         table: str | Table,
-        subject_id: Any,
+        subject_id: object,
         *,
         values: Mapping[str, Any] | None = None,
     ) -> ColumnElement[bool]:
@@ -396,7 +396,7 @@ class SubjectGraph:
 
         Args:
             table (str | Table): A table of the closure.
-            subject_id (Any): The value of the root's primary key.
+            subject_id (object): The value of the root's primary key.
             values (Mapping[str, Any] | None): The subject's identifying
                 values, by the keys ``value_matches`` names. A key left out
                 (or ``None``) adds no match.
@@ -440,7 +440,7 @@ class SubjectGraph:
     def _condition(
         self,
         table: Table,
-        subject_id: Any,
+        subject_id: object,
         visiting: frozenset[str],
         values: Mapping[str, Any],
     ) -> ColumnElement[bool]:
@@ -448,7 +448,7 @@ class SubjectGraph:
 
         Args:
             table (Table): The table to build the clause for.
-            subject_id (Any): The root primary-key value.
+            subject_id (object): The root primary-key value.
             visiting (frozenset[str]): Tables on the current path, skipped
                 to stop recursion on cycles.
             values (Mapping[str, Any]): The subject's identifying values.
@@ -489,7 +489,7 @@ class SubjectGraph:
     async def export(
         self,
         session: AsyncSession,
-        subject_id: Any,
+        subject_id: object,
         *,
         values: Mapping[str, Any] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
@@ -497,7 +497,7 @@ class SubjectGraph:
 
         Args:
             session (AsyncSession): An open async session.
-            subject_id (Any): The value of the root's primary key.
+            subject_id (object): The value of the root's primary key.
             values (Mapping[str, Any] | None): The subject's identifying
                 values, for the tables in ``value_matches``.
 
@@ -524,7 +524,7 @@ class SubjectGraph:
     async def count(
         self,
         session: AsyncSession,
-        subject_id: Any,
+        subject_id: object,
         *,
         values: Mapping[str, Any] | None = None,
     ) -> dict[str, int]:
@@ -537,7 +537,7 @@ class SubjectGraph:
 
         Args:
             session (AsyncSession): An open async session.
-            subject_id (Any): The value of the root's primary key.
+            subject_id (object): The value of the root's primary key.
             values (Mapping[str, Any] | None): The subject's identifying
                 values, for the tables in ``value_matches``.
 
@@ -560,7 +560,7 @@ class SubjectGraph:
     async def erase(
         self,
         session: AsyncSession,
-        subject_id: Any,
+        subject_id: object,
         *,
         values: Mapping[str, Any] | None = None,
     ) -> dict[str, int]:
@@ -576,7 +576,7 @@ class SubjectGraph:
             session (AsyncSession): An open async session. The ``ON DELETE``
                 rules must be enforced by the connection (on SQLite, with
                 foreign keys on, which the SDK's engines turn on).
-            subject_id (Any): The value of the root's primary key.
+            subject_id (object): The value of the root's primary key.
             values (Mapping[str, Any] | None): The subject's identifying
                 values, for the tables in ``value_matches``.
 

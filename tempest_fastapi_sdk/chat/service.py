@@ -17,7 +17,7 @@ a direct conversation that cannot be created twice for the same pair.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
 from tempest_fastapi_sdk.chat.constants import (
@@ -57,6 +57,31 @@ just got its ``left_at``. The chat router's stream reads it to close the
 connections of the user it names: their membership ended, so the
 conversation's channel must stop reaching them.
 """
+
+
+class ChatMessageLike(Protocol):
+    """The three attributes :meth:`ChatService.receipt_counts` reads.
+
+    Declared as read-only properties so concrete subclasses of
+    :class:`~tempest_fastapi_sdk.chat.BaseMessageModel`,
+    :class:`~tempest_fastapi_sdk.chat.MessageResponseSchema`, and
+    lightweight test doubles are all accepted.
+    """
+
+    @property
+    def conversation_id(self) -> UUID:
+        """Return the owning conversation's identifier."""
+        ...
+
+    @property
+    def sender_id(self) -> UUID:
+        """Return the sender's user identifier."""
+        ...
+
+    @property
+    def created_at(self) -> datetime:
+        """Return when the message was created."""
+        ...
 
 
 class ChatService:
@@ -1036,7 +1061,7 @@ class ChatService:
         await self.participants.update(membership)
         return ParticipantResponseSchema.model_validate(membership)
 
-    async def receipt_counts(self, message: Any) -> ReceiptCountsSchema:
+    async def receipt_counts(self, message: ChatMessageLike) -> ReceiptCountsSchema:
         """Count who has received and read one message.
 
         Derived from the watermarks — a participant has read the message
@@ -1044,7 +1069,8 @@ class ChatService:
         per-message, per-reader row to count.
 
         Args:
-            message (Any): The message row.
+            message (ChatMessageLike): The message row or response carrying
+                ``conversation_id``, ``sender_id``, and ``created_at``.
 
         Returns:
             ReceiptCountsSchema: Delivered / read / total counts,
@@ -1057,13 +1083,13 @@ class ChatService:
 
     def _compose_receipts(
         self,
-        message: Any,
+        message: ChatMessageLike,
         members: list[Any],
     ) -> ReceiptCountsSchema:
         """Count receipts from participant rows already loaded.
 
         Args:
-            message (Any): The message row.
+            message (ChatMessageLike): The message row or response.
             members (list[Any]): Every participant row of its
                 conversation, sender included — it is filtered here.
 
@@ -1720,5 +1746,6 @@ class ChatService:
 
 __all__: list[str] = [
     "PARTICIPANT_REMOVED_EVENT",
+    "ChatMessageLike",
     "ChatService",
 ]

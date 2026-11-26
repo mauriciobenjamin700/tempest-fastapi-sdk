@@ -29,10 +29,17 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Iterable,
+    Mapping,
+    Sequence,
+)
 from contextlib import aclosing, suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import httpx
@@ -50,6 +57,26 @@ REQUEST_ID_HEADER: str = "X-Request-ID"
 
 Override per client with ``HTTPClient(request_id_header=...)``.
 """
+
+HTTPRequestData = Mapping[str, Any]
+"""Form fields accepted by :meth:`HTTPClient.request` and streaming helpers."""
+
+HTTPRequestContent = str | bytes | Iterable[bytes] | AsyncIterable[bytes]
+"""Raw body accepted by :meth:`HTTPClient.request` and streaming helpers."""
+
+HTTPFileContent = IO[bytes] | bytes | str
+"""One file payload accepted inside :data:`HTTPRequestFiles`."""
+
+HTTPFilePart = (
+    HTTPFileContent
+    | tuple[str | None, HTTPFileContent]
+    | tuple[str | None, HTTPFileContent, str | None]
+    | tuple[str | None, HTTPFileContent, str | None, Mapping[str, str]]
+)
+"""One multipart file entry in any tuple shape ``httpx`` accepts."""
+
+HTTPRequestFiles = Mapping[str, HTTPFilePart] | Sequence[tuple[str, HTTPFilePart]]
+"""Multipart file parts accepted by :meth:`HTTPClient.request` and streaming helpers."""
 
 
 def _is_replayable_payload(value: Any) -> bool:
@@ -337,10 +364,10 @@ class HTTPClient:
         url: str,
         *,
         params: Mapping[str, Any] | None = None,
-        json: Any = None,
-        data: Any = None,
-        content: Any = None,
-        files: Any = None,
+        json: object = None,
+        data: HTTPRequestData | None = None,
+        content: HTTPRequestContent | None = None,
+        files: HTTPRequestFiles | None = None,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
     ) -> httpx.Response:
@@ -350,19 +377,18 @@ class HTTPClient:
             method (str): HTTP verb (``"GET"``, ``"POST"``, ...).
             url (str): Absolute URL or path relative to ``base_url``.
             params (Mapping[str, Any] | None): Query-string params.
-            json (Any): JSON-serializable body. Mutually exclusive
+            json (object): JSON-serializable body. Mutually exclusive
                 with ``data``, ``content`` and ``files``.
-            data (Any): Form fields. Alone it is sent
+            data (HTTPRequestData | None): Form fields. Alone it is sent
                 ``application/x-www-form-urlencoded``; alongside
                 ``files`` it becomes the scalar half of the multipart
                 body.
-            content (Any): Raw body — ``bytes``, ``str``, or an
-                iterable of chunks — for a media type that is neither
-                JSON nor a form.
-            files (Any): Multipart file parts, in any shape httpx
-                accepts: ``{name: bytes}``, ``{name: (filename,
-                bytes)}``, or ``{name: (filename, bytes,
-                content_type)}``.
+            content (HTTPRequestContent | None): Raw body — ``bytes``,
+                ``str``, or an iterable of chunks — for a media type that
+                is neither JSON nor a form.
+            files (HTTPRequestFiles | None): Multipart file parts, in any
+                shape httpx accepts: ``{name: bytes}``, ``{name: (filename,
+                bytes)}``, or ``{name: (filename, bytes, content_type)}``.
             headers (Mapping[str, str] | None): Per-request headers
                 merged on top of ``default_headers`` + propagated
                 ``X-Request-ID``.
@@ -511,10 +537,10 @@ class HTTPClient:
         url: str,
         *,
         params: Mapping[str, Any] | None = None,
-        json: Any = None,
-        data: Any = None,
-        content: Any = None,
-        files: Any = None,
+        json: object = None,
+        data: HTTPRequestData | None = None,
+        content: HTTPRequestContent | None = None,
+        files: HTTPRequestFiles | None = None,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
     ) -> AsyncGenerator[str, None]:
@@ -539,10 +565,10 @@ class HTTPClient:
             method (str): HTTP verb.
             url (str): Absolute URL or path relative to ``base_url``.
             params (Mapping[str, Any] | None): Query-string params.
-            json (Any): JSON-serializable body.
-            data (Any): Form body.
-            content (Any): Raw body.
-            files (Any): Multipart files.
+            json (object): JSON-serializable body.
+            data (HTTPRequestData | None): Form body.
+            content (HTTPRequestContent | None): Raw body.
+            files (HTTPRequestFiles | None): Multipart files.
             headers (Mapping[str, str] | None): Per-request headers merged on
                 top of the defaults + propagated ``X-Request-ID``.
             timeout (float | None): Override for this call.
@@ -580,10 +606,10 @@ class HTTPClient:
         url: str,
         *,
         params: Mapping[str, Any] | None = None,
-        json: Any = None,
-        data: Any = None,
-        content: Any = None,
-        files: Any = None,
+        json: object = None,
+        data: HTTPRequestData | None = None,
+        content: HTTPRequestContent | None = None,
+        files: HTTPRequestFiles | None = None,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
     ) -> AsyncGenerator[bytes, None]:
@@ -598,10 +624,10 @@ class HTTPClient:
             method (str): HTTP verb.
             url (str): Absolute URL or path relative to ``base_url``.
             params (Mapping[str, Any] | None): Query-string params.
-            json (Any): JSON-serializable body.
-            data (Any): Form body.
-            content (Any): Raw body.
-            files (Any): Multipart files.
+            json (object): JSON-serializable body.
+            data (HTTPRequestData | None): Form body.
+            content (HTTPRequestContent | None): Raw body.
+            files (HTTPRequestFiles | None): Multipart files.
             headers (Mapping[str, str] | None): Per-request headers.
             timeout (float | None): Override for this call.
 
@@ -639,10 +665,10 @@ class HTTPClient:
         *,
         lines: bool,
         params: Mapping[str, Any] | None,
-        json: Any,
-        data: Any,
-        content: Any,
-        files: Any,
+        json: object,
+        data: HTTPRequestData | None,
+        content: HTTPRequestContent | None,
+        files: HTTPRequestFiles | None,
         headers: Mapping[str, str] | None,
         timeout: float | None,
     ) -> AsyncGenerator[str | bytes, None]:
@@ -653,10 +679,10 @@ class HTTPClient:
             url (str): Absolute URL or path relative to ``base_url``.
             lines (bool): Yield decoded lines (``True``) or raw byte chunks.
             params (Mapping[str, Any] | None): Query-string params.
-            json (Any): JSON-serializable body.
-            data (Any): Form body.
-            content (Any): Raw body.
-            files (Any): Multipart files.
+            json (object): JSON-serializable body.
+            data (HTTPRequestData | None): Form body.
+            content (HTTPRequestContent | None): Raw body.
+            files (HTTPRequestFiles | None): Multipart files.
             headers (Mapping[str, str] | None): Per-request headers.
             timeout (float | None): Override for this call.
 
@@ -734,5 +760,10 @@ __all__: list[str] = [
     "REQUEST_ID_HEADER",
     "CircuitOpenError",
     "HTTPClient",
+    "HTTPFileContent",
+    "HTTPFilePart",
+    "HTTPRequestContent",
+    "HTTPRequestData",
+    "HTTPRequestFiles",
     "RetryPolicy",
 ]

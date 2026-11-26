@@ -20,7 +20,16 @@ from __future__ import annotations
 from math import cos, pi, radians
 from typing import TYPE_CHECKING, Any, Generic, NamedTuple, TypeVar, cast
 
-from sqlalchemy import Float, Index, case, func, literal, select, text
+from sqlalchemy import (
+    Float,
+    Index,
+    SQLColumnExpression,
+    case,
+    func,
+    literal,
+    select,
+    text,
+)
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 from sqlalchemy.sql.elements import ColumnElement
@@ -59,8 +68,8 @@ class NearbyMatch(NamedTuple, Generic[RowT]):
 
 
 def haversine_distance_sql(
-    latitude: Any,
-    longitude: Any,
+    latitude: SQLColumnExpression[float],
+    longitude: SQLColumnExpression[float],
     center: Coordinate,
 ) -> ColumnElement[float]:
     """Build the Haversine great-circle distance as a SQL expression.
@@ -84,8 +93,10 @@ def haversine_distance_sql(
     ``cos``.
 
     Args:
-        latitude (Any): The latitude column (or expression), in degrees.
-        longitude (Any): The longitude column (or expression), in degrees.
+        latitude (SQLColumnExpression[float]): The latitude column (or
+            expression), in degrees.
+        longitude (SQLColumnExpression[float]): The longitude column (or
+            expression), in degrees.
         center (Coordinate): The point distances are measured from.
 
     Returns:

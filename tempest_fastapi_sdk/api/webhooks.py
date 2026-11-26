@@ -476,7 +476,7 @@ class WebhookSender:
         url: str,
         *,
         event: str,
-        payload: Any,
+        payload: object,
         headers: Mapping[str, str] | None = None,
     ) -> WebhookDelivery:
         """Deliver one signed webhook, retrying transient failures.
@@ -489,7 +489,7 @@ class WebhookSender:
         Args:
             url (str): The subscriber URL.
             event (str): The event type (sent in the event header).
-            payload (Any): JSON-serializable body (``default=str`` covers
+            payload (object): JSON-serializable body (``default=str`` covers
                 UUID/Decimal/datetime).
             headers (Mapping[str, str] | None): Extra headers merged in
                 (they do not override the signature/metadata headers).

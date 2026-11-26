@@ -8,7 +8,7 @@ ones the query used can never disagree.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Protocol
 from urllib.parse import urlencode
 
 from pydantic import Field
@@ -157,8 +157,27 @@ class Pagination(Component):
         return Stack(tag="nav", attrs=attrs, children=children)
 
 
+class PaginationEnvelopeLike(Protocol):
+    """Any pagination envelope exposing ``page`` and ``pages``.
+
+    Declared as read-only properties so
+    :class:`~tempest_fastapi_sdk.schemas.BasePaginationSchema`, frozen
+    dataclasses, and plain objects are all accepted.
+    """
+
+    @property
+    def page(self) -> int:
+        """Return the 1-indexed current page."""
+        ...
+
+    @property
+    def pages(self) -> int:
+        """Return the total number of pages."""
+        ...
+
+
 def pagination_for(
-    envelope: Any,
+    envelope: PaginationEnvelopeLike,
     *,
     url: str,
     query_param: str = "page",
@@ -169,7 +188,7 @@ def pagination_for(
     """Build a :class:`Pagination` from a pagination envelope.
 
     Args:
-        envelope (Any): A
+        envelope (PaginationEnvelopeLike): A
             :class:`~tempest_fastapi_sdk.schemas.BasePaginationSchema`
             (or anything exposing ``page`` and ``pages``).
         url (str): Path the links point at.
@@ -208,4 +227,4 @@ def pagination_for(
     )
 
 
-__all__: list[str] = ["Pagination", "pagination_for"]
+__all__: list[str] = ["Pagination", "PaginationEnvelopeLike", "pagination_for"]

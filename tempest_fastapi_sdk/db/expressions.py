@@ -246,7 +246,7 @@ def _suffix_condition(column: Any, op: str, value: Any, field: str) -> Any:
 def build_filter_condition(
     model: type[Any],
     field: str,
-    value: Any,
+    value: object,
 ) -> ColumnElement[bool] | None:
     """Build one WHERE condition from a ``field``/``value`` pair.
 
@@ -306,7 +306,7 @@ def build_filter_condition(
     Args:
         model (type[Any]): The model class the field belongs to.
         field (str): The filter key, optionally ``<column>__<op>``.
-        value (Any): The value to compare against.
+        value (object): The value to compare against.
 
     Returns:
         ColumnElement[bool] | None: The condition, or ``None`` to skip —

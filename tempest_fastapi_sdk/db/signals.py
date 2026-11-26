@@ -160,10 +160,10 @@ def has_handlers(model_class: type[Any], signal: RepositorySignalEnum) -> bool:
     return bool(handlers_for(model_class, signal))
 
 
-async def emit(
-    model_class: type[Any],
+async def emit[ModelT](
+    model_class: type[ModelT],
     signal: RepositorySignalEnum,
-    instance: Any,
+    instance: ModelT,
 ) -> None:
     """Invoke every handler registered for ``signal`` on ``model_class``.
 
@@ -172,9 +172,9 @@ async def emit(
     caller (so a ``PRE_SAVE`` handler can veto a write).
 
     Args:
-        model_class (type[Any]): The concrete class of ``instance``.
+        model_class (type[ModelT]): The concrete class of ``instance``.
         signal (RepositorySignalEnum): The lifecycle moment.
-        instance (Any): The ORM row passed to each handler.
+        instance (ModelT): The ORM row passed to each handler.
     """
     for handler in handlers_for(model_class, signal):
         result = handler(instance)

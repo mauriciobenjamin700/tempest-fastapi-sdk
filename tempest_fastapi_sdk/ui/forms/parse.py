@@ -42,7 +42,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import UnionType
-from typing import Any, Generic, TypeVar, Union, get_args, get_origin
+from typing import Any, Generic, Protocol, TypeVar, Union, get_args, get_origin
 
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
@@ -244,9 +244,21 @@ def _coerce(
     return raw
 
 
+class FormRequestLike(Protocol):
+    """Any request exposing an awaitable ``form()`` returning a mapping.
+
+    Matches ``fastapi.Request`` and ``starlette.requests.Request`` as well
+    as lightweight test doubles.
+    """
+
+    def form(self) -> Awaitable[Mapping[str, object]]:
+        """Return the parsed form body."""
+        ...
+
+
 async def parse_form[T: BaseModel](
     schema: type[T],
-    request: Any,
+    request: FormRequestLike,
     *,
     include: Sequence[str] = (),
     exclude: Sequence[str] = (),
@@ -275,8 +287,8 @@ async def parse_form[T: BaseModel](
     Args:
         schema (type[T]): The schema to validate against — the same one
             the form was generated from.
-        request (Any): The incoming ``fastapi.Request`` (or any object
-            exposing an awaitable ``form()``).
+        request (FormRequestLike): The incoming ``fastapi.Request`` (or any
+            object exposing an awaitable ``form()``).
         include (Sequence[str]): When non-empty, read only these fields
             from the body.
         exclude (Sequence[str]): Field names never read from the body.
@@ -448,4 +460,4 @@ def form_dependency[T: BaseModel](
     return dependency
 
 
-__all__: list[str] = ["FormResult", "form_dependency", "parse_form"]
+__all__: list[str] = ["FormRequestLike", "FormResult", "form_dependency", "parse_form"]

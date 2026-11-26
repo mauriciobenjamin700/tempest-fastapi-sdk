@@ -304,7 +304,7 @@ def _non_negative_header(request: Request, name: str) -> int:
     return value
 
 
-def _owner_of(user: Any) -> str | None:
+def _owner_of(user: object) -> str | None:
     """Turn what ``current_user_id`` resolved into the stored owner.
 
     Only a stable identifier is accepted: a ``str()`` of an arbitrary object
@@ -313,7 +313,7 @@ def _owner_of(user: Any) -> str | None:
     random.
 
     Args:
-        user (Any): The dependency's value.
+        user (object): The dependency's value.
 
     Returns:
         str | None: ``str(user)``, or ``None`` for an anonymous caller.
@@ -607,14 +607,14 @@ def make_tus_router(
     @router.post("", status_code=201, include_in_schema=include_in_schema)
     async def create_upload(
         request: Request,
-        user: Any = Depends(owner_dependency),
+        user: object = Depends(owner_dependency),
     ) -> Response:
         """Create a tus upload (tus *creation*).
 
         Args:
             request (Request): Carries ``Upload-Length``, ``Upload-Metadata``
                 and an optional ``Idempotency-Key``.
-            user (Any): The caller, from ``current_user_id``.
+            user (object): The caller, from ``current_user_id``.
 
         Returns:
             Response: ``201`` with ``Location``.
@@ -659,14 +659,14 @@ def make_tus_router(
     async def upload_offset(
         upload_id: str,
         request: Request,
-        user: Any = Depends(owner_dependency),
+        user: object = Depends(owner_dependency),
     ) -> Response:
         """Report how many bytes the server holds (tus core ``HEAD``).
 
         Args:
             upload_id (str): The upload id.
             request (Request): The request.
-            user (Any): The caller.
+            user (object): The caller.
 
         Returns:
             Response: ``200`` with ``Upload-Offset`` and ``Upload-Length``.
@@ -736,14 +736,14 @@ def make_tus_router(
     async def write_chunk(
         upload_id: str,
         request: Request,
-        user: Any = Depends(owner_dependency),
+        user: object = Depends(owner_dependency),
     ) -> Response:
         """Write one chunk at ``Upload-Offset`` (tus core ``PATCH``).
 
         Args:
             upload_id (str): The upload id.
             request (Request): Carries ``Upload-Offset`` and the chunk.
-            user (Any): The caller.
+            user (object): The caller.
 
         Returns:
             Response: ``204`` with the new ``Upload-Offset``.
@@ -815,7 +815,7 @@ def make_tus_router(
     async def discard_upload(
         upload_id: str,
         request: Request,
-        user: Any = Depends(owner_dependency),
+        user: object = Depends(owner_dependency),
     ) -> Response:
         """Discard an upload (tus *termination*).
 
@@ -824,7 +824,7 @@ def make_tus_router(
         Args:
             upload_id (str): The upload id.
             request (Request): The request.
-            user (Any): The caller.
+            user (object): The caller.
 
         Returns:
             Response: ``204``.

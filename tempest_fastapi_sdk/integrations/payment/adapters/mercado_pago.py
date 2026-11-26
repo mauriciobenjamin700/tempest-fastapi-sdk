@@ -1211,11 +1211,11 @@ class MercadoPagoPixProvider(_OrdersClient):
         """
         return _counted_refund_cents(await self._get(charge_id))
 
-    def parse_webhook(self, event: Any) -> PixPaymentEvent:
+    def parse_webhook(self, event: object) -> PixPaymentEvent:
         """Turn a verified, re-read delivery into a canonical Pix event.
 
         Args:
-            event (Any): A :class:`MercadoPagoOrderDelivery`.
+            event (object): A :class:`MercadoPagoOrderDelivery`.
 
         Returns:
             PixPaymentEvent: The event, its type read off the re-read order

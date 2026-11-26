@@ -47,6 +47,7 @@ Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, 
 ::: tempest_fastapi_sdk.ui.components.table.DataTable
 ::: tempest_fastapi_sdk.ui.components.table.TableColumn
 ::: tempest_fastapi_sdk.ui.components.pagination.Pagination
+::: tempest_fastapi_sdk.ui.components.pagination.PaginationEnvelopeLike
 ::: tempest_fastapi_sdk.ui.components.pagination.pagination_for
 ::: tempest_fastapi_sdk.ui.components.empty.EmptyState
 ::: tempest_fastapi_sdk.ui.components.flash.FlashMessages
@@ -65,6 +66,7 @@ Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, 
 ::: tempest_fastapi_sdk.ui.forms.introspect.form_spec_for
 ::: tempest_fastapi_sdk.ui.forms.introspect.UnsupportedFieldError
 ::: tempest_fastapi_sdk.ui.forms.parse.parse_form
+::: tempest_fastapi_sdk.ui.forms.parse.FormRequestLike
 ::: tempest_fastapi_sdk.ui.forms.parse.FormResult
 ::: tempest_fastapi_sdk.ui.forms.parse.form_dependency
 ::: tempest_fastapi_sdk.ui.forms.spec.FormSpec
@@ -152,6 +154,7 @@ Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, 
 
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicy
+::: tempest_fastapi_sdk.utils.password.PasswordSettingsLike
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicyViolation
 ::: tempest_fastapi_sdk.utils.password.PasswordViolationCodeEnum
 ::: tempest_fastapi_sdk.utils.password.check_password_policy
