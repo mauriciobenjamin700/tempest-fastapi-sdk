@@ -64,6 +64,12 @@ from tempest_fastapi_sdk.exceptions.integration import (
     EmailDeliveryException as EmailDeliveryException,
 )
 from tempest_fastapi_sdk.exceptions.integration import (
+    GoogleDriveException as GoogleDriveException,
+)
+from tempest_fastapi_sdk.exceptions.integration import (
+    GoogleDriveFolderNotFoundException as GoogleDriveFolderNotFoundException,
+)
+from tempest_fastapi_sdk.exceptions.integration import (
     IntegrationDisabledException as IntegrationDisabledException,
 )
 from tempest_fastapi_sdk.exceptions.integration import (
@@ -128,6 +134,9 @@ from tempest_fastapi_sdk.exceptions.signed_url import (
 )
 from tempest_fastapi_sdk.exceptions.signed_url import (
     InvalidSignedURLException as InvalidSignedURLException,
+)
+from tempest_fastapi_sdk.exceptions.storage import (
+    PresignedUrlUnsupportedException as PresignedUrlUnsupportedException,
 )
 from tempest_fastapi_sdk.exceptions.storage import (
     StorageIntegrityException as StorageIntegrityException,
@@ -247,6 +256,8 @@ __all__: list[str] = [
     "FileTooLargeException",
     "FileTooSmallException",
     "ForbiddenException",
+    "GoogleDriveException",
+    "GoogleDriveFolderNotFoundException",
     "ImageDecodeException",
     "ImageFormatUnsupportedException",
     "ImageTooLargeException",
@@ -283,6 +294,7 @@ __all__: list[str] = [
     "PayoutUncertainException",
     "PixRefundExceedsBalanceException",
     "PixRefundReferenceConflictException",
+    "PresignedUrlUnsupportedException",
     "PushEndpointNotPublicException",
     "StorageIntegrityException",
     "TooManyRequestsException",

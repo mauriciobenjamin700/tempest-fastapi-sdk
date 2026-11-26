@@ -7,8 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Google Drive como backend do `UploadUtils`** (extra novo `[google-drive]`
+  = `httpx`, `pyjwt`, `cryptography`, já cobertos pelo `[all]`):
+  `tempest_fastapi_sdk.integrations.storage.google_drive`.
+  - `GoogleDriveUploadStorage` implementa `UploadStorage`:
+    `UploadUtils(backend=GoogleDriveUploadStorage.from_service_account(...))`
+    funciona sem mudar a rota. A key vai em `appProperties` (`tempest_key`)
+    e é buscada com o valor escapado para a sintaxe de busca do Drive;
+    gravar uma key que já existe substitui o conteúdo do mesmo arquivo
+    (mesmo id); `delete` apaga sem lixeira todo arquivo da key;
+    `presigned_url` levanta `PresignedUrlUnsupportedException` (`501`);
+    `web_view_link` e `UploadResult.url` trazem o `webViewLink`.
+  - `GoogleDriveClient` sobre `httpx` injetável: upload resumível em
+    pedaços múltiplos de 256 KiB, retomada pelo `Range` do `308`, retry com
+    backoff para `429`/`5xx` por pedaço (sem reenviar o arquivo),
+    `supportsAllDrives=true` em toda chamada à API.
+    - O stream é lido um pedaço à frente, então o último `PUT` sempre leva
+      bytes e o total — um tamanho múltiplo exato do pedaço não termina
+      mais num `PUT` vazio `bytes */<total>`, que o protocolo também usa
+      como consulta (contra um fake HTTP que o trata assim, 512 KiB com
+      pedaço de 256 KiB terminava em `upload_stalled`). O arquivo de 0 bytes
+      continua fechando com `bytes */0`.
+    - `403` com `reason` `rateLimitExceeded`/`userRateLimitExceeded` é
+      repetido como `429`/`5xx`, em chamada de metadado e em pedaço
+      (`RATE_LIMIT_REASONS`); `Retry-After` em segundos de um `429`/`503`
+      substitui o backoff, limitado a `backoff_max_seconds`
+      (`RETRY_AFTER_STATUSES`).
+    - `308` sem avanço espera o backoff antes de reenviar (antes reenviava
+      na hora); `308` que recua para antes do que o cliente já descartou
+      sobe na hora como `upload_range_regressed`.
+    - `404` num pedaço ou na consulta vira `GoogleDriveException` com
+      `reason="upload_session_not_found"` (sessão expirada), e não mais
+      `GoogleDriveFolderNotFoundException`, que fica para o `404` da busca
+      e da abertura da sessão.
+    - Upload que falha fecha (`aclose`) o gerador passado pelo chamador.
+  - Key ou propriedade de `metadata` acima de 124 bytes levanta
+    `ValidationException` (`422`, a mensagem cita o limite) em vez de
+    `InvalidFileTypeException` (`415`); `private_key` que não é PEM RSA
+    levanta `GoogleDriveException` com `reason="invalid_private_key"` antes
+    de qualquer requisição, sem a chave na mensagem.
+  - Protocolo `SupportsWebViewLink` (`tempest_fastapi_sdk.utils` e o topo):
+    backend com link permanente por key. A rota de download de
+    `upload_fields` do admin trata `PresignedUrlUnsupportedException` como
+    "sem URL pré-assinada" e, quando o backend implementa o protocolo,
+    responde `303` para o link (no Drive, o `webViewLink`); sem link, segue
+    o caminho de antes (arquivo local ou `404`).
+  - `ServiceAccountTokenProvider` (JWT bearer RS256 com `pyjwt` +
+    `cryptography`, cache até perto do `expires_in`, uma troca só sob
+    concorrência) atrás do protocolo `AccessTokenProvider`;
+    `ServiceAccountCredentials` (arquivo ou JSON inline, o inline vence).
+  - `GoogleDriveSettings` (`GOOGLE_DRIVE_CREDENTIALS_PATH`,
+    `GOOGLE_DRIVE_CREDENTIALS_JSON`, `GOOGLE_DRIVE_FOLDER_ID`,
+    `GOOGLE_DRIVE_DRIVE_ID`) com `google_drive_kwargs()` devolvendo o
+    `TypedDict` `GoogleDriveStorageKwargs`.
+  - Exceções `GoogleDriveException` (`502`, `GOOGLE_DRIVE_ERROR`, com
+    `status` e `reason` do corpo do Google), `GoogleDriveFolderNotFoundException`
+    (`502`, `GOOGLE_DRIVE_FOLDER_NOT_FOUND`, a mensagem diz com qual
+    `client_email` compartilhar) e `PresignedUrlUnsupportedException`
+    (`501`, `PRESIGNED_URL_UNSUPPORTED`).
+  - Receita bilíngue `recipes/google-drive`. Testado no fio com
+    `httpx.MockTransport`; não medido contra o Google real (o teste live
+    `test_live.py` roda só com `TEST_GOOGLE_DRIVE_CREDENTIALS` e
+    `TEST_GOOGLE_DRIVE_FOLDER_ID`).
+
 ### Changed
 
+- **`UploadStorage.presigned_url` documenta as duas formas de "não tenho
+  URL pré-assinada"**: devolver `None` (disco local) ou levantar
+  `PresignedUrlUnsupportedException` (Google Drive). Quem chama com qualquer
+  backend trata as duas — o admin passou a tratar.
 - **Regra de tipagem — parâmetros públicos sem `Any` pelado em `queue`, `tasks`, `admin`, `authz` e `checks`** (#842): todos os 54 parâmetros públicos `Any` pelado nesses cinco subpacotes foram substituídos por tipos concretos, genéricos, protocolos ou `object`:
   - **`queue` (17):** `Consumer` passa a ser genérico em `MessageT` (default `Any` via `typing_extensions.TypeVar`), tipando `Consumer.handle(message: MessageT)` mantendo compatibilidade com subclasses sem parâmetro de tipo; `replay_headers` recebe `Mapping[str, Any] | None`; os quatro middlewares FastStream (`_DedupMiddleware`, `_DeadLetterMiddleware`, `_MetricsMiddleware`, `_TracingMiddleware`) tipam `consume_scope(call_next: AsyncFuncAny, msg: StreamMessage[Any])` sob `TYPE_CHECKING`; `QueuePublisher.publish`, `MessageBroker.publish`, `AsyncQueueManager.publish`, `_schema_entry` (`entry`), `message_key`, `delivery_attempt` e `detect_transport` recebem `object`.
   - **`admin` (13):** `AdminModel.readonly_field_names_for` passa a receber `ModelT` (e `editable_field_names(..., instance: ModelT | None = None)`); `parse_schema_submission` recebe `form: Mapping[str, Any]` (alinhado com `parse_submission` e `parse_password_submission`); o handler interno de `make_jwt_impersonation_handler` tipa `operator` e `target` com o protocolo privado `_HasId` (`@property def id(self) -> object`); `AdminAuthBackend.is_admin_account`, `UserModelAuthBackend.is_admin_account`, `AdminModel.scope_for`, `cell_view`, `format_number`, `short_identity`, `fk_label`, `duplicate_values` e `apply_password_fields` recebem `object`.

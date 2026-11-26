@@ -5049,3 +5049,30 @@ auth passou a usar `me_response_model` no exemplo completo de
 1001 × 1000 linhas, os quatro sufixos, e toda regra de `RULES` listada na
 receita do CLI e no `CLAUDE.md.tmpl`). Docs: `service-standard`,
 `recommended-architecture`, `recipes/cli`, `recipes/queue-tasks`.
+
+## Google Drive como backend de upload (`[google-drive]`)
+
+`tempest_fastapi_sdk/integrations/storage/google_drive/`: `auth.py`
+(`ServiceAccountCredentials`, `AccessTokenProvider`,
+`ServiceAccountTokenProvider` — JWT bearer RS256 sobre `pyjwt` +
+`cryptography`, cache com lock), `client.py` (`GoogleDriveClient` — Drive v3
+`files.list`/`get`/`delete` e upload resumível com retomada por `308` +
+`Range`, leitura de um pedaço à frente para o último `PUT` sempre levar
+bytes e total, backoff em `429`/`5xx`/`403` de limite de taxa com
+`Retry-After`, `404` de sessão como `upload_session_not_found`;
+`escape_query_value`) e `storage.py`
+(`GoogleDriveUploadStorage`, o `UploadStorage` para
+`UploadUtils(backend=...)`: key em `appProperties`, key repetida substitui o
+conteúdo do mesmo arquivo, `presigned_url` levanta
+`PresignedUrlUnsupportedException`, `web_view_link`). O download do admin
+redireciona para o link de todo backend que implementa
+`SupportsWebViewLink` (`utils/storage_backends.py`). Settings:
+`GoogleDriveSettings` + `GoogleDriveStorageKwargs` em
+`settings/google_drive.py`. Exceções `GoogleDriveException`,
+`GoogleDriveFolderNotFoundException` e `PresignedUrlUnsupportedException`.
+Sem `google-api-python-client`/`google-auth`. Testes:
+`tests/integrations/storage/google_drive/` (fio via `httpx.MockTransport`;
+`test_live.py` só com credencial real) e
+`tests/settings/test_google_drive_settings.py`. Receita:
+`docs/recipes/google-drive.md` (+ `.en.md`). Não medido contra o Google
+real.

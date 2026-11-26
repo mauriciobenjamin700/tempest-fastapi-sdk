@@ -43,4 +43,39 @@ class StorageIntegrityException(AppException):
         super().__init__(message=message, details={"reason": reason})
 
 
-__all__: list[str] = ["StorageIntegrityException"]
+class PresignedUrlUnsupportedException(AppException):
+    """Raised by an upload backend that cannot mint a presigned URL.
+
+    ``presigned_url`` on a backend whose store has no such thing — Google
+    Drive serves files by id to callers holding a Drive permission, never
+    through a temporary signed link — raises it instead of returning a
+    permanent link that a caller would treat as one that expires. Serve the
+    file through your own authenticated download route instead.
+
+    It is a ``501``: the operation is not implemented by the configured
+    backend, whatever the request.
+
+    Attributes:
+        backend (str): The backend that refused, such as ``"google_drive"``.
+    """
+
+    status_code: int = 501
+    message: str = "This storage backend cannot mint presigned URLs"
+    code: str = "PRESIGNED_URL_UNSUPPORTED"
+    details_example: ClassVar[dict[str, Any]] = {"backend": "google_drive"}
+
+    def __init__(self, backend: str, *, message: str | None = None) -> None:
+        """Initialize the exception.
+
+        Args:
+            backend (str): Name of the backend that refused.
+            message (str | None): Override the message.
+        """
+        self.backend: str = backend
+        super().__init__(message=message, details={"backend": backend})
+
+
+__all__: list[str] = [
+    "PresignedUrlUnsupportedException",
+    "StorageIntegrityException",
+]

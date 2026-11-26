@@ -15,6 +15,12 @@ from tempest_fastapi_sdk.settings.base import BaseAppSettings as BaseAppSettings
 from tempest_fastapi_sdk.settings.base import (
     reject_conflicting_env_aliases as reject_conflicting_env_aliases,
 )
+from tempest_fastapi_sdk.settings.google_drive import (
+    GoogleDriveSettings as GoogleDriveSettings,
+)
+from tempest_fastapi_sdk.settings.google_drive import (
+    GoogleDriveStorageKwargs as GoogleDriveStorageKwargs,
+)
 from tempest_fastapi_sdk.settings.kwargs import AnthropicKwargs as AnthropicKwargs
 from tempest_fastapi_sdk.settings.kwargs import DatabaseKwargs as DatabaseKwargs
 from tempest_fastapi_sdk.settings.kwargs import DeepSeekKwargs as DeepSeekKwargs
@@ -119,6 +125,8 @@ __all__: list[str] = [
     "GeminiKwargs",
     "GenAISettings",
     "GitHubOAuthKwargs",
+    "GoogleDriveSettings",
+    "GoogleDriveStorageKwargs",
     "GoogleOAuthKwargs",
     "HTTPClientKwargs",
     "HostBridgeKwargs",

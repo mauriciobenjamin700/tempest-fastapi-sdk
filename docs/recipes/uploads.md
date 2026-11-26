@@ -15,6 +15,11 @@ Requer o extra `[upload]` (e `[minio]` quando usar MinIO).
     no `UploadUtils` antes de qualquer byte ir pro backend — o storage só
     recebe dados já validados.
 
+!!! info "Google Drive"
+    Para gravar numa pasta (ou Shared Drive) do Google Drive, passe um
+    `GoogleDriveUploadStorage` em `backend=` — veja a receita
+    [Google Drive (uploads)](google-drive.md).
+
 ## Disco local
 
 ```python

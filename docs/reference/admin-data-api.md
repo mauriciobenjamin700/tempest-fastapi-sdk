@@ -314,7 +314,10 @@ O painel admin, a camada de dados (models, repository, sessão, migrations), a i
 ::: tempest_fastapi_sdk.exceptions.integration.IntegrationDisabledException
 ::: tempest_fastapi_sdk.exceptions.integration.EmailDeliveryException
 ::: tempest_fastapi_sdk.exceptions.integration.ZapSendFailedException
+::: tempest_fastapi_sdk.exceptions.integration.GoogleDriveException
+::: tempest_fastapi_sdk.exceptions.integration.GoogleDriveFolderNotFoundException
 ::: tempest_fastapi_sdk.exceptions.storage.StorageIntegrityException
+::: tempest_fastapi_sdk.exceptions.storage.PresignedUrlUnsupportedException
 ::: tempest_fastapi_sdk.exceptions.jwt.InvalidTokenException
 ::: tempest_fastapi_sdk.exceptions.jwt.ExpiredTokenException
 ::: tempest_fastapi_sdk.exceptions.signed_url.InvalidSignedURLException
@@ -406,3 +409,5 @@ O painel admin, a camada de dados (models, repository, sessão, migrations), a i
 ::: tempest_fastapi_sdk.settings.version.read_project_version
 ::: tempest_fastapi_sdk.settings.kwargs
 ::: tempest_fastapi_sdk.settings.mixins
+::: tempest_fastapi_sdk.settings.google_drive.GoogleDriveSettings
+::: tempest_fastapi_sdk.settings.google_drive.GoogleDriveStorageKwargs

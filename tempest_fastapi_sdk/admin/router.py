@@ -144,7 +144,10 @@ from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.search import like_search_condition
 from tempest_fastapi_sdk.db.signals import RepositorySignalEnum, emit, has_handlers
 from tempest_fastapi_sdk.db.transaction import transaction
-from tempest_fastapi_sdk.exceptions import AppException
+from tempest_fastapi_sdk.exceptions import (
+    AppException,
+    PresignedUrlUnsupportedException,
+)
 from tempest_fastapi_sdk.spreadsheet.reader import SpreadsheetTooLargeError
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router
 from tempest_fastapi_sdk.storage import object_download_response
@@ -153,7 +156,10 @@ from tempest_fastapi_sdk.tasks.jobs import (
     JobStatusEnum,
 )
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
-from tempest_fastapi_sdk.utils.storage_backends import LocalUploadStorage
+from tempest_fastapi_sdk.utils.storage_backends import (
+    LocalUploadStorage,
+    SupportsWebViewLink,
+)
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     InMemoryThrottleBackend,
@@ -4713,8 +4719,15 @@ def make_admin_router(
         """Download the file an upload field of one row points at.
 
         A backend that mints a temporary URL (MinIO) answers a redirect to
-        it; :class:`~tempest_fastapi_sdk.utils.LocalUploadStorage` streams
-        the file from disk as an attachment, with ``nosniff``.
+        it. A backend with no presigned URL — ``presigned_url`` returned
+        ``None`` or raised
+        :class:`~tempest_fastapi_sdk.exceptions.PresignedUrlUnsupportedException`
+        — but a permanent link
+        (:class:`~tempest_fastapi_sdk.utils.SupportsWebViewLink`, such as
+        the Google Drive backend) answers a redirect to that link, which
+        opens only for someone the store authorizes.
+        :class:`~tempest_fastapi_sdk.utils.LocalUploadStorage` streams the
+        file from disk as an attachment, with ``nosniff``.
 
         Args:
             request (Request): The inbound request.
@@ -4742,7 +4755,12 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no file")
         storage = admin.upload_storage
         assert storage is not None, "upload_fields require upload_storage"
-        url = await storage.presigned_url(key)
+        try:
+            url = await storage.presigned_url(key)
+        except PresignedUrlUnsupportedException:
+            url = None
+        if not url and isinstance(storage, SupportsWebViewLink):
+            url = await storage.web_view_link(key)
         if url:
             return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
         if isinstance(storage, LocalUploadStorage):

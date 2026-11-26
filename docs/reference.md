@@ -23,6 +23,6 @@ A referência é dividida por tema: numa página só, o HTML passava de 70 MB.
 | **[Documentos e arquivos »](reference/documents-files.md)** | PDF, planilhas, slides, exportação e apagamento de dados (LGPD), registro de artefatos e a prévia de compartilhamento. |
 | **[Geração de cliente OpenAPI »](reference/openapi.md)** | O gerador de clientes tipados a partir de um documento OpenAPI (`tempest openapi-client`). |
 | **[IA e visão computacional »](reference/ai-vision.md)** | Agentes, modelos generativos self-hosted, modelops (export, bench, quantização), visão computacional, reconhecimento facial e busca aproximada de texto. |
-| **[Integrações e pagamentos »](reference/integrations-payments.md)** | O contrato canônico de pagamentos, os provedores (Mercado Pago, OpenPix, RevenueCat), a carteira com saque Pix, o gateway de WhatsApp e o relatório de erros de app. |
+| **[Integrações e pagamentos »](reference/integrations-payments.md)** | O contrato canônico de pagamentos, os provedores (Mercado Pago, OpenPix, RevenueCat), o backend de upload do Google Drive, a carteira com saque Pix, o gateway de WhatsApp e o relatório de erros de app. |
 | **[Tempo real e mensageria »](reference/realtime-messaging.md)** | Fila e tarefas, WebSocket, SSE, Web Push, chat, comentários, event sourcing, feature flags e MCP. |
 | **[Web, UI e utilitários »](reference/web-ui-utils.md)** | Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, system checks e as ferramentas de teste. |

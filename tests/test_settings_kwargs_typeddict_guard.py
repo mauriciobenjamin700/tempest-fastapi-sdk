@@ -60,6 +60,9 @@ from tempest_fastapi_sdk.genai import (
     hosted_generator,
 )
 from tempest_fastapi_sdk.hostbridge.config import HostBridgeConfig
+from tempest_fastapi_sdk.integrations.storage.google_drive import (
+    GoogleDriveUploadStorage,
+)
 from tempest_fastapi_sdk.settings import (
     AnthropicKwargs,
     BaseAppSettings,
@@ -72,6 +75,8 @@ from tempest_fastapi_sdk.settings import (
     FirebaseSettings,
     GeminiKwargs,
     GitHubOAuthKwargs,
+    GoogleDriveSettings,
+    GoogleDriveStorageKwargs,
     GoogleOAuthKwargs,
     HostBridgeKwargs,
     HostBridgeSettings,
@@ -152,6 +157,10 @@ KWARGS_TARGETS: dict[
     (FirebaseSettings, "firebase_kwargs"): (
         FirebaseKwargs,
         (FirebaseAuth.__init__,),
+    ),
+    (GoogleDriveSettings, "google_drive_kwargs"): (
+        GoogleDriveStorageKwargs,
+        (GoogleDriveUploadStorage.from_service_account,),
     ),
     (KafkaSettings, "kafka_kwargs"): (KafkaKwargs, (_kafka_broker_init(),)),
     (OAuthSettings, "google_kwargs"): (
@@ -531,11 +540,15 @@ from tempest_fastapi_sdk.genai import (
     hosted_generator,
 )
 from tempest_fastapi_sdk.hostbridge.config import HostBridgeConfig
+from tempest_fastapi_sdk.integrations.storage.google_drive import (
+    GoogleDriveUploadStorage,
+)
 from tempest_fastapi_sdk.queue import MessageBroker
 from tempest_fastapi_sdk.settings import (
     DatabaseSettings,
     EmailSettings,
     FirebaseSettings,
+    GoogleDriveSettings,
     HostBridgeSettings,
     HostedGenAISettings,
     JWTSettings,
@@ -580,6 +593,7 @@ def check_all(
     mp_s: MercadoPagoSettings,
     rc_s: RevenueCatSettings,
     hb_s: HostBridgeSettings,
+    gd_s: GoogleDriveSettings,
     creds: dict[str, StorageBucketCredential],
 ) -> None:
     configure_logging(**log_s.logging_kwargs())
@@ -610,6 +624,7 @@ def check_all(
     HTTPClient(**mp_s.mercado_pago_kwargs())
     HTTPClient(**rc_s.revenuecat_kwargs())
     HostBridgeConfig(**hb_s.hostbridge_kwargs())
+    GoogleDriveUploadStorage.from_service_account(**gd_s.google_drive_kwargs())
 """
     valid_output = _run_mypy(valid_probe)
     assert "error:" not in valid_output, f"Unexpected mypy error:\n{valid_output}"
