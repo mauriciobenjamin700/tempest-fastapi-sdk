@@ -1163,7 +1163,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
-- **MCP, both directions (unreleased, extra `[fastmcp]` = `fastmcp>=4.1.0`,
+- **MCP, both directions (v0.355.0, extra `[fastmcp]` = `fastmcp>=4.1.0`,
   out of `[all]`)** — `tempest_fastapi_sdk.mcp`, submodule import, imports
   without the extra. **Serve:** the consumer builds the `FastMCP` and
   decorates it (FastMCP derives tool/resource/prompt schemas from type
@@ -1971,7 +1971,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `OpenPixEnvironmentEnum` so `settings` never drags the lazy `integrations`
   namespace in — the enum is imported inside the method, keeping one source of
   truth for the hosts.
-- **Web app revalidation + immutable paths (unreleased)** —
+- **Web app revalidation + immutable paths (v0.316.0)** —
   `make_web_app_router` answers `If-None-Match` (weak comparison, lists,
   `*`) and, absent it, `If-Modified-Since` with an empty `304` carrying
   `ETag`/`Cache-Control`/security headers — assets, `index.html`, the SPA
@@ -2177,7 +2177,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   refuses an `HTTPClient` that retries), `FakePayoutProvider`,
   `make_wallet_router`. Concurrency measured against Postgres
   (`tests/wallet/test_wallet_live.py`, docker). Submodule import.
-  **(unreleased, #617)** The moves and reads live in `WalletLedger` (data
+  **(v0.330.0, #617)** The moves and reads live in `WalletLedger` (data
   layer, received like a repository; joins the caller's `transaction()`
   block); `WalletService` keeps `withdraw` and delegates the rest, taking
   `ledger=` or the old `balances`/`entries`. The update-shape and
@@ -2189,11 +2189,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   — a unified facade bundling upload + download + presign over one
   shared backend (`uploader`/`downloader`/`backend`/`client` escape
   hatches).
-  **(unreleased)** `sniff_mime` recognizes HEIC (`HEIC_BRANDS`, from
+  **(v0.324.0)** `sniff_mime` recognizes HEIC (`HEIC_BRANDS`, from
   libheif; `mif1`/`msf1` only with an HEVC compatible brand, so AVIF stays
   out) and `ImageMediaTypeEnum` is the field type for a declared image
   `Content-Type` (aliases, any case, `.extension`, `.matches(data)`).
-  **(unreleased, #615)** `image_media_type_field(*allowed)` narrows it to a
+  **(v0.327.0, #615)** `image_media_type_field(*allowed)` narrows it to a
   subset, in validation and in the published `enum`.
 - **MinIO / S3** — `AsyncMinIOClient` via `[minio]` extra
   (bucket lifecycle, object I/O, streaming download, presigned
@@ -2254,7 +2254,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`subscribe`/`unsubscribe`/`list_for_user`/`notify_user` with
   auto-prune of gone endpoints) + `make_web_push_router` (opt-in
   `/subscribe` + `/unsubscribe`, aligned with `tempest-react-sdk`);
-  webhook signatures. **(unreleased, #632)** `subscribe` / `register` (and
+  webhook signatures. **(v0.330.0, #632)** `subscribe` / `register` (and
   `DeviceService` for mobile) never move a device of another account: the
   row is left as it is and the route answers as for a new subscription;
   `transfer_ownership=True` (service and both router factories) is the
@@ -2287,7 +2287,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `DummyResultBackend` in place, so reading a result through the facade was
   impossible) and needs the new **`[tasks-redis]`** extra — `taskiq-redis`
   was declared in no extra at all.
-  **`enqueue_by_name` (unreleased):** send by registered name without
+  **`enqueue_by_name` (v0.328.0):** send by registered name without
   importing the task; the worker-side `make_registered_labels_middleware`
   (installed first by every `TaskQueue`) restores the task's labels, so a
   `RetryPolicy` still applies — live test over Redis with two processes
