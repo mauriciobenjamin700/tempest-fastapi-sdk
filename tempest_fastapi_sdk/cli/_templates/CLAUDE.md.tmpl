@@ -838,8 +838,9 @@ cookie's `Path` and into the links it builds, and it cannot see a prefix
 added around it: included under the `/api` router with its default
 `/auth`, it serves `/api/auth/login` but sets the refresh cookie with
 `Path=/auth`, which the browser never sends to `/api/auth/refresh`. This
-does not trip `RTR004`, which reads only `APIRouter(prefix=...)` and
-`include_router(prefix=...)`.
+does not trip `RTR004`, which reads the routers your project builds and
+the `include_router(prefix=...)` calls in your code, not the router
+`make_auth_router` returns.
 
 The full walkthrough — activation by email, MFA, OAuth, cookie delivery —
 is the [auth flow recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/).

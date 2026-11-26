@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.372.0] — 2026-11-26
 
 ### Added
 
@@ -54,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- `recipes/database`, `recipes/migrations`, `tutorial` e README: o `lifespan`
+  sincroniza o schema com `AlembicHelper.sync_schema_async()` em vez de
+  `db.create_tables()`, que não aplica `ALTER TABLE` numa tabela que já
+  existe; `create_tables()` fica para fixture de teste e demo de um
+  arquivo só (#828). `migration`: nota da 0.372.0.
 - `service-standard`: seção "Erros da rota" com o OpenAPI medido de uma
   rota com `@raises` e par certo × errado do texto OpenAPI.
   `recommended-architecture`, `architecture`, `tutorial`,
@@ -80,6 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exceção muda de `ArgumentError` para `RuntimeError`, que é o que as
   docstrings sempre documentaram; quem captura `ArgumentError` nesse caminho
   deixa de capturar.
+  `sync_schema` e `sync_schema_async` só chegam à URL com ao menos uma
+  revision; sem nenhuma, devolvem `no_migrations` antes, como já faziam.
 
 ## [0.371.0] — 2026-11-23
 

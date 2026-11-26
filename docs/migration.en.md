@@ -2,6 +2,24 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.372.0 — five new `tempest check` rules and `RuntimeError` without a URL in `AlembicHelper`
+
+`tempest check` (and `tempest lint-layers`) gained five rules, all with `warning` severity. With `layers_strict = true` under `[tool.tempest]`, the `tempest new` default, a warning fails the command too: on a generated project with only three planted warnings, `tempest lint-layers` printed `3 layer finding(s): 0 error(s), 3 warning(s).` and exited with code `1`; with `layers_strict = false`, with code `0`.
+
+| Rule | What it flags | What to do |
+| --- | --- | --- |
+| `INIT001` | A `def`, `class`, call or constant in `__init__.py` | Move it to a module of the package (`router.py`, `factory.py`, `runner.py`) and keep only `from .x import Y as Y` and `__all__` in `__init__.py` |
+| `SIZE001` | A source or test module over 1000 lines | Split it by responsibility: one service into several, one test file into one per topic |
+| `LAY003` | A file in `controllers/`, `services/`, `repositories/` or `models/` whose name repeats the layer (`checkout_service.py`) | Rename it to `checkout.py`; the class stays `CheckoutService` |
+| `RTR005` | `fastapi.APIRouter(...)` in a domain router, outside `build_api_router` | Use `TempestAPIRouter` (`from tempest_fastapi_sdk import TempestAPIRouter`), which turns `@raises(...)` into `responses=` |
+| `RTR006` | `summary=` or `description=` on the route decorator | Move the text to an `EndpointDoc` constant in `api/docs/<router>.py` and spread it with `**docs.NAME` |
+
+To migrate gradually, declare the case in `tests/architecture_exceptions.py` with its reason (see [Declared exception](recommended-architecture.md#declared-exception)), or turn `layers_strict` off while you fix it.
+
+`RTR003` and `RTR004` now recognise `TempestAPIRouter` and the project's router subclasses, so routers that used to pass may report new findings.
+
+**`AlembicHelper` without a URL:** with no `db_url=` and no resolvable `DATABASE_URL`, `current`, `current_async`, `has_existing_schema`, `adopt`, `sync_schema` and `sync_schema_async` raise `RuntimeError` (`DATABASE_URL is empty. ...`) instead of `sqlalchemy.exc.ArgumentError`. For `sync_schema` and `sync_schema_async` this holds when there is at least one revision: with none, both return `no_migrations` before reading the URL, as they already did. Code that caught `ArgumentError` on that path catches `RuntimeError` instead.
+
 ## 0.366.0 — `RoutingBackend` requires `route_through` and `matrix`
 
 The `RoutingBackend` protocol gained two methods: `route_through` (a route
