@@ -38,6 +38,51 @@ store: SignedCookieSessionStore = SignedCookieSessionStore(
 )
 ```
 
+## Unreleased — `BaseUserModel` without phantom columns
+
+`BaseUserModel` declared `totp_secret`, `totp_enabled_at`, `totp_last_step` and `name` for the type checker only. At runtime those columns come from `MFAMixin` and `NameMixin`, so a model without the mixin passed `mypy --strict` and raised `AttributeError` on the line:
+
+```python
+from tempest_fastapi_sdk import BaseUserModel
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "users"
+
+
+def label(user: UserModel) -> str:
+    return user.name  # docs-guard: skip
+```
+
+`mypy --strict` now refuses that line with `"UserModel" has no attribute "name"  [attr-defined]`. The code already broke at runtime; the change only moves the error to the checker. Pick one of two ways out:
+
+- **The model has the column:** inherit the mixin (`class UserModel(NameMixin, BaseUserModel)`, or `MFAMixin` for the `totp_*` columns) and generate the migration.
+- **The function accepts any `BaseUserModel`:** narrow before reading.
+
+```python
+from datetime import datetime
+
+from tempest_fastapi_sdk import BaseUserModel, MFAMixin, NameMixin
+
+
+def display(user: BaseUserModel) -> str:
+    if isinstance(user, NameMixin):
+        return user.name
+    return user.email
+
+
+def enabled_at(user: BaseUserModel) -> datetime | None:
+    if isinstance(user, MFAMixin):
+        return user.totp_enabled_at
+    return None
+```
+
+The SDK now reads the columns the same way, which changes three behaviours for a model **without** the mixin:
+
+- `UserAuthService.mfa_enroll` raises `TypeError` before writing any row. It used to return a secret with no column to live in and store the recovery codes. `mfa_confirm` answers `422` (`MFA not initialized`), and `mfa_disable` / `mfa_reset`, which raised `AttributeError`, answer `422` (`MFA not active`).
+- A model that declares its **own** `name` column, without `NameMixin`, registers the passkey (`WebAuthnService.register_begin`) with the e-mail as `display_name`. To keep the name, replace the hand-written column with `NameMixin`.
+- `tempest user create --require-mfa` and `tempest user mfa-reset` require `MFAMixin` on the class; hand-declared `totp_*` columns are no longer enough.
+
 ## 0.372.0 — five new `tempest check` rules and `RuntimeError` without a URL in `AlembicHelper`
 
 `tempest check` (and `tempest lint-layers`) gained five rules, all with `warning` severity. With `layers_strict = true` under `[tool.tempest]`, the `tempest new` default, a warning fails the command too: on a generated project with only three planted warnings, `tempest lint-layers` printed `3 layer finding(s): 0 error(s), 3 warning(s).` and exited with code `1`; with `layers_strict = false`, with code `0`.

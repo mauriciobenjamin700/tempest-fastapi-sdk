@@ -933,6 +933,7 @@ async def _set_user_password(
 
     from tempest_fastapi_sdk.auth.service import revoke_user_refresh_tokens
     from tempest_fastapi_sdk.cli._database import cli_database_manager
+    from tempest_fastapi_sdk.db.mixins import MFAMixin
     from tempest_fastapi_sdk.exceptions import (
         UnauthorizedException,
         ValidationException,
@@ -950,7 +951,7 @@ async def _set_user_password(
                 return None
             service = (
                 _build_auth_service(user_model, None, webauthn_credential_model)
-                if getattr(user, "totp_enabled_at", None) is not None
+                if (isinstance(user, MFAMixin) and user.totp_enabled_at is not None)
                 or webauthn_credential_model is not None
                 else None
             )
@@ -1786,7 +1787,9 @@ def user_create(
     user_model = _load_user_model(model)
     codes_model: type[BaseUserRecoveryCodeModel] | None = None
     if require_mfa:
-        if not hasattr(user_model, "totp_enabled_at"):
+        from tempest_fastapi_sdk.db.mixins import MFAMixin
+
+        if not issubclass(user_model, MFAMixin):
             typer.echo(
                 f"error: {user_model.__name__} has no MFA columns; compose "
                 "MFAMixin into it to use --require-mfa.",
@@ -2229,7 +2232,9 @@ def user_mfa_reset(
         raise typer.Exit(2)
     database_url = _resolve_database_url()
     user_model = _load_user_model(model)
-    if not hasattr(user_model, "totp_enabled_at"):
+    from tempest_fastapi_sdk.db.mixins import MFAMixin
+
+    if not issubclass(user_model, MFAMixin):
         typer.echo(
             f"error: {user_model.__name__} has no MFA columns; there is no "
             "second factor to reset.",

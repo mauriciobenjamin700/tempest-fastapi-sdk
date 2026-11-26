@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from sqlalchemy import select
 
+from tempest_fastapi_sdk.db.mixins import NameMixin
 from tempest_fastapi_sdk.exceptions import (
     NotFoundException,
     UnauthorizedException,
@@ -369,7 +370,11 @@ class WebAuthnService:
             PublicKeyCredentialUserEntity(
                 id=user.id.bytes,
                 name=user.email,
-                display_name=getattr(user, "name", None) or user.email,
+                display_name=(
+                    user.name
+                    if isinstance(user, NameMixin) and user.name
+                    else user.email
+                ),
             ),
             credentials=[
                 AttestedCredentialData(record.credential_data) for record in existing
