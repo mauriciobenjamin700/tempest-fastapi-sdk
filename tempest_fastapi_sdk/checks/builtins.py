@@ -46,11 +46,11 @@ _DEBUG_ATTRS: tuple[str, ...] = ("SERVER_DEBUG", "DEBUG")
 _NO_DEFAULT: Any = object()
 
 
-def _first_present(context: Any, *names: str) -> tuple[str, Any] | None:
+def _first_present(context: object, *names: str) -> tuple[str, Any] | None:
     """Return the first ``(name, value)`` present and non-``None``.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
         *names (str): Candidate attribute names, in priority order.
 
     Returns:
@@ -63,7 +63,7 @@ def _first_present(context: Any, *names: str) -> tuple[str, Any] | None:
     return None
 
 
-def _debug_enabled(context: Any) -> bool:
+def _debug_enabled(context: object) -> bool:
     """Resolve whether debug mode is on, by field-name precedence.
 
     Both :func:`check_debug` and :func:`check_database` need the same
@@ -74,7 +74,7 @@ def _debug_enabled(context: Any) -> bool:
     was on.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
 
     Returns:
         bool: Whether debug mode is on. ``False`` when neither name is
@@ -85,7 +85,7 @@ def _debug_enabled(context: Any) -> bool:
     return bool(hit[1]) if hit is not None else False
 
 
-def _declared_default(context: Any, name: str) -> Any:
+def _declared_default(context: object, name: str) -> Any:
     """Return the default declared for ``name`` on a Pydantic settings class.
 
     Reads ``model_fields`` off the context's **class**, so the answer
@@ -93,7 +93,7 @@ def _declared_default(context: Any, name: str) -> Any:
     against a literal the SDK has stopped shipping.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
         name (str): The field name to look up.
 
     Returns:
@@ -114,7 +114,7 @@ def _declared_default(context: Any, name: str) -> Any:
     return field.default
 
 
-def check_secrets(context: Any) -> list[CheckMessage]:
+def check_secrets(context: object) -> list[CheckMessage]:
     """Flag empty, still-default or weak signing secrets.
 
     The three branches are ordered by how specific the advice is, and
@@ -124,7 +124,7 @@ def check_secrets(context: Any) -> list[CheckMessage]:
     that default is also too short.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
 
     Returns:
         list[CheckMessage]: One message per problematic secret.
@@ -168,11 +168,11 @@ def check_secrets(context: Any) -> list[CheckMessage]:
     return messages
 
 
-def check_debug(context: Any) -> list[CheckMessage]:
+def check_debug(context: object) -> list[CheckMessage]:
     """Note when debug mode is on.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
 
     Returns:
         list[CheckMessage]: A single info message when debug is on,
@@ -193,7 +193,7 @@ def check_debug(context: Any) -> list[CheckMessage]:
     ]
 
 
-def check_cors(context: Any) -> list[CheckMessage]:
+def check_cors(context: object) -> list[CheckMessage]:
     """Flag wildcard CORS origins combined with credentials.
 
     Starlette's ``CORSMiddleware`` does not send
@@ -204,7 +204,7 @@ def check_cors(context: Any) -> list[CheckMessage]:
     pair under ``ENV=production``; this check also warns elsewhere.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
 
     Returns:
         list[CheckMessage]: A warning when the combination is present.
@@ -234,11 +234,11 @@ def check_cors(context: Any) -> list[CheckMessage]:
     return []
 
 
-def check_database(context: Any) -> list[CheckMessage]:
+def check_database(context: object) -> list[CheckMessage]:
     """Warn when SQLite is configured outside debug mode.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
 
     Returns:
         list[CheckMessage]: A warning when a non-debug build points at
@@ -262,11 +262,11 @@ def check_database(context: Any) -> list[CheckMessage]:
     return []
 
 
-def check_bind_host(context: Any) -> list[CheckMessage]:
+def check_bind_host(context: object) -> list[CheckMessage]:
     """Note when the server binds to all interfaces.
 
     Args:
-        context (Any): The settings object.
+        context (object): The settings object.
 
     Returns:
         list[CheckMessage]: An info message when bound to ``0.0.0.0``.
