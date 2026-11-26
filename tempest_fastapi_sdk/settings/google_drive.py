@@ -5,6 +5,8 @@ which is already several thousand lines long. Re-exported from
 :mod:`tempest_fastapi_sdk.settings` like every other mixin.
 """
 
+from __future__ import annotations
+
 from typing import TypedDict
 
 from pydantic import Field
