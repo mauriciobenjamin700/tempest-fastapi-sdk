@@ -45,6 +45,7 @@ from fastapi import APIRouter, Depends
 from pydantic import Field
 from starlette.responses import StreamingResponse
 
+from tempest_fastapi_sdk.agents.protocols import ToolCallingBackend
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.genai.rag.memory import MemoryHit
 from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
@@ -328,9 +329,8 @@ class AIChatPipeline:
         )
 
         tool_calls_made: list[str] = []
-        chat_with_tools = getattr(self.generator, "chat_with_tools", None)
-        if self.tools and callable(chat_with_tools):
-            reply, tool_calls_made = await self._run_tool_loop(messages)
+        if self.tools and isinstance(self.generator, ToolCallingBackend):
+            reply, tool_calls_made = await self._run_tool_loop(self.generator, messages)
         else:
             reply = await self.generator.chat(messages)
 
@@ -426,9 +426,8 @@ class AIChatPipeline:
             use_web_search=use_web_search,
         )
 
-        chat_with_tools = getattr(self.generator, "chat_with_tools", None)
-        if self.tools and callable(chat_with_tools):
-            await self._run_tool_loop(messages)
+        if self.tools and isinstance(self.generator, ToolCallingBackend):
+            await self._run_tool_loop(self.generator, messages)
 
         prompt = _flatten_messages(messages)
         pieces = self.generator.stream(prompt)
@@ -561,6 +560,7 @@ class AIChatPipeline:
 
     async def _run_tool_loop(
         self,
+        generator: ToolCallingBackend,
         messages: list[dict[str, Any]],
     ) -> tuple[str, list[str]]:
         """Run the bounded tool-calling loop, mutating ``messages`` in place.
@@ -572,6 +572,8 @@ class AIChatPipeline:
         crashing. The loop runs at most ``max_tool_iterations`` times.
 
         Args:
+            generator (ToolCallingBackend): The pipeline's backend, already
+                narrowed by the caller's ``isinstance`` probe.
             messages (list[dict[str, Any]]): The running message list;
                 assistant tool-call echoes and tool results are appended.
 
@@ -579,7 +581,6 @@ class AIChatPipeline:
             tuple[str, list[str]]: The final reply text and the ordered
             list of invoked tool names.
         """
-        generator: Any = self.generator
         tool_by_name: dict[str, Tool] = {tool.name: tool for tool in self.tools}
         specs: list[dict[str, Any]] = [tool.to_spec() for tool in self.tools]
 

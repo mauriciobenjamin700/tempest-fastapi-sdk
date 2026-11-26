@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import time
 from types import TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.genai.inventory import ModelRuntimeReport
 
 
 def _require_prometheus() -> Any:
@@ -103,7 +106,7 @@ class GenAIMetrics:
             **kwargs,
         )
 
-    def observe_inventory(self, report: Any) -> None:
+    def observe_inventory(self, report: ModelRuntimeReport) -> None:
         """Publish a runtime inventory as gauge values.
 
         Counters answer "how much work went through"; these answer "what is
@@ -119,7 +122,7 @@ class GenAIMetrics:
         nothing.
 
         Args:
-            report (Any): A
+            report (ModelRuntimeReport): A
                 :class:`~tempest_fastapi_sdk.genai.ModelRuntimeReport`.
         """
         self._models_loaded.clear()
@@ -131,7 +134,7 @@ class GenAIMetrics:
                 device=model.device or "unknown",
             ).inc()
         self._models_known.set(report.total_count)
-        hardware = getattr(report, "hardware", None)
+        hardware = report.hardware
         if hardware is None:
             return
         self._vram_free.clear()
