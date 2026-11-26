@@ -2,6 +2,24 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — `ObjectStat.raw` can be `None`
+
+`ObjectStat.raw` is now annotated `minio.datatypes.Object | None` (#836). Nothing changes at runtime: `AsyncMinIOClient` still fills in the `minio` `Object`, and `LocalObjectStorageClient` and `FakeObjectStorageClient` still return `None`, as they always did. What changes is the checker: an unchecked read such as `stat.raw.version_id` is now `error: Item "None" of "Object | None" has no attribute "version_id"  [union-attr]` under mypy. Before, it accepted the line, which raised `AttributeError` against the local backend and the fake.
+
+Narrow before reading:
+
+```python
+from tempest_fastapi_sdk.storage import ObjectStat
+
+
+def version_of(stat: ObjectStat) -> str | None:
+    if stat.raw is None:
+        return None
+    return stat.raw.version_id
+```
+
+If you already had that check and silenced mypy's `unreachable` (`warn_unreachable`) with `# type: ignore`, the ignore is no longer needed.
+
 ## 0.372.0 — five new `tempest check` rules and `RuntimeError` without a URL in `AlembicHelper`
 
 `tempest check` (and `tempest lint-layers`) gained five rules, all with `warning` severity. With `layers_strict = true` under `[tool.tempest]`, the `tempest new` default, a warning fails the command too: on a generated project with only three planted warnings, `tempest lint-layers` printed `3 layer finding(s): 0 error(s), 3 warning(s).` and exited with code `1`; with `layers_strict = false`, with code `0`.

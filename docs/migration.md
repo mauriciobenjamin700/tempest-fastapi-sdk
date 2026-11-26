@@ -2,6 +2,24 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Unreleased — `ObjectStat.raw` pode ser `None`
+
+`ObjectStat.raw` agora é anotado `minio.datatypes.Object | None` (#836). Em runtime nada mudou: o `AsyncMinIOClient` continua preenchendo o `Object` do `minio`, e o `LocalObjectStorageClient` e o `FakeObjectStorageClient` continuam devolvendo `None`, como já faziam. O que muda é o checker: leitura sem checagem, como `stat.raw.version_id`, passa a ser `error: Item "None" of "Object | None" has no attribute "version_id"  [union-attr]` no mypy. Antes ele aceitava a linha, que levantava `AttributeError` contra o backend local e o fake.
+
+Estreite antes de ler:
+
+```python
+from tempest_fastapi_sdk.storage import ObjectStat
+
+
+def version_of(stat: ObjectStat) -> str | None:
+    if stat.raw is None:
+        return None
+    return stat.raw.version_id
+```
+
+Se você já fazia essa checagem e silenciava o `unreachable` do mypy (`warn_unreachable`) com `# type: ignore`, o ignore deixa de ser necessário.
+
 ## 0.372.0 — cinco regras novas no `tempest check` e `RuntimeError` sem URL no `AlembicHelper`
 
 O `tempest check` (e o `tempest lint-layers`) ganhou cinco regras, todas de severidade `warning`. Com `layers_strict = true` em `[tool.tempest]`, que é o padrão do `tempest new`, aviso também derruba o comando: num projeto gerado com só três avisos plantados, `tempest lint-layers` imprimiu `3 layer finding(s): 0 error(s), 3 warning(s).` e saiu com código `1`; com `layers_strict = false`, com código `0`.

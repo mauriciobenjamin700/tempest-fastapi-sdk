@@ -61,8 +61,12 @@ class ObjectStat:
             in UTC.
         metadata (dict[str, str]): User metadata keyed without the
             ``x-amz-meta-`` prefix.
-        raw (minio.datatypes.Object): Underlying ``minio`` ``Object``
-            for advanced use (versioning id, owner, restore state, …).
+        raw (minio.datatypes.Object | None): Underlying ``minio``
+            ``Object`` for advanced use (versioning id, owner, restore
+            state, …). ``None`` when the stat did not come from MinIO:
+            ``LocalObjectStorageClient`` and ``FakeObjectStorageClient``
+            have no ``minio`` object to hand back, so code that must run
+            against every backend narrows it before reading.
     """
 
     bucket: str
@@ -72,7 +76,7 @@ class ObjectStat:
     content_type: str | None
     last_modified: datetime | None
     metadata: dict[str, str]
-    raw: _MinioObject
+    raw: _MinioObject | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1052,7 +1056,8 @@ class AsyncMinIOClient:
 
         Returns:
             ObjectStat: Subset of fields commonly needed by callers.
-            Use ``.raw`` for the full ``minio`` ``Object``.
+            Use ``.raw`` for the full ``minio`` ``Object`` (never ``None``
+            on this client).
 
         Raises:
             S3Error: When the object is missing.

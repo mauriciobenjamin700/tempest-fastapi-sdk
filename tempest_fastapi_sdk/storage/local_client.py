@@ -1137,7 +1137,7 @@ class LocalObjectStorageClient:
             content_type=meta.content_type if meta is not None else None,
             last_modified=datetime.fromtimestamp(info.st_mtime, tz=UTC),
             metadata=dict(meta.metadata) if meta is not None else {},
-            raw=None,  # type: ignore[arg-type]
+            raw=None,
         )
 
     async def stat_object(

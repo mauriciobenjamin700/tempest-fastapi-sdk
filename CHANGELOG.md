@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `ObjectStat.raw` passa a ser `minio.datatypes.Object | None` (#836). O
+  `LocalObjectStorageClient` e o `FakeObjectStorageClient` sempre devolveram
+  `raw=None`, escondido por `type: ignore[arg-type]` nos dois construtores:
+  o checker do consumidor aceitava `stat.raw.version_id` e a chamada
+  levantava `AttributeError` contra esses backends. Agora o mypy acusa
+  `union-attr` no acesso sem checagem; quem lê `.raw` estreita contra
+  `None` antes (no `AsyncMinIOClient` ele nunca é `None`).
+
 ## [0.372.0] — 2026-11-26
 
 ### Added
