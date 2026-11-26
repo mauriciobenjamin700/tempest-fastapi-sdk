@@ -105,14 +105,14 @@ class AsyncQueueManager:
 
     async def publish(
         self,
-        message: Any,
+        message: object,
         *args: Any,
         **kwargs: Any,
     ) -> PublishResult:
         """Publish ``message`` through the underlying broker.
 
         Args:
-            message (Any): The payload to publish. Forwarded as-is.
+            message (object): The payload to publish. Forwarded as-is.
             *args (Any): Positional broker-specific arguments (queue,
                 exchange, topic, etc.).
             **kwargs (Any): Keyword broker-specific arguments.

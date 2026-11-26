@@ -199,3 +199,25 @@ class TestSubscriberOptions:
         plain = OrderPaidConsumer(channel="b", schema=OrderPaid)
         assert plain.subscriptions()[0].options == {}
         assert Consumer.options == {}
+
+    async def test_parameterized_generic_consumer_handles_typed_payload(self) -> None:
+        """Parameterizing ``Consumer[Model]`` works alongside bare ``Consumer``."""
+        broker = _raw()
+        mq = MessageBroker(broker)
+        seen: list[OrderPaid] = []
+        done = asyncio.Event()
+
+        class TypedOrderPaidConsumer(Consumer[OrderPaid]):
+            async def handle(self, message: OrderPaid) -> None:
+                seen.append(message)
+                done.set()
+
+        mq.register(TypedOrderPaidConsumer(channel="orders.paid", schema=OrderPaid))
+
+        async with TestRabbitBroker(broker):
+            await mq.connect()
+            await mq.publish("orders.paid", OrderPaid(order_id="typed"))
+            await asyncio.wait_for(done.wait(), timeout=1.0)
+            await mq.disconnect()
+
+        assert seen == [OrderPaid(order_id="typed")]

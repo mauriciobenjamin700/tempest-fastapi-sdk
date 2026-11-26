@@ -398,7 +398,7 @@ def channel_name(channel: str | QueueSpec) -> str:
     return channel.name if isinstance(channel, QueueSpec) else channel
 
 
-def detect_transport(broker: Any) -> TransportEnum:
+def detect_transport(broker: object) -> TransportEnum:
     """Classify a FastStream broker by its class name.
 
     Uses the class name rather than ``isinstance`` so nothing has to be
@@ -407,7 +407,7 @@ def detect_transport(broker: Any) -> TransportEnum:
     lazy loading the facade is built on.
 
     Args:
-        broker (Any): The FastStream broker instance.
+        broker (object): The FastStream broker instance.
 
     Returns:
         TransportEnum: The detected transport, or :attr:`TransportEnum.UNKNOWN`

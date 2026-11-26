@@ -75,14 +75,14 @@ class CheckRegistry:
 
     def run(
         self,
-        context: Any = None,
+        context: object = None,
         *,
         tags: Iterable[str] | None = None,
     ) -> list[CheckMessage]:
         """Run the registered checks and collect their messages.
 
         Args:
-            context (Any): Passed to every check — typically the
+            context (object): Passed to every check — typically the
                 settings object under inspection, or ``None``.
             tags (Iterable[str] | None): When given, only checks
                 carrying at least one of these tags run.
@@ -135,7 +135,7 @@ def check(*tags: str) -> Callable[[CheckFn], CheckFn]:
 
 
 def run_checks(
-    context: Any = None,
+    context: object = None,
     *,
     tags: Iterable[str] | None = None,
     registry: CheckRegistry | None = None,
@@ -143,7 +143,7 @@ def run_checks(
     """Run checks and return every message, without raising.
 
     Args:
-        context (Any): Passed to every check (usually the settings).
+        context (object): Passed to every check (usually the settings).
         tags (Iterable[str] | None): Optional tag filter.
         registry (CheckRegistry | None): Registry to run; ``None`` uses
             :data:`default_registry`.
@@ -155,7 +155,7 @@ def run_checks(
 
 
 def run_system_checks(
-    context: Any = None,
+    context: object = None,
     *,
     tags: Iterable[str] | None = None,
     fail_level: CheckLevelEnum = CheckLevelEnum.ERROR,
@@ -168,7 +168,7 @@ def run_system_checks(
     secret.
 
     Args:
-        context (Any): Passed to every check (usually the settings).
+        context (object): Passed to every check (usually the settings).
         tags (Iterable[str] | None): Optional tag filter.
         fail_level (CheckLevelEnum): The threshold that makes the run fail.
             Defaults to ``ERROR``.

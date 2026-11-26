@@ -50,43 +50,6 @@ GENERATED_MARKER: str = "Do not edit by hand"
 
 ALLOWED_ANY_PARAMS: dict[str, str] = {
     (
-        "tempest_fastapi_sdk/admin/auth.py::AdminAuthBackend.is_admin_account(target)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/auth.py::"
-        "UserModelAuthBackend.is_admin_account(target)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/config.py::"
-        "AdminModel.readonly_field_names_for(instance)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/config.py::AdminModel.scope_for(principal)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/admin/display.py::cell_view(value)": "pendente em #842",
-    "tempest_fastapi_sdk/admin/display.py::format_number(value)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/display.py::short_identity(identity)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/forms.py::apply_password_fields(instance)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/forms.py::duplicate_values(instance)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/admin/forms.py::fk_label(instance)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/forms.py::parse_schema_submission(form)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/impersonation.py::"
-        "make_jwt_impersonation_handler.handler(operator)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/admin/impersonation.py::"
-        "make_jwt_impersonation_handler.handler(target)"
-    ): "pendente em #842",
-    (
         "tempest_fastapi_sdk/api/webhooks.py::WebhookSender.send(payload)"
     ): "pendente em #842",
     (
@@ -102,50 +65,7 @@ ALLOWED_ANY_PARAMS: dict[str, str] = {
         "make_app_error_router.report_app_error(user_id)"
     ): "pendente em #842",
     (
-        "tempest_fastapi_sdk/authz/permissions.py::PermissionMixin.has_perm(obj)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/authz/permissions.py::"
-        "PermissionRegistry.check_permission(obj)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/authz/permissions.py::"
-        "PermissionRegistry.check_permission(user)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/authz/permissions.py::PermissionRegistry.has_perm(obj)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/authz/permissions.py::PermissionRegistry.has_perm(user)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/authz/permissions.py::check_permission(obj)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/authz/permissions.py::check_permission(user)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/authz/permissions.py::has_perm(obj)": "pendente em #842",
-    "tempest_fastapi_sdk/authz/permissions.py::has_perm(user)": "pendente em #842",
-    (
         "tempest_fastapi_sdk/chat/service.py::ChatService.receipt_counts(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/checks/builtins.py::check_bind_host(context)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/checks/builtins.py::check_cors(context)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/checks/builtins.py::check_database(context)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/checks/builtins.py::check_debug(context)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/checks/builtins.py::check_secrets(context)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/checks/registry.py::CheckRegistry.run(context)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/checks/registry.py::run_checks(context)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/checks/registry.py::run_system_checks(context)"
     ): "pendente em #842",
     (
         "tempest_fastapi_sdk/core/enums.py::_EnumHelpers.has_value(value)"
@@ -164,7 +84,7 @@ ALLOWED_ANY_PARAMS: dict[str, str] = {
     (
         "tempest_fastapi_sdk/db/expressions.py::build_filter_condition(value)"
     ): "pendente em #842",
-    "tempest_fastapi_sdk/db/signals.py::emit(instance)": "pendente em #842",
+    ("tempest_fastapi_sdk/db/signals.py::emit(instance)"): "pendente em #842",
     (
         "tempest_fastapi_sdk/geo/db.py::haversine_distance_sql(latitude)"
     ): "pendente em #842",
@@ -199,64 +119,6 @@ ALLOWED_ANY_PARAMS: dict[str, str] = {
         "tempest_fastapi_sdk/privacy/graph.py::SubjectGraph.export(subject_id)"
     ): "pendente em #842",
     (
-        "tempest_fastapi_sdk/queue/broker.py::MessageBroker.publish(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/broker.py::QueuePublisher.publish(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/broker.py::_schema_entry.entry(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/consumer.py::Consumer.handle(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/dedup.py::"
-        "make_dedup_middleware._DedupMiddleware.consume_scope(call_next)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/dedup.py::"
-        "make_dedup_middleware._DedupMiddleware.consume_scope(msg)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/queue/dedup.py::message_key(message)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/manager.py::AsyncQueueManager.publish(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/reliability.py::"
-        "QueueMetrics.middleware._MetricsMiddleware.consume_scope(call_next)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/reliability.py::"
-        "QueueMetrics.middleware._MetricsMiddleware.consume_scope(msg)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/reliability.py::delivery_attempt(message)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/reliability.py::"
-        "make_dead_letter_middleware._DeadLetterMiddleware."
-        "consume_scope(call_next)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/reliability.py::"
-        "make_dead_letter_middleware._DeadLetterMiddleware.consume_scope(msg)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/reliability.py::replay_headers(headers)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/topology.py::detect_transport(broker)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/tracing.py::"
-        "make_tracing_middleware._TracingMiddleware.consume_scope(call_next)"
-    ): "pendente em #842",
-    (
-        "tempest_fastapi_sdk/queue/tracing.py::"
-        "make_tracing_middleware._TracingMiddleware.consume_scope(msg)"
-    ): "pendente em #842",
-    (
         "tempest_fastapi_sdk/rooms/registry.py::RoomRegistry.relay_json(data)"
     ): "pendente em #842",
     (
@@ -285,17 +147,6 @@ ALLOWED_ANY_PARAMS: dict[str, str] = {
     (
         "tempest_fastapi_sdk/storage/tus/router.py::make_tus_router.write_chunk(user)"
     ): "pendente em #842",
-    "tempest_fastapi_sdk/tasks/stages.py::StageMap.cancel(record)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/tasks/stages.py::StageMap.is_running(record)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/tasks/stages.py::StageMap.mark(record)": "pendente em #842",
-    "tempest_fastapi_sdk/tasks/stages.py::StageMap.mark(result)": "pendente em #842",
-    "tempest_fastapi_sdk/tasks/stages.py::StageMap.owns(record)": "pendente em #842",
-    (
-        "tempest_fastapi_sdk/tasks/stages.py::StageMap.snapshot(record)"
-    ): "pendente em #842",
-    "tempest_fastapi_sdk/tasks/stages.py::StageMap.status(record)": "pendente em #842",
     (
         "tempest_fastapi_sdk/testing/fakes/payment.py::"
         "FakePixProvider.parse_webhook(event)"
@@ -306,7 +157,7 @@ ALLOWED_ANY_PARAMS: dict[str, str] = {
     (
         "tempest_fastapi_sdk/ui/components/table.py::DataTable.cell_text(value)"
     ): "pendente em #842",
-    "tempest_fastapi_sdk/ui/forms/parse.py::parse_form(request)": "pendente em #842",
+    ("tempest_fastapi_sdk/ui/forms/parse.py::parse_form(request)"): "pendente em #842",
     (
         "tempest_fastapi_sdk/utils/http_client.py::HTTPClient.request(content)"
     ): "pendente em #842",

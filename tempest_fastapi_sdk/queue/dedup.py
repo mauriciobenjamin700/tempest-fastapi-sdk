@@ -45,10 +45,11 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
 if TYPE_CHECKING:
-    from faststream import BaseMiddleware
-
-if TYPE_CHECKING:
     from collections.abc import MutableMapping
+
+    from faststream import BaseMiddleware
+    from faststream.message import StreamMessage
+    from faststream.types import AsyncFuncAny
 
 DEFAULT_DEDUP_TTL_SECONDS: Final[int] = 86_400
 """How long a processed message id is remembered.
@@ -322,7 +323,7 @@ def _kafka_record_key(message: Any) -> str | None:
     return f"{topic}:{partition}:{offset}"
 
 
-def message_key(message: Any) -> str | None:
+def message_key(message: object) -> str | None:
     """Return the id a message is deduplicated by.
 
     In order: the :data:`MESSAGE_ID_HEADER` header, which
@@ -333,7 +334,7 @@ def message_key(message: Any) -> str | None:
     and ``correlation_id`` for anything else.
 
     Args:
-        message (Any): The FastStream message.
+        message (object): The FastStream message.
 
     Returns:
         str | None: The key, or ``None`` when the message carries neither
@@ -383,12 +384,16 @@ def make_dedup_middleware(
     class _DedupMiddleware(BaseMiddleware):
         """Claim, run, then mark done — or release so a retry retries."""
 
-        async def consume_scope(self, call_next: Any, msg: Any) -> Any:
+        async def consume_scope(
+            self,
+            call_next: AsyncFuncAny,
+            msg: StreamMessage[Any],
+        ) -> Any:
             """Run the handler at most once per message id.
 
             Args:
-                call_next (Any): The next middleware or the handler.
-                msg (Any): The message being consumed.
+                call_next (AsyncFuncAny): The next middleware or the handler.
+                msg (StreamMessage[Any]): The message being consumed.
 
             Returns:
                 Any: The handler's result, or ``None`` when the message

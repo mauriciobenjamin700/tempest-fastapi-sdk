@@ -81,7 +81,7 @@ NATS ``PubAck | None``, Redis ``int | bytes``).
 class QueuePublisher(Protocol):
     """Minimal surface of a publisher from :meth:`MessageBroker.publisher`."""
 
-    def publish(self, message: Any, /, **kwargs: Any) -> Awaitable[PublishResult]:
+    def publish(self, message: object, /, **kwargs: Any) -> Awaitable[PublishResult]:
         """Publish ``message`` through the bound channel."""
         ...
 
@@ -106,7 +106,7 @@ def _schema_entry(
         Callable[[Any], Awaitable[None]]: The wrapped subscriber.
     """
 
-    async def entry(message: Any) -> None:
+    async def entry(message: object) -> None:
         await handler(message)
 
     entry.__annotations__ = {"message": schema, "return": None}
@@ -941,7 +941,7 @@ class MessageBroker:
     async def publish(
         self,
         channel: str | QueueSpec,
-        message: Any,
+        message: object,
         *,
         exchange: ExchangeSpec | str | None = None,
         key: str | bytes | None = None,
@@ -960,7 +960,7 @@ class MessageBroker:
                 bare string as given, or the event key of a spec's
                 :class:`~tempest_fastapi_sdk.queue.ExchangeBinding` (not
                 the queue name, which no binding routes by).
-            message (Any): The payload. A Pydantic model or ``dict`` is
+            message (object): The payload. A Pydantic model or ``dict`` is
                 serialized to JSON; ``str`` / ``bytes`` are sent as-is.
             exchange (ExchangeSpec | str | None): Publish to this exchange
                 instead of straight to the queue named ``channel``, so

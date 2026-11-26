@@ -17,12 +17,22 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from tempest_fastapi_sdk.utils.token_types import ACCESS_TOKEN_TYPE, ACT_CLAIM
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.jwt import JWTUtils
+
+
+class _HasId(Protocol):
+    """Minimal account surface read by :func:`make_jwt_impersonation_handler`."""
+
+    @property
+    def id(self) -> object:
+        """Return the account or operator identifier."""
+        ...
+
 
 AdminImpersonateHandler = Callable[[Any, Any], "str | Awaitable[str]"]
 """``(operator, account) -> url``: where the browser goes to act as ``account``.
@@ -112,12 +122,12 @@ def make_jwt_impersonation_handler(
     if ttl <= timedelta(0):
         raise ValueError("make_jwt_impersonation_handler `ttl` must be positive")
 
-    def handler(operator: Any, target: Any) -> str:
+    def handler(operator: _HasId, target: _HasId) -> str:
         """Sign the account's token and place it in the redirect URL.
 
         Args:
-            operator (Any): The signed-in admin; its ``id`` goes in ``act``.
-            target (Any): The account the admin resolved and checked; its
+            operator (_HasId): The signed-in admin; its ``id`` goes in ``act``.
+            target (_HasId): The account the admin resolved and checked; its
                 ``id`` is the ``sub``.
 
         Returns:
