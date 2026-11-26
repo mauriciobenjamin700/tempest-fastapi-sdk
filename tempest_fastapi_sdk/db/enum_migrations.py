@@ -1359,7 +1359,7 @@ behaviour and the assignment both.
 
 def render_enum_types(
     type_: str,
-    obj: Any,
+    obj: object,
     autogen_context: AutogenContext,
 ) -> str | Literal[False]:
     """Render an SDK column type as a self-contained SQLAlchemy type.
@@ -1398,7 +1398,7 @@ def render_enum_types(
     Args:
         type_ (str): What Alembic is rendering (``"type"``,
             ``"check"``, ``"column"``, …).
-        obj (Any): The object to render.
+        obj (object): The object to render.
         autogen_context (AutogenContext): Alembic's rendering context.
 
     Returns:
@@ -2558,7 +2558,7 @@ def _sql_string(value: str) -> str:
 
 def type_bound_check_include_object(
     metadata: sa.MetaData | Sequence[sa.MetaData] | None,
-) -> Callable[[Any, str | None, str, bool, Any], bool]:
+) -> Callable[[object, str | None, str, bool, object], bool]:
     """Build the ``include_object`` filter that hides enum ``CHECK`` drift.
 
     Alembic's CHECK comparison reads the constraint from the database but
@@ -2595,7 +2595,7 @@ def type_bound_check_include_object(
             autogenerate target metadata, or a sequence of metadatas.
 
     Returns:
-        Callable[[Any, str | None, str, bool, Any], bool]: The
+        Callable[[object, str | None, str, bool, object], bool]: The
         ``include_object`` callback Alembic expects.
     """
     names = _type_bound_check_names(metadata)
@@ -2606,22 +2606,22 @@ def type_bound_check_include_object(
     )
 
     def include_object(
-        object_: Any,
+        object_: object,
         name: str | None,
         type_: str,
         reflected: bool,
-        compare_to: Any,
+        compare_to: object,
     ) -> bool:
         """Keep every object except a table's own type-bound enum check.
 
         Args:
-            object_ (Any): The object Alembic is considering — for a
+            object_ (object): The object Alembic is considering — for a
                 ``check_constraint`` it is the ``CheckConstraint``, whose
                 ``table`` names the scope.
             name (str | None): The object's name, as Alembic reports it.
             type_ (str): The object kind (``"check_constraint"``, ...).
             reflected (bool): Whether the object came from the database.
-            compare_to (Any): The metadata counterpart, when there is one.
+            compare_to (object): The metadata counterpart, when there is one.
 
         Returns:
             bool: ``False`` to hide a reflected check that belongs to the
