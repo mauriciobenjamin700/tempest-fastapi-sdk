@@ -135,13 +135,16 @@ class RoomSession:
             return
         await self.handle_json(message)
 
-    async def handle_json(self, message: Any) -> None:
+    async def handle_json(self, message: object) -> None:
         """Handle one decoded control message.
 
         Args:
-            message (Any): The decoded frame.
+            message (object): The decoded frame.
         """
-        kind = message.get("type") if isinstance(message, dict) else None
+        if not isinstance(message, dict):
+            await self.refuse(BadRequestError("message needs a string 'type'"), None)
+            return
+        kind = message.get("type")
         if not isinstance(kind, str):
             await self.refuse(BadRequestError("message needs a string 'type'"), None)
             return

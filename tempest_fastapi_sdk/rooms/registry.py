@@ -759,7 +759,7 @@ class RoomRegistry:
         raise _DroppedError
 
     async def relay_json(
-        self, room: Room, member: RoomMember, data: Any, *, to: str | None = None
+        self, room: Room, member: RoomMember, data: object, *, to: str | None = None
     ) -> None:
         """Relay a JSON message, stamped with the sender the server knows.
 
@@ -769,7 +769,7 @@ class RoomRegistry:
         Args:
             room (Room): The room.
             member (RoomMember): The sender.
-            data (Any): The payload, relayed as is.
+            data (object): The payload, relayed as is.
             to (str | None): A player id, or ``None`` for everyone else.
 
         Raises:
