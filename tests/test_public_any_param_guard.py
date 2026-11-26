@@ -263,9 +263,6 @@ ALLOWED_ANY_PARAMS: dict[str, str] = {
         "tempest_fastapi_sdk/rooms/session.py::RoomSession.handle_json(message)"
     ): "pendente em #842",
     (
-        "tempest_fastapi_sdk/settings/mixins.py::MinIOSettings.model_post_init(context)"
-    ): "pendente em #842",
-    (
         "tempest_fastapi_sdk/sse/router.py::make_sse_router.issue_ticket(user)"
     ): "pendente em #842",
     (

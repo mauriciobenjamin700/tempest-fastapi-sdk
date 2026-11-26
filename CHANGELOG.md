@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Mappers `*_kwargs()` de `tempest_fastapi_sdk.settings` passam a devolver
+  `TypedDict` específicos em vez de `dict[str, Any]`** (primeira fatia de #843;
+  e `MinIOSettings.model_post_init(context)` passa a aceitar `object` em vez de
+  `Any`, #842): todos os 24 mappers restantes (`logging_kwargs`,
+  `database_kwargs`, `redis_kwargs`, `jwt_kwargs`, `email_kwargs`,
+  `upload_kwargs`, `webpush_kwargs`, `firebase_kwargs`, `kafka_kwargs`,
+  `google_kwargs`, `github_kwargs`, `local_storage_kwargs`, `storage_kwargs`,
+  `minio_kwargs`, `anthropic_kwargs`, `openai_kwargs`, `openai_speech_kwargs`,
+  `deepseek_kwargs`, `gemini_kwargs`, `hosted_kwargs`, `openpix_kwargs`,
+  `mercado_pago_kwargs`, `revenuecat_kwargs`, `hostbridge_kwargs`) agora
+  devolvem 21 novos `TypedDict` definidos em
+  `tempest_fastapi_sdk.settings.kwargs` e re-exportados em
+  `tempest_fastapi_sdk.settings` (`LoggingKwargs`, `DatabaseKwargs`,
+  `RedisKwargs`, `JWTKwargs`, `EmailKwargs`, `UploadKwargs`, `WebPushKwargs`,
+  `FirebaseKwargs`, `KafkaKwargs`, `GoogleOAuthKwargs`, `GitHubOAuthKwargs`,
+  `LocalStorageKwargs`, `StorageKwargs`, `AnthropicKwargs`, `OpenAIKwargs`,
+  `OpenAISpeechKwargs`, `DeepSeekKwargs`, `GeminiKwargs`, `HostedGenAIKwargs`,
+  `HTTPClientKwargs`, `HostBridgeKwargs`), protegidos pelo guard
+  `tests/test_settings_kwargs_typeddict_guard.py`.
+  - **Nota de migração:** `TypedDict` é compatível com leitura por chave e com
+    splat `Target(**settings.xxx_kwargs())`, mas o type-checker passa a recusar
+    quem muta o dicionário retornado inserindo chaves fora do formato esperado
+    pelo construtor alvo.
 - **Regra de tipagem — nenhum parâmetro público `Any` pelado (guard + `vision`,
   `genai`, `modelops`)** (#842): criado o guard AST
   `tests/test_public_any_param_guard.py` (com `*args: Any, **kwargs: Any` de
