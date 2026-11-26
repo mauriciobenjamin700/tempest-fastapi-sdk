@@ -23,10 +23,22 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.agents.schemas import AgentArtifact, ToolResult
 from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolError
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.agents.protocols import (
+        SupportsImageGeneration,
+        SupportsVisionGenerate,
+        SupportsWebRetrieve,
+    )
+    from tempest_fastapi_sdk.genai.audio.backends import (
+        SpeechSynthesizer,
+        SpeechTranscriber,
+    )
+    from tempest_fastapi_sdk.genai.rag.retriever import SupportsRetrieve
 
 _IMAGE_MEDIA_TYPES: dict[str, str] = {
     "png": "image/png",
@@ -73,7 +85,7 @@ def _artifact_or_path(
     arguments: dict[str, Any],
     context: AgentContext,
     path_root: Path | None,
-) -> Any:
+) -> bytes | str:
     """Resolve a media argument to something a model can consume.
 
     Accepts ``artifact`` (a name registered on the run) and, when the tool
@@ -90,8 +102,8 @@ def _artifact_or_path(
             when path input is disabled.
 
     Returns:
-        Any: Raw ``bytes`` for an artifact, or the absolute path string of
-        a file inside ``path_root``.
+        bytes | str: Raw ``bytes`` for an artifact, or the absolute path
+        string of a file inside ``path_root``.
 
     Raises:
         AgentToolError: When neither argument is present, the named
@@ -147,7 +159,7 @@ def _media_parameters(
 
 
 def generate_image_tool(
-    image_generator: Any,
+    image_generator: SupportsImageGeneration,
     *,
     name: str = "generate_image",
     description: str = (
@@ -163,8 +175,9 @@ def generate_image_tool(
         >>> tool = generate_image_tool(ImageGenerator("stabilityai/sdxl-turbo"))
 
     Args:
-        image_generator (Any): An
-            :class:`~tempest_fastapi_sdk.genai.ImageGenerator`.
+        image_generator (SupportsImageGeneration): An
+            :class:`~tempest_fastapi_sdk.genai.ImageGenerator`, or any
+            engine with the same ``generate`` shape.
         name (str): The function name the model calls.
         description (str): What the tool does, written for the model.
         default_steps (int | None): Denoising steps when the model does not
@@ -244,7 +257,7 @@ def generate_image_tool(
 
 
 def describe_image_tool(
-    vision_generator: Any,
+    vision_generator: SupportsVisionGenerate,
     *,
     name: str = "describe_image",
     description: str | None = None,
@@ -261,8 +274,9 @@ def describe_image_tool(
     directory.
 
     Args:
-        vision_generator (Any): A
-            :class:`~tempest_fastapi_sdk.genai.VisionTextGenerator`.
+        vision_generator (SupportsVisionGenerate): A
+            :class:`~tempest_fastapi_sdk.genai.VisionTextGenerator`, or any
+            engine that answers about raw bytes or file paths.
         name (str): The function name the model calls.
         description (str | None): What the tool does, written for the
             model. ``None`` picks a default that mentions ``path`` only when
@@ -292,7 +306,7 @@ def describe_image_tool(
         """Ask the vision model about the referenced image."""
         source = _artifact_or_path(arguments, context, root)
         question = str(arguments.get("question") or "Describe this image.")
-        return str(await vision_generator.generate(question, images=[source]))
+        return await vision_generator.generate(question, images=[source])
 
     return AgentTool(
         name=name,
@@ -313,7 +327,7 @@ def describe_image_tool(
 
 
 def transcribe_audio_tool(
-    speech_to_text: Any,
+    speech_to_text: SpeechTranscriber,
     *,
     name: str = "transcribe_audio",
     description: str | None = None,
@@ -327,8 +341,10 @@ def transcribe_audio_tool(
     directory. A URL is never accepted as ``path``.
 
     Args:
-        speech_to_text (Any): A
-            :class:`~tempest_fastapi_sdk.genai.audio.SpeechToText`.
+        speech_to_text (SpeechTranscriber): A
+            :class:`~tempest_fastapi_sdk.genai.audio.SpeechToText`, an
+            :class:`~tempest_fastapi_sdk.genai.OllamaSpeech`, or any backend
+            that accepts raw bytes or a file path.
         name (str): The function name the model calls.
         description (str | None): What the tool does, written for the
             model. ``None`` picks a default that mentions ``path`` only when
@@ -362,8 +378,7 @@ def transcribe_audio_tool(
             source,
             language=str(language) if language else None,
         )
-        detected = getattr(result, "language", None)
-        prefix = f"[{detected}] " if detected else ""
+        prefix = f"[{result.language}] " if result.language else ""
         return f"{prefix}{result.text}"
 
     return AgentTool(
@@ -385,7 +400,7 @@ def transcribe_audio_tool(
 
 
 def speak_tool(
-    text_to_speech: Any,
+    text_to_speech: SpeechSynthesizer,
     *,
     name: str = "speak",
     description: str = (
@@ -396,8 +411,9 @@ def speak_tool(
     """Build a tool that synthesizes speech into an artifact.
 
     Args:
-        text_to_speech (Any): A
-            :class:`~tempest_fastapi_sdk.genai.audio.TextToSpeech`.
+        text_to_speech (SpeechSynthesizer): A
+            :class:`~tempest_fastapi_sdk.genai.audio.TextToSpeech`, or any
+            backend with the same ``synthesize`` shape.
         name (str): The function name the model calls.
         description (str): What the tool does, written for the model.
 
@@ -462,7 +478,7 @@ def speak_tool(
 
 
 def retrieve_tool(
-    retriever: Any,
+    retriever: SupportsRetrieve,
     *,
     name: str = "search_documents",
     description: str = (
@@ -474,7 +490,7 @@ def retrieve_tool(
     """Build a tool that queries a RAG corpus.
 
     Args:
-        retriever (Any): A
+        retriever (SupportsRetrieve): A
             :class:`~tempest_fastapi_sdk.genai.rag.Retriever` or
             ``HybridRetriever`` (anything with ``retrieve``).
         name (str): The function name the model calls.
@@ -498,7 +514,7 @@ def retrieve_tool(
             question,
             top_k=int(requested) if requested else top_k,
         )
-        return str(context_block) or "No matching passages."
+        return context_block or "No matching passages."
 
     return AgentTool(
         name=name,
@@ -522,7 +538,7 @@ def retrieve_tool(
 
 
 def web_search_tool(
-    web_search: Any,
+    web_search: SupportsWebRetrieve,
     *,
     name: str = "search_web",
     description: str = (
@@ -534,7 +550,7 @@ def web_search_tool(
     """Build a tool that searches the web through a self-hosted SearXNG.
 
     Args:
-        web_search (Any): A
+        web_search (SupportsWebRetrieve): A
             :class:`~tempest_fastapi_sdk.genai.rag.WebSearch`.
         name (str): The function name the model calls.
         description (str): What the tool does, written for the model.
@@ -557,7 +573,7 @@ def web_search_tool(
             query,
             max_results=int(requested) if requested else max_results,
         )
-        return str(block) or "No results."
+        return block or "No results."
 
     return AgentTool(
         name=name,

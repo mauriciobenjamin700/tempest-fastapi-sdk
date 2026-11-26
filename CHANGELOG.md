@@ -100,6 +100,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passkey com o e-mail como `display_name`. `tempest user create
   --require-mfa` e `tempest user mfa-reset` exigem `MFAMixin` na classe em
   vez de procurar o atributo `totp_enabled_at`.
+- **Estreitamento de parâmetros de backend (`Any` → Protocol/tipo concreto)** (#841):
+  parâmetros que antes aceitavam `Any` ou eram lidos por `getattr`/`cast`
+  passam a usar os Protocols e tipos existentes no pacote:
+  - `agents/builtin.py`: `retrieve_tool` (`SupportsRetrieve`), `speak_tool`
+    (`SpeechSynthesizer`), `transcribe_audio_tool` (`SpeechTranscriber`,
+    cujo parâmetro `audio` foi alargado para `bytes | str | Path` — o que
+    todos os backends do SDK já aceitam — e lê `result.language` direto),
+    `generate_image_tool` (`SupportsImageGeneration`), `describe_image_tool`
+    (`SupportsVisionGenerate`) e `web_search_tool` (`SupportsWebRetrieve`).
+    Os três novos Protocols (`SupportsImageGeneration`,
+    `SupportsVisionGenerate` e `SupportsWebRetrieve`) são exportados em
+    `tempest_fastapi_sdk.agents`.
+  - `agents/search_tools.py`: `name_search_tool` aceita
+    `FuzzyIndex[Any] | SemanticNameIndex[Any] | HybridNameIndex[Any]` e
+    `_score_note` aceita `FuzzyMatch[Any] | NameMatch[Any]`, com narrowing
+    por `isinstance(..., FuzzyIndex)` / `isinstance(..., FuzzyMatch)` em vez
+    de `getattr`/`inspect.isawaitable`.
+  - `agents/agent.py` e `genai/pipeline.py`: o probe de tool calling usa
+    `isinstance(self.generator, ToolCallingBackend)` em vez de
+    `getattr(..., "chat_with_tools", None)` + `callable`, e
+    `AIChatPipeline._run_tool_loop` recebe `generator: ToolCallingBackend`.
+    Dublês que implementam só `chat_with_tools` sem `chat` deixam de casar
+    com `ToolCallingBackend`.
+  - `queue/broker.py`: `MessageBroker.declare_retry_topology`
+    (`RetryTopology`), `dead_letter` (`DeadLetterSink`), `deduplicate`
+    (`DedupStore`) e `enable_metrics` (`QueueMetrics`).
+  - `genai/metrics.py` e `genai/inventory.py`: `GenAIMetrics.observe_inventory`
+    recebe `ModelRuntimeReport` (lendo `report.hardware` direto) e
+    `describe_model` testa `isinstance(model, Unloadable)`.
+  - `api/dependencies/rate_limit.py` e `api/server.py`: `_resolve_store` usa
+    `isinstance(store, RateLimitStore)` sem `cast`, e `run_server` lê
+    `settings.SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` direto quando
+    `settings is not None`.
+  - `tasks/queue.py`, `tasks/manager.py` e `tasks/scheduler.py`:
+    `TaskQueue._with_settings_heartbeat` estreita com
+    `isinstance(settings, TaskIQSettings)` (mantendo o fallback `getattr`
+    para objetos `TaskIQSettingsLike` alheios);
+    `AsyncTaskBrokerManager.register_task` e `AsyncTaskScheduler.register`
+    passam a preservar `ParamSpec`/`TypeVar`
+    (`Callable[_P, _R] -> AsyncTaskiqDecoratedTask[_P, _R]`).
+  - Dublês de consumidor que não implementavam o método exigido pelo Protocol
+    passam a ser acusados pelo type-checker.
 
 ### Fixed
 

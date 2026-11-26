@@ -24,6 +24,7 @@ from typing import Any
 
 from pydantic import Field
 
+from tempest_fastapi_sdk.genai.registry import Unloadable
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
@@ -242,7 +243,7 @@ def describe_model(model: Any, *, key: str | None = None) -> LoadedModel:
         loaded=bool(getattr(model, "is_loaded", False)),
         seconds_idle=_float_or_none(model, "seconds_idle"),
         idle_unload_seconds=_float_or_none(model, "idle_unload_seconds"),
-        unloadable=callable(getattr(model, "unload", None)),
+        unloadable=isinstance(model, Unloadable),
     )
 
 

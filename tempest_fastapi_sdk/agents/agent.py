@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from tempest_fastapi_sdk.agents.protocols import AgentBackend
+from tempest_fastapi_sdk.agents.protocols import AgentBackend, ToolCallingBackend
 from tempest_fastapi_sdk.agents.schemas import (
     AgentArtifact,
     AgentBudget,
@@ -716,9 +716,8 @@ class Agent:
             dict[str, Any]: A message dict with ``content`` and, possibly,
             ``tool_calls``.
         """
-        hook = getattr(self.generator, "chat_with_tools", None)
-        if specs and callable(hook):
-            result = await hook(messages, specs)
+        if specs and isinstance(self.generator, ToolCallingBackend):
+            result = await self.generator.chat_with_tools(messages, specs)
             return dict(result)
         reply = await self.generator.chat(messages)
         return {"content": str(reply), "tool_calls": []}

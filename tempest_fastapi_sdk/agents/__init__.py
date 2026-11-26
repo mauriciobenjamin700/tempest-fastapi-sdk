@@ -76,6 +76,15 @@ from tempest_fastapi_sdk.agents.multi import team_tools as team_tools
 from tempest_fastapi_sdk.agents.protocols import AgentBackend as AgentBackend
 from tempest_fastapi_sdk.agents.protocols import ChatBackend as ChatBackend
 from tempest_fastapi_sdk.agents.protocols import (
+    SupportsImageGeneration as SupportsImageGeneration,
+)
+from tempest_fastapi_sdk.agents.protocols import (
+    SupportsVisionGenerate as SupportsVisionGenerate,
+)
+from tempest_fastapi_sdk.agents.protocols import (
+    SupportsWebRetrieve as SupportsWebRetrieve,
+)
+from tempest_fastapi_sdk.agents.protocols import (
     ToolCallingBackend as ToolCallingBackend,
 )
 from tempest_fastapi_sdk.agents.router import (
@@ -177,7 +186,10 @@ __all__: list[str] = [
     "StepKindEnum",
     "StopReasonEnum",
     "StructuredRun",
+    "SupportsImageGeneration",
     "SupportsMemorySearch",
+    "SupportsVisionGenerate",
+    "SupportsWebRetrieve",
     "ToolCallingBackend",
     "ToolHandler",
     "ToolResult",

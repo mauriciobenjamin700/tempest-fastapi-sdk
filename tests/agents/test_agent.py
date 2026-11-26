@@ -599,6 +599,9 @@ class TestConcurrency:
     @pytest.mark.asyncio
     async def test_two_runs_on_one_agent_do_not_mix(self) -> None:
         class SlowBackend:
+            async def chat(self, messages: list[dict[str, Any]]) -> str:
+                return ""
+
             async def chat_with_tools(
                 self,
                 messages: list[dict[str, Any]],
@@ -623,6 +626,9 @@ class TestConcurrency:
         backend = ScriptedBackend([])
 
         class PerGoalBackend:
+            async def chat(self, messages: list[dict[str, Any]]) -> str:
+                return ""
+
             async def chat_with_tools(
                 self,
                 messages: list[dict[str, Any]],

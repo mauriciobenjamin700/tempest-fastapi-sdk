@@ -13,33 +13,45 @@ model when nothing matched instead of returning an empty string.
 
 from __future__ import annotations
 
-import inspect
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolError
+from tempest_fastapi_sdk.text.fuzzy import FuzzyIndex, FuzzyMatch
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.genai.rag.name_search import (
+        HybridNameIndex,
+        NameMatch,
+        SemanticNameIndex,
+    )
 
 
-def _score_note(match: Any) -> str:
+def _score_note(match: FuzzyMatch[Any] | NameMatch[Any]) -> str:
     """Describe the scores a name match carries.
 
+    A ``FuzzyMatch`` carries only its spelling score; a ``NameMatch`` may
+    carry the spelling and the meaning score separately. The check is on
+    ``FuzzyMatch`` so the module never imports the ``genai`` package at
+    runtime.
+
     Args:
-        match (Any): A ``FuzzyMatch`` or ``NameMatch``.
+        match (FuzzyMatch[Any] | NameMatch[Any]): The match to describe.
 
     Returns:
         str: ``"spelling 0.93, meaning 0.79"``, or just the score.
     """
+    if isinstance(match, FuzzyMatch):
+        return f"score {match.score:.2f}"
     parts: list[str] = []
-    lexical = getattr(match, "lexical_score", None)
-    semantic = getattr(match, "semantic_score", None)
-    if lexical is not None:
-        parts.append(f"spelling {lexical:.2f}")
-    if semantic is not None:
-        parts.append(f"meaning {semantic:.2f}")
+    if match.lexical_score is not None:
+        parts.append(f"spelling {match.lexical_score:.2f}")
+    if match.semantic_score is not None:
+        parts.append(f"meaning {match.semantic_score:.2f}")
     return ", ".join(parts) or f"score {match.score:.2f}"
 
 
 def name_search_tool(
-    index: Any,
+    index: FuzzyIndex[Any] | SemanticNameIndex[Any] | HybridNameIndex[Any],
     *,
     name: str = "search_names",
     description: str = (
@@ -52,10 +64,9 @@ def name_search_tool(
     """Build a tool that searches a name index.
 
     Args:
-        index (Any): A ``FuzzyIndex``, ``SemanticNameIndex`` or
-            ``HybridNameIndex`` (anything with ``search(query, limit=...)``,
-            sync or ``async``, returning matches with ``key``, ``value`` and
-            ``score``).
+        index (FuzzyIndex[Any] | SemanticNameIndex[Any] | HybridNameIndex[Any]):
+            The index to search. ``FuzzyIndex`` searches synchronously; the
+            two semantic indexes are awaited.
         name (str): The function name the model calls.
         description (str): What the tool does, written for the model. Say
             what the list holds (products, cities, categories): it is the
@@ -83,9 +94,12 @@ def name_search_tool(
         if not query:
             raise AgentToolError("'query' is required")
         requested = arguments.get("limit")
-        found = index.search(query, limit=int(requested) if requested else limit)
-        if inspect.isawaitable(found):
-            found = await found
+        count = int(requested) if requested else limit
+        found: list[FuzzyMatch[Any]] | list[NameMatch[Any]]
+        if isinstance(index, FuzzyIndex):
+            found = index.search(query, limit=count)
+        else:
+            found = await index.search(query, limit=count)
         if not found:
             return f"No entry matches {query!r}."
         return "\n".join(

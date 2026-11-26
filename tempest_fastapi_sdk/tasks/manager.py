@@ -146,25 +146,26 @@ class AsyncTaskBrokerManager:
 
     def register_task(
         self,
-        func: Any,
+        func: Callable[_P, _R],
         *,
         task_name: str | None = None,
         **kwargs: Any,
-    ) -> AsyncTaskiqDecoratedTask[Any, Any]:
+    ) -> AsyncTaskiqDecoratedTask[_P, _R]:
         """Register ``func`` as a task without using decorator syntax.
 
         Useful when wiring third-party callables that you can't decorate
         at definition time.
 
         Args:
-            func (Any): The async callable to register.
+            func (Callable[_P, _R]): The async callable to register.
             task_name (str | None): Override the task name. Defaults to
                 TaskIQ's auto-generated ``module:function`` form.
             **kwargs (Any): Extra keyword arguments forwarded to
-                ``AsyncBroker.register_task``.
+                ``AsyncBroker.task``.
 
         Returns:
-            AsyncTaskiqDecoratedTask[Any, Any]: The registered task.
+            AsyncTaskiqDecoratedTask[_P, _R]: The registered task,
+            preserving ``func``'s parameters and return type.
         """
         decorator = self.broker.task(task_name=task_name, **kwargs)
         return decorator(func)
