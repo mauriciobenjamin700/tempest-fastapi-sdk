@@ -50,7 +50,10 @@ from tempest_fastapi_sdk.db.enum_migrations import (
     sync_enum_types,
     type_bound_check_include_object,
 )
-from tempest_fastapi_sdk.db.migrations import require_sqlite_foreign_keys_off
+from tempest_fastapi_sdk.db.migrations import (
+    MISSING_DATABASE_URL_MESSAGE,
+    require_sqlite_foreign_keys_off,
+)
 from tempest_fastapi_sdk.utils._settings_discovery import project_database_url
 
 DEFAULT_REVISION_HOOKS: Final[tuple[ProcessRevisionDirectives, ...]] = (
@@ -145,9 +148,12 @@ def run_alembic_env(
 
     Raises:
         RuntimeError: When no source provides a database URL — the
-            message carries the cause of every attempt that failed, so an
-            import error inside ``core/settings.py`` reaches the
-            operator instead of a bare "DATABASE_URL is empty"; in case
+            message is
+            :data:`~tempest_fastapi_sdk.db.migrations.MISSING_DATABASE_URL_MESSAGE`,
+            the same one the ``AlembicHelper`` reads raise, followed by
+            the cause of every attempt that failed, so an import error
+            inside ``core/settings.py`` reaches the operator instead of a
+            bare "DATABASE_URL is empty"; in case
             3; and in case 1 when the connection is SQLite with
             ``PRAGMA foreign_keys=ON``.
     """
@@ -155,10 +161,7 @@ def run_alembic_env(
     notes: list[str] = []
     url = _resolve_database_url(config, notes)
     if not url:
-        message = (
-            "DATABASE_URL is empty. Set it on the environment, in "
-            "src/core/settings.py, or pass --database-url to the CLI."
-        )
+        message = MISSING_DATABASE_URL_MESSAGE
         causes = " ".join(note.removeprefix("note: ") for note in notes)
         if causes:
             message = f"{message} ({causes})"

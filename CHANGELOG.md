@@ -66,6 +66,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `get_broker` dentro de `src/queue/__init__.py`; agora moram em
   `src/queue/broker.py`, e o `__init__.py` só reexporta. Os nomes
   importados de `src.queue` não mudam.
+- `AlembicHelper`: sem `db_url=` e sem `DATABASE_URL` resolvível (nem no
+  ambiente nem em `src/core/settings.py`), as leituras (`current`,
+  `current_async`, `has_existing_schema`, `adopt`, `sync_schema`,
+  `sync_schema_async`) levantavam
+  `sqlalchemy.exc.ArgumentError: Could not parse SQLAlchemy URL from given URL string`
+  (#832). O `alembic.ini` gerado pelo SDK deixa `sqlalchemy.url =` vazio, o
+  Alembic devolve `""` e a checagem era `is None`. Agora levantam
+  `RuntimeError` com a mesma mensagem do `upgrade`
+  (`DATABASE_URL is empty. Set it on the environment, in src/core/settings.py, or pass --database-url to the CLI.`),
+  que sai de uma constante só, `MISSING_DATABASE_URL_MESSAGE` em
+  `tempest_fastapi_sdk.db.migrations`. **Correção de contrato:** o tipo da
+  exceção muda de `ArgumentError` para `RuntimeError`, que é o que as
+  docstrings sempre documentaram; quem captura `ArgumentError` nesse caminho
+  deixa de capturar.
 
 ## [0.371.0] — 2026-11-23
 
