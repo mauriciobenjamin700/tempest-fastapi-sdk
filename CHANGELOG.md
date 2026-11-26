@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   levantava `AttributeError` contra esses backends. Agora o mypy acusa
   `union-attr` no acesso sem checagem; quem lê `.raw` estreita contra
   `None` antes (no `AsyncMinIOClient` ele nunca é `None`).
+- `SignedCookieSessionStore(same_site=...)` passa a ser tipado
+  `SameSite` (`Literal["lax", "strict", "none"]`) em vez de `str`, e o
+  atributo `same_site` também (#837). Quem passa uma variável `str` ou
+  `"Lax"` vê o mypy recusar a chamada (`arg-type`); em runtime o valor
+  continua aceito sem diferenciar maiúscula e é guardado em minúscula, então
+  `same_site="Strict"` escreve `SameSite=strict` no `Set-Cookie`, e não mais
+  `SameSite=Strict`.
 
 ### Fixed
 
@@ -38,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `all-MiniLM-L6-v2`, a lembrança do exemplo pontua 0,455 (PT) / 0,39 (EN)
   contra o objetivo, abaixo do piso padrão de 0,55, e o bloco que a página
   mostrava não saía nem com a chamada certa.
+- `SignedCookieSessionStore` com `same_site` fora de `lax`/`strict`/`none`
+  levanta `ValueError` (`same_site must be one of 'lax', 'strict' or 'none';
+  got 'foo'`) na construção; antes era aceito e o primeiro login caía num
+  `AssertionError` do Starlette dentro de `set_cookie` (#837).
+- Admin com `AdminAuthBackend` cujo principal não é model (uma entrada de
+  LDAP, por exemplo): o painel de auditoria do detalhe e o feed de atividade
+  do dashboard levantavam `AttributeError: type object 'LdapEntry' has no
+  attribute 'get_table_name'` ao nomear o autor de uma mudança. O autor
+  passa a ser nomeado por `display_name`, como o principal de um model não
+  registrado. O mesmo valia para um `impersonate_account` que devolve um
+  objeto que não é model: a página de "entrar como" levantava o mesmo erro, e
+  agora aceita a conta como a de um model não registrado (#837).
 
 ## [0.372.0] — 2026-11-26
 

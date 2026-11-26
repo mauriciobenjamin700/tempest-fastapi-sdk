@@ -9,7 +9,7 @@ import logging
 import secrets
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import Response
 
+    from tempest_fastapi_sdk.api.cookies import SameSite
     from tempest_fastapi_sdk.utils.throttle import ThrottleBackend
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,36 @@ def _new_session_id() -> str:
         str: A URL-safe random token.
     """
     return secrets.token_urlsafe(16)
+
+
+def _same_site_policy(value: str) -> SameSite:
+    """Match a ``SameSite`` policy, ignoring case.
+
+    Starlette's ``set_cookie`` asserts the lower-cased value is one of the
+    three policies, so a typo used to surface as an ``AssertionError`` on
+    the first login instead of when the store was built (#837). ``"Lax"``
+    and ``"STRICT"`` keep working and are stored lower-cased, which is the
+    spelling written into the ``Set-Cookie`` header.
+
+    Args:
+        value (str): The policy as given to the constructor.
+
+    Returns:
+        SameSite: ``"lax"``, ``"strict"`` or ``"none"``.
+
+    Raises:
+        ValueError: When ``value`` is none of the three, in any case.
+    """
+    lowered = value.lower() if isinstance(value, str) else value
+    if lowered == "lax":
+        return "lax"
+    if lowered == "strict":
+        return "strict"
+    if lowered == "none":
+        return "none"
+    raise ValueError(
+        f"same_site must be one of 'lax', 'strict' or 'none'; got {value!r}",
+    )
 
 
 def _require_itsdangerous() -> Any:
@@ -192,7 +223,9 @@ class SignedCookieSessionStore(SessionStore):
             this are rejected by :meth:`load`.
         secure (bool): Whether to flag the cookie ``Secure``. Default
             ``True`` — disable in local-only HTTP setups.
-        same_site (str): ``SameSite`` policy. Defaults to ``"lax"``.
+        same_site (SameSite): ``SameSite`` policy — ``"lax"`` (default),
+            ``"strict"`` or ``"none"``, matched ignoring case and stored
+            lower-cased.
         path (str): Cookie path. Defaults to ``"/admin"``.
     """
 
@@ -203,7 +236,7 @@ class SignedCookieSessionStore(SessionStore):
         cookie_name: str = "tempest_admin",
         max_age_seconds: int = ADMIN_SESSION_MAX_AGE_SECONDS,
         secure: bool = True,
-        same_site: str = "lax",
+        same_site: SameSite = "lax",
         path: str = "/admin",
     ) -> None:
         """Initialize the store.
@@ -213,17 +246,20 @@ class SignedCookieSessionStore(SessionStore):
             cookie_name (str): Cookie name.
             max_age_seconds (int): Session lifetime.
             secure (bool): Whether to set ``Secure``.
-            same_site (str): ``SameSite`` policy.
+            same_site (SameSite): ``SameSite`` policy, matched ignoring
+                case.
             path (str): Cookie path scope.
 
         Raises:
-            ValueError: When ``secret_key`` is empty or too short.
+            ValueError: When ``secret_key`` is empty or too short, or
+                ``same_site`` is not ``"lax"``, ``"strict"`` or ``"none"``.
             ImportError: When the ``[admin]`` extra is not installed.
         """
         if not secret_key or len(secret_key) < 32:
             raise ValueError(
                 "secret_key must be at least 32 bytes long",
             )
+        policy = _same_site_policy(same_site)
         itsdangerous = _require_itsdangerous()
         self._signer = itsdangerous.TimestampSigner(
             secret_key,
@@ -232,7 +268,7 @@ class SignedCookieSessionStore(SessionStore):
         self.cookie_name: str = cookie_name
         self.max_age_seconds: int = max_age_seconds
         self.secure: bool = secure
-        self.same_site: str = same_site
+        self.same_site: SameSite = policy
         self.path: str = path
 
     def load(self, request: Request) -> AdminSession | None:
@@ -280,7 +316,7 @@ class SignedCookieSessionStore(SessionStore):
             max_age=self.max_age_seconds,
             httponly=True,
             secure=self.secure,
-            samesite=cast(Literal["lax", "strict", "none"], self.same_site),
+            samesite=self.same_site,
             path=self.path,
         )
 
