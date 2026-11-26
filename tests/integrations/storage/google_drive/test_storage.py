@@ -20,6 +20,7 @@ from tempest_fastapi_sdk.exceptions import (
     GoogleDriveFolderNotFoundException,
     InvalidFileTypeException,
     PresignedUrlUnsupportedException,
+    ValidationException,
 )
 from tempest_fastapi_sdk.integrations.storage.google_drive import (
     APP_PROPERTY_MAX_BYTES,
@@ -261,11 +262,26 @@ class TestWrite:
     ) -> None:
         storage = make_storage()
         key = "k" * (APP_PROPERTY_MAX_BYTES - len("tempest_key") + 1)
-        with pytest.raises(InvalidFileTypeException):
+        with pytest.raises(ValidationException) as raised:
             await storage.write_stream(key, stream(b"x"))
+        assert not isinstance(raised.value, InvalidFileTypeException)
+        assert raised.value.status_code == 422
+        assert str(APP_PROPERTY_MAX_BYTES) in raised.value.message
+        assert raised.value.details["limit_bytes"] == APP_PROPERTY_MAX_BYTES
         assert fake.requests == []
         fitting = "k" * (APP_PROPERTY_MAX_BYTES - len("tempest_key"))
         await storage.write_stream(fitting, stream(b"x"))
+
+    async def test_metadata_over_the_property_limit_is_a_validation_error(
+        self, fake: FakeDrive, make_storage: MakeStorage
+    ) -> None:
+        storage = make_storage()
+        with pytest.raises(ValidationException) as raised:
+            await storage.write_stream(
+                "k", stream(b"x"), metadata={"note": "n" * APP_PROPERTY_MAX_BYTES}
+            )
+        assert raised.value.details["property"] == "note"
+        assert fake.requests == []
 
 
 class TestRepeatedKey:
@@ -421,6 +437,24 @@ class TestUploadUtils:
         assert fake.files["file-1"]["mimeType"] == "text/plain"
         assert await uploads.delete(key) is True
         assert fake.token_calls == 1
+
+
+class TestUploadUtilsValidator:
+    async def test_content_validator_rejection_opens_no_session(
+        self, fake: FakeDrive, make_storage: MakeStorage
+    ) -> None:
+        uploads = UploadUtils(backend=make_storage(), allowed_extensions={"txt"})
+        upload = UploadFile(
+            file=io.BytesIO(b"not what the validator wants"),
+            filename="note.txt",
+            headers=Headers({"content-type": "text/plain"}),
+        )
+        with pytest.raises(InvalidFileTypeException):
+            await uploads.save(
+                upload, content_validator=lambda head: head.startswith(b"OK")
+            )
+        assert not [r for r in fake.requests if r.url.path.startswith("/upload")]
+        assert fake.files == {}
 
 
 class TestConstruction:

@@ -25,7 +25,7 @@ match, and the next write replaces the first match.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
 from datetime import timedelta
 from pathlib import Path
 
@@ -40,6 +40,7 @@ from tempest_fastapi_sdk.exceptions.upload import (
     FileTooLargeException,
     InvalidFileTypeException,
 )
+from tempest_fastapi_sdk.exceptions.validation import ValidationException
 from tempest_fastapi_sdk.integrations.storage.google_drive.auth import (
     DRIVE_SCOPE,
     ServiceAccountCredentials,
@@ -47,6 +48,7 @@ from tempest_fastapi_sdk.integrations.storage.google_drive.auth import (
 )
 from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
     DEFAULT_UPLOAD_CHUNK_SIZE,
+    UPLOAD_SESSION_NOT_FOUND_REASON,
     GoogleDriveClient,
     GoogleDriveFile,
     escape_query_value,
@@ -85,8 +87,9 @@ class GoogleDriveUploadStorage:
     Validation (extension, MIME, size, magic bytes) stays in ``UploadUtils``;
     this backend runs ``validator`` on the first chunk **before** opening
     the upload session, and stops at ``max_size_bytes`` mid-stream — the
-    resumable session is then abandoned before its last piece, which per
-    Google's upload guide means no file is created.
+    resumable session is then abandoned before its last piece, which, as
+    Google's upload guide describes the session, should leave no file
+    (not measured against the live service).
     """
 
     def __init__(
@@ -202,8 +205,19 @@ class GoogleDriveUploadStorage:
         )
 
     def _folder_missing(self, exc: GoogleDriveException) -> GoogleDriveException:
-        """Turn a ``404`` into the actionable folder-not-found error."""
-        if exc.upstream_status == 404:
+        """Turn a folder ``404`` into the actionable folder-not-found error.
+
+        A ``404`` from a resumable session that expired (reason
+        :data:`UPLOAD_SESSION_NOT_FOUND_REASON`) is about the session, not
+        the folder, and is returned unchanged.
+
+        Args:
+            exc (GoogleDriveException): The error from the client.
+
+        Returns:
+            GoogleDriveException: The error to raise.
+        """
+        if exc.upstream_status == 404 and exc.reason != UPLOAD_SESSION_NOT_FOUND_REASON:
             return GoogleDriveFolderNotFoundException(
                 self.folder_id, principal_email=self.client.principal_email
             )
@@ -234,11 +248,18 @@ class GoogleDriveUploadStorage:
     def _app_properties(key: str, metadata: Mapping[str, str] | None) -> dict[str, str]:
         """Merge the key and the caller's metadata into ``appProperties``.
 
+        Args:
+            key (str): Storage key.
+            metadata (Mapping[str, str] | None): Caller's extra properties.
+
+        Returns:
+            dict[str, str]: The ``appProperties`` to send.
+
         Raises:
             ValueError: When ``metadata`` tries to set the reserved
                 :data:`TEMPEST_KEY_PROPERTY`.
-            InvalidFileTypeException: When one property exceeds
-                :data:`APP_PROPERTY_MAX_BYTES`.
+            ValidationException: When one property (name plus value, in
+                UTF-8) exceeds :data:`APP_PROPERTY_MAX_BYTES` — ``422``.
         """
         properties: dict[str, str] = {}
         for name, value in (metadata or {}).items():
@@ -249,14 +270,19 @@ class GoogleDriveUploadStorage:
             properties[name] = value
         properties[TEMPEST_KEY_PROPERTY] = key
         for name, value in properties.items():
-            if len(name.encode()) + len(value.encode()) > APP_PROPERTY_MAX_BYTES:
-                raise InvalidFileTypeException(
+            used = len(name.encode()) + len(value.encode())
+            if used > APP_PROPERTY_MAX_BYTES:
+                raise ValidationException(
+                    message=(
+                        f"Google Drive property {name!r} takes {used} bytes "
+                        "(name plus value, UTF-8); Drive allows at most "
+                        f"{APP_PROPERTY_MAX_BYTES}. Use a shorter key or "
+                        "metadata value."
+                    ),
                     details={
-                        "key": key,
-                        "reason": (
-                            f"Drive property {name!r} exceeds "
-                            f"{APP_PROPERTY_MAX_BYTES} bytes"
-                        ),
+                        "property": name,
+                        "bytes": used,
+                        "limit_bytes": APP_PROPERTY_MAX_BYTES,
                     },
                 )
         return properties
@@ -292,13 +318,63 @@ class GoogleDriveUploadStorage:
             ``webViewLink`` — a permanent link that opens only for someone
             with access to the file, not a download URL.
 
+        When the write fails for any reason, ``chunks`` is closed
+        (``aclose``) if it is an async generator, so a caller's ``finally``
+        runs right away instead of when the generator is collected.
+
         Raises:
+            ValidationException: When the key or a metadata property is too
+                long for a Drive property (``422``, the message names
+                :data:`APP_PROPERTY_MAX_BYTES`).
             InvalidFileTypeException: When ``validator`` rejects the first
-                chunk, or a property is too long for Drive.
+                chunk.
             FileTooLargeException: When ``max_size_bytes`` is exceeded.
             GoogleDriveFolderNotFoundException: When the folder is missing
-                or not shared with the account.
-            GoogleDriveException: On any other Drive error.
+                or not shared with the account (a ``404`` on the search or
+                on opening the upload session).
+            GoogleDriveException: On any other Drive error — including a
+                ``404`` from an expired resumable session, with reason
+                :data:`~tempest_fastapi_sdk.integrations.storage.google_drive.UPLOAD_SESSION_NOT_FOUND_REASON`.
+        """
+        try:
+            return await self._write_stream(
+                key,
+                chunks,
+                content_type=content_type,
+                metadata=metadata,
+                max_size_bytes=max_size_bytes,
+                validator=validator,
+            )
+        except BaseException:
+            if isinstance(chunks, AsyncGenerator):
+                await chunks.aclose()
+            raise
+
+    async def _write_stream(
+        self,
+        key: str,
+        chunks: AsyncIterator[bytes],
+        *,
+        content_type: str,
+        metadata: dict[str, str] | None,
+        max_size_bytes: int | None,
+        validator: ContentValidator | None,
+    ) -> UploadResult:
+        """Do the work of :meth:`write_stream`.
+
+        Args:
+            key (str): Storage key.
+            chunks (AsyncIterator[bytes]): Source stream.
+            content_type (str): MIME type stored on the file.
+            metadata (dict[str, str] | None): Extra ``appProperties``.
+            max_size_bytes (int | None): Abort once the stream exceeds it.
+            validator (ContentValidator | None): Run on the first chunk.
+
+        Returns:
+            UploadResult: See :meth:`write_stream`.
+
+        Raises:
+            AppException: See :meth:`write_stream`.
         """
         properties = self._app_properties(key, metadata)
         sent = 0
@@ -338,7 +414,7 @@ class GoogleDriveUploadStorage:
                 guarded(), metadata=body, content_type=content_type, file_id=target
             )
         except GoogleDriveException as exc:
-            if target is None:
+            if target is None and exc.upstream_status == 404:
                 raise self._folder_missing(exc) from exc
             raise
         if uploaded.web_view_link is None:

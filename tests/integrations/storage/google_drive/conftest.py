@@ -5,6 +5,15 @@ the backend uses, the way Google's reference documents them, and records
 every request so a test can assert on the wire. It is a model of the
 documentation, not of the live service: what it cannot prove is listed in
 the recipe and exercised by ``test_live.py`` when credentials exist.
+
+Where the documentation leaves room, the fake takes the **pessimistic**
+reading: an empty ``PUT`` with ``Content-Range: bytes */<total>`` is a
+status query and never completes the upload — it only answers ``308`` (or
+the finished resource when the session already completed). The one
+exception is ``bytes */0`` on a session that holds nothing, the only way
+to close a zero-byte upload. A fake HTTP Google that treated the query
+this way turned a payload of an exact multiple of the piece size into
+``upload_stalled``, which is what these tests pin.
 """
 
 from __future__ import annotations
@@ -55,6 +64,15 @@ class Session:
     done: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class Failure:
+    """One scripted error answer: status, Drive reason, optional ``Retry-After``."""
+
+    status: int
+    reason: str = "backendError"
+    retry_after: str | None = None
+
+
 @dataclass
 class FakeDrive:
     """A Drive that keeps files in memory and records every request."""
@@ -65,15 +83,27 @@ class FakeDrive:
     sessions: dict[str, Session] = field(default_factory=dict)
     requests: list[httpx.Request] = field(default_factory=list)
     token_calls: int = 0
-    piece_failures: list[int] = field(default_factory=list)
+    piece_failures: list[int | Failure] = field(default_factory=list)
+    api_failures: list[int | Failure] = field(default_factory=list)
     keep_only: list[int] = field(default_factory=list)
+    rewind: list[int | None] = field(default_factory=list)
+    expire_sessions: bool = False
+    expire_after_piece_failure: bool = False
     omit_link_on_upload: bool = False
     token_status: int = 200
     list_unknown_folder_as_empty: bool = False
 
-    def _error(self, status: int, reason: str, message: str) -> httpx.Response:
+    def _error(
+        self,
+        status: int,
+        reason: str,
+        message: str,
+        *,
+        retry_after: str | None = None,
+    ) -> httpx.Response:
         return httpx.Response(
             status,
+            headers={"Retry-After": retry_after} if retry_after is not None else {},
             json={
                 "error": {
                     "code": status,
@@ -83,6 +113,15 @@ class FakeDrive:
                     ],
                 }
             },
+        )
+
+    def _scripted(self, failure: int | Failure) -> httpx.Response:
+        scripted = failure if isinstance(failure, Failure) else Failure(failure)
+        return self._error(
+            scripted.status,
+            scripted.reason,
+            "Scripted failure",
+            retry_after=scripted.retry_after,
         )
 
     def _resource(self, file_id: str, *, link: bool = True) -> dict[str, Any]:
@@ -158,24 +197,26 @@ class FakeDrive:
             )
         if request.method == "PUT" and "upload_id" in params:
             session = self.sessions[params["upload_id"]]
+            if self.expire_sessions:
+                return self._error(404, "notFound", "Upload session not found.")
             content_range = request.headers["Content-Range"]
             match = re.fullmatch(r"bytes (\*|(\d+)-(\d+))/(\*|\d+)", content_range)
             assert match, content_range
             if match[1] == "*":
+                assert request.content == b"", "a status query carries no body"
                 if session.done is not None:
                     return httpx.Response(200, json=session.done)
+                if match[4] == "0" and not session.received:
+                    return httpx.Response(200, json=self._finish(session))
                 headers = (
                     {"Range": f"bytes=0-{len(session.received) - 1}"}
                     if session.received
                     else {}
                 )
-                total = match[4]
-                if total != "*" and int(total) == len(session.received):
-                    return httpx.Response(200, json=self._finish(session))
                 return httpx.Response(308, headers=headers)
             if self.piece_failures:
-                status = self.piece_failures.pop(0)
-                return self._error(status, "backendError", "Backend Error")
+                self.expire_sessions = self.expire_after_piece_failure
+                return self._scripted(self.piece_failures.pop(0))
             start, end = int(match[2]), int(match[3])
             assert start == len(session.received), (start, len(session.received))
             body = request.content
@@ -183,13 +224,22 @@ class FakeDrive:
             if self.keep_only:
                 body = body[: self.keep_only.pop(0)]
             session.received.extend(body)
+            if self.rewind:
+                cut = self.rewind.pop(0)
+                if cut is not None:
+                    del session.received[cut:]
             total = match[4]
             if total != "*" and int(total) == len(session.received):
                 return httpx.Response(200, json=self._finish(session))
-            return httpx.Response(
-                308, headers={"Range": f"bytes=0-{len(session.received) - 1}"}
+            headers = (
+                {"Range": f"bytes=0-{len(session.received) - 1}"}
+                if session.received
+                else {}
             )
+            return httpx.Response(308, headers=headers)
         if request.method == "GET" and path == "/drive/v3/files":
+            if self.api_failures:
+                return self._scripted(self.api_failures.pop(0))
             found = _QUERY.match(params["q"])
             assert found, params["q"]
             folder, key = unescape(found[1]), unescape(found[2])

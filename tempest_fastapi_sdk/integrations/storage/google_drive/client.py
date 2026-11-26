@@ -14,17 +14,33 @@ protocol's granularity). Each piece that is not the last says
 ``Content-Range: bytes <first>-<last>/*``; the server answers
 ``308 Resume Incomplete`` with a ``Range: bytes=0-<n>`` header naming what
 it kept, and the next piece starts right after it, so bytes the server did
-not keep are re-sent and nothing else is. A ``429``/``5xx`` or a transport
-error on a piece is retried with exponential backoff, after asking the
-session how much it holds (``Content-Range: bytes */<total or *>``), up to
-``max_retries`` times — the stream already sent is never replayed.
+not keep are re-sent and nothing else is. The client reads one piece
+ahead, so the last ``PUT`` always carries bytes **and** the total — a
+payload that is an exact multiple of the piece size never ends on an empty
+``bytes */<total>``, which the protocol also uses as a status query. The
+only empty closing ``PUT`` is the zero-byte file's ``bytes */0``.
+
+A ``429``/``5xx``, a ``403`` whose reason is ``rateLimitExceeded`` or
+``userRateLimitExceeded``, or a transport error is retried with
+exponential backoff — or after the ``Retry-After`` seconds of a
+``429``/``503``, capped at ``backoff_max_seconds`` — up to ``max_retries``
+times. On a piece, the client first asks the session how much it holds
+(``Content-Range: bytes */<total or *>``); the stream already sent is
+never replayed. A ``404`` on a piece or a status query means the session
+itself is gone (reason :data:`UPLOAD_SESSION_NOT_FOUND_REASON`).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Mapping,
+)
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
@@ -49,10 +65,26 @@ DEFAULT_UPLOAD_CHUNK_SIZE: int = 32 * UPLOAD_CHUNK_GRANULARITY
 """Default piece size of a resumable upload: 8 MiB."""
 
 DEFAULT_MAX_RETRIES: int = 5
-"""How many times one request or one piece is retried on ``429``/``5xx``."""
+"""How many times one request or one piece is retried on a transient error."""
 
 RETRYABLE_STATUSES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
-"""Statuses retried with backoff; every other error is raised at once."""
+"""Statuses retried with backoff; every other error but a rate-limit ``403``
+is raised at once."""
+
+RATE_LIMIT_REASONS: frozenset[str] = frozenset(
+    {"rateLimitExceeded", "userRateLimitExceeded"}
+)
+"""``error.errors[].reason`` values that make a ``403`` retryable.
+
+Drive reports per-user and per-project quota as ``403`` with one of these
+reasons (https://developers.google.com/workspace/drive/api/guides/handle-errors).
+"""
+
+RETRY_AFTER_STATUSES: frozenset[int] = frozenset({429, 503})
+"""Statuses whose ``Retry-After`` (in seconds) replaces the backoff delay."""
+
+UPLOAD_SESSION_NOT_FOUND_REASON: str = "upload_session_not_found"
+"""``reason`` of the error raised when a resumable session answers ``404``."""
 
 FILE_FIELDS: str = "id,name,mimeType,size,webViewLink,appProperties"
 """The ``fields`` mask requested for every file resource."""
@@ -189,6 +221,92 @@ def _error_from_response(response: httpx.Response) -> GoogleDriveException:
     )
 
 
+def _error_reasons(response: httpx.Response) -> set[str]:
+    """Return every ``error.errors[].reason`` of a Google error body.
+
+    Args:
+        response (httpx.Response): The failed response.
+
+    Returns:
+        set[str]: The reasons; empty when the body has none.
+    """
+    try:
+        body: object = response.json()
+    except ValueError:
+        return set()
+    error = body.get("error") if isinstance(body, dict) else None
+    errors = error.get("errors") if isinstance(error, dict) else None
+    if not isinstance(errors, list):
+        return set()
+    return {
+        item["reason"]
+        for item in errors
+        if isinstance(item, dict) and isinstance(item.get("reason"), str)
+    }
+
+
+def _is_retryable(response: httpx.Response) -> bool:
+    """Return whether an error answer is worth retrying.
+
+    ``429`` and ``5xx`` in :data:`RETRYABLE_STATUSES` are; so is a ``403``
+    whose reasons include one of :data:`RATE_LIMIT_REASONS`.
+
+    Args:
+        response (httpx.Response): The answer.
+
+    Returns:
+        bool: ``True`` when the call should be retried.
+    """
+    if response.status_code in RETRYABLE_STATUSES:
+        return True
+    return response.status_code == 403 and bool(
+        _error_reasons(response) & RATE_LIMIT_REASONS
+    )
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    """Read ``Retry-After`` as seconds from a ``429``/``503``.
+
+    The HTTP-date form is not parsed: the caller falls back to its backoff.
+
+    Args:
+        response (httpx.Response): The answer.
+
+    Returns:
+        float | None: The non-negative delay, or ``None`` when the status
+        does not carry one or the header is absent or not a number.
+    """
+    if response.status_code not in RETRY_AFTER_STATUSES:
+        return None
+    header = response.headers.get("Retry-After")
+    if header is None:
+        return None
+    try:
+        seconds = float(header.strip())
+    except ValueError:
+        return None
+    return seconds if seconds >= 0 else None
+
+
+def _session_not_found(response: httpx.Response) -> GoogleDriveException:
+    """Build the error for a resumable session that answered ``404``.
+
+    Args:
+        response (httpx.Response): The ``404`` answer.
+
+    Returns:
+        GoogleDriveException: Reason :data:`UPLOAD_SESSION_NOT_FOUND_REASON`.
+    """
+    return GoogleDriveException(
+        upstream_status=response.status_code,
+        reason=UPLOAD_SESSION_NOT_FOUND_REASON,
+        message=(
+            "The Google Drive resumable upload session was not found: it "
+            "expired or was lost. Nothing was created; upload the file again."
+        ),
+    )
+
+
 def _committed_bytes(response: httpx.Response) -> int:
     """Read how many bytes a ``308`` says the session holds.
 
@@ -248,7 +366,9 @@ class GoogleDriveClient:
             chunk_size (int): Piece size of a resumable upload; a positive
                 multiple of :data:`UPLOAD_CHUNK_GRANULARITY`.
             max_retries (int): Retries per request or piece on
-                ``429``/``5xx``/transport errors.
+                ``429``/``5xx``, rate-limit ``403`` and transport errors;
+                also how many no-progress ``308`` answers in a row a piece
+                survives.
             backoff_base_seconds (float): First backoff delay; doubles per
                 attempt.
             backoff_max_seconds (float): Ceiling of one backoff delay.
@@ -279,8 +399,21 @@ class GoogleDriveClient:
         self._api: str = api_base_url.rstrip("/")
         self._upload: str = upload_base_url.rstrip("/")
 
-    def _delay(self, attempt: int) -> float:
-        """Return the backoff before retry number ``attempt`` (1-based)."""
+    def _delay(self, attempt: int, response: httpx.Response | None = None) -> float:
+        """Return the wait before retry number ``attempt`` (1-based).
+
+        Args:
+            attempt (int): The retry about to happen, from ``1``.
+            response (httpx.Response | None): The answer that failed; its
+                ``Retry-After`` seconds (on ``429``/``503``) win over the
+                exponential backoff, both capped at ``backoff_max_seconds``.
+
+        Returns:
+            float: Seconds to sleep.
+        """
+        hinted = None if response is None else _retry_after(response)
+        if hinted is not None:
+            return float(min(self._backoff_max, hinted))
         return float(min(self._backoff_max, self._backoff_base * 2 ** (attempt - 1)))
 
     async def _headers(self) -> dict[str, str]:
@@ -296,7 +429,9 @@ class GoogleDriveClient:
         json_body: Mapping[str, object] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
-        """Send one API request, retrying ``429``/``5xx`` and transport errors.
+        """Send one API request, retrying transient errors.
+
+        Retried: ``429``/``5xx``, a rate-limit ``403`` and transport errors.
 
         Args:
             method (str): HTTP method.
@@ -333,14 +468,16 @@ class GoogleDriveClient:
                         ),
                     ) from exc
                 status_label = type(exc).__name__
+                failed: httpx.Response | None = None
             else:
-                if response.status_code not in RETRYABLE_STATUSES:
+                if not _is_retryable(response):
                     return response
                 if attempt >= self.max_retries:
                     raise _error_from_response(response)
                 status_label = str(response.status_code)
+                failed = response
             attempt += 1
-            delay = self._delay(attempt)
+            delay = self._delay(attempt, failed)
             _logger.warning(
                 "Google Drive %s failed (%s); retry %d/%d in %.1fs",
                 method,
@@ -463,10 +600,24 @@ class GoogleDriveClient:
 
         The first piece is read from ``chunks`` **before** the session is
         opened, so an iterator that raises on its first chunk (a content
-        validator) leaves nothing behind on Drive. Per Google's upload
-        guide, the file only comes into existence when the last piece
-        lands; an exception raised by ``chunks`` mid-stream abandons the
-        session.
+        validator) leaves nothing behind on Drive. Google's upload guide
+        describes the file as created when the session completes, so an
+        exception raised by ``chunks`` mid-stream, which abandons the
+        session before its last piece, is expected to leave no file —
+        not measured against the live service. When the upload fails,
+        ``chunks`` is closed (``aclose``) if it is an async generator.
+
+        The stream is read one piece ahead: a piece goes out with
+        ``/*`` only while more bytes are known to follow, so the last
+        ``PUT`` always carries bytes and the total. The zero-byte file is
+        the exception — it is closed with an empty ``bytes */0``.
+
+        A ``308`` naming fewer bytes than were sent re-sends the missing
+        ones; one that names no progress at all waits the backoff before
+        re-sending, and gives up as ``upload_stalled`` after
+        ``max_retries`` such answers in a row. A ``308`` naming fewer
+        bytes than the client already dropped from its buffer cannot be
+        recovered and is raised at once as ``upload_range_regressed``.
 
         Args:
             chunks (AsyncIterator[bytes]): The payload.
@@ -480,17 +631,50 @@ class GoogleDriveClient:
             GoogleDriveFile: The created or updated file.
 
         Raises:
-            GoogleDriveException: On an error answer, or when retries run
-                out.
+            GoogleDriveException: On an error answer, when retries run
+                out, when the session stalls or loses bytes, or when the
+                session answers ``404`` (reason
+                :data:`UPLOAD_SESSION_NOT_FOUND_REASON`).
+        """
+        try:
+            return await self._run_upload(
+                chunks, metadata=metadata, content_type=content_type, file_id=file_id
+            )
+        except BaseException:
+            if isinstance(chunks, AsyncGenerator):
+                await chunks.aclose()
+            raise
+
+    async def _run_upload(
+        self,
+        chunks: AsyncIterator[bytes],
+        *,
+        metadata: Mapping[str, object],
+        content_type: str,
+        file_id: str | None,
+    ) -> GoogleDriveFile:
+        """Run the resumable upload :meth:`upload` describes.
+
+        Args:
+            chunks (AsyncIterator[bytes]): The payload.
+            metadata (Mapping[str, object]): The ``File`` metadata.
+            content_type (str): MIME type of the payload.
+            file_id (str | None): Existing file to update, or ``None``.
+
+        Returns:
+            GoogleDriveFile: The created or updated file.
+
+        Raises:
+            GoogleDriveException: See :meth:`upload`.
         """
         iterator = aiter(chunks)
         buffer = bytearray()
         exhausted = False
 
         async def fill() -> None:
-            """Read from ``chunks`` until a whole piece is buffered or it ends."""
+            """Read until more than a whole piece is buffered or ``chunks`` ends."""
             nonlocal exhausted
-            while not exhausted and len(buffer) < self.chunk_size:
+            while not exhausted and len(buffer) <= self.chunk_size:
                 try:
                     buffer.extend(await anext(iterator))
                 except StopAsyncIteration:
@@ -513,7 +697,18 @@ class GoogleDriveClient:
             outcome = await self._send_piece(session, piece, offset, total)
             if isinstance(outcome, GoogleDriveFile):
                 return outcome
-            if outcome <= offset:
+            if outcome < offset:
+                raise GoogleDriveException(
+                    upstream_status=RESUME_INCOMPLETE,
+                    reason="upload_range_regressed",
+                    message=(
+                        f"Google Drive reports holding {outcome} bytes of an "
+                        f"upload already acknowledged up to {offset}; the "
+                        "bytes in between are no longer buffered. Upload the "
+                        "file again."
+                    ),
+                )
+            if outcome == offset:
                 stalled += 1
                 if stalled > self.max_retries:
                     raise GoogleDriveException(
@@ -521,10 +716,20 @@ class GoogleDriveClient:
                         reason="upload_stalled",
                         message="Google Drive stopped accepting upload bytes.",
                     )
-            else:
-                stalled = 0
-            del buffer[: max(0, outcome - offset)]
-            offset = max(offset, outcome)
+                delay = self._delay(stalled)
+                _logger.warning(
+                    "Google Drive kept no bytes of the piece at byte %d; "
+                    "retry %d/%d in %.1fs",
+                    offset,
+                    stalled,
+                    self.max_retries,
+                    delay,
+                )
+                await self._sleep(delay)
+                continue
+            stalled = 0
+            del buffer[: outcome - offset]
+            offset = outcome
 
     async def _start_session(
         self,
@@ -581,7 +786,9 @@ class GoogleDriveClient:
         offset: int,
         total: int | None,
     ) -> GoogleDriveFile | int:
-        """PUT one piece, retrying it on ``429``/``5xx``/transport errors.
+        """PUT one piece, retrying it on transient errors.
+
+        Retried like :meth:`_request`; a ``404`` means the session is gone.
 
         Args:
             session (str): The session URI.
@@ -595,8 +802,8 @@ class GoogleDriveClient:
             how many bytes the session now holds.
 
         Raises:
-            GoogleDriveException: On a non-retryable error or when retries
-                run out.
+            GoogleDriveException: On a non-retryable error, when retries
+                run out, or when the session answers ``404``.
         """
         size = "*" if total is None else str(total)
         if piece:
@@ -622,19 +829,20 @@ class GoogleDriveClient:
                         ),
                     ) from exc
                 status_label = type(exc).__name__
+                failed: httpx.Response | None = None
             else:
                 if response.status_code in (200, 201):
                     return GoogleDriveFile.from_resource(response.json())
                 if response.status_code == RESUME_INCOMPLETE:
                     return _committed_bytes(response)
-                if (
-                    response.status_code not in RETRYABLE_STATUSES
-                    or attempt >= self.max_retries
-                ):
+                if response.status_code == 404:
+                    raise _session_not_found(response)
+                if not _is_retryable(response) or attempt >= self.max_retries:
                     raise _error_from_response(response)
                 status_label = str(response.status_code)
+                failed = response
             attempt += 1
-            delay = self._delay(attempt)
+            delay = self._delay(attempt, failed)
             _logger.warning(
                 "Google Drive upload piece at byte %d failed (%s); retry %d/%d "
                 "in %.1fs",
@@ -663,7 +871,12 @@ class GoogleDriveClient:
         Returns:
             GoogleDriveFile | int | None: The file when complete, the byte
             count on ``308``, or ``None`` when the status query itself
-            failed (the caller re-sends the piece).
+            failed transiently (the caller re-sends the piece).
+
+        Raises:
+            GoogleDriveException: When the session answers ``404`` (reason
+                :data:`UPLOAD_SESSION_NOT_FOUND_REASON`) or any other
+                non-retryable error.
         """
         try:
             response = await self._http.put(
@@ -677,7 +890,9 @@ class GoogleDriveClient:
             return GoogleDriveFile.from_resource(response.json())
         if response.status_code == RESUME_INCOMPLETE:
             return _committed_bytes(response)
-        if response.status_code in RETRYABLE_STATUSES:
+        if response.status_code == 404:
+            raise _session_not_found(response)
+        if _is_retryable(response):
             return None
         raise _error_from_response(response)
 
@@ -688,9 +903,12 @@ __all__: list[str] = [
     "DRIVE_API_BASE_URL",
     "DRIVE_UPLOAD_BASE_URL",
     "FILE_FIELDS",
+    "RATE_LIMIT_REASONS",
     "RESUME_INCOMPLETE",
     "RETRYABLE_STATUSES",
+    "RETRY_AFTER_STATUSES",
     "UPLOAD_CHUNK_GRANULARITY",
+    "UPLOAD_SESSION_NOT_FOUND_REASON",
     "GoogleDriveClient",
     "GoogleDriveFile",
     "escape_query_value",

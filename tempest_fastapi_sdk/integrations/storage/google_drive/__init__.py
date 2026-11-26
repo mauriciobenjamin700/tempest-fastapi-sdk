@@ -78,13 +78,22 @@ from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
     FILE_FIELDS as FILE_FIELDS,
 )
 from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
+    RATE_LIMIT_REASONS as RATE_LIMIT_REASONS,
+)
+from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
     RESUME_INCOMPLETE as RESUME_INCOMPLETE,
+)
+from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
+    RETRY_AFTER_STATUSES as RETRY_AFTER_STATUSES,
 )
 from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
     RETRYABLE_STATUSES as RETRYABLE_STATUSES,
 )
 from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
     UPLOAD_CHUNK_GRANULARITY as UPLOAD_CHUNK_GRANULARITY,
+)
+from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
+    UPLOAD_SESSION_NOT_FOUND_REASON as UPLOAD_SESSION_NOT_FOUND_REASON,
 )
 from tempest_fastapi_sdk.integrations.storage.google_drive.client import (
     GoogleDriveClient as GoogleDriveClient,
@@ -126,11 +135,14 @@ __all__: list[str] = [
     "GOOGLE_DRIVE_EXTRA_HINT",
     "GOOGLE_TOKEN_URI",
     "JWT_BEARER_GRANT_TYPE",
+    "RATE_LIMIT_REASONS",
     "RESUME_INCOMPLETE",
     "RETRYABLE_STATUSES",
+    "RETRY_AFTER_STATUSES",
     "TEMPEST_KEY_PROPERTY",
     "TOKEN_REFRESH_MARGIN_SECONDS",
     "UPLOAD_CHUNK_GRANULARITY",
+    "UPLOAD_SESSION_NOT_FOUND_REASON",
     "AccessTokenProvider",
     "GoogleDriveClient",
     "GoogleDriveFile",
