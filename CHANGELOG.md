@@ -23,6 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   continua aceito sem diferenciar maiúscula e é guardado em minúscula, então
   `same_site="Strict"` escreve `SameSite=strict` no `Set-Cookie`, e não mais
   `SameSite=Strict`.
+- **Quebra de tipo:** `BaseUserModel` deixou de declarar `totp_secret`,
+  `totp_enabled_at`, `totp_last_step` e `name` só para o checker (bloco
+  `if TYPE_CHECKING:`) (#835). As colunas existem em runtime só com
+  `MFAMixin` / `NameMixin`, então o `mypy --strict` aceitava `user.name`
+  num model sem `NameMixin` e a linha levantava `AttributeError`. Agora a
+  mesma linha é erro de tipo (`"UserModel" has no attribute "name"
+  [attr-defined]`). Herde o mixin ou estreite com
+  `isinstance(user, NameMixin)` / `isinstance(user, MFAMixin)`; veja o guia
+  de migração.
+- O SDK lê essas colunas por `isinstance` com o mixin em vez de
+  `getattr(user, "...", None)` (`UserAuthService`, `UserModelAuthBackend`,
+  `WebAuthnService.register_begin`, `tempest user set-password`). Model que
+  declara a própria coluna `name` sem `NameMixin` passa a registrar a
+  passkey com o e-mail como `display_name`. `tempest user create
+  --require-mfa` e `tempest user mfa-reset` exigem `MFAMixin` na classe em
+  vez de procurar o atributo `totp_enabled_at`.
 
 ### Fixed
 
@@ -57,6 +73,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registrado. O mesmo valia para um `impersonate_account` que devolve um
   objeto que não é model: a página de "entrar como" levantava o mesmo erro, e
   agora aceita a conta como a de um model não registrado (#837).
+- `UserAuthService.mfa_enroll` num model sem `MFAMixin` levanta
+  `TypeError` antes de escrever qualquer linha. Antes devolvia um segredo
+  que não tinha coluna onde morar e gravava os 10 recovery codes; e
+  `mfa_disable` / `mfa_reset` levantavam `AttributeError` (500). Agora
+  `mfa_confirm` responde `ValidationException` (`MFA not initialized`) e
+  `mfa_disable` / `mfa_reset` `ValidationException` (`MFA not active`),
+  como para um usuário com o mixin que nunca se inscreveu (#835).
 
 ## [0.372.0] — 2026-11-26
 

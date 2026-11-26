@@ -61,6 +61,7 @@ from tempest_fastapi_sdk.db.integrity import (
     IntegrityViolationEnum,
     parse_integrity_error,
 )
+from tempest_fastapi_sdk.db.mixins import MFAMixin
 from tempest_fastapi_sdk.db.user_token_model import (
     BaseUserTokenModel,
     UserTokenPurposeEnum,
@@ -1742,9 +1743,9 @@ class UserAuthService:
         await session.refresh(user)
         return user
 
-    async def _attach(
-        self, session: AsyncSession, user: BaseUserModel
-    ) -> BaseUserModel:
+    async def _attach[UserT: BaseUserModel](
+        self, session: AsyncSession, user: UserT
+    ) -> UserT:
         """Return ``user`` guaranteed to belong to ``session``.
 
         Every method that receives an already-loaded user from its caller —
@@ -1768,15 +1769,17 @@ class UserAuthService:
 
         Args:
             session (AsyncSession): The session the write must land on.
-            user (BaseUserModel): The user handed in by the caller.
+            user (UserT): The user handed in by the caller. The type is
+                carried through, so a ``user`` narrowed to
+                :class:`~tempest_fastapi_sdk.MFAMixin` comes back narrowed.
 
         Returns:
-            BaseUserModel: ``user`` itself when already attached, otherwise the
+            UserT: ``user`` itself when already attached, otherwise the
                 session-local instance to mutate in its place.
         """
         if user in session:
             return user
-        merged: BaseUserModel = await session.merge(user)
+        merged: UserT = await session.merge(user)
         return merged
 
     async def change_password(
@@ -4312,7 +4315,7 @@ class UserAuthService:
         """
         if not self.auth_settings.AUTH_MFA_ENABLED:
             return False
-        return getattr(user, "totp_enabled_at", None) is not None
+        return isinstance(user, MFAMixin) and user.totp_enabled_at is not None
 
     def issue_mfa_token(
         self,
@@ -4419,6 +4422,9 @@ class UserAuthService:
         Raises:
             MFAAlreadyEnrolledException: When MFA is already active for
                 ``user`` (409, code ``MFA_ALREADY_ENROLLED``).
+            TypeError: When ``user`` does not compose
+                :class:`~tempest_fastapi_sdk.MFAMixin`, so there is no
+                column to stage the secret in. Raised before any write.
             ImportError: When the ``[mfa]`` extra is not installed.
 
         Notes:
@@ -4428,7 +4434,13 @@ class UserAuthService:
         """
         from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
-        if getattr(user, "totp_enabled_at", None) is not None:
+        if not isinstance(user, MFAMixin):
+            raise TypeError(
+                f"{type(user).__name__} has no MFA columns; compose MFAMixin "
+                "into the user model (`class UserModel(MFAMixin, "
+                "BaseUserModel)`) and migrate before enrolling MFA."
+            )
+        if user.totp_enabled_at is not None:
             raise MFAAlreadyEnrolledException()
         totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
         secret = totp.generate_secret()
@@ -4447,11 +4459,11 @@ class UserAuthService:
                 code_hash=code_hash,
             )
             session.add(record)
-        user = await self._attach(session, user)
-        user.totp_secret = secret
-        user.totp_last_step = None
+        attached = await self._attach(session, user)
+        attached.totp_secret = secret
+        attached.totp_last_step = None
         await session.flush()
-        await session.refresh(user)
+        await session.refresh(attached)
         return secret, provisioning, plaintexts
 
     async def mfa_confirm(
@@ -4503,18 +4515,18 @@ class UserAuthService:
             code that proves the QR was read cannot be spent again at
             ``/auth/mfa/verify`` — the first login needs a later step.
         """
-        if not user.totp_secret:
+        if not isinstance(user, MFAMixin) or not user.totp_secret:
             raise ValidationException(
                 message="MFA not initialized — call enroll first",
             )
-        user = await self._attach(session, user)
-        if not await self._claim_totp_step(session, user, code):
+        attached = await self._attach(session, user)
+        if not await self._claim_totp_step(session, attached, code):
             raise UnauthorizedException(message="invalid MFA code")
-        user.totp_enabled_at = utcnow()
+        attached.totp_enabled_at = utcnow()
         await session.flush()
         if revoke_sessions:
-            await self.revoke_user_sessions(session, user_id=user.id)
-        await session.refresh(user)
+            await self.revoke_user_sessions(session, user_id=attached.id)
+        await session.refresh(attached)
 
     async def reauthenticate(
         self,
@@ -4627,7 +4639,11 @@ class UserAuthService:
         """
         if not self.passwords.verify(password, user.hashed_password):
             raise UnauthorizedException(message="invalid password")
-        if not user.totp_secret or not user.totp_enabled_at:
+        if (
+            not isinstance(user, MFAMixin)
+            or not user.totp_secret
+            or not user.totp_enabled_at
+        ):
             raise ValidationException(message="MFA not active")
         if not await self._verify_mfa_code(session, user, code, recovery_code_model):
             raise UnauthorizedException(message="invalid MFA code")
@@ -4693,24 +4709,28 @@ class UserAuthService:
         Raises:
             ValidationException: When MFA is not active for ``user``.
         """
-        if not user.totp_secret or not user.totp_enabled_at:
+        if (
+            not isinstance(user, MFAMixin)
+            or not user.totp_secret
+            or not user.totp_enabled_at
+        ):
             raise ValidationException(message="MFA not active")
-        user = await self._attach(session, user)
-        user.totp_secret = None
-        user.totp_enabled_at = None
-        user.totp_last_step = None
+        attached = await self._attach(session, user)
+        attached.totp_secret = None
+        attached.totp_enabled_at = None
+        attached.totp_last_step = None
         await session.execute(
             delete(recovery_code_model).where(
-                recovery_code_model.user_id == user.id,
+                recovery_code_model.user_id == attached.id,
             ),
         )
         await session.flush()
         if revoke_passkeys:
-            await self.revoke_user_passkeys(session, user_id=user.id)
+            await self.revoke_user_passkeys(session, user_id=attached.id)
         revoked = 0
         if revoke_sessions:
-            revoked = await self.revoke_user_sessions(session, user_id=user.id)
-        await session.refresh(user)
+            revoked = await self.revoke_user_sessions(session, user_id=attached.id)
+        await session.refresh(attached)
         return revoked
 
     async def mfa_verify(
@@ -4923,7 +4943,10 @@ class UserAuthService:
         """
         from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
-        secret: str | None = getattr(user, "totp_secret", None)
+        model = self.user_model
+        if not isinstance(user, MFAMixin) or not issubclass(model, MFAMixin):
+            return False
+        secret = user.totp_secret
         if not secret:
             return False
         step = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER).matching_step(
@@ -4933,7 +4956,6 @@ class UserAuthService:
         )
         if step is None:
             return False
-        model = self.user_model
         result = cast(
             "CursorResult[Any]",
             await session.execute(

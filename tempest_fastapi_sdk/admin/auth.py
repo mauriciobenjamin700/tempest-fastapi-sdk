@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy import or_, select, update
 
+from tempest_fastapi_sdk.db.mixins import MFAMixin
 from tempest_fastapi_sdk.db.user_model import BaseUserModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tempest_fastapi_sdk.utils.password import PasswordUtils
@@ -527,7 +528,9 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         Returns:
             str | None: The fingerprint.
         """
-        totp_secret = getattr(principal, "totp_secret", None) or ""
+        totp_secret = (
+            (principal.totp_secret or "") if isinstance(principal, MFAMixin) else ""
+        )
         return f"{principal.hashed_password}\x00{totp_secret}"
 
     def mfa_enabled(self, principal: BaseUserModel) -> bool:
@@ -544,9 +547,10 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         Returns:
             bool: ``True`` to require the TOTP step.
         """
-        return bool(
-            getattr(principal, "totp_secret", None)
-            and getattr(principal, "totp_enabled_at", None)
+        return (
+            isinstance(principal, MFAMixin)
+            and bool(principal.totp_secret)
+            and principal.totp_enabled_at is not None
         )
 
     def verify_mfa(self, principal: BaseUserModel, code: str) -> bool:
@@ -565,11 +569,10 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         """
         from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
-        secret = getattr(principal, "totp_secret", None)
-        if not secret:
+        if not isinstance(principal, MFAMixin) or not principal.totp_secret:
             return False
         return TOTPHelper(issuer=self.mfa_issuer).verify(
-            secret, code, window=self.mfa_window
+            principal.totp_secret, code, window=self.mfa_window
         )
 
     async def claim_mfa_step(
@@ -604,7 +607,10 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         """
         from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
-        secret = getattr(principal, "totp_secret", None)
+        model = self.user_model
+        if not isinstance(principal, MFAMixin) or not issubclass(model, MFAMixin):
+            return False
+        secret = principal.totp_secret
         if not secret:
             return False
         step = TOTPHelper(issuer=self.mfa_issuer).matching_step(
@@ -612,7 +618,6 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         )
         if step is None:
             return False
-        model = self.user_model
         result = cast(
             "CursorResult[Any]",
             await session.execute(
