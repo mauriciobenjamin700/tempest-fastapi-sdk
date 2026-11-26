@@ -16,6 +16,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`checks` (8):** `check_secrets`, `check_debug`, `check_cors`, `check_database`, `check_bind_host`, `CheckRegistry.run`, `run_checks` e `run_system_checks` recebem `context: object`.
   - **`tasks` (7):** `StageMap.status`, `is_running`, `owns`, `mark` (`record` e `result`), `cancel` e `snapshot` recebem `object`.
   - **Nota de migração:** `AdminModel.readonly_field_names_for`, `parse_schema_submission(form=...)` e `replay_headers(headers=...)` estreitaram o tipo aceito em checagem estática (para `ModelT`, `Mapping[str, Any]` e `Mapping[str, Any] | None`, respectivamente); chamadas com objetos de outros tipos passam a exigir o tipo esperado sob `mypy`.
+- **Mappers `*_kwargs()` de `tempest_fastapi_sdk.settings` passam a devolver
+  `TypedDict` específicos em vez de `dict[str, Any]`** (primeira fatia de #843;
+  e `MinIOSettings.model_post_init(context)` passa a aceitar `object` em vez de
+  `Any`, #842): todos os 24 mappers restantes (`logging_kwargs`,
+  `database_kwargs`, `redis_kwargs`, `jwt_kwargs`, `email_kwargs`,
+  `upload_kwargs`, `webpush_kwargs`, `firebase_kwargs`, `kafka_kwargs`,
+  `google_kwargs`, `github_kwargs`, `local_storage_kwargs`, `storage_kwargs`,
+  `minio_kwargs`, `anthropic_kwargs`, `openai_kwargs`, `openai_speech_kwargs`,
+  `deepseek_kwargs`, `gemini_kwargs`, `hosted_kwargs`, `openpix_kwargs`,
+  `mercado_pago_kwargs`, `revenuecat_kwargs`, `hostbridge_kwargs`) agora
+  devolvem 21 novos `TypedDict` definidos em
+  `tempest_fastapi_sdk.settings.kwargs` e re-exportados em
+  `tempest_fastapi_sdk.settings` (`LoggingKwargs`, `DatabaseKwargs`,
+  `RedisKwargs`, `JWTKwargs`, `EmailKwargs`, `UploadKwargs`, `WebPushKwargs`,
+  `FirebaseKwargs`, `KafkaKwargs`, `GoogleOAuthKwargs`, `GitHubOAuthKwargs`,
+  `LocalStorageKwargs`, `StorageKwargs`, `AnthropicKwargs`, `OpenAIKwargs`,
+  `OpenAISpeechKwargs`, `DeepSeekKwargs`, `GeminiKwargs`, `HostedGenAIKwargs`,
+  `HTTPClientKwargs`, `HostBridgeKwargs`), protegidos pelo guard
+  `tests/test_settings_kwargs_typeddict_guard.py`.
+  - **Nota de migração:** `TypedDict` é compatível com leitura por chave e com
+    splat `Target(**settings.xxx_kwargs())`, mas o type-checker passa a recusar
+    quem muta o dicionário retornado inserindo chaves fora do formato esperado
+    pelo construtor alvo.
+- **Regra de tipagem — nenhum parâmetro público `Any` pelado (guard + `vision`,
+  `genai`, `modelops`)** (#842): criado o guard AST
+  `tests/test_public_any_param_guard.py` (com `*args: Any, **kwargs: Any` de
+  passthrough explicitamente excluídos e allowlist temporária para os demais
+  subpacotes) e resolvidos todos os 50 parâmetros públicos `Any` pelado de
+  `vision` (3), `genai` (21) e `modelops` (26), sem exceções na allowlist:
+  - **`vision`:** `make_vision_router` tipa `classifier`, `detector` e
+    `segmenter` com o novo protocolo genérico `AsyncVisionTask[ResultT]`
+    parametrizado com `ClassificationResults`, `DetectionResults` e
+    `SegmentationResults` (re-exportado em `tempest_fastapi_sdk.vision`).
+  - **`genai`:** `make_model_cards` aceita
+    `ModelRegistry | Mapping[str, object] | Sequence[object]` (e
+    `runtime_report` aceita `Mapping[str, object] | Sequence[object]`);
+    `precision_kwarg` passa a ser genérico em `DtypeT` devolvendo
+    `dict[str, DtypeT]`; `ImageGenerator.edit` aceita o novo alias
+    `ImageSource`; `count_tokens` / `count_message_tokens` /
+    `truncate_messages` aceitam o novo protocolo `TokenEncoder`;
+    `build_prefix_allowed_tokens_fn` aceita o novo protocolo
+    `StructuredTokenizer`; `encode_wav` aceita `numpy.typing.ArrayLike`;
+    `check_audio_pipeline` aceita `Callable[..., object]`;
+    `text_features_problem` aceita `pipeline: object` e o novo protocolo
+    `TorchProbeModule`; `make_voice_router` tipa `user_id: UUID` nas rotas de
+    perfil; `anthropic_usage`, `TokenUsage.from_payload`, `is_document_part`,
+    `describe_model`, `pipeline_sample_rate` e as rotas `chat`/`chat_stream` de
+    `make_ai_chat_router` passam a aceitar `object`.
+  - **`modelops`:** novo módulo `modelops/protocols.py` (re-exportado em
+    `tempest_fastapi_sdk.modelops`) com `HasValues`, `TabularInput`,
+    `SklearnEstimator`, `SupportsAvailableProviders` e `TorchExampleInput`;
+    `benchmark_torch`, `export_torch_to_onnx` e `analyze_torch` aceitam
+    `torch.nn.Module` (sob `TYPE_CHECKING`) e `TorchExampleInput`;
+    `default_providers` aceita `SupportsAvailableProviders`; helpers
+    scikit-learn (`export_sklearn_to_onnx`, `verify_sklearn_onnx`,
+    `edge_bundle`, `export_sklearn_to_compact`, `edge_pipeline`) aceitam
+    `SklearnEstimator` e `TabularInput` (com `Literal[False]` explícito em
+    `verify_samples` onde suportado); `predict_compact`, `OnnxPredictor.predict`,
+    `baseline_from_samples`, `PredictionMonitor.observe` e
+    `edge_pipeline_from_pickle` aceitam `TabularInput`.
+  - **Nota de migração:** consumidores que passavam objetos de teste ou
+    estruturas fora do contrato esperado em `vision`, `genai` ou `modelops`
+    passam a receber erro estático no mypy/basedpyright e devem satisfazer o
+    protocolo ou tipo concreto correspondente.
 - **Regra de tipagem — nenhum retorno público `-> Any`** (#839): 40 retornos
   públicos `-> Any` do pacote foram tipados com construções concretas (além dos
   2 `BaseRepository.map_to_*` já resolvidos em #838; restam na allowlist apenas

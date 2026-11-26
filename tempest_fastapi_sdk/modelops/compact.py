@@ -45,7 +45,7 @@ from __future__ import annotations
 import json
 import struct
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field
 
@@ -54,6 +54,8 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from tempest_fastapi_sdk.modelops.protocols import SklearnEstimator, TabularInput
 
 _EXTRA_HINT: str = (
     "The compact model format requires numpy, shipped by the optional "
@@ -519,8 +521,8 @@ Export those to ONNX until this format grows one.
 
 
 def export_sklearn_to_compact(
-    estimator: Any,
-    verify_samples: Any = None,
+    estimator: SklearnEstimator,
+    verify_samples: TabularInput | Literal[False] | None = None,
     output_path: str | Path = "model.tmc",
     *,
     feature_names: Sequence[str] | None = None,
@@ -539,12 +541,12 @@ def export_sklearn_to_compact(
     about two kilobytes.
 
     Args:
-        estimator (Any): A fitted linear model, tree, forest, or a Pipeline
-            of ``StandardScaler``/``MinMaxScaler`` plus one of those.
-        verify_samples (Any): Rows to check the written file against the
-            estimator's own predictions. Strongly recommended: this format
-            is verified by that comparison and nothing else. Pass ``False``
-            to skip deliberately.
+        estimator (SklearnEstimator): A fitted linear model, tree, forest, or a
+            Pipeline of ``StandardScaler``/``MinMaxScaler`` plus one of those.
+        verify_samples (TabularInput | Literal[False] | None): Rows to check
+            the written file against the estimator's own predictions. Strongly
+            recommended: this format is verified by that comparison and nothing
+            else. Pass ``False`` to skip deliberately.
         output_path (str | Path): Where to write.
         feature_names (Sequence[str] | None): Column order to record.
             Taken from ``feature_names_in_`` when the estimator has one.
@@ -685,7 +687,9 @@ def read_compact(path: str | Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return header, arrays
 
 
-def predict_compact(path: str | Path, rows: Any) -> tuple[list[Any], list[list[float]]]:
+def predict_compact(
+    path: str | Path, rows: TabularInput
+) -> tuple[list[Any], list[list[float]]]:
     """Predict with the reference decoder.
 
     Mirrors what the browser reader does, step for step, so a disagreement
@@ -693,7 +697,7 @@ def predict_compact(path: str | Path, rows: Any) -> tuple[list[Any], list[list[f
 
     Args:
         path (str | Path): The compact file.
-        rows (Any): A 2-D array of feature values.
+        rows (TabularInput): A 2-D array of feature values.
 
     Returns:
         tuple[list[Any], list[list[float]]]: Labels and per-class scores;
@@ -814,17 +818,17 @@ def _finish(header: dict[str, Any], scores: Any, numpy: Any) -> tuple[Any, Any]:
 
 
 def _verify(
-    estimator: Any,
+    estimator: SklearnEstimator,
     path: Path,
-    samples: Any,
+    samples: TabularInput,
     tolerance: float,
 ) -> tuple[bool, float | None]:
     """Compare the written file against the estimator's own predictions.
 
     Args:
-        estimator (Any): The fitted estimator.
+        estimator (SklearnEstimator): The fitted estimator.
         path (Path): The written compact file.
-        samples (Any): Rows to compare on.
+        samples (TabularInput): Rows to compare on.
         tolerance (float): Largest accepted probability difference.
 
     Returns:
@@ -836,8 +840,9 @@ def _verify(
     labels, probabilities = predict_compact(path, samples)
     expected_labels = [str(value) for value in estimator.predict(samples)]
 
-    if hasattr(estimator, "predict_proba") and probabilities:
-        expected = numpy.asarray(estimator.predict_proba(samples), dtype="float64")
+    predict_proba = getattr(estimator, "predict_proba", None)
+    if callable(predict_proba) and probabilities:
+        expected = numpy.asarray(predict_proba(samples), dtype="float64")
         difference = float(numpy.abs(expected - numpy.asarray(probabilities)).max())
     else:
         expected_values = numpy.asarray(estimator.predict(samples), dtype="float64")

@@ -20,7 +20,7 @@ installed, and `describe_model` never triggers a load.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping, Sequence
 
 from pydantic import Field
 
@@ -167,11 +167,11 @@ class ModelRuntimeReport(BaseSchema):
     )
 
 
-def _first_attr(obj: Any, names: tuple[str, ...]) -> str | None:
+def _first_attr(obj: object, names: tuple[str, ...]) -> str | None:
     """Return the first attribute present on ``obj``, as a string.
 
     Args:
-        obj (Any): The handle to read.
+        obj (object): The handle to read.
         names (tuple[str, ...]): Attribute names, in priority order.
 
     Returns:
@@ -184,7 +184,7 @@ def _first_attr(obj: Any, names: tuple[str, ...]) -> str | None:
     return None
 
 
-def _float_or_none(obj: Any, name: str) -> float | None:
+def _float_or_none(obj: object, name: str) -> float | None:
     """Read a numeric attribute without letting a property raise.
 
     A handle's ``seconds_idle`` is a property, and a foreign implementation
@@ -192,7 +192,7 @@ def _float_or_none(obj: Any, name: str) -> float | None:
     is worse than one that reports that entry as unknown.
 
     Args:
-        obj (Any): The handle to read.
+        obj (object): The handle to read.
         name (str): The attribute name.
 
     Returns:
@@ -208,7 +208,7 @@ def _float_or_none(obj: Any, name: str) -> float | None:
     return float(value)
 
 
-def describe_model(model: Any, *, key: str | None = None) -> LoadedModel:
+def describe_model(model: object, *, key: str | None = None) -> LoadedModel:
     """Describe one model handle without loading or touching it.
 
     Reads only attributes, so it is safe to call on a lazily-configured
@@ -222,7 +222,7 @@ def describe_model(model: Any, *, key: str | None = None) -> LoadedModel:
         ('TextGenerator', True)
 
     Args:
-        model (Any): Any SDK loader — ``TextGenerator``, ``Embedder``,
+        model (object): Any SDK loader — ``TextGenerator``, ``Embedder``,
             ``ImageGenerator``, ``Reranker``, ``SpeechToText``,
             ``OnnxEmbedder``, ``ClassifierModerator`` — or any object
             exposing a similar surface.
@@ -248,7 +248,7 @@ def describe_model(model: Any, *, key: str | None = None) -> LoadedModel:
 
 
 def runtime_report(
-    models: dict[str, Any] | list[Any],
+    models: Mapping[str, object] | Sequence[object],
     *,
     hardware: HardwareInfo | None = None,
     probe: bool = True,
@@ -266,8 +266,8 @@ def runtime_report(
         1
 
     Args:
-        models (dict[str, Any] | list[Any]): The handles, either keyed
-            (the keys land on ``LoadedModel.key``) or as a plain list.
+        models (Mapping[str, object] | Sequence[object]): The handles, either
+            keyed (the keys land on ``LoadedModel.key``) or as a sequence.
         hardware (HardwareInfo | None): A snapshot to reuse instead of
             probing again.
         probe (bool): When no ``hardware`` is given, probe the host.
@@ -280,7 +280,7 @@ def runtime_report(
         ModelRuntimeReport: The handles plus, optionally, the host
         snapshot.
     """
-    if isinstance(models, dict):
+    if isinstance(models, Mapping):
         described = [describe_model(item, key=key) for key, item in models.items()]
     else:
         described = [describe_model(item) for item in models]

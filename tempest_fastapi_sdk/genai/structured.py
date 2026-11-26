@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import re
 import weakref
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -43,6 +43,36 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.schemas import GenerationConfig
 
 StructuredT = TypeVar("StructuredT", bound=BaseModel)
+
+
+class StructuredTokenizer(Protocol):
+    """Minimal tokenizer surface used by :func:`build_prefix_allowed_tokens_fn`.
+
+    Satisfied by HuggingFace ``PreTrainedTokenizerBase`` and lightweight test
+    doubles without importing ``transformers`` at module load time.
+    """
+
+    @property
+    def eos_token_id(self) -> int | None:
+        """Token id marking end of sequence, or ``None``."""
+        ...
+
+    @property
+    def all_special_ids(self) -> Iterable[int]:
+        """Vocabulary ids reserved for special tokens."""
+        ...
+
+    def __len__(self) -> int:
+        """Return the vocabulary size."""
+        ...
+
+    def encode(self, text: str, /) -> Sequence[int]:
+        """Encode ``text`` into vocabulary token ids."""
+        ...
+
+    def decode(self, token_ids: list[int], /) -> str | Sequence[str]:
+        """Decode vocabulary token ids back to text."""
+        ...
 
 
 class TokenIdSequence(Protocol):
@@ -115,12 +145,12 @@ def _require_lmfe() -> Any:
 
 
 def build_prefix_allowed_tokens_fn(
-    tokenizer: Any, schema: type[BaseModel]
+    tokenizer: StructuredTokenizer, schema: type[BaseModel]
 ) -> PrefixAllowedTokensFn:
     """Build a ``transformers`` token filter that enforces ``schema``.
 
     Args:
-        tokenizer (Any): The model tokenizer.
+        tokenizer (StructuredTokenizer): The model tokenizer.
         schema (type[BaseModel]): The Pydantic schema the output must satisfy.
 
     Returns:
@@ -168,7 +198,7 @@ garbage-collected.
 """
 
 
-def _token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
+def _token_enforcer_tokenizer_data(tokenizer: StructuredTokenizer) -> Any:
     """Return the cached ``TokenEnforcerTokenizerData`` for ``tokenizer``.
 
     The vocabulary index is built on the first call for a tokenizer object
@@ -179,7 +209,7 @@ def _token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
     referenced is simply not cached.
 
     Args:
-        tokenizer (Any): A HuggingFace tokenizer.
+        tokenizer (StructuredTokenizer): A HuggingFace tokenizer.
 
     Returns:
         Any: The ``TokenEnforcerTokenizerData`` for this tokenizer.
@@ -196,7 +226,7 @@ def _token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
     return data
 
 
-def _build_token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
+def _build_token_enforcer_tokenizer_data(tokenizer: StructuredTokenizer) -> Any:
     """Build ``TokenEnforcerTokenizerData`` from a HuggingFace tokenizer.
 
     Mirrors ``lm-format-enforcer``'s
@@ -206,7 +236,7 @@ def _build_token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
     (older: 3 args; newer: ``use_bitmask`` + ``vocab_size``).
 
     Args:
-        tokenizer (Any): A HuggingFace tokenizer.
+        tokenizer (StructuredTokenizer): A HuggingFace tokenizer.
 
     Returns:
         Any: The ``TokenEnforcerTokenizerData`` for this tokenizer.
@@ -220,8 +250,8 @@ def _build_token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
     for token_id in range(vocab_size):
         if token_id in special:
             continue
-        decoded_after_zero = tokenizer.decode([token_zero, token_id])[1:]
-        decoded = tokenizer.decode([token_id])
+        decoded_after_zero = str(tokenizer.decode([token_zero, token_id]))[1:]
+        decoded = str(tokenizer.decode([token_id]))
         regular.append(
             (token_id, decoded_after_zero, len(decoded_after_zero) > len(decoded))
         )
@@ -627,6 +657,7 @@ def _config_at_temperature(
 __all__: list[str] = [
     "PrefixAllowedTokensFn",
     "StructuredFormatError",
+    "StructuredTokenizer",
     "TokenIdSequence",
     "build_prefix_allowed_tokens_fn",
     "extract_json_list",

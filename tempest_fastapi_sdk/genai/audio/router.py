@@ -244,7 +244,7 @@ def make_voice_router(
             ),
             label: str | None = Form(default=None),
             session: AsyncSession = session_dep,
-            user_id: Any = user_dep,
+            user_id: UUID = user_dep,
         ) -> EnrollmentResponseSchema:
             """Enrol the caller's voice.
 
@@ -253,7 +253,7 @@ def make_voice_router(
                 consent_reference (str): Evidence of consent.
                 label (str | None): What this recording was.
                 session (AsyncSession): Request-scoped DB session.
-                user_id (Any): The authenticated caller.
+                user_id (UUID): The authenticated caller.
 
             Returns:
                 EnrollmentResponseSchema: The stored profile.
@@ -281,13 +281,13 @@ def make_voice_router(
         )
         async def list_profiles(
             session: AsyncSession = session_dep,
-            user_id: Any = user_dep,
+            user_id: UUID = user_dep,
         ) -> list[VoiceProfileSchema]:
             """List the caller's profiles.
 
             Args:
                 session (AsyncSession): Request-scoped DB session.
-                user_id (Any): The authenticated caller.
+                user_id (UUID): The authenticated caller.
 
             Returns:
                 list[VoiceProfileSchema]: The profiles, possibly empty.
@@ -303,13 +303,13 @@ def make_voice_router(
         )
         async def erase(
             session: AsyncSession = session_dep,
-            user_id: Any = user_dep,
+            user_id: UUID = user_dep,
         ) -> ErasureResponseSchema:
             """Erase the caller's voice profiles.
 
             Args:
                 session (AsyncSession): Request-scoped DB session.
-                user_id (Any): The authenticated caller.
+                user_id (UUID): The authenticated caller.
 
             Returns:
                 ErasureResponseSchema: How many were deleted.

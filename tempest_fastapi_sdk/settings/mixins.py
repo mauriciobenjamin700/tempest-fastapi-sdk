@@ -63,10 +63,35 @@ from tempest_fastapi_sdk.settings.base import (
     BaseAppSettings,
     reject_conflicting_env_aliases,
 )
+from tempest_fastapi_sdk.settings.kwargs import (
+    AnthropicKwargs,
+    DatabaseKwargs,
+    DeepSeekKwargs,
+    EmailKwargs,
+    FirebaseKwargs,
+    GeminiKwargs,
+    GitHubOAuthKwargs,
+    GoogleOAuthKwargs,
+    HostBridgeKwargs,
+    HostedGenAIKwargs,
+    HTTPClientKwargs,
+    JWTKwargs,
+    KafkaKwargs,
+    LocalStorageKwargs,
+    LoggingKwargs,
+    OpenAIKwargs,
+    OpenAISpeechKwargs,
+    RedisKwargs,
+    StorageKwargs,
+    UploadKwargs,
+    WebPushKwargs,
+)
 from tempest_fastapi_sdk.settings.storage_credential import StorageBucketCredential
 from tempest_fastapi_sdk.utils.vapid import check_vapid_subject
 
 if TYPE_CHECKING:
+    from faststream.security import BaseSecurity
+
     from tempest_fastapi_sdk.storage import (
         AsyncMinIOClient,
         LocalObjectStorageClient,
@@ -718,7 +743,7 @@ class LogSettings(BaseAppSettings):
             validate_rotate_when(stripped)
         return stripped
 
-    def logging_kwargs(self) -> dict[str, Any]:
+    def logging_kwargs(self) -> LoggingKwargs:
         """Map these settings onto :func:`configure_logging` kwargs.
 
         Without this, a service wires the call by hand and the two
@@ -732,7 +757,7 @@ class LogSettings(BaseAppSettings):
         (size-based rotation).
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            LoggingKwargs: Keyword arguments ready to splat into
             ``configure_logging(**settings.logging_kwargs())``.
         """
         return {
@@ -850,11 +875,11 @@ class DatabaseSettings(BaseAppSettings):
         examples=[True, False],
     )
 
-    def database_kwargs(self) -> dict[str, Any]:
+    def database_kwargs(self) -> DatabaseKwargs:
         """Map these settings onto :class:`AsyncDatabaseManager` kwargs.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            DatabaseKwargs: Keyword arguments ready to splat into
             ``AsyncDatabaseManager(**settings.database_kwargs())``.
         """
         return {
@@ -915,11 +940,11 @@ class RedisSettings(BaseAppSettings):
         examples=[True, False],
     )
 
-    def redis_kwargs(self) -> dict[str, Any]:
+    def redis_kwargs(self) -> RedisKwargs:
         """Map these settings onto :class:`AsyncRedisManager` kwargs.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            RedisKwargs: Keyword arguments ready to splat into
             ``AsyncRedisManager(**settings.redis_kwargs())``.
         """
         return {
@@ -1019,7 +1044,7 @@ class JWTSettings(BaseAppSettings):
         examples=[None, "tempest-api", "https://auth.example.com"],
     )
 
-    def jwt_kwargs(self) -> dict[str, Any]:
+    def jwt_kwargs(self) -> JWTKwargs:
         """Map these settings onto :class:`JWTUtils` constructor kwargs.
 
         ``JWT_ACCESS_TTL_SECONDS`` becomes the ``default_ttl`` timedelta;
@@ -1027,7 +1052,7 @@ class JWTSettings(BaseAppSettings):
         the bundled auth flow) and is intentionally left out.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            JWTKwargs: Keyword arguments ready to splat into
             ``JWTUtils(**settings.jwt_kwargs())``.
         """
         return {
@@ -1347,7 +1372,7 @@ class EmailSettings(BaseAppSettings):
         examples=[5.0, 30.0, 60.0],
     )
 
-    def email_kwargs(self) -> dict[str, Any]:
+    def email_kwargs(self) -> EmailKwargs:
         """Map these settings onto :class:`EmailUtils` constructor kwargs.
 
         The setting names follow SMTP conventions while
@@ -1367,7 +1392,7 @@ class EmailSettings(BaseAppSettings):
         deployment that never touches the flag is unchanged.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            EmailKwargs: Keyword arguments ready to splat into
             ``EmailUtils(**settings.email_kwargs())``.
 
         Example:
@@ -1375,7 +1400,7 @@ class EmailSettings(BaseAppSettings):
             >>> from tempest_fastapi_sdk import EmailUtils
             >>> mailer = EmailUtils(**settings.email_kwargs())
         """
-        kwargs: dict[str, Any] = {
+        kwargs: EmailKwargs = {
             "host": self.SMTP_HOST,
             "port": self.SMTP_PORT,
             "from_addr": self.SMTP_FROM_ADDR,
@@ -1531,7 +1556,7 @@ class UploadSettings(BaseAppSettings):
         examples=[set(), {"image/png", "image/jpeg", "application/pdf"}],
     )
 
-    def upload_kwargs(self) -> dict[str, Any]:
+    def upload_kwargs(self) -> UploadKwargs:
         """Map these settings onto :class:`UploadUtils` constructor kwargs.
 
         Uses ``UPLOAD_DIR`` as the local-disk ``source``; pass an
@@ -1539,7 +1564,7 @@ class UploadSettings(BaseAppSettings):
         bucket instead.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            UploadKwargs: Keyword arguments ready to splat into
             ``UploadUtils(**settings.upload_kwargs())``.
         """
         return {
@@ -1669,14 +1694,14 @@ class WebPushSettings(BaseAppSettings):
             check_vapid_subject(self.VAPID_SUBJECT)
         return self
 
-    def webpush_kwargs(self) -> dict[str, Any]:
+    def webpush_kwargs(self) -> WebPushKwargs:
         """Map these settings onto :class:`WebPushDispatcher` kwargs.
 
         The **public** key is advertised to browser clients, not passed
         to the dispatcher, so it is intentionally omitted here.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            WebPushKwargs: Keyword arguments ready to splat into
             ``WebPushDispatcher(**settings.webpush_kwargs())``.
         """
         return {
@@ -1774,7 +1799,7 @@ class FirebaseSettings(BaseAppSettings):
         examples=["", '{"type": "service_account", "project_id": "..."}'],
     )
 
-    def firebase_kwargs(self) -> dict[str, Any]:
+    def firebase_kwargs(self) -> FirebaseKwargs:
         """Map these settings onto :class:`FirebaseAuth` kwargs.
 
         Empty strings are dropped rather than forwarded, so an unset
@@ -1788,12 +1813,12 @@ class FirebaseSettings(BaseAppSettings):
         verification with ``IntegrationDisabledException``.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            FirebaseKwargs: Keyword arguments ready to splat into
             ``FirebaseAuth(**settings.firebase_kwargs())``.
         """
         if not self.FIREBASE_ENABLED:
             return {"enabled": False}
-        kwargs: dict[str, Any] = {}
+        kwargs: FirebaseKwargs = {}
         if self.FIREBASE_CREDENTIALS_JSON:
             kwargs["credentials_json"] = self.FIREBASE_CREDENTIALS_JSON
         if self.FIREBASE_CREDENTIALS_PATH:
@@ -2148,7 +2173,7 @@ class KafkaSettings(BaseAppSettings):
             )
         return context
 
-    def kafka_kwargs(self) -> dict[str, Any]:
+    def kafka_kwargs(self) -> KafkaKwargs:
         """Map these settings onto :meth:`MessageBroker.kafka` keyword arguments.
 
         The seeds are positional on :meth:`MessageBroker.kafka`, so they
@@ -2166,23 +2191,23 @@ class KafkaSettings(BaseAppSettings):
         extra.
 
         Returns:
-            dict[str, Any]: ``{"security": ...}``, plus ``"client_id"``
+            KafkaKwargs: ``{"security": ...}``, plus ``"client_id"``
             when ``KAFKA_CLIENT_ID`` is set.
 
         Raises:
             ImportError: When ``faststream`` is not installed and the
                 protocol needs a security object.
         """
-        kwargs: dict[str, Any] = {"security": self._kafka_security()}
+        kwargs: KafkaKwargs = {"security": self._kafka_security()}
         if self.KAFKA_CLIENT_ID is not None:
             kwargs["client_id"] = self.KAFKA_CLIENT_ID
         return kwargs
 
-    def _kafka_security(self) -> Any:
+    def _kafka_security(self) -> BaseSecurity | None:
         """Build the ``faststream.security`` object for the protocol.
 
         Returns:
-            Any: ``None`` under ``PLAINTEXT``; otherwise a
+            BaseSecurity | None: ``None`` under ``PLAINTEXT``; otherwise a
             ``faststream.security.BaseSecurity`` (or SASL subclass).
         """
         protocol = self.KAFKA_SECURITY_PROTOCOL
@@ -3684,7 +3709,7 @@ class OAuthSettings(BaseAppSettings):
             f"{prefix}/oauth/{provider}/callback"
         )
 
-    def google_kwargs(self, *, prefix: str = "/auth") -> dict[str, Any]:
+    def google_kwargs(self, *, prefix: str = "/auth") -> GoogleOAuthKwargs:
         """Map these settings onto ``GoogleOAuthClient``.
 
         ```python
@@ -3698,7 +3723,7 @@ class OAuthSettings(BaseAppSettings):
                 :meth:`oauth_redirect_uri`. Defaults to ``"/auth"``.
 
         Returns:
-            dict[str, Any]: ``client_id``, ``client_secret``, the derived
+            GoogleOAuthKwargs: ``client_id``, ``client_secret``, the derived
             ``redirect_uri`` and ``extra_audiences`` — the last one being
             what lets a token minted by this project's Android or iOS
             client pass the token-in-hand endpoint's audience check.
@@ -3712,7 +3737,7 @@ class OAuthSettings(BaseAppSettings):
             "extra_audiences": list(self.OAUTH_GOOGLE_EXTRA_AUDIENCES),
         }
 
-    def github_kwargs(self, *, prefix: str = "/auth") -> dict[str, Any]:
+    def github_kwargs(self, *, prefix: str = "/auth") -> GitHubOAuthKwargs:
         """Map these settings onto ``GitHubOAuthClient``.
 
         Args:
@@ -3720,7 +3745,7 @@ class OAuthSettings(BaseAppSettings):
                 :meth:`oauth_redirect_uri`. Defaults to ``"/auth"``.
 
         Returns:
-            dict[str, Any]: ``client_id``, ``client_secret`` and the
+            GitHubOAuthKwargs: ``client_id``, ``client_secret`` and the
             derived ``redirect_uri``. Scopes are left to the client's
             own defaults (``read:user user:email``).
         """
@@ -4141,7 +4166,7 @@ class StorageSettings(BaseAppSettings):
                 ) from None
         return decoded
 
-    def local_storage_kwargs(self) -> dict[str, Any]:
+    def local_storage_kwargs(self) -> LocalStorageKwargs:
         """Map these settings onto :class:`LocalObjectStorageClient` kwargs.
 
         With ``STORAGE_ENABLED`` off the dictionary carries
@@ -4151,10 +4176,10 @@ class StorageSettings(BaseAppSettings):
         neither key is present, so the dictionary is the one it always was.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            LocalStorageKwargs: Keyword arguments ready to splat into
             ``LocalObjectStorageClient(**settings.local_storage_kwargs())``.
         """
-        kwargs: dict[str, Any] = {
+        kwargs: LocalStorageKwargs = {
             "base_dir": self.STORAGE_LOCAL_DIR,
             "public_url": self.STORAGE_LOCAL_PUBLIC_URL,
             "signing_secret": self.STORAGE_LOCAL_SIGNING_SECRET,
@@ -4207,7 +4232,7 @@ class StorageSettings(BaseAppSettings):
             )
         return AsyncMinIOClient(**self.storage_kwargs())
 
-    def storage_kwargs(self) -> dict[str, Any]:
+    def storage_kwargs(self) -> StorageKwargs:
         """Map these settings onto :class:`AsyncMinIOClient` kwargs.
 
         With ``STORAGE_ENABLED`` off the dictionary also carries
@@ -4218,10 +4243,10 @@ class StorageSettings(BaseAppSettings):
         that never touches the flag is unchanged.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            StorageKwargs: Keyword arguments ready to splat into
             ``AsyncMinIOClient(**settings.storage_kwargs())``.
         """
-        kwargs: dict[str, Any] = {
+        kwargs: StorageKwargs = {
             "endpoint": self.STORAGE_ENDPOINT,
             "access_key": self.STORAGE_ACCESS_KEY,
             "secret_key": self.STORAGE_SECRET_KEY,
@@ -4237,7 +4262,7 @@ class StorageSettings(BaseAppSettings):
             kwargs["enabled"] = False
         return kwargs
 
-    def minio_kwargs(self) -> dict[str, Any]:
+    def minio_kwargs(self) -> StorageKwargs:
         """Return :meth:`storage_kwargs` under its pre-rename name.
 
         Kept so code written against ``MinIOSettings`` keeps working
@@ -4245,7 +4270,7 @@ class StorageSettings(BaseAppSettings):
         dictionary.
 
         Returns:
-            dict[str, Any]: Same as :meth:`storage_kwargs`.
+            StorageKwargs: Same as :meth:`storage_kwargs`.
         """
         return self.storage_kwargs()
 
@@ -4440,11 +4465,11 @@ class MinIOSettings(StorageSettings):
                 stacklevel=_MINIO_SUBCLASS_STACKLEVEL,
             )
 
-    def model_post_init(self, context: Any, /) -> None:
+    def model_post_init(self, context: object, /) -> None:
         """Warn when ``MinIOSettings`` itself is instantiated.
 
         Args:
-            context (Any): Pydantic's post-init context, forwarded.
+            context (object): Pydantic's post-init context, forwarded.
         """
         super().model_post_init(context)
         if type(self) is MinIOSettings:
@@ -5146,11 +5171,14 @@ class HostedGenAISettings(BaseAppSettings):
             return stripped or None
         return value
 
-    def _provider_credentials(self) -> dict[str, tuple[str, str]]:
+    def _provider_credentials(
+        self,
+    ) -> dict[Literal["anthropic", "openai", "google", "deepseek"], tuple[str, str]]:
         """Map each provider to its own key and API root.
 
         Returns:
-            dict[str, tuple[str, str]]: ``(api_key, base_url)`` by provider.
+            dict[Literal["anthropic", "openai", "google", "deepseek"], tuple[str, str]]:
+            ``(api_key, base_url)`` by provider.
         """
         return {
             "anthropic": (self.ANTHROPIC_API_KEY, self.ANTHROPIC_BASE_URL),
@@ -5192,11 +5220,11 @@ class HostedGenAISettings(BaseAppSettings):
             )
         return violations
 
-    def anthropic_kwargs(self) -> dict[str, Any]:
+    def anthropic_kwargs(self) -> AnthropicKwargs:
         """Map these settings onto ``AnthropicGenerator``.
 
         Returns:
-            dict[str, Any]: ``model``, ``api_key`` and ``base_url``.
+            AnthropicKwargs: ``model``, ``api_key`` and ``base_url``.
         """
         return {
             "model": self.ANTHROPIC_MODEL,
@@ -5204,11 +5232,11 @@ class HostedGenAISettings(BaseAppSettings):
             "base_url": self.ANTHROPIC_BASE_URL,
         }
 
-    def openai_kwargs(self) -> dict[str, Any]:
+    def openai_kwargs(self) -> OpenAIKwargs:
         """Map these settings onto ``OpenAICompatGenerator`` for OpenAI.
 
         Returns:
-            dict[str, Any]: ``model``, ``api_key``, ``base_url``,
+            OpenAIKwargs: ``model``, ``api_key``, ``base_url``,
             ``provider="openai"``, ``max_tokens_field="max_completion_tokens"``
             and ``structured_output="json_schema"``.
 
@@ -5228,7 +5256,7 @@ class HostedGenAISettings(BaseAppSettings):
             "structured_output": "json_schema",
         }
 
-    def openai_speech_kwargs(self) -> dict[str, Any]:
+    def openai_speech_kwargs(self) -> OpenAISpeechKwargs:
         """Map these settings onto ``OpenAICompatSpeech``.
 
         The key and the API root are the ones :meth:`openai_kwargs` uses
@@ -5237,7 +5265,7 @@ class HostedGenAISettings(BaseAppSettings):
         under different ids.
 
         Returns:
-            dict[str, Any]: ``model`` (``OPENAI_STT_MODEL``), ``api_key``,
+            OpenAISpeechKwargs: ``model`` (``OPENAI_STT_MODEL``), ``api_key``,
             ``base_url`` and ``provider="openai"``.
 
         Raises:
@@ -5255,11 +5283,11 @@ class HostedGenAISettings(BaseAppSettings):
             "provider": "openai",
         }
 
-    def deepseek_kwargs(self) -> dict[str, Any]:
+    def deepseek_kwargs(self) -> DeepSeekKwargs:
         """Map these settings onto ``OpenAICompatGenerator`` for DeepSeek.
 
         Returns:
-            dict[str, Any]: ``model``, ``api_key``, ``base_url``,
+            DeepSeekKwargs: ``model``, ``api_key``, ``base_url``,
             ``provider="deepseek"``, ``structured_output="json_object"`` and
             ``effort_field=None`` (DeepSeek does not document
             ``reasoning_effort``, so ``effort`` is not sent, as with
@@ -5276,11 +5304,11 @@ class HostedGenAISettings(BaseAppSettings):
             "accepts_documents": False,
         }
 
-    def gemini_kwargs(self) -> dict[str, Any]:
+    def gemini_kwargs(self) -> GeminiKwargs:
         """Map these settings onto ``OpenAICompatGenerator`` for Gemini.
 
         Returns:
-            dict[str, Any]: ``model``, ``api_key``, ``base_url``,
+            GeminiKwargs: ``model``, ``api_key``, ``base_url``,
             ``provider="google"``, ``structured_output="json_schema"``,
             ``effort_values=GOOGLE_EFFORT_VALUES`` and
             ``accepts_documents=False`` (no PDF input documented on the
@@ -5310,7 +5338,7 @@ class HostedGenAISettings(BaseAppSettings):
         model: str,
         *,
         provider: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> HostedGenAIKwargs:
         """Map these settings onto ``hosted_generator`` for ``model``.
 
         Without ``GENAI_PROVIDER``, the provider comes from ``provider`` or,
@@ -5335,7 +5363,7 @@ class HostedGenAISettings(BaseAppSettings):
                 ``"deepseek"``).
 
         Returns:
-            dict[str, Any]: ``model``, ``api_key``, ``base_url`` and
+            HostedGenAIKwargs: ``model``, ``api_key``, ``base_url`` and
             ``provider`` — the keyword arguments of ``hosted_generator``.
 
         Raises:
@@ -5371,17 +5399,21 @@ class HostedGenAISettings(BaseAppSettings):
                 "provider": chosen,
             }
         resolved = provider or resolve_provider(model)
-        if resolved not in credentials:
-            raise ValueError(
-                f"unknown hosted provider {resolved!r}; expected one of "
-                f"{sorted(credentials)}.",
-            )
-        api_key, base_url = credentials[resolved]
+        resolved_provider: Literal["anthropic", "openai", "google", "deepseek"]
+        match resolved:
+            case "anthropic" | "openai" | "google" | "deepseek":
+                resolved_provider = resolved
+            case _:
+                raise ValueError(
+                    f"unknown hosted provider {resolved!r}; expected one of "
+                    f"{sorted(credentials)}.",
+                )
+        api_key, base_url = credentials[resolved_provider]
         return {
             "model": model,
             "api_key": api_key,
             "base_url": base_url,
-            "provider": resolved,
+            "provider": resolved_provider,
         }
 
 
@@ -5436,7 +5468,7 @@ class OpenPixSettings(BaseAppSettings):
         examples=["sandbox", "production"],
     )
 
-    def openpix_kwargs(self) -> dict[str, Any]:
+    def openpix_kwargs(self) -> HTTPClientKwargs:
         """Map these settings onto the ``HTTPClient`` the client wraps.
 
         :class:`~tempest_fastapi_sdk.integrations.payment.openpix.OpenPixClient`
@@ -5446,7 +5478,7 @@ class OpenPixSettings(BaseAppSettings):
             client = OpenPixClient(HTTPClient(**settings.openpix_kwargs()))
 
         Returns:
-            dict[str, Any]: ``base_url`` resolved from the environment, plus
+            HTTPClientKwargs: ``base_url`` resolved from the environment, plus
             the ``Authorization`` header carrying the AppID.
         """
         from tempest_fastapi_sdk.integrations.payment.openpix.environment import (
@@ -5549,11 +5581,11 @@ class MercadoPagoSettings(BaseAppSettings):
             )
         return violations
 
-    def mercado_pago_kwargs(self) -> dict[str, Any]:
+    def mercado_pago_kwargs(self) -> HTTPClientKwargs:
         """Map these settings onto the ``HTTPClient`` the client wraps.
 
         Returns:
-            dict[str, Any]: ``base_url`` and the ``Authorization`` header,
+            HTTPClientKwargs: ``base_url`` and the ``Authorization`` header,
             ready for::
 
                 client = MercadoPagoClient(
@@ -5653,11 +5685,11 @@ class RevenueCatSettings(BaseAppSettings):
         examples=["", "sk_…"],
     )
 
-    def revenuecat_kwargs(self) -> dict[str, Any]:
+    def revenuecat_kwargs(self) -> HTTPClientKwargs:
         """Map these settings onto the ``HTTPClient`` the client wraps.
 
         Returns:
-            dict[str, Any]: ``base_url`` and the ``Authorization`` header,
+            HTTPClientKwargs: ``base_url`` and the ``Authorization`` header,
             ready for::
 
                 client = RevenueCatClient(HTTPClient(**settings.revenuecat_kwargs()))
@@ -5790,11 +5822,11 @@ class HostBridgeSettings(BaseAppSettings):
         examples=[10 * 1024 * 1024, 1024 * 1024],
     )
 
-    def hostbridge_kwargs(self) -> dict[str, Any]:
+    def hostbridge_kwargs(self) -> HostBridgeKwargs:
         """Map these settings onto :class:`HostBridgeConfig` kwargs.
 
         Returns:
-            dict[str, Any]: Keyword arguments ready to splat into
+            HostBridgeKwargs: Keyword arguments ready to splat into
             ``HostBridgeConfig(**settings.hostbridge_kwargs())``.
         """
         return {

@@ -37,7 +37,7 @@ import gzip
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ConfigDict, Field
 
@@ -63,6 +63,8 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from tempest_fastapi_sdk.modelops.protocols import SklearnEstimator, TabularInput
 
 MANIFEST_SCHEMA_VERSION: int = 1
 """Version of the manifest contract.
@@ -573,15 +575,15 @@ def _resolve_feature_names(
 
 
 def edge_pipeline(
-    estimator: Any,
-    samples: Any,
+    estimator: SklearnEstimator,
+    samples: TabularInput,
     output_dir: str | Path,
     *,
     name: str = "model",
     version: str | None = None,
-    labels: Any = None,
+    labels: TabularInput | None = None,
     feature_names: Sequence[str] | None = None,
-    verify_samples: Any = None,
+    verify_samples: TabularInput | Literal[False] | None = None,
     tolerance: float = 1e-4,
     baseline: bool = True,
     bins: int = DEFAULT_BINS,
@@ -627,9 +629,9 @@ def edge_pipeline(
     you are trading.
 
     Args:
-        estimator (Any): The fitted estimator or Pipeline.
-        samples (Any): Training rows — used both to trace the export and
-            to build the drift baseline. Pass the **training** set: a
+        estimator (SklearnEstimator): The fitted estimator or Pipeline.
+        samples (TabularInput): Training rows — used both to trace the export
+            and to build the drift baseline. Pass the **training** set: a
             baseline built from production traffic describes the drifted
             population as normal.
         output_dir (str | Path): Directory to create and fill.
@@ -637,12 +639,13 @@ def edge_pipeline(
         version (str | None): Build version. Defaults to the model's
             content hash, so republishing identical bytes does not look
             like a new version to a device.
-        labels (Any): Training labels, recorded as the baseline output
-            distribution. Without them, output drift cannot be measured.
+        labels (TabularInput | None): Training labels, recorded as the baseline
+            output distribution. Without them, output drift cannot be measured.
         feature_names (Sequence[str] | None): Column order. Taken from a
             DataFrame when not given, positional indices otherwise.
-        verify_samples (Any): Rows to check the export against the
-            estimator's own predictions. Defaults to ``samples``.
+        verify_samples (TabularInput | Literal[False] | None): Rows to check
+            the export against the estimator's own predictions. Defaults to
+            ``samples``.
         tolerance (float): Numeric tolerance for that check.
         baseline (bool): Write the drift baseline.
         bins (int): Quantile bins per feature in the baseline.

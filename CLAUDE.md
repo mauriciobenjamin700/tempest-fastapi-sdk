@@ -279,6 +279,15 @@ mexer neles. Todos rodam dentro do `make check`.
   overrides de upstream cujo método base já devolve `Any` (como
   `faststream.BaseMiddleware.consume_scope`), e entrada obsoleta falha. Guard:
   `tests/test_public_any_return_guard.py`.
+- **Nenhum parâmetro público `Any` pelado.** Função ou método público (nome sem
+  `_`, fora de módulo gerado com `Do not edit by hand`) não anota parâmetro
+  posicional-only, posicional ou keyword-only como `Any` pelado — use
+  `TypeVar`/`ParamSpec` (quando ligado ao retorno ou a outro parâmetro), tipo
+  concreto sob `TYPE_CHECKING`, apelido nomeado (`JsonValue`, `TabularInput`,
+  `ImageSource`), `Protocol` do SDK ou `object`. `*args: Any, **kwargs: Any` de
+  passthrough puro ficam fora do guard. Exceções vivem em `ALLOWED_ANY_PARAMS`
+  com motivo (overrides de upstream ou itens pendentes de #842), e entrada
+  obsoleta falha. Guard: `tests/test_public_any_param_guard.py`.
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
   mypy aceita `alias`, pyright/basedpyright não —

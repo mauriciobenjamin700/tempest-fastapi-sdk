@@ -25,7 +25,7 @@ import statistics
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.modelops.energy import (
     NullPowerSampler,
@@ -48,6 +48,11 @@ from tempest_fastapi_sdk.modelops.static import (
     analyze_torch,
     default_providers,
 )
+
+if TYPE_CHECKING:
+    from torch.nn import Module as TorchModule
+
+    from tempest_fastapi_sdk.modelops.protocols import TorchExampleInput
 
 DEFAULT_WARMUP: int = 10
 """Warm-up calls discarded before timing starts."""
@@ -563,8 +568,8 @@ def benchmark_onnx(
 
 
 def benchmark_torch(
-    module: Any,
-    example_input: Any,
+    module: TorchModule,
+    example_input: TorchExampleInput,
     *,
     name: str | None = None,
     device: str | None = None,
@@ -584,8 +589,9 @@ def benchmark_torch(
     the timed window contains no host-to-device copy.
 
     Args:
-        module (Any): The module to benchmark.
-        example_input (Any): A tensor, or a tuple of tensors, to feed it.
+        module (TorchModule): The module to benchmark.
+        example_input (TorchExampleInput): A tensor, or a tuple of tensors, to
+            feed it.
         name (str | None): Display name. Defaults to the class name.
         device (str | None): ``"cuda"`` / ``"cpu"``. Auto-detected when
             omitted.

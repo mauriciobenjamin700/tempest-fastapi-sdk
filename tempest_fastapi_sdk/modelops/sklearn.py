@@ -44,6 +44,8 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from tempest_fastapi_sdk.modelops.protocols import SklearnEstimator, TabularInput
+
 _EXTRA_HINT: str = (
     "Exporting scikit-learn models requires the optional "
     "[modelops-sklearn] extra. Install with: "
@@ -346,8 +348,8 @@ def _as_array(samples: Any, dtype: TensorDtypeEnum) -> Any:
 
 
 def export_sklearn_to_onnx(
-    estimator: Any,
-    samples: Any,
+    estimator: SklearnEstimator,
+    samples: TabularInput,
     output_path: str | Path,
     *,
     dtype: TensorDtypeEnum = TensorDtypeEnum.FLOAT32,
@@ -370,9 +372,9 @@ def export_sklearn_to_onnx(
     features the model was fitted on.
 
     Args:
-        estimator (Any): A **fitted** scikit-learn estimator or
+        estimator (SklearnEstimator): A **fitted** scikit-learn estimator or
             ``Pipeline``.
-        samples (Any): Representative input rows (array, DataFrame or
+        samples (TabularInput): Representative input rows (array, DataFrame or
             nested sequence).
         output_path (str | Path): Where to write the ``.onnx`` file.
         dtype (TensorDtypeEnum): Input element type. ``FLOAT32`` by default —
@@ -566,9 +568,9 @@ def _is_classifier(estimator: Any) -> bool:
 
 
 def verify_sklearn_onnx(
-    estimator: Any,
+    estimator: SklearnEstimator,
     onnx_path: str | Path,
-    samples: Any,
+    samples: TabularInput,
     *,
     dtype: TensorDtypeEnum = TensorDtypeEnum.FLOAT32,
     tolerance: float = 1e-4,
@@ -592,9 +594,9 @@ def verify_sklearn_onnx(
     export samples only shaped the graph; they are not a test set.
 
     Args:
-        estimator (Any): The original fitted estimator.
+        estimator (SklearnEstimator): The original fitted estimator.
         onnx_path (str | Path): The exported graph.
-        samples (Any): Rows to compare on.
+        samples (TabularInput): Rows to compare on.
         dtype (TensorDtypeEnum): The dtype the graph was exported with.
         tolerance (float): Maximum absolute difference tolerated for a
             regressor, and for classifier probabilities.
@@ -630,10 +632,11 @@ def verify_sklearn_onnx(
         agreement = 1.0 - (mismatched / len(expected_labels))
 
         max_diff: float | None = None
-        if len(outputs) > 1 and hasattr(estimator, "predict_proba"):
+        predict_proba = getattr(estimator, "predict_proba", None)
+        if len(outputs) > 1 and callable(predict_proba):
             actual_proba = _as_proba_array(outputs[1], numpy)
             if actual_proba is not None:
-                expected_proba = numpy.asarray(estimator.predict_proba(array))
+                expected_proba = numpy.asarray(predict_proba(array))
                 if expected_proba.shape == actual_proba.shape:
                     max_diff = float(
                         numpy.max(numpy.abs(expected_proba - actual_proba)),
@@ -720,14 +723,14 @@ def _as_proba_array(raw: Any, numpy: Any) -> Any:
 
 
 def edge_bundle(
-    estimator: Any,
-    samples: Any,
+    estimator: SklearnEstimator,
+    samples: TabularInput,
     output_dir: str | Path,
     *,
     name: str = "model",
     dtype: TensorDtypeEnum = TensorDtypeEnum.FLOAT32,
     opset: int = DEFAULT_OPSET,
-    verify_samples: Any = None,
+    verify_samples: TabularInput | None = None,
     tolerance: float = 1e-4,
     optimize: bool = True,
     quantize: bool = True,
@@ -770,14 +773,14 @@ def edge_bundle(
     assuming a stage helped.
 
     Args:
-        estimator (Any): A fitted estimator or ``Pipeline``.
-        samples (Any): Rows used to shape the graph.
+        estimator (SklearnEstimator): A fitted estimator or ``Pipeline``.
+        samples (TabularInput): Rows used to shape the graph.
         output_dir (str | Path): Where the artifacts go.
         name (str): Base filename.
         dtype (TensorDtypeEnum): Input element type.
         opset (int): Target opset.
-        verify_samples (Any): Held-out rows to verify against. ``None``
-            skips verification, which is only sensible in a throwaway
+        verify_samples (TabularInput | None): Held-out rows to verify against.
+            ``None`` skips verification, which is only sensible in a throwaway
             experiment.
         tolerance (float): Numeric tolerance for verification.
         optimize (bool): Run the graph optimiser.

@@ -152,6 +152,7 @@ from tempest_fastapi_sdk.genai.image import ImageGenerator as ImageGenerator
 from tempest_fastapi_sdk.genai.image import (
     ImagePipelineOutput as ImagePipelineOutput,
 )
+from tempest_fastapi_sdk.genai.image import ImageSource as ImageSource
 from tempest_fastapi_sdk.genai.inventory import LoadedModel as LoadedModel
 from tempest_fastapi_sdk.genai.inventory import (
     ModelRuntimeReport as ModelRuntimeReport,
@@ -272,6 +273,9 @@ from tempest_fastapi_sdk.genai.structured import (
     StructuredFormatError as StructuredFormatError,
 )
 from tempest_fastapi_sdk.genai.structured import (
+    StructuredTokenizer as StructuredTokenizer,
+)
+from tempest_fastapi_sdk.genai.structured import (
     TokenIdSequence as TokenIdSequence,
 )
 from tempest_fastapi_sdk.genai.structured import (
@@ -309,6 +313,9 @@ from tempest_fastapi_sdk.genai.text import (
 )
 from tempest_fastapi_sdk.genai.text import (
     resolve_device as resolve_device,
+)
+from tempest_fastapi_sdk.genai.tokens import (
+    TokenEncoder as TokenEncoder,
 )
 from tempest_fastapi_sdk.genai.tokens import (
     TokenUsage as TokenUsage,
@@ -397,6 +404,7 @@ __all__: list[str] = [
     "ImageGenerator",
     "ImageModelEnum",
     "ImagePipelineOutput",
+    "ImageSource",
     "InMemoryEmbeddingCache",
     "InMemoryGenerationCache",
     "LoadedModel",
@@ -431,12 +439,14 @@ __all__: list[str] = [
     "StructuredFormatError",
     "StructuredOutputMode",
     "StructuredTextBackend",
+    "StructuredTokenizer",
     "SubjectUsage",
     "SupportsAudioGeneration",
     "TextBackend",
     "TextGenerator",
     "TextModelEnum",
     "TextToSpeechModelEnum",
+    "TokenEncoder",
     "TokenIdSequence",
     "TokenUsage",
     "Tool",
