@@ -26,6 +26,15 @@ from tempest_fastapi_sdk.exceptions import ValidationException
 from tempest_fastapi_sdk.schemas.pagination import BasePaginationSchema
 
 
+async def _anonymous_user_id() -> None:
+    """Resolve no caller when ``current_user_id_optional`` is not configured.
+
+    Returns:
+        None: Always.
+    """
+    return None
+
+
 def make_app_error_router(
     *,
     service_factory: Callable[..., AppErrorService],
@@ -88,6 +97,11 @@ def make_app_error_router(
     route_docs: RouteDocs = RouteDocs(docs_locale)
     router = APIRouter(prefix=prefix, tags=tags or ["app-errors"])
     session_provider = session_provider_for(session_factory)
+    user_id_dependency: Callable[..., Any] = (
+        current_user_id_optional
+        if current_user_id_optional is not None
+        else _anonymous_user_id
+    )
 
     @router.post(
         "",
@@ -98,19 +112,15 @@ def make_app_error_router(
     )
     async def report_app_error(
         data: AppErrorReportSchema,
-        session: Any = Depends(session_provider),
-        user_id: Any = (
-            Depends(current_user_id_optional)
-            if current_user_id_optional is not None
-            else None
-        ),
+        session: object = Depends(session_provider),
+        user_id: object = Depends(user_id_dependency),
     ) -> AppErrorResponseSchema:
         """Store one error report.
 
         Args:
             data (AppErrorReportSchema): The body the client sent.
-            session (Any): The request-scoped database session.
-            user_id (Any): The authenticated caller, when there is one.
+            session (object): The request-scoped database session.
+            user_id (object): The authenticated caller, when there is one.
 
         Returns:
             AppErrorResponseSchema: The stored report.
@@ -145,7 +155,7 @@ def make_app_error_router(
                 le=200,
                 description=route_docs.text("app_errors.list_app_errors.page_size"),
             ),
-            session: Any = Depends(session_provider),
+            session: object = Depends(session_provider),
         ) -> BasePaginationSchema[AppErrorResponseSchema]:
             """Page through the stored reports, newest first.
 
@@ -154,7 +164,7 @@ def make_app_error_router(
                     string.
                 page (int): The page, 1-indexed.
                 page_size (int): Items per page.
-                session (Any): The request-scoped database session.
+                session (object): The request-scoped database session.
 
             Returns:
                 BasePaginationSchema[AppErrorResponseSchema]: One page of
