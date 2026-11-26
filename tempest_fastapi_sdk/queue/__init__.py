@@ -10,6 +10,8 @@ broker (renamed from ``AsyncBrokerManager``, kept as a deprecated alias).
 """
 
 from tempest_fastapi_sdk.queue.broker import MessageBroker as MessageBroker
+from tempest_fastapi_sdk.queue.broker import PublishResult as PublishResult
+from tempest_fastapi_sdk.queue.broker import QueuePublisher as QueuePublisher
 from tempest_fastapi_sdk.queue.consumer import Consumer as Consumer
 from tempest_fastapi_sdk.queue.consumer import Subscription as Subscription
 from tempest_fastapi_sdk.queue.consumer import subscribe as subscribe
@@ -62,8 +64,10 @@ __all__: list[str] = [
     "MemoryDedupStore",
     "MessageBroker",
     "OffsetResetEnum",
+    "PublishResult",
     "Publisher",
     "QueueMetrics",
+    "QueuePublisher",
     "QueueSpec",
     "QueueTypeEnum",
     "RedisDedupStore",

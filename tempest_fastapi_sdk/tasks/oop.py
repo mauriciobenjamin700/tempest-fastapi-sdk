@@ -38,10 +38,15 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic
+
+from typing_extensions import TypeVar
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.tasks.observability import RetryPolicy
+
+TaskReturnT = TypeVar("TaskReturnT", default=object)
+"""Return type of :meth:`TaskDef.run` in the constructor form."""
 
 _TASK_ATTR = "__tempest_task__"
 
@@ -129,7 +134,7 @@ class TaskBinding:
     retry: RetryPolicy | None = None
 
 
-class TaskDef:
+class TaskDef(Generic[TaskReturnT]):
     """Base class for class-based background tasks.
 
     Subclass it in either style from the module docstring. Register an
@@ -180,7 +185,7 @@ class TaskDef:
         if options:
             self.options = options
 
-    async def run(self, *args: Any, **kwargs: Any) -> Any:
+    async def run(self, *args: Any, **kwargs: Any) -> TaskReturnT:
         """Run the task — override in the constructor form.
 
         Raises:
@@ -192,7 +197,7 @@ class TaskDef:
             **kwargs (Any): Keyword arguments forwarded to the task.
 
         Returns:
-            Any: Whatever the wrapped task returns.
+            TaskReturnT: Whatever the wrapped task returns.
         """
         raise NotImplementedError(
             "Override run() (constructor form) or mark methods with "

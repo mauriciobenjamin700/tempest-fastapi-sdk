@@ -38,6 +38,7 @@ from tempest_fastapi_sdk.queue.topology import (
 from tempest_fastapi_sdk.tasks.observability import DeadLetter, DeadLetterSink
 
 if TYPE_CHECKING:
+    from faststream import BaseMiddleware
     from prometheus_client import CollectorRegistry
 
 RETRY_SUFFIX: Final[str] = ".retry"
@@ -335,7 +336,7 @@ def make_dead_letter_middleware(
     sink: DeadLetterSink,
     *,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-) -> Any:
+) -> type[BaseMiddleware]:
     """Build a FastStream middleware routing terminal failures to ``sink``.
 
     The handler's exception is re-raised after the sink runs, so the
@@ -364,16 +365,18 @@ def make_dead_letter_middleware(
             topology, or the message will keep bouncing.
 
     Returns:
-        Any: A ``faststream.BaseMiddleware`` subclass to add to a broker.
+        type[BaseMiddleware]: A ``faststream.BaseMiddleware`` subclass to
+        add to a broker.
 
     Raises:
         ImportError: When the ``[queue]`` extra is not installed.
     """
     from tempest_fastapi_sdk.queue.broker import _require
 
-    faststream = _require("faststream", "queue")
+    _require("faststream", "queue")
+    from faststream import BaseMiddleware
 
-    class _DeadLetterMiddleware(faststream.BaseMiddleware):  # type: ignore[misc,name-defined]
+    class _DeadLetterMiddleware(BaseMiddleware):
         """Report a terminally-failed consume, then let it reject."""
 
         async def consume_scope(self, call_next: Any, msg: Any) -> Any:
@@ -458,21 +461,23 @@ class QueueMetrics:
             registry=target,
         )
 
-    def middleware(self) -> Any:
+    def middleware(self) -> type[BaseMiddleware]:
         """Build the FastStream middleware that feeds these collectors.
 
         Returns:
-            Any: A ``faststream.BaseMiddleware`` subclass.
+            type[BaseMiddleware]: A ``faststream.BaseMiddleware`` subclass.
 
         Raises:
             ImportError: When the ``[queue]`` extra is not installed.
         """
         from tempest_fastapi_sdk.queue.broker import _require
 
-        faststream = _require("faststream", "queue")
+        _require("faststream", "queue")
+        from faststream import BaseMiddleware
+
         metrics = self
 
-        class _MetricsMiddleware(faststream.BaseMiddleware):  # type: ignore[misc,name-defined]
+        class _MetricsMiddleware(BaseMiddleware):
             """Time each consume and count its outcome."""
 
             async def consume_scope(self, call_next: Any, msg: Any) -> Any:

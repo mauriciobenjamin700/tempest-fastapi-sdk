@@ -61,7 +61,10 @@ from tempest_fastapi_sdk.agents.skills import (
 from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolError
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from tempest_fastapi_sdk.agents.storage import AgentRunSink
+    from tempest_fastapi_sdk.agents.structured import StructuredRun
     from tempest_fastapi_sdk.genai.moderation import ModerationBackend
 
 DEFAULT_SYSTEM_PROMPT: str = (
@@ -405,14 +408,14 @@ class Agent:
             del step
         return await self._finish(goal, state)
 
-    async def run_structured(
+    async def run_structured[OutputT: BaseModel](
         self,
         goal: str,
-        output: type[Any],
+        output: type[OutputT],
         *,
         context: AgentContext | None = None,
         allow_text_fallback: bool = True,
-    ) -> Any:
+    ) -> StructuredRun[OutputT]:
         """Work towards ``goal`` and return a validated object.
 
         Convenience wrapper over
@@ -428,13 +431,13 @@ class Agent:
 
         Args:
             goal (str): What the agent should accomplish.
-            output (type[Any]): A Pydantic model describing the answer.
+            output (type[OutputT]): A Pydantic model describing the answer.
             context (AgentContext | None): A pre-seeded context.
             allow_text_fallback (bool): Try to parse JSON out of a prose
                 reply when the model ignores the tool.
 
         Returns:
-            StructuredRun: The run record with ``data`` set, or
+            StructuredRun[OutputT]: The run record with ``data`` set, or
             ``parse_error`` explaining why it is not.
         """
         from tempest_fastapi_sdk.agents.structured import run_structured

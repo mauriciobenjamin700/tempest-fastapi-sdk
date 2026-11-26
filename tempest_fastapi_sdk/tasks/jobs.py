@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -382,7 +382,7 @@ class BaseJobModel(BaseModel):
         params: dict[str, Any] | None = None,
         payload: bytes | None = None,
         max_attempts: int = 3,
-    ) -> BaseJobModel:
+    ) -> Self:
         """Build a fresh queued job row.
 
         Args:
@@ -392,8 +392,7 @@ class BaseJobModel(BaseModel):
             max_attempts (int): Claim budget. Defaults to ``3``.
 
         Returns:
-            BaseJobModel: A new ``QUEUED`` instance ready to add to the
-            session.
+            Self: A new ``QUEUED`` instance ready to add to the session.
         """
         return cls(
             id=uuid4(),
@@ -547,7 +546,7 @@ class JobStore(Generic[JobT]):
             )
             session.add(job)
             await session.flush()
-            return cast("JobT", job)
+            return job
 
     async def get(self, job_id: UUID) -> JobT:
         """Return one job.

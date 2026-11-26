@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
 
+    from tempest_fastapi_sdk.queue.broker import PublishResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -106,7 +108,7 @@ class AsyncQueueManager:
         message: Any,
         *args: Any,
         **kwargs: Any,
-    ) -> Any:
+    ) -> PublishResult:
         """Publish ``message`` through the underlying broker.
 
         Args:
@@ -116,8 +118,8 @@ class AsyncQueueManager:
             **kwargs (Any): Keyword broker-specific arguments.
 
         Returns:
-            Any: Whatever the broker's ``publish`` returns (often
-            ``None``; AMQP returns a confirmation when enabled).
+            PublishResult: Whatever the broker's ``publish`` returns
+            (often ``None``; AMQP returns a confirmation when enabled).
 
         Raises:
             RuntimeError: When :meth:`connect` was not called yet.
@@ -126,7 +128,8 @@ class AsyncQueueManager:
             raise RuntimeError(
                 "AsyncQueueManager.connect() must be called before publishing.",
             )
-        return await self.broker.publish(message, *args, **kwargs)
+        result: PublishResult = await self.broker.publish(message, *args, **kwargs)
+        return result
 
     @asynccontextmanager
     async def lifespan(self) -> AsyncGenerator[BrokerUsecase[Any, Any], None]:

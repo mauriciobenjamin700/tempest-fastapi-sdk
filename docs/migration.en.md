@@ -2,6 +2,90 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — `BaseController` and `BaseService` bind `ResponseT` to the layer below
+
+Previously, `BaseController` declared its own `ResponseT` independently of the service and reached it via `cast("ResponseT", ...)` — a controller repeating the wrong schema passed `mypy --strict` and returned the service's schema at runtime (#838):
+
+```python
+from typing import Any
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseController, BaseSchema, BaseService
+
+
+class UserResponseSchema(BaseSchema):
+    email: str
+
+
+class OrderResponseSchema(BaseSchema):
+    total: int
+
+
+class UserService(BaseService[Any, UserResponseSchema]):
+    pass
+
+
+class WrongController(BaseController[UserService, OrderResponseSchema]):
+    pass
+
+
+async def total(controller: WrongController, id: UUID) -> int:
+    return (await controller.get_by_id(id)).total  # docs-guard: skip
+```
+
+`BaseController`'s `get_by_id`, `list` and `update` now derive the response type (and, for `update`, the update schema) directly from `ServiceT`. On the snippet above, `mypy --strict` now fails with `"UserResponseSchema" has no attribute "total"  [attr-defined]` and `basedpyright` with `Cannot access attribute "total" for class "UserResponseSchema"`.
+
+Existing `BaseController[Service, Resp]`, `BaseController[Service, Resp, Update]` and `BaseRepository[Model]` declarations stay accepted for compatibility whenever they agree with the service. The recommended form is shorter and also ties the repository:
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import (
+    BaseController,
+    BaseModel,
+    BaseRepository,
+    BaseResponseSchema,
+    BaseSchema,
+    BaseService,
+)
+
+
+class UserModel(BaseModel):
+    __tablename__ = "migration_users_example"
+
+    email: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class UserResponseSchema(BaseResponseSchema):
+    email: str
+
+
+class UserUpdateSchema(BaseSchema):
+    email: str | None = None
+
+
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
+    def map_to_response(self, instance: UserModel) -> UserResponseSchema:
+        return UserResponseSchema.model_validate(instance)
+
+
+class UserService(
+    BaseService[UserRepository, UserResponseSchema, UserUpdateSchema]
+):
+    pass
+
+
+class UserController(BaseController[UserService]):
+    pass
+```
+
+If one of your controllers fails after upgrading:
+
+- **Controller declared the wrong response schema:** fix the service or write `BaseController[YourService]` so both response and update schemas come straight from the service.
+- **Two-argument controller over a three-argument service calling `update`:** `controller.update(id, payload)` now requires the service's `UpdateT` instead of any `BaseSchema`; pass the concrete update schema.
+- **Service whose `BaseRepository[Model, Resp]` disagrees with the service's `ResponseT`:** `basedpyright` now rejects the call site until both declare the same response schema.
+
 ## Unreleased — `ObjectStat.raw` can be `None`
 
 `ObjectStat.raw` is now annotated `minio.datatypes.Object | None` (#836). Nothing changes at runtime: `AsyncMinIOClient` still fills in the `minio` `Object`, and `LocalObjectStorageClient` and `FakeObjectStorageClient` still return `None`, as they always did. What changes is the checker: an unchecked read such as `stat.raw.version_id` is now `error: Item "None" of "Object | None" has no attribute "version_id"  [union-attr]` under mypy. Before, it accepted the line, which raised `AttributeError` against the local backend and the fake.

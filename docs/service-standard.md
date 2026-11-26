@@ -99,7 +99,7 @@ exceções.
 | `__init__.py` só reexporta | `from .x import Y as Y` + `__all__`; montagem em `router.py`, `factory.py`, `runner.py` | `INIT001` |
 | Recurso é singleton de processo num lugar só | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (convenção do scaffold) |
 | Providers por camada; router nunca vê `AsyncSession` | `api/dependencies/controllers.py` chama os `build_*` | `RTR001`, `DI001`–`DI003` |
-| Controller herda da base do SDK | `BaseController[Service, Schema]` (um service) ou `Controller` (vários, ou nenhum) | — (convenção do scaffold) |
+| Controller herda da base do SDK | `BaseController[Service]` (um service) ou `Controller` (vários, ou nenhum) | — (convenção do scaffold) |
 | Login e cadastro vêm do SDK | `UserAuthService` + `make_auth_router(..., prefix="/api/auth")` | — (sem gate) |
 | `/api` posto num lugar só | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
 | Router de domínio é `TempestAPIRouter` | `TempestAPIRouter(prefix=...)`, nunca `fastapi.APIRouter` | `RTR005` |

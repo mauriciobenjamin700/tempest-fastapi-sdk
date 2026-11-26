@@ -123,8 +123,10 @@ mantém o sufixo, porque é o nome que todo call site lê:
 | `db/repositories/orders/order.py` → `OrderRepository` | `db/repositories/orders/order_repository.py` |
 
 O controller herda de uma das duas bases do SDK, as mesmas que o scaffold
-usa: `BaseController[Service, Schema]` quando passa o CRUD de **um**
-service, e `Controller` quando coordena vários (ou nenhum, como o
+usa: `BaseController[Service]` quando passa o CRUD de **um**
+service (os tipos de resposta e update vêm direto do service; a forma
+`BaseController[Service, Schema]` continua aceita por compatibilidade), e
+`Controller` quando coordena vários (ou nenhum, como o
 `ServiceInfoController` que o `tempest new` gera).
 
 ### Até 1000 linhas por arquivo
@@ -163,11 +165,10 @@ __all__: list[str] = ["InvoiceService", "ProductService"]
 # src/controllers/billing/invoice.py
 from tempest_fastapi_sdk import BaseController
 
-from src.schemas import InvoiceResponseSchema
 from src.services import InvoiceService
 
 
-class InvoiceController(BaseController[InvoiceService, InvoiceResponseSchema]):
+class InvoiceController(BaseController[InvoiceService]):
     """Coordenação de faturas."""
 ```
 
