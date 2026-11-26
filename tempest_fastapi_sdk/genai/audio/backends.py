@@ -17,6 +17,7 @@ not use them.
 from __future__ import annotations
 
 from collections.abc import Awaitable
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.audio.schemas import Transcription
@@ -24,11 +25,17 @@ from tempest_fastapi_sdk.genai.audio.schemas import Transcription
 
 @runtime_checkable
 class SpeechTranscriber(Protocol):
-    """Anything that turns audio bytes into a :class:`Transcription`."""
+    """Anything that turns audio into a :class:`Transcription`.
+
+    ``audio`` is raw bytes (what the ``/transcribe`` endpoint uploads) or a
+    file path (what
+    :func:`~tempest_fastapi_sdk.agents.transcribe_audio_tool` hands over
+    when its ``path_root`` is set). Every SDK backend accepts both.
+    """
 
     def transcribe(
         self,
-        audio: bytes,
+        audio: bytes | str | Path,
         /,
         *,
         language: str | None = None,
@@ -38,7 +45,8 @@ class SpeechTranscriber(Protocol):
         """Transcribe ``audio``.
 
         Args:
-            audio (bytes): The uploaded audio.
+            audio (bytes | str | Path): The audio bytes, or a path to an
+                audio file.
             language (str | None): A language the caller asked for, or
                 ``None`` to let the backend decide.
             prompt (str | None): Text the decoder reads as preceding the
