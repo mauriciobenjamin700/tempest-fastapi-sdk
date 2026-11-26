@@ -18,7 +18,7 @@ import logging
 import time
 from collections import OrderedDict
 from collections.abc import Callable
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit, urlunsplit
 
 from tempest_fastapi_sdk.utils._egress import (
@@ -31,6 +31,10 @@ from tempest_fastapi_sdk.webpush.schemas import (
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
 )
+
+if TYPE_CHECKING:
+    import requests
+    from urllib3 import ProxyManager
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +283,7 @@ def _egress_session(host: str, address: str | None) -> Any:
                 **pool_kwargs,
             )
 
-        def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
+        def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> ProxyManager:
             """Create a proxy manager with the original hostname pinned.
 
             Args:
@@ -287,14 +291,15 @@ def _egress_session(host: str, address: str | None) -> Any:
                 **proxy_kwargs (Any): Forwarded to ``requests``.
 
             Returns:
-                Any: The ``urllib3`` proxy manager.
+                ProxyManager: The ``urllib3`` proxy manager.
             """
-            return super().proxy_manager_for(
+            manager: ProxyManager = super().proxy_manager_for(
                 proxy,
                 server_hostname=host,
                 assert_hostname=host,
                 **proxy_kwargs,
             )
+            return manager
 
     class _EgressSession(requests.Session):
         """Session that refuses redirects and connects to the pinned IP."""
@@ -307,7 +312,7 @@ def _egress_session(host: str, address: str | None) -> Any:
             headers: dict[str, str] | None = None,
             allow_redirects: bool = False,
             **kwargs: Any,
-        ) -> Any:
+        ) -> requests.Response:
             """Send the request with redirects off and the IP pinned.
 
             Args:
@@ -320,7 +325,7 @@ def _egress_session(host: str, address: str | None) -> Any:
                 **kwargs (Any): Forwarded to ``requests.Session.request``.
 
             Returns:
-                Any: The ``requests.Response``.
+                requests.Response: The HTTP response.
             """
             merged: dict[str, str] = dict(headers or {})
             if address is not None:
@@ -329,13 +334,14 @@ def _egress_session(host: str, address: str | None) -> Any:
                 netloc = f"{literal}:{parts.port}" if parts.port else literal
                 merged["Host"] = parts.netloc.rpartition("@")[2]
                 url = urlunsplit(parts._replace(netloc=netloc))
-            return super().request(
+            response: requests.Response = super().request(
                 method,
                 url,
                 headers=merged,
                 allow_redirects=False,
                 **kwargs,
             )
+            return response
 
     session = _EgressSession()
     if address is not None:

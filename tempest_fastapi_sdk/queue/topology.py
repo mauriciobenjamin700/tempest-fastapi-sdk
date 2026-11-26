@@ -38,9 +38,12 @@ the bare string it replaces.
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
+
+if TYPE_CHECKING:
+    from faststream.rabbit import RabbitExchange, RabbitQueue
 
 DEAD_LETTER_EXCHANGE_ARG: Final[str] = "x-dead-letter-exchange"
 """AMQP argument naming the exchange a rejected message is routed to."""
@@ -494,58 +497,64 @@ def rabbit_arguments(spec: QueueSpec) -> dict[str, Any]:
     return arguments
 
 
-def to_rabbit_queue(spec: QueueSpec) -> Any:
+def to_rabbit_queue(spec: QueueSpec) -> RabbitQueue:
     """Translate ``spec`` into a ``faststream.rabbit.RabbitQueue``.
 
     Args:
         spec (QueueSpec): The topology to translate.
 
     Returns:
-        Any: The ``RabbitQueue`` to hand FastStream.
+        RabbitQueue: The ``RabbitQueue`` to hand FastStream.
 
     Raises:
         ImportError: When the ``[queue]`` extra is not installed.
     """
     from tempest_fastapi_sdk.queue.broker import _require
 
-    rabbit = _require("faststream.rabbit", "queue")
+    _require("faststream.rabbit", "queue")
+    from faststream.rabbit import RabbitQueue
+
     if spec.binding is None:
-        return rabbit.RabbitQueue(
+        return RabbitQueue(
             spec.name,
             durable=spec.durable,
-            arguments=rabbit_arguments(spec),
+            arguments=cast("Any", rabbit_arguments(spec)),
         )
-    return rabbit.RabbitQueue(
+    return RabbitQueue(
         spec.name,
         durable=spec.durable,
         routing_key=spec.binding.routing_key,
-        arguments=rabbit_arguments(spec),
+        arguments=cast("Any", rabbit_arguments(spec)),
     )
 
 
-def to_rabbit_exchange(exchange: ExchangeSpec) -> Any:
+def to_rabbit_exchange(exchange: ExchangeSpec) -> RabbitExchange:
     """Translate ``exchange`` into a ``faststream.rabbit.RabbitExchange``.
 
     Args:
         exchange (ExchangeSpec): The exchange to translate.
 
     Returns:
-        Any: The ``RabbitExchange`` to hand FastStream.
+        RabbitExchange: The ``RabbitExchange`` to hand FastStream.
 
     Raises:
         ImportError: When the ``[queue]`` extra is not installed.
     """
     from tempest_fastapi_sdk.queue.broker import _require
 
-    rabbit = _require("faststream.rabbit", "queue")
-    return rabbit.RabbitExchange(
+    _require("faststream.rabbit", "queue")
+    from faststream.rabbit import ExchangeType, RabbitExchange
+
+    return RabbitExchange(
         exchange.name,
-        type=rabbit.ExchangeType(exchange.kind.value),
+        type=ExchangeType(exchange.kind.value),
         durable=exchange.durable,
     )
 
 
-def resolve_channel(channel: str | QueueSpec, transport: TransportEnum) -> Any:
+def resolve_channel(
+    channel: str | QueueSpec, transport: TransportEnum
+) -> str | RabbitQueue:
     """Turn a channel into what FastStream expects for ``transport``.
 
     Args:
@@ -553,8 +562,8 @@ def resolve_channel(channel: str | QueueSpec, transport: TransportEnum) -> Any:
         transport (TransportEnum): The active transport.
 
     Returns:
-        Any: A ``RabbitQueue`` for a spec on RabbitMQ, otherwise the
-        channel name — a spec that survives
+        str | RabbitQueue: A ``RabbitQueue`` for a spec on RabbitMQ,
+        otherwise the channel name — a spec that survives
         :func:`require_supported` on another transport asked for nothing
         the name does not already carry.
 

@@ -9,6 +9,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Regra de tipagem — nenhum retorno público `-> Any`** (#839): 40 retornos
+  públicos `-> Any` do pacote foram tipados com construções concretas (além dos
+  2 `BaseRepository.map_to_*` já resolvidos em #838; restam na allowlist apenas
+  os 4 overrides de `faststream.BaseMiddleware.consume_scope`, que declaram
+  `Any` upstream no `faststream 0.7.5`), protegidos pelo novo guard
+  `tests/test_public_any_return_guard.py`:
+  - **Genéricos / `Self`:** `BaseStrEnum.from_value` / `BaseIntEnum.from_value`
+    passam a devolver `Self` (ou `Self | D` quando `default=` é passado);
+    `Agent.run_structured` passa a ser genérico em `OutputT: BaseModel`
+    devolvendo `StructuredRun[OutputT]`; `ManualPayoutService` passa a ser
+    genérico em `PayoutModelT` (default `BaseManualPayoutModel`), tipando
+    `mark_paid` e `reject`; `AdminAuthBackend.load_account` devolve
+    `PrincipalT | None`; `TaskDef[TaskReturnT]` (default `object`) tipa
+    `TaskDef.run` e `TaskQueue.register` devolve
+    `Task[Any, TaskReturnT] | dict[str, Task[Any, Any]]`;
+    `BaseJobModel.new_job` devolve `Self`.
+  - **Tipos concretos e apelidos:** `as_spec_ir` (`SpecIR`),
+    `ModelRegistry.inventory` (`ModelRuntimeReport` e `hardware: HardwareInfo | None`),
+    `AlembicHelper.revision` / `revision_async`
+    (`Script | list[Script | None] | None`), `F.resolve` (`SQLColumnExpression[Any]`),
+    `to_rabbit_queue` (`RabbitQueue`), `to_rabbit_exchange` (`RabbitExchange`),
+    `resolve_channel` (`str | RabbitQueue`), fábricas de middleware de fila
+    (`type[BaseMiddleware]`), `FirebaseAuth.app` (`firebase_admin.App`),
+    `RedactionPolicy.redact_value` (novo apelido `RedactedValue` + overloads
+    preservando `dict`/`list`), `FullHelpTyperGroup.main` (`object`),
+    `stream_messages` (`StreamingResponse`), `guarded_receive` (`Message`),
+    `tool_spec` (`dict[str, Any]`), `_PinnedAdapter.proxy_manager_for`
+    (`urllib3.ProxyManager`), `_EgressSession.request` (`requests.Response`).
+  - **Protocolos do SDK:** `ImageGenerator.pipeline` (`ImageDiffusionPipeline` /
+    `ImagePipelineOutput`), `AudioGenerator.pipeline` (`AudioDiffusionPipeline`
+    / `AudioPipelineOutput`), `build_prefix_allowed_tokens_fn`
+    (`PrefixAllowedTokensFn` / `TokenIdSequence`), `build_url_fetcher`
+    (`UrlFetcher` / `UrlFetcherResponse`), `MessageBroker.publisher`
+    (`QueuePublisher`) e `publish` em `MessageBroker` / `AsyncQueueManager` /
+    `Publisher` (`PublishResult`).
+  - **Nota de migração:** consumidores que acessavam atributos sem estreitar o
+    tipo sobre retornos antes anotados como `Any` (por exemplo `TaskQueue.register`
+    ou `publish` de fila) passam a receber erro do mypy e devem estreitar com
+    `isinstance` ou tipar a definição explicitamente.
+- `BaseController` deixou de devolver o próprio `ResponseT` por `cast` sem
+  prova e `BaseService` / `BaseRepository` agora amarram o tipo de resposta
+  entre si (#838). Antes, um `WrongController(BaseController[UserService,
+  OrderResponseSchema])` passava no `mypy --strict` e entregava
+  `UserResponseSchema` em runtime; os pass-throughs `get_by_id`, `list` e
+  `update` do `BaseController` agora extraem o tipo de resposta (e de update,
+  no `update`) direto do `ServiceT`, sem `cast`, e `BaseController[Service]`
+  com um argumento só passa a ser suficiente (`BaseController[Service, Resp]`
+  e `BaseController[Service, Resp, Update]` continuam aceitos por
+  compatibilidade via defaults de `TypeVar`). `BaseRepository` (e
+  `TenantScopedRepository`) ganhou um segundo parâmetro genérico covariante
+  opcional `ResponseT` (default `Any`, mantendo `BaseRepository[Model]`
+  compatível): `map_to_response` passa a devolver
+  `ResponseT | Awaitable[ResponseT]` (e `map_to_schema` devolve `object`),
+  removendo os `-> Any` públicos e os `type: ignore[no-any-return]` de
+  `BaseService._map_to_response`. Quando o repository declara
+  `BaseRepository[Model, Resp]`, o `basedpyright` recusa divergência entre o
+  `ResponseT` do service e o do repository no call site. **Quebra de tipo**
+  para controllers cujo `ResponseT` ou `UpdateT` discordava do service (e para
+  subclasses que sobrescrevem `BaseController.update` sob `basedpyright`
+  estrito, onde o parâmetro de método genérico acusa
+  `reportIncompatibleMethodOverride`); veja o guia de migração.
 - `ObjectStat.raw` passa a ser `minio.datatypes.Object | None` (#836). O
   `LocalObjectStorageClient` e o `FakeObjectStorageClient` sempre devolveram
   `raw=None`, escondido por `type: ignore[arg-type]` nos dois construtores:
@@ -84,6 +145,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Os hooks de migração do Alembic (`sync_enum_types`, `sqlite_enum_checks`,
+  `create_enum_types_on_add_column`, `drop_enum_types_on_downgrade`,
+  `reorder_base_columns_first` e `backfill_non_nullable_defaults`) agora
+  passam direto em `context.configure(process_revision_directives=...)` sob
+  `mypy --strict` (#840). Os quatro hooks de enum declaravam
+  `context: Any` e `revision: str | tuple[str, ...]`, mais estreito que o
+  `_GetRevArg` do Alembic (`str | Iterable[str | None] | Iterable[str]`):
+  por contravariância de parâmetro de callback, passar qualquer um deles
+  direto a `context.configure(...)` falhava com `[arg-type]` (4 erros no
+  `env.py` mínimo), e o caminho só passava via `compose_hooks` porque o
+  alias `ProcessRevisionDirectives` apagava `revision` e `directives` para
+  `Any` / `list[Any]`. Os seis hooks e o alias `ProcessRevisionDirectives`
+  passam a usar `(MigrationContext, str | Iterable[str | None],
+  list[MigrationScript]) -> None`, intercambiável nos dois sentidos com o
+  `ProcessRevisionDirectiveFn` do Alembic (medido no piso/lock 1.19.1 e no
+  1.20.1), e o exemplo `skip_empty_revisions` da receita de migrations foi
+  atualizado para a mesma assinatura.
 - `recall_prompt` voltou a lembrar (#834). Chamava `memory.recall(...)`, que
   nenhuma classe do pacote tem — `ChatMemory` e `PgChatMemory` expõem
   `search(*, user_id, query, top_k, ...)` —, e o `except Exception` engolia o

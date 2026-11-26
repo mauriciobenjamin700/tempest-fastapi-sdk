@@ -16,7 +16,7 @@ class ServiceInfoController(Controller):
     ``src.api.dependencies.controllers`` with values it received through
     ``Depends``, and handed to the router already built. It has no
     service because it reads no data — a domain controller subclasses
-    ``BaseController[Service, Schema]`` instead. Replace it, or delete it
+    ``BaseController[Service]`` instead. Replace it, or delete it
     with its route, once the first real endpoint lands.
     """
 

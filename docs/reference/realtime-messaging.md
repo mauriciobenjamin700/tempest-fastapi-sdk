@@ -65,6 +65,8 @@ Fila e tarefas, WebSocket, SSE, Web Push, chat, comentários, event sourcing, fe
 ### `tempest_fastapi_sdk.queue`
 
 ::: tempest_fastapi_sdk.queue
+::: tempest_fastapi_sdk.queue.broker.PublishResult
+::: tempest_fastapi_sdk.queue.broker.QueuePublisher
 ::: tempest_fastapi_sdk.queue.publisher.Publisher
 ::: tempest_fastapi_sdk.queue.consumer.Subscription
 ::: tempest_fastapi_sdk.queue.topology.QueueSpec

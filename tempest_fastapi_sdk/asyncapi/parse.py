@@ -26,7 +26,7 @@ from tempest_fastapi_sdk.asyncapi.ir import (
     OperationIR,
     StreamIR,
 )
-from tempest_fastapi_sdk.openapi.ir import ClientIR
+from tempest_fastapi_sdk.openapi.ir import ClientIR, SpecIR
 from tempest_fastapi_sdk.openapi.loader import SpecError, deref
 from tempest_fastapi_sdk.openapi.naming import class_name, to_pascal
 from tempest_fastapi_sdk.openapi.parse import (
@@ -304,20 +304,18 @@ def _operation_messages(operation: Mapping[str, Any]) -> list[str]:
     return names
 
 
-def as_spec_ir(parsed: AsyncApiIR) -> Any:
+def as_spec_ir(parsed: AsyncApiIR) -> SpecIR:
     """Wrap the payload schemas so the OpenAPI schema emitter can render them.
 
     Args:
         parsed (AsyncApiIR): The parsed document.
 
     Returns:
-        Any: A ``SpecIR`` carrying the schemas and cyclic set.
+        SpecIR: The schemas and cyclic set, ready for the emitter.
 
     ``emit_schemas`` reads only those two fields, so the client it also
     holds is a placeholder rather than something this module has to model.
     """
-    from tempest_fastapi_sdk.openapi.ir import SpecIR
-
     return SpecIR(
         schemas=parsed.schemas,
         client=ClientIR(

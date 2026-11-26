@@ -47,7 +47,7 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, Generic, TypeVar
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -57,6 +57,9 @@ from tempest_fastapi_sdk.exceptions import (
     IntegrationDisabledException,
     UnauthorizedException,
 )
+
+if TYPE_CHECKING:
+    from firebase_admin import App
 
 logger = logging.getLogger(__name__)
 
@@ -346,7 +349,7 @@ class FirebaseAuth:
         self._app = self._get_or_create_app(firebase_admin, firebase_credentials)
 
     @property
-    def app(self) -> Any:
+    def app(self) -> App:
         """Return the initialized ``firebase_admin.App`` this instance uses.
 
         Exposed so other Firebase-backed features reuse one loaded service
@@ -354,7 +357,9 @@ class FirebaseAuth:
         :mod:`tempest_fastapi_sdk.push` is the first consumer.
 
         Returns:
-            Any: The ``firebase_admin.App`` bound to :attr:`app_name`.
+            App: The ``firebase_admin.App`` bound to :attr:`app_name`.
+            ``firebase_admin`` ships no ``py.typed``, so a checker that
+            does not infer from untyped sources (mypy) still sees ``Any``.
 
         Raises:
             IntegrationDisabledException: When built with ``enabled=False``.

@@ -51,7 +51,7 @@ import inspect
 import io
 import secrets
 import wave
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
@@ -67,6 +67,24 @@ from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _MAX_SEED: int = 2**32 - 1
+
+
+class AudioPipelineOutput(Protocol):
+    """Output object returned by a diffusers audio pipeline."""
+
+    @property
+    def audios(self) -> Sequence[Any]:
+        """Generated waveforms, one per requested clip."""
+        ...
+
+
+class AudioDiffusionPipeline(Protocol):
+    """Minimal surface of a loaded diffusers audio pipeline."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> AudioPipelineOutput:
+        """Run diffusion inference and return generated waveforms."""
+        ...
+
 
 AUDIO_LENGTH_KEYWORD: str = "audio_length_in_s"
 """The call keyword that marks a supported (AudioLDM-family) pipeline."""
@@ -373,7 +391,7 @@ class AudioGenerator:
         self.pipeline_kwargs: dict[str, Any] = dict(pipeline_kwargs or {})
         self.idle_unload_seconds = idle_unload_seconds
         self.metrics = metrics
-        self._pipeline: Any = None
+        self._pipeline: AudioDiffusionPipeline | None = None
         self._sample_rate: int = 0
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._lifecycle = ModelLifecycle(
@@ -402,15 +420,17 @@ class AudioGenerator:
         return self._lifecycle.seconds_idle()
 
     @property
-    def pipeline(self) -> Any:
+    def pipeline(self) -> AudioDiffusionPipeline:
         """Return the underlying diffusers pipeline (escape hatch).
 
         Loads on first access, which blocks for the download and build.
 
         Returns:
-            Any: The loaded pipeline.
+            AudioDiffusionPipeline: The loaded pipeline.
         """
         self.load()
+        if self._pipeline is None:
+            raise RuntimeError("audio pipeline is not loaded")
         return self._pipeline
 
     def load(self) -> None:
@@ -507,6 +527,8 @@ class AudioGenerator:
         """
         with self._lifecycle.use():
             torch, _ = _require_diffusers()
+            if self._pipeline is None:
+                raise RuntimeError("audio pipeline is not loaded")
             generator = torch.Generator(device=self.device).manual_seed(seed)
             result = self._pipeline(generator=generator, output_type="np", **kwargs)
             clips: list[GeneratedAudio] = []
@@ -578,7 +600,9 @@ class AudioGenerator:
 
 __all__: list[str] = [
     "AUDIO_LENGTH_KEYWORD",
+    "AudioDiffusionPipeline",
     "AudioGenerator",
+    "AudioPipelineOutput",
     "SupportsAudioGeneration",
     "check_audio_pipeline",
     "encode_wav",

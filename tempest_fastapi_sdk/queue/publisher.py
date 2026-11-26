@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
-    from tempest_fastapi_sdk.queue.broker import MessageBroker
+    from tempest_fastapi_sdk.queue.broker import MessageBroker, PublishResult
     from tempest_fastapi_sdk.queue.topology import QueueSpec
 
 MessageT = TypeVar("MessageT")
@@ -121,7 +121,7 @@ class Publisher(Generic[MessageT]):
         *,
         key: str | bytes | None = None,
         **options: Any,
-    ) -> Any:
+    ) -> PublishResult:
         """Publish ``message`` to this publisher's channel.
 
         Args:
@@ -135,7 +135,7 @@ class Publisher(Generic[MessageT]):
                 overriding the defaults given to the constructor.
 
         Returns:
-            Any: Whatever the transport's publish returns.
+            PublishResult: Whatever the transport's publish returns.
 
         Raises:
             TypeError: When :attr:`schema` is declared and ``message`` is

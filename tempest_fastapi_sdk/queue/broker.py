@@ -21,7 +21,7 @@ import inspect
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 from uuid import uuid4
 
 from tempest_fastapi_sdk.queue.dedup import (
@@ -68,6 +68,22 @@ Handler = TypeVar("Handler", bound=Callable[..., Awaitable[Any]])
 
 PublisherT = TypeVar("PublisherT", bound=Publisher[Any])
 """A :class:`~tempest_fastapi_sdk.queue.Publisher` subclass being bound."""
+
+type PublishResult = object
+"""Transport-specific confirmation returned by ``publish`` (or ``None``).
+
+Each FastStream transport returns its own confirmation type (AMQP
+``ConfirmationFrameType | None``, Kafka ``RecordMetadata`` or future,
+NATS ``PubAck | None``, Redis ``int | bytes``).
+"""
+
+
+class QueuePublisher(Protocol):
+    """Minimal surface of a publisher from :meth:`MessageBroker.publisher`."""
+
+    def publish(self, message: Any, /, **kwargs: Any) -> Awaitable[PublishResult]:
+        """Publish ``message`` through the bound channel."""
+        ...
 
 
 def _schema_entry(
@@ -931,7 +947,7 @@ class MessageBroker:
         key: str | bytes | None = None,
         message_id: str | None = None,
         **options: Any,
-    ) -> Any:
+    ) -> PublishResult:
         """Publish ``message`` to ``channel``.
 
         Args:
@@ -979,8 +995,9 @@ class MessageBroker:
                 ``correlation_id=``).
 
         Returns:
-            Any: Whatever the transport's publish returns (often ``None``;
-            AMQP returns a confirmation when publisher confirms are on).
+            PublishResult: Whatever the transport's publish returns (often
+            ``None``; AMQP returns a confirmation when publisher confirms
+            are on).
 
         Raises:
             RuntimeError: When :meth:`connect` has not been called yet.
@@ -1016,7 +1033,10 @@ class MessageBroker:
         if _publish_accepts(publish, "headers"):
             options["headers"] = inject_context(dict(options.get("headers") or {}))
         if exchange is None:
-            return await self.broker.publish(message, channel_name(channel), **options)
+            result: PublishResult = await self.broker.publish(
+                message, channel_name(channel), **options
+            )
+            return result
         if self.transport is not TransportEnum.RABBITMQ:
             raise UnsupportedTopologyError(
                 f"publish(exchange=...) needs AMQP exchanges; the "
@@ -1032,12 +1052,13 @@ class MessageBroker:
             target: Any = to_rabbit_exchange(exchange)
         else:
             target = exchange
-        return await self.broker.publish(
+        exchange_result: PublishResult = await self.broker.publish(
             message,
             exchange=target,
             routing_key=_routing_key(channel),
             **options,
         )
+        return exchange_result
 
     async def _declare_exchange_once(self, exchange: ExchangeSpec) -> None:
         """Declare ``exchange`` the first time this connection publishes to it.
@@ -1244,7 +1265,7 @@ class MessageBroker:
             )
             self.broker.subscriber(bound, **options)(handler)
 
-    def publisher(self, channel: str | QueueSpec, /, **options: Any) -> Any:
+    def publisher(self, channel: str | QueueSpec, /, **options: Any) -> QueuePublisher:
         """Return a reusable publisher bound to ``channel``.
 
         Useful to declare a typed outbound endpoint once and call it
@@ -1252,16 +1273,20 @@ class MessageBroker:
         docs. The returned object is called as ``await pub.publish(msg)``.
 
         Args:
-            channel (str): The destination channel.
+            channel (str | QueueSpec): The destination channel.
             **options (Any): Extra transport-specific publisher options.
 
         Returns:
-            Any: A FastStream publisher object bound to ``channel``.
+            QueuePublisher: A FastStream publisher object bound to
+            ``channel``.
         """
         bound = self._bind(channel)
-        return self.broker.publisher(
-            bound,
-            **self._subscriber_options(channel, dict(options)),
+        return cast(
+            "QueuePublisher",
+            self.broker.publisher(
+                bound,
+                **self._subscriber_options(channel, dict(options)),
+            ),
         )
 
     def publisher_for(
@@ -1614,4 +1639,6 @@ class MessageBroker:
 __all__: list[str] = [
     "DEAD_LETTER_ACK_POLICIES",
     "MessageBroker",
+    "PublishResult",
+    "QueuePublisher",
 ]

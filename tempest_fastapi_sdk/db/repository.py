@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Iterable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -15,7 +15,6 @@ from typing import (
     List,
     Literal,
     NoReturn,
-    TypeVar,
     cast,
     overload,
 )
@@ -35,6 +34,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
+from typing_extensions import TypeVar
 
 from tempest_fastapi_sdk.db.audit import (
     AuditRequestContext,
@@ -77,6 +77,14 @@ from tempest_fastapi_sdk.utils.datetime import to_utc, utcnow
 logger = logging.getLogger(__name__)
 
 ModelType = TypeVar("ModelType", bound=BaseModel)
+ResponseT = TypeVar("ResponseT", covariant=True, default=Any)
+"""API response schema returned by :meth:`BaseRepository.map_to_response`.
+
+Optional — defaults to ``Any``, so ``BaseRepository[Model]`` remains
+compatible. Pass it explicitly (``BaseRepository[Model, ResponseSchema]``)
+to bind :meth:`BaseRepository.map_to_response` and :class:`BaseService` to
+that response schema.
+"""
 
 DEFAULT_SYNC_WATERMARK_LAG: timedelta = timedelta(seconds=5)
 """How far :meth:`BaseRepository.changes_since` sets its mark behind "now".
@@ -210,8 +218,17 @@ def _coerce_cursor_value(column: Any, value: Any) -> Any:
     return value
 
 
-class BaseRepository(Generic[ModelType]):
+class BaseRepository(Generic[ModelType, ResponseT]):
     """Base async repository with generic CRUD operations.
+
+    Generic parameters:
+        ModelType: The SQLAlchemy ORM model managed by the repository.
+        ResponseT: Optional API response schema returned by
+            :meth:`map_to_response`. Defaults to ``Any`` so
+            ``BaseRepository[Model]`` stays compatible; pass
+            ``BaseRepository[Model, ResponseSchema]`` to type
+            :meth:`map_to_response` and bind :class:`BaseService` to the
+            same schema.
 
     Instantiate directly for plain CRUD (``BaseRepository(session,
     model=UserModel)``) or subclass when adding custom queries — the
@@ -3063,7 +3080,7 @@ class BaseRepository(Generic[ModelType]):
         result = await self.session.execute(query)
         return result.scalar() or 0
 
-    def map_to_schema(self, instance: ModelType) -> Any:
+    def map_to_schema(self, instance: ModelType) -> object:
         """Map an ORM row to its schema/domain representation.
 
         Concrete repositories MUST implement this to bridge the data
@@ -3073,7 +3090,7 @@ class BaseRepository(Generic[ModelType]):
             instance (ModelType): The ORM row to convert.
 
         Returns:
-            Any: The schema/domain object.
+            object: The schema/domain object.
 
         Raises:
             NotImplementedError: Always — subclasses must override.
@@ -3096,17 +3113,20 @@ class BaseRepository(Generic[ModelType]):
         """
         return self.model(**data)
 
-    def map_to_response(self, instance: ModelType) -> Any:
+    def map_to_response(self, instance: ModelType) -> ResponseT | Awaitable[ResponseT]:
         """Map an ORM row to its API response schema.
 
         Concrete repositories MUST implement this when used from the
-        router layer.
+        service or router layer. Subclasses may implement it either
+        synchronously (returning ``ResponseT``) or as ``async def``
+        (returning ``Awaitable[ResponseT]``).
 
         Args:
             instance (ModelType): The ORM row to convert.
 
         Returns:
-            Any: The response schema.
+            ResponseT | Awaitable[ResponseT]: The response schema, or an
+            awaitable resolving to it.
 
         Raises:
             NotImplementedError: Always — subclasses must override.

@@ -91,6 +91,9 @@ from tempest_fastapi_sdk.core.redaction import (
     REDACTED as REDACTED,
 )
 from tempest_fastapi_sdk.core.redaction import (
+    RedactedValue as RedactedValue,
+)
+from tempest_fastapi_sdk.core.redaction import (
     RedactionFilter as RedactionFilter,
 )
 from tempest_fastapi_sdk.core.redaction import (
@@ -130,6 +133,7 @@ __all__: list[str] = [
     "DocsLocale",
     "JSONFormatter",
     "LocaleEnum",
+    "RedactedValue",
     "RedactionFilter",
     "RedactionPolicy",
     "clear_request_id",

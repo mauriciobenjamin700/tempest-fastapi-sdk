@@ -27,7 +27,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, get_type_hints
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from tempest_fastapi_sdk.agents.schemas import ToolResult
 from tempest_fastapi_sdk.agents.tools import (
@@ -70,31 +70,38 @@ def schema_of(model: type[BaseModel]) -> dict[str, Any]:
     defs: dict[str, Any] = raw.pop("$defs", {})
     kept: set[str] = set()
 
-    def inline(node: Any, expanding: frozenset[str]) -> Any:
-        """Replace every ``$ref`` with its definition, stopping at cycles."""
+    def inline(node: JsonValue, expanding: frozenset[str]) -> JsonValue:
+        """Inline every ``$ref`` under any JSON node, stopping at cycles."""
         if isinstance(node, dict):
-            ref = node.get("$ref")
-            if isinstance(ref, str) and ref.startswith("#/$defs/"):
-                target_name = ref.split("/")[-1]
-                if target_name in expanding or target_name not in defs:
-                    kept.add(target_name)
-                    return {
-                        key: (value if key == "$ref" else inline(value, expanding))
-                        for key, value in node.items()
-                    }
-                merged = {
-                    **inline(defs[target_name], expanding | {target_name}),
-                }
-                for key, value in node.items():
-                    if key != "$ref":
-                        merged[key] = inline(value, expanding)
-                return merged
-            return {key: inline(value, expanding) for key, value in node.items()}
+            return inline_object(node, expanding)
         if isinstance(node, list):
             return [inline(item, expanding) for item in node]
         return node
 
-    schema: dict[str, Any] = inline(raw, frozenset())
+    def inline_object(
+        node: dict[str, JsonValue],
+        expanding: frozenset[str],
+    ) -> dict[str, JsonValue]:
+        """Replace an object's ``$ref`` with its definition, stopping at cycles."""
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/$defs/"):
+            target_name = ref.split("/")[-1]
+            if target_name in expanding or target_name not in defs:
+                kept.add(target_name)
+                return {
+                    key: (value if key == "$ref" else inline(value, expanding))
+                    for key, value in node.items()
+                }
+            merged = {
+                **inline_object(defs[target_name], expanding | {target_name}),
+            }
+            for key, value in node.items():
+                if key != "$ref":
+                    merged[key] = inline(value, expanding)
+            return merged
+        return {key: inline(value, expanding) for key, value in node.items()}
+
+    schema: dict[str, Any] = inline_object(raw, frozenset())
     if kept:
         kept_defs: dict[str, Any] = {}
         pending = sorted(kept & set(defs))
@@ -102,7 +109,7 @@ def schema_of(model: type[BaseModel]) -> dict[str, Any]:
             name = pending.pop()
             if name in kept_defs:
                 continue
-            kept_defs[name] = inline(defs[name], frozenset({name}))
+            kept_defs[name] = inline_object(defs[name], frozenset({name}))
             pending.extend(sorted((kept & set(defs)) - set(kept_defs)))
         schema["$defs"] = kept_defs
     schema.pop("title", None)

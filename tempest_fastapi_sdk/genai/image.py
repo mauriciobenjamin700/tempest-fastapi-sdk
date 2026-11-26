@@ -26,8 +26,9 @@ from __future__ import annotations
 import asyncio
 import io
 import secrets
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
@@ -42,6 +43,23 @@ from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 _MAX_SEED: int = 2**32 - 1
+
+
+class ImagePipelineOutput(Protocol):
+    """Output object returned by a diffusers text-to-image pipeline."""
+
+    @property
+    def images(self) -> Sequence[Any]:
+        """Generated images, one per requested sample."""
+        ...
+
+
+class ImageDiffusionPipeline(Protocol):
+    """Minimal surface of a loaded diffusers image pipeline."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> ImagePipelineOutput:
+        """Run diffusion inference and return generated images."""
+        ...
 
 
 def _require_diffusers() -> tuple[Any, Any]:
@@ -248,7 +266,7 @@ class ImageGenerator:
         self.pipeline_kwargs: dict[str, Any] = dict(pipeline_kwargs or {})
         self.idle_unload_seconds = idle_unload_seconds
         self.metrics = metrics
-        self._pipeline: Any = None
+        self._pipeline: ImageDiffusionPipeline | None = None
         self._edit_pipeline: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._lifecycle = ModelLifecycle(
@@ -280,7 +298,7 @@ class ImageGenerator:
         return self._lifecycle.seconds_idle()
 
     @property
-    def pipeline(self) -> Any:
+    def pipeline(self) -> ImageDiffusionPipeline:
         """Return the underlying diffusers pipeline (escape hatch).
 
         Use it to swap the scheduler, attach a LoRA or enable a memory
@@ -288,9 +306,11 @@ class ImageGenerator:
         blocks for the whole download and build.
 
         Returns:
-            Any: The loaded ``AutoPipelineForText2Image``.
+            ImageDiffusionPipeline: The loaded ``AutoPipelineForText2Image``.
         """
         self.load()
+        if self._pipeline is None:
+            raise RuntimeError("image pipeline is not loaded")
         return self._pipeline
 
     def load(self) -> None:
@@ -397,7 +417,10 @@ class ImageGenerator:
         """
         with self._lifecycle.use():
             torch, _ = _require_diffusers()
+            pipeline: ImageDiffusionPipeline
             if edit_source is None:
+                if self._pipeline is None:
+                    raise RuntimeError("image pipeline is not loaded")
                 pipeline = self._pipeline
             else:
                 pipeline = self._load_edit_pipeline()
@@ -555,4 +578,8 @@ class ImageGenerator:
                 return await self._render(kwargs, seed, edit_source=image)
 
 
-__all__: list[str] = ["ImageGenerator"]
+__all__: list[str] = [
+    "ImageDiffusionPipeline",
+    "ImageGenerator",
+    "ImagePipelineOutput",
+]

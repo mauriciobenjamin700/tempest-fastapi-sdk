@@ -11,7 +11,7 @@ from typing_extensions import TypeVar
 from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
-RepositoryT = TypeVar("RepositoryT", bound=BaseRepository[Any])
+RepositoryT = TypeVar("RepositoryT", bound=BaseRepository[Any, Any], covariant=True)
 ResponseT = TypeVar("ResponseT")
 UpdateT = TypeVar("UpdateT", bound=BaseSchema, default=BaseSchema)
 """Update-payload schema. Defaults to :class:`BaseSchema`, so a service
@@ -28,6 +28,11 @@ class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
     services should override methods that involve orchestration
     (multi-repository writes, external side effects, domain rules);
     pure pass-through methods can be left untouched.
+
+    When the concrete repository declares its response schema
+    (``BaseRepository[Model, ResponseSchema]``), the mapping methods
+    require ``ResponseT`` to agree with that schema instead of relying
+    on unchecked ``Any`` propagation.
 
     Generic parameters:
         RepositoryT: The concrete repository class.
@@ -50,7 +55,10 @@ class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
         """
         self.repository: RepositoryT = repository
 
-    async def _map_to_response(self, instance: Any) -> ResponseT:
+    async def _map_to_response(
+        self: BaseService[BaseRepository[Any, ResponseT], ResponseT, UpdateT],
+        instance: Any,
+    ) -> ResponseT:
         """Map an ORM instance to a response, awaiting if needed.
 
         Supports repositories whose ``map_to_response`` is either
@@ -67,10 +75,13 @@ class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
         """
         result = self.repository.map_to_response(instance)
         if inspect.isawaitable(result):
-            return await result  # type: ignore[no-any-return]
-        return result  # type: ignore[no-any-return]
+            return await result
+        return result
 
-    async def get_by_id(self, id: UUID) -> ResponseT:
+    async def get_by_id(
+        self: BaseService[BaseRepository[Any, ResponseT], ResponseT, UpdateT],
+        id: UUID,
+    ) -> ResponseT:
         """Fetch a single record by primary key and map it to a response.
 
         Args:
@@ -86,7 +97,10 @@ class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
         instance = await self.repository.get_by_id(id)
         return await self._map_to_response(instance)
 
-    async def get_or_none(self, filters: dict[str, Any]) -> ResponseT | None:
+    async def get_or_none(
+        self: BaseService[BaseRepository[Any, ResponseT], ResponseT, UpdateT],
+        filters: dict[str, Any],
+    ) -> ResponseT | None:
         """Return the matching record (mapped) or ``None``.
 
         Args:
@@ -106,7 +120,7 @@ class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
         return await self._map_to_response(instance)
 
     async def list(
-        self,
+        self: BaseService[BaseRepository[Any, ResponseT], ResponseT, UpdateT],
         filters: dict[str, Any] | None = None,
         order_by: Any | None = None,
         ascending: bool = True,
@@ -138,7 +152,7 @@ class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
         return [await self._map_to_response(i) for i in instances]
 
     async def paginate(
-        self,
+        self: BaseService[BaseRepository[Any, ResponseT], ResponseT, UpdateT],
         filters: dict[str, Any] | None = None,
         order_by: str | None = None,
         page: int = 1,
@@ -205,7 +219,11 @@ class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
         """
         return await self.repository.exists(filters)
 
-    async def update(self, id: UUID, data: UpdateT) -> ResponseT:
+    async def update(
+        self: BaseService[BaseRepository[Any, ResponseT], ResponseT, UpdateT],
+        id: UUID,
+        data: UpdateT,
+    ) -> ResponseT:
         """Apply a partial update to a record and map it to a response.
 
         Fetches the row by primary key, copies the fields present in

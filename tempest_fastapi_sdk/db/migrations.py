@@ -10,7 +10,7 @@ from contextlib import redirect_stdout
 from importlib import resources
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TypeVar
+from typing import TYPE_CHECKING, Final, TypeVar
 
 from alembic import command
 from alembic.config import Config
@@ -25,6 +25,7 @@ from tempest_fastapi_sdk.core.enums import BaseStrEnum
 if TYPE_CHECKING:
     from collections.abc import Awaitable
 
+    from alembic.script import Script
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
@@ -1390,7 +1391,7 @@ class AlembicHelper:
         autogenerate: bool = True,
         sql: bool = False,
         head: str = "head",
-    ) -> Any:
+    ) -> Script | list[Script | None] | None:
         """Create a new revision file.
 
         Args:
@@ -1403,8 +1404,10 @@ class AlembicHelper:
             head (str): Parent revision; defaults to the current head.
 
         Returns:
-            Any: The Alembic ``Script`` (or list of scripts) created
-            by the command, as returned by ``alembic.command.revision``.
+            Script | list[Script | None] | None: What
+            ``alembic.command.revision`` returned — the ``Script`` created,
+            a list of them when the environment emits one per database, or
+            ``None`` under ``sql=True``.
 
         Raises:
             RuntimeError: When called from a running event loop; await
@@ -1442,7 +1445,7 @@ class AlembicHelper:
         autogenerate: bool = True,
         sql: bool = False,
         head: str = "head",
-    ) -> Any:
+    ) -> Script | list[Script | None] | None:
         """Run :meth:`revision` in a worker thread, for async callers.
 
         Args:
@@ -1452,7 +1455,8 @@ class AlembicHelper:
             head (str): Parent revision; defaults to the current head.
 
         Returns:
-            Any: What :meth:`revision` returned.
+            Script | list[Script | None] | None: What :meth:`revision`
+            returned.
         """
         return await asyncio.to_thread(
             self.revision,

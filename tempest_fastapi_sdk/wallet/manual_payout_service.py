@@ -18,10 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, NoReturn, Protocol
+from typing import TYPE_CHECKING, Any, Final, Generic, NoReturn, Protocol
 from uuid import UUID
 
 from sqlalchemy import select, update
+from typing_extensions import TypeVar
 
 from tempest_fastapi_sdk.db.transaction import transaction
 from tempest_fastapi_sdk.exceptions.wallet import (
@@ -30,7 +31,10 @@ from tempest_fastapi_sdk.exceptions.wallet import (
     ManualPayoutReceiptMissingException,
 )
 from tempest_fastapi_sdk.utils.datetime import utcnow
-from tempest_fastapi_sdk.wallet.manual_payout_models import ManualPayoutStatusEnum
+from tempest_fastapi_sdk.wallet.manual_payout_models import (
+    BaseManualPayoutModel,
+    ManualPayoutStatusEnum,
+)
 from tempest_fastapi_sdk.wallet.schemas import WalletEntryKindEnum
 from tempest_fastapi_sdk.wallet.service import PAYOUT_REFERENCE_TYPE
 
@@ -39,6 +43,13 @@ if TYPE_CHECKING:
 
     from tempest_fastapi_sdk.db.repository import BaseRepository
     from tempest_fastapi_sdk.wallet.ledger import WalletLedger
+
+PayoutModelT = TypeVar(
+    "PayoutModelT",
+    bound=BaseManualPayoutModel,
+    default=BaseManualPayoutModel,
+)
+"""Concrete :class:`BaseManualPayoutModel` managed by a service instance."""
 
 MAX_REJECTION_REASON_LENGTH: Final[int] = 512
 """Longest reason :meth:`ManualPayoutService.reject` takes — the column's size."""
@@ -105,7 +116,7 @@ class ManualPayoutHooks:
     on_rejected: ManualPayoutHook | None = None
 
 
-class ManualPayoutService:
+class ManualPayoutService(Generic[PayoutModelT]):
     """Mark a manual payout paid, or refuse it and give the money back.
 
     Each method is one transaction on the repository's session: the
@@ -115,7 +126,8 @@ class ManualPayoutService:
     that block and commits with it.
 
     Attributes:
-        records (BaseRepository[Any]): Repository of the project's concrete
+        records (BaseRepository[PayoutModelT]): Repository of the project's
+            concrete
             :class:`~tempest_fastapi_sdk.wallet.BaseManualPayoutModel`.
         ledger (WalletLedger | None): The wallet the refund goes to.
         hooks (ManualPayoutHooks): The transition callbacks.
@@ -124,7 +136,7 @@ class ManualPayoutService:
     def __init__(
         self,
         *,
-        records: BaseRepository[Any],
+        records: BaseRepository[PayoutModelT],
         ledger: WalletLedger | None = None,
         hooks: ManualPayoutHooks | None = None,
         refund_description: str = DEFAULT_REFUND_DESCRIPTION,
@@ -132,8 +144,8 @@ class ManualPayoutService:
         """Store the repositories and the hooks.
 
         Args:
-            records (BaseRepository[Any]): Repository of the manual payout
-                model.
+            records (BaseRepository[PayoutModelT]): Repository of the manual
+                payout model.
             ledger (WalletLedger | None): The wallet ledger the refund of
                 :meth:`reject` is credited through — ``WalletService.ledger``
                 when the project already has a service. ``None`` allows
@@ -148,7 +160,7 @@ class ManualPayoutService:
         """
         if ledger is not None and ledger.entries.session is not records.session:
             raise ValueError("records and ledger must share one session")
-        self.records: BaseRepository[Any] = records
+        self.records: BaseRepository[PayoutModelT] = records
         self.ledger: WalletLedger | None = ledger
         self.hooks: ManualPayoutHooks = hooks or ManualPayoutHooks()
         self._refund_description: str = refund_description
@@ -163,14 +175,14 @@ class ManualPayoutService:
         session: AsyncSession = self.records.session
         return session
 
-    async def _load(self, row_id: UUID) -> Any:
+    async def _load(self, row_id: UUID) -> PayoutModelT | None:
         """Read a row fresh from the database.
 
         Args:
             row_id (UUID): The row id.
 
         Returns:
-            Any: The row, or ``None`` when no row has the id.
+            PayoutModelT | None: The row, or ``None`` when no row has the id.
         """
         model = self.records.model
         result = await self._session.execute(
@@ -207,7 +219,7 @@ class ManualPayoutService:
         *,
         actor: str | None = None,
         require_receipt: bool = False,
-    ) -> Any:
+    ) -> PayoutModelT:
         """Move a ``PENDING`` payout to ``COMPLETED`` and run ``on_paid``.
 
         Args:
@@ -221,7 +233,7 @@ class ManualPayoutService:
                 take receipts keeps the default.
 
         Returns:
-            Any: The row after the transition.
+            PayoutModelT: The row after the transition.
 
         Raises:
             ManualPayoutNotFoundException: If no row has the id.
@@ -251,6 +263,8 @@ class ManualPayoutService:
             if getattr(result, "rowcount", 0) != 1:
                 await self._refuse(row_id)
             row = await self._load(row_id)
+            if row is None:
+                raise ManualPayoutNotFoundException()
             if self.hooks.on_paid is not None:
                 await self.hooks.on_paid(self._session, row)
         return row
@@ -261,7 +275,7 @@ class ManualPayoutService:
         reason: str,
         *,
         actor: str | None = None,
-    ) -> Any:
+    ) -> PayoutModelT:
         """Refuse a ``PENDING`` payout and credit the amount back.
 
         The row turns ``REJECTED`` with the reason, the wallet gets a
@@ -276,7 +290,7 @@ class ManualPayoutService:
             actor (str | None): Who refused it, stored in ``rejected_by``.
 
         Returns:
-            Any: The row after the transition.
+            PayoutModelT: The row after the transition.
 
         Raises:
             ValueError: If ``reason`` is blank or longer than
@@ -313,6 +327,8 @@ class ManualPayoutService:
             if getattr(result, "rowcount", 0) != 1:
                 await self._refuse(row_id)
             row = await self._load(row_id)
+            if row is None:
+                raise ManualPayoutNotFoundException()
             await self.ledger.credit(
                 row.user_id,
                 row.amount_cents,

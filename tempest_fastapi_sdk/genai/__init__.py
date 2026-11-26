@@ -32,7 +32,13 @@ from tempest_fastapi_sdk.genai.anthropic import (
     to_anthropic_image as to_anthropic_image,
 )
 from tempest_fastapi_sdk.genai.audio_generation import (
+    AudioDiffusionPipeline as AudioDiffusionPipeline,
+)
+from tempest_fastapi_sdk.genai.audio_generation import (
     AudioGenerator as AudioGenerator,
+)
+from tempest_fastapi_sdk.genai.audio_generation import (
+    AudioPipelineOutput as AudioPipelineOutput,
 )
 from tempest_fastapi_sdk.genai.audio_generation import (
     SupportsAudioGeneration as SupportsAudioGeneration,
@@ -139,7 +145,13 @@ from tempest_fastapi_sdk.genai.hub import list_cached_models as list_cached_mode
 from tempest_fastapi_sdk.genai.hub import model_disk_bytes as model_disk_bytes
 from tempest_fastapi_sdk.genai.hub import remove_cached_model as remove_cached_model
 from tempest_fastapi_sdk.genai.hub import resolve_revision as resolve_revision
+from tempest_fastapi_sdk.genai.image import (
+    ImageDiffusionPipeline as ImageDiffusionPipeline,
+)
 from tempest_fastapi_sdk.genai.image import ImageGenerator as ImageGenerator
+from tempest_fastapi_sdk.genai.image import (
+    ImagePipelineOutput as ImagePipelineOutput,
+)
 from tempest_fastapi_sdk.genai.inventory import LoadedModel as LoadedModel
 from tempest_fastapi_sdk.genai.inventory import (
     ModelRuntimeReport as ModelRuntimeReport,
@@ -254,7 +266,13 @@ from tempest_fastapi_sdk.genai.schemas import (
     ModelDtypeEnum as ModelDtypeEnum,
 )
 from tempest_fastapi_sdk.genai.structured import (
+    PrefixAllowedTokensFn as PrefixAllowedTokensFn,
+)
+from tempest_fastapi_sdk.genai.structured import (
     StructuredFormatError as StructuredFormatError,
+)
+from tempest_fastapi_sdk.genai.structured import (
+    TokenIdSequence as TokenIdSequence,
 )
 from tempest_fastapi_sdk.genai.structured import (
     build_prefix_allowed_tokens_fn as build_prefix_allowed_tokens_fn,
@@ -345,8 +363,10 @@ __all__: list[str] = [
     "AnthropicGenerator",
     "AsyncEmbeddingCache",
     "AsyncGenerationCache",
+    "AudioDiffusionPipeline",
     "AudioGenerationConfig",
     "AudioGenerator",
+    "AudioPipelineOutput",
     "BaseAIUsageModel",
     "BatchScheduler",
     "CachedModel",
@@ -372,9 +392,11 @@ __all__: list[str] = [
     "HostedProvider",
     "HostedRateLimitError",
     "HostedServerError",
+    "ImageDiffusionPipeline",
     "ImageGenerationConfig",
     "ImageGenerator",
     "ImageModelEnum",
+    "ImagePipelineOutput",
     "InMemoryEmbeddingCache",
     "InMemoryGenerationCache",
     "LoadedModel",
@@ -394,6 +416,7 @@ __all__: list[str] = [
     "OpenAICompatEmbedder",
     "OpenAICompatGenerator",
     "OpenAICompatSpeech",
+    "PrefixAllowedTokensFn",
     "RedisEmbeddingCache",
     "RedisGenerationCache",
     "RerankerModelEnum",
@@ -414,6 +437,7 @@ __all__: list[str] = [
     "TextGenerator",
     "TextModelEnum",
     "TextToSpeechModelEnum",
+    "TokenIdSequence",
     "TokenUsage",
     "Tool",
     "UsageTotals",

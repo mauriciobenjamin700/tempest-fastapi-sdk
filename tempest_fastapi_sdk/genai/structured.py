@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import re
 import weakref
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -42,6 +43,22 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.schemas import GenerationConfig
 
 StructuredT = TypeVar("StructuredT", bound=BaseModel)
+
+
+class TokenIdSequence(Protocol):
+    """Minimal tensor-like token buffer accepted by a prefix token filter.
+
+    Matches ``torch.Tensor`` (and lightweight test doubles) without importing
+    ``torch`` at module load time.
+    """
+
+    def tolist(self) -> list[int]:
+        """Return the token ids as a plain list of integers."""
+        ...
+
+
+type PrefixAllowedTokensFn = Callable[[int, TokenIdSequence], list[int]]
+"""Callback shape ``transformers.GenerationMixin.generate`` expects."""
 
 
 class SupportsGenerate(Protocol):
@@ -97,7 +114,9 @@ def _require_lmfe() -> Any:
     return lmformatenforcer
 
 
-def build_prefix_allowed_tokens_fn(tokenizer: Any, schema: type[BaseModel]) -> Any:
+def build_prefix_allowed_tokens_fn(
+    tokenizer: Any, schema: type[BaseModel]
+) -> PrefixAllowedTokensFn:
     """Build a ``transformers`` token filter that enforces ``schema``.
 
     Args:
@@ -105,8 +124,8 @@ def build_prefix_allowed_tokens_fn(tokenizer: Any, schema: type[BaseModel]) -> A
         schema (type[BaseModel]): The Pydantic schema the output must satisfy.
 
     Returns:
-        Any: A ``prefix_allowed_tokens_fn`` to pass to ``model.generate`` so
-        only schema-valid continuations are allowed.
+        PrefixAllowedTokensFn: A ``prefix_allowed_tokens_fn`` to pass to
+        ``model.generate`` so only schema-valid continuations are allowed.
 
     Raises:
         ImportError: When the ``[genai-structured]`` extra is not installed.
@@ -128,7 +147,8 @@ def build_prefix_allowed_tokens_fn(tokenizer: Any, schema: type[BaseModel]) -> A
     tokenizer_data = _token_enforcer_tokenizer_data(tokenizer)
     enforcer = TokenEnforcer(tokenizer_data, parser)
 
-    def prefix_allowed_tokens_fn(_batch_id: int, sent: Any) -> list[int]:
+    def prefix_allowed_tokens_fn(_batch_id: int, sent: TokenIdSequence) -> list[int]:
+        """Return the vocabulary ids allowed after ``sent``."""
         allowed = enforcer.get_allowed_tokens(sent.tolist())
         return list(allowed.allowed_tokens)
 
@@ -605,7 +625,9 @@ def _config_at_temperature(
 
 
 __all__: list[str] = [
+    "PrefixAllowedTokensFn",
     "StructuredFormatError",
+    "TokenIdSequence",
     "build_prefix_allowed_tokens_fn",
     "extract_json_list",
     "extract_json_object",

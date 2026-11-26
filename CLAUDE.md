@@ -271,6 +271,14 @@ mexer neles. Todos rodam dentro do `make check`.
   da OpenPix) fica com o nome da spec. O tipo nativo no Postgres não muda com o
   sufixo: `enum_type_name` tira um `Enum` final. Guard:
   `tests/test_enum_suffix_guard.py`.
+- **Nenhum retorno público `-> Any`.** Função ou método público (nome sem `_`,
+  fora de módulo gerado com `Do not edit by hand`) não declara `-> Any`: use
+  `TypeVar`/`Self`/`ParamSpec`, o tipo concreto sob `TYPE_CHECKING`, apelido
+  nomeado (`JsonValue`, `RedactedValue`, `PublishResult`), `Protocol` ou
+  dataclass/schema. Exceções vivem na allowlist com motivo apenas para
+  overrides de upstream cujo método base já devolve `Any` (como
+  `faststream.BaseMiddleware.consume_scope`), e entrada obsoleta falha. Guard:
+  `tests/test_public_any_return_guard.py`.
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
   mypy aceita `alias`, pyright/basedpyright não —
