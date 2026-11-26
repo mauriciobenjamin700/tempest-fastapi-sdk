@@ -1368,6 +1368,12 @@ if TYPE_CHECKING:
         ForbiddenException as ForbiddenException,
     )
     from tempest_fastapi_sdk.exceptions import (
+        GoogleDriveException as GoogleDriveException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        GoogleDriveFolderNotFoundException as GoogleDriveFolderNotFoundException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
         ImageDecodeException as ImageDecodeException,
     )
     from tempest_fastapi_sdk.exceptions import (
@@ -1450,6 +1456,9 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.exceptions import (
         PageSizeTooLargeException as PageSizeTooLargeException,
+    )
+    from tempest_fastapi_sdk.exceptions import (
+        PresignedUrlUnsupportedException as PresignedUrlUnsupportedException,
     )
     from tempest_fastapi_sdk.exceptions import (
         PushEndpointNotPublicException as PushEndpointNotPublicException,
@@ -1768,6 +1777,12 @@ if TYPE_CHECKING:
     )
     from tempest_fastapi_sdk.settings import (
         GenAISettings as GenAISettings,
+    )
+    from tempest_fastapi_sdk.settings import (
+        GoogleDriveSettings as GoogleDriveSettings,
+    )
+    from tempest_fastapi_sdk.settings import (
+        GoogleDriveStorageKwargs as GoogleDriveStorageKwargs,
     )
     from tempest_fastapi_sdk.settings import (
         HostBridgeSettings as HostBridgeSettings,
@@ -2947,6 +2962,8 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "AppException": "tempest_fastapi_sdk.exceptions",
     "ConflictException": "tempest_fastapi_sdk.exceptions",
     "EmailDeliveryException": "tempest_fastapi_sdk.exceptions",
+    "GoogleDriveException": "tempest_fastapi_sdk.exceptions",
+    "GoogleDriveFolderNotFoundException": "tempest_fastapi_sdk.exceptions",
     "ExpiredSignedURLException": "tempest_fastapi_sdk.exceptions",
     "ExpiredTokenException": "tempest_fastapi_sdk.exceptions",
     "FileTooLargeException": "tempest_fastapi_sdk.exceptions",
@@ -2959,6 +2976,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "InheritedErrorCodeWarning": "tempest_fastapi_sdk.exceptions",
     "IntegrationDisabledException": "tempest_fastapi_sdk.exceptions",
     "StorageIntegrityException": "tempest_fastapi_sdk.exceptions",
+    "PresignedUrlUnsupportedException": "tempest_fastapi_sdk.exceptions",
     "InvalidFileTypeException": "tempest_fastapi_sdk.exceptions",
     "InvalidFilterValueException": "tempest_fastapi_sdk.exceptions",
     "InvalidSignedURLException": "tempest_fastapi_sdk.exceptions",
@@ -3073,6 +3091,8 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "EnvironmentSettings": "tempest_fastapi_sdk.settings",
     "FirebaseSettings": "tempest_fastapi_sdk.settings",
     "GenAISettings": "tempest_fastapi_sdk.settings",
+    "GoogleDriveSettings": "tempest_fastapi_sdk.settings",
+    "GoogleDriveStorageKwargs": "tempest_fastapi_sdk.settings",
     "HostBridgeSettings": "tempest_fastapi_sdk.settings",
     "HostedGenAISettings": "tempest_fastapi_sdk.settings",
     "JWTSettings": "tempest_fastapi_sdk.settings",
@@ -3659,6 +3679,10 @@ __all__: list[str] = [
     "GPUMetrics",
     "GenAISettings",
     "GitHubOAuthClient",
+    "GoogleDriveException",
+    "GoogleDriveFolderNotFoundException",
+    "GoogleDriveSettings",
+    "GoogleDriveStorageKwargs",
     "GoogleOAuthClient",
     "GracefulShutdownMiddleware",
     "Guard",
@@ -3816,6 +3840,7 @@ __all__: list[str] = [
     "PositiveFloatField",
     "PositiveIntField",
     "PresignedPost",
+    "PresignedUrlUnsupportedException",
     "PriceField",
     "PrometheusMiddleware",
     "ProvisioningQrBackground",

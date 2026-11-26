@@ -344,6 +344,18 @@ modelops-sklearn = [
 geo = [
     "httpx>=0.28.1",
 ]
+# Google Drive upload backend (`integrations.storage.google_drive`). The
+# service-account token is one RS256 JWT and one form post, so this is pyjwt +
+# cryptography over httpx instead of google-api-python-client / google-auth.
+# All three are already in `[all]`. The backend imports pyjwt only when it
+# signs the first assertion, so on the base install the module still imports
+# and that first call raises an ImportError naming `[google-drive]` (measured
+# from the built wheel in a fresh venv).
+google-drive = [
+    "httpx>=0.28.1",
+    "pyjwt>=2.13.0",
+    "cryptography>=50.0.1",
+]
 ssr = [
     "tempestweb>=0.141.1",
 ]

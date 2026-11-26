@@ -658,6 +658,13 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "STORAGE_INTEGRITY_ERROR": (
             "O arquivo guardado não passou na verificação de integridade"
         ),
+        "PRESIGNED_URL_UNSUPPORTED": (
+            "Este backend de armazenamento não gera URL pré-assinada"
+        ),
+        "GOOGLE_DRIVE_ERROR": "O Google Drive recusou a requisição",
+        "GOOGLE_DRIVE_FOLDER_NOT_FOUND": (
+            "A pasta configurada do Google Drive não foi encontrada"
+        ),
         "VOICE_CONSENT_REQUIRED": ("O cadastro de voz exige consentimento gravado"),
     },
     "en-US": {
@@ -818,6 +825,11 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         ),
         "ZAP_SEND_FAILED": "The WhatsApp gateway refused the message",
         "STORAGE_INTEGRITY_ERROR": "The stored object failed its integrity check",
+        "PRESIGNED_URL_UNSUPPORTED": "This storage backend cannot mint presigned URLs",
+        "GOOGLE_DRIVE_ERROR": "Google Drive refused the request",
+        "GOOGLE_DRIVE_FOLDER_NOT_FOUND": (
+            "The configured Google Drive folder was not found"
+        ),
         "VOICE_CONSENT_REQUIRED": "Voice enrolment requires recorded consent",
     },
 }

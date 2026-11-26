@@ -6922,6 +6922,11 @@ genai-vlm = [
 geo = [
     { name = "httpx" },
 ]
+google-drive = [
+    { name = "cryptography" },
+    { name = "httpx" },
+    { name = "pyjwt" },
+]
 http = [
     { name = "httpx" },
 ]
@@ -7149,6 +7154,7 @@ requires-dist = [
     { name = "click", marker = "extra == 'cli-ops'", specifier = ">=8.5.0" },
     { name = "coqui-tts", marker = "extra == 'genai-tts-coqui'", specifier = ">=0.28.0" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=50.0.1" },
+    { name = "cryptography", marker = "extra == 'google-drive'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'oidc'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'storage-encryption'", specifier = ">=50.0.1" },
     { name = "cryptography", marker = "extra == 'webpush'", specifier = ">=50.0.1" },
@@ -7174,6 +7180,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'genai-ollama'", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'genai-rag'", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'geo'", specifier = ">=0.28.1" },
+    { name = "httpx", marker = "extra == 'google-drive'", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'http'", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'genai'", specifier = ">=0.36.2" },
     { name = "huggingface-hub", marker = "extra == 'genai-hub'", specifier = ">=0.36.2" },
@@ -7235,6 +7242,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "pyjwt", marker = "extra == 'all'", specifier = ">=2.13.0" },
     { name = "pyjwt", marker = "extra == 'auth'", specifier = ">=2.13.0" },
+    { name = "pyjwt", marker = "extra == 'google-drive'", specifier = ">=2.13.0" },
     { name = "pyjwt", marker = "extra == 'oidc'", specifier = ">=2.13.0" },
     { name = "pymupdf", marker = "extra == 'genai-rag'", specifier = ">=1.28.2" },
     { name = "pyotp", marker = "extra == 'all'", specifier = ">=2.10.0" },
@@ -7298,7 +7306,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'all'", specifier = ">=17.1" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=17.1" },
 ]
-provides-extras = ["cli-ops", "cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "queue-kafka", "queue-nats", "queue-redis", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "storage-encryption", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "fastmcp", "pdf", "pdf-read", "pdf-layout", "slides", "slides-mermaid", "spreadsheet", "image", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-tts-coqui", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "genai-sound", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "kurrentdb", "otel", "tests", "all"]
+provides-extras = ["cli-ops", "cli", "auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "queue-kafka", "queue-nats", "queue-redis", "tasks", "tasks-redis", "admin", "admin-sql", "minio", "storage-encryption", "http", "oidc", "openapi", "prometheus", "mfa", "webauthn", "firebase", "fastmcp", "pdf", "pdf-read", "pdf-layout", "slides", "slides-mermaid", "spreadsheet", "image", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-tts-coqui", "genai-diarization", "faces", "genai-ollama", "genai-hosted", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "genai-sound", "modelops", "modelops-compose", "modelops-onnx", "modelops-sklearn", "geo", "google-drive", "ssr", "sqlite", "postgres", "kurrentdb", "otel", "tests", "all"]
 
 [package.metadata.requires-dev]
 dev = [

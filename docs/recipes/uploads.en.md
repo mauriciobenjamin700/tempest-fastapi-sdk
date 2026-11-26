@@ -16,6 +16,11 @@ bucket. The rest of the upload code is identical either way. Requires the
     in `UploadUtils` before any byte reaches the backend — the storage only
     ever receives validated data.
 
+!!! info "Google Drive"
+    To write into a Google Drive folder (or Shared Drive), pass a
+    `GoogleDriveUploadStorage` as `backend=` — see the
+    [Google Drive (uploads)](google-drive.md) recipe.
+
 ## Local disk
 
 ```python

@@ -120,8 +120,111 @@ class ZapSendFailedException(AppException):
         super().__init__(details={"idempotency_key": idempotency_key})
 
 
+class GoogleDriveException(AppException):
+    """Raised when Google Drive, or Google's token endpoint, refuses a call.
+
+    The Google Drive upload backend
+    (:mod:`tempest_fastapi_sdk.integrations.storage.google_drive`) raises
+    it for every non-success answer it does not retry, and once its retries
+    for ``429``/``5xx`` are spent. ``details`` carries what the upstream
+    said: the HTTP status in ``details["status"]`` (``None`` when the server
+    was never reached) and the first ``error.errors[].reason`` of a Drive
+    error body — or the OAuth ``error`` of the token endpoint, such as
+    ``invalid_grant`` — in ``details["reason"]``.
+
+    It is a ``502``: the request reached the service fine, the storage
+    behind it did not take it. Neither the access token, the signed
+    assertion nor the private key ever appears in the message.
+
+    Attributes:
+        upstream_status (int | None): Google's HTTP status, or ``None``.
+        reason (str | None): Google's machine-readable reason.
+    """
+
+    status_code: int = 502
+    message: str = "Google Drive refused the request"
+    code: str = "GOOGLE_DRIVE_ERROR"
+    details_example: ClassVar[dict[str, Any]] = {
+        "status": 403,
+        "reason": "insufficientFilePermissions",
+    }
+
+    def __init__(
+        self,
+        *,
+        upstream_status: int | None,
+        reason: str | None,
+        message: str | None = None,
+    ) -> None:
+        """Initialize the exception.
+
+        Args:
+            upstream_status (int | None): Google's HTTP status, or ``None``
+                when the request never got an answer.
+            reason (str | None): Google's reason string, when the body had
+                one.
+            message (str | None): Override the message. Already redacted
+                by the caller when it quotes an upstream body.
+        """
+        self.upstream_status: int | None = upstream_status
+        self.reason: str | None = reason
+        super().__init__(
+            message=message,
+            details={"status": upstream_status, "reason": reason},
+        )
+
+
+class GoogleDriveFolderNotFoundException(GoogleDriveException):
+    """Raised when the configured Drive folder answers ``404``.
+
+    Drive answers ``404 notFound`` both for a folder id that does not
+    exist and for one the service account cannot see, so the message says
+    what to do about the second, more common case: share the folder (or
+    add the account as a member of the Shared Drive) with the service
+    account's ``client_email``.
+
+    Attributes:
+        folder_id (str): The folder the backend writes into.
+        principal_email (str | None): The account the folder must be
+            shared with, when known.
+    """
+
+    message: str = "The configured Google Drive folder was not found"
+    code: str = "GOOGLE_DRIVE_FOLDER_NOT_FOUND"
+    details_example: ClassVar[dict[str, Any]] = {
+        "status": 404,
+        "reason": "notFound",
+        "folder_id": "1AbC...",
+    }
+
+    def __init__(self, folder_id: str, *, principal_email: str | None) -> None:
+        """Initialize the exception.
+
+        Args:
+            folder_id (str): The configured folder id.
+            principal_email (str | None): The service account's
+                ``client_email``, named in the message when given.
+        """
+        self.folder_id: str = folder_id
+        self.principal_email: str | None = principal_email
+        who = principal_email or "the service account"
+        super().__init__(
+            upstream_status=404,
+            reason="notFound",
+            message=(
+                f"Google Drive folder {folder_id!r} was not found or is not "
+                f"shared with {who}. Share the folder (or add the account as a "
+                f"member of the Shared Drive) with {who}, and check "
+                "GOOGLE_DRIVE_FOLDER_ID."
+            ),
+        )
+        self.details["folder_id"] = folder_id
+
+
 __all__: list[str] = [
     "EmailDeliveryException",
+    "GoogleDriveException",
+    "GoogleDriveFolderNotFoundException",
     "IntegrationDisabledException",
     "ZapSendFailedException",
 ]

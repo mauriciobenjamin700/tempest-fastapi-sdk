@@ -148,6 +148,7 @@ plugins:
               - Forms from Pydantic schemas: recipes/ui-forms.md
               - Fuzzy matching and cities in text: recipes/fuzzy-matching.md
               - Geolocation (distance + time): recipes/geo.md
+              - "Google Drive (uploads)": recipes/google-drive.md
               - "Host control (files, commands, power)": recipes/hostbridge.md
               - "Hosted generative AI (Anthropic, OpenAI, DeepSeek, Google)": recipes/genai-hosted.md
               - HTTP client (outbound): recipes/http-client.md
@@ -505,6 +506,7 @@ nav:
       - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
       - "Geolocalização (distância + tempo)": recipes/geo.md
       - "Geração de imagem (local)": recipes/image-generation.md
+      - "Google Drive (uploads)": recipes/google-drive.md
       - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md

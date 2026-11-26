@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Google Drive como backend do `UploadUtils`** (extra novo `[google-drive]`
+  = `httpx`, `pyjwt`, `cryptography`, já cobertos pelo `[all]`):
+  `tempest_fastapi_sdk.integrations.storage.google_drive`.
+  - `GoogleDriveUploadStorage` implementa `UploadStorage`:
+    `UploadUtils(backend=GoogleDriveUploadStorage.from_service_account(...))`
+    funciona sem mudar a rota. A key vai em `appProperties` (`tempest_key`)
+    e é buscada com o valor escapado para a sintaxe de busca do Drive;
+    gravar uma key que já existe substitui o conteúdo do mesmo arquivo
+    (mesmo id); `delete` apaga sem lixeira todo arquivo da key;
+    `presigned_url` levanta `PresignedUrlUnsupportedException` (`501`);
+    `web_view_link` e `UploadResult.url` trazem o `webViewLink`.
+  - `GoogleDriveClient` sobre `httpx` injetável: upload resumível em
+    pedaços múltiplos de 256 KiB, retomada pelo `Range` do `308`, retry com
+    backoff para `429`/`5xx` por pedaço (sem reenviar o arquivo),
+    `supportsAllDrives=true` em toda chamada à API.
+  - `ServiceAccountTokenProvider` (JWT bearer RS256 com `pyjwt` +
+    `cryptography`, cache até perto do `expires_in`, uma troca só sob
+    concorrência) atrás do protocolo `AccessTokenProvider`;
+    `ServiceAccountCredentials` (arquivo ou JSON inline, o inline vence).
+  - `GoogleDriveSettings` (`GOOGLE_DRIVE_CREDENTIALS_PATH`,
+    `GOOGLE_DRIVE_CREDENTIALS_JSON`, `GOOGLE_DRIVE_FOLDER_ID`,
+    `GOOGLE_DRIVE_DRIVE_ID`) com `google_drive_kwargs()` devolvendo o
+    `TypedDict` `GoogleDriveStorageKwargs`.
+  - Exceções `GoogleDriveException` (`502`, `GOOGLE_DRIVE_ERROR`, com
+    `status` e `reason` do corpo do Google), `GoogleDriveFolderNotFoundException`
+    (`502`, `GOOGLE_DRIVE_FOLDER_NOT_FOUND`, a mensagem diz com qual
+    `client_email` compartilhar) e `PresignedUrlUnsupportedException`
+    (`501`, `PRESIGNED_URL_UNSUPPORTED`).
+  - Receita bilíngue `recipes/google-drive`. Testado no fio com
+    `httpx.MockTransport`; não medido contra o Google real (o teste live
+    `test_live.py` roda só com `TEST_GOOGLE_DRIVE_CREDENTIALS` e
+    `TEST_GOOGLE_DRIVE_FOLDER_ID`).
+
 ### Changed
 
 - **Regra de tipagem — parâmetros públicos sem `Any` pelado em `queue`, `tasks`, `admin`, `authz` e `checks`** (#842): todos os 54 parâmetros públicos `Any` pelado nesses cinco subpacotes foram substituídos por tipos concretos, genéricos, protocolos ou `object`:

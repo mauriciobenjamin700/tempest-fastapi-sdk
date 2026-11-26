@@ -225,6 +225,14 @@ então importar o namespace não constrói nenhum modelo.
 ::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events.RevenueCatStoreEnum
 ::: tempest_fastapi_sdk.integrations.subscriptions.revenuecat.events.RevenueCatReasonEnum
 
+## Google Drive (uploads)
+
+### `tempest_fastapi_sdk.integrations.storage.google_drive`
+
+::: tempest_fastapi_sdk.integrations.storage.google_drive.storage
+::: tempest_fastapi_sdk.integrations.storage.google_drive.client
+::: tempest_fastapi_sdk.integrations.storage.google_drive.auth
+
 ---
 
 ## Carteira e saque Pix
