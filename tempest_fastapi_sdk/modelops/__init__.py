@@ -174,6 +174,17 @@ from tempest_fastapi_sdk.modelops.pickled import (
 from tempest_fastapi_sdk.modelops.pickled import (
     load_sklearn_artifact as load_sklearn_artifact,
 )
+from tempest_fastapi_sdk.modelops.protocols import HasValues as HasValues
+from tempest_fastapi_sdk.modelops.protocols import (
+    SklearnEstimator as SklearnEstimator,
+)
+from tempest_fastapi_sdk.modelops.protocols import (
+    SupportsAvailableProviders as SupportsAvailableProviders,
+)
+from tempest_fastapi_sdk.modelops.protocols import TabularInput as TabularInput
+from tempest_fastapi_sdk.modelops.protocols import (
+    TorchExampleInput as TorchExampleInput,
+)
 from tempest_fastapi_sdk.modelops.quantize import (
     optimize_hf_onnx as optimize_hf_onnx,
 )
@@ -373,6 +384,7 @@ __all__: list[str] = [
     "GraphOptimizationLevelEnum",
     "HFOptimizationLevelEnum",
     "HFQuantizationTargetEnum",
+    "HasValues",
     "LatencyReport",
     "LoadedArtifact",
     "LoadedEdgePackage",
@@ -404,10 +416,14 @@ __all__: list[str] = [
     "RuntimeAggregate",
     "RuntimeArtifact",
     "RuntimeSample",
+    "SklearnEstimator",
     "SklearnExport",
     "StaticModelMetrics",
+    "SupportsAvailableProviders",
+    "TabularInput",
     "TensorDtypeEnum",
     "TensorSpec",
+    "TorchExampleInput",
     "UnsupportedEstimatorError",
     "analyze_model",
     "analyze_onnx",

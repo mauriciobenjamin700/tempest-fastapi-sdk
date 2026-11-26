@@ -63,6 +63,7 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from tempest_fastapi_sdk.modelops.protocols import TabularInput
     from tempest_fastapi_sdk.modelops.serving import Prediction
 
 DEFAULT_BINS: int = 10
@@ -551,9 +552,9 @@ class MonitoringReport(BaseSchema):
 
 
 def baseline_from_samples(
-    features: Any,
+    features: TabularInput,
     *,
-    labels: Any = None,
+    labels: TabularInput | None = None,
     names: Sequence[str] | None = None,
     bins: int = DEFAULT_BINS,
 ) -> FeatureBaseline:
@@ -569,12 +570,12 @@ def baseline_from_samples(
         >>> Path("dist/baseline.json").write_text(baseline.model_dump_json())
 
     Args:
-        features (Any): The training rows — a 2-D array, nested sequence,
-            or DataFrame. Column names are taken from a DataFrame when
-            ``names`` is not given.
-        labels (Any): Training labels or the model's predictions on the
-            training set, used as the baseline output distribution. Omit
-            for a regressor.
+        features (TabularInput): The training rows — a 2-D array, nested
+            sequence, or DataFrame. Column names are taken from a DataFrame
+            when ``names`` is not given.
+        labels (TabularInput | None): Training labels or the model's
+            predictions on the training set, used as the baseline output
+            distribution. Omit for a regressor.
         names (Sequence[str] | None): Feature names. Defaults to the
             DataFrame's columns, or positional indices.
         bins (int): Quantile bins per feature.
@@ -856,15 +857,15 @@ class PredictionMonitor:
         if self._counts is not None:
             self._counts.fill(0)
 
-    def observe(self, features: Any, prediction: Prediction) -> None:
+    def observe(self, features: TabularInput, prediction: Prediction) -> None:
         """Record one prediction call.
 
         Cheap enough for the request path: binning is a ``searchsorted``
         over the baseline edges, and nothing is allocated per row.
 
         Args:
-            features (Any): The rows that were predicted — the same value
-                passed to :meth:`~OnnxPredictor.predict`.
+            features (TabularInput): The rows that were predicted — the same
+                value passed to :meth:`~OnnxPredictor.predict`.
             prediction (Prediction): What came back.
         """
         with self._lock:
