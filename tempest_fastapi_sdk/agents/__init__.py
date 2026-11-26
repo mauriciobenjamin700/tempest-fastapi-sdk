@@ -62,6 +62,9 @@ from tempest_fastapi_sdk.agents.loop import succeeded as succeeded
 from tempest_fastapi_sdk.agents.memory import Fact as Fact
 from tempest_fastapi_sdk.agents.memory import FactStore as FactStore
 from tempest_fastapi_sdk.agents.memory import InMemoryFactStore as InMemoryFactStore
+from tempest_fastapi_sdk.agents.memory import (
+    SupportsMemorySearch as SupportsMemorySearch,
+)
 from tempest_fastapi_sdk.agents.memory import fact_tools as fact_tools
 from tempest_fastapi_sdk.agents.memory import facts_prompt as facts_prompt
 from tempest_fastapi_sdk.agents.memory import recall_prompt as recall_prompt
@@ -174,6 +177,7 @@ __all__: list[str] = [
     "StepKindEnum",
     "StopReasonEnum",
     "StructuredRun",
+    "SupportsMemorySearch",
     "ToolCallingBackend",
     "ToolHandler",
     "ToolResult",

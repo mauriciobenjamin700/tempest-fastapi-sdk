@@ -352,8 +352,9 @@ constructor change.
 
 ### Recall — semantic, across runs
 
-```python title="recall_run.py" hl_lines="19"
+```python title="recall_run.py" hl_lines="15 17 31"
 import asyncio
+from datetime import UTC, datetime
 
 from advanced_setup import BASE_PROMPT, build_generator
 
@@ -364,8 +365,19 @@ from tempest_fastapi_sdk.genai.rag import ChatMemory
 
 async def main() -> None:
     """Blend possibly-relevant past conversations into the prompt."""
-    chat_memory = ChatMemory(Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2))
-    goal = "Schedule a call with the client."
+    chat_memory = ChatMemory(
+        Embedder(EmbeddingModelEnum.ALL_MINILM_L6_V2),
+        min_similarity=0.3,
+    )
+    await chat_memory.index(
+        user_id="u1",
+        chat_id="earlier-chat",
+        message_id="m1",
+        role="user",
+        content="they prefer morning meetings",
+        created_at=datetime.now(UTC),
+    )
+    goal = "Schedule a meeting with the client."
 
     agent = Agent(
         build_generator(),
@@ -388,14 +400,34 @@ Possibly relevant from earlier conversations:
 - they prefer morning meetings
 ```
 
-Reuses the `ChatMemory` (Chroma/pgvector) the SDK already ships. Note the
+Reuses the chat memory the SDK already ships: `ChatMemory` (Chroma) or
+`PgChatMemory` (pgvector) — `recall_prompt` calls the `search` of either one,
+and accepts any object of that shape (`SupportsMemorySearch`). In an
+application, `index` runs on every message exchanged and `recall_prompt` in
+the next conversation; here both live in one file so the example runs on its
+own.
+
+!!! tip "Tune `min_similarity` to your embedder"
+    `ChatMemory`'s default floor is `0.55`. With `all-MiniLM-L6-v2`, this
+    example's memory scores `0.39` against the goal — under the floor, so
+    the block comes back empty. That is why the example passes
+    `min_similarity=0.3`. Measure the similarity with your model
+    (`await chat_memory.search(user_id=..., query=..., min_similarity=0.0)`
+    returns each hit's `similarity`) before you pick the floor.
+
+Note the
 heading: **"possibly relevant"**. Recall surfaces what *looks* related, and
 presenting that as fact is how an agent starts confidently asserting things
 nobody ever wrote.
 
-!!! check "A recall failure never stops the agent"
-    If the vector store is down, `recall_prompt` returns an empty string and
-    the run continues. Recall is an enhancement, not a requirement.
+!!! check "A recall failure never stops the agent — and is not silent"
+    If the vector store is down, `recall_prompt` logs a `WARNING` on the
+    `tempest_fastapi_sdk.agents.memory` logger, with the traceback, returns
+    an empty string, and the run continues. Recall is an enhancement, not a
+    requirement. A broken contract is different: an object without `search`
+    (or whose `search` does not take `user_id`, `query` and `top_k`) raises
+    `AttributeError` / `TypeError`, because swallowing that left the agent
+    running with no memory and no sign of it.
 
 ### Combining them
 

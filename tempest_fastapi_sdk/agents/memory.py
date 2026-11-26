@@ -37,13 +37,20 @@ by the time the model knows to ask, it has usually already answered.
 
 from __future__ import annotations
 
+import logging
 import time
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Awaitable, Sequence
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import Field
 
 from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool, AgentToolError
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.genai.rag import MemoryHit
+
+logger = logging.getLogger(__name__)
 
 _SCRATCH_KEY: str = "__scratchpad__"
 """Where the scratchpad lives on the run context."""
@@ -433,8 +440,39 @@ async def facts_prompt(
     return f"\n\n{heading}:\n{lines}"
 
 
+class SupportsMemorySearch(Protocol):
+    """What :func:`recall_prompt` needs from a semantic chat memory.
+
+    :class:`~tempest_fastapi_sdk.genai.rag.ChatMemory` (ChromaDB) and
+    :class:`~tempest_fastapi_sdk.genai.rag.PgChatMemory` (pgvector) both
+    satisfy it as shipped. The parameters are keyword-only because that is
+    how both backends declare them; a backend of your own may widen their
+    types (``user_id: str | UUID``, ``top_k: int | None``) and add further
+    optional parameters.
+    """
+
+    def search(
+        self,
+        *,
+        user_id: str,
+        query: str,
+        top_k: int,
+    ) -> Awaitable[Sequence[MemoryHit]]:
+        """Return the past messages most relevant to ``query``.
+
+        Args:
+            user_id (str): Whose history to search.
+            query (str): The natural-language query.
+            top_k (int): How many hits to return at most.
+
+        Returns:
+            Awaitable[Sequence[MemoryHit]]: The hits, best first.
+        """
+        ...
+
+
 async def recall_prompt(
-    memory: Any,
+    memory: SupportsMemorySearch,
     query: str,
     *,
     user_id: str,
@@ -443,14 +481,25 @@ async def recall_prompt(
 ) -> str:
     """Render semantic recall as a system-prompt block.
 
-    Wraps a :class:`~tempest_fastapi_sdk.genai.rag.ChatMemory` (or
-    anything with ``recall``) so the agent starts a run already holding
-    what past conversations might contribute. Recall is **fuzzy**: it
-    surfaces text that looks related, which is why it belongs behind a
-    heading that says "possibly" rather than being presented as fact.
+    Calls ``memory.search(user_id=..., query=..., top_k=...)`` on a
+    :class:`~tempest_fastapi_sdk.genai.rag.ChatMemory`,
+    :class:`~tempest_fastapi_sdk.genai.rag.PgChatMemory`, or anything else
+    shaped like :class:`SupportsMemorySearch`, so the agent starts a run
+    already holding what past conversations might contribute. Recall is
+    **fuzzy**: it surfaces text that looks related, which is why it belongs
+    behind a heading that says "possibly" rather than being presented as
+    fact.
+
+    Recall is an enhancement, so a backend outage does not stop the agent:
+    the failure is logged at ``WARNING`` on this module's logger and the
+    block comes back empty. A broken contract is not an outage —
+    ``AttributeError`` and ``TypeError`` (an object without ``search``, or
+    one whose ``search`` takes other arguments) propagate, because
+    swallowing them is how an agent used to run with no memory and no sign
+    of it.
 
     Args:
-        memory (Any): A ``ChatMemory``-shaped object.
+        memory (SupportsMemorySearch): The chat memory to search.
         query (str): The goal, used as the search query.
         user_id (str): Whose history to search.
         top_k (int): How many hits to include.
@@ -458,16 +507,26 @@ async def recall_prompt(
 
     Returns:
         str: The block, or an empty string when nothing is found or the
-        memory backend fails — recall is an enhancement, and a search
-        outage must not stop the agent from working.
+        memory backend fails.
+
+    Raises:
+        AttributeError: When ``memory`` has no ``search``.
+        TypeError: When ``memory.search`` does not accept the arguments.
     """
     try:
-        hits = await memory.recall(query, user_id=user_id, top_k=top_k)
-    except Exception:
+        hits = await memory.search(user_id=user_id, query=query, top_k=top_k)
+    except (AttributeError, TypeError):
+        raise
+    except Exception as exc:
+        logger.warning(
+            "recall_prompt: memory search failed, continuing without recall: %s",
+            exc,
+            exc_info=True,
+        )
         return ""
     if not hits:
         return ""
-    lines = "\n".join(f"- {getattr(hit, 'content', hit)}" for hit in hits)
+    lines = "\n".join(f"- {hit.content}" for hit in hits)
     return f"\n\n{heading}:\n{lines}"
 
 
@@ -475,6 +534,7 @@ __all__: list[str] = [
     "Fact",
     "FactStore",
     "InMemoryFactStore",
+    "SupportsMemorySearch",
     "fact_tools",
     "facts_prompt",
     "recall_prompt",
