@@ -10,7 +10,7 @@ The backend is `GoogleDriveUploadStorage`. It implements the same
 does not change at all: only the object passed as `backend=`.
 
 ```bash
-uv add "tempest-fastapi-sdk[upload,google-drive]"
+uv add "tempest-fastapi-sdk[upload,google-drive]>=0.373.0"
 ```
 
 The `[google-drive]` extra brings `pyjwt` and `cryptography` (`httpx` is
@@ -194,7 +194,8 @@ is created, and `exists` keeps finding exactly one — the same behaviour as
 overwriting on the local disk or MinIO.
 
 !!! warning "Two simultaneous writes of a new key"
-    Drive has no conditional create. If two requests write the **same new
+    As far as the Drive documentation shows, there is no conditional create
+    (not measured). If two requests write the **same new
     key** at the same time, both may create a file. Then `exists` answers
     `True`, the next write replaces the first one, and `delete` removes them
     all. The default `UploadUtils` key (a uuid) does not collide.
@@ -316,8 +317,9 @@ The backend uses Drive v3's
 | Key (or a `metadata` property) over 124 bytes | `ValidationException` | `422` |
 | Stream exceeded `max_size_bytes` | `FileTooLargeException` | `413` |
 
-Drive answers `404` both for a folder that does not exist and for one the
-account cannot see, so the message talks about the common case: sharing.
+Per the [error-handling guide](https://developers.google.com/workspace/drive/api/guides/handle-errors), Drive should answer `404` both for a
+folder that does not exist and for one the account cannot see (not measured
+here), so the message talks about the common case: sharing.
 
 ## Swapping the service account for another token
 
@@ -390,7 +392,7 @@ uv run pytest -m network tests/integrations/storage/google_drive/test_live.py
 
 ## Recap
 
-- `uv add "tempest-fastapi-sdk[upload,google-drive]"`, a service account
+- `uv add "tempest-fastapi-sdk[upload,google-drive]>=0.373.0"`, a service account
   with a JSON key, the Drive API enabled, a folder (ideally in a Shared
   Drive) shared with the `client_email`.
 - `GoogleDriveSettings` + `GoogleDriveUploadStorage.from_service_account(**settings.google_drive_kwargs())`.

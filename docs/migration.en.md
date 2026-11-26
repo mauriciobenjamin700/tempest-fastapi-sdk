@@ -2,7 +2,7 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## Unreleased — `BaseController` and `BaseService` bind `ResponseT` to the layer below
+## 0.373.0 — `BaseController` and `BaseService` bind `ResponseT` to the layer below
 
 Previously, `BaseController` declared its own `ResponseT` independently of the service and reached it via `cast("ResponseT", ...)` — a controller repeating the wrong schema passed `mypy --strict` and returned the service's schema at runtime (#838):
 
@@ -86,7 +86,7 @@ If one of your controllers fails after upgrading:
 - **Two-argument controller over a three-argument service calling `update`:** `controller.update(id, payload)` now requires the service's `UpdateT` instead of any `BaseSchema`; pass the concrete update schema.
 - **Service whose `BaseRepository[Model, Resp]` disagrees with the service's `ResponseT`:** `basedpyright` now rejects the call site until both declare the same response schema.
 
-## Unreleased — `ObjectStat.raw` can be `None`
+## 0.373.0 — `ObjectStat.raw` can be `None`
 
 `ObjectStat.raw` is now annotated `minio.datatypes.Object | None` (#836). Nothing changes at runtime: `AsyncMinIOClient` still fills in the `minio` `Object`, and `LocalObjectStorageClient` and `FakeObjectStorageClient` still return `None`, as they always did. What changes is the checker: an unchecked read such as `stat.raw.version_id` is now `error: Item "None" of "Object | None" has no attribute "version_id"  [union-attr]` under mypy. Before, it accepted the line, which raised `AttributeError` against the local backend and the fake.
 
@@ -104,7 +104,7 @@ def version_of(stat: ObjectStat) -> str | None:
 
 If you already had that check and silenced mypy's `unreachable` (`warn_unreachable`) with `# type: ignore`, the ignore is no longer needed.
 
-## Unreleased — `SignedCookieSessionStore`'s `same_site` typed as a `Literal`
+## 0.373.0 — `SignedCookieSessionStore`'s `same_site` typed as a `Literal`
 
 `SignedCookieSessionStore`'s `same_site` parameter was a `str` and is now `SameSite` (`Literal["lax", "strict", "none"]`, exported from `tempest_fastapi_sdk`). A value outside the three now raises `ValueError` at construction, instead of an `AssertionError` on the first login. mypy rejects (`arg-type`) two forms that used to pass:
 
@@ -122,7 +122,7 @@ store: SignedCookieSessionStore = SignedCookieSessionStore(
 )
 ```
 
-## Unreleased — `BaseUserModel` without phantom columns
+## 0.373.0 — `BaseUserModel` without phantom columns
 
 `BaseUserModel` declared `totp_secret`, `totp_enabled_at`, `totp_last_step` and `name` for the type checker only. At runtime those columns come from `MFAMixin` and `NameMixin`, so a model without the mixin passed `mypy --strict` and raised `AttributeError` on the line:
 
@@ -166,6 +166,18 @@ The SDK now reads the columns the same way, which changes three behaviours for a
 - `UserAuthService.mfa_enroll` raises `TypeError` before writing any row. It used to return a secret with no column to live in and store the recovery codes. `mfa_confirm` answers `422` (`MFA not initialized`), and `mfa_disable` / `mfa_reset`, which raised `AttributeError`, answer `422` (`MFA not active`).
 - A model that declares its **own** `name` column, without `NameMixin`, registers the passkey (`WebAuthnService.register_begin`) with the e-mail as `display_name`. To keep the name, replace the hand-written column with `NameMixin`.
 - `tempest user create --require-mfa` and `tempest user mfa-reset` require `MFAMixin` on the class; hand-declared `totp_*` columns are no longer enough.
+
+## 0.373.0 — runtime breaks outside the checker and narrowed public types
+
+Three changes in this release break at **runtime**, not only in the type checker:
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `recall_prompt(memory, ...)` | Calls `memory.search(user_id=..., query=..., top_k=...)` — the method `ChatMemory` and `PgChatMemory` have — instead of `memory.recall(...)`, which no SDK class had. A custom memory that only implemented `recall` now raises `AttributeError` (it used to return `""` silently); a failing backend that has `search` still returns `""`, with a `WARNING` on the `tempest_fastapi_sdk.agents.memory` logger | Implement `search(*, user_id, query, top_k)` returning the `MemoryHit`s, or pass a `ChatMemory`/`PgChatMemory`. The `SupportsMemorySearch` Protocol describes the shape |
+| Agent and `AIChatPipeline` with tools | Decide through `isinstance(generator, ToolCallingBackend)`, which requires `chat` **and** `chat_with_tools`. A test double with only `chat_with_tools` stops running the tool loop | Give the double `async def chat(self, messages, /) -> str` too |
+| `FakePixProvider.parse_webhook(event)` | Takes `object` and raises `TypeError` (`parse_webhook expects a mapping, got str.`) for anything that is not a `Mapping` | Pass the webhook body already decoded as a `dict` |
+
+The rest of this release's type changes (#839, #841, #842 and the settings part of #843) only show up in `mypy`/`basedpyright`: public returns and parameters that were `Any` got a type, and the settings `*_kwargs()` return a `TypedDict` — reading by key and the `**` splat keep working; only code that inserted a new key into the returned dict breaks. Each item, with its own migration note, is in the 0.373.0 [changelog](changelog.md).
 
 ## 0.372.0 — five new `tempest check` rules and `RuntimeError` without a URL in `AlembicHelper`
 

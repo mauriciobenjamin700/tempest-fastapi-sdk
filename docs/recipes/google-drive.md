@@ -10,7 +10,7 @@ O backend é o `GoogleDriveUploadStorage`. Ele implementa o mesmo protocolo
 muda nada: só o objeto passado em `backend=`.
 
 ```bash
-uv add "tempest-fastapi-sdk[upload,google-drive]"
+uv add "tempest-fastapi-sdk[upload,google-drive]>=0.373.0"
 ```
 
 O extra `[google-drive]` traz `pyjwt` e `cryptography` (o `httpx` já vem no
@@ -193,7 +193,8 @@ criado, e `exists` continua achando um só — o mesmo comportamento do disco
 local e do MinIO ao sobrescrever.
 
 !!! warning "Duas escritas simultâneas de uma key nova"
-    O Drive não tem create condicional. Se duas requisições gravarem a
+    Até onde a documentação do Drive mostra, não há criação condicional
+    (não medido). Se duas requisições gravarem a
     **mesma key nova** ao mesmo tempo, as duas podem criar arquivo. Nesse
     caso `exists` responde `True`, a próxima escrita substitui o primeiro e
     `delete` apaga todos. A key padrão do `UploadUtils` (uuid) não colide.
@@ -313,9 +314,9 @@ do Drive v3:
 | Key (ou propriedade de `metadata`) passa de 124 bytes | `ValidationException` | `422` |
 | Stream passou de `max_size_bytes` | `FileTooLargeException` | `413` |
 
-O Drive responde `404` tanto para pasta inexistente quanto para pasta que a
-conta não enxerga, por isso a mensagem fala do caso mais comum:
-compartilhar.
+Pela [documentação de erros](https://developers.google.com/workspace/drive/api/guides/handle-errors), o Drive deve responder `404` tanto
+para pasta inexistente quanto para pasta que a conta não enxerga (não medido
+aqui), por isso a mensagem fala do caso mais comum: compartilhar.
 
 ## Trocar a service account por outro token
 
@@ -388,7 +389,7 @@ uv run pytest -m network tests/integrations/storage/google_drive/test_live.py
 
 ## Recap
 
-- `uv add "tempest-fastapi-sdk[upload,google-drive]"`, service account com
+- `uv add "tempest-fastapi-sdk[upload,google-drive]>=0.373.0"`, service account com
   chave JSON, Drive API habilitada, pasta (de preferência num Shared Drive)
   compartilhada com o `client_email`.
 - `GoogleDriveSettings` + `GoogleDriveUploadStorage.from_service_account(**settings.google_drive_kwargs())`.

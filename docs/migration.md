@@ -2,7 +2,7 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## Unreleased — `BaseController` e `BaseService` ligam `ResponseT` à camada de baixo
+## 0.373.0 — `BaseController` e `BaseService` ligam `ResponseT` à camada de baixo
 
 Antes, `BaseController` declarava o próprio `ResponseT` independente do service e convertia o retorno com `cast("ResponseT", ...)` — um controller que repetia o schema errado passava no `mypy --strict` e devolvia o schema do service em runtime (#838):
 
@@ -86,7 +86,7 @@ Se um controller seu falhar após a atualização:
 - **Controller 2-arg sobre service 3-arg chamando `update`:** `controller.update(id, payload)` agora exige o `UpdateT` do service em vez de aceitar qualquer `BaseSchema`; passe o schema de update concreto.
 - **Service com `BaseRepository[Model, Resp]` diferente do `ResponseT` do service:** no `basedpyright`, o call site passa a recusar o acesso aos métodos de leitura/mapeamento até os dois concordarem.
 
-## Unreleased — `ObjectStat.raw` pode ser `None`
+## 0.373.0 — `ObjectStat.raw` pode ser `None`
 
 `ObjectStat.raw` agora é anotado `minio.datatypes.Object | None` (#836). Em runtime nada mudou: o `AsyncMinIOClient` continua preenchendo o `Object` do `minio`, e o `LocalObjectStorageClient` e o `FakeObjectStorageClient` continuam devolvendo `None`, como já faziam. O que muda é o checker: leitura sem checagem, como `stat.raw.version_id`, passa a ser `error: Item "None" of "Object | None" has no attribute "version_id"  [union-attr]` no mypy. Antes ele aceitava a linha, que levantava `AttributeError` contra o backend local e o fake.
 
@@ -104,7 +104,7 @@ def version_of(stat: ObjectStat) -> str | None:
 
 Se você já fazia essa checagem e silenciava o `unreachable` do mypy (`warn_unreachable`) com `# type: ignore`, o ignore deixa de ser necessário.
 
-## Unreleased — `same_site` do `SignedCookieSessionStore` tipado como `Literal`
+## 0.373.0 — `same_site` do `SignedCookieSessionStore` tipado como `Literal`
 
 O parâmetro `same_site` de `SignedCookieSessionStore` era `str` e passa a ser `SameSite` (`Literal["lax", "strict", "none"]`, exportado em `tempest_fastapi_sdk`). Valor fora dos três agora levanta `ValueError` na construção, em vez de `AssertionError` no primeiro login. O mypy recusa (`arg-type`) duas formas que antes passavam:
 
@@ -122,7 +122,7 @@ store: SignedCookieSessionStore = SignedCookieSessionStore(
 )
 ```
 
-## Unreleased — `BaseUserModel` sem colunas fantasmas
+## 0.373.0 — `BaseUserModel` sem colunas fantasmas
 
 `BaseUserModel` declarava `totp_secret`, `totp_enabled_at`, `totp_last_step` e `name` só para o checker. Em runtime essas colunas vêm de `MFAMixin` e `NameMixin`, então um model sem o mixin passava no `mypy --strict` e levantava `AttributeError` na linha:
 
@@ -166,6 +166,18 @@ O SDK passou a ler as colunas do mesmo jeito, e isso muda três comportamentos p
 - `UserAuthService.mfa_enroll` levanta `TypeError` antes de gravar qualquer linha. Antes devolvia um segredo sem coluna onde morar e gravava os recovery codes. `mfa_confirm` responde `422` (`MFA not initialized`), e `mfa_disable` / `mfa_reset`, que levantavam `AttributeError`, respondem `422` (`MFA not active`).
 - Model que declara a **própria** coluna `name`, sem `NameMixin`, registra a passkey (`WebAuthnService.register_begin`) com o e-mail como `display_name`. Para manter o nome, troque a coluna própria por `NameMixin`.
 - `tempest user create --require-mfa` e `tempest user mfa-reset` exigem `MFAMixin` na classe; colunas `totp_*` declaradas à mão não bastam mais.
+
+## 0.373.0 — quebras de runtime fora do checker e tipos públicos estreitados
+
+Três mudanças desta release quebram em **runtime**, não só no type-checker:
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `recall_prompt(memory, ...)` | Chama `memory.search(user_id=..., query=..., top_k=...)` — o método que `ChatMemory` e `PgChatMemory` têm — em vez de `memory.recall(...)`, que nenhuma classe do SDK tinha. Memória própria que implementava só `recall` agora levanta `AttributeError` (antes devolvia `""` em silêncio); falha de um backend com `search` continua devolvendo `""`, com um `WARNING` no logger `tempest_fastapi_sdk.agents.memory` | Implemente `search(*, user_id, query, top_k)` devolvendo os `MemoryHit`, ou passe um `ChatMemory`/`PgChatMemory`. O Protocol `SupportsMemorySearch` descreve o formato |
+| Agente e `AIChatPipeline` com ferramentas | Decidem por `isinstance(generator, ToolCallingBackend)`, que exige `chat` **e** `chat_with_tools`. Um dublê só com `chat_with_tools` deixa de rodar o loop de ferramentas | Dê ao dublê também `async def chat(self, messages, /) -> str` |
+| `FakePixProvider.parse_webhook(event)` | Recebe `object` e levanta `TypeError` (`parse_webhook expects a mapping, got str.`) para o que não for `Mapping` | Passe o corpo do webhook já decodificado como `dict` |
+
+O resto das mudanças de tipo desta release (#839, #841, #842 e a parte de settings de #843) só aparece no `mypy`/`basedpyright`: retornos e parâmetros públicos que eram `Any` ganharam tipo, e os `*_kwargs()` dos settings devolvem `TypedDict` — leitura por chave e o splat `**` continuam funcionando; quebra só quem inseria chave nova no dict devolvido. Cada item, com a nota de migração própria, está no [changelog](changelog.md) da 0.373.0.
 
 ## 0.372.0 — cinco regras novas no `tempest check` e `RuntimeError` sem URL no `AlembicHelper`
 
