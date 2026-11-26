@@ -48,13 +48,14 @@ from __future__ import annotations
 
 import builtins
 from collections.abc import Sequence
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import CursorResult, delete, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
+from typing_extensions import TypeVar
 
 from tempest_fastapi_sdk.db.expressions import WhereClause
 from tempest_fastapi_sdk.db.model import BaseModel
@@ -63,9 +64,10 @@ from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
 
 TenantModelType = TypeVar("TenantModelType", bound=BaseModel)
+TenantResponseT = TypeVar("TenantResponseT", covariant=True, default=Any)
 
 
-class TenantScopedRepository(BaseRepository[TenantModelType]):
+class TenantScopedRepository(BaseRepository[TenantModelType, TenantResponseT]):
     """A :class:`BaseRepository` locked to a single tenant.
 
     Every read is filtered by ``tenant_id`` and every write is stamped

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `BaseController` deixou de devolver o próprio `ResponseT` por `cast` sem
+  prova e `BaseService` / `BaseRepository` agora amarram o tipo de resposta
+  entre si (#838). Antes, um `WrongController(BaseController[UserService,
+  OrderResponseSchema])` passava no `mypy --strict` e entregava
+  `UserResponseSchema` em runtime; os pass-throughs `get_by_id`, `list` e
+  `update` do `BaseController` agora extraem o tipo de resposta (e de update,
+  no `update`) direto do `ServiceT`, sem `cast`, e `BaseController[Service]`
+  com um argumento só passa a ser suficiente (`BaseController[Service, Resp]`
+  e `BaseController[Service, Resp, Update]` continuam aceitos por
+  compatibilidade via defaults de `TypeVar`). `BaseRepository` (e
+  `TenantScopedRepository`) ganhou um segundo parâmetro genérico covariante
+  opcional `ResponseT` (default `Any`, mantendo `BaseRepository[Model]`
+  compatível): `map_to_response` passa a devolver
+  `ResponseT | Awaitable[ResponseT]` (e `map_to_schema` devolve `object`),
+  removendo os `-> Any` públicos e os `type: ignore[no-any-return]` de
+  `BaseService._map_to_response`. Quando o repository declara
+  `BaseRepository[Model, Resp]`, o `basedpyright` recusa divergência entre o
+  `ResponseT` do service e o do repository no call site. **Quebra de tipo**
+  para controllers cujo `ResponseT` ou `UpdateT` discordava do service (e para
+  subclasses que sobrescrevem `BaseController.update` sob `basedpyright`
+  estrito, onde o parâmetro de método genérico acusa
+  `reportIncompatibleMethodOverride`); veja o guia de migração.
 - `ObjectStat.raw` passa a ser `minio.datatypes.Object | None` (#836). O
   `LocalObjectStorageClient` e o `FakeObjectStorageClient` sempre devolveram
   `raw=None`, escondido por `type: ignore[arg-type]` nos dois construtores:

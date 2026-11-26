@@ -44,7 +44,7 @@ flowchart LR
     | **Repository** | Queries SQLAlchemy async cruas, CRUD + filtro + paginação | Regras de domínio, HTTP |
     | **UI** (quando o serviço entrega HTML) | Páginas, componentes, formulários e folha de estilo — *como isso aparece* | DB, controllers, services, HTTP |
 
-O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository]. O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde — ou, quando orquestra vários services sem CRUD de um recurso só, de [`Controller`][tempest_fastapi_sdk.Controller] (veja [Controller que orquestra](#controller-que-orquestra-controller)).
+O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType, ResponseT]`][tempest_fastapi_sdk.BaseRepository] (ou `BaseRepository[ModelType]`, com `ResponseT` opcional). O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde — ou, quando orquestra vários services sem CRUD de um recurso só, de [`Controller`][tempest_fastapi_sdk.Controller] (veja [Controller que orquestra](#controller-que-orquestra-controller)).
 
 ## Layout obrigatório do projeto
 
@@ -252,7 +252,7 @@ True
 ## Camadas de controllers & services
 
 
-`BaseService[RepositoryT, ResponseT]` e `BaseController[ServiceT, ResponseT]` são esqueletos genéricos que casam com o fatiamento do SDK (router → controller → service → repository). Eles expõem métodos CRUD pass-through para que endpoints simples possam herdar deles sem sobrescrever nada; você sobrescreve apenas os métodos que precisam de orquestração.
+`BaseService[RepositoryT, ResponseT]` e `BaseController[ServiceT]` são esqueletos genéricos que casam com o fatiamento do SDK (router → controller → service → repository). Eles expõem métodos CRUD pass-through para que endpoints simples possam herdar deles sem sobrescrever nada; você sobrescreve apenas os métodos que precisam de orquestração.
 
 O que você herda ao subclassear `BaseService[RepositoryT, ResponseT]`:
 
@@ -267,9 +267,9 @@ O que você herda ao subclassear `BaseService[RepositoryT, ResponseT]`:
 | `update(id, data)` | `ResponseT` | Busca por id, copia os campos presentes em `data` (tipado por `UpdateT`, o 3º parâmetro genérico opcional — default `BaseSchema`) na instância, persiste e mapeia. `to_dict()` descarta unset/`None`, então serve PUT e PATCH. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
-`map_to_response` é aguardado com `await` quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método.
+`map_to_response` é aguardado com `await` quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método. Quando o repository declara o 2º parâmetro genérico (`BaseRepository[ModelType, ResponseT]`), `map_to_response` fica tipado com `ResponseT` e o `BaseService` amarra o próprio tipo de resposta ao do repository (o `basedpyright` recusa divergência no call site).
 
-O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
+O que você herda ao subclassear `BaseController[ServiceT]` (as formas `BaseController[ServiceT, ResponseT]` e `BaseController[ServiceT, ResponseT, UpdateT]` continuam aceitas por compatibilidade, mas os métodos pass-through leem os tipos de resposta e update direto de `ServiceT`):
 
 | Método | Encaminha para | Notas |
 | --- | --- | --- |
@@ -277,11 +277,11 @@ O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
 | `list(filters, order_by, ascending)` | `service.list` | Igual. |
 | `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Igual. |
 | `count(filters)` | `service.count` | Igual. |
-| `update(id, data)` | `service.update` | Igual. |
+| `update(id, data)` | `service.update` | Recebe o `UpdateT` do service e devolve o `ResponseT` dele. |
 | `delete(id)` | `service.delete` | Igual. |
 
 !!! tip "Tipando o payload de `update` ponta a ponta"
-    O 3º parâmetro genérico é o schema de update, e ele precisa ser o **mesmo** nas duas camadas: um service declarado como `BaseService[Repo, Resp, MeuUpdateSchema]` encaixa em `BaseController[MeuService, Resp, MeuUpdateSchema]`. Omitir o 3º parâmetro em qualquer uma delas cai no default `BaseSchema`, e o `data` de `update` chega sem tipo preciso.
+    O 3º parâmetro genérico do `BaseService` é o schema de update (`BaseService[Repo, Resp, MeuUpdateSchema]`). Como `BaseController[MeuService]` deriva tanto o retorno quanto o `data` de `update` direto do service, basta passar o service uma vez — não precisa repetir o schema de resposta nem o de update no controller (repeti-los em `BaseController[MeuService, Resp, MeuUpdateSchema]` continua aceito por compatibilidade).
 
     ```python
     from tempest_fastapi_sdk import BaseController, BaseService
@@ -296,10 +296,8 @@ O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
         """Service tipado sobre o schema de update concreto."""
 
 
-    class CoinPackController(
-        BaseController[CoinPackService, CoinPackResponseSchema, CoinPackUpdateSchema]
-    ):
-        """Controller que repete o mesmo schema de update."""
+    class CoinPackController(BaseController[CoinPackService]):
+        """Controller deriva resposta e update direto do service."""
     ```
 
     !!! warning "Requer 0.167.1+"
@@ -341,7 +339,7 @@ from src.schemas.user import UserCreate, UserResponse
 from src.services.user_service import UserService
 
 
-class UserController(BaseController[UserService, UserResponse]):
+class UserController(BaseController[UserService]):
     """Thin orchestration over UserService."""
 
     async def signup(self, data: UserCreate) -> UserResponse:
@@ -409,7 +407,7 @@ dela, então `isinstance(controller, Controller)` vale para os dois.
 
 | O seu controller… | Herde |
 | --- | --- |
-| repassa o CRUD de um recurso, via um service | `BaseController[ServiceT, ResponseT, UpdateT]` |
+| repassa o CRUD de um recurso, via um service | `BaseController[ServiceT]` |
 | coordena vários services, sem CRUD de recurso único | `Controller` |
 
 ```python
@@ -583,7 +581,7 @@ class CategoryRepository(BaseRepository[CategoryModel]):
         )
 
 
-class ProductRepository(BaseRepository[ProductModel]):
+class ProductRepository(BaseRepository[ProductModel, ProductResponseSchema]):
     """Data access for products; owns the response mapper."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -654,7 +652,7 @@ class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
         return self.repository.map_to_response(instance)
 
 
-class ProductController(BaseController[ProductService, ProductResponseSchema]):
+class ProductController(BaseController[ProductService]):
     """Product use cases; a pass-through for now."""
 
     async def create(self, data: ProductCreateSchema) -> ProductResponseSchema:
@@ -996,7 +994,7 @@ class ProductResponseSchema(BaseResponseSchema):
     name: str
 
 
-class ProductRepository(BaseRepository[ProductModel]):
+class ProductRepository(BaseRepository[ProductModel, ProductResponseSchema]):
     """Data access for products."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -1023,7 +1021,7 @@ class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
     """Business rules for products."""
 
 
-class ProductController(BaseController[ProductService, ProductResponseSchema]):
+class ProductController(BaseController[ProductService]):
     """Product use cases."""
 
     @requires(require_admin)

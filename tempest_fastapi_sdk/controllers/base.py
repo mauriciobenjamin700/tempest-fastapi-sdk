@@ -8,7 +8,7 @@ service with CRUD pass-throughs.
 
 from __future__ import annotations
 
-from typing import Any, Generic, cast
+from typing import Any, Generic
 from uuid import UUID
 
 from typing_extensions import TypeVar
@@ -16,18 +16,23 @@ from typing_extensions import TypeVar
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.services.base import BaseService
 
-ServiceT = TypeVar("ServiceT", bound=BaseService[Any, Any, Any])
+ServiceT = TypeVar("ServiceT", bound=BaseService[Any, Any, Any], covariant=True)
 """Concrete service class the controller delegates to. The bound spells all
 three of :class:`BaseService`'s parameters as ``Any``: ``BaseService[Any, Any]``
 is not a partial application — PEP 696 fills the omitted ``UpdateT`` with its
 default (:class:`BaseSchema`), and because ``UpdateT`` is invariant that bound
 only admits services whose update schema is exactly ``BaseSchema``. Any service
 declared as ``BaseService[Repo, Resp, MyUpdateSchema]`` would be rejected."""
-ResponseT = TypeVar("ResponseT")
+ResponseT = TypeVar("ResponseT", default=Any)
+"""Optional response schema parameter kept for compatibility with
+``BaseController[Service, Resp]``. Pass-through methods return the response
+type of ``ServiceT`` directly, so ``BaseController[Service]`` is sufficient."""
 UpdateT = TypeVar("UpdateT", bound=BaseSchema, default=BaseSchema)
-"""Update-payload schema for :meth:`BaseController.update`. Defaults to
-:class:`BaseSchema`, so ``BaseController[Service, Resp]`` still works;
-pass a third argument to type the payload precisely."""
+"""Optional update-payload schema parameter kept for compatibility with
+``BaseController[Service, Resp, Update]``. :meth:`BaseController.update`
+derives its payload type from ``ServiceT`` directly."""
+_ServiceResponseT = TypeVar("_ServiceResponseT")
+_ServiceUpdateT = TypeVar("_ServiceUpdateT", bound=BaseSchema)
 
 
 class Controller:
@@ -80,12 +85,16 @@ class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
     pass-throughs untouched otherwise.
 
     Generic parameters:
-        ServiceT: The concrete service class.
-        ResponseT: The response schema returned to the router.
-        UpdateT: The update-payload schema accepted by :meth:`update`.
-            Optional — defaults to :class:`BaseSchema`, so a two-argument
-            ``BaseController[Service, Resp]`` still works; supply it to
-            type the ``update`` payload precisely.
+        ServiceT: The concrete service class. Pass-through methods derive
+            their response and update types from ``ServiceT``, so
+            ``BaseController[Service]`` is enough.
+        ResponseT: Optional, defaults to ``Any`` so existing
+            ``BaseController[Service, Resp]`` declarations keep working.
+            Pass-through return types come from ``ServiceT``, not this
+            parameter.
+        UpdateT: Optional, defaults to :class:`BaseSchema` so existing
+            ``BaseController[Service, Resp, Update]`` declarations keep
+            working. :meth:`update` accepts ``ServiceT``'s update schema.
 
     Attributes:
         service (ServiceT): The service the controller delegates to.
@@ -99,23 +108,26 @@ class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
         """
         self.service: ServiceT = service
 
-    async def get_by_id(self, id: UUID) -> ResponseT:
+    async def get_by_id(
+        self: BaseController[BaseService[Any, _ServiceResponseT, Any], Any, Any],
+        id: UUID,
+    ) -> _ServiceResponseT:
         """Pass-through to :meth:`BaseService.get_by_id`.
 
         Args:
             id (UUID): The primary key.
 
         Returns:
-            ResponseT: The mapped response.
+            _ServiceResponseT: The mapped response returned by ``self.service``.
         """
-        return cast("ResponseT", await self.service.get_by_id(id))
+        return await self.service.get_by_id(id)
 
     async def list(
-        self,
+        self: BaseController[BaseService[Any, _ServiceResponseT, Any], Any, Any],
         filters: dict[str, Any] | None = None,
         order_by: Any | None = None,
         ascending: bool = True,
-    ) -> list[ResponseT]:
+    ) -> list[_ServiceResponseT]:
         """Pass-through to :meth:`BaseService.list`.
 
         Args:
@@ -129,15 +141,13 @@ class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
             ascending (bool): Whether to order ascending.
 
         Returns:
-            list[ResponseT]: The mapped responses.
+            list[_ServiceResponseT]: The mapped responses returned by
+            ``self.service``.
         """
-        return cast(
-            "list[ResponseT]",
-            await self.service.list(
-                filters=filters,
-                order_by=order_by,
-                ascending=ascending,
-            ),
+        return await self.service.list(
+            filters=filters,
+            order_by=order_by,
+            ascending=ascending,
         )
 
     async def paginate(
@@ -189,17 +199,25 @@ class BaseController(Controller, Generic[ServiceT, ResponseT, UpdateT]):
         """
         return await self.service.count(filters)
 
-    async def update(self, id: UUID, data: UpdateT) -> ResponseT:
+    async def update(
+        self: BaseController[
+            BaseService[Any, _ServiceResponseT, _ServiceUpdateT], Any, Any
+        ],
+        id: UUID,
+        data: _ServiceUpdateT,
+    ) -> _ServiceResponseT:
         """Pass-through to :meth:`BaseService.update`.
 
         Args:
             id (UUID): The primary key of the record to update.
-            data (UpdateT): The update payload (unset fields skipped).
+            data (_ServiceUpdateT): The update payload accepted by
+                ``self.service`` (unset fields skipped).
 
         Returns:
-            ResponseT: The mapped, updated response.
+            _ServiceResponseT: The mapped, updated response returned by
+            ``self.service``.
         """
-        return cast("ResponseT", await self.service.update(id, data))
+        return await self.service.update(id, data)
 
     async def delete(self, id: UUID) -> None:
         """Pass-through to :meth:`BaseService.delete`.

@@ -98,7 +98,7 @@ exception contract.
 | `__init__.py` only re-exports | `from .x import Y as Y` + `__all__`; assembly in `router.py`, `factory.py`, `runner.py` | `INIT001` |
 | A resource is a process singleton in one place | `api/dependencies/resources.py` (`db`, `get_session`, `get_*`) | — (scaffold convention) |
 | Providers per layer; a router never sees `AsyncSession` | `api/dependencies/controllers.py` calls the `build_*` | `RTR001`, `DI001`–`DI003` |
-| A controller inherits the SDK's base | `BaseController[Service, Schema]` (one service) or `Controller` (several, or none) | — (scaffold convention) |
+| A controller inherits the SDK's base | `BaseController[Service]` (one service) or `Controller` (several, or none) | — (scaffold convention) |
 | Login and signup come from the SDK | `UserAuthService` + `make_auth_router(..., prefix="/api/auth")` | — (no gate) |
 | `/api` set in one place | `routers/api.py` → `build_api_router()` | `RTR003`, `RTR004` |
 | A domain router is a `TempestAPIRouter` | `TempestAPIRouter(prefix=...)`, never `fastapi.APIRouter` | `RTR005` |

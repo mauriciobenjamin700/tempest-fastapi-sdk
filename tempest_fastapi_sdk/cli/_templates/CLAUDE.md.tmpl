@@ -316,7 +316,7 @@ from src.db.models import ProductModel
 from src.schemas import ProductResponseSchema
 
 
-class ProductRepository(BaseRepository[ProductModel]):
+class ProductRepository(BaseRepository[ProductModel, ProductResponseSchema]):
     """Data access for products."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -437,7 +437,7 @@ from src.schemas import ProductCreateSchema, ProductResponseSchema
 from src.services import ProductService
 
 
-class ProductController(BaseController[ProductService, ProductResponseSchema]):
+class ProductController(BaseController[ProductService]):
     """Coordination layer for products."""
 
     async def create(self, data: ProductCreateSchema) -> ProductResponseSchema:
@@ -460,8 +460,11 @@ __all__: list[str] = ["ProductController"]
 ```
 
 A controller over **one** service subclasses
-`BaseController[Service, ResponseSchema]`, which passes `get_by_id`,
-`list`, `paginate`, `count`, `update` and `delete` through. One that coordinates
+`BaseController[Service]`, which passes `get_by_id`,
+`list`, `paginate`, `count`, `update` and `delete` through with the response
+and update schemas derived directly from `Service` (the older
+`BaseController[Service, ResponseSchema]` form remains accepted for
+compatibility). One that coordinates
 several services — or reads none, like `ServiceInfoController` —
 subclasses `Controller`, the bare root of the layer, so the router is not
 handed CRUD methods that mean nothing for it. Both come from
