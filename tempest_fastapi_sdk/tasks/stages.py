@@ -45,7 +45,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
 
 
 class StageStatusEnum(StrEnum):
@@ -192,11 +191,11 @@ class StageMap:
                 f"unknown stage {stage!r}; declared: {', '.join(self._order)}",
             ) from None
 
-    def status(self, record: Any, stage: str) -> StageStatusEnum | None:
+    def status(self, record: object, stage: str) -> StageStatusEnum | None:
         """Read a stage's status off a record.
 
         Args:
-            record (Any): The row.
+            record (object): The row.
             stage (str): The stage name.
 
         Returns:
@@ -210,11 +209,11 @@ class StageMap:
         raw = getattr(record, self.columns(stage).status, None)
         return StageStatusEnum(raw) if raw is not None else None
 
-    def is_running(self, record: Any, stage: str) -> bool:
+    def is_running(self, record: object, stage: str) -> bool:
         """Does this stage still have work to stop?
 
         Args:
-            record (Any): The row.
+            record (object): The row.
             stage (str): The stage name.
 
         Returns:
@@ -225,7 +224,7 @@ class StageMap:
         """
         return self.status(record, stage) in RUNNING_STAGE_STATUSES
 
-    def owns(self, record: Any, stage: str, expected: StageStatusEnum) -> bool:
+    def owns(self, record: object, stage: str, expected: StageStatusEnum) -> bool:
         """Does the run that set ``expected`` still own this stage?
 
         The check to make **before writing a result**, and it is about
@@ -235,7 +234,7 @@ class StageMap:
         resurrects stopped work, the other clobbers a fresher result.
 
         Args:
-            record (Any): A **freshly read** row. Re-read it before calling
+            record (object): A **freshly read** row. Re-read it before calling
                 this; an object loaded before the long work started still
                 holds the old status and would answer ``True`` no matter
                 what happened meanwhile.
@@ -252,12 +251,12 @@ class StageMap:
 
     def mark(
         self,
-        record: Any,
+        record: object,
         stage: str,
         status: StageStatusEnum,
         *,
         error: str | None = None,
-        result: Any = None,
+        result: object = None,
     ) -> None:
         """Move a stage, writing the error and result columns with it.
 
@@ -269,12 +268,12 @@ class StageMap:
         a restarted stage stops showing the message from the run before it.
 
         Args:
-            record (Any): The row.
+            record (object): The row.
             stage (str): The stage name.
             status (StageStatusEnum): The new status.
             error (str | None): The failure message; only meaningful with
                 ``FAILED``.
-            result (Any): What the stage produced. ``None`` leaves the
+            result (object): What the stage produced. ``None`` leaves the
                 result column untouched, so marking ``DONE`` without a
                 value does not erase one written earlier.
 
@@ -299,7 +298,7 @@ class StageMap:
 
     def cancel(
         self,
-        record: Any,
+        record: object,
         stages: Iterable[str] | None = None,
     ) -> tuple[list[str], list[str]]:
         """Cancel every requested stage that still has work to stop.
@@ -314,7 +313,7 @@ class StageMap:
         second is never created.
 
         Args:
-            record (Any): The row.
+            record (object): The row.
             stages (Iterable[str] | None): Which to cancel; ``None``
                 cancels every declared stage that is running.
 
@@ -337,14 +336,14 @@ class StageMap:
                 ignored.append(stage)
         return cancelled, ignored
 
-    def snapshot(self, record: Any) -> dict[str, StageStatusEnum | None]:
+    def snapshot(self, record: object) -> dict[str, StageStatusEnum | None]:
         """Read every stage's status at once.
 
         What a status endpoint serializes, and what a test asserts on
         without naming a column.
 
         Args:
-            record (Any): The row.
+            record (object): The row.
 
         Returns:
             dict[str, StageStatusEnum | None]: Status per stage, in declaration
