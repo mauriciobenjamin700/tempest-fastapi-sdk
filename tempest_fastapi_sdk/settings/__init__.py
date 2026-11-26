@@ -15,6 +15,27 @@ from tempest_fastapi_sdk.settings.base import BaseAppSettings as BaseAppSettings
 from tempest_fastapi_sdk.settings.base import (
     reject_conflicting_env_aliases as reject_conflicting_env_aliases,
 )
+from tempest_fastapi_sdk.settings.kwargs import AnthropicKwargs as AnthropicKwargs
+from tempest_fastapi_sdk.settings.kwargs import DatabaseKwargs as DatabaseKwargs
+from tempest_fastapi_sdk.settings.kwargs import DeepSeekKwargs as DeepSeekKwargs
+from tempest_fastapi_sdk.settings.kwargs import EmailKwargs as EmailKwargs
+from tempest_fastapi_sdk.settings.kwargs import FirebaseKwargs as FirebaseKwargs
+from tempest_fastapi_sdk.settings.kwargs import GeminiKwargs as GeminiKwargs
+from tempest_fastapi_sdk.settings.kwargs import GitHubOAuthKwargs as GitHubOAuthKwargs
+from tempest_fastapi_sdk.settings.kwargs import GoogleOAuthKwargs as GoogleOAuthKwargs
+from tempest_fastapi_sdk.settings.kwargs import HostBridgeKwargs as HostBridgeKwargs
+from tempest_fastapi_sdk.settings.kwargs import HostedGenAIKwargs as HostedGenAIKwargs
+from tempest_fastapi_sdk.settings.kwargs import HTTPClientKwargs as HTTPClientKwargs
+from tempest_fastapi_sdk.settings.kwargs import JWTKwargs as JWTKwargs
+from tempest_fastapi_sdk.settings.kwargs import KafkaKwargs as KafkaKwargs
+from tempest_fastapi_sdk.settings.kwargs import LocalStorageKwargs as LocalStorageKwargs
+from tempest_fastapi_sdk.settings.kwargs import LoggingKwargs as LoggingKwargs
+from tempest_fastapi_sdk.settings.kwargs import OpenAIKwargs as OpenAIKwargs
+from tempest_fastapi_sdk.settings.kwargs import OpenAISpeechKwargs as OpenAISpeechKwargs
+from tempest_fastapi_sdk.settings.kwargs import RedisKwargs as RedisKwargs
+from tempest_fastapi_sdk.settings.kwargs import StorageKwargs as StorageKwargs
+from tempest_fastapi_sdk.settings.kwargs import UploadKwargs as UploadKwargs
+from tempest_fastapi_sdk.settings.kwargs import WebPushKwargs as WebPushKwargs
 from tempest_fastapi_sdk.settings.mixins import (
     SPOOFABLE_IP_HEADERS as SPOOFABLE_IP_HEADERS,
 )
@@ -81,29 +102,47 @@ from tempest_fastapi_sdk.settings.version import (
 
 __all__: list[str] = [
     "SPOOFABLE_IP_HEADERS",
+    "AnthropicKwargs",
     "AppEnvironment",
     "AppSettingsMeta",
     "AuthSettings",
     "BaseAppSettings",
     "CORSSettings",
+    "DatabaseKwargs",
     "DatabaseSettings",
+    "DeepSeekKwargs",
+    "EmailKwargs",
     "EmailSettings",
     "EnvironmentSettings",
+    "FirebaseKwargs",
     "FirebaseSettings",
+    "GeminiKwargs",
     "GenAISettings",
+    "GitHubOAuthKwargs",
+    "GoogleOAuthKwargs",
+    "HTTPClientKwargs",
+    "HostBridgeKwargs",
     "HostBridgeSettings",
+    "HostedGenAIKwargs",
     "HostedGenAISettings",
+    "JWTKwargs",
     "JWTSettings",
+    "KafkaKwargs",
     "KafkaSaslMechanismEnum",
     "KafkaSecurityProtocolEnum",
     "KafkaSettings",
+    "LocalStorageKwargs",
     "LogSettings",
+    "LoggingKwargs",
     "MercadoPagoSettings",
     "MinIOSettings",
     "OAuthSettings",
+    "OpenAIKwargs",
+    "OpenAISpeechKwargs",
     "OpenPixSettings",
     "PushSettings",
     "RabbitMQSettings",
+    "RedisKwargs",
     "RedisSettings",
     "RevenueCatSettings",
     "ServerSettings",
@@ -112,10 +151,13 @@ __all__: list[str] = [
     "SessionCookieSameSite",
     "SessionSettings",
     "StorageBucketCredential",
+    "StorageKwargs",
     "StorageSettings",
     "TaskIQSettings",
     "TokenSettings",
+    "UploadKwargs",
     "UploadSettings",
+    "WebPushKwargs",
     "WebPushSettings",
     "WebSocketSettings",
     "read_project_version",
