@@ -143,7 +143,7 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         email = getattr(principal, "email", None)
         return str(email) if email else repr(principal)
 
-    def is_admin_account(self, target: Any) -> bool:
+    def is_admin_account(self, target: object) -> bool:
         """Whether ``target`` is an account that can itself use the admin.
 
         The impersonation flow (``AdminModel(impersonate=...)``) refuses
@@ -155,7 +155,7 @@ class AdminAuthBackend(ABC, Generic[PrincipalT]):
         a group).
 
         Args:
-            target (Any): The row the operator asked to enter as.
+            target (object): The row the operator asked to enter as.
 
         Returns:
             bool: ``True`` to refuse the impersonation.
@@ -462,7 +462,7 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
             return None
         return user
 
-    def is_admin_account(self, target: Any) -> bool:
+    def is_admin_account(self, target: object) -> bool:
         """Whether ``target`` can sign into the admin itself.
 
         A row of :attr:`user_model` answers what :meth:`is_authorized`
@@ -471,7 +471,7 @@ class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
         ``is_admin``.
 
         Args:
-            target (Any): The row the operator asked to enter as.
+            target (object): The row the operator asked to enter as.
 
         Returns:
             bool: ``True`` to refuse the impersonation.

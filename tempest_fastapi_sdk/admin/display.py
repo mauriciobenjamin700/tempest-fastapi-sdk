@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import Enum
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from tempest_fastapi_sdk.admin.i18n import DEFAULT_ADMIN_LOCALE, admin_text
@@ -117,11 +117,11 @@ def offset_label(value: datetime) -> str | None:
     return f"{stamp[:3]}:{stamp[3:5]}"
 
 
-def cell_view(value: Any, locale: str = DEFAULT_ADMIN_LOCALE) -> CellView:
+def cell_view(value: object, locale: str = DEFAULT_ADMIN_LOCALE) -> CellView:
     """Classify a value and pick what the cell prints.
 
     Args:
-        value (Any): The ORM attribute value.
+        value (object): The ORM attribute value.
         locale (str): Language of the boolean badge text.
 
     Returns:
@@ -158,7 +158,7 @@ def cell_view(value: Any, locale: str = DEFAULT_ADMIN_LOCALE) -> CellView:
     return CellView(kind="text", text=str(value))
 
 
-def format_number(value: Any) -> str:
+def format_number(value: object) -> str:
     """Print a number without the ``.0`` of a whole float.
 
     ``MetricPartition`` and ``MetricTrend`` carry floats, so a count of 17
@@ -166,7 +166,7 @@ def format_number(value: Any) -> str:
     anything else keeps up to two decimals.
 
     Args:
-        value (Any): The value; non-numbers come back as ``str(value)``.
+        value (object): The value; non-numbers come back as ``str(value)``.
 
     Returns:
         str: The printed number.
@@ -180,11 +180,11 @@ def format_number(value: Any) -> str:
     return str(value)
 
 
-def short_identity(identity: Any) -> str:
+def short_identity(identity: object) -> str:
     """Shorten a record identity for a page title.
 
     Args:
-        identity (Any): The value from the detail URL.
+        identity (object): The value from the detail URL.
 
     Returns:
         str: The first :data:`UUID_PREFIX_LENGTH` characters of a UUID, or

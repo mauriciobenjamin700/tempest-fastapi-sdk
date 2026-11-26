@@ -206,7 +206,7 @@ def fk_fields(admin: AdminModel[Any]) -> dict[str, str]:
     return out
 
 
-def fk_label(admin: AdminModel[Any], instance: Any) -> str:
+def fk_label(admin: AdminModel[Any], instance: object) -> str:
     """Build a human label for a referenced row (Django ``__str__`` analog).
 
     Prefers the referenced admin's first search field, then a common
@@ -218,7 +218,7 @@ def fk_label(admin: AdminModel[Any], instance: Any) -> str:
 
     Args:
         admin (AdminModel[Any]): The referenced model's admin config.
-        instance (Any): The referenced row.
+        instance (object): The referenced row.
 
     Returns:
         str: A label for the option.
@@ -471,7 +471,7 @@ def unique_field_names(admin: AdminModel[Any]) -> set[str]:
     return {key for key, column in mapper_columns.items() if column in unique}
 
 
-def duplicate_values(admin: AdminModel[Any], instance: Any) -> dict[str, str]:
+def duplicate_values(admin: AdminModel[Any], instance: object) -> dict[str, str]:
     """Return the create-form values that copy ``instance``.
 
     Every column the create form takes, formatted the way the edit form
@@ -482,7 +482,7 @@ def duplicate_values(admin: AdminModel[Any], instance: Any) -> dict[str, str]:
 
     Args:
         admin (AdminModel[Any]): The admin configuration.
-        instance (Any): The row being duplicated.
+        instance (object): The row being duplicated.
 
     Returns:
         dict[str, str]: Field name to the submitted-form value; a checkbox
@@ -674,7 +674,7 @@ def parse_password_submission(
 
 def apply_password_fields(
     admin: AdminModel[Any],
-    instance: Any,
+    instance: object,
     values: Mapping[str, str],
 ) -> None:
     """Hash each submitted plaintext onto the instance.
@@ -687,7 +687,7 @@ def apply_password_fields(
 
     Args:
         admin (AdminModel[Any]): The admin configuration.
-        instance (Any): The row being created or edited.
+        instance (object): The row being created or edited.
         values (Mapping[str, str]): ``{field: plaintext}`` from
             :func:`parse_password_submission`.
 
@@ -855,7 +855,7 @@ def schema_form_fields(
 
 
 def parse_schema_submission(
-    schema: type[PydanticModel], form: Any
+    schema: type[PydanticModel], form: Mapping[str, Any]
 ) -> tuple[PydanticModel | None, dict[str, str]]:
     """Validate a ``create_handler`` submission against its schema.
 
@@ -866,7 +866,7 @@ def parse_schema_submission(
 
     Args:
         schema (type[PydanticModel]): The handler's schema.
-        form (Any): The submitted form (``request.form()``).
+        form (Mapping[str, Any]): The submitted form (``request.form()``).
 
     Returns:
         tuple[PydanticModel | None, dict[str, str]]: The validated instance

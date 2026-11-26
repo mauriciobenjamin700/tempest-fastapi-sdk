@@ -1014,11 +1014,11 @@ class AdminModel(Generic[ModelT]):
                 return lens
         return None
 
-    async def scope_for(self, principal: Any) -> ColumnElement[bool] | None:
+    async def scope_for(self, principal: object) -> ColumnElement[bool] | None:
         """Resolve :attr:`row_scope` for ``principal``.
 
         Args:
-            principal (Any): The signed-in admin principal.
+            principal (object): The signed-in admin principal.
 
         Returns:
             ColumnElement[bool] | None: The clause the principal's rows must
@@ -1137,11 +1137,11 @@ class AdminModel(Generic[ModelT]):
             return [name for name in self.list_display if name not in hidden]
         return [name for name in self.column_names() if name not in hidden]
 
-    def readonly_field_names_for(self, instance: Any) -> set[str]:
+    def readonly_field_names_for(self, instance: ModelT) -> set[str]:
         """Return the columns locked on one row's edit form.
 
         Args:
-            instance (Any): The stored row.
+            instance (ModelT): The stored row.
 
         Returns:
             set[str]: ``readonly_fields`` plus what ``readonly_fields_for``
@@ -1153,7 +1153,7 @@ class AdminModel(Generic[ModelT]):
         return names
 
     def editable_field_names(
-        self, *, creating: bool = False, instance: Any | None = None
+        self, *, creating: bool = False, instance: ModelT | None = None
     ) -> list[str]:
         """Return the columns a create/edit form should expose.
 
