@@ -38,7 +38,11 @@ from tempest_fastapi_sdk.queue.topology import (
 from tempest_fastapi_sdk.tasks.observability import DeadLetter, DeadLetterSink
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from faststream import BaseMiddleware
+    from faststream.message import StreamMessage
+    from faststream.types import AsyncFuncAny
     from prometheus_client import CollectorRegistry
 
 RETRY_SUFFIX: Final[str] = ".retry"
@@ -239,7 +243,7 @@ def retry_queues(
     )
 
 
-def delivery_attempt(message: Any) -> int:
+def delivery_attempt(message: object) -> int:
     """Return which delivery this is, counting from 1.
 
     RabbitMQ records every dead-lettering in the message's ``x-death``
@@ -258,7 +262,7 @@ def delivery_attempt(message: Any) -> int:
     failed.
 
     Args:
-        message (Any): The FastStream message being consumed.
+        message (object): The FastStream message being consumed.
 
     Returns:
         int: ``1`` on first delivery, ``2`` on the first retry, and so
@@ -280,7 +284,7 @@ def delivery_attempt(message: Any) -> int:
     return total + 1
 
 
-def replay_headers(headers: Any) -> dict[str, Any]:
+def replay_headers(headers: Mapping[str, Any] | None) -> dict[str, Any]:
     """Copy a dead-lettered message's headers without the death record.
 
     The record is what :func:`delivery_attempt` counts from. A replayed
@@ -288,7 +292,7 @@ def replay_headers(headers: Any) -> dict[str, Any]:
     budget rather than being given up on at its first failure.
 
     Args:
-        headers (Any): The message headers, or ``None``.
+        headers (Mapping[str, Any] | None): The message headers, or ``None``.
 
     Returns:
         dict[str, Any]: Every header except :data:`DEATH_HEADERS`.
@@ -300,11 +304,11 @@ def replay_headers(headers: Any) -> dict[str, Any]:
     }
 
 
-def _message_channel(message: Any) -> str:
+def _message_channel(message: object) -> str:
     """Return the channel a message arrived on, for reporting.
 
     Args:
-        message (Any): The FastStream message.
+        message (object): The FastStream message.
 
     Returns:
         str: The queue/topic/subject name, or ``"unknown"`` when the
@@ -319,11 +323,11 @@ def _message_channel(message: Any) -> str:
     return routing_key if isinstance(routing_key, str) and routing_key else "unknown"
 
 
-def _message_id(message: Any) -> str:
+def _message_id(message: object) -> str:
     """Return a stable identifier for the message, for reporting.
 
     Args:
-        message (Any): The FastStream message.
+        message (object): The FastStream message.
 
     Returns:
         str: The broker's message id, or ``""`` when absent.
@@ -379,12 +383,16 @@ def make_dead_letter_middleware(
     class _DeadLetterMiddleware(BaseMiddleware):
         """Report a terminally-failed consume, then let it reject."""
 
-        async def consume_scope(self, call_next: Any, msg: Any) -> Any:
+        async def consume_scope(
+            self,
+            call_next: AsyncFuncAny,
+            msg: StreamMessage[Any],
+        ) -> Any:
             """Run the handler, reporting the failure that ends its budget.
 
             Args:
-                call_next (Any): The next middleware or the handler.
-                msg (Any): The message being consumed.
+                call_next (AsyncFuncAny): The next middleware or the handler.
+                msg (StreamMessage[Any]): The message being consumed.
 
             Returns:
                 Any: Whatever the handler returned.
@@ -480,12 +488,16 @@ class QueueMetrics:
         class _MetricsMiddleware(BaseMiddleware):
             """Time each consume and count its outcome."""
 
-            async def consume_scope(self, call_next: Any, msg: Any) -> Any:
+            async def consume_scope(
+                self,
+                call_next: AsyncFuncAny,
+                msg: StreamMessage[Any],
+            ) -> Any:
                 """Record duration and outcome around the handler.
 
                 Args:
-                    call_next (Any): The next middleware or the handler.
-                    msg (Any): The message being consumed.
+                    call_next (AsyncFuncAny): The next middleware or the handler.
+                    msg (StreamMessage[Any]): The message being consumed.
 
                 Returns:
                     Any: Whatever the handler returned.

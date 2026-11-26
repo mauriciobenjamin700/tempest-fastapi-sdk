@@ -38,6 +38,8 @@ from tempest_fastapi_sdk.core.context import (
 
 if TYPE_CHECKING:
     from faststream import BaseMiddleware
+    from faststream.message import StreamMessage
+    from faststream.types import AsyncFuncAny
 
 TRACEPARENT_HEADER: Final[str] = "traceparent"
 """W3C header carrying the trace and span the message was published from."""
@@ -232,12 +234,16 @@ def make_tracing_middleware() -> type[BaseMiddleware]:
     class _TracingMiddleware(BaseMiddleware):
         """Open a linked span and restore the request id around a consume."""
 
-        async def consume_scope(self, call_next: Any, msg: Any) -> Any:
+        async def consume_scope(
+            self,
+            call_next: AsyncFuncAny,
+            msg: StreamMessage[Any],
+        ) -> Any:
             """Run the handler inside a span.
 
             Args:
-                call_next (Any): The next middleware or the handler.
-                msg (Any): The message being consumed.
+                call_next (AsyncFuncAny): The next middleware or the handler.
+                msg (StreamMessage[Any]): The message being consumed.
 
             Returns:
                 Any: Whatever the handler returned.

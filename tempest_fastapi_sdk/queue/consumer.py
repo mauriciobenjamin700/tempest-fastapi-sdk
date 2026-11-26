@@ -49,12 +49,17 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic
+
+from typing_extensions import TypeVar
 
 if TYPE_CHECKING:
     from faststream import AckPolicy
 
     from tempest_fastapi_sdk.queue.topology import OffsetResetEnum, QueueSpec
+
+MessageT = TypeVar("MessageT", default=Any)
+"""Payload type handled by :meth:`Consumer.handle` in the constructor form."""
 
 _CHANNEL_ATTR = "__tempest_channel__"
 _OPTIONS_ATTR = "__tempest_subscribe_options__"
@@ -157,7 +162,7 @@ class Subscription:
     auto_offset_reset: OffsetResetEnum | str | None = None
 
 
-class Consumer:
+class Consumer(Generic[MessageT]):
     """Base class for class-based message consumers.
 
     Subclass it in one of the two styles shown in the module docstring.
@@ -251,11 +256,11 @@ class Consumer:
         if options:
             self.options = options
 
-    async def handle(self, message: Any) -> None:
+    async def handle(self, message: MessageT) -> None:
         """Handle one message — override in the constructor form.
 
         Args:
-            message (Any): The decoded payload (an instance of
+            message (MessageT): The decoded payload (an instance of
                 :attr:`schema` when one was given).
 
         Raises:
