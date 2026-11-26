@@ -12,7 +12,7 @@ from __future__ import annotations
 import secrets
 import string
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from tempest_fastapi_sdk.core.enums import BaseStrEnum
 
@@ -20,6 +20,30 @@ try:
     import bcrypt as _bcrypt
 except ImportError:  # pragma: no cover - guarded by extras
     _bcrypt: Any = None  # type: ignore[no-redef]
+
+
+class PasswordSettingsLike(Protocol):
+    """The three settings fields :meth:`PasswordPolicy.from_settings` reads.
+
+    Declared as read-only properties so frozen
+    :class:`~tempest_fastapi_sdk.settings.AuthSettings` subclasses and plain
+    objects with ordinary attributes are both accepted.
+    """
+
+    @property
+    def AUTH_PASSWORD_MIN_LENGTH(self) -> int:  # noqa: N802
+        """Return the minimum password length in characters."""
+        ...
+
+    @property
+    def AUTH_PASSWORD_MAX_BYTES(self) -> int:  # noqa: N802
+        """Return the maximum password length in UTF-8 bytes."""
+        ...
+
+    @property
+    def AUTH_PASSWORD_REQUIRE_COMPLEXITY(self) -> bool:  # noqa: N802
+        """Return whether character-class complexity is required."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -50,11 +74,11 @@ class PasswordPolicy:
     require_complexity: bool = False
 
     @classmethod
-    def from_settings(cls, settings: Any) -> PasswordPolicy:
+    def from_settings(cls, settings: PasswordSettingsLike) -> PasswordPolicy:
         """Read the policy off an ``AuthSettings``-shaped object.
 
         Args:
-            settings (Any): Any object carrying the three
+            settings (PasswordSettingsLike): Any object carrying the three
                 ``AUTH_PASSWORD_*`` attributes — typically the service's
                 own ``Settings`` composed from ``AuthSettings``.
 
@@ -374,6 +398,7 @@ __all__: list[str] = [
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
     "PasswordPolicy",
     "PasswordPolicyViolation",
+    "PasswordSettingsLike",
     "PasswordUtils",
     "PasswordViolationCodeEnum",
     "check_password_policy",

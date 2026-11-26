@@ -145,6 +145,21 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.http_client import (
         HTTPClient as HTTPClient,
     )
+    from tempest_fastapi_sdk.utils.http_client import (
+        HTTPFileContent as HTTPFileContent,
+    )
+    from tempest_fastapi_sdk.utils.http_client import (
+        HTTPFilePart as HTTPFilePart,
+    )
+    from tempest_fastapi_sdk.utils.http_client import (
+        HTTPRequestContent as HTTPRequestContent,
+    )
+    from tempest_fastapi_sdk.utils.http_client import (
+        HTTPRequestData as HTTPRequestData,
+    )
+    from tempest_fastapi_sdk.utils.http_client import (
+        HTTPRequestFiles as HTTPRequestFiles,
+    )
     from tempest_fastapi_sdk.utils.images import (
         DEFAULT_JPEG_QUALITY as DEFAULT_JPEG_QUALITY,
     )
@@ -261,6 +276,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.password import PasswordPolicy as PasswordPolicy
     from tempest_fastapi_sdk.utils.password import (
         PasswordPolicyViolation as PasswordPolicyViolation,
+    )
+    from tempest_fastapi_sdk.utils.password import (
+        PasswordSettingsLike as PasswordSettingsLike,
     )
     from tempest_fastapi_sdk.utils.password import PasswordUtils as PasswordUtils
     from tempest_fastapi_sdk.utils.password import (
@@ -579,6 +597,11 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "REQUEST_ID_HEADER": "tempest_fastapi_sdk.utils.http_client",
     "CircuitOpenError": "tempest_fastapi_sdk.utils.http_client",
     "HTTPClient": "tempest_fastapi_sdk.utils.http_client",
+    "HTTPFileContent": "tempest_fastapi_sdk.utils.http_client",
+    "HTTPFilePart": "tempest_fastapi_sdk.utils.http_client",
+    "HTTPRequestContent": "tempest_fastapi_sdk.utils.http_client",
+    "HTTPRequestData": "tempest_fastapi_sdk.utils.http_client",
+    "HTTPRequestFiles": "tempest_fastapi_sdk.utils.http_client",
     "JWTUtils": "tempest_fastapi_sdk.utils.jwt",
     "UFEnum": "tempest_fastapi_sdk.utils.locations",
     "ChoiceBR": "tempest_fastapi_sdk.utils.locations",
@@ -620,6 +643,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "DEFAULT_GENERATED_PASSWORD_LENGTH": "tempest_fastapi_sdk.utils.password",
     "PasswordPolicy": "tempest_fastapi_sdk.utils.password",
     "PasswordPolicyViolation": "tempest_fastapi_sdk.utils.password",
+    "PasswordSettingsLike": "tempest_fastapi_sdk.utils.password",
     "PasswordUtils": "tempest_fastapi_sdk.utils.password",
     "PasswordViolationCodeEnum": "tempest_fastapi_sdk.utils.password",
     "check_password_policy": "tempest_fastapi_sdk.utils.password",
@@ -828,6 +852,11 @@ __all__: list[str] = [
     "FileStoreUtils",
     "GPUMetrics",
     "HTTPClient",
+    "HTTPFileContent",
+    "HTTPFilePart",
+    "HTTPRequestContent",
+    "HTTPRequestData",
+    "HTTPRequestFiles",
     "HexColorField",
     "ImageMediaTypeEnum",
     "InMemoryThrottleBackend",
@@ -846,6 +875,7 @@ __all__: list[str] = [
     "NonNegativeIntField",
     "PasswordPolicy",
     "PasswordPolicyViolation",
+    "PasswordSettingsLike",
     "PasswordUtils",
     "PasswordViolationCodeEnum",
     "PercentField",

@@ -154,6 +154,7 @@ Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, 
 
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicy
+::: tempest_fastapi_sdk.utils.password.PasswordSettingsLike
 ::: tempest_fastapi_sdk.utils.password.PasswordPolicyViolation
 ::: tempest_fastapi_sdk.utils.password.PasswordViolationCodeEnum
 ::: tempest_fastapi_sdk.utils.password.check_password_policy
