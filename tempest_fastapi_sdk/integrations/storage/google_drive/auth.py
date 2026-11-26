@@ -289,7 +289,10 @@ class ServiceAccountTokenProvider:
         Raises:
             GoogleDriveException: When the token endpoint refuses the
                 assertion (``details["reason"]`` carries the OAuth
-                ``error``, such as ``invalid_grant``) or cannot be reached.
+                ``error``, such as ``invalid_grant``) or cannot be reached,
+                or when ``private_key`` is not a PEM RSA key that can sign
+                (reason ``invalid_private_key``, raised before any request;
+                the key never appears in the message).
             ImportError: When the ``[google-drive]`` extra is missing.
         """
         cached = self._fresh()
@@ -317,6 +320,8 @@ class ServiceAccountTokenProvider:
 
         Raises:
             ImportError: When ``pyjwt``/``cryptography`` is not installed.
+            GoogleDriveException: When ``private_key`` cannot be parsed as
+                a PEM RSA private key (reason ``invalid_private_key``).
         """
         try:
             import jwt
@@ -341,6 +346,19 @@ class ServiceAccountTokenProvider:
             )
         except NotImplementedError as exc:
             raise ImportError(GOOGLE_DRIVE_EXTRA_HINT) from exc
+        except (jwt.InvalidKeyError, ValueError, TypeError):
+            raise GoogleDriveException(
+                upstream_status=None,
+                reason="invalid_private_key",
+                message=(
+                    "The service-account private_key of "
+                    f"{self.credentials.client_email} is not a PEM RSA private "
+                    "key that can sign. Download a new JSON key for that "
+                    "account and check that private_key kept its "
+                    "'-----BEGIN PRIVATE KEY-----' header and its \\n line "
+                    "breaks."
+                ),
+            ) from None
 
     async def _exchange(self, issued_at: int) -> tuple[str, float]:
         """Post the assertion to the token endpoint.

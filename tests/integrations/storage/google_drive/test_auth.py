@@ -229,6 +229,31 @@ class TestErrors:
         with pytest.raises(ImportError, match=r"\[google-drive\]"):
             await provider.access_token()
 
+    @pytest.mark.parametrize(
+        "pem",
+        [
+            "not a pem at all",
+            "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n",
+        ],
+    )
+    async def test_unparsable_private_key_is_an_actionable_drive_error(
+        self, fake: FakeDrive, http: httpx.AsyncClient, credentials_json: str, pem: str
+    ) -> None:
+        info = json.loads(credentials_json)
+        info["private_key"] = pem
+        provider = ServiceAccountTokenProvider(
+            ServiceAccountCredentials.from_json(json.dumps(info)), http_client=http
+        )
+        with pytest.raises(GoogleDriveException) as raised:
+            await provider.access_token()
+        error = raised.value
+        assert error.reason == "invalid_private_key"
+        assert error.upstream_status is None
+        assert "private_key" in error.message
+        assert CLIENT_EMAIL in error.message
+        assert pem not in f"{error.message} {error.details} {error!r}"
+        assert fake.requests == []
+
     def test_empty_scopes_are_refused(
         self, http: httpx.AsyncClient, credentials_json: str
     ) -> None:
