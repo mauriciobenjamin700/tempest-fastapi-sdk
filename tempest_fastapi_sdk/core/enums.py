@@ -130,11 +130,11 @@ class _EnumHelpers(_HelpersBase):
         return {member.name: member.value for member in cls}
 
     @classmethod
-    def has_value(cls, value: Any) -> bool:
+    def has_value(cls, value: object) -> bool:
         """Report whether ``value`` is the value of some member.
 
         Args:
-            value (Any): The raw value to test.
+            value (object): The raw value to test.
 
         Returns:
             bool: ``True`` if a member carries this value, else ``False``.
