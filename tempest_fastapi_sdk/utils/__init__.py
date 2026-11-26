@@ -422,6 +422,9 @@ if TYPE_CHECKING:
         MinIOUploadStorage as MinIOUploadStorage,
     )
     from tempest_fastapi_sdk.utils.storage_backends import (
+        SupportsWebViewLink as SupportsWebViewLink,
+    )
+    from tempest_fastapi_sdk.utils.storage_backends import (
         UploadResult as UploadResult,
     )
     from tempest_fastapi_sdk.utils.storage_backends import (
@@ -696,6 +699,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "is_valid_vapid_subject": "tempest_fastapi_sdk.utils.vapid",
     "LocalUploadStorage": "tempest_fastapi_sdk.utils.storage_backends",
     "MinIOUploadStorage": "tempest_fastapi_sdk.utils.storage_backends",
+    "SupportsWebViewLink": "tempest_fastapi_sdk.utils.storage_backends",
     "UploadResult": "tempest_fastapi_sdk.utils.storage_backends",
     "UploadStorage": "tempest_fastapi_sdk.utils.storage_backends",
     "AttemptThrottle": "tempest_fastapi_sdk.utils.throttle",
@@ -899,6 +903,7 @@ __all__: list[str] = [
     "SignedDecimalRatioField",
     "SlugField",
     "StateBR",
+    "SupportsWebViewLink",
     "SystemMetrics",
     "TOTPHelper",
     "ThrottleBackend",

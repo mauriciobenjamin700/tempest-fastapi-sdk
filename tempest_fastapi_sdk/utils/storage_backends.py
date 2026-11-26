@@ -135,7 +135,14 @@ class UploadStorage(Protocol):
         *,
         expires: timedelta = timedelta(hours=1),
     ) -> str | None:
-        """Return a temporary download URL or ``None`` when unsupported.
+        """Return a temporary download URL, or say the backend has none.
+
+        A backend says it cannot mint one in either of two ways: it
+        returns ``None`` (local disk), or it raises
+        :class:`~tempest_fastapi_sdk.exceptions.PresignedUrlUnsupportedException`
+        (Google Drive, which has no temporary link and refuses to pass a
+        permanent one off as such). A caller that works with any backend
+        handles both forms the same way.
 
         Args:
             key (str): Storage key.
@@ -144,6 +151,34 @@ class UploadStorage(Protocol):
         Returns:
             str | None: Download URL. ``None`` when the backend
             cannot mint one (e.g. local disk).
+
+        Raises:
+            PresignedUrlUnsupportedException: From a backend that signals
+                "no presigned URLs" by raising instead of returning
+                ``None``.
+        """
+        ...
+
+
+@runtime_checkable
+class SupportsWebViewLink(Protocol):
+    """An upload backend that can give a permanent link to a stored file.
+
+    The link is not a presigned URL: it does not expire and only opens for
+    someone the store itself authorizes (the Google Drive ``webViewLink``
+    opens for a Drive user with access to the file). The admin download
+    route redirects to it when :meth:`UploadStorage.presigned_url` has
+    nothing to offer.
+    """
+
+    async def web_view_link(self, key: str, /) -> str | None:
+        """Return the permanent link of the file under ``key``.
+
+        Args:
+            key (str): Storage key.
+
+        Returns:
+            str | None: The link, or ``None`` when no file matches.
         """
         ...
 
@@ -401,6 +436,7 @@ __all__: list[str] = [
     "ContentValidator",
     "LocalUploadStorage",
     "MinIOUploadStorage",
+    "SupportsWebViewLink",
     "UploadResult",
     "UploadStorage",
 ]

@@ -2262,6 +2262,9 @@ if TYPE_CHECKING:
         StateBR as StateBR,
     )
     from tempest_fastapi_sdk.utils import (
+        SupportsWebViewLink as SupportsWebViewLink,
+    )
+    from tempest_fastapi_sdk.utils import (
         SystemMetrics as SystemMetrics,
     )
     from tempest_fastapi_sdk.utils import (
@@ -3258,6 +3261,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     "provisioning_qr_data_uri": "tempest_fastapi_sdk.utils",
     "provisioning_qr_terminal": "tempest_fastapi_sdk.utils",
     "UFField": "tempest_fastapi_sdk.utils",
+    "SupportsWebViewLink": "tempest_fastapi_sdk.utils",
     "UploadResult": "tempest_fastapi_sdk.utils",
     "UploadStorage": "tempest_fastapi_sdk.utils",
     "UploadUtils": "tempest_fastapi_sdk.utils",
@@ -3937,6 +3941,7 @@ __all__: list[str] = [
     "StoredFileServiceMixin",
     "SupportsPresign",
     "SupportsUpload",
+    "SupportsWebViewLink",
     "SyncFilterSchema",
     "SyncPaginationSchema",
     "SystemCheckError",
