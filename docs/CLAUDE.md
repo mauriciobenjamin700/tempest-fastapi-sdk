@@ -54,6 +54,16 @@ Por isso ele não tem espelho `.en.md` nem entrada no `nav:`.
    o acento dá link morto reportado como `INFO`, com o `--strict` verde —
    copie o `id=` do HTML buildado em vez de derivar o slug de cabeça.
 
+9. **Teto de 800 linhas por página** (`tests/test_docs_page_size_guard.py`,
+   #877). Página que passa vira um **índice curto** no mesmo caminho (o que
+   é, tabela "subpágina → o que resolve", recap) mais uma subpágina por
+   tema em `docs/<página>/<tema>.md`, cada uma aberta por `# Título`, uma
+   linha do que resolve e o link de volta ao índice. No nav a página vira
+   seção: `Índice`/`Index` primeiro, subpáginas em ordem alfabética (o guia
+   de migração, por faixa de versão, fica cronológico). Links de outras
+   páginas para âncoras da página antiga passam a apontar para a subpágina
+   — confira no HTML buildado, não à mão. Modelo: `docs/recipes/genai.md`.
+
 ## O que fica fora da ordem alfabética, de propósito
 
 Abas de topo (`Início → Instalação → Arquitetura → Tutorial → …`), páginas de

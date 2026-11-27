@@ -61,7 +61,7 @@ Os três defaults trocados:
     ```
 
     Renomear não pede migration: `Party` e `PartyEnum` dão o mesmo tipo,
-    `party_enum`. Detalhes na [receita da CLI](cli.md#regras-de-camada-tempest-lint-layers).
+    `party_enum`. Detalhes na [receita da CLI](cli/lint-layers.md).
 
 !!! info "A ordem de declaração vira a ordem do tipo"
     O PostgreSQL ordena uma coluna `ENUM` pela ordem dos labels, não pelo

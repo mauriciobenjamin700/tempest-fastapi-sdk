@@ -708,7 +708,7 @@ Pedaço por pedaço:
 - `prompt` dá vocabulário ao modelo — nomes de cidade, de produto —, e
   `temperature` fixa a temperatura do decode. Como montar o prompt e o
   limite de tokens dele estão em
-  [Dar vocabulário ao Whisper](genai.md#dar-vocabulario-ao-whisper-prompt-e-hotwords).
+  [Dar vocabulário ao Whisper](genai/audio.md#dar-vocabulario-ao-whisper-prompt-e-hotwords).
   Se o servidor respeita os campos é com ele: o SDK garante que vão no form.
 - `audio` aceita `bytes` ou um caminho local (`str` ou `Path`). String é
   sempre caminho, nunca URL: o backend não busca nada fora da máquina.

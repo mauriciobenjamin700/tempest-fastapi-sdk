@@ -192,7 +192,7 @@ A resposta aninha o segundo estágio dentro de cada detecção:
     O `.onnx` fundido é um artefato de build. Servir ele **não** puxa
     `onnx` — só `[vision]`, como o resto desta página. Quem monta o
     arquivo é `fuse_detect_classify`, na receita
-    [Modelops](modelops.md#fundir-detector-e-classificador).
+    [Modelops](modelops/formats.md#fundir-detector-e-classificador).
 
 ## Inputs aceitos + execução
 

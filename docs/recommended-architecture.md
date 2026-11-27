@@ -44,7 +44,7 @@ tempest lint-layers --rule IMP002
 ```
 
 A tabela completa dos códigos, com a saída real de cada um, está em
-[CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
+[CLI › Regras de camada](recipes/cli/lint-layers.md).
 
 ## 1. Uma classe por arquivo, num pacote de contexto
 
@@ -528,7 +528,7 @@ A camada de tasks que o `tempest new --extras tasks` gera separa assim:
 | `tasks/worker.py` | importa os módulos de task e expõe `broker` / `scheduler` |
 
 O envio pelo nome usa
-[`TaskQueue.enqueue_by_name`](recipes/queue-tasks.md#enfileirar-pelo-nome-enqueue_by_name),
+[`TaskQueue.enqueue_by_name`](recipes/queue-tasks/tasks.md#enfileirar-pelo-nome-enqueue_by_name),
 e a política de retry da task continua valendo — o worker repõe os labels
 com que ela foi registrada.
 
@@ -548,7 +548,7 @@ O campo folha leva os três; o campo que guarda outro schema, só `title` e
 `description`. Essa é a única regra que precisa importar o projeto, então
 ela roda na suíte (`assert_schema_metadata`) e no comando
 `tempest lint-schemas` — detalhes em
-[CLI › Metadado de schema](recipes/cli.md#metadado-de-schema-tempest-lint-schemas).
+[CLI › Metadado de schema](recipes/cli/lint-schemas.md).
 
 ## 9. A suíte explica o que prova
 

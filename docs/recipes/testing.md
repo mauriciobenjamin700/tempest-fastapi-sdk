@@ -627,7 +627,7 @@ def test_exported_schemas_carry_metadata() -> None:
 `schema_metadata_findings(modulo)` devolve os achados sem levantar, e
 `tempest lint-schemas` imprime a mesma lista na linha de comando — o que
 conta como campo folha, a herança e a saída real estão na
-[receita do CLI](cli.md#metadado-de-schema-tempest-lint-schemas).
+[receita do CLI](cli/lint-schemas.md).
 
 ## Factories de modelo — `ModelFactory` + `seq`
 

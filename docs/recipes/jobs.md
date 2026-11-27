@@ -161,7 +161,7 @@ Três coisas acontecendo aí, cada uma por um motivo:
     **sem sessão aberta** e só volta ao banco para fechar a linha. Uma
     transação que lê primeiro e escreve minutos depois é o caso que
     nenhum `busy_timeout` resolve — veja
-    [Banco de dados](database.md#sqlite-com-um-worker-wal-e-busy-timeout).
+    [Banco de dados](database/connection.md#sqlite-com-um-worker-wal-e-busy-timeout).
 
 ### Uma coluna sua, junto com o `done`
 

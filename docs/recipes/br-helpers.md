@@ -521,10 +521,10 @@ Todo helper tem sua própria receita — esta seção é o mapa rápido:
 
 | Helper | Receita |
 | --- | --- |
-| `PasswordUtils`, `JWTUtils` | [Receita de autenticação](http.md#autenticacao) |
-| `EmailUtils` | [Receita de e-mail transacional](http.md#e-mail-transacional) |
-| `UploadUtils` | [Receita de upload de arquivos](http.md#upload-de-arquivos) |
-| `DownloadUtils`, `build_content_disposition` | [Servindo arquivos privados pela API](http.md#servindo-arquivos-privados-pela-api-downloadutils) |
+| `PasswordUtils`, `JWTUtils` | [Receita de autenticação](http/auth.md) |
+| `EmailUtils` | [Receita de e-mail transacional](http/upload-email.md#e-mail-transacional) |
+| `UploadUtils` | [Receita de upload de arquivos](http/upload-email.md#upload-de-arquivos) |
+| `DownloadUtils`, `build_content_disposition` | [Servindo arquivos privados pela API](http/upload-email.md#servindo-arquivos-privados-pela-api-downloadutils) |
 | `LogUtils` + `configure_logging` | [Receita de logging estruturado & request IDs](logging.md) |
 | `MetricsUtils` (CPU/memória/disco/GPU) | [Receita de métricas do sistema](metrics.md) |
 | `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-telefone) |

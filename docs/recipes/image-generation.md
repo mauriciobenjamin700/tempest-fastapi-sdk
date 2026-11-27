@@ -215,7 +215,7 @@ classe direto — a rota existe para o caso comum de uma imagem por request.
 A rota também recusa com `422` lado acima de `max_image_side` (default
 `2048`) e `steps` acima de `max_image_steps` (default `100`), ambos do
 `GenAIRequestLimits` que o `make_genai_router(limits=...)` recebe — veja
-[Limites por request](genai.md#limites-por-request-genairequestlimits). O
+[Limites por request](genai/router.md#limites-por-request-genairequestlimits). O
 próprio `ImageGenerationConfig` já barra `width`/`height` acima de `4096`,
 `steps` acima de `500` e `num_images` acima de `16`, em qualquer caminho.
 

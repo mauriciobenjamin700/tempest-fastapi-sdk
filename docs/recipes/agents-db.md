@@ -261,7 +261,7 @@ app.include_router(make_agent_router(build_agent()))
     ferramenta funciona mesmo sem `connect()`. O que ela não faz é fechar: sem
     `await db.disconnect()` no lifespan, o processo termina com o pool aberto.
     O ciclo de vida completo está em
-    [Banco de dados » Ciclo de vida no lifespan](database.md#ciclo-de-vida-no-lifespan).
+    [Banco de dados » Ciclo de vida no lifespan](database/connection.md#ciclo-de-vida-no-lifespan).
 
 ## O parâmetro `context`
 

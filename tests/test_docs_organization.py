@@ -394,7 +394,11 @@ class TestRecipeIndexCoverage:
         nav_pages: list[str] = []
         _pages(pt_nav, nav_pages)
         recipes = {
-            p for p in nav_pages if p.startswith("recipes/") and p != "recipes/index.md"
+            p
+            for p in nav_pages
+            if p.startswith("recipes/")
+            and p != "recipes/index.md"
+            and p.count("/") == 1
         }
         listed = _table_targets(landing)
         missing = sorted(recipes - listed)
@@ -405,3 +409,110 @@ class TestRecipeIndexCoverage:
         _pages(pt_nav, nav_pages)
         missing = sorted(set(_recipe_pages()) - set(nav_pages))
         assert not missing, f"recipe files absent from the nav: {missing}"
+
+
+CHRONOLOGICAL_SPLITS: frozenset[str] = frozenset({"migration.md"})
+"""Split pages whose subpages follow version order, newest first.
+
+The migration guide is read by the version you upgrade **from**, so its
+subpages are one per minor-version range, newest first, like the sections
+they came from — sorting them by label would be the regression.
+"""
+
+
+def _split_sections(nav: Any, out: list[tuple[str, list[str], list[str]]]) -> None:
+    """Collect every nav section opened by an ``Índice``/``Index`` page.
+
+    A page split into subpages (#877) becomes a section whose first entry is
+    the old page, now an index, followed by the subpages under
+    ``docs/<page>/``. The API reference has the same shape and is skipped:
+    its order and coverage have their own guards.
+
+    Args:
+        nav (Any): The nav tree (or a fragment of it).
+        out (list[tuple[str, list[str], list[str]]]): Accumulator of
+            ``(index page, subpage labels, subpage paths)``.
+    """
+    if isinstance(nav, list):
+        for item in nav:
+            _split_sections(item, out)
+    elif isinstance(nav, dict):
+        for value in nav.values():
+            if (
+                isinstance(value, list)
+                and value
+                and isinstance(value[0], dict)
+                and next(iter(value[0])) in ("Índice", "Index")
+            ):
+                index: str = next(iter(value[0].values()))
+                if not index.startswith("reference/"):
+                    rest = [item for item in value[1:] if isinstance(item, dict)]
+                    out.append(
+                        (
+                            index,
+                            [next(iter(item)) for item in rest],
+                            [next(iter(item.values())) for item in rest],
+                        )
+                    )
+                    continue
+            _split_sections(value, out)
+
+
+def _sections(nav: list[Any]) -> list[tuple[str, list[str], list[str]]]:
+    """Return the split-page sections of one nav.
+
+    Args:
+        nav (list[Any]): The nav tree.
+
+    Returns:
+        list[tuple[str, list[str], list[str]]]: ``(index page, subpage
+        labels, subpage paths)`` per split page, in nav order.
+    """
+    found: list[tuple[str, list[str], list[str]]] = []
+    _split_sections(nav, found)
+    return found
+
+
+class TestSplitPages:
+    @pytest.mark.parametrize(("language", "index"), [("pt", 0), ("en", 1)])
+    def test_split_sections_exist(
+        self, language: str, index: int, pt_nav: list[Any], en_nav: list[Any]
+    ) -> None:
+        sections = _sections((pt_nav, en_nav)[index])
+        assert len(sections) >= 9, f"{language} nav lost its split pages: {sections}"
+
+    @pytest.mark.parametrize(("language", "index"), [("pt", 0), ("en", 1)])
+    def test_subpages_live_under_their_index(
+        self, language: str, index: int, pt_nav: list[Any], en_nav: list[Any]
+    ) -> None:
+        for page, _, paths in _sections((pt_nav, en_nav)[index]):
+            folder = page.removesuffix(".md") + "/"
+            stray = [path for path in paths if not path.startswith(folder)]
+            assert not stray, (
+                f"{language}: subpages of {page} outside {folder}: {stray}"
+            )
+
+    @pytest.mark.parametrize(("language", "index"), [("pt", 0), ("en", 1)])
+    def test_subpages_are_alphabetical(
+        self, language: str, index: int, pt_nav: list[Any], en_nav: list[Any]
+    ) -> None:
+        for page, labels, _ in _sections((pt_nav, en_nav)[index]):
+            if page in CHRONOLOGICAL_SPLITS:
+                continue
+            assert labels == sorted(labels, key=sort_key), (
+                f"{language} subpages of {page} are not alphabetical; expected "
+                f"{sorted(labels, key=sort_key)}"
+            )
+
+    @pytest.mark.parametrize("suffix", [".md", ".en.md"])
+    def test_index_links_every_subpage(self, suffix: str, pt_nav: list[Any]) -> None:
+        for page, _, paths in _sections(pt_nav):
+            source = ROOT / "docs" / (page.removesuffix(".md") + suffix)
+            text = source.read_text(encoding="utf-8")
+            base = Path(page).parent
+            linked = {
+                (base / match.group(1)).as_posix()
+                for match in re.finditer(r"\]\(([^)#\s]+\.md)\)", text)
+            }
+            missing = sorted(set(paths) - linked)
+            assert not missing, f"{source.relative_to(ROOT)} does not link: {missing}"

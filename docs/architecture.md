@@ -103,7 +103,7 @@ e [Erros da rota](service-standard.md#erros-da-rota-tempestapirouter-raises).
     Desde a **v0.291.0** o `tempest new` já escreve o arquivo com o nome
     da tabela de usuário, e o `CLAUDE.md` do projeto ensina a receita a
     partir dele. Ver
-    [Banco de dados › Centralizando os nomes das tabelas](recipes/database.md#centralizando-os-nomes-das-tabelas).
+    [Banco de dados › Centralizando os nomes das tabelas](recipes/database/models.md#centralizando-os-nomes-das-tabelas).
 
 !!! warning "Regras inegociáveis"
 
@@ -1127,7 +1127,7 @@ como primeira forma —, então uma checagem que acusasse a rota acusaria
 código correto. Escolher o método do controller, como acima, é revisão.
 Tabela completa, o opt-out `# tempest: router-builds` e o que as regras de
 router não veem em
-[CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
+[CLI › Regras de camada](recipes/cli/lint-layers.md).
 
 ### Recap
 

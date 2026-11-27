@@ -9,7 +9,7 @@ ela aparece no lugar onde encaixa.
 | Arquivo | O que faz | Receita da peça |
 | --- | --- | --- |
 | `src/core/settings.py` | compõe os mixins de settings | [Settings](settings.md) |
-| `src/db/models.py` | tabela de usuários e de tokens | [Auth flow](auth-flow.md#usertokenmodel-concreto) |
+| `src/db/models.py` | tabela de usuários e de tokens | [Auth flow](auth-flow/setup.md#usertokenmodel-concreto) |
 | `src/db/migrations.py` | `sync_schema_async()` no lifespan | [Migrations](migrations.md#3-sincronize-o-schema-no-lifespan) |
 | `src/api/dependencies/resources.py` | banco, `UserAuthService`, `UploadUtils` | [Uploads](uploads.md#referencia-rapida) |
 | `src/api/routers/files.py` | upload protegido por `current_user_dependency()` | [Uploads — rota protegida](uploads.md#upload-so-para-usuario-logado) |
@@ -146,7 +146,7 @@ UPLOAD_ALLOWED_EXTENSIONS=[".png", ".jpg", ".pdf"]
 !!! tip "Sem e-mail em dev"
     `AUTH_AUTO_ACTIVATE=true` deixa a conta ativa no `signup`, então o login
     funciona sem SMTP. Para o fluxo com e-mail de ativação, veja
-    [Auth flow](auth-flow.md#so-o-backend-do-cadastro-a-rota-protegida).
+    [Auth flow](auth-flow/backend-only.md).
 
 ## Declarar os modelos de usuário
 

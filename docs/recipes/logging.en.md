@@ -216,7 +216,7 @@ logs/
     the record reaches neither file — pass
     `register_exception_handlers(app, logger=log.logger)` to route it.
     Measured detail in
-    [Telling someone, and choosing where the record lands](http.md#telling-someone-and-choosing-where-the-record-lands).
+    [Telling someone, and choosing where the record lands](http/bootstrap.md#telling-someone-and-choosing-where-the-record-lands).
 
 !!! tip "Always in the logs, never in the body"
     The traceback goes to the files/terminal via logging — **not** to the

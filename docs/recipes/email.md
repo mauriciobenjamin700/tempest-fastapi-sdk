@@ -423,7 +423,7 @@ Ainda sem SMTP? `EMAIL_ENABLED=false` pula essas regras, e o mesmo
 `details={"integration": "email"}`) antes de montar a mensagem.
 `render_template` segue funcionando, e o extra `[email]` não é exigido. O
 fluxo de auth recusa o cadastro **antes** de criar a conta — veja
-[E-mail desligado](auth-flow.md#e-mail-desligado) e
+[E-mail desligado](auth-flow/email-failures.md#e-mail-desligado) e
 [Ligar e desligar integrações](system-checks.md#ligar-e-desligar-integracoes-deploy-por-partes).
 
 ## Recap
@@ -435,4 +435,4 @@ fluxo de auth recusa o cadastro **antes** de criar a conta — veja
 - `render_template()` (com `template_dir`) gera o HTML a partir de Jinja2.
 - O fluxo bundled de auth já envia ativação/reset com templates sobrescrevíveis.
 - Porta `587` pede `SMTP_USE_TLS=true`; `465` pede `SMTP_USE_SSL=true` — o guard de produção recusa o par trocado.
-- Falha de SMTP levanta `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`); veja [SMTP fora do ar](auth-flow.md#smtp-fora-do-ar) para o que cada rota de auth responde.
+- Falha de SMTP levanta `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`); veja [SMTP fora do ar](auth-flow/email-failures.md#smtp-fora-do-ar) para o que cada rota de auth responde.

@@ -2,8 +2,8 @@
 
 A fifty-minute meeting arrives as an upload and leaves as three different
 things: the transcript, a summary, and a list of tasks. Each piece already
-has its own recipe — [STT](genai.md#interpret-audio-stt),
-[jobs](jobs.md), [usage accounting](genai.md#per-user-usage-accounting-a-table).
+has its own recipe — [STT](genai/audio.md#interpret-audio-stt),
+[jobs](jobs.md), [usage accounting](genai/operations.md#per-user-usage-accounting-a-table).
 What none of them shows is the **seam**, which is where the hard decisions
 live:
 
@@ -137,7 +137,7 @@ llm = OpenAICompatGenerator(
 ```
 
 `batch_size` + `condition_on_previous_text=False` is the pair that belongs
-together, and the [decode knobs](genai.md#transcribing-faster-on-cpu)
+together, and the [decode knobs](genai/audio.md#transcribing-faster-on-cpu)
 explain why. `base_url` is not optional: without it the SDK sends a
 DeepSeek model name to `api.openai.com`.
 

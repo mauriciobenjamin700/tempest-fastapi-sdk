@@ -162,7 +162,7 @@ Three things happening there, each for a reason:
     with **no session open** and only comes back to close the row. A
     transaction that reads first and writes minutes later is the case no
     `busy_timeout` can rescue — see
-    [Database](database.md#sqlite-with-a-worker-wal-and-the-busy-timeout).
+    [Database](database/connection.md#sqlite-with-a-worker-wal-and-the-busy-timeout).
 
 ### A column of your own, written with `done`
 

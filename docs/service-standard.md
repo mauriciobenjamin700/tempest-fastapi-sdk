@@ -126,7 +126,7 @@ Os códigos `LAY`, `STR`, `IMP`, `INIT`, `SIZE`, `DI`, `RTR003`–`RTR006` e `TS
 **avisos**: só derrubam o `tempest check` com `layers_strict = true`, que o
 `pyproject.toml` gerado já liga. A tabela de todos os códigos, com a saída
 real de cada um, está em
-[CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
+[CLI › Regras de camada](recipes/cli/lint-layers.md).
 
 !!! note "O que não tem gate"
     Singleton de recurso, `core/constants` e `db/configs` são
@@ -299,7 +299,7 @@ Para estender sem reescrever rota: `signup_schema=` (subclasse de
 `on_signup=` (hook `(session, user, payload)` dentro da transação do
 insert) e `me_response_model=` (subclasse de `AuthUserSchema`, devolvida
 pelo `GET /auth/me`). Os três aparecem juntos num exemplo completo na
-[receita de auth](recipes/auth-flow.md#conta-que-nasce-com-mais-que-e-mail-e-senha-v02780).
+[receita de auth](recipes/auth-flow/endpoints.md#conta-que-nasce-com-mais-que-e-mail-e-senha-v02780).
 
 !!! warning "O prefixo inteiro vai no `prefix=`, com o router montado no app"
     O `make_auth_router` escreve o próprio prefixo no `Path` do cookie de

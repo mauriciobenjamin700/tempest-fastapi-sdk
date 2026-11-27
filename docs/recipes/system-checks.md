@@ -502,7 +502,7 @@ O fluxo de autenticação também respeita o interruptor do e-mail: com
 `EmailUtils(enabled=False)` ligado ao `UserAuthService`, toda rota do
 `make_auth_router` que enviaria um link responde `503
 INTEGRATION_DISABLED` **antes** de gravar qualquer coisa — veja
-[Fluxo de autenticação](auth-flow.md#e-mail-desligado).
+[Fluxo de autenticação](auth-flow/email-failures.md#e-mail-desligado).
 
 ## Recap
 

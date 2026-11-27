@@ -28,7 +28,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, bundled `UserAuthService` + `make_auth_router` flow |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
 | `[cli]` | `tempest-cli` (which requires `ruff`), `typer`, `click` | the whole `tempest` command (`new`, `check`, `db`, …), quality gate included. Dev tooling: `uv add --dev "tempest-fastapi-sdk[cli]"` or `uv tool install "tempest-fastapi-sdk[cli]"`. Without it or `[cli-ops]`, `tempest` prints the install line and exits with code 2. Included in `[all]`. [Recipe](recipes/cli.md) |
-| `[cli-ops]` | `typer`, `click` | the `tempest` command without the gate, for a server: `doctor`, `db`, `shell`, `user`, `routes` and `[tool.tempest] commands` run; `tempest lint` and the other gate commands exit 2 naming `[cli]`. No `tempest-cli`, no `ruff`. `[cli]` contains it. [Recipe](recipes/cli.md#server-vs-development-cli-ops-and-cli) |
+| `[cli-ops]` | `typer`, `click` | the `tempest` command without the gate, for a server: `doctor`, `db`, `shell`, `user`, `routes` and `[tool.tempest] commands` run; `tempest lint` and the other gate commands exit 2 naming `[cli]`. No `tempest-cli`, no `ruff`. `[cli]` contains it. [Recipe](recipes/cli/new-service.md#server-vs-development-cli-ops-and-cli) |
 | `[genai-onnx]` | `onnxruntime`, `tokenizers` | Local-model inference from an ONNX export, with no PyTorch at runtime |
 | `[genai-structured]` | `lm-format-enforcer` | Grammar-enforced structured output: the local model can only emit JSON matching the schema |
 | `[genai-vlm]` | `pillow`, `torchvision` | Local vision-language model: describe an image, answer a question about one |
@@ -71,7 +71,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
-| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` and `MessageBroker.kafka_from_settings` (with `KafkaSettings`): topic, partition `key`, `group_id`, `auto_offset_reset`, SASL and TLS. Inherits `aiokafka<0.15` from FastStream. [Recipe](recipes/queue-tasks.md#kafka-key-group-and-commit) |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` and `MessageBroker.kafka_from_settings` (with `KafkaSettings`): topic, partition `key`, `group_id`, `auto_offset_reset`, SASL and TLS. Inherits `aiokafka<0.15` from FastStream. [Recipe](recipes/queue-tasks/broker.md#kafka-key-group-and-commit) |
 | `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
 | `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | Slides and answer keys from structured text (HTML, PDF, PPTX, DOCX, Markdown) and Markdown to PDF with your own or the ABNT stylesheet: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Needs Pango + fontconfig on the system**, like `[pdf]`. [Recipe](recipes/slides.md) |
@@ -309,7 +309,7 @@ cuda The quick brown fox jumps over the lazy dog.
 `probe_hardware()` also flags the wrong pair before the first transcription:
 with a CUDA 13 `torch` and `ctranslate2` installed, `HardwareInfo.warnings`
 says what will fail and points to this section (see
-[Probing the hardware](recipes/genai.md#probing-the-hardware)).
+[Probing the hardware](recipes/genai/hardware.md#probing-the-hardware)).
 
 !!! check "What was measured"
     **In this repository**, on 2026-11-10, in a `python:3.12-slim`

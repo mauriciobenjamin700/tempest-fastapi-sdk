@@ -108,7 +108,17 @@ plugins:
             - Tutorial: tutorial.md
             - Recipes:
               - recipes/index.md
-              - Admin site: recipes/admin.md
+              - Admin site:
+                  - "Index": recipes/admin.md
+                  - "Audit history": recipes/admin/audit.md
+                  - "Custom actions": recipes/admin/actions.md
+                  - "Dashboard: cards, indicators and map": recipes/admin/dashboard.md
+                  - "Form fields": recipes/admin/forms.md
+                  - "Global search": recipes/admin/search.md
+                  - "List view: counts, import and bulk edits": recipes/admin/list.md
+                  - "Mount the admin site": recipes/admin/setup.md
+                  - "Permissions: RBAC, row scope and impersonation": recipes/admin/permissions.md
+                  - "Timezone, concurrent edits and language": recipes/admin/operator.md
               - Admin SQL console: recipes/admin-sql-console.md
               - AI agents: recipes/agents.md
               - AI agents (advanced): recipes/agents-advanced.md
@@ -120,12 +130,37 @@ plugins:
               - AI agents (tools): recipes/agents-tools.md
               - App error reports: recipes/app-errors.md
               - Audit trail: recipes/audit-trail.md
-              - Auth flow (signup/reset): recipes/auth-flow.md
+              - Auth flow (signup/reset):
+                  - "Index": recipes/auth-flow.md
+                  - "Backend only: from signup to a protected route": recipes/auth-flow/backend-only.md
+                  - "Change and recover an email": recipes/auth-flow/email-change.md
+                  - "Email disabled and SMTP down": recipes/auth-flow/email-failures.md
+                  - "Emails: anatomy, brand and templates": recipes/auth-flow/emails.md
+                  - "Endpoints": recipes/auth-flow/endpoints.md
+                  - "Five operating modes and local SMTP": recipes/auth-flow/modes.md
+                  - "Get the `current_user` from the request": recipes/auth-flow/current-user.md
+                  - "Language of emails, pages and `/docs`": recipes/auth-flow/i18n.md
+                  - "Minimum setup and `UserTokenModel`": recipes/auth-flow/setup.md
+                  - "Re-send activation and recover a password": recipes/auth-flow/recovery.md
+                  - "Settings: environment variables": recipes/auth-flow/settings.md
+                  - "Token delivery: bearer, cookie or both": recipes/auth-flow/token-delivery.md
+                  - "Your product's error codes": recipes/auth-flow/errors.md
               - Brazilian helpers: recipes/br-helpers.md
               - Cache: recipes/cache.md
               - Chat (conversations + messages): recipes/chat.md
               - Choosing a model: recipes/models.md
-              - CLI: recipes/cli.md
+              - CLI:
+                  - "Index": recipes/cli.md
+                  - "Docker: compose and Dockerfile": recipes/cli/docker.md
+                  - "Install and scaffold a service": recipes/cli/new-service.md
+                  - "Integrations, agents and the OpenAPI contract": recipes/cli/integrations.md
+                  - "Layer rules: `tempest lint-layers`": recipes/cli/lint-layers.md
+                  - "Quality gates and `tempest check`": recipes/cli/quality.md
+                  - "Queue, email, storage, flags, cache, models and doctor": recipes/cli/ops.md
+                  - "Routes, OpenAPI errors and permissions": recipes/cli/routes-openapi.md
+                  - "Schema metadata: `tempest lint-schemas`": recipes/cli/lint-schemas.md
+                  - "Serve, console and database": recipes/cli/run.md
+                  - "Users and secrets": recipes/cli/users-secrets.md
               - Comments + ratings: recipes/reviews.md
               - Complete examples:
                 - Fullstack web (SSR, WASM, server): fullstack-web.md
@@ -136,7 +171,17 @@ plugins:
               - "Complete service (settings, auth, upload, test)": recipes/full-service.md
               - Computer vision (ONNX): recipes/vision.md
               - "Data subject export and erasure (LGPD)": recipes/subject-data.md
-              - Database: recipes/database.md
+              - Database:
+                  - "Index": recipes/database.md
+                  - "1. The base model": recipes/database/models.md
+                  - "2. Connect to the database": recipes/database/connection.md
+                  - "3. The repository": recipes/database/repository.md
+                  - "4. Convention-based filters": recipes/database/filters.md
+                  - "5. Bulk operations": recipes/database/bulk.md
+                  - "6. Soft-delete and auditing (mixins)": recipes/database/mixins.md
+                  - "7. Pagination": recipes/database/pagination.md
+                  - "8. Alembic migrations": recipes/database/migrations.md
+                  - "9. Detect slow queries": recipes/database/slow-queries.md
               - Downloads: recipes/downloads.md
               - Enum columns (safe on both databases): recipes/enum-columns.md
               - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
@@ -154,7 +199,16 @@ plugins:
               - "Host control (files, commands, power)": recipes/hostbridge.md
               - "Hosted generative AI (Anthropic, OpenAI, DeepSeek, Google)": recipes/genai-hosted.md
               - HTTP client (outbound): recipes/http-client.md
-              - HTTP layer: recipes/http.md
+              - HTTP layer:
+                  - "Index": recipes/http.md
+                  - "App bootstrap and the error envelope": recipes/http/bootstrap.md
+                  - "Body size limit and HTTP cache (ETag / 304)": recipes/http/body-cache.md
+                  - "End-to-end authentication": recipes/http/auth.md
+                  - "File upload and transactional email": recipes/http/upload-email.md
+                  - "JWT bearer, current user and role dependencies": recipes/http/jwt.md
+                  - "Pagination links, tool-spec, server and settings": recipes/http/extras.md
+                  - "Rate limiting (middleware and per route)": recipes/http/rate-limit.md
+                  - "Webhooks: verify and send": recipes/http/webhooks.md
               - Idempotency: recipes/idempotency.md
               - "Image generation (local)": recipes/image-generation.md
               - Image metadata: recipes/image-metadata.md
@@ -173,7 +227,16 @@ plugins:
               - MFA (TOTP / 2FA): recipes/mfa.md
               - Migrations: recipes/migrations.md
               - "Model weights (Hub lifecycle)": recipes/model-weights.md
-              - "Modelops (export, bench, quantization)": recipes/modelops.md
+              - "Modelops (export, bench, quantization)":
+                  - "Index": recipes/modelops.md
+                  - "Export scikit-learn and `.pkl`": recipes/modelops/sklearn.md
+                  - "Fuse, `.ort`, inspect, API and CLI": recipes/modelops/formats.md
+                  - "Know whether the model still works": recipes/modelops/monitoring.md
+                  - "Measure: time, CPU, GPU, RAM, energy and comparison": recipes/modelops/measure.md
+                  - "Playbook: where time and bytes go": recipes/modelops/playbook.md
+                  - "Quantize (dynamic, static and HuggingFace)": recipes/modelops/quantize.md
+                  - "Serve at the edge and publish the bundle": recipes/modelops/edge.md
+                  - "Start here": recipes/modelops/start.md
               - Multi-tenant: recipes/multi-tenant.md
               - n8n (workflow automation): recipes/n8n.md
               - Object-level permissions: recipes/authz.md
@@ -190,7 +253,16 @@ plugins:
               - "Push (web + mobile)": recipes/push.md
               - "QR code with a logo and a frame (ride link)": recipes/qr-logo.md
               - Query plans (EXPLAIN): recipes/query-plans.md
-              - Queue & Tasks: recipes/queue-tasks.md
+              - Queue & Tasks:
+                  - "Index": recipes/queue-tasks.md
+                  - "Background tasks with `TaskQueue`": recipes/queue-tasks/tasks.md
+                  - "Event-path reliability": recipes/queue-tasks/events-reliability.md
+                  - "Messaging with `MessageBroker`": recipes/queue-tasks/broker.md
+                  - "Periodic tasks: `cron` and `interval`": recipes/queue-tasks/periodic.md
+                  - "Queue topology with `QueueSpec`": recipes/queue-tasks/topology.md
+                  - "Task reliability and observability": recipes/queue-tasks/tasks-reliability.md
+                  - "Transport from settings and the outbox": recipes/queue-tasks/from-settings.md
+                  - "Workers, healthcheck and scheduler in production": recipes/queue-tasks/production.md
               - React SPA inside FastAPI: recipes/react-spa.md
               - Real-time: recipes/realtime.md
               - "Receiving WhatsApp messages (zap-api)": recipes/zap-inbound.md
@@ -199,7 +271,22 @@ plugins:
               - "RevenueCat (in-app subscriptions)": recipes/revenuecat.md
               - Safe deploys (migrations + shutdown): recipes/deploy-safety.md
               - Security: recipes/security.md
-              - Self-hosted generative AI: recipes/genai.md
+              - Self-hosted generative AI:
+                  - "Index": recipes/genai.md
+                  - "AI chat pipeline": recipes/genai/chat.md
+                  - "Audio: STT and TTS": recipes/genai/audio.md
+                  - "Can the machine handle it? Hardware and estimates": recipes/genai/hardware.md
+                  - "Embeddings and scale": recipes/genai/embeddings.md
+                  - "Generate text (local and hosted)": recipes/genai/text.md
+                  - "Long-term memory": recipes/genai/memory.md
+                  - "Moderation, usage, metrics and cache": recipes/genai/operations.md
+                  - "Multimodal vision (local VLM)": recipes/genai/vision.md
+                  - "Ollama backend": recipes/genai/ollama.md
+                  - "RAG context": recipes/genai/rag.md
+                  - "Ready endpoints and Redis cache": recipes/genai/router.md
+                  - "Sound effects and music": recipes/genai/sound.md
+                  - "Typed config and structured output": recipes/genai/structured.md
+                  - "Who said what: diarization": recipes/genai/diarization.md
               - Server-Sent Events (SSE): recipes/sse.md
               - Server-side login and signup: recipes/auth-pages.md
               - Server-side sessions: recipes/sessions.md
@@ -335,7 +422,20 @@ plugins:
                 - Critical flows: learning/marketplace/flows.md
                 - Endpoint map: learning/marketplace/api.md
             - Roadmap: roadmap.md
-            - Migration guide: migration.md
+            - Migration guide:
+                - "Index": migration.md
+                - "Migration 0.37x": migration/0-37x.md
+                - "Migration 0.36x": migration/0-36x.md
+                - "Migration 0.34x–0.35x": migration/0-34x-0-35x.md
+                - "Migration 0.33x": migration/0-33x.md
+                - "Migration 0.32x": migration/0-32x.md
+                - "Migration 0.31x": migration/0-31x.md
+                - "Migration 0.30x": migration/0-30x.md
+                - "Migration 0.27x": migration/0-27x.md
+                - "Migration 0.26x": migration/0-26x.md
+                - "Migration 0.25x": migration/0-25x.md
+                - "Migration 0.22x–0.23x": migration/0-22x-0-23x.md
+                - "Migration 0.8–0.17x": migration/0-8-0-17x.md
             - Contributing: contributing.md
             - Changelog: changelog.md
           nav_translations:
@@ -547,18 +647,62 @@ nav:
       - "Artefatos versionados (modelos)": recipes/artifact-registry.md
       - Audit trail: recipes/audit-trail.md
       - "Auth Firebase (ID token)": recipes/firebase-auth.md
-      - Auth flow (signup/reset): recipes/auth-flow.md
+      - Auth flow (signup/reset):
+          - "Índice": recipes/auth-flow.md
+          - "Cinco modos de operação e SMTP local": recipes/auth-flow/modes.md
+          - "Códigos de erro do seu produto": recipes/auth-flow/errors.md
+          - "E-mail desligado e SMTP fora do ar": recipes/auth-flow/email-failures.md
+          - "E-mails: anatomia, marca e templates": recipes/auth-flow/emails.md
+          - "Endpoints": recipes/auth-flow/endpoints.md
+          - "Entrega de token: bearer, cookie ou os dois": recipes/auth-flow/token-delivery.md
+          - "Idioma dos e-mails, páginas e `/docs`": recipes/auth-flow/i18n.md
+          - "Pegar o `current_user` da requisição": recipes/auth-flow/current-user.md
+          - "Reenviar ativação e recuperar senha": recipes/auth-flow/recovery.md
+          - "Settings: variáveis de ambiente": recipes/auth-flow/settings.md
+          - "Setup mínimo e `UserTokenModel`": recipes/auth-flow/setup.md
+          - "Só o backend: do cadastro à rota protegida": recipes/auth-flow/backend-only.md
+          - "Trocar e recuperar e-mail": recipes/auth-flow/email-change.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
-      - Banco de dados: recipes/database.md
+      - Banco de dados:
+          - "Índice": recipes/database.md
+          - "1. O modelo base": recipes/database/models.md
+          - "2. Conectar ao banco": recipes/database/connection.md
+          - "3. O repository": recipes/database/repository.md
+          - "4. Filtros por convenção": recipes/database/filters.md
+          - "5. Operações em lote": recipes/database/bulk.md
+          - "6. Soft-delete e auditoria (mixins)": recipes/database/mixins.md
+          - "7. Paginação": recipes/database/pagination.md
+          - "8. Migrações Alembic": recipes/database/migrations.md
+          - "9. Detectar queries lentas": recipes/database/slow-queries.md
       - Busca aproximada (fuzzy) e cidades em texto: recipes/fuzzy-matching.md
       - "Busca textual (LIKE + full-text)": recipes/text-search.md
       - Cache: recipes/cache.md
-      - Camada HTTP: recipes/http.md
+      - Camada HTTP:
+          - "Índice": recipes/http.md
+          - "Autenticação de ponta a ponta": recipes/http/auth.md
+          - "Bootstrap da aplicação e envelope de erro": recipes/http/bootstrap.md
+          - "Dependências JWT bearer, usuário atual e role": recipes/http/jwt.md
+          - "Limite de body e cache HTTP (ETag / 304)": recipes/http/body-cache.md
+          - "Link de paginação, tool-spec, servidor e settings": recipes/http/extras.md
+          - "Rate limit (middleware e por rota)": recipes/http/rate-limit.md
+          - "Upload de arquivos e e-mail transacional": recipes/http/upload-email.md
+          - "Webhooks: verificar e enviar": recipes/http/webhooks.md
       - "Camada UI (páginas e componentes)": recipes/ui.md
       - "Campos validados (tipos prontos)": recipes/fields.md
       - "Carteira e saque Pix": recipes/wallet.md
       - "Chat (conversas + mensagens)": recipes/chat.md
-      - CLI: recipes/cli.md
+      - CLI:
+          - "Índice": recipes/cli.md
+          - "Docker: compose e Dockerfile": recipes/cli/docker.md
+          - "Fila, e-mail, storage, flags, cache, modelos e doctor": recipes/cli/ops.md
+          - "Gates de qualidade e `tempest check`": recipes/cli/quality.md
+          - "Instalar e gerar um serviço": recipes/cli/new-service.md
+          - "Integrações, agentes e contrato OpenAPI": recipes/cli/integrations.md
+          - "Metadado de schema: `tempest lint-schemas`": recipes/cli/lint-schemas.md
+          - "Regras de camada: `tempest lint-layers`": recipes/cli/lint-layers.md
+          - "Rotas, erros do OpenAPI e permissões": recipes/cli/routes-openapi.md
+          - "Subir, console e banco": recipes/cli/run.md
+          - "Usuários e segredos": recipes/cli/users-secrets.md
       - "Cliente de integração (OpenAPI)": recipes/openapi-client.md
       - "Cliente de WebSocket (AsyncAPI)": recipes/asyncapi-client.md
       - "Colunas de enum (seguras nos dois bancos)": recipes/enum-columns.md
@@ -584,7 +728,16 @@ nav:
       - "Exportação e exclusão de titular (LGPD)": recipes/subject-data.md
       - "Fakes (sem provedor real)": recipes/fakes.md
       - Feature flags: recipes/feature-flags.md
-      - Fila e Tarefas: recipes/queue-tasks.md
+      - Fila e Tarefas:
+          - "Índice": recipes/queue-tasks.md
+          - "Confiabilidade do caminho de eventos": recipes/queue-tasks/events-reliability.md
+          - "Confiabilidade e observabilidade das tarefas": recipes/queue-tasks/tasks-reliability.md
+          - "Mensageria com `MessageBroker`": recipes/queue-tasks/broker.md
+          - "Tarefas em background com `TaskQueue`": recipes/queue-tasks/tasks.md
+          - "Tarefas periódicas: `cron` e `interval`": recipes/queue-tasks/periodic.md
+          - "Topologia da fila com `QueueSpec`": recipes/queue-tasks/topology.md
+          - "Transporte por settings e outbox": recipes/queue-tasks/from-settings.md
+          - "Workers, healthcheck e scheduler em produção": recipes/queue-tasks/production.md
       - "File store (unificado)": recipes/file-store.md
       - "Formulários a partir de schemas Pydantic": recipes/ui-forms.md
       - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
@@ -595,7 +748,22 @@ nav:
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md
       - "IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google)": recipes/genai-hosted.md
-      - "IA generativa self-hosted": recipes/genai.md
+      - "IA generativa self-hosted":
+          - "Índice": recipes/genai.md
+          - "A máquina aguenta? Hardware e estimativa": recipes/genai/hardware.md
+          - "Áudio: STT e TTS": recipes/genai/audio.md
+          - "Backend Ollama": recipes/genai/ollama.md
+          - "Config tipada e saída estruturada": recipes/genai/structured.md
+          - "Contexto RAG": recipes/genai/rag.md
+          - "Efeitos sonoros e música": recipes/genai/sound.md
+          - "Embeddings e escala": recipes/genai/embeddings.md
+          - "Endpoints prontos e cache Redis": recipes/genai/router.md
+          - "Gerar texto (local e hospedado)": recipes/genai/text.md
+          - "Memória de longo prazo": recipes/genai/memory.md
+          - "Moderação, uso, métricas e cache": recipes/genai/operations.md
+          - "Pipeline de chat com IA": recipes/genai/chat.md
+          - "Quem falou o quê: diarização": recipes/genai/diarization.md
+          - "Visão multimodal (VLM local)": recipes/genai/vision.md
       - Idempotência: recipes/idempotency.md
       - "Jobs (trabalho longo com status)": recipes/jobs.md
       - Kestra (orquestrador de workflows): recipes/kestra.md
@@ -612,14 +780,33 @@ nav:
       - Métricas: recipes/metrics.md
       - MFA (TOTP / 2FA): recipes/mfa.md
       - Migrations: recipes/migrations.md
-      - "Modelops (export, bench, quantização)": recipes/modelops.md
+      - "Modelops (export, bench, quantização)":
+          - "Índice": recipes/modelops.md
+          - "Comece por aqui": recipes/modelops/start.md
+          - "Exportar scikit-learn e `.pkl`": recipes/modelops/sklearn.md
+          - "Fundir, `.ort`, inspecionar, API e CLI": recipes/modelops/formats.md
+          - "Medir: tempo, CPU, GPU, RAM, energia e comparação": recipes/modelops/measure.md
+          - "Playbook: onde o tempo e os bytes vão": recipes/modelops/playbook.md
+          - "Quantizar (dinâmica, estática e HuggingFace)": recipes/modelops/quantize.md
+          - "Saber se o modelo ainda funciona": recipes/modelops/monitoring.md
+          - "Servir na borda e publicar o pacote": recipes/modelops/edge.md
       - Multi-tenant: recipes/multi-tenant.md
       - n8n (automação de workflows): recipes/n8n.md
       - "Observabilidade (tracing)": recipes/observability.md
       - "OpenPix (assinaturas e planos)": recipes/openpix-subscriptions.md
       - "OpenPix (Pix via Woovi)": recipes/openpix.md
       - Outbox transacional: recipes/outbox.md
-      - Painel admin: recipes/admin.md
+      - Painel admin:
+          - "Índice": recipes/admin.md
+          - "Ações customizadas": recipes/admin/actions.md
+          - "Busca global": recipes/admin/search.md
+          - "Campos do formulário": recipes/admin/forms.md
+          - "Dashboard: cards, indicadores e mapa": recipes/admin/dashboard.md
+          - "Fuso, edição simultânea e idioma": recipes/admin/operator.md
+          - "Histórico de auditoria": recipes/admin/audit.md
+          - "Listagem: contagens, import e edição em massa": recipes/admin/list.md
+          - "Montar o painel": recipes/admin/setup.md
+          - "Permissões: RBAC, escopo por linha e impersonate": recipes/admin/permissions.md
       - PDFs: recipes/pdf.md
       - "Permissões object-level": recipes/authz.md
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
@@ -761,7 +948,20 @@ nav:
           - Fluxos críticos: learning/marketplace/flows.md
           - Mapa de endpoints: learning/marketplace/api.md
   - Roadmap: roadmap.md
-  - Guia de migração: migration.md
+  - Guia de migração:
+      - "Índice": migration.md
+      - "Migração 0.37x": migration/0-37x.md
+      - "Migração 0.36x": migration/0-36x.md
+      - "Migração 0.34x–0.35x": migration/0-34x-0-35x.md
+      - "Migração 0.33x": migration/0-33x.md
+      - "Migração 0.32x": migration/0-32x.md
+      - "Migração 0.31x": migration/0-31x.md
+      - "Migração 0.30x": migration/0-30x.md
+      - "Migração 0.27x": migration/0-27x.md
+      - "Migração 0.26x": migration/0-26x.md
+      - "Migração 0.25x": migration/0-25x.md
+      - "Migração 0.22x–0.23x": migration/0-22x-0-23x.md
+      - "Migração 0.8–0.17x": migration/0-8-0-17x.md
   - Contribuindo: contributing.md
   - Changelog: changelog.md
 

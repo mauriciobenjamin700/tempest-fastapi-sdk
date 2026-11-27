@@ -90,7 +90,7 @@ gigabytes.
     diz a partir de quando `generator.unload_if_idle()` aceita soltar os
     pesos, e quem chama esse método é você, de uma tarefa periódica (ou
     `ModelRegistry.unload_idle()`, para vários modelos de uma vez). O padrão
-    está em [Gerar texto com LLM local](genai.md#gerar-texto-com-llm-local).
+    está em [Gerar texto com LLM local](genai/text.md#gerar-texto-com-llm-local).
 
 !!! warning "O orçamento é o que protege a requisição"
     `max_seconds` sempre **abaixo** do timeout do proxy. Acima dele o cliente

@@ -261,7 +261,7 @@ app.include_router(make_agent_router(build_agent()))
     works even without `connect()`. What it does not do is close: without
     `await db.disconnect()` in the lifespan, the process ends with the pool
     open. The full lifecycle is in
-    [Database » Lifecycle in the lifespan](database.md#lifecycle-in-the-lifespan).
+    [Database » Lifecycle in the lifespan](database/connection.md#lifecycle-in-the-lifespan).
 
 ## The `context` parameter
 

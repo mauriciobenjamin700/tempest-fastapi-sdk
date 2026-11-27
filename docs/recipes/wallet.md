@@ -521,7 +521,7 @@ O `reject` precisa do `ledger` (o `WalletService.ledger` já serve) na mesma
 sessão do repositório — sessão diferente é `ValueError` no construtor, porque
 a devolução e o status commitariam separados. Sem `ledger`, só `mark_paid`
 funciona. O painel monta tudo isso sozinho: veja
-[Painel admin » Preset: saque manual](admin.md#preset-saque-manual-manual_payout_admin).
+[Painel admin » Preset: saque manual](admin/forms.md#preset-saque-manual-manual_payout_admin).
 
 ## Taxa e divisão
 

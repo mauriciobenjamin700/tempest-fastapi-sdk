@@ -289,7 +289,7 @@ responses:
 
 - `subdir=str(current.id)` keeps each owner's files apart.
 - `soft` mode, cookie and the shared session of `current_user_dependency()`:
-  [Auth flow](auth-flow.md#getting-the-current_user-from-the-request).
+  [Auth flow](auth-flow/current-user.md).
 
 ## Restrict extensions (allowlist)
 

@@ -103,7 +103,7 @@ and [Route errors](service-standard.md#route-errors-tempestapirouter-raises).
     As of **v0.291.0** `tempest new` writes the file with the user
     table's name already in it, and the project's `CLAUDE.md` teaches the
     recipe from there. See
-    [Database › Centralizing table names](recipes/database.md#centralizing-table-names).
+    [Database › Centralizing table names](recipes/database/models.md#centralizing-table-names).
 
 !!! warning "Rules that are not negotiable"
 
@@ -1129,7 +1129,7 @@ valid on the route handler and on the controller method alike — the
 its first form — so a check that flagged the route would flag correct code.
 Choosing the controller method, as above, is review. Full table, the
 `# tempest: router-builds` opt-out and what the router rules cannot see in
-[CLI › Layer rules](recipes/cli.md#layer-rules-tempest-lint-layers).
+[CLI › Layer rules](recipes/cli/lint-layers.md).
 
 ### Recap
 

@@ -2,8 +2,8 @@
 
 Uma reunião de cinquenta minutos entra como upload e sai como três coisas
 diferentes: a transcrição, um resumo e uma lista de tarefas. Cada peça já
-tem receita própria — [STT](genai.md#interpretar-audio-stt),
-[jobs](jobs.md), [contabilidade de uso](genai.md#contabilidade-de-uso-por-usuario-tabela).
+tem receita própria — [STT](genai/audio.md#interpretar-audio-stt),
+[jobs](jobs.md), [contabilidade de uso](genai/operations.md#contabilidade-de-uso-por-usuario-tabela).
 O que nenhuma delas mostra é a **costura**, que é onde moram as decisões
 difíceis:
 
@@ -136,7 +136,7 @@ llm = OpenAICompatGenerator(
 ```
 
 `batch_size` + `condition_on_previous_text=False` é o par que faz sentido
-junto, e os [knobs de decode](genai.md#transcrever-mais-rapido-em-cpu)
+junto, e os [knobs de decode](genai/audio.md#transcrever-mais-rapido-em-cpu)
 explicam por quê. O `base_url` não é opcional: sem ele o SDK manda um nome
 de modelo da DeepSeek para `api.openai.com`.
 

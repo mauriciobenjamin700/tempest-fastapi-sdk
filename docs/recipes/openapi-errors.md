@@ -749,7 +749,7 @@ Sai zero quando está em sincronia, então serve de step de CI:
     `openapi-errors`), sobre `src/` ou `app/`. Projeto sem nenhum dos dois pula
     o passo com aviso; para desligá-lo, `check_openapi_errors = false` em
     `[tool.tempest]`. Detalhes na
-    [receita da CLI](cli.md#os-passos-do-sdk-no-tempest-check).
+    [receita da CLI](cli/quality.md#os-passos-do-sdk-no-tempest-check).
 
 Opções:
 

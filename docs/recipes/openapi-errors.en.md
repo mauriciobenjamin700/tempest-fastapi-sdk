@@ -754,7 +754,7 @@ It exits zero when things are in sync, so it doubles as a CI step:
     step), over `src/` or `app/`. A project with neither skips the step with a
     notice; to switch it off, `check_openapi_errors = false` under
     `[tool.tempest]`. Details in the
-    [CLI recipe](cli.md#the-sdks-steps-in-tempest-check).
+    [CLI recipe](cli/quality.md#the-sdks-steps-in-tempest-check).
 
 Options:
 

@@ -485,7 +485,7 @@ Pedaço por pedaço:
   nome; nome que não é coluna mapeada levanta `ValueError`.
 - `page_size` respeita o `max_page_size` do repository, quando declarado
   (`PageSizeTooLargeException`). Ver
-  [Paginação](database.md#quais-colunas-ordenam-e-quantas-linhas-cabem-numa-pagina).
+  [Paginação](database/pagination.md#quais-colunas-ordenam-e-quantas-linhas-cabem-numa-pagina).
 
 Para devolver isso numa rota, mapeie cada par para o schema de resposta e
 reaproveite os metadados do envelope:
@@ -1194,7 +1194,7 @@ Pedaço por pedaço:
   5 000 pontos para o país).
 - `render_br_map_svg(contagens, pontos)` desenha o mapa do Brasil com cada UF
   num tom e uma bolha por cidade — é o que a página do admin usa (veja
-  [Mapa de distribuição](admin.md#mapa-de-distribuicao-geografica-location_maps-v03670)).
+  [Mapa de distribuição](admin/dashboard.md#mapa-de-distribuicao-geografica-location_maps-v03670)).
 
 !!! note "Os contornos são simplificados"
     Na malha mínima do IBGE, 52 dos 5571 municípios (0,93%) caem fora do

@@ -530,10 +530,10 @@ Every helper has its own recipe — this section is the quick map:
 
 | Helper | Recipe |
 | --- | --- |
-| `PasswordUtils`, `JWTUtils` | [Authentication recipe](http.md#authentication) |
-| `EmailUtils` | [Transactional email recipe](http.md#transactional-email) |
-| `UploadUtils` | [File uploads recipe](http.md#file-uploads) |
-| `DownloadUtils`, `build_content_disposition` | [Serving private files through the API](http.md#serving-private-files-through-the-api-downloadutils) |
+| `PasswordUtils`, `JWTUtils` | [Authentication recipe](http/auth.md) |
+| `EmailUtils` | [Transactional email recipe](http/upload-email.md#transactional-email) |
+| `UploadUtils` | [File uploads recipe](http/upload-email.md#file-uploads) |
+| `DownloadUtils`, `build_content_disposition` | [Serving private files through the API](http/upload-email.md#serving-private-files-through-the-api-downloadutils) |
 | `LogUtils` + `configure_logging` | [Structured logging & request IDs recipe](logging.md) |
 | `MetricsUtils` (CPU/memory/disk/GPU) | [System metrics recipe](metrics.md) |
 | `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / phone](#cpf-cnpj-phone) |

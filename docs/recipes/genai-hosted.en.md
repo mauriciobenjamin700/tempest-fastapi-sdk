@@ -711,7 +711,7 @@ Piece by piece:
 - `prompt` hands the model vocabulary — city names, product names — and
   `temperature` pins the decode temperature. How to build the prompt and its
   token limit are in
-  [Give Whisper the vocabulary](genai.md#give-whisper-the-vocabulary-prompt-and-hotwords).
+  [Give Whisper the vocabulary](genai/audio.md#give-whisper-the-vocabulary-prompt-and-hotwords).
   Whether the server honours the fields is up to it: the SDK guarantees they
   go in the form.
 - `audio` takes `bytes` or a local path (`str` or `Path`). A string is always

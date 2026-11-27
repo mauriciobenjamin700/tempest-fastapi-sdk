@@ -28,7 +28,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, fluxo bundled `UserAuthService` + `make_auth_router` |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
 | `[cli]` | `tempest-cli` (que exige `ruff`), `typer`, `click` | o comando `tempest` inteiro (`new`, `check`, `db`, …), gate de qualidade incluído. Ferramenta de dev: `uv add --dev "tempest-fastapi-sdk[cli]"` ou `uv tool install "tempest-fastapi-sdk[cli]"`. Sem ele nem o `[cli-ops]`, o `tempest` imprime a instrução de instalação e sai com código 2. Entra no `[all]`. [Receita](recipes/cli.md) |
-| `[cli-ops]` | `typer`, `click` | o comando `tempest` sem o gate, para o servidor: `doctor`, `db`, `shell`, `user`, `routes` e os `[tool.tempest] commands` rodam; `tempest lint` e os outros comandos do gate saem com código 2 apontando o `[cli]`. Sem `tempest-cli`, sem `ruff`. O `[cli]` já o contém. [Receita](recipes/cli.md#servidor-x-desenvolvimento-cli-ops-e-cli) |
+| `[cli-ops]` | `typer`, `click` | o comando `tempest` sem o gate, para o servidor: `doctor`, `db`, `shell`, `user`, `routes` e os `[tool.tempest] commands` rodam; `tempest lint` e os outros comandos do gate saem com código 2 apontando o `[cli]`. Sem `tempest-cli`, sem `ruff`. O `[cli]` já o contém. [Receita](recipes/cli/new-service.md#servidor-x-desenvolvimento-cli-ops-e-cli) |
 | `[genai-onnx]` | `onnxruntime`, `tokenizers` | inferência de modelo local exportado para ONNX, sem PyTorch no runtime |
 | `[genai-structured]` | `lm-format-enforcer` | saída estruturada garantida por gramática: o modelo local só consegue emitir JSON que casa com o schema |
 | `[genai-vlm]` | `pillow`, `torchvision` | modelo de visão-linguagem local: descrever imagem, responder pergunta sobre imagem |
@@ -71,7 +71,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
-| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` e `MessageBroker.kafka_from_settings` (com `KafkaSettings`): tópico, `key` de partição, `group_id`, `auto_offset_reset`, SASL e TLS. Herda `aiokafka<0.15` do FastStream. [Receita](recipes/queue-tasks.md#kafka-chave-grupo-e-commit) |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` e `MessageBroker.kafka_from_settings` (com `KafkaSettings`): tópico, `key` de partição, `group_id`, `auto_offset_reset`, SASL e TLS. Herda `aiokafka<0.15` do FastStream. [Receita](recipes/queue-tasks/broker.md#kafka-chave-grupo-e-commit) |
 | `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
 | `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | slides e gabaritos a partir de texto estruturado (HTML, PDF, PPTX, DOCX, Markdown) e Markdown em PDF com folha de estilo própria ou ABNT: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Exige Pango + fontconfig no sistema**, como o `[pdf]`. [Receita](recipes/slides.md) |
@@ -308,7 +308,7 @@ cuda The quick brown fox jumps over the lazy dog.
 O `probe_hardware()` também avisa do par errado antes da primeira transcrição:
 com um `torch` CUDA 13 e o `ctranslate2` instalados, o `HardwareInfo.warnings`
 diz o que vai falhar e manda para esta seção (veja
-[Sondando o hardware](recipes/genai.md#sondando-o-hardware)).
+[Sondando o hardware](recipes/genai/hardware.md#sondando-o-hardware)).
 
 !!! check "O que foi medido"
     **Neste repositório**, em 2026-11-10, num container `python:3.12-slim`
