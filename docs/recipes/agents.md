@@ -9,20 +9,14 @@ As ferramentas prontas embrulham os modelos que o SDK já roda localmente:
 texto, imagem, áudio e RAG. Nada de API paga, nada saindo da máquina.
 
 ```bash
-uv add "tempest-fastapi-sdk[genai]"   # agents não precisa de extra; o modelo, sim
+uv add "tempest-fastapi-sdk[genai-ollama]"   # agents não precisa de extra; o modelo, sim
+ollama pull qwen2.5:3b                       # o modelo do primeiro exemplo
 ```
 
 !!! info "Submódulo, sem extra"
     `from tempest_fastapi_sdk.agents import Agent`. O módulo importa sem
     nenhum extra — o peso está nos objetos que **você** injeta, e cada um
     mantém o próprio carregamento preguiçoso.
-
-!!! warning "O modelo é que puxa o extra"
-    Um agente sem modelo não faz nada, e todo exemplo desta página injeta um
-    `TextGenerator`, que vive em `[genai]`. Sem ele a primeira instanciação
-    levanta `ImportError: Text generation requires the optional [genai]
-    extra.` Vale o mesmo para `[genai-image]`, `[genai-audio]` e
-    `[genai-rag]` nas seções seguintes.
 
 !!! abstract "Quer entender o mecanismo antes do código?"
     [Agentes: como funcionam por dentro](agents-concepts.md) mostra o laço com
@@ -37,6 +31,32 @@ uv add "tempest-fastapi-sdk[genai]"   # agents não precisa de extra; o modelo, 
     saída estruturada, memória, skills, delegação entre agentes e laços
     autônomos.
 
+## Escolher o extra pelo backend do modelo
+
+Instale só o extra do gerador que o agente usa — o `[genai]` é o único que
+traz `torch`.
+
+| Backend do modelo | Gerador | Extra | Traz `torch`? |
+| --- | --- | --- | --- |
+| Ollama (daemon local) | `OllamaGenerator` | `[genai-ollama]` | Não |
+| API hospedada (Anthropic, OpenAI, DeepSeek) | `AnthropicGenerator`, `OpenAICompatGenerator` | `[genai-hosted]` | Não |
+| Modelo local via `transformers` | `TextGenerator` | `[genai]` | Sim (`torch` + `transformers`) |
+
+Medido em 2026-11-27, wheel da 0.374.0 em venv vazia (Python 3.12): com só
+`[genai-ollama]`, o `agent_setup.py` abaixo rodou contra o Ollama 0.30.11, e
+`import torch` deu `ModuleNotFoundError`; com só `[genai-hosted]`, o `Agent`
+montou sobre `AnthropicGenerator` e `OpenAICompatGenerator`, também sem
+`torch`. Algumas seções usam o `TextGenerator` — ali o extra é o `[genai]`.
+As ferramentas multimodais pedem o próprio extra
+([lista](#ferramentas-sobre-os-modelos-locais)).
+
+!!! warning "Sem o extra, o agente falha na primeira volta, não na construção"
+    Medido com `TextGenerator` numa venv sem `[genai]`: o construtor passa, e
+    `agent.run(...)` termina com `stop_reason` `error` e `output`
+    `ImportError: Text generation requires the optional [genai] extra. ...`.
+    Confira o [`stop_reason`](#sempre-olhe-o-stop_reason) ou chame `load()` no startup,
+    que levanta o mesmo `ImportError` na hora.
+
 ## O primeiro agente
 
 ```python title="agent_setup.py" hl_lines="27 33 41"
@@ -44,7 +64,7 @@ import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
-from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
+from tempest_fastapi_sdk.genai import OllamaGenerator
 
 
 async def get_weather(arguments: dict[str, Any], _context: AgentContext) -> str:
@@ -66,7 +86,7 @@ weather_tool = text_tool(
 
 def build_agent() -> Agent:
     """Build the agent the rest of this page imports."""
-    return Agent(TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT), tools=[weather_tool])
+    return Agent(OllamaGenerator("qwen2.5:3b", num_ctx=8192), tools=[weather_tool])
 
 
 async def main() -> None:
@@ -88,20 +108,22 @@ python agent_setup.py
 ```
 
 ```text
-The weather in Recife is 22 degrees, clear sky.
+O tempo atual em Recife é de 22 graus com o céu limpo.
 ['get_weather']
 [('model', 'chat'), ('tool', 'get_weather'), ('model', 'chat')]
 ```
 
-!!! info "O peso baixa uma vez — depois é cache em disco"
-    A primeira chamada escreve os GB em `$HF_HOME/hub` (ou
-    `~/.cache/huggingface/hub`); as execuções seguintes leem de lá, sem rede.
-    Num **container sem volume** isso se perde a cada restart. Como apontar o
-    cache, fixar a revisão, pré-baixar no deploy e rodar offline está em
+!!! info "O modelo mora no Ollama — o `pull` baixa uma vez"
+    `ollama pull qwen2.5:3b` baixa o GGUF (1,9 GB) para o daemon; as
+    execuções seguintes não usam rede. O 3B e não o `qwen2.5:0.5b`: em CPU,
+    o 0.5B no Ollama encerrou sem texto e sem chamar a ferramenta em parte
+    das execuções — veja [Agente em CPU](#agente-em-cpu-backend-tamanho-e-orcamento).
+    Com o `TextGenerator`, o peso vai para o cache do Hugging Face; como
+    apontar o cache, fixar a revisão e rodar offline está em
     **[Pesos de modelos »](model-weights.md#onde-os-pesos-ficam-e-por-que-a-2a-execucao-e-instantanea)**.
 
 Três passos: o modelo pediu a ferramenta, a ferramenta rodou, o modelo leu o
-resultado e respondeu. Tudo isso num modelo de 0.5B rodando em CPU.
+resultado e respondeu. Tudo isso num modelo de 3B servido pelo Ollama.
 
 O que aconteceu por baixo: o agente mandou ao modelo o `system_prompt` mais o
 seu objetivo, junto da lista de ferramentas. O modelo **não executou nada** —

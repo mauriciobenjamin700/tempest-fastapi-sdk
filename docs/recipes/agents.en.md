@@ -9,20 +9,14 @@ The ready-made tools wrap the models the SDK already runs locally: text,
 image, audio and RAG. No paid API, nothing leaving the machine.
 
 ```bash
-uv add "tempest-fastapi-sdk[genai]"   # agents needs no extra; the model does
+uv add "tempest-fastapi-sdk[genai-ollama]"   # agents needs no extra; the model does
+ollama pull qwen2.5:3b                       # the model of the first example
 ```
 
 !!! info "Submodule, no extra"
     `from tempest_fastapi_sdk.agents import Agent`. The module imports with
     no extra at all — the weight lives in the objects **you** inject, and
     each keeps its own lazy loading.
-
-!!! warning "The model is what pulls the extra in"
-    An agent with no model does nothing, and every example on this page
-    injects a `TextGenerator`, which lives in `[genai]`. Without it the
-    first instantiation raises `ImportError: Text generation requires the
-    optional [genai] extra.` The same holds for `[genai-image]`,
-    `[genai-audio]` and `[genai-rag]` in the sections below.
 
 !!! abstract "Want the mechanism before the code?"
     [Agents: how they work inside](agents-concepts.md) shows the loop with the
@@ -37,6 +31,33 @@ uv add "tempest-fastapi-sdk[genai]"   # agents needs no extra; the model does
     covers structured output, memory, skills, delegation between agents and
     autonomous loops.
 
+## Pick the extra by the model backend
+
+Install only the extra of the generator your agent uses — `[genai]` is the
+only one that brings `torch`.
+
+| Model backend | Generator | Extra | Brings `torch`? |
+| --- | --- | --- | --- |
+| Ollama (local daemon) | `OllamaGenerator` | `[genai-ollama]` | No |
+| Hosted API (Anthropic, OpenAI, DeepSeek) | `AnthropicGenerator`, `OpenAICompatGenerator` | `[genai-hosted]` | No |
+| Local model through `transformers` | `TextGenerator` | `[genai]` | Yes (`torch` + `transformers`) |
+
+Measured on 2026-11-27, 0.374.0 wheel in an empty venv (Python 3.12): with
+only `[genai-ollama]`, the `agent_setup.py` below ran against Ollama 0.30.11
+and `import torch` raised `ModuleNotFoundError`; with only `[genai-hosted]`,
+the `Agent` was built over `AnthropicGenerator` and `OpenAICompatGenerator`,
+also without `torch`. Some sections use `TextGenerator` — there the extra is
+`[genai]`. The multimodal tools ask for their own extra
+([list](#tools-over-your-local-models)).
+
+!!! warning "Without the extra, the agent fails on the first turn, not at construction"
+    Measured with `TextGenerator` in a venv without `[genai]`: the
+    constructor passes, and `agent.run(...)` ends with `stop_reason`
+    `error` and `output`
+    `ImportError: Text generation requires the optional [genai] extra. ...`.
+    Check the [`stop_reason`](#always-check-stop_reason) or call
+    `load()` at startup, which raises the same `ImportError` right away.
+
 ## Your first agent
 
 ```python title="agent_setup.py" hl_lines="27 33 41"
@@ -44,7 +65,7 @@ import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
-from tempest_fastapi_sdk.genai import TextGenerator, TextModelEnum
+from tempest_fastapi_sdk.genai import OllamaGenerator
 
 
 async def get_weather(arguments: dict[str, Any], _context: AgentContext) -> str:
@@ -66,7 +87,7 @@ weather_tool = text_tool(
 
 def build_agent() -> Agent:
     """Build the agent the rest of this page imports."""
-    return Agent(TextGenerator(TextModelEnum.QWEN2_5_0_5B_INSTRUCT), tools=[weather_tool])
+    return Agent(OllamaGenerator("qwen2.5:3b", num_ctx=8192), tools=[weather_tool])
 
 
 async def main() -> None:
@@ -88,21 +109,22 @@ python agent_setup.py
 ```
 
 ```text
-The weather in Recife is 22 degrees, clear sky.
+The weather in Recife is 22 degrees with clear sky.
 ['get_weather']
 [('model', 'chat'), ('tool', 'get_weather'), ('model', 'chat')]
 ```
 
-!!! info "Weights download once — then it is a disk cache"
-    The first call writes the gigabytes to `$HF_HOME/hub` (or
-    `~/.cache/huggingface/hub`); later runs read them from there, no network.
-    In a **container with no volume** that is lost on every restart. Pointing
-    the cache somewhere durable, pinning the revision, pre-downloading at
-    deploy time and running offline are all in
+!!! info "The model lives in Ollama — `pull` downloads it once"
+    `ollama pull qwen2.5:3b` downloads the GGUF (1.9 GB) into the daemon;
+    later runs use no network. The 3B and not `qwen2.5:0.5b`: on CPU, the
+    0.5B on Ollama ended with no text and no tool call in part of the runs —
+    see [Agents on CPU](#agents-on-cpu-backend-size-and-budget). With
+    `TextGenerator`, the weights go to the Hugging Face cache; pointing the
+    cache somewhere durable, pinning the revision and running offline are in
     **[Model weights »](model-weights.md#where-the-weights-live-and-why-the-second-run-is-instant)**.
 
 Three steps: the model asked for the tool, the tool ran, the model read the
-result and answered. All of it on a 0.5B model running on CPU.
+result and answered. All of it on a 3B model served by Ollama.
 
 What happened underneath: the agent sent the model the `system_prompt` plus
 your goal, alongside the list of tools. The model **executed nothing** — it
