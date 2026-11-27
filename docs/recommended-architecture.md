@@ -528,7 +528,7 @@ A camada de tasks que o `tempest new --extras tasks` gera separa assim:
 | `tasks/worker.py` | importa os módulos de task e expõe `broker` / `scheduler` |
 
 O envio pelo nome usa
-[`TaskQueue.enqueue_by_name`](recipes/queue-tasks.md#enfileirar-pelo-nome-enqueue_by_name),
+[`TaskQueue.enqueue_by_name`](recipes/queue-tasks/tasks.md#enfileirar-pelo-nome-enqueue_by_name),
 e a política de retry da task continua valendo — o worker repõe os labels
 com que ela foi registrada.
 

@@ -532,7 +532,7 @@ The task layer `tempest new --extras tasks` writes splits it like this:
 | `tasks/worker.py` | imports the task modules and exposes `broker` / `scheduler` |
 
 Sending by name uses
-[`TaskQueue.enqueue_by_name`](recipes/queue-tasks.md#enqueue-by-name-enqueue_by_name),
+[`TaskQueue.enqueue_by_name`](recipes/queue-tasks/tasks.md#enqueue-by-name-enqueue_by_name),
 and the task's retry policy still applies — the worker restores the labels
 it was registered with.
 

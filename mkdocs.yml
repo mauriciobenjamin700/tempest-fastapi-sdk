@@ -253,7 +253,16 @@ plugins:
               - "Push (web + mobile)": recipes/push.md
               - "QR code with a logo and a frame (ride link)": recipes/qr-logo.md
               - Query plans (EXPLAIN): recipes/query-plans.md
-              - Queue & Tasks: recipes/queue-tasks.md
+              - Queue & Tasks:
+                  - "Index": recipes/queue-tasks.md
+                  - "Background tasks with `TaskQueue`": recipes/queue-tasks/tasks.md
+                  - "Event-path reliability": recipes/queue-tasks/events-reliability.md
+                  - "Messaging with `MessageBroker`": recipes/queue-tasks/broker.md
+                  - "Periodic tasks: `cron` and `interval`": recipes/queue-tasks/periodic.md
+                  - "Queue topology with `QueueSpec`": recipes/queue-tasks/topology.md
+                  - "Task reliability and observability": recipes/queue-tasks/tasks-reliability.md
+                  - "Transport from settings and the outbox": recipes/queue-tasks/from-settings.md
+                  - "Workers, healthcheck and scheduler in production": recipes/queue-tasks/production.md
               - React SPA inside FastAPI: recipes/react-spa.md
               - Real-time: recipes/realtime.md
               - "Receiving WhatsApp messages (zap-api)": recipes/zap-inbound.md
@@ -719,7 +728,16 @@ nav:
       - "Exportação e exclusão de titular (LGPD)": recipes/subject-data.md
       - "Fakes (sem provedor real)": recipes/fakes.md
       - Feature flags: recipes/feature-flags.md
-      - Fila e Tarefas: recipes/queue-tasks.md
+      - Fila e Tarefas:
+          - "Índice": recipes/queue-tasks.md
+          - "Confiabilidade do caminho de eventos": recipes/queue-tasks/events-reliability.md
+          - "Confiabilidade e observabilidade das tarefas": recipes/queue-tasks/tasks-reliability.md
+          - "Mensageria com `MessageBroker`": recipes/queue-tasks/broker.md
+          - "Tarefas em background com `TaskQueue`": recipes/queue-tasks/tasks.md
+          - "Tarefas periódicas: `cron` e `interval`": recipes/queue-tasks/periodic.md
+          - "Topologia da fila com `QueueSpec`": recipes/queue-tasks/topology.md
+          - "Transporte por settings e outbox": recipes/queue-tasks/from-settings.md
+          - "Workers, healthcheck e scheduler em produção": recipes/queue-tasks/production.md
       - "File store (unificado)": recipes/file-store.md
       - "Formulários a partir de schemas Pydantic": recipes/ui-forms.md
       - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md

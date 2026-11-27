@@ -71,7 +71,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
-| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` and `MessageBroker.kafka_from_settings` (with `KafkaSettings`): topic, partition `key`, `group_id`, `auto_offset_reset`, SASL and TLS. Inherits `aiokafka<0.15` from FastStream. [Recipe](recipes/queue-tasks.md#kafka-key-group-and-commit) |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` and `MessageBroker.kafka_from_settings` (with `KafkaSettings`): topic, partition `key`, `group_id`, `auto_offset_reset`, SASL and TLS. Inherits `aiokafka<0.15` from FastStream. [Recipe](recipes/queue-tasks/broker.md#kafka-key-group-and-commit) |
 | `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
 | `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
 | `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | Slides and answer keys from structured text (HTML, PDF, PPTX, DOCX, Markdown) and Markdown to PDF with your own or the ABNT stylesheet: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Needs Pango + fontconfig on the system**, like `[pdf]`. [Recipe](recipes/slides.md) |
