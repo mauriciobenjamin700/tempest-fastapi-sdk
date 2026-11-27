@@ -104,67 +104,47 @@ Five files map onto five responsibilities:
 
 ```python
 # src/core/settings.py
-from tempest_fastapi_sdk import BaseAppSettings, DatabaseSettings, ServerSettings
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    DatabaseSettings,
+    EmailSettings,
+    JWTSettings,
+    ServerSettings,
+    UploadSettings,
+)
 
 
-class Settings(ServerSettings, DatabaseSettings, BaseAppSettings):
+class Settings(
+    ServerSettings,
+    DatabaseSettings,
+    JWTSettings,
+    EmailSettings,
+    UploadSettings,
+    BaseAppSettings,
+):
     """All environment-driven configuration lives here.
 
-    BaseAppSettings ships `env_file=.env`, `extra=ignore`,
-    `case_sensitive=True`, `frozen=True` and `str_strip_whitespace=True`.
-    ServerSettings adds SERVER_HOST/PORT/RELOAD, DatabaseSettings adds
-    DATABASE_URL/ECHO/POOL_*.
+    Each mixin brings its own variables: SERVER_*, DATABASE_*, JWT_*,
+    SMTP_* and UPLOAD_*. Declare here only what no mixin models.
     """
 
-    JWT_SECRET: str
-    JWT_ALGORITHM: str = "HS256"
-    JWT_TTL_HOURS: int = 1
 
-    SMTP_HOST: str = "localhost"
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str | None = None
-    SMTP_PASSWORD: str | None = None
-    SMTP_FROM_ADDR: str = "noreply@example.com"
-
-    UPLOAD_DIR: str = "./var/uploads"
-
-
-settings = Settings()
+settings: Settings = Settings()
 ```
+
+Each mixin brings its own variables, with defaults and validation —
+`JWT_SECRET`, `SMTP_HOST` and `UPLOAD_DIR` come from `JWTSettings`,
+`EmailSettings` and `UploadSettings`, with nothing redeclared. The table of
+every mixin, the `.env.example` and each one's `*_kwargs()` mapper are in
+[Settings](recipes/settings.md).
 
 !!! warning "`BaseAppSettings` is always the **last** base"
 
-    Every settings mixin the SDK ships (`ServerSettings`,
-    `DatabaseSettings`, `RedisSettings`, …) already **inherits**
-    `BaseAppSettings` — that is how each one carries the canonical
-    `model_config` (`env_file=".env"`, `extra="ignore"`,
-    `case_sensitive=True`) regardless of ordering.
-
-    The consequence: `BaseAppSettings` must come **last** in the base list.
-    Python forbids a base from preceding its own subclass (C3
-    linearization), so writing
-
-    ```python
-    # docs-guard: skip — this is the mistake the warning describes
-    class Settings(BaseAppSettings, DatabaseSettings):  # ❌ fails to import
-        ...
-    ```
-
-    fails **at import time** with:
-
-    ```text
-    TypeError: Settings: BaseAppSettings must be the LAST base —
-    DatabaseSettings already subclasses it, so listing BaseAppSettings
-    before it is an invalid method resolution order (MRO). Move
-    BaseAppSettings to the end of the base list:
-    class Settings(DatabaseSettings, BaseAppSettings).
-    ```
-
-    Before v0.159.1 the message was pydantic's raw `TypeError` (`Cannot
-    create a consistent method resolution order (MRO) for bases
-    BaseAppSettings, DatabaseSettings`), plus a misleading `[metaclass]`
-    error from `mypy` on the same line. The cause is identical in both
-    versions: move `BaseAppSettings` to the end.
+    Every mixin already inherits `BaseAppSettings`; listed before a mixin, the
+    import fails with
+    `TypeError: Settings: BaseAppSettings must be the LAST base — ...`.
+    The full message and the rule are in
+    [Settings](recipes/settings.md#list-baseappsettings-last).
 
 Infra resources (the database now; storage / mail later) live in
 `src/api/dependencies/resources.py`, built **once** and reached through

@@ -213,7 +213,8 @@ on the way in is the other half: the hostile file never reaches storage.
 
 ### Via settings (`.env`)
 
-To configure per environment, `UploadSettings` already exposes
+To configure per environment, compose the `UploadSettings` mixin into your
+`Settings` class (see [Settings](settings.md)); it already exposes
 `UPLOAD_ALLOWED_EXTENSIONS` (and `UPLOAD_ALLOWED_MIMETYPES`):
 
 ```bash

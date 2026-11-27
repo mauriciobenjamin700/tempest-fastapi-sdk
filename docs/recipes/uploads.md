@@ -210,7 +210,8 @@ na entrada é a outra metade: o arquivo hostil nem chega ao storage.
 
 ### Via settings (`.env`)
 
-Quando preferir configurar por ambiente, o `UploadSettings` já expõe
+Quando preferir configurar por ambiente, componha o mixin `UploadSettings` na
+sua classe `Settings` (veja [Settings](settings.md)); ele já expõe
 `UPLOAD_ALLOWED_EXTENSIONS` (e `UPLOAD_ALLOWED_MIMETYPES`):
 
 ```bash

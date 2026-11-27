@@ -201,6 +201,7 @@ plugins:
               - Server-Sent Events (SSE): recipes/sse.md
               - Server-side login and signup: recipes/auth-pages.md
               - Server-side sessions: recipes/sessions.md
+              - "Settings (mixins and composition order)": recipes/settings.md
               - "Sharing with a preview (Open Graph)": recipes/share-preview.md
               - "Slides, answer keys and Markdown to PDF": recipes/slides.md
               - "Social login (OAuth2/OIDC)": recipes/oauth.md
@@ -554,6 +555,7 @@ nav:
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md
       - Sessões server-side: recipes/sessions.md
+      - "Settings (mixins e ordem de composição)": recipes/settings.md
       - "Slides, gabaritos e Markdown em PDF": recipes/slides.md
       - "SPA React no FastAPI": recipes/react-spa.md
       - "SSR (páginas tipadas)": ssr.md
