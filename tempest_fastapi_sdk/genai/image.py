@@ -40,6 +40,7 @@ from tempest_fastapi_sdk.genai.schemas import (
 )
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
+from tempest_fastapi_sdk.utils._image_decode import decode_image
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
@@ -123,14 +124,15 @@ def _load_image(source: Any) -> Any:
     Raises:
         ImportError: When Pillow is missing.
         TypeError: When ``source`` is not a supported type.
+        OSError: When a path or bytes source is not a decodable image, or
+            is truncated — decoded here, so a cut file raises even when
+            ``PIL.ImageFile.LOAD_TRUNCATED_IMAGES`` is on (#868).
     """
     image_mod = _require_pillow()
     if isinstance(source, image_mod.Image):
         return source
-    if isinstance(source, str | Path):
-        return image_mod.open(source)
-    if isinstance(source, bytes | bytearray):
-        return image_mod.open(io.BytesIO(bytes(source)))
+    if isinstance(source, str | Path | bytes | bytearray):
+        return decode_image(source if isinstance(source, str | Path) else bytes(source))
     if source.__class__.__module__ == "numpy":
         return image_mod.fromarray(source)
     raise TypeError(

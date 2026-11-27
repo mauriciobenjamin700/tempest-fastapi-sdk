@@ -14,7 +14,7 @@ is imported when the router is built, for the pixel-count check.
 
 from __future__ import annotations
 
-import io
+import asyncio
 import warnings
 from typing import TYPE_CHECKING, Protocol
 
@@ -22,6 +22,7 @@ from fastapi import APIRouter, UploadFile
 
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.exceptions.validation import ValidationException
+from tempest_fastapi_sdk.utils._image_decode import ImageStream
 from tempest_fastapi_sdk.utils.upload import read_upload_capped
 from tempest_fastapi_sdk.vision.mapping import (
     to_classification_schema,
@@ -86,12 +87,19 @@ hundred pixels anyway.
 """
 
 
-def _check_pixels(data: bytes, max_pixels: int) -> None:
-    """Refuse an image whose header declares more than ``max_pixels``.
+def _check_image(data: bytes, max_pixels: int) -> None:
+    """Refuse an image too large by its header, or truncated or corrupt.
 
     ``PIL.Image.open`` is lazy: it parses the header and stops, so the size
-    is known without decoding. Pillow's own decompression-bomb warning is
-    silenced for the duration, because this check is the one that decides.
+    is checked before any pixel is decoded. Pillow's own decompression-bomb
+    warning is silenced for the duration, because this check is the one
+    that decides. Only then are the pixels decoded, through
+    :class:`~tempest_fastapi_sdk.utils._image_decode.ImageStream`, so a cut
+    file is refused even when ``PIL.ImageFile.LOAD_TRUNCATED_IMAGES`` is on
+    — ``import weasyprint`` turns it on, and ``ort-vision-sdk`` then decoded
+    half an image with the missing rows in gray (#868). The model decodes
+    the bytes again; measured on a 12 MP JPEG, this decode costs about
+    70 ms against ``ort-vision-sdk``'s own 107 ms.
 
     Args:
         data (bytes): The encoded image.
@@ -99,30 +107,36 @@ def _check_pixels(data: bytes, max_pixels: int) -> None:
 
     Raises:
         ValidationException: When the bytes are not an image Pillow can
-            identify, or the declared canvas exceeds ``max_pixels``
-            (``422``).
+            decode, are truncated, or the declared canvas exceeds
+            ``max_pixels`` (``422``).
     """
     from PIL import Image
 
+    stream = ImageStream(data)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", Image.DecompressionBombWarning)
         try:
-            with Image.open(io.BytesIO(data)) as image:
+            with Image.open(stream) as image:
                 width, height = image.size
+                if width * height > max_pixels:
+                    raise ValidationException(
+                        message=f"image has more than {max_pixels} pixels",
+                        details={
+                            "max_pixels": max_pixels,
+                            "width": width,
+                            "height": height,
+                        },
+                    )
+                stream.load(image)
         except Image.DecompressionBombError as exc:
             raise ValidationException(
                 message=f"image has more than {max_pixels} pixels",
                 details={"max_pixels": max_pixels},
             ) from exc
-        except (OSError, SyntaxError, ValueError) as exc:
+        except (OSError, SyntaxError, ValueError, EOFError) as exc:
             raise ValidationException(
                 message="upload is not a decodable image",
             ) from exc
-    if width * height > max_pixels:
-        raise ValidationException(
-            message=f"image has more than {max_pixels} pixels",
-            details={"max_pixels": max_pixels, "width": width, "height": height},
-        )
 
 
 def _image_load_errors() -> tuple[type[BaseException], ...]:
@@ -155,10 +169,11 @@ def make_vision_router(
 
     Every route reads the upload with
     :func:`~tempest_fastapi_sdk.utils.upload.read_upload_capped`, checks the
-    declared pixel count from the image header, and only then runs the
+    declared pixel count from the image header, decodes the pixels in a
+    worker thread to refuse a truncated file, and only then runs the
     model. An oversized upload answers ``413`` (``UPLOAD_TOO_LARGE``); a
-    canvas over ``max_image_pixels``, or bytes that are not an image, answer
-    ``422``, and so does an ``ImageLoadError``
+    canvas over ``max_image_pixels``, bytes that are not an image, or a
+    truncated image answer ``422``, and so does an ``ImageLoadError``
     raised by ``ort-vision-sdk`` while decoding, which used to escape as a
     ``500``.
 
@@ -176,8 +191,11 @@ def make_vision_router(
             :data:`DEFAULT_MAX_IMAGE_UPLOAD_BYTES`.
         max_image_pixels (int | None): Largest ``width * height`` decoded.
             Defaults to :data:`DEFAULT_MAX_IMAGE_PIXELS`. ``None`` skips the
-            header check (and the Pillow import), leaving only Pillow's own
-            decompression-bomb guard inside the decoder.
+            header check and the truncation check (and the Pillow import),
+            leaving only Pillow's own decompression-bomb guard inside the
+            decoder — and a truncated upload then reaches the model whenever
+            ``PIL.ImageFile.LOAD_TRUNCATED_IMAGES`` is on, as it is after
+            ``import weasyprint``.
         docs_locale (str | None): Language of the OpenAPI ``summary``
             and ``description`` text — ``"en-US"`` or ``"pt-BR"``.
             ``None`` (default) reads ``API_DOCS_LOCALE`` through
@@ -234,7 +252,7 @@ def make_vision_router(
             label="image",
         )
         if max_image_pixels is not None:
-            _check_pixels(data, max_image_pixels)
+            await asyncio.to_thread(_check_image, data, max_image_pixels)
         try:
             return (await task.async_predict(data))[0]
         except load_errors as exc:

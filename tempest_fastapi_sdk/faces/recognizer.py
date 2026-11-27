@@ -27,6 +27,7 @@ from tempest_fastapi_sdk.faces.detector import FaceDetector
 from tempest_fastapi_sdk.faces.geometry import align_face
 from tempest_fastapi_sdk.faces.models import LIGHT_PACK, ensure_models, resolve_pack
 from tempest_fastapi_sdk.faces.schemas import DetectedFace
+from tempest_fastapi_sdk.utils._image_decode import decode_image
 from tempest_fastapi_sdk.utils._lifecycle import ModelLifecycle
 
 if TYPE_CHECKING:
@@ -302,21 +303,25 @@ class FaceRecognizer:
         return largest.embedding
 
     def _open(self, image: str | Path | bytes) -> Image.Image:
-        """Read an image from a path or bytes.
+        """Read and fully decode an image from a path or bytes.
+
+        Decoded here, through
+        :func:`~tempest_fastapi_sdk.utils._image_decode.decode_image`, so a
+        truncated file raises even when ``PIL.ImageFile.LOAD_TRUNCATED_IMAGES``
+        is on (``import weasyprint`` turns it on, #868) — the detector's own
+        ``convert`` would otherwise fill the missing rows with gray.
 
         Args:
             image (str | Path | bytes): The source.
 
         Returns:
-            Image.Image: The decoded RGB image.
+            Image.Image: The decoded image.
+
+        Raises:
+            OSError: When the bytes are not an image Pillow can decode, or
+                are truncated.
         """
-        import io
-
-        from PIL import Image
-
-        if isinstance(image, bytes):
-            return Image.open(io.BytesIO(image))
-        return Image.open(str(image))
+        return decode_image(image)
 
     def _detect_sync(self, image: str | Path | bytes) -> list[DetectedFace]:
         """Detect faces, holding the models for the call. Runs in a worker thread.
