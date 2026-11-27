@@ -580,6 +580,11 @@ O risco da declaração explícita é ficar desatualizada. Como a convenção do
 projeto já exige seção `Raises:` em toda docstring, dá para conferir **sem magia
 em runtime**:
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 ```bash
 tempest openapi-errors --check
 ```

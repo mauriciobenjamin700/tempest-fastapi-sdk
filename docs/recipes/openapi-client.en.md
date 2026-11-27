@@ -6,6 +6,11 @@ the Python name for each field (`createdAt` → `created_at`), wire the network 
 the payload still matches the wire — and then write another layer just to
 assemble the HTTP calls.
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 The OpenAPI specification already describes all of it formally. So:
 
 ```bash

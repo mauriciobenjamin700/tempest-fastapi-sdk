@@ -32,6 +32,11 @@ o que mudar. As regras desta página entram como **aviso**: aparecem com
 layers_strict = true
 ```
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](installation.md#cli).
+
 Para migrar uma regra por vez, filtre:
 
 ```bash

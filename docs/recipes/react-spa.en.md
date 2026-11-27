@@ -373,6 +373,11 @@ my-service/
 The generator handles this. With a `web/package.json` present,
 `tempest generate --dockerfile` detects the SPA and emits the Node stage:
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 ```bash
 tempest generate --dockerfile --force
 ```

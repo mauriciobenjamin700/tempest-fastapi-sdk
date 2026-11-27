@@ -763,6 +763,11 @@ app.include_router(
 )
 ```
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 !!! warning "Segredo vazio é recusado"
     `GET /logs` expõe tracebacks e metadados de request, e `DELETE /logs`
     trunca os arquivos. Os dois exigem o header `X-Token`, comparado com

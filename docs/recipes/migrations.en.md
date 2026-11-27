@@ -76,6 +76,11 @@ The generated `alembic/env.py` is a single call to
 
 ### 2. Generate the initial revision
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 ```bash
 uv run tempest db revision -m "initial"
 ```

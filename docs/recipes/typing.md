@@ -28,6 +28,13 @@ select = ["E", "W", "F", "I", "B", "C4", "UP", "N", "SIM", "RUF", "ANN"]
 ignore = ["B008", "B006", "ANN401", "ANN002", "ANN003"]
 ```
 
+!!! info "Os gates do `tempest` pedem o extra `[cli]`"
+    `lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check` e
+    `pr-prompt` vêm do `[cli]`; com só o `[cli-ops]` (o do servidor), eles
+    saem com código 2 apontando o `[cli]`. Instale com
+    `uv add --dev "tempest-fastapi-sdk[cli]"` — detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 Aí é só rodar os gates da CLI:
 
 ```bash

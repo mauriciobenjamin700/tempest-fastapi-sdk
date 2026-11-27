@@ -254,6 +254,11 @@ header value and a newline splits the response into two.
 
 ## The CLI: the template-editing loop
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 ```bash
 tempest pdf list                                    # what exists
 tempest pdf schema receipt                          # the payload it accepts

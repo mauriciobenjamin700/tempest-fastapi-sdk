@@ -454,6 +454,13 @@ Receitas: [SSR](../ssr.md), [Visão](vision.md).
 `tempest secrets`, gates de qualidade; deploy seguro (migrations + graceful
 shutdown).
 
+!!! info "Os gates do `tempest` pedem o extra `[cli]`"
+    `lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check` e
+    `pr-prompt` vêm do `[cli]`; com só o `[cli-ops]` (o do servidor), eles
+    saem com código 2 apontando o `[cli]`. Instale com
+    `uv add --dev "tempest-fastapi-sdk[cli]"` — detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 ```bash
 tempest new my_service && cd my_service
 tempest db init && tempest db upgrade

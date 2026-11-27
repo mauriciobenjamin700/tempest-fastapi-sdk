@@ -14,6 +14,11 @@ O formato que descreve isso é o **AsyncAPI 3.0**, e o SDK lê.
 
 ## Gerando
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 ```bash
 uv run tempest asyncapi-client http://127.0.0.1:3000/asyncapi.json \
     --name zap \

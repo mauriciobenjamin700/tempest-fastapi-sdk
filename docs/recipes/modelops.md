@@ -1220,6 +1220,11 @@ nova?" em loop sem tocar no grafo.
 A primeira coisa é medir. Sem `tempest model bench` você não tem base de
 comparação pra dizer se a quantização ajudou.
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 ```bash
 tempest model bench models/classify.onnx --repetitions 50 --warmup 10
 ```

@@ -6,6 +6,11 @@ o nome pythônico de cada campo (`createdAt` → `created_at`), configura os ali
 para o payload continuar batendo com o que vai na rede — e depois escreve mais
 uma camada só para montar as requisições HTTP.
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 A especificação OpenAPI já descreve tudo isso formalmente. Então:
 
 ```bash

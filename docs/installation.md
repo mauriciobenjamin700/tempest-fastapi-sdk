@@ -354,7 +354,18 @@ dependência direta, e exporte o `LD_LIBRARY_PATH` para
 
 ## CLI
 
-A CLI `tempest` vem na instalação base (sem extra):
+Use quando você vai rodar o comando `tempest`. Ele não vem na instalação
+base: é o extra `[cli]` em desenvolvimento, ou o `[cli-ops]` no servidor.
+
+| Extra | Instale com | Comandos |
+| --- | --- | --- |
+| `[cli]` | `uv add --dev "tempest-fastapi-sdk[cli]"` ou `uv tool install "tempest-fastapi-sdk[cli]"` | todos, incluindo os gates (`lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check`, `pr-prompt`) |
+| `[cli-ops]` | `uv add "tempest-fastapi-sdk[cli-ops]"` | todos menos os gates, que saem com código 2 apontando o `[cli]` |
+
+Sem nenhum dos dois, `tempest` imprime `error: missing typer, click. The
+tempest CLI needs the optional [cli-ops] or [cli] extra.` com os três
+comandos de instalação e sai com código 2 (medido na 0.374.0).
+
 
 ```bash
 tempest --version              # mostra a versão instalada do SDK

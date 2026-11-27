@@ -166,6 +166,11 @@ print(sha)
 a8b602d5f1c9e0d3b7c1f4a2e9d8c7b6a5f4e3d2
 ```
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 From the terminal, the same thing — alongside the download:
 
 ```bash
