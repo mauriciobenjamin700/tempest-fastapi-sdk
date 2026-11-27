@@ -24,6 +24,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   é escolhido pelo chamador, nunca deduzido do nome do modelo.
   - Trocar os prefixos muda todos os vetores: índice existente precisa ser
     reindexado.
+- **`OllamaGenerator(think=...)`** (#863): o campo `think` do Ollama, no
+  construtor e por chamada (`generate`, `chat`, `chat_with_tools`, `stream`,
+  `generate_structured`, `chat_structured`), enviado no **topo** do corpo —
+  em `options` o daemon o ignora, e era lá que um `think=` em `**kwargs`
+  caía. Tipo `ThinkLevel` (`bool | Literal["low", "medium", "high"]`),
+  re-exportado de `tempest_fastapi_sdk.genai`; `None` (padrão) não envia o
+  campo; o valor entra na chave do `generation_cache`; valor fora do tipo
+  levanta `ValueError`. Medido na pesquisa de LLMs locais de 2026-11-26/27
+  (Ollama 0.30.11, temperatura 0): `gpt-oss:20b` com `"low"` fez 97,1% de 34
+  tarefas de tools com p50 1,44 s (default: 94,1%, 1,68 s; `"high"`:
+  97,1%, 3,59 s); `ornith-1.5:9b` com `False` fez 93,3 por campo em 33
+  extrações com p50 1,34 s (com `True`: 95,0, 5,60 s).
+- **`OllamaThinkingUnsupportedError`** (subclasse de `OllamaError`): o
+  `400` `"<modelo>" does not support thinking` — reproduzido no Ollama
+  0.30.11 com `ministral-3:14b` + `think=True`, no `/api/chat` e no
+  `/api/generate`, com e sem stream — vira esta exceção em vez de
+  `httpx.HTTPStatusError`. Outros status continuam `HTTPStatusError`.
+- **`OllamaFormatIgnoredError`** (subclasse de `OllamaError` e de
+  `ValueError`): `generate_structured`/`chat_structured` levantam quando a
+  resposta não traz objeto JSON — o daemon não aplicou o `format` —, com
+  `.content` e `.think`, e a mensagem aponta `think=False` quando foi ele.
+  Reproduzido no Ollama 0.30.11: `ornith:35b` com `think=false` respondeu
+  markdown com `200` em 3 de 3 chamadas. Antes o caso era um `ValueError`
+  genérico, que continua pegando esta exceção.
+- **Truncamento de contexto do Ollama deixa de ser silencioso** (#865). O
+  daemon corta o prompt maior que a janela e responde `200`; o
+  `OllamaGenerator` agora loga um `WARNING` em
+  `tempest_fastapi_sdk.genai.ollama` (com `model`, `prompt_eval_count` e
+  `num_ctx` em `extra`) quando o `prompt_eval_count` cai entre metade da
+  janela e metade + 16, ou chega na janela — onde o Ollama deixa o prompt
+  cortado. Medido no Ollama 0.30.11 em CPU (`qwen2.5:0.5b`): o truncado
+  volta com metade + 2 em toda janela testada (1026 a 2048, 2050 a 4096,
+  4098 a 8192, 8194 a 16384), e um prompt que cabe volta com o próprio
+  tamanho (1243 a 2048). A janela é o `num_ctx` da requisição ou, sem ele,
+  o `context_length` do modelo no `/api/ps` (consultado uma vez por
+  gerador; falha na consulta pula a checagem). Vale para `generate`,
+  `chat`, `chat_with_tools`, `stream` e as chamadas estruturadas. O default
+  de `num_ctx` continua `None` (decisão registrada na issue).
+
 
 ### Changed
 
@@ -45,6 +84,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Nas 7 tarefas em que o certo era não chamar, o `qwen2.5-coder` caiu de 7/7
   para 5/7, porque o JSON que ele escrevia nelas agora roda. Nota em
   `docs/migration.md`.
+- **`OllamaGenerator.generate_structured` e `chat_structured` mandam o
+  schema com todo campo em `required`** (#862). O `format` era
+  `schema.model_json_schema()`, que só lista em `required` os campos sem
+  default, e a decodificação restrita do Ollama deixava o modelo omitir os
+  demais — o objeto validava (o default preenchia) e vinha errado. Agora
+  todo objeto do schema enviado (raiz, aninhado, item de lista, `$defs`)
+  tem `required == list(properties)`; campo `X | None` continua aceitando
+  `null`, e a validação continua contra o model original. Mudança de
+  comportamento: o modelo passa a emitir campos que antes omitia. Medido na
+  pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11, 33 casos de
+  extração em 3 schemas, temperatura 0), acurácia média por campo:
+  `gpt-oss:20b` 70,8 → 95,4, `qwen2.5:3b` 69,2 → 87,3,
+  `lfm2.5-thinking:1.2b` 56,6 → 74,3, `qwen2.5-coder:14b` 90,0 → 95,7,
+  `ministral-3:14b` 84,4 → 89,9.
+
 
 ## [0.373.0] — 2026-11-26
 

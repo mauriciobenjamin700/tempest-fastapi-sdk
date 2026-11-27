@@ -272,6 +272,12 @@ if __name__ == "__main__":
     `completed` com a resposta errada (3 de 3 execuções); com
     `num_ctx=32768`, processou os 11 551 e respondeu certo (3 de 3).
 
+    O corte continua sem erro, mas não mais sem rastro: o `OllamaGenerator`
+    loga um `WARNING` em `tempest_fastapi_sdk.genai.ollama` quando o
+    `prompt_eval_count` cai onde o Ollama deixa um prompt truncado — veja
+    [Janela de contexto](genai.md#janela-de-contexto-num_ctx). O aviso
+    aponta o problema; quem o resolve é o `num_ctx`.
+
 ## Ferramentas tipadas com Pydantic
 
 Escrever JSON-schema à mão ao lado do handler significa **duas descrições da

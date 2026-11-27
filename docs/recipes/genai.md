@@ -816,6 +816,118 @@ Isso importa sobretudo para quem **não** passa opção nenhuma por chamada — 
 assim. A janela e o config padrão entram na chave do `generation_cache`, então
 dois geradores com defaults diferentes não respondem um pelo cache do outro.
 
+!!! warning "O corte agora deixa um `WARNING` no log"
+    O daemon não avisa que cortou, mas deixa um rastro: o prompt truncado
+    chega com `prompt_eval_count` em **metade da janela mais 2 ou 3
+    tokens**, seja qual for o tamanho do que você mandou. Medido no Ollama
+    0.30.11 em CPU (`qwen2.5:0.5b`, `num_gpu=0`, prompts de 1 000 a
+    30 000 palavras, todos maiores que a janela): 1026 com `num_ctx` 2048,
+    2050 no default de 4096, 4098 com 8192 e 8194 com 16384; a pesquisa de 2026-11-26/27 viu 2050
+    (`qwen2.5:3b`, `qwen2.5-coder:14b`) e 2051 (`lfm2.5-thinking:1.2b`,
+    `ministral-3:14b`) no default. Um prompt que cabe volta com o próprio
+    tamanho (1243 com `num_ctx` 2048).
+
+    Por isso o `OllamaGenerator` loga um `WARNING` no logger
+    `tempest_fastapi_sdk.genai.ollama` quando o `prompt_eval_count` cai
+    entre metade da janela e metade mais 16 (ou chega na janela inteira),
+    com o modelo, a contagem e a janela no texto e em `extra`:
+
+    ```text
+    WARNING tempest_fastapi_sdk.genai.ollama: Ollama model 'qwen2.5:0.5b'
+    evaluated 2050 prompt tokens with a 4096-token context window: an
+    overflowing prompt is cut to about half the window without an error, so
+    this prompt was likely truncated. Raise num_ctx on the generator.
+    ```
+
+    - A janela é o `num_ctx` da requisição quando houver (do construtor ou
+      da chamada). Sem ele, é o `context_length` que o `/api/ps` do daemon
+      informa para o modelo carregado — consultado uma vez por gerador, e
+      só depois de uma resposta que traga `prompt_eval_count`. Se a consulta
+      falhar, a checagem é pulada; a chamada nunca falha por causa dela.
+    - Vale para `generate`, `chat`, `chat_with_tools` (o laço do `Agent`),
+      `stream` e as duas chamadas estruturadas.
+    - O default de `num_ctx` **não** mudou: continua `None`, herdando a
+      janela do daemon (4096 sem `OLLAMA_CONTEXT_LENGTH`). Subir a janela
+      custa VRAM, e isso é decisão de quem sobe o serviço; o aviso é o que
+      torna o corte visível. Um prompt que caia exatamente na faixa sem ter
+      sido cortado gera um aviso falso — raro, e o remédio é o mesmo.
+
+#### Raciocínio: `think`
+
+Modelo de raciocínio (o `gpt-oss`, o `ornith`) aceita o campo `think` no
+**topo** do corpo do `/api/chat` e do `/api/generate`: `True`/`False` liga
+ou desliga o raciocínio, e `"low"`/`"medium"`/`"high"` escolhe o nível nos
+modelos que têm níveis. Dentro de `options` o daemon ignora o campo — e era
+para lá que ia um `think=` passado como keyword antes desta mudança. Agora ele
+é um parâmetro do gerador (`ThinkLevel`) e de cada chamada:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+gen = OllamaGenerator("gpt-oss:20b", think="low", num_ctx=16384)
+
+
+async def main() -> None:
+    """Run this example."""
+    rapida: str = await gen.chat([{"role": "user", "content": "Oi"}])
+    pensada: str = await gen.chat(
+        [{"role": "user", "content": "Quanto é 17 x 23?"}],
+        think="high",
+    )
+    print(rapida, pensada)
+
+
+asyncio.run(main())
+```
+
+- **`think=None`** (o padrão) não manda o campo: o modelo usa o default
+  dele, como antes.
+- O `think` da chamada ganha do construtor, e entra na chave do
+  `generation_cache`.
+- `generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured` e
+  `chat_structured` aceitam o parâmetro; o laço do `Agent` usa o do
+  construtor.
+
+Medido na pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11, RTX
+4070 Ti SUPER, temperatura 0):
+
+| modelo / uso | `think` | acerto | p50 |
+| --- | --- | --- | --- |
+| `gpt-oss:20b`, 34 tarefas de tools | `"low"` | 97,1% | **1,44 s** |
+| `gpt-oss:20b`, 34 tarefas de tools | default (medium) | 94,1% | 1,68 s |
+| `gpt-oss:20b`, 34 tarefas de tools | `"high"` | 97,1% | 3,59 s |
+| `gpt-oss:20b`, RAG com 27 perguntas | `"low"` | 20/21 fatos, 0/6 alucinações | **0,99 s** |
+| `ornith-1.5:9b`, 33 extrações estruturadas | `False` | 93,3 por campo | **1,34 s** |
+| `ornith-1.5:9b`, 33 extrações estruturadas | `True` | 95,0 por campo | 5,60 s |
+
+Com N=34 e N=33, um ponto e pouco é um item: não leia ordem fina entre
+`"low"` e `"high"`. O que a tabela mostra é o tempo — `"low"` empatou com
+os outros níveis com metade a um terço do p50.
+
+!!! warning "Modelo sem raciocínio recusa `think`"
+    Modelo sem a capacidade `thinking` (no `/api/show`) responde `400` com
+    `"<modelo>" does not support thinking` — reproduzido no Ollama 0.30.11
+    com o `ministral-3:14b` e `think=True`, no `/api/chat` e no
+    `/api/generate`, com e sem stream, sem carregar o modelo. O gerador
+    levanta `OllamaThinkingUnsupportedError` (subclasse de `OllamaError`,
+    com `.model` e `.detail`) em vez do `httpx.HTTPStatusError` cru. Para
+    esse modelo, deixe `think=None`.
+
+!!! danger "`think=False` faz alguns modelos ignorarem o `format`"
+    Com `think=False`, o `ornith:35b` respondeu a um `chat_structured` em
+    markdown (`**Nome:** Ana Costa ...`), com `200`, em 3 de 3 chamadas; com
+    `think` omitido ou `True`, devolveu o objeto JSON em 3 de 3. O
+    `ornith-1.5:9b`, o `gpt-oss:20b` e o `ministral-3:14b` respeitaram o
+    `format` com `think=False` (3 de 3 cada). Quando a resposta estruturada
+    não traz objeto JSON nenhum, `generate_structured` e `chat_structured`
+    levantam `OllamaFormatIgnoredError` — subclasse de `OllamaError` **e**
+    de `ValueError`, então o `except ValueError` de antes continua pegando —
+    com `.content` (o começo da resposta) e `.think`, e a mensagem aponta o
+    `think=False` quando foi ele. Antes, o mesmo caso virava um
+    `ValueError("no JSON object ...")` sem pista da causa.
+
 ### Embeddings via Ollama + RAG
 
 `OllamaEmbedder` satisfaz o mesmo protocolo `SupportsEmbed` do `Embedder`,
@@ -3173,12 +3285,32 @@ rota estruturada recomendada, sem biblioteca extra**.
     a chamada usa `/api/chat`, e um conteúdo vazio levanta `ValueError`
     em vez de devolver nada.
 
-!!! danger "Campo com `default` é campo que o modelo pode pular"
+!!! info "Todo campo vai em `required` no fio — inclusive os que têm default"
     O Pydantic deixa campo com default fora de `required` no JSON schema,
-    e o decodificador constrangido do daemon então pode omiti-lo — e ele
-    omite justamente os que têm default. Em schema de extração, **nenhum
-    campo tem default**; a ausência se expressa no dado (`""`), nunca no
-    schema.
+    e o decodificador constrangido do daemon deixa o modelo omiti-lo. O
+    objeto volta válido (o default preenche o campo) e errado, sem sinal
+    nenhum. Por isso `generate_structured` e
+    `chat_structured` mandam no `format` uma cópia do schema em que **todo**
+    objeto (raiz, aninhado, item de lista, `$defs`) lista todas as
+    propriedades em `required`. Campo opcional (`X | None`) continua
+    aceitando `null` — o modelo só passa a dizê-lo. A validação continua
+    contra o seu model, sem mudança.
+
+    Medido na pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11,
+    33 casos de extração em 3 schemas, temperatura 0), acurácia média por
+    campo:
+
+    | modelo | schema do Pydantic | todo campo em `required` |
+    | --- | --- | --- |
+    | `gpt-oss:20b` | 70,8 | **95,4** |
+    | `qwen2.5:3b` | 69,2 | 87,3 |
+    | `lfm2.5-thinking:1.2b` | 56,6 | 74,3 |
+    | `qwen2.5-coder:14b` | 90,0 | 95,7 |
+    | `ministral-3:14b` | 84,4 | 89,9 |
+
+    No `gpt-oss:20b` o schema do Pydantic nunca fez sair um campo
+    `Field(default_factory=list)`: os 11 pedidos voltaram com `itens=[]`.
+    Você não precisa mais declarar o schema de extração sem default.
 
 !!! tip "Instrução separada do documento — `chat_structured`"
     Extraindo campos de um documento longo, a instrução precisa ir num

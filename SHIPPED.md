@@ -5103,3 +5103,34 @@ qualquer dos dois construtores), `NOMIC_EMBED_TEXT_PREFIXES` e
 "Prefixos de tarefa do `nomic-embed-text`" em `docs/recipes/genai.md`
 (+ `.en.md`), com o aviso de reindexação e a medição de N=21 (recall@4 18/21
 → 20/21). O `OpenAICompatEmbedder` ficou de fora.
+
+## Qualidade do `OllamaGenerator`: schema estrito, `think` e aviso de truncamento (#862, #863, #865)
+
+**Schema estrito (#862).** `generate_structured` e `chat_structured` passam o
+`model_json_schema()` por `_require_every_property` (`genai/ollama.py`) antes
+de postar o `format`: todo objeto (raiz, aninhado, item de lista, `$defs`)
+ganha `required == list(properties)`, opcional continua nullable, o model
+original não muda. O `lm-format-enforcer` do `[genai-structured]` e o
+`response_format` do OpenAI-compat não foram mudados (não medidos). Testes:
+`tests/genai/test_ollama_strict_schema.py`. Docs: receita de genai, seção de
+saída estruturada.
+
+**`think` (#863).** `OllamaGenerator(think=...)` e o mesmo parâmetro em
+`generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured` e
+`chat_structured`, no topo do corpo (`_apply_common`), na chave do cache
+(`_key_params`). Tipo `ThinkLevel`; exceções `OllamaThinkingUnsupportedError`
+(o `400` "does not support thinking", também no stream) e
+`OllamaFormatIgnoredError` (resposta estruturada sem objeto JSON, com pista
+quando `think=False`). O OpenAI-compat já tem o equivalente (`effort`,
+enviado em `effort_field`, `reasoning_effort` por padrão, no
+`complete_structured`) e não mudou. Testes: `tests/genai/test_ollama_think.py`. Docs:
+receita de genai, "Raciocínio: `think`".
+
+**Aviso de truncamento (#865).** `_warn_if_truncated` (`genai/ollama.py`)
+roda depois de toda resposta do `OllamaGenerator` (e na linha final do
+`stream`): `prompt_eval_count` em `[janela // 2, janela // 2 + 16]` ou
+`>= janela` loga `WARNING`. Janela = `options.num_ctx` da requisição, senão
+o `context_length` do `/api/ps` (cacheado por instância em
+`_loaded_num_ctx`). Default de `num_ctx` mantido em `None` (opção B da
+issue). Testes: `tests/genai/test_ollama_truncation.py`. Docs: receita de
+genai ("Janela de contexto") e de agentes.

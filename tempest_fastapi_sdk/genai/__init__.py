@@ -183,7 +183,14 @@ from tempest_fastapi_sdk.genai.ollama import (
 )
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
 from tempest_fastapi_sdk.genai.ollama import OllamaError as OllamaError
+from tempest_fastapi_sdk.genai.ollama import (
+    OllamaFormatIgnoredError as OllamaFormatIgnoredError,
+)
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
+from tempest_fastapi_sdk.genai.ollama import (
+    OllamaThinkingUnsupportedError as OllamaThinkingUnsupportedError,
+)
+from tempest_fastapi_sdk.genai.ollama import ThinkLevel as ThinkLevel
 from tempest_fastapi_sdk.genai.ollama_speech import OllamaSpeech as OllamaSpeech
 from tempest_fastapi_sdk.genai.ollama_speech import SpeechFormat as SpeechFormat
 from tempest_fastapi_sdk.genai.onnx_embed import OnnxEmbedder as OnnxEmbedder
@@ -430,8 +437,10 @@ __all__: list[str] = [
     "MusicGenerator",
     "OllamaEmbedder",
     "OllamaError",
+    "OllamaFormatIgnoredError",
     "OllamaGenerator",
     "OllamaSpeech",
+    "OllamaThinkingUnsupportedError",
     "OnnxEmbedder",
     "OpenAICompatEmbedder",
     "OpenAICompatGenerator",
@@ -458,6 +467,7 @@ __all__: list[str] = [
     "TextGenerator",
     "TextModelEnum",
     "TextToSpeechModelEnum",
+    "ThinkLevel",
     "TokenEncoder",
     "TokenIdSequence",
     "TokenUsage",
