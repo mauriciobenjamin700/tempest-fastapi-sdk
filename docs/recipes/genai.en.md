@@ -847,6 +847,72 @@ asyncio.run(main())
 `embed(texts, *, batch_size=32)` returns `list[list[float]]`, just like
 `Embedder`.
 
+#### `nomic-embed-text` task prefixes
+
+`nomic-embed-text` was trained with `search_query: ` in front of the question
+and `search_document: ` in front of the passage. Declare both on
+`OllamaEmbedder` — or splat the `NOMIC_EMBED_TEXT_PREFIXES` preset — and the
+`Retriever` applies each one on the right side:
+
+```python title="nomic_rag.py" hl_lines="11"
+import asyncio
+
+from tempest_fastapi_sdk.genai import NOMIC_EMBED_TEXT_PREFIXES, OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import Chunk, InMemoryVectorStore, Retriever
+
+
+async def main() -> None:
+    """Index two passages and search them with nomic's task prefixes."""
+    embedder = OllamaEmbedder(
+        "nomic-embed-text",
+        **NOMIC_EMBED_TEXT_PREFIXES,
+    )
+    rag = Retriever(embedder, InMemoryVectorStore())
+    await rag.index(
+        [
+            Chunk(text="Refunds land within 7 business days.", source="faq", index=0),
+            Chunk(text="Express delivery arrives tomorrow.", source="faq", index=1),
+        ],
+    )
+    hits = await rag.search("How long does a refund take?", top_k=1)
+    print(hits[0].text)
+    await embedder.aclose()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+`Retriever.index` calls `embed_passages`, which sends
+`search_document: <passage>` to the daemon; `Retriever.search` calls
+`embed_query`, which sends `search_query: <question>`. Plain `embed()` stays
+unprefixed, and both parameters default to `""` — if you declare nothing, you
+keep the vectors you had.
+
+You pick the preset; it is not guessed from the model name: the same family
+ships under several tags (`nomic-embed-text`, `nomic-embed-text:v1.5`, a
+local fine-tune), and a wrong guess would silently change every stored
+vector. For the E5 family there is `MULTILINGUAL_E5_PREFIXES`
+(`query: ` / `passage: `), which also works on the torch `Embedder`. For any
+other model, pass `query_prefix=` / `passage_prefix=` with the strings from
+its model card.
+
+What it buys: in a measurement of 21 PT-BR questions over a fictional
+handbook (`nomic-embed-text` via Ollama, one 2000-character chunk per
+document), the right document was among the top 4 in **18/21** without the
+prefix and **20/21** with it; k=1 and k=2 did not change (15/21 and 17/21).
+With 300-character chunks the prefix changed nothing (18/21 both ways).
+N=21 is small: it is a signal, not a rate.
+
+!!! warning "Changing the prefix means reindexing"
+    The prefix is part of the text that becomes a vector, so turning
+    `query_prefix` / `passage_prefix` on, off or changing them changes
+    **every** vector. An index written without a prefix and queried with one
+    (or the other way around) compares vectors from different spaces and
+    returns worse results with no error at all. When you change the
+    prefixes, drop the index and run `Retriever.index` again over the whole
+    corpus.
+
 ### Hybrid search (BM25 + dense)
 
 Dense search captures meaning but misses exact terms — proper nouns, codes,

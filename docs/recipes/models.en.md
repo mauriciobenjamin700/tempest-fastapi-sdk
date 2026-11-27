@@ -148,10 +148,16 @@ every chunk; `Retriever.search` calls `embed_query`, which prepends
 searches messages. Plain `embed()` never applies a prefix, so code that
 declares neither keeps its previous behaviour.
 
+The `MULTILINGUAL_E5_PREFIXES` preset carries both strings, so
+`Embedder(EmbeddingModelEnum.MULTILINGUAL_E5_LARGE, **MULTILINGUAL_E5_PREFIXES)`
+is the same as the example above. `OllamaEmbedder` takes the same two
+parameters — see the
+[`nomic-embed-text` task prefixes](genai.md#nomic-embed-text-task-prefixes).
+
 !!! note "An embedder with only `embed()`"
-    `OnnxEmbedder`, `OllamaEmbedder` or your own embedder without
-    `embed_query` / `embed_passages` keep working in the `Retriever` through
-    plain `embed()` — and, in that case, without a prefix.
+    `OnnxEmbedder` or your own embedder without `embed_query` /
+    `embed_passages` keep working in the `Retriever` through plain `embed()`
+    — and, in that case, without a prefix.
 
 ## Rerank — `RerankerModelEnum`
 

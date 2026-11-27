@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Prefixos de tarefa no `OllamaEmbedder`** (#864):
+  `OllamaEmbedder(..., query_prefix="", passage_prefix="")` e os métodos
+  `embed_query` / `embed_passages`, que antepõem o prefixo e chamam `embed`.
+  O `Retriever` (e o `HybridRetriever`/`ChatMemory`) já usavam esses métodos
+  quando o embedder os tinha, então indexar e buscar passam a enviar
+  `search_document: ` / `search_query: ` sem código novo do consumidor.
+  `embed` continua sem prefixo, e o default `""` mantém os vetores de antes.
+- Presets `NOMIC_EMBED_TEXT_PREFIXES` (`search_query: ` /
+  `search_document: `) e `MULTILINGUAL_E5_PREFIXES` (`query: ` /
+  `passage: `), do tipo `EmbeddingPrefixes` (`TypedDict`), que se espalham
+  tanto no `OllamaEmbedder` quanto no `Embedder`:
+  `OllamaEmbedder("nomic-embed-text", **NOMIC_EMBED_TEXT_PREFIXES)`. O preset
+  é escolhido pelo chamador, nunca deduzido do nome do modelo.
+  - Trocar os prefixos muda todos os vetores: índice existente precisa ser
+    reindexado.
+
 ## [0.373.0] — 2026-11-26
 
 ### Added

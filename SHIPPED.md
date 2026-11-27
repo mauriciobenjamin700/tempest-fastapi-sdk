@@ -5076,3 +5076,18 @@ Sem `google-api-python-client`/`google-auth`. Testes:
 `tests/settings/test_google_drive_settings.py`. Receita:
 `docs/recipes/google-drive.md` (+ `.en.md`). Não medido contra o Google
 real.
+
+## Prefixos de tarefa no `OllamaEmbedder` (#864)
+
+`OllamaEmbedder(query_prefix=, passage_prefix=)` + `embed_query` /
+`embed_passages` em `genai/ollama.py`, o mesmo contrato do `Embedder` — o
+`Retriever` já chamava os dois métodos quando existiam. `embed` continua sem
+prefixo e os defaults são `""`. Presets nomeados em
+`genai/embedding_prefixes.py`: `EmbeddingPrefixes` (`TypedDict` que espalha em
+qualquer dos dois construtores), `NOMIC_EMBED_TEXT_PREFIXES` e
+`MULTILINGUAL_E5_PREFIXES`; nada é adivinhado pelo nome do modelo. Testes:
+`tests/genai/test_ollama_embedder_prefixes.py` (texto enviado ao daemon via
+`httpx.MockTransport`, contrato com o `Retriever`). Receita: seção
+"Prefixos de tarefa do `nomic-embed-text`" em `docs/recipes/genai.md`
+(+ `.en.md`), com o aviso de reindexação e a medição de N=21 (recall@4 18/21
+→ 20/21). O `OpenAICompatEmbedder` ficou de fora.
