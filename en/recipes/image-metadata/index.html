@@ -6051,6 +6051,18 @@ them into a response with a <code>code</code>:</p>
 <code>InvalidFileTypeException</code>, and <code>ImageTooLargeException</code> extends
 <code>FileTooLargeException</code>: an <code>except</code> that already caught those two keeps
 catching.</p>
+<div class="admonition note">
+<p class="admonition-title">A truncated image is refused even with <code>[pdf]</code> installed</p>
+<p><code>import weasyprint</code> (the <code>[pdf]</code> extra, imported on the first render)
+turns on <code>PIL.ImageFile.LOAD_TRUNCATED_IMAGES</code>, a Pillow global switch.
+With it on, Pillow fills the missing part of a cut file with gray instead
+of raising — and up to 0.373.0 the function accepted half a PNG after the
+service's first PDF. The function now neither reads nor writes that
+switch: it notices the decoder asking for bytes past the end of the file
+and raises <code>ImageDecodeException</code>, with the switch on or off. A PNG
+missing only the last bytes after its pixels (the final checksum and
+<code>IEND</code>) is refused too, although Pillow alone accepts it.</p>
+</div>
 <h2 id="the-pixel-ceiling">The pixel ceiling<a class="headerlink" href="#the-pixel-ceiling" title="Permanent link">&para;</a></h2>
 <p>A PNG of a few KB can declare 20 000 x 20 000 pixels. Decoded, it turns into
 gigabytes of memory: a <em>decompression bomb</em>. That is why the function reads

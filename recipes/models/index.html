@@ -6028,11 +6028,16 @@ trecho; <code>Retriever.search</code> chama <code>embed_query</code>, que antep�
 pergunta. A <code>ChatMemory</code> faz o mesmo ao gravar e ao buscar mensagens. O
 <code>embed()</code> puro nunca aplica prefixo, então quem não declara nada continua com o
 comportamento de antes.</p>
+<p>O preset <code>MULTILINGUAL_E5_PREFIXES</code> carrega as duas strings, então
+<code>Embedder(EmbeddingModelEnum.MULTILINGUAL_E5_LARGE, **MULTILINGUAL_E5_PREFIXES)</code>
+é o mesmo que o exemplo acima. O <code>OllamaEmbedder</code> aceita os mesmos dois
+parâmetros — veja os
+<a href="../genai/#prefixos-de-tarefa-do-nomic-embed-text">prefixos do <code>nomic-embed-text</code></a>.</p>
 <div class="admonition note">
 <p class="admonition-title">Embedder que só tem <code>embed()</code></p>
-<p><code>OnnxEmbedder</code>, <code>OllamaEmbedder</code> ou um embedder seu sem <code>embed_query</code> /
-<code>embed_passages</code> continuam funcionando no <code>Retriever</code> pelo <code>embed()</code> puro
-— e, nesse caso, sem prefixo.</p>
+<p><code>OnnxEmbedder</code> ou um embedder seu sem <code>embed_query</code> / <code>embed_passages</code>
+continuam funcionando no <code>Retriever</code> pelo <code>embed()</code> puro — e, nesse caso,
+sem prefixo.</p>
 </div>
 <h2 id="rerank-rerankermodelenum">Rerank — <code>RerankerModelEnum</code><a class="headerlink" href="#rerank-rerankermodelenum" title="Permanent link">&para;</a></h2>
 <table>

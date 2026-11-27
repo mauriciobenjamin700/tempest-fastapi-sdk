@@ -6016,7 +6016,7 @@ tamanho do upload, <code>422</code> para o resto:</p>
 <tr>
 <td>—</td>
 <td>—</td>
-<td>bytes que não são imagem, e o <code>ImageLoadError</code> do <code>ort-vision-sdk</code> (antes virava <code>500</code>)</td>
+<td>bytes que não são imagem, imagem truncada — os pixels são decodificados numa thread antes do modelo —, e o <code>ImageLoadError</code> do <code>ort-vision-sdk</code> (antes virava <code>500</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -6042,8 +6042,17 @@ calado pelo aviso de decompression bomb do próprio Pillow, porque
 88,36 MP fica abaixo do limiar dele (89,48 MP). O teto de bytes não pega
 esse arquivo; o de pixels pega, lendo só o header.</p>
 </div>
-<p><code>max_image_pixels=None</code> desliga a checagem de header (e o import do
-Pillow), deixando só a defesa do próprio Pillow dentro do decoder.</p>
+<p><code>max_image_pixels=None</code> desliga a checagem de header e a de truncamento (e o
+import do Pillow), deixando só a defesa do próprio Pillow dentro do decoder.</p>
+<div class="admonition warning">
+<p class="admonition-title">Sem a checagem, imagem truncada chega ao modelo com o <code>[pdf]</code> instalado</p>
+<p><code>import weasyprint</code> liga <code>PIL.ImageFile.LOAD_TRUNCATED_IMAGES</code>, e com
+ela o <code>ort-vision-sdk</code> decodifica metade de uma imagem com o resto em
+cinza. Com <code>max_image_pixels</code> definido o router decodifica os pixels antes
+e responde <code>422</code>, com a chave ligada ou não. O custo é uma decodificação a
+mais: medido num JPEG de 12 MP, cerca de 70 ms, contra 107 ms da
+decodificação do próprio <code>ort-vision-sdk</code>.</p>
+</div>
 <h2 id="recap">Recap<a class="headerlink" href="#recap" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>uv add "tempest-fastapi-sdk[vision]"</code>; importe de <code>tempest_fastapi_sdk.vision</code> (submódulo).</li>

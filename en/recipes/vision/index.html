@@ -6019,7 +6019,7 @@ the upload size, <code>422</code> for the rest:</p>
 <tr>
 <td>—</td>
 <td>—</td>
-<td>bytes that are not an image, and <code>ort-vision-sdk</code>'s <code>ImageLoadError</code> (which used to become a <code>500</code>)</td>
+<td>bytes that are not an image, a truncated image — the pixels are decoded in a thread before the model runs —, and <code>ort-vision-sdk</code>'s <code>ImageLoadError</code> (which used to become a <code>500</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -6045,8 +6045,16 @@ Pillow's own decompression-bomb warning, because 88.36 MP sits under its
 89.48 MP threshold. The byte ceiling does not catch that file; the pixel
 ceiling does, from the header alone.</p>
 </div>
-<p><code>max_image_pixels=None</code> turns the header check off (and the Pillow import),
-leaving only Pillow's own guard inside the decoder.</p>
+<p><code>max_image_pixels=None</code> turns the header and truncation checks off (and the
+Pillow import), leaving only Pillow's own guard inside the decoder.</p>
+<div class="admonition warning">
+<p class="admonition-title">Without the check, a truncated image reaches the model when <code>[pdf]</code> is installed</p>
+<p><code>import weasyprint</code> turns on <code>PIL.ImageFile.LOAD_TRUNCATED_IMAGES</code>, and
+with it <code>ort-vision-sdk</code> decodes half an image with the rest in gray.
+With <code>max_image_pixels</code> set, the router decodes the pixels first and
+answers <code>422</code>, switch on or off. The cost is one extra decode: measured
+on a 12 MP JPEG, about 70 ms, against <code>ort-vision-sdk</code>'s own 107 ms.</p>
+</div>
 <h2 id="recap">Recap<a class="headerlink" href="#recap" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>uv add "tempest-fastapi-sdk[vision]"</code>; import from <code>tempest_fastapi_sdk.vision</code> (submodule).</li>

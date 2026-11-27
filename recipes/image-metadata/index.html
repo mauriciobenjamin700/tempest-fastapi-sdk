@@ -6049,6 +6049,19 @@ transforma em resposta com <code>code</code>:</p>
 <code>InvalidFileTypeException</code>, e <code>ImageTooLargeException</code> estende
 <code>FileTooLargeException</code>: um <code>except</code> que já pegava esses dois continua
 pegando.</p>
+<div class="admonition note">
+<p class="admonition-title">Imagem truncada é recusada mesmo com o <code>[pdf]</code> instalado</p>
+<p><code>import weasyprint</code> (o extra <code>[pdf]</code>, importado na primeira renderização)
+liga <code>PIL.ImageFile.LOAD_TRUNCATED_IMAGES</code>, uma chave global do Pillow.
+Com ela ligada o Pillow preenche de cinza o que falta de um arquivo
+cortado em vez de levantar — e até a 0.373.0 a função aceitava metade de
+um PNG depois do primeiro PDF do serviço. Hoje a função não lê nem
+escreve essa chave: ela percebe que o decoder pediu bytes além do fim do
+arquivo e levanta <code>ImageDecodeException</code>, com a chave ligada ou
+desligada. Um PNG a que faltam só os últimos bytes depois dos pixels (o
+checksum final e o <code>IEND</code>) também é recusado, embora o Pillow sozinho o
+aceite.</p>
+</div>
 <h2 id="o-teto-de-pixels">O teto de pixels<a class="headerlink" href="#o-teto-de-pixels" title="Permanent link">&para;</a></h2>
 <p>Um PNG de poucos KB pode declarar 20 000 x 20 000 pixels. Decodificado, vira
 gigabytes de memória: é a <em>decompression bomb</em>. Por isso a função lê largura e

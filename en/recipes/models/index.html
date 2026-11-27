@@ -6031,11 +6031,16 @@ every chunk; <code>Retriever.search</code> calls <code>embed_query</code>, which
 <code>query_prefix</code> to the question. <code>ChatMemory</code> does the same when it stores and
 searches messages. Plain <code>embed()</code> never applies a prefix, so code that
 declares neither keeps its previous behaviour.</p>
+<p>The <code>MULTILINGUAL_E5_PREFIXES</code> preset carries both strings, so
+<code>Embedder(EmbeddingModelEnum.MULTILINGUAL_E5_LARGE, **MULTILINGUAL_E5_PREFIXES)</code>
+is the same as the example above. <code>OllamaEmbedder</code> takes the same two
+parameters — see the
+<a href="../genai/#nomic-embed-text-task-prefixes"><code>nomic-embed-text</code> task prefixes</a>.</p>
 <div class="admonition note">
 <p class="admonition-title">An embedder with only <code>embed()</code></p>
-<p><code>OnnxEmbedder</code>, <code>OllamaEmbedder</code> or your own embedder without
-<code>embed_query</code> / <code>embed_passages</code> keep working in the <code>Retriever</code> through
-plain <code>embed()</code> — and, in that case, without a prefix.</p>
+<p><code>OnnxEmbedder</code> or your own embedder without <code>embed_query</code> /
+<code>embed_passages</code> keep working in the <code>Retriever</code> through plain <code>embed()</code>
+— and, in that case, without a prefix.</p>
 </div>
 <h2 id="rerank-rerankermodelenum">Rerank — <code>RerankerModelEnum</code><a class="headerlink" href="#rerank-rerankermodelenum" title="Permanent link">&para;</a></h2>
 <table>

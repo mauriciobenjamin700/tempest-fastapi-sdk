@@ -1748,6 +1748,28 @@ Source: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.374.0 — `Agent` e `AIChatPipeline` rodam chamada de ferramenta escrita no texto
+
+Antes, uma resposta do modelo com `tool_calls` vazio era sempre a resposta final, mesmo quando o `content` era exatamente uma chamada em JSON (`{"name": "buscar_pedido", "arguments": {"pedido_id": "PED-1042"}}`). Agora, por padrão, o `Agent` e o loop de ferramentas do `AIChatPipeline` rodam essa chamada quando o texto inteiro é JSON de chamada e todo `name` é uma ferramenta registrada (#866). O passo da ferramenta sai com `AgentStep.from_text=True`.
+
+O que pode mudar para você: um agente cuja resposta legítima é um objeto JSON com `name` igual ao de uma ferramenta e com chave `arguments` passa a executar essa ferramenta em vez de devolver o JSON. Para manter o comportamento antigo:
+
+```python
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.genai import AIChatPipeline, OllamaGenerator
+
+generator = OllamaGenerator("qwen2.5-coder:14b")
+agent = Agent(generator, parse_text_tool_calls=False)
+pipeline = AIChatPipeline(generator, parse_text_tool_calls=False)
+```
+
+## 0.374.0 — schema estrito na saída estruturada e imagem truncada recusada
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `OllamaGenerator.chat_structured` / `generate_structured` | O schema enviado no `format` tem **todo campo em `required`** (inclusive os com default e os `X \| None`, que continuam aceitando `null`). O modelo passa a emitir campos que antes omitia — e que o default preenchia em silêncio: no `gpt-oss:20b` a acurácia por campo foi de 70,8 para 95,4 (33 casos, 2026-11-26/27, Ollama 0.30.11) | Nada, na maioria dos casos. Se um campo com default é "o modelo não precisa preencher", o modelo agora preenche: confira campos com default que o seu código trata como sinal de ausência |
+| `make_vision_router` com `max_image_pixels` (padrão), `FaceRecognizer`, o carregamento de imagem do `genai` e o `share` | Imagem truncada é recusada mesmo depois de o `weasyprint` (extra `[pdf]`) ter sido importado no processo; antes ela passava. O router responde `422` sem chamar o modelo, ao custo de uma decodificação a mais (~70 ms num JPEG de 12 MP, medido). `FaceRecognizer` e o `genai` decodificam a imagem na hora: a exceção sai na chamada, e uma imagem passada por caminho é lida para a memória | Cliente que mandava imagem truncada passa a receber `422`. Com `max_image_pixels=None` a checagem do router continua desligada |
+
 ## 0.373.0 — `BaseController` e `BaseService` ligam `ResponseT` à camada de baixo
 
 Antes, `BaseController` declarava o próprio `ResponseT` independente do service e convertia o retorno com `cast("ResponseT", ...)` — um controller que repetia o schema errado passava no `mypy --strict` e devolvia o schema do service em runtime (#838):
@@ -5335,6 +5357,160 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.374.0] — 2026-11-27
+
+### Added
+
+- **`OllamaGenerator(truncate=...)`** (#871): no construtor e por chamada
+  (`generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured`,
+  `chat_structured`), enviado no topo do corpo e incluído na chave do
+  `generation_cache`; `None` (o padrão) não envia o campo. Com
+  `truncate=False`, um prompt maior que a janela não é cortado: o daemon
+  responde `400 exceed_context_size_error` e o SDK levanta a nova
+  **`OllamaContextExceededError`** (subclasse de `OllamaError`), com
+  `prompt_tokens` e `context_window` lidos do corpo do erro — também no
+  `stream`, onde o `400` chega antes de qualquer linha. Medido no Ollama
+  0.30.11 em CPU (`qwen2.5:0.5b`, `num_ctx` 2048, prompt de 18 923 tokens):
+  `false` dá `400` no `/api/chat` e no `/api/generate`, com e sem stream;
+  sem o campo ou com `true`, o prompt é cortado para 1026 tokens com `200`.
+- **Prefixos de tarefa no `OllamaEmbedder`** (#864):
+  `OllamaEmbedder(..., query_prefix="", passage_prefix="")` e os métodos
+  `embed_query` / `embed_passages`, que antepõem o prefixo e chamam `embed`.
+  O `Retriever` (e o `HybridRetriever`/`ChatMemory`) já usavam esses métodos
+  quando o embedder os tinha, então indexar e buscar passam a enviar
+  `search_document: ` / `search_query: ` sem código novo do consumidor.
+  `embed` continua sem prefixo, e o default `""` mantém os vetores de antes.
+- Presets `NOMIC_EMBED_TEXT_PREFIXES` (`search_query: ` /
+  `search_document: `) e `MULTILINGUAL_E5_PREFIXES` (`query: ` /
+  `passage: `), do tipo `EmbeddingPrefixes` (`TypedDict`), que se espalham
+  tanto no `OllamaEmbedder` quanto no `Embedder`:
+  `OllamaEmbedder("nomic-embed-text", **NOMIC_EMBED_TEXT_PREFIXES)`. O preset
+  é escolhido pelo chamador, nunca deduzido do nome do modelo.
+  - Trocar os prefixos muda todos os vetores: índice existente precisa ser
+    reindexado.
+- **`OllamaGenerator(think=...)`** (#863): o campo `think` do Ollama, no
+  construtor e por chamada (`generate`, `chat`, `chat_with_tools`, `stream`,
+  `generate_structured`, `chat_structured`), enviado no **topo** do corpo —
+  em `options` o daemon o ignora, e era lá que um `think=` em `**kwargs`
+  caía. Tipo `ThinkLevel` (`bool | Literal["low", "medium", "high"]`),
+  re-exportado de `tempest_fastapi_sdk.genai`; `None` (padrão) não envia o
+  campo; o valor entra na chave do `generation_cache`; valor fora do tipo
+  levanta `ValueError`. Medido na pesquisa de LLMs locais de 2026-11-26/27
+  (Ollama 0.30.11, temperatura 0): `gpt-oss:20b` com `"low"` fez 97,1% de 34
+  tarefas de tools com p50 1,44 s (default: 94,1%, 1,68 s; `"high"`:
+  97,1%, 3,59 s); `ornith-1.5:9b` com `False` fez 93,3 por campo em 33
+  extrações com p50 1,34 s (com `True`: 95,0, 5,60 s).
+- **`OllamaThinkingUnsupportedError`** (subclasse de `OllamaError`): o
+  `400` `"<modelo>" does not support thinking` — reproduzido no Ollama
+  0.30.11 com `ministral-3:14b` + `think=True`, no `/api/chat` e no
+  `/api/generate`, com e sem stream — vira esta exceção em vez de
+  `httpx.HTTPStatusError`. Outros status continuam `HTTPStatusError`.
+- **`OllamaFormatIgnoredError`** (subclasse de `OllamaError` e de
+  `ValueError`): `generate_structured`/`chat_structured` levantam quando a
+  resposta não traz objeto JSON — o daemon não aplicou o `format` —, com
+  `.content` e `.think`, e a mensagem aponta `think=False` quando foi ele.
+  Reproduzido no Ollama 0.30.11: `ornith:35b` com `think=false` respondeu
+  markdown com `200` em 3 de 3 chamadas. Antes o caso era um `ValueError`
+  genérico, que continua pegando esta exceção.
+- **Truncamento de contexto do Ollama deixa de ser silencioso** (#865). O
+  daemon corta o prompt maior que a janela e responde `200`; o
+  `OllamaGenerator` agora loga um `WARNING` em
+  `tempest_fastapi_sdk.genai.ollama` (com `model`, `prompt_eval_count` e
+  `num_ctx` em `extra`) quando o `prompt_eval_count` cai entre metade da
+  janela e metade + 16, ou chega na janela — onde o Ollama deixa o prompt
+  cortado. Medido no Ollama 0.30.11 em CPU (`qwen2.5:0.5b`): o truncado
+  volta com metade + 2 em toda janela testada (1026 a 2048, 2050 a 4096,
+  4098 a 8192, 8194 a 16384), e um prompt que cabe volta com o próprio
+  tamanho (1243 a 2048). A janela é o `num_ctx` da requisição ou, sem ele,
+  o `context_length` do modelo no `/api/ps` (consultado uma vez por
+  gerador; falha na consulta pula a checagem). Vale para `generate`,
+  `chat`, `chat_with_tools`, `stream` e as chamadas estruturadas. O default
+  de `num_ctx` continua `None` (decisão registrada na issue).
+
+
+### Changed
+
+- `tempest_fastapi_sdk.genai.ollama` virou pacote (#872), dividido por
+  responsabilidade, com a mesma superfície pública e o mesmo `__all__`.
+- **`Agent` e o loop de ferramentas do `AIChatPipeline` rodam chamada de
+  ferramenta escrita como JSON no `content`** (#866), **ligado por padrão**.
+  Quando a resposta vem sem `tool_calls` e o texto inteiro (sem espaço nas
+  pontas e sem uma única cerca de markdown em volta) é
+  `{"name": ..., "arguments": {...}}`, uma lista desses objetos ou vários
+  separados só por espaço, e todo `name` é uma ferramenta registrada naquele
+  turno, a chamada roda como uma nativa. Qualquer entrada que não case, JSON
+  inválido ou texto em volta, e a resposta continua sendo resposta. O passo
+  da ferramenta ganha o campo novo `AgentStep.from_text=True`, e o turno do
+  assistente volta ao modelo com a chamada em `tool_calls` e `content` vazio.
+  Desliga com `Agent(..., parse_text_tool_calls=False)` /
+  `AIChatPipeline(..., parse_text_tool_calls=False)`. Medido em 2026-11-27
+  (Ollama 0.30.11, 34 tarefas de ferramentas, temperatura 0, uma execução
+  por tarefa): `qwen2.5-coder:14b` foi de 20,6% (7/34) para 85,3% (29/34);
+  `gpt-oss:20b`, que já usava `tool_calls`, ficou em 94,1% (32/34) nas duas.
+  Nas 7 tarefas em que o certo era não chamar, o `qwen2.5-coder` caiu de 7/7
+  para 5/7, porque o JSON que ele escrevia nelas agora roda. Nota em
+  `docs/migration.md`.
+- **`OllamaGenerator.generate_structured` e `chat_structured` mandam o
+  schema com todo campo em `required`** (#862). O `format` era
+  `schema.model_json_schema()`, que só lista em `required` os campos sem
+  default, e a decodificação restrita do Ollama deixava o modelo omitir os
+  demais — o objeto validava (o default preenchia) e vinha errado. Agora
+  todo objeto do schema enviado (raiz, aninhado, item de lista, `$defs`)
+  tem `required == list(properties)`; campo `X | None` continua aceitando
+  `null`, e a validação continua contra o model original. Mudança de
+  comportamento: o modelo passa a emitir campos que antes omitia. Medido na
+  pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11, 33 casos de
+  extração em 3 schemas, temperatura 0), acurácia média por campo:
+  `gpt-oss:20b` 70,8 → 95,4, `qwen2.5:3b` 69,2 → 87,3,
+  `lfm2.5-thinking:1.2b` 56,6 → 74,3, `qwen2.5-coder:14b` 90,0 → 95,7,
+  `ministral-3:14b` 84,4 → 89,9.
+
+### Fixed
+
+- **Serviço com o extra `[pdf]` aceitava imagem truncada depois do primeiro
+  PDF** (#868). `import weasyprint` (feito na primeira renderização do
+  `PdfRenderer`) liga `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, chave global do
+  Pillow — medido no piso declarado (`weasyprint` 69.0) e no lock (70.0),
+  com Pillow 13.0.0. Com ela ligada, `strip_image_metadata` re-codificava
+  e devolvia a primeira metade de um PNG em vez de levantar
+  `ImageDecodeException` (`422`), e o mesmo acontecia com PNG, JPEG, GIF e
+  BMP cortados em todo caminho do SDK que decodifica imagem do usuário: o
+  logo do QR (`share.decode_logo`) e do `ShareCardRenderer`, a foto do
+  `ShareFrameRenderer`, a imagem do `FaceRecognizer`, a fonte de imagem do
+  `ImageGenerator` e do `VisionTextGenerator`, e o upload do
+  `make_vision_router` (decodificado pelo `ort-vision-sdk`). WebP cortado já
+  era recusado com a chave ligada.
+  - O SDK não lê nem escreve a chave: os bytes passam por um stream que
+    registra se o decoder pediu bytes além do fim, e isso levanta o mesmo
+    `OSError` que o Pillow levanta com a chave desligada. Sem lock e sem
+    estado global, então uma renderização de PDF em outra thread continua
+    tolerando imagem quebrada no HTML, como o WeasyPrint pretende.
+  - Medido em todo ponto de corte de 18 codificações (PNG em seis modos,
+    APNG, JPEG baseline/progressivo/CMYK/cinza, GIF estático e animado, BMP
+    e BMP RLE, WebP lossy/lossless/animado; 150 619 cortes), com a chave
+    ligada: nenhum corte que o Pillow recusa com a chave desligada passou, e
+    toda imagem completa passou. É mais estrito num caso: PNG a que faltam
+    só os bytes depois dos pixels (o último checksum e o `IEND`, até cerca
+    de 22 bytes), que o Pillow sozinho aceita.
+  - `FaceRecognizer` e os `_load_image` do `genai` passam a decodificar a
+    imagem na hora (antes o `Image.open` era preguiçoso e o decode acontecia
+    dentro do pipeline), e uma fonte por caminho é lida para a memória, sem
+    handle de arquivo aberto.
+  - `make_vision_router` decodifica os pixels numa thread antes de chamar o
+    modelo, depois da checagem de pixels do header: uma decodificação a
+    mais, medida em cerca de 70 ms num JPEG de 12 MP (a do `ort-vision-sdk`
+    levou 107 ms). Com `max_image_pixels=None` as duas checagens continuam
+    desligadas.
+  - Restaurar a chave depois de importar o WeasyPrint foi medido e
+    descartado: com ela desligada, `HTML(...).write_pdf()` com um PNG
+    truncado embutido levanta `OSError: image file is truncated` em vez de
+    gerar o PDF (o JPEG truncado gera nos dois casos), no 69.0 e no 70.0.
+  - `TestRefusals::test_truncated_image` e
+    `TestCorruptContent::test_is_a_decode_error[middle-PNG-image/png]`
+    falhavam quando o mesmo worker do xdist já tinha importado o WeasyPrint.
+    Rodando `tests/pdf` e depois `tests/utils/test_images.py` num processo
+    só: 2 falhas em 201 antes, 201 de 201 agora.
 
 ## [0.373.0] — 2026-11-26
 
@@ -38284,6 +38460,24 @@ if __name__ == "__main__":
     `completed` com a resposta errada (3 de 3 execuções); com
     `num_ctx=32768`, processou os 11 551 e respondeu certo (3 de 3).
 
+    O corte continua sem erro, mas não mais sem rastro: o `OllamaGenerator`
+    loga um `WARNING` em `tempest_fastapi_sdk.genai.ollama` quando o
+    `prompt_eval_count` cai onde o Ollama deixa um prompt truncado — veja
+    [Janela de contexto](genai.md#janela-de-contexto-num_ctx). O aviso
+    aponta o problema; quem o resolve é o `num_ctx`.
+
+!!! tip "Quando o agente deve parar em vez de responder sobre metade do prompt"
+    Com `OllamaGenerator(..., truncate=False)`, o prompt que não cabe na
+    janela não é cortado: o daemon recusa, e a execução termina com
+    `stop_reason` `error`, sem mais passos. O último passo guarda
+    `OllamaContextExceededError: ...` com o tamanho do prompt e o da janela,
+    e o `output` da execução é a mesma mensagem. Use quando uma resposta
+    `completed` sobre histórico cortado é pior que uma falha — o caso medido
+    acima, em que o modelo perdeu a pergunta e respondeu errado. Fica de fora
+    quando o agente pode seguir com o início da conversa perdido. Detalhes e
+    os corpos medidos do daemon em
+    [Falhar em vez de cortar](genai.md#falhar-em-vez-de-cortar-truncate).
+
 ## Ferramentas tipadas com Pydantic
 
 Escrever JSON-schema à mão ao lado do handler significa **duas descrições da
@@ -38606,6 +38800,83 @@ máscara não é garantia
     JSON inválido, ou algo que não é objeto, vira erro de ferramenta que o
     modelo lê — não uma chamada com `{}`. Quando a chamada traz `id`, a
     mensagem `tool` de volta leva `tool_call_id` e `name`.
+
+## Chamada de ferramenta escrita no texto
+
+Alguns modelos escolhem a ferramenta e os argumentos certos, mas devolvem a
+chamada como JSON no `content`, com `tool_calls` vazio. Antes, o `Agent`
+tratava isso como resposta final: a ferramenta não rodava e o JSON virava a
+"resposta". Hoje ele reconhece essa forma **por padrão**:
+
+```python title="text_tool_call.py" hl_lines="17 25"
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+
+async def shout(arguments: dict[str, Any], _context: AgentContext) -> str:
+    """Return the text in upper case."""
+    return str(arguments["text"]).upper()
+
+
+async def main() -> None:
+    """Run a call the model wrote as JSON in its reply text."""
+    backend = ScriptedBackend(
+        [
+            replies('{"name": "shout", "arguments": {"text": "oi"}}'),
+            replies("Pronto: OI."),
+        ],
+    )
+    agent = Agent(backend, tools=[text_tool("shout", "Upper-case the text.", shout)])
+    run = await agent.run("Grite 'oi'.")
+
+    step = run.steps[1]
+    print(step.name, step.from_text, step.output)
+    print(run.stop_reason, run.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+shout True OI
+completed Pronto: OI.
+```
+
+A resposta inteira — sem espaço nas pontas e, se vier, sem uma única cerca
+de markdown em volta — precisa ser chamada e nada mais: um objeto
+`{"name": ..., "arguments": {...}}`, uma lista deles, ou vários separados
+só por espaço ou quebra de linha. `arguments` pode ser objeto ou string com
+um objeto JSON. Todo `name` precisa ser uma ferramenta disponível naquele
+turno; uma entrada só que não case, JSON inválido ou texto em volta do JSON,
+e a resposta inteira continua sendo resposta. A chamada roda como uma
+nativa, o passo da ferramenta sai com `from_text=True`, e o turno do
+assistente volta ao modelo com a chamada em `tool_calls` e `content` vazio.
+
+Medido em 2026-11-27 com as 34 tarefas de ferramentas da pesquisa de LLMs
+locais (Ollama 0.30.11, temperatura 0, `num_ctx` 8192, uma execução por
+tarefa, N=34 — uma taxa, não uma propriedade):
+
+| modelo | antes | depois |
+| --- | --- | --- |
+| `qwen2.5-coder:14b` | 20,6% (7/34) | 85,3% (29/34) |
+| `gpt-oss:20b` (já usava `tool_calls`) | 94,1% (32/34) | 94,1% (32/34), as mesmas duas tarefas falhando |
+
+Dois detalhes do mesmo experimento. Devolver ao modelo o turno com o JSON no
+`content` (em vez de `content` vazio) deu 35,3% (12/34): o template do
+`qwen2.5-coder` no Ollama imprime o `content` quando ele existe, o modelo
+não via a chamada que fez e repetia a mesma até o orçamento acabar. E nas 7
+tarefas em que o certo era **não** chamar ferramenta, o acerto caiu de 7/7
+para 5/7: antes, o JSON que o modelo escrevia nessas tarefas não rodava, e
+agora roda.
+
+Desligue com `Agent(..., parse_text_tool_calls=False)` quando uma resposta
+legítima puder ser um objeto JSON cujo `name` é o nome de uma ferramenta. O
+loop de ferramentas do `AIChatPipeline` tem o mesmo parâmetro, com o mesmo
+default.
 
 ## Escrever a sua própria ferramenta
 
@@ -38993,6 +39264,9 @@ Duas configurações que se comportam bem:
 - **Erro de ferramenta vira observação** para o modelo, não exceção — e só o
   texto de `AgentToolError` chega ao modelo e ao traço; de qualquer outra
   exceção, os dois recebem só o tipo.
+- **Chamada escrita como JSON no texto** roda como nativa, por padrão, se
+  o `name` é uma ferramenta registrada; o passo sai com `from_text=True` e
+  `parse_text_tool_calls=False` desliga.
 - **`make_agent_router`** publica `/run`, `/run/stream` e download de
   artefato por `run_id`; `owner=` separa as execuções por quem chama.
 - **Em CPU**, o GGUF pelo `OllamaGenerator` gera 6× mais rápido que o
@@ -49697,10 +49971,16 @@ pergunta. A `ChatMemory` faz o mesmo ao gravar e ao buscar mensagens. O
 `embed()` puro nunca aplica prefixo, então quem não declara nada continua com o
 comportamento de antes.
 
+O preset `MULTILINGUAL_E5_PREFIXES` carrega as duas strings, então
+`Embedder(EmbeddingModelEnum.MULTILINGUAL_E5_LARGE, **MULTILINGUAL_E5_PREFIXES)`
+é o mesmo que o exemplo acima. O `OllamaEmbedder` aceita os mesmos dois
+parâmetros — veja os
+[prefixos do `nomic-embed-text`](genai.md#prefixos-de-tarefa-do-nomic-embed-text).
+
 !!! note "Embedder que só tem `embed()`"
-    `OnnxEmbedder`, `OllamaEmbedder` ou um embedder seu sem `embed_query` /
-    `embed_passages` continuam funcionando no `Retriever` pelo `embed()` puro
-    — e, nesse caso, sem prefixo.
+    `OnnxEmbedder` ou um embedder seu sem `embed_query` / `embed_passages`
+    continuam funcionando no `Retriever` pelo `embed()` puro — e, nesse caso,
+    sem prefixo.
 
 ## Rerank — `RerankerModelEnum`
 
@@ -55631,7 +55911,7 @@ tamanho do upload, `422` para o resto:
 | --- | --- | --- |
 | `max_upload_bytes` | `DEFAULT_MAX_IMAGE_UPLOAD_BYTES` (20 MiB) | upload grande demais — lido em blocos, recusado ao cruzar o teto |
 | `max_image_pixels` | `DEFAULT_MAX_IMAGE_PIXELS` (50 MP) | canvas declarado no header acima do teto — lido sem decodificar |
-| — | — | bytes que não são imagem, e o `ImageLoadError` do `ort-vision-sdk` (antes virava `500`) |
+| — | — | bytes que não são imagem, imagem truncada — os pixels são decodificados numa thread antes do modelo —, e o `ImageLoadError` do `ort-vision-sdk` (antes virava `500`) |
 
 ```python
 from fastapi import FastAPI
@@ -55656,8 +55936,16 @@ app.include_router(
     88,36 MP fica abaixo do limiar dele (89,48 MP). O teto de bytes não pega
     esse arquivo; o de pixels pega, lendo só o header.
 
-`max_image_pixels=None` desliga a checagem de header (e o import do
-Pillow), deixando só a defesa do próprio Pillow dentro do decoder.
+`max_image_pixels=None` desliga a checagem de header e a de truncamento (e o
+import do Pillow), deixando só a defesa do próprio Pillow dentro do decoder.
+
+!!! warning "Sem a checagem, imagem truncada chega ao modelo com o `[pdf]` instalado"
+    `import weasyprint` liga `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, e com
+    ela o `ort-vision-sdk` decodifica metade de uma imagem com o resto em
+    cinza. Com `max_image_pixels` definido o router decodifica os pixels antes
+    e responde `422`, com a chave ligada ou não. O custo é uma decodificação a
+    mais: medido num JPEG de 12 MP, cerca de 70 ms, contra 107 ms da
+    decodificação do próprio `ort-vision-sdk`.
 
 ## Recap
 
@@ -71619,6 +71907,18 @@ transforma em resposta com `code`:
 `InvalidFileTypeException`, e `ImageTooLargeException` estende
 `FileTooLargeException`: um `except` que já pegava esses dois continua
 pegando.
+
+!!! note "Imagem truncada é recusada mesmo com o `[pdf]` instalado"
+    `import weasyprint` (o extra `[pdf]`, importado na primeira renderização)
+    liga `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, uma chave global do Pillow.
+    Com ela ligada o Pillow preenche de cinza o que falta de um arquivo
+    cortado em vez de levantar — e até a 0.373.0 a função aceitava metade de
+    um PNG depois do primeiro PDF do serviço. Hoje a função não lê nem
+    escreve essa chave: ela percebe que o decoder pediu bytes além do fim do
+    arquivo e levanta `ImageDecodeException`, com a chave ligada ou
+    desligada. Um PNG a que faltam só os últimos bytes depois dos pixels (o
+    checksum final e o `IEND`) também é recusado, embora o Pillow sozinho o
+    aceite.
 
 ## O teto de pixels
 
@@ -97558,8 +97858,9 @@ nunca colide.
 #### Janela de contexto: `num_ctx`
 
 O Ollama processa no máximo `num_ctx` tokens de prompt, e o que passa disso
-ele **corta sem avisar**: a resposta vem `200`, sem erro, gerada sobre um
-pedaço do que você mandou. Medido no Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
+o daemon **corta sem avisar**: a resposta vem `200`, sem erro, gerada sobre
+um pedaço do que você mandou (desde a 0.374.0 o SDK detecta o corte e loga um
+`WARNING` — ver abaixo). Medido no Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
 numa RTX 4070 Ti SUPER de 16 GB): um chat de 35 018 tokens voltou com
 `prompt_eval_count` de 2 051 no default, e de 35 018 com `num_ctx=65536`.
 Fixe a janela no gerador, e ela vai em toda chamada:
@@ -97598,6 +97899,179 @@ Isso importa sobretudo para quem **não** passa opção nenhuma por chamada — 
 assim. A janela e o config padrão entram na chave do `generation_cache`, então
 dois geradores com defaults diferentes não respondem um pelo cache do outro.
 
+!!! warning "O corte agora deixa um `WARNING` no log"
+    O daemon não avisa que cortou, mas deixa um rastro: o prompt truncado
+    chega com `prompt_eval_count` em **metade da janela mais 2 ou 3
+    tokens**, seja qual for o tamanho do que você mandou. Medido no Ollama
+    0.30.11 em CPU (`qwen2.5:0.5b`, `num_gpu=0`, prompts de 1 000 a
+    30 000 palavras, todos maiores que a janela): 1026 com `num_ctx` 2048,
+    2050 no default de 4096, 4098 com 8192 e 8194 com 16384; a pesquisa de 2026-11-26/27 viu 2050
+    (`qwen2.5:3b`, `qwen2.5-coder:14b`) e 2051 (`lfm2.5-thinking:1.2b`,
+    `ministral-3:14b`) no default. Um prompt que cabe volta com o próprio
+    tamanho (1243 com `num_ctx` 2048).
+
+    Por isso o `OllamaGenerator` loga um `WARNING` no logger
+    `tempest_fastapi_sdk.genai.ollama` quando o `prompt_eval_count` cai
+    entre metade da janela e metade mais 16 (ou chega na janela inteira),
+    com o modelo, a contagem e a janela no texto e em `extra`:
+
+    ```text
+    WARNING tempest_fastapi_sdk.genai.ollama: Ollama model 'qwen2.5:0.5b'
+    evaluated 2050 prompt tokens with a 4096-token context window: an
+    overflowing prompt is cut to about half the window without an error, so
+    this prompt was likely truncated. Raise num_ctx on the generator.
+    ```
+
+    - A janela é o `num_ctx` da requisição quando houver (do construtor ou
+      da chamada). Sem ele, é o `context_length` que o `/api/ps` do daemon
+      informa para o modelo carregado — consultado uma vez por gerador, e
+      só depois de uma resposta que traga `prompt_eval_count`. Se a consulta
+      falhar, a checagem é pulada; a chamada nunca falha por causa dela.
+    - Vale para `generate`, `chat`, `chat_with_tools` (o laço do `Agent`),
+      `stream` e as duas chamadas estruturadas.
+    - O default de `num_ctx` **não** mudou: continua `None`, herdando a
+      janela do daemon (4096 sem `OLLAMA_CONTEXT_LENGTH`). Subir a janela
+      custa VRAM, e isso é decisão de quem sobe o serviço; o aviso é o que
+      torna o corte visível. Um prompt que caia exatamente na faixa sem ter
+      sido cortado gera um aviso falso — raro, e o remédio é o mesmo.
+
+#### Falhar em vez de cortar: `truncate`
+
+O aviso torna o corte visível, mas a chamada segue com o prompt cortado. Em
+extração de documento, em agente com histórico longo ou em RAG com muitos
+trechos, responder sobre metade do contexto é pior que um erro. Para esses
+casos, passe `truncate=False`: o daemon recusa o prompt que não cabe, e o
+`OllamaGenerator` levanta `OllamaContextExceededError`.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaContextExceededError, OllamaGenerator
+
+gen = OllamaGenerator("qwen2.5:0.5b", num_ctx=2048, truncate=False)
+
+
+async def main() -> None:
+    """Run this example."""
+    documento: str = " ".join(f"palavra{i}" for i in range(4000))
+    try:
+        await gen.chat([{"role": "user", "content": documento}])
+    except OllamaContextExceededError as exc:
+        print(exc.prompt_tokens, exc.context_window)
+
+
+asyncio.run(main())
+```
+
+O que o daemon responde foi medido no Ollama 0.30.11 em CPU
+(`qwen2.5:0.5b`, `num_gpu=0`, `num_ctx` 2048, um prompt de 4 000 palavras),
+no `/api/chat` e no `/api/generate`, com e sem `stream`:
+
+| `truncate` no corpo | status | resultado |
+| --- | --- | --- |
+| ausente (o default) | `200` | prompt cortado: `prompt_eval_count` 1026 |
+| `true` | `200` | igual ao ausente: `prompt_eval_count` 1026 |
+| `false` | `400` | `exceed_context_size_error`, antes de qualquer linha do stream |
+
+O corpo do `400` traz os dois tamanhos, e eles vão para a exceção:
+
+```text
+OllamaContextExceededError: Ollama model 'qwen2.5:0.5b' refused a prompt
+longer than its context window (the prompt has 18923 tokens and the context
+window 2048) because truncate=False; raise num_ctx or shorten the prompt
+```
+
+- **`truncate=None`** (o padrão) não manda o campo: o daemon corta, como
+  antes, e o `WARNING` acima continua valendo.
+- O `truncate` da chamada ganha do construtor, e vale nos mesmos seis
+  métodos que o `think` (`generate`, `chat`, `chat_with_tools`, `stream`,
+  `generate_structured`, `chat_structured`). Ele entra na chave do
+  `generation_cache`: uma resposta guardada de um prompt cortado não
+  responde uma chamada com `truncate=False`.
+- `prompt_tokens` e `context_window` ficam `None` quando o corpo do erro não
+  trouxer os tamanhos; a exceção continua sendo `OllamaContextExceededError`.
+- No `stream`, a exceção sai na primeira iteração: o daemon recusa antes de
+  mandar qualquer pedaço.
+- Num prompt que cabe, `truncate=False` não muda nada (medido: `200`, com
+  `prompt_eval_count` 32, nos dois endpoints).
+
+#### Raciocínio: `think`
+
+Modelo de raciocínio (o `gpt-oss`, o `ornith`) aceita o campo `think` no
+**topo** do corpo do `/api/chat` e do `/api/generate`: `True`/`False` liga
+ou desliga o raciocínio, e `"low"`/`"medium"`/`"high"` escolhe o nível nos
+modelos que têm níveis. Dentro de `options` o daemon ignora o campo — e era
+para lá que ia um `think=` passado como keyword antes desta mudança. Agora ele
+é um parâmetro do gerador (`ThinkLevel`) e de cada chamada:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+gen = OllamaGenerator("gpt-oss:20b", think="low", num_ctx=16384)
+
+
+async def main() -> None:
+    """Run this example."""
+    rapida: str = await gen.chat([{"role": "user", "content": "Oi"}])
+    pensada: str = await gen.chat(
+        [{"role": "user", "content": "Quanto é 17 x 23?"}],
+        think="high",
+    )
+    print(rapida, pensada)
+
+
+asyncio.run(main())
+```
+
+- **`think=None`** (o padrão) não manda o campo: o modelo usa o default
+  dele, como antes.
+- O `think` da chamada ganha do construtor, e entra na chave do
+  `generation_cache`.
+- `generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured` e
+  `chat_structured` aceitam o parâmetro; o laço do `Agent` usa o do
+  construtor.
+
+Medido na pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11, RTX
+4070 Ti SUPER, temperatura 0):
+
+| modelo / uso | `think` | acerto | p50 |
+| --- | --- | --- | --- |
+| `gpt-oss:20b`, 34 tarefas de tools | `"low"` | 97,1% | **1,44 s** |
+| `gpt-oss:20b`, 34 tarefas de tools | default (medium) | 94,1% | 1,68 s |
+| `gpt-oss:20b`, 34 tarefas de tools | `"high"` | 97,1% | 3,59 s |
+| `gpt-oss:20b`, RAG com 27 perguntas | `"low"` | 20/21 fatos, 0/6 alucinações | **0,99 s** |
+| `ornith-1.5:9b`, 33 extrações estruturadas | `False` | 93,3 por campo | **1,34 s** |
+| `ornith-1.5:9b`, 33 extrações estruturadas | `True` | 95,0 por campo | 5,60 s |
+
+Com N=34 e N=33, um ponto e pouco é um item: não leia ordem fina entre
+`"low"` e `"high"`. O que a tabela mostra é o tempo — `"low"` empatou com
+os outros níveis e, no p50 do relatório, levou de 25% a 40% do tempo do
+`"high"` e de 47% a 86% do `"medium"` (o padrão), conforme o uso.
+
+!!! warning "Modelo sem raciocínio recusa `think`"
+    Modelo sem a capacidade `thinking` (no `/api/show`) responde `400` com
+    `"<modelo>" does not support thinking` — reproduzido no Ollama 0.30.11
+    com o `ministral-3:14b` e `think=True`, no `/api/chat` e no
+    `/api/generate`, com e sem stream, sem carregar o modelo. O gerador
+    levanta `OllamaThinkingUnsupportedError` (subclasse de `OllamaError`,
+    com `.model` e `.detail`) em vez do `httpx.HTTPStatusError` cru. Para
+    esse modelo, deixe `think=None`.
+
+!!! danger "`think=False` faz alguns modelos ignorarem o `format`"
+    Com `think=False`, o `ornith:35b` respondeu a um `chat_structured` em
+    markdown (`**Nome:** Ana Costa ...`), com `200`, em 3 de 3 chamadas; com
+    `think` omitido ou `True`, devolveu o objeto JSON em 3 de 3. O
+    `ornith-1.5:9b`, o `gpt-oss:20b` e o `ministral-3:14b` respeitaram o
+    `format` com `think=False` (3 de 3 cada). Quando a resposta estruturada
+    não traz objeto JSON nenhum, `generate_structured` e `chat_structured`
+    levantam `OllamaFormatIgnoredError` — subclasse de `OllamaError` **e**
+    de `ValueError`, então o `except ValueError` de antes continua pegando —
+    com `.content` (o começo da resposta) e `.think`, e a mensagem aponta o
+    `think=False` quando foi ele. Antes, o mesmo caso virava um
+    `ValueError("no JSON object ...")` sem pista da causa.
+
 ### Embeddings via Ollama + RAG
 
 `OllamaEmbedder` satisfaz o mesmo protocolo `SupportsEmbed` do `Embedder`,
@@ -97625,6 +98099,69 @@ asyncio.run(main())
 
 `embed(texts, *, batch_size=32)` devolve `list[list[float]]`, igual ao
 `Embedder`.
+
+#### Prefixos de tarefa do `nomic-embed-text`
+
+O `nomic-embed-text` foi treinado com `search_query: ` na frente da pergunta e
+`search_document: ` na frente do trecho. Declare os dois no `OllamaEmbedder` —
+ou espalhe o preset `NOMIC_EMBED_TEXT_PREFIXES` — e o `Retriever` aplica cada
+um do lado certo:
+
+```python title="nomic_rag.py" hl_lines="11"
+import asyncio
+
+from tempest_fastapi_sdk.genai import NOMIC_EMBED_TEXT_PREFIXES, OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import Chunk, InMemoryVectorStore, Retriever
+
+
+async def main() -> None:
+    """Index two passages and search them with nomic's task prefixes."""
+    embedder = OllamaEmbedder(
+        "nomic-embed-text",
+        **NOMIC_EMBED_TEXT_PREFIXES,
+    )
+    rag = Retriever(embedder, InMemoryVectorStore())
+    await rag.index(
+        [
+            Chunk(text="O reembolso cai em até 7 dias úteis.", source="faq", index=0),
+            Chunk(text="A entrega expressa chega amanhã.", source="faq", index=1),
+        ],
+    )
+    hits = await rag.search("Quanto tempo demora o reembolso?", top_k=1)
+    print(hits[0].text)
+    await embedder.aclose()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+`Retriever.index` chama `embed_passages`, que envia `search_document: <trecho>`
+ao daemon; `Retriever.search` chama `embed_query`, que envia
+`search_query: <pergunta>`. O `embed()` puro continua sem prefixo, e o default
+dos dois parâmetros é `""` — quem não declara nada mantém os vetores de antes.
+
+O preset é escolhido por você, não adivinhado pelo nome do modelo: a mesma
+família sai com várias tags (`nomic-embed-text`, `nomic-embed-text:v1.5`, um
+fine-tune local), e um palpite errado mudaria todo vetor gravado em silêncio.
+Para a família E5 existe `MULTILINGUAL_E5_PREFIXES` (`query: ` / `passage: `),
+que serve também no `Embedder` do torch. Outro modelo: passe
+`query_prefix=` / `passage_prefix=` com as strings do model card dele.
+
+Quanto vale: numa medição de 21 perguntas em PT-BR sobre um manual fictício
+(`nomic-embed-text` via Ollama, um trecho de 2000 caracteres por documento),
+o documento certo apareceu entre os 4 primeiros em **18/21** sem prefixo e
+**20/21** com prefixo; em k=1 e k=2 não mudou (15/21 e 17/21). Com trechos de
+300 caracteres o prefixo não mudou nada (18/21 nos dois). N=21 é pouco: é um
+sinal, não uma taxa.
+
+!!! warning "Trocar o prefixo exige reindexar"
+    O prefixo entra no texto que vira vetor, então ligar, desligar ou trocar
+    `query_prefix` / `passage_prefix` muda **todos** os vetores. Um índice
+    gravado sem prefixo e consultado com prefixo (ou o contrário) compara
+    vetores de espaços diferentes e devolve resultado pior sem erro nenhum.
+    Ao mudar os prefixos, apague o índice e rode `Retriever.index` de novo
+    sobre o corpus inteiro.
 
 ### Busca híbrida (BM25 + denso)
 
@@ -99892,12 +100429,32 @@ rota estruturada recomendada, sem biblioteca extra**.
     a chamada usa `/api/chat`, e um conteúdo vazio levanta `ValueError`
     em vez de devolver nada.
 
-!!! danger "Campo com `default` é campo que o modelo pode pular"
+!!! info "Todo campo vai em `required` no fio — inclusive os que têm default"
     O Pydantic deixa campo com default fora de `required` no JSON schema,
-    e o decodificador constrangido do daemon então pode omiti-lo — e ele
-    omite justamente os que têm default. Em schema de extração, **nenhum
-    campo tem default**; a ausência se expressa no dado (`""`), nunca no
-    schema.
+    e o decodificador constrangido do daemon deixa o modelo omiti-lo. O
+    objeto volta válido (o default preenche o campo) e errado, sem sinal
+    nenhum. Por isso `generate_structured` e
+    `chat_structured` mandam no `format` uma cópia do schema em que **todo**
+    objeto (raiz, aninhado, item de lista, `$defs`) lista todas as
+    propriedades em `required`. Campo opcional (`X | None`) continua
+    aceitando `null` — o modelo só passa a dizê-lo. A validação continua
+    contra o seu model, sem mudança.
+
+    Medido na pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11,
+    33 casos de extração em 3 schemas, temperatura 0), acurácia média por
+    campo:
+
+    | modelo | schema do Pydantic | todo campo em `required` |
+    | --- | --- | --- |
+    | `gpt-oss:20b` | 70,8 | **95,4** |
+    | `qwen2.5:3b` | 69,2 | 87,3 |
+    | `lfm2.5-thinking:1.2b` | 56,6 | 74,3 |
+    | `qwen2.5-coder:14b` | 90,0 | 95,7 |
+    | `ministral-3:14b` | 84,4 | 89,9 |
+
+    No `gpt-oss:20b` o schema do Pydantic nunca fez sair um campo
+    `Field(default_factory=list)`: os 11 pedidos voltaram com `itens=[]`.
+    Você não precisa mais declarar o schema de extração sem default.
 
 !!! tip "Instrução separada do documento — `chat_structured`"
     Extraindo campos de um documento longo, a instrução precisa ir num
