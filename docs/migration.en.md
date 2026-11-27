@@ -4,7 +4,7 @@ description: "Use when upgrading the SDK across breaking changes; index of the p
 
 # Migration guide
 
-Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
+Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The subpages, and the release sections inside each one, are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
 ## Version ranges
 

@@ -4,7 +4,7 @@ description: "Use ao atualizar o SDK com mudanças que quebram compatibilidade; 
 
 # Guia de migração
 
-Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
+Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As subpáginas, e as seções dentro de cada uma, estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
 ## Faixas de versão
 

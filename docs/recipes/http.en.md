@@ -6,7 +6,7 @@ description: "Index of the inbound HTTP layer: points to the subpage for bootstr
 
 Middlewares, dependencies, routers and middleware composition for the API surface.
 
-Here you assemble a service's entire HTTP surface from the primitives `tempest_fastapi_sdk` ships — without hand-writing middleware, exception handlers or bootstrap glue. Each section is independent: grab only the one you need right now. This recipe covers ~12 primitives:
+Here you assemble a service's entire HTTP surface from the primitives `tempest_fastapi_sdk` ships — without hand-writing middleware, exception handlers or bootstrap glue. Each subpage is independent: open only the one you need right now. This recipe covers ~12 primitives:
 
 - **`create_app()` + `register_exception_handlers`** — the canonical bootstrap and the standardized error envelope (with optional i18n via `MessageCatalog`).
 - **`RequestIDMiddleware`** — `X-Request-ID` correlation on every log line.
@@ -22,8 +22,8 @@ Here you assemble a service's entire HTTP surface from the primitives `tempest_f
 - **`run_server`** — programmatic uvicorn entry point.
 - **`BaseAppSettings` + `*Settings` mixins** — composable env-var configuration.
 
-!!! tip "The last three sections are full flows"
-    Authentication, uploads and transactional email appear here in condensed form; each has a dedicated, deeper recipe — see the [Recap](#recap-next-steps) at the end of the page.
+!!! tip "The last two subpages are full flows"
+    Authentication, uploads and transactional email appear there in condensed form; each has a dedicated, deeper recipe — see the [Recap](#recap-next-steps) at the end of the page.
 
 ## Where each task lives
 
@@ -42,7 +42,7 @@ Use this table to open only the subpage for the task at hand; they are listed in
 
 ## Recap / next steps
 
-You now know the whole HTTP surface: app bootstrap, exception handlers with i18n, auth dependencies, rate limiting, webhook verification, pagination headers, tool-spec, the server entry point and settings composition. The last three sections (authentication, uploads, email) were a summary — each has a dedicated recipe that goes deeper:
+You now know the whole HTTP surface: app bootstrap, exception handlers with i18n, auth dependencies, rate limiting, webhook verification, pagination headers, tool-spec, the server entry point and settings composition. The last two subpages (authentication; uploads and email) are a summary — each has a dedicated recipe that goes deeper:
 
 - [Authentication flow »](auth-flow.en.md) — the full bundled flow (`UserAuthService` + `make_auth_router`): signup, activation, login, password reset, refresh tokens and `current_user`.
 - [File uploads »](uploads.en.md) — pluggable storage backends (`LocalUploadStorage` / `MinIOUploadStorage`), presigned URLs and content validation.
