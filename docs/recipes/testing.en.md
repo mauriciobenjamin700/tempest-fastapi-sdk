@@ -1,11 +1,8 @@
 # Testing
 
-You'll wire up an async test suite — pytest + pytest-asyncio + in-memory SQLite + `httpx.AsyncClient` — swapping the production database for a throwaway one on every test.
-
-pytest + pytest-asyncio + in-memory SQLite + `httpx.AsyncClient`.
-
-!!! tip "Why `AsyncClient` instead of `TestClient`?"
-    `fastapi.testclient.TestClient` is synchronous — it does not support `async with`. To test async endpoints painlessly, use `httpx.AsyncClient(transport=ASGITransport(app=app))`, which mounts the app over ASGI in the same event-loop as your tests. The examples below follow that pattern.
+Use this page to build the suite of a service on the SDK: pytest +
+pytest-asyncio + `httpx.AsyncClient`, with the app's lifespan running, a real
+login and the LLM swapped for a fake.
 
 !!! note "`from src... import` from any folder under `tests/`"
     The `pyproject.toml` that `tempest new` writes carries `pythonpath = ["."]` under `[tool.pytest.ini_options]`. Without it, pytest puts the first folder **without** an `__init__.py` above the test file on `sys.path`: `tests/repositories/test_user.py` with no `tests/repositories/__init__.py`, or `pytest tests/repositories`, fails at collection with `ModuleNotFoundError: No module named 'src'`. A project generated before 0.323.0 gets the line by hand:
@@ -17,20 +14,359 @@ pytest + pytest-asyncio + in-memory SQLite + `httpx.AsyncClient`.
     testpaths = ["tests"]
     ```
 
-## Shared fixtures
+## Run the app in a test with its lifespan — `conftest.py`
+
+Use it when the test calls an HTTP route: this `conftest.py` pins the
+environment, points the database at a temporary file and opens the lifespan,
+which migrates and connects the database before the first request.
 
 ```python
 # tests/conftest.py
+"""Suite fixtures: pinned environment, database in a temporary file, lifespan running."""
+
+import os
+import tempfile
+from collections.abc import AsyncIterator
+from pathlib import Path
+from uuid import uuid4
+
+TEST_DATABASE_DIRECTORY: Path = Path(
+    tempfile.mkdtemp(prefix=f"tests-{os.environ.get('PYTEST_XDIST_WORKER', 'main')}-")
+)
+"""One directory per process: each pytest-xdist worker migrates its own database."""
+
+TEST_ENVIRONMENT: dict[str, str] = {
+    "ENV": "test",
+    "DATABASE_URL": f"sqlite+aiosqlite:///{TEST_DATABASE_DIRECTORY / 'test.db'}",
+    "AUTH_AUTO_ACTIVATE": "true",
+}
+"""The suite's environment. Pinned before the app import, which reads the settings on load."""
+
+os.environ.update(TEST_ENVIRONMENT)
+
+import pytest_asyncio  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+
+from src.api.app import create_app  # noqa: E402
+
+
+@pytest_asyncio.fixture
+async def app() -> AsyncIterator[FastAPI]:
+    """Build the app and run its lifespan: startup migration, database connected.
+
+    A fresh app per test, so a ``dependency_overrides`` entry does not leak
+    into the next test.
+
+    Yields:
+        FastAPI: The app with its lifespan open; closed on teardown.
+    """
+    application: FastAPI = create_app()
+    async with application.router.lifespan_context(application):
+        yield application
+
+
+@pytest_asyncio.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    """HTTP client that talks to the app over ASGI, no network.
+
+    Args:
+        app (FastAPI): The app with its lifespan already open.
+
+    Yields:
+        AsyncClient: The client, with a fixed ``base_url``.
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as http:
+        yield http
+
+
+@pytest_asyncio.fixture
+async def auth_headers(client: AsyncClient) -> dict[str, str]:
+    """Sign a user up, log in and return the ``Authorization`` header.
+
+    Args:
+        client (AsyncClient): The app's client.
+
+    Returns:
+        dict[str, str]: ``{"Authorization": "Bearer <access_token>"}``.
+    """
+    credentials: dict[str, str] = {
+        "email": f"{uuid4().hex}@example.com",
+        "password": "strong-pass-12-chars",
+    }
+    await client.post("/auth/signup", json=credentials)
+    login = await client.post("/auth/login", json=credentials)
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+```
+
+| Piece | Why |
+| --- | --- |
+| `os.environ.update(...)` before the imports | The `src/core/settings.py` that `tempest new` writes builds the settings when imported, and the `AsyncDatabaseManager` is created with the `DATABASE_URL` of that moment. A variable set later never reaches the app. |
+| SQLite in a **file**, not `:memory:` | The lifespan migration opens its own connection. With `:memory:` it creates the tables in a database that vanishes, and the first request fails with `sqlite3.OperationalError: no such table: users` (measured). |
+| One directory per `PYTEST_XDIST_WORKER` | Each `tempest test` worker migrates its own file, and the suite never touches the project's `app.db`. |
+| `application.router.lifespan_context(application)` | Runs the app's lifespan without a server. `ASGITransport` alone does not (next section). |
+| `AUTH_AUTO_ACTIVATE=true` | Without it the account starts inactive and login answers `401` `invalid email or password` (measured). |
+| email from `uuid4()` | The database is one per process, not one per test: a fixed email gets `409` on the second signup. |
+
+### `ASGITransport` alone does not run the lifespan
+
+Use this section to understand the error of building only the client.
+`AsyncClient(transport=ASGITransport(app=app))` without `lifespan_context`
+never enters the lifespan: the migration does not run and the database stays
+empty. Measured on 2026-11-27 (httpx 0.28.1, FastAPI 0.165.0, Starlette
+1.10.0), against the `tempest new --extras auth` app, with a spy on
+`lifespan_context`:
+
+| Shape | Lifespan entered? | `POST /auth/signup` |
+| --- | --- | --- |
+| `ASGITransport` alone | no | `client.post` **raises** `sqlite3.OperationalError: no such table: users` |
+| `lifespan_context` + `ASGITransport` | yes | `201` |
+
+The error comes out of `client.post`; it does not become a `500` response:
+`ASGITransport` re-raises the app's exception by default.
+
+!!! info "What about `asgi-lifespan`?"
+    The `LifespanManager` from the `asgi-lifespan` package also opens the
+    lifespan, but it is not an SDK dependency. `lifespan_context` ships with
+    FastAPI, which you already have.
+
+## Test signup, login and `/me`
+
+Use it when the service mounts `make_auth_router`: the test signs up, logs in
+and calls the protected route with the token.
+
+The example app is the `tempest new --extras auth` one with auth mounted as in
+the [auth recipe](auth-flow.md): a `UserTokenModel` built by
+`make_user_token_model(user_table=USER_TABLE_NAME)` (with its migration
+generated), `AuthSettings` in `Settings`, the `UserAuthService` below and, in
+`create_app()`,
+`app.include_router(make_auth_router(auth_service, session_factory=db.session_dependency))`.
+
+```python
+# src/api/dependencies/auth.py
+"""Service auth: the ``UserAuthService`` and the logged-in user dependency."""
+
+from tempest_fastapi_sdk import UserAuthService, make_token_dependency
+
+from src.core import settings
+from src.db.models import UserModel, UserTokenModel
+
+from .resources import db
+
+require_token = make_token_dependency(
+    settings.TOKEN_SECRET,
+    allow_unauthenticated=settings.ENV != "production",
+)
+
+auth_service: UserAuthService = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=None,
+)
+"""Signup, login and tokens; ``make_auth_router`` mounts the routes on top of it."""
+
+get_current_user = auth_service.current_user_dependency()
+"""``Depends(get_current_user)`` requires ``Authorization: Bearer <access_token>``."""
+
+__all__: list[str] = ["auth_service", "get_current_user", "require_token"]
+```
+
+The test:
+
+```python
+# tests/integration/test_auth.py
+from uuid import uuid4
+
+from httpx import AsyncClient
+
+
+async def test_signup_login_and_me(client: AsyncClient) -> None:
+    """Scenario: new account, login with its password, ``/auth/me`` with the token.
+
+    Expected: ``201`` on signup, ``200`` on login and the same email on ``/me``.
+    """
+    email: str = f"{uuid4().hex}@example.com"
+    credentials: dict[str, str] = {"email": email, "password": "strong-pass-12-chars"}
+
+    signup = await client.post("/auth/signup", json=credentials)
+    assert signup.status_code == 201, signup.text
+
+    login = await client.post("/auth/login", json=credentials)
+    assert login.status_code == 200, login.text
+    access_token: str = login.json()["access_token"]
+
+    me = await client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert me.status_code == 200, me.text
+    assert me.json()["email"] == email
+
+
+async def test_me_without_token_is_401(client: AsyncClient) -> None:
+    """Scenario: ``/auth/me`` with no ``Authorization`` header.
+
+    Expected: ``401``.
+    """
+    response = await client.get("/auth/me")
+    assert response.status_code == 401, response.text
+```
+
+A route of yours protected by `Depends(get_current_user)` is tested the same
+way: the `auth_headers` fixture in `conftest.py` already returns the header,
+and the next section uses it.
+
+## Swap the LLM for a fake in a route
+
+Use it when the route calls `chat_structured` or `generate_structured`:
+[`FakeStructuredBackend`](fakes.md#structured-output-fakestructuredbackend)
+comes in through `dependency_overrides` and returns the instance the test
+chose, with no model and no network.
+
+The route receives the generator through `Depends` and never builds it
+inline — that is what lets the test swap it:
+
+```python
+# src/api/dependencies/genai.py
+"""The service's LLM generator, handed out through ``Depends``."""
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+generator: OllamaGenerator = OllamaGenerator(model="gpt-oss:20b")
+"""One generator per process; the test swaps ``get_generator``, not this object."""
+
+
+def get_generator() -> OllamaGenerator:
+    """Return the process-wide generator.
+
+    Returns:
+        OllamaGenerator: The shared generator.
+    """
+    return generator
+```
+
+```python
+# src/api/routers/extraction.py
+"""``POST /api/invoices/extract`` — the model reads the invoice and returns its fields."""
+
+from fastapi import Depends
+from pydantic import BaseModel
+from tempest_fastapi_sdk import TempestAPIRouter
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+from src.api.dependencies.auth import get_current_user
+from src.api.dependencies.genai import get_generator
+from src.db.models import UserModel
+
+
+class InvoiceSchema(BaseModel):
+    """The fields the model fills."""
+
+    number: str
+    total_cents: int
+
+
+class DocumentSchema(BaseModel):
+    """The invoice text the client sends."""
+
+    text: str
+
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/invoices", tags=["invoices"])
+
+
+@router.post("/extract")
+async def extract_invoice(
+    payload: DocumentSchema,
+    user: UserModel = Depends(get_current_user),
+    generator: OllamaGenerator = Depends(get_generator),
+) -> InvoiceSchema:
+    """Extract the number and the total of an invoice.
+
+    Args:
+        payload (DocumentSchema): The invoice text.
+        user (UserModel): The caller; the route requires login.
+        generator (OllamaGenerator): The generator, swappable via ``dependency_overrides``.
+
+    Returns:
+        InvoiceSchema: The fields the model filled.
+    """
+    return await generator.chat_structured(
+        [
+            {"role": "system", "content": "Extract the number and the total of the invoice."},
+            {"role": "user", "content": payload.text},
+        ],
+        InvoiceSchema,
+        think="low",
+    )
+```
+
+The test queues the reply, swaps the dependency and checks what the route
+sent to the model:
+
+```python
+# tests/integration/test_extraction.py
+from fastapi import FastAPI
+from httpx import AsyncClient
+from tempest_fastapi_sdk.testing.fakes import FakeStructuredBackend
+
+from src.api.dependencies.genai import get_generator
+from src.api.routers.extraction import InvoiceSchema
+
+
+async def test_extract_returns_what_the_model_filled(
+    app: FastAPI,
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """Scenario: the extraction route with the generator swapped for the fake.
+
+    Expected: the response JSON is the queued instance, and the fake
+    recorded the document and the ``think`` the route sent.
+    """
+    fake: FakeStructuredBackend = FakeStructuredBackend()
+    fake.queue(InvoiceSchema(number="42", total_cents=1990))
+    app.dependency_overrides[get_generator] = lambda: fake
+
+    response = await client.post(
+        "/api/invoices/extract",
+        json={"text": "Invoice 42, total $19.90"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"number": "42", "total_cents": 1990}
+    assert fake.prompts == ["Invoice 42, total $19.90"]
+    assert fake.requests[0].schema is InvoiceSchema
+    assert fake.requests[0].think == "low"
+```
+
+The `conftest.py` and the two test files above ran together in a
+`tempest new --extras auth` project with these pieces, on 2026-11-27:
+`3 passed` serially and with `-n 2`, both under `-W error`.
+
+## Test a repository against an in-memory database
+
+Use it when the test talks to the repository directly, with no HTTP and no
+lifespan: one in-memory `AsyncDatabaseManager` per test, with the tables
+created from the metadata.
+
+```python
+# tests/repositories/conftest.py
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import AsyncDatabaseManager
 
 import src.db.models  # noqa: F401 — side-effect: registers every model on BaseModel.metadata
-from src.api.app import create_app
 
 
 @pytest_asyncio.fixture
@@ -51,25 +387,12 @@ async def session(db: AsyncDatabaseManager) -> AsyncGenerator[AsyncSession, None
     """Managed session bound to the in-memory DB."""
     async for s in db.session_dependency():
         yield s
-
-
-@pytest_asyncio.fixture
-async def client(db: AsyncDatabaseManager) -> AsyncGenerator[AsyncClient, None]:
-    """ASGI-backed async client with the prod DB swapped for the in-memory one."""
-    app = create_app()
-    # Override the session dependency to use the test DB.
-    from src.api.app import db as production_db
-
-    app.dependency_overrides[production_db.session_dependency] = db.session_dependency
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-    ) as client:
-        yield client
 ```
 
-## Repository test
+Here `:memory:` works: the tables come from `create_tables()` on the same
+connection, not from a migration.
+
+### The repository test
 
 ```python
 # tests/repositories/test_user.py
@@ -105,7 +428,10 @@ class TestUserRepository:
 !!! warning "`BaseUserModel` columns"
     The abstract `BaseUserModel` declares **`email`**, **`hashed_password`**, **`is_admin`**, **`last_login_at`** and **`email_verified_at`**, and inherits **`id`**, **`is_active`**, **`created_at`** and **`updated_at`** from `BaseModel`. The **`name`** column used in the examples is **not** part of `BaseUserModel` — it's added by the project's own `UserModel`. The non-default fields (`email` + `hashed_password`) are `nullable=False`, so omitting either one raises `IntegrityError` on flush. Also note: the column is **`hashed_password`** — not `password_hash`.
 
-## Endpoint test
+## Check a route's error envelope
+
+Use it when the route raises an `AppException`: the test uses the `client`
+from `conftest.py` and checks the envelope's `code`.
 
 ```python
 # tests/api/test_users.py
@@ -113,22 +439,6 @@ from httpx import AsyncClient
 
 
 class TestUsersAPI:
-    async def test_signup(self, client: AsyncClient) -> None:
-        response = await client.post(
-            "/auth/signup",
-            json={
-                "email": "ana@example.com",
-                "password": "strong-pass-12-chars",
-                "name": "Ana",
-            },
-        )
-        assert response.status_code == 201, response.text
-        body = response.json()
-        assert "user_id" in body
-        # The activation link is only present when AUTH_RETURN_TOKEN_IN_RESPONSE=true
-        # or no EmailUtils is wired — typical for the test environment.
-        assert body["activation_required"] in {True, False}
-
     async def test_get_user_not_found(self, client: AsyncClient) -> None:
         response = await client.get(
             "/api/users/00000000-0000-0000-0000-000000000000",
@@ -486,9 +796,10 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
     brings no cap.
 
 !!! check "Recap"
-    - Use `httpx.AsyncClient` + `ASGITransport`, never the synchronous `TestClient`.
-    - The `db` fixture builds an in-memory SQLite per test with `create_tables()` / `drop_tables()` — **no arguments**, they use `BaseModel.metadata` internally.
-    - `dependency_overrides` swaps the production database for the test one on the `client`.
+    - A route test opens the lifespan with `app.router.lifespan_context(app)` and talks to the app through `ASGITransport`; the transport alone does not run the lifespan.
+    - The environment is pinned before the app import, and the database is a temporary file per worker, not `:memory:`.
+    - `dependency_overrides` swaps the LLM generator for `FakeStructuredBackend` in a route.
+    - The `db` fixture builds an in-memory SQLite per test with `create_tables()` / `drop_tables()` — **no arguments**, they use `BaseModel.metadata` internally — for a repository test with no HTTP.
     - The `tempest_fastapi_sdk.testing` helpers (`make_test_database` / `make_test_session`) give ready-made fixtures when you don't need a full `AsyncDatabaseManager`.
     - `tempest test` runs the suite in parallel by default (`--serial` to turn it off), with one database per worker; a test that fails only there is checked by running it alone.
 
@@ -496,9 +807,11 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
 
 ## Recap
 
-- The suite is pytest + pytest-asyncio + in-memory SQLite +
-  `httpx.AsyncClient`: a throw-away database per test, never touching the
-  production one.
+- The suite is pytest + pytest-asyncio + `httpx.AsyncClient`, never touching
+  the production database: a route test runs the lifespan over SQLite in a
+  temporary file, a repository test uses in-memory SQLite.
+- Signup → login → `/auth/me` runs through the real `make_auth_router`; the
+  `auth_headers` fixture hands the header to your protected routes.
 - Shared fixtures live in your project's `conftest.py` — the SDK ships the
   helpers, not the fixtures, so production runtimes never need `pytest` to be
   importable.
@@ -511,7 +824,8 @@ tempest test "tests/test_scheduler.py::test_lease_expires"
   unique column stays unique across `create_many`.
 - An endpoint test boots the app with `AsyncClient` and swaps dependencies
   through `dependency_overrides` — the same seam where a [fake »](fakes.md)
-  goes in place of the real provider.
+  goes in place of the real provider, such as `FakeStructuredBackend` in place
+  of `OllamaGenerator`.
 - `tempest test` (and `tempest check`) spreads the suite across the cores
   with the pytest-xdist of the `[tests]` extra, by default; a test that fails
   only in parallel is an isolation problem until it runs alone and fails too.
