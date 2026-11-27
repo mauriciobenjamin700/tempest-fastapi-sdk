@@ -1,0 +1,962 @@
+# Erros no OpenAPI (Swagger / ReDoc)
+
+O SDK serializa **toda** `AppException` num envelope único —
+`{detail, code, details}`. Isso é ótimo pro cliente... desde que ele saiba
+**quais** `code` esperar. E é aí que estava o buraco: nada disso aparecia no
+OpenAPI.
+
+Esta receita fecha o buraco em quatro passos. Os dois primeiros já resolvem o
+problema do frontend; os dois últimos são ergonomia e proteção contra drift. 🚀
+
+## O problema, medido
+
+Pegue uma rota real que levanta seis exceptions:
+
+```python
+# src/api/routers/jobs.py
+from uuid import UUID
+
+from fastapi import APIRouter
+
+from src.core.exceptions import (
+    CandidateAlreadyExistsException,
+    CandidateDoesNotHaveCoinsException,
+    CategoryNotFoundException,
+    ServiceFullException,
+    ServiceNotFoundException,
+    ServiceOwnerCannotApplyException,
+)
+from src.schemas import CandidateResponseSchema
+
+router: APIRouter = APIRouter(prefix="/api/jobs")
+
+
+@router.post("/{service_id}/candidates", status_code=201)
+async def apply_to_service(service_id: UUID) -> CandidateResponseSchema:
+    """Inscreve o usuário autenticado num serviço."""
+    raise NotImplementedError
+```
+
+Pergunte ao OpenAPI o que essa rota devolve:
+
+```pycon
+>>> spec["paths"]["/api/jobs/{service_id}/candidates"]["post"]["responses"].keys()
+dict_keys(['201', '422'])
+```
+
+Dois status. Mas o fluxo real produz **quatro**:
+
+| Status | `code` | Exception |
+| --- | --- | --- |
+| 404 | `SERVICE_NOT_FOUND` | `ServiceNotFoundException` |
+| 404 | `CATEGORY_NOT_FOUND` | `CategoryNotFoundException` |
+| 403 | `SERVICE_OWNER_CANNOT_APPLY` | `ServiceOwnerCannotApplyException` |
+| 409 | `SERVICE_FULL` | `ServiceFullException` |
+| 409 | `CANDIDATE_ALREADY_EXISTS` | `CandidateAlreadyExistsException` |
+| 400 | `CANDIDATE_DOES_NOT_HAVE_COINS` | `CandidateDoesNotHaveCoinsException` |
+
+Repare nos pares: **dois 404 e dois 409**. Documentar só o status não resolve —
+o front precisa do `code` para escolher a mensagem e a ação de recuperação.
+
+!!! danger "O custo prático"
+    Sem os codes no schema, o cliente gerado não tem enum de erro, o front
+    escreve `if (res.status === 409)` sem saber que existem dois 409 com
+    recuperações diferentes, e código de erro novo é descoberto em produção.
+
+## Passo 1 — declare o `code` no corpo da classe
+
+Antes de qualquer ferramenta, uma condição: o `code` precisa ser **legível sem
+instanciar a exception**.
+
+O SDK aceita passar `code=` no raise site, e isso funciona igual em runtime. Mas
+esconde o valor real de qualquer leitor estático:
+
+```python
+# ⚠️ funciona, mas o `code` fica invisível para introspecção
+
+from tempest_fastapi_sdk import ConflictException
+
+
+class CategoryInUseException(ConflictException):
+    """Categoria ainda referenciada por serviços."""
+
+
+raise CategoryInUseException("...", code="CATEGORY_IN_USE")
+```
+
+```pycon
+>>> CategoryInUseException.code            # atributo de classe
+'CONFLICT'
+>>> CategoryInUseException("x").code       # instância
+'CATEGORY_IN_USE'
+```
+
+Ler o valor certo exigiria **instanciar**, e instanciar exige conhecer a
+assinatura de cada `__init__` — que varia. Ou seja: nenhuma ferramenta consegue
+montar o `responses` a partir das classes.
+
+A forma por atributo de classe já funciona hoje e é introspectável:
+
+```python
+# src/core/exceptions.py
+from typing import Any, ClassVar
+from uuid import UUID
+
+from tempest_fastapi_sdk import ConflictException
+
+
+class CategoryInUseException(ConflictException):
+    """Categoria ainda referenciada por serviços."""
+
+    code: str = "CATEGORY_IN_USE"
+    details_example: ClassVar[dict[str, Any]] = {
+        "category_id": "8f2c1e40-0000-4000-8000-000000000000"
+    }
+
+    def __init__(self, category_id: UUID | str) -> None:
+        """Inicializa a exception.
+
+        Args:
+            category_id (UUID | str): Categoria que não pode ser removida.
+        """
+        super().__init__(
+            message="Não é possível remover uma categoria com serviços.",
+            details={"category_id": str(category_id)},
+        )
+```
+
+```pycon
+>>> CategoryInUseException.code, CategoryInUseException.status_code
+('CATEGORY_IN_USE', 409)
+```
+
+`code` (e `status_code`, quando o do pai está errado) no corpo da classe;
+`__init__` só monta `message` e `details`.
+
+!!! tip "`details_example` é só documentação"
+    O `details_example` **nunca** é lido em runtime — ele só popula o exemplo do
+    OpenAPI. Declare-o quando a exception anexa contexto que vale mostrar pra
+    quem consome a API.
+
+    Anote-o como `ClassVar[dict[str, Any]]`: além de ser o que a regra de
+    tipagem total do projeto pede, é o que silencia o `RUF012` do ruff
+    ("mutable default value for class attribute").
+
+### O input culpado: `field`
+
+Um **422** já diz qual input falhou, pelo `loc`. Um **409** ou um **401**
+sobre o mesmo input não dizia — e o cliente acabava re-derivando o mapeamento
+no call site: *"`CONFLICT` no formulário de cadastro significa o e-mail,
+porque esse formulário só tem um conflito possível"*. É conhecimento que quem
+levanta a exception tem e quem chama estava adivinhando.
+
+Desde a **v0.290.0**, `AppException` modela isso:
+
+```python
+# src/core/exceptions.py
+from typing import Any, ClassVar
+
+from tempest_fastapi_sdk import ConflictException
+
+
+class EmailTakenException(ConflictException):
+    """E-mail já cadastrado."""
+
+    code: str = "EMAIL_TAKEN"
+    message: str = "Este e-mail já está cadastrado."
+    field: str | None = "email"
+    details_example: ClassVar[dict[str, Any]] = {"email": "ana@example.com"}
+```
+
+O envelope ganha a chave, e só ela muda:
+
+```json
+{
+  "detail": "Este e-mail já está cadastrado.",
+  "code": "EMAIL_TAKEN",
+  "details": {},
+  "field": "email"
+}
+```
+
+Também dá para nomeá-lo no raise site, quando o campo depende do caso —
+`raise ValidationException("CPF não confere.", field="cpf_cnpj")`. Como o
+`code`, a forma do corpo da classe é a introspectável: é a que
+`error_responses()` lê para escrever o exemplo do OpenAPI.
+
+!!! info "Ausente, nunca `null`"
+    A chave só aparece quando a exception nomeia um campo. `"field" in body`
+    continua significando *há um input culpado* — emitir `null` obrigaria todo
+    cliente a um caso especial.
+
+!!! danger "Credencial inválida não nomeia campo"
+    Nomear `email` num 401 de login confirma que o endereço existe; nomear
+    `password` confirma o mesmo por omissão. Vira oráculo de enumeração de
+    conta — que é justamente o motivo da mensagem de login ser genérica.
+    Deixe `field` sem declarar nesse caminho.
+
+### O aviso que pega o defeito silencioso
+
+Desde a **v0.160.0**, uma subclasse que não declara `code` próprio e por isso
+herda um genérico do SDK avisa na criação da classe:
+
+```pycon
+>>> class CategoryInUseException(ConflictException):
+...     """Categoria ainda referenciada por serviços."""
+InheritedErrorCodeWarning: src.core.exceptions.CategoryInUseException declares
+no `code`, so it inherits the generic ConflictException.code = 'CONFLICT'.
+Clients cannot tell it apart from any other 409 response and
+`error_responses()` cannot document it. Declare `code = "..."` in the class body.
+```
+
+Esse é um defeito real e silencioso: num serviço em produção uma subclasse ficou
+**meses** emitindo `code: "CONFLICT"`, indistinguível de qualquer outro 409 para
+o cliente.
+
+!!! info "Quando o aviso **não** dispara"
+    - A subclasse declara `code` — o caminho documentado.
+    - A subclasse declara `message_key` — ela já localiza sob chave própria.
+    - O `code` herdado é **de domínio** (declarado por um ancestral do próprio
+      projeto). Especializar `DomainConflictException` é intencional, não
+      defeito.
+
+Se o padrão do raise site for deliberado no seu projeto, silencie por categoria:
+
+```python
+import warnings
+
+from tempest_fastapi_sdk import InheritedErrorCodeWarning
+
+warnings.filterwarnings("ignore", category=InheritedErrorCodeWarning)
+```
+
+### A fábrica — `not_found_exception(...)` / `conflict_exception(...)`
+
+A classe acima tem ~30 linhas que só mudam em três strings, e a
+assinatura tem uma armadilha que não é adivinhável: o
+[`BaseRepository`][tempest_fastapi_sdk.BaseRepository] levanta a classe
+configurada como **`exception_class(message=...)`**. Um `__init__` que
+recebe só o id — que é o que qualquer um escreve primeiro, porque o id é
+o dado que o *chamador* tem — transforma **todo miss do repositório em
+`TypeError`**: um 500 onde deveria haver 404, sem nada apontando a causa.
+
+```pycon
+>>> class BudgetNotFoundException(NotFoundException):
+...     code: str = "BUDGET_NOT_FOUND"
+...     def __init__(self, budget_id: str) -> None:
+...         super().__init__(message=f"Orçamento {budget_id} não encontrado.")
+>>> BudgetNotFoundException(message="Não encontrado.")
+TypeError: BudgetNotFoundException.__init__() got an unexpected keyword argument 'message'
+```
+
+A fábrica devolve uma classe correta nos dois sentidos:
+
+```python
+# src/core/exceptions.py
+from tempest_fastapi_sdk import not_found_exception
+
+BudgetNotFoundException = not_found_exception(
+    "BUDGET_NOT_FOUND",
+    subject="Orçamento",
+    field="budget_id",
+    template="{subject} {identifier} não encontrado.",
+    template_anonymous="{subject} não encontrado.",
+)
+```
+
+```pycon
+>>> BudgetNotFoundException("abc").detail
+'Orçamento abc não encontrado.'
+>>> BudgetNotFoundException("abc").details
+{'budget_id': 'abc'}
+>>> BudgetNotFoundException(message="Não encontrado.").detail
+'Não encontrado.'
+>>> BudgetNotFoundException(message="Não encontrado.").message
+'Não encontrado.'
+>>> BudgetNotFoundException.message
+'Orçamento não encontrado.'
+>>> BudgetNotFoundException.code, BudgetNotFoundException.__name__
+('BUDGET_NOT_FOUND', 'BudgetNotFoundException')
+```
+
+Na **instância**, `message` e `detail` respondem a mesma coisa: o que o
+raise site escreveu, caindo pro default da classe quando ele não passou
+nada. Quem loga ou renderiza uma exception capturada
+(`except AppException as exc: ... exc.message`) reporta a mensagem real, e
+`error_responses()` continua lendo o default pela **classe**.
+
+O `code` fica **no corpo da classe**, então `error_responses()` documenta
+a exception sem instanciá-la e o `InheritedErrorCodeWarning` não dispara.
+O nome da classe sai do `code`, para o traceback continuar legível.
+
+`conflict_exception(...)` é a gêmea de 409, pelo mesmo motivo — as
+fatias `create_conflict_exception` / `update_conflict_exception` do
+repositório instanciam do mesmo jeito:
+
+```python
+# src/core/exceptions.py
+from tempest_fastapi_sdk import conflict_exception
+
+EmailTakenException = conflict_exception(
+    "EMAIL_TAKEN",
+    subject="E-mail",
+    field="email",
+    template="{identifier} já está cadastrado.",
+)
+```
+
+!!! tip "Prefira a fábrica quando a classe é só forma"
+    Escreva a subclasse à mão quando o `__init__` precisa de lógica —
+    montar `details` com vários campos, escolher a mensagem por estado.
+    Quando é só "code + assunto + campo", a fábrica dá a mesma coisa sem
+    a armadilha.
+
+## Passo 2 — `error_responses(*exceptions)`
+
+Agora o núcleo. Passe as classes, receba o dict que o `responses=` do FastAPI
+espera:
+
+```python
+# src/api/routers/jobs.py
+from uuid import UUID
+
+from fastapi import APIRouter
+from tempest_fastapi_sdk import error_responses
+
+from src.core.exceptions import (
+    CandidateAlreadyExistsException,
+    CandidateDoesNotHaveCoinsException,
+    CategoryNotFoundException,
+    ServiceFullException,
+    ServiceNotFoundException,
+    ServiceOwnerCannotApplyException,
+)
+from src.schemas import CandidateResponseSchema
+
+router: APIRouter = APIRouter(prefix="/api/jobs")
+
+
+@router.post(
+    "/{service_id}/candidates",
+    status_code=201,
+    responses=error_responses(
+        ServiceNotFoundException,
+        CategoryNotFoundException,
+        ServiceOwnerCannotApplyException,
+        ServiceFullException,
+        CandidateAlreadyExistsException,
+        CandidateDoesNotHaveCoinsException,
+    ),
+)
+async def apply_to_service(service_id: UUID) -> CandidateResponseSchema:
+    """Inscreve o usuário autenticado num serviço."""
+    raise NotImplementedError
+```
+
+Pergunte de novo ao OpenAPI:
+
+```pycon
+>>> spec["paths"]["/api/jobs/{service_id}/candidates"]["post"]["responses"].keys()
+dict_keys(['201', '400', '403', '404', '409', '422'])
+```
+
+Os quatro status apareceram. E os dois 404 continuam distinguíveis:
+
+```pycon
+>>> resp = spec["paths"]["/api/jobs/{service_id}/candidates"]["post"]["responses"]
+>>> resp["404"]["description"]
+'SERVICE_NOT_FOUND | CATEGORY_NOT_FOUND'
+>>> list(resp["404"]["content"]["application/json"]["examples"])
+['SERVICE_NOT_FOUND', 'CATEGORY_NOT_FOUND']
+>>> resp["404"]["content"]["application/json"]["schema"]
+{'$ref': '#/components/schemas/ErrorResponseSchema'}
+```
+
+### Por que `examples` e não uma entrada por exception
+
+Restrição do próprio OpenAPI: **um único response object por status code**. Com
+dois 404 no mesmo endpoint, não existe forma de emitir uma entrada por exception.
+Então o helper **agrupa por status** e distingue os codes via `examples`:
+
+```json
+{
+  "404": {
+    "description": "SERVICE_NOT_FOUND | CATEGORY_NOT_FOUND",
+    "content": {
+      "application/json": {
+        "schema": {"$ref": "#/components/schemas/ErrorResponseSchema"},
+        "examples": {
+          "SERVICE_NOT_FOUND": {
+            "summary": "Serviço não existe.",
+            "value": {"detail": "...", "code": "SERVICE_NOT_FOUND", "details": {}}
+          },
+          "CATEGORY_NOT_FOUND": {
+            "summary": "Categoria não existe.",
+            "value": {"detail": "...", "code": "CATEGORY_NOT_FOUND", "details": {}}
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Swagger UI e ReDoc renderizam esse mapa como um **seletor** — o front vê os codes
+lado a lado com o payload de cada um. ✅
+
+!!! check "Nenhum texto digitado duas vezes"
+    O `summary` sai do `__doc__` da classe (que a convenção do projeto já exige),
+    e o `detail` sai do `message` da classe — ou do `MessageCatalog`, se você
+    passar um.
+
+!!! note "O 429 do rate limiter também é esse envelope (v0.256.0)"
+    O `RateLimitMiddleware` não levanta `TooManyRequestsException` — não
+    poderia: `BaseHTTPMiddleware` adicionado por `add_middleware` fica fora do
+    `ExceptionMiddleware` do Starlette, e exceção levantada no `dispatch` não
+    encontraria handler nenhum (viraria 500). Ele **monta** o `JSONResponse` do
+    429 com esse mesmo shape.
+
+    Consequência para esta receita: documente o 429 com
+    `error_responses(TooManyRequestsException)` e o corpo real vai casar com o
+    schema. Mas o `tempest openapi-errors --check` **não** vai listar essa
+    exceção como não-documentada nem como inalcançável, porque ela nunca é de
+    fato levantada em código de aplicação — quem a produz é o middleware.
+
+### `ErrorResponseSchema`
+
+O `model` de toda entrada é
+[`ErrorResponseSchema`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference.md), o envelope que os handlers do SDK
+realmente emitem:
+
+```python
+from typing import Any
+
+from pydantic import Field
+from tempest_fastapi_sdk import BaseSchema
+
+
+class ErrorResponseSchema(BaseSchema):
+    """Corpo JSON que os handlers do SDK emitem em qualquer falha."""
+
+    detail: str = Field(description="Mensagem legível. Localizada com catálogo.")
+    code: str = Field(description="Identificador estável. Faça branch nisso.")
+    details: dict[str, Any] = Field(default_factory=dict)
+```
+
+Antes ele não existia — quem quisesse declarar `responses={409: ...}` na mão não
+tinha para onde apontar e precisava redigitar o shape inline em cada rota.
+
+!!! warning "Faça branch no `code`, nunca no `detail`"
+    O `detail` muda com o locale negociado quando há um `MessageCatalog`
+    registrado. O `code` é o contrato estável.
+
+### Localizando os exemplos
+
+Por padrão `error_responses` **não** localiza — usa o `message` da classe, para o
+spec não escolher um idioma implicitamente. Passe um catálogo quando quiser:
+
+```python
+from tempest_fastapi_sdk import default_message_catalog, error_responses
+
+from src.core.exceptions import ServiceNotFoundException
+
+
+CATALOG = default_message_catalog().merge(
+    {
+        "pt-BR": {"SERVICE_NOT_FOUND": "Serviço não encontrado"},
+        "en-US": {"SERVICE_NOT_FOUND": "Service not found"},
+    }
+)
+
+responses = error_responses(
+    ServiceNotFoundException,
+    catalog=CATALOG,
+    locale="pt-BR",
+)
+```
+
+Um catálogo parcial degrada para o `message` da classe em vez de apagar o
+exemplo — o mesmo fallback que o handler usa em runtime.
+
+### Ajustando a descrição
+
+```python
+from tempest_fastapi_sdk import error_responses
+
+from src.core.exceptions import CandidateAlreadyExistsException, ServiceFullException
+
+
+responses = error_responses(
+    ServiceFullException,
+    CandidateAlreadyExistsException,
+    descriptions={409: "O usuário não pode se inscrever agora"},
+)
+```
+
+Status não listados mantêm o resumo `"CODE_A | CODE_B"` gerado.
+
+## Passo 3 — `@raises(...)` + `TempestAPIRouter`
+
+Mesma informação, escrita ao lado do handler em vez de dentro da lista de
+argumentos do decorator de rota:
+
+```python
+# src/api/routers/jobs.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import TempestAPIRouter, raises
+
+from src.core.exceptions import (
+    CandidateAlreadyExistsException,
+    ServiceFullException,
+    ServiceNotFoundException,
+)
+from src.schemas import CandidateResponseSchema
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/api/jobs")
+
+
+@router.post("/{service_id}/candidates", status_code=201)
+@raises(
+    ServiceNotFoundException,
+    ServiceFullException,
+    CandidateAlreadyExistsException,
+)
+async def apply_to_service(service_id: UUID) -> CandidateResponseSchema:
+    """Inscreve o usuário autenticado num serviço."""
+    raise NotImplementedError
+```
+
+`TempestAPIRouter` é um drop-in de `fastapi.APIRouter` — mesmos argumentos,
+mesmos métodos — que expande a tag em `responses=` **antes** de construir a
+rota. Por isso o modelo chega em `components.schemas` como `$ref` de verdade.
+
+```python
+from fastapi import APIRouter, FastAPI
+
+router = APIRouter()
+
+
+app = FastAPI()
+app.include_router(router)   # o `responses` é preservado no include
+```
+
+!!! warning "Ordem dos decorators"
+    `@raises` tem que ficar **abaixo** de `@router.post`, para rodar primeiro e o
+    decorator de rota já receber a função marcada.
+
+!!! danger "`@raises` num `APIRouter` comum é inerte"
+    A tag só é lida pelo `TempestAPIRouter`. Num `fastapi.APIRouter` puro ela
+    não faz nada — nesse caso use `responses=error_responses(...)`.
+
+Um `responses=` explícito **ganha** por status code, então uma entrada escrita à
+mão sempre sobrepõe a gerada:
+
+```python
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk import raises
+
+from src.core.exceptions import ServiceFullException, ServiceNotFoundException
+from src.schemas import CandidateResponseSchema
+
+router = APIRouter()
+
+
+@router.get("/x", responses={409: {"description": "escrito à mão"}})
+@raises(ServiceFullException, ServiceNotFoundException)
+async def read() -> CandidateResponseSchema:
+    """O 409 fica com a descrição manual; o 404 continua gerado."""
+    raise NotImplementedError
+```
+
+!!! question "Por que explícito e não automático?"
+    A lista fica versionada no diff, `mypy`/IDE pegam rename de classe, e nada
+    depende de heurística em tempo de import. Custo: uma linha por exception.
+
+## Passo 4 — `tempest openapi-errors --check`
+
+O risco da declaração explícita é ficar desatualizada. Como a convenção do
+projeto já exige seção `Raises:` em toda docstring, dá para conferir **sem magia
+em runtime**:
+
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/installation.md#cli).
+
+```bash
+tempest openapi-errors --check
+```
+
+O comando percorre `router → controller → service → repository` com `ast` (sem
+importar a aplicação), coleta as exceptions de cada função — dos `raise` **e**
+das seções `Raises:` — e compara com o que cada rota declarou:
+
+```text
+src/api/routers/jobs.py:15  POST /{service_id}/candidates
+  undocumented: CandidateAlreadyExistsException, ServiceFullException
+src/api/routers/jobs.py:25  GET /{service_id}
+  unreachable:  ServiceFullException
+2 route(s) with drift, 2 undocumented exception(s).
+```
+
+- **undocumented** — alcançável no fluxo, ausente da rota. É o buraco na
+  documentação, o caso que essa receita resolve.
+- **unreachable** — declarada na rota, nunca encontrada no fluxo. Lista inflada,
+  documentando erro que não pode acontecer.
+
+### Dependências também levantam
+
+O FastAPI roda as dependências **antes** do handler, e o que elas levantam
+chega ao cliente igual a um `raise` no corpo. O analisador as segue como
+chamadas:
+
+- `Depends(...)` / `Security(...)` nos parâmetros do handler — como default
+  (`x: T = Depends(f)`), dentro de `Annotated[T, Depends(f)]` ou por um alias de
+  módulo (`XDep = Annotated[T, Depends(f)]`), e as dependências **delas**;
+- o `dependencies=[...]` do decorator da rota;
+- o `dependencies=[...]` do `APIRouter(...)` em que a rota está pendurada;
+- o `dependencies=[...]` de todo `include_router(...)` que monta esse router,
+  transitivamente — por nome importado, import relativo
+  (`from .items import router as items_router`, o formato do `tempest new`) ou
+  re-export do `__init__` do pacote.
+
+Um router com o token do scaffold e uma rota atrás de um gate de capacidade:
+
+```python
+# src/api/routers/items.py
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies import require_token
+from src.api.dependencies.capabilities import require_items_enabled
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    dependencies=[Depends(require_token)],
+)
+
+
+@router.get("/", dependencies=[Depends(require_items_enabled)])
+async def list_items() -> ServiceInfoSchema:
+    """List items."""
+    return ServiceInfoSchema(service="items")
+```
+
+```python
+# src/api/dependencies/capabilities.py
+from __future__ import annotations
+
+from src.core.exceptions import ItemNotFoundException
+
+
+def require_items_enabled() -> None:
+    """Answer 404 while the items capability is off.
+
+    Raises:
+        ItemNotFoundException: Always, the capability is off.
+    """
+    raise ItemNotFoundException("items")
+```
+
+Nenhum `raise` no corpo, e mesmo assim a rota responde 401 e 404:
+
+```text
+$ tempest openapi-errors --check --path src
+src/api/routers/items.py:19  GET /
+  undocumented: ItemNotFoundException, UnauthorizedException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+O `UnauthorizedException` vem de dentro do SDK: o `require_token` do scaffold é
+`make_token_dependency(...)`, e o analisador conhece o que as factories de auth
+do SDK levantam (`make_token_dependency`, `make_bearer_token_dependency`,
+`make_jwt_user_dependency`, `make_mfa_required_dependency`,
+`make_role_dependency`).
+
+Declare no lugar que você preferir. `responses=error_responses(...)` no
+`APIRouter(...)` ou no `include_router(...)` **conta como declaração** para
+toda rota abaixo dele — é o mesmo `responses=` que o FastAPI aplica a elas no
+OpenAPI:
+
+```python
+# src/api/routers/items.py
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from tempest_fastapi_sdk import UnauthorizedException, error_responses
+
+from src.api.dependencies import require_token
+from src.api.dependencies.capabilities import require_items_enabled
+from src.core.exceptions import ItemNotFoundException
+from src.schemas import ServiceInfoSchema
+
+router: APIRouter = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    dependencies=[Depends(require_token)],
+    responses=error_responses(UnauthorizedException),
+)
+
+
+@router.get(
+    "/",
+    dependencies=[Depends(require_items_enabled)],
+    responses=error_responses(ItemNotFoundException),
+)
+async def list_items() -> ServiceInfoSchema:
+    """List items."""
+    return ServiceInfoSchema(service="items")
+```
+
+```text
+$ tempest openapi-errors --check --path src
+Every route's declared errors match its flow (src).
+```
+
+!!! note "Declaração do router nunca é `unreachable`"
+    Uma rota do mesmo router que não alcança o 401 não é acusada de declará-lo
+    à toa: a declaração é do router, e enxugá-la não é decisão de uma rota só.
+
+!!! tip "`TempestAPIRouter` e subclasses contam como router"
+    O `dependencies=` e o `responses=` de um `TempestAPIRouter(...)` valem como
+    os de um `APIRouter(...)`, assim como os de uma classe do projeto que
+    derive de qualquer um dos dois (`class AppRouter(TempestAPIRouter)`), mesmo
+    em outro módulo. Até a 0.349.0 só o nome `APIRouter` contava: a
+    declaração do `TempestAPIRouter` não cobria as rotas e a exceção da
+    dependência dele nunca era acusada (#735).
+
+!!! info "Corrigido na 0.349.0"
+    Antes, só o corpo do handler era percorrido. O router acima saía com
+    `Every route's declared errors match its flow` — com o 401 e o 404 fora do
+    OpenAPI.
+
+Sai zero quando está em sincronia, então serve de step de CI:
+
+```yaml
+# .github/workflows/ci.yml
+- name: Erros documentados no OpenAPI
+  run: uv run tempest openapi-errors --check
+```
+
+!!! tip "O `tempest check` já roda este passo"
+    Desde a 0.349.0 o `tempest check` roda o equivalente a
+    `openapi-errors --check` entre o `mypy` e o `pytest` (passo
+    `openapi-errors`), sobre `src/` ou `app/`. Projeto sem nenhum dos dois pula
+    o passo com aviso; para desligá-lo, `check_openapi_errors = false` em
+    `[tool.tempest]`. Detalhes na
+    [receita da CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/quality.md#os-passos-do-sdk-no-tempest-check).
+
+Opções:
+
+| Opção | Efeito |
+| --- | --- |
+| `--path DIR` | Diretório (ou arquivo) a varrer. Repetível. Default: `./src` ou `./app`. |
+| `--check` | Sai não-zero quando há drift. Sem ela o relatório é informativo. |
+| `--allow-unreachable` | Com `--check`, só falha em `undocumented`. Lista inflada fica aviso. |
+| `--fix` | Escreve as declarações faltantes no código. Exige árvore git limpa. |
+| `--dry-run` | Com `--fix`, imprime o diff em vez de gravar. Roda em árvore suja. |
+
+!!! warning "É um guia, não uma prova"
+    Duas imprecisões conhecidas, ambas escolhidas para **super**estimar em vez
+    de esconder buraco:
+
+    - **Chamada sem receptor resolve só para função de módulo.** `f()` não pode
+      alcançar método de instância, então só funções module-level (helpers
+      importados, guards de `@requires`) entram. Antes de 0.170.2 um
+      `update(UserModel)` — o `update` do SQLAlchemy — casava com qualquer
+      método `.update` do projeto, e uma rota de categoria era acusada de
+      levantar o 404 de coin pack. `delete`, `insert` e `select` colidem igual.
+    - **Chamada com receptor não tipado resolve por nome.** `self.svc.get_by_id()`
+      resolve pelo **tipo** de `self.svc` quando o atributo está anotado — e a
+      busca fica restrita à hierarquia daquela classe. Sem anotação, cai em
+      resolução por nome: dois `get_by_id` em classes diferentes viram um só nó
+      e as exceptions se misturam. Isso infla o conjunto alcançável (pode
+      limpar um `unreachable` de verdade) em vez de esconder um buraco. Tipar
+      os atributos — que a convenção do projeto já exige — é o que dá precisão.
+    - **Método herdado de fora da árvore varrida não é seguido**, com uma
+      exceção importante: as classes que você **configura** no construtor da
+      base. Um `not_found_exception=CoinPackNotFoundException` no
+      `super().__init__()` do repository é atribuído aos métodos herdados que
+      de fato o levantam (`get`, `get_by_id`, `resolve`, `delete`,
+      `soft_delete`, `restore`), seguindo a cadeia
+      controller → `service` → `repository`. O mesmo vale para os
+      `*_conflict_exception`. Fora disso — um método herdado do SDK que não
+      levanta classe configurada — nenhuma aresta é criada, então declare na
+      seção `Raises:` o que a base levanta por você.
+
+        A cadeia é montada a partir de `self.service` / `self.repository`
+        anotados **ou** dos parâmetros genéricos da base: uma camada
+        pass-through como
+        `class CategoryService(BaseService[CategoryRepository, Resp])` não tem
+        `__init__` para ler, e o subscript é a única declaração do que ela
+        delega. Ao longo dessa cadeia, uma camada que **sobrescreve** o método —
+        um repository cujo `delete` traduz `IntegrityError` num 409 de domínio —
+        é percorrida como qualquer outra função, não só consultada por
+        configuração. Ambos corrigidos em 0.170.1.
+    - **Raise dinâmico é invisível.** `raise EXCEPTION_MAP[key]` não é
+      resolvível estaticamente.
+
+    !!! info "Corrigido em 0.170.0"
+        Antes de 0.170.0 **toda** chamada resolvia por nome, e o decorator da
+        rota entrava no grafo — então `@router.delete(...)` registrava uma
+        chamada a `delete` e alcançava qualquer `delete` do projeto. Numa
+        árvore onde o único `delete` era o de `CategoryRepository`, todas as
+        rotas DELETE eram reportadas levantando `CategoryInUseException`.
+        `get` e `post` colidem do mesmo jeito onde existam métodos com esses
+        nomes.
+
+    Os dois pontos cegos são cobertos declarando a exception na seção `Raises:`
+    da função — que a convenção do projeto já exige, e que o analisador lê.
+
+!!! tip "Aponte `--path` para a árvore inteira"
+    A alcançabilidade é limitada ao que foi varrido. Varrer só o arquivo do
+    router faz as chamadas para o service não resolverem, e **toda** declaração
+    passa a parecer `unreachable`.
+
+Análise de call graph fica fora do runtime de propósito: é frágil demais para
+dirigir um response schema em produção, mas perfeitamente aceitável num check
+que sai não-zero.
+
+## Passo 5 — `--fix` escreve as declarações por você
+
+Num projeto que já existe, o passo 4 costuma apontar dezenas de rotas. Repetir a
+mão o que o analisador já sabe é trabalho mecânico — `--fix` faz o mapeamento
+Exception → rota e grava o resultado:
+
+```bash
+tempest openapi-errors --fix --dry-run   # veja o diff primeiro
+tempest openapi-errors --fix             # grave
+```
+
+Numa rota que ainda não declara nada, ele injeta o parâmetro e o import:
+
+```diff
++from tempest_fastapi_sdk import error_responses
++
++from src.core.exceptions import CandidateAlreadyExistsException, ServiceFullException
+
+-@router.post("/{service_id}/candidates", status_code=201)
++@router.post(
++    "/{service_id}/candidates",
++    status_code=201,
++    responses=error_responses(
++        CandidateAlreadyExistsException, ServiceFullException
++    ),
++)
+ async def apply_to_service(service_id: str) -> CandidateResponseSchema:
+```
+
+Numa rota que já declara parte, ele **acrescenta** ao que existe — a ordem
+original é preservada:
+
+```diff
+-    responses=error_responses(ServiceNotFoundException),
++    responses=error_responses(ServiceNotFoundException, ServiceFullException),
+```
+
+Um `@raises(...)` existente também é estendido no lugar. Já a rota que não
+declara nada sempre recebe `error_responses`, nunca `@raises`: `@raises` só é
+lido pelo `TempestAPIRouter`, então injetá-lo num projeto de `APIRouter` puro
+produziria um decorator que não faz nada — o pior resultado possível para uma
+ferramenta que existe para fechar um buraco de documentação. Um `@raises` já
+presente prova que o projeto optou por esse estilo; aí ele é respeitado.
+
+!!! check "O import sai do pacote, e entra no bloco que já existe"
+    Uma exception definida em `src/core/exceptions/bad_request.py` e
+    re-exportada por `src/core/exceptions/__init__.py` é importada de
+    `src.core.exceptions` — o pacote mais raso cujo `__init__` a importa ou
+    lista no `__all__` —, nunca do submódulo, que o `IMP002` do
+    `lint-layers` acusaria. Se o arquivo já tem
+    `from src.core.exceptions import (...)`, o nome entra nesse bloco em vez
+    de abrir outro `from`. Uma exception que nenhum `__init__` re-exporta
+    continua vindo do módulo que a define. Corrigido na 0.349.0.
+
+### As três garantias
+
+!!! check "Só acrescenta, nunca remove"
+    Findings `unreachable` são deliberadamente ignorados. Alcançabilidade
+    resolve por nome de chamada e não enxerga raise dinâmico, então apagar uma
+    declaração baseado nela removeria declaração correta. Curadoria de lista
+    inflada continua manual.
+
+!!! check "Edições ancoradas na AST"
+    Cada inserção é posicionada no parêntese de fechamento de um nó de call, não
+    numa regex. Nada depende de como o decorator está formatado, e o resto do
+    arquivo — comentários, layout — não é tocado.
+
+    A vírgula separadora é derivada do próprio código, via `tokenize`: um
+    decorator quebrado em linhas carrega **trailing comma** (o formato que o
+    `ruff format` produz), e prefixar outra vírgula ali geraria `,,` —
+    `SyntaxError`. Tokenizar é o que torna a checagem confiável: uma `,` ou um
+    `#` dentro de string (`description="a, b"`) é token próprio, então varrer
+    texto cru de trás para frente erraria. Corrigido em 0.168.3.
+
+    O resultado passa por
+    `ruff check --select I --fix` e `ruff format`, então o import novo cai na
+    posição ordenada e o decorator quebrado em linhas sai formatado.
+
+    A formatação usa **a config do seu projeto**, não os defaults do ruff: o
+    arquivo temporário é criado ao lado do arquivo reescrito, e o ruff resolve
+    settings subindo a árvore de diretórios. Seu `line-length` e suas seções de
+    `isort` valem, então o que o comando escreve passa no `ruff format --check`
+    do seu próprio CI.
+
+!!! note "Sem ruff, ele avisa em vez de fingir"
+    A normalização depende de um ruff que realmente rode — no `PATH`, importável
+    no interpretador atual (`python -m ruff`), ou via `uv run ruff`. Cada
+    candidato é testado com `--version` antes de ser usado. Não achando nenhum, a
+    gravação acontece de todo jeito (o splice já é Python válido) e o comando diz
+    o que ficou de fora:
+
+    ```text
+    note: no working ruff found, so the new import stays where it was spliced
+    and a long decorator is not wrapped. Run `tempest fix` afterwards to sort
+    and format.
+    ```
+
+    Sem esse aviso você descobriria pelo `ruff check` do CI reclamando de um
+    arquivo que o próprio comando acabou de escrever.
+
+!!! check "Árvore git limpa obrigatória"
+    Com a árvore limpa, `git diff` é a revisão e `git checkout` é o desfazer —
+    a rede de segurança real de uma ferramenta que edita código que você
+    escreveu. Com mudança pendente, o comando sai 1:
+
+    ```text
+    error: the working tree has uncommitted changes. Commit or stash them
+    first — with a clean tree, `git diff` reviews what this wrote and
+    `git checkout` undoes it.
+    ```
+
+    `--dry-run` é somente leitura, então roda em árvore suja sem reclamar.
+
+!!! warning "Uma exception que ele não consegue importar não é escrita"
+    O import é derivado do arquivo que define a classe. Quando o mesmo nome é
+    definido em mais de um arquivo — ou fora da raiz varrida — a resolução é
+    ambígua e escrever um import errado quebraria a aplicação. Nesse caso a
+    rota é pulada e o nome sai listado como `unresolved`; declare essa à mão.
+
+Rode `--check` depois: a segunda passada deve reportar sincronia.
+
+## Recapitulando
+
+1. **Declare `code` no corpo da classe.** É a única forma introspectável; o
+   `InheritedErrorCodeWarning` avisa quando você esquece.
+2. **`error_responses(*exceptions)`** monta o `responses=` agrupado por status,
+   com os codes num mapa de `examples` e o corpo apontando para
+   `ErrorResponseSchema`.
+3. **`@raises(...)` + `TempestAPIRouter`** dizem a mesma coisa junto do handler,
+   sem repetir o parâmetro.
+4. **`tempest openapi-errors --check`** compara declaração e fluxo nas duas
+   direções e serve de gate de CI.
+5. **`tempest openapi-errors --fix`** grava o que falta — com `--dry-run` para
+   ver o diff antes, e exigindo árvore git limpa para que `git checkout` seja o
+   desfazer.
+
+Com os passos 1 e 2 o `openapi.json` passa a ser a fonte única, e o cliente
+gerado já vem com os codes. 🎉

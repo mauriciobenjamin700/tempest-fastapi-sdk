@@ -1,0 +1,932 @@
+# PDFs
+
+Every service eventually has to issue a document: a receipt, a quote, a report,
+a contract, a payment slip. The usual path is to assemble HTML by hand and hand
+it to some library — and what breaks is never the rendering, it is everything
+else: the printed total disagrees with the lines, the amount in words is wrong,
+the table header vanishes on page 2, the logo failed to load and nobody
+noticed.
+
+`tempest_fastapi_sdk.pdf` handles the whole document: typed payload → Jinja2
+template → PDF, with real pagination and Brazilian formatting.
+
+The reverse path lives here too: extracting a PDF's text
+([Reading a PDF back](#reading-a-pdf-back)) and receiving a PDF through the
+API to iterate page by page
+([Reading a PDF received by the API](#reading-a-pdf-received-by-the-api)).
+
+!!! info "Required extra"
+    ```bash
+    uv add "tempest-fastapi-sdk[pdf]"
+    ```
+    Brings in `weasyprint` + `jinja2`. **And it needs system libraries** — read
+    [Deployment](#deployment-the-system-libraries) before shipping a container.
+
+## Your first document
+
+```python
+# scripts/receipt.py
+
+import asyncio
+from datetime import date
+
+from tempest_fastapi_sdk.pdf import Party, PdfRenderer, ReceiptDocument
+
+
+async def main() -> None:
+    """Render a receipt to disk."""
+    renderer = PdfRenderer()
+    receipt = ReceiptDocument(
+        number="0001/2026",
+        issue_date=date(2026, 8, 13),
+        issuer=Party(name="Acme Serviços LTDA", document="12345678000195"),
+        payer=Party(name="Ana Souza", document="12345678901"),
+        amount_cents=125000,
+        reference="serviços de consultoria prestados em julho/2026",
+        place="Recife",
+    )
+    pdf: bytes = await renderer.render_document(receipt)
+    with open("receipt.pdf", "wb") as handle:
+        handle.write(pdf)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Out comes an A4 page with the amount highlighted, the discharge wording, the
+issuer and payer blocks, the date spelled out, and a signature line — plus the
+amount **in words**, which is the element that stops the figure from being
+altered after signing:
+
+> Recebi de **Ana Souza**, inscrito(a) no CPF/CNPJ sob o nº 123.456.789-01, a
+> importância de **R$ 1.250,00** (mil, duzentos e cinquenta reais), referente a
+> serviços de consultoria prestados em julho/2026.
+
+!!! tip "Cents, always"
+    `amount_cents=125000` is R$ 1,250.00. It is the same choice the SDK makes
+    for payments: a `float` cannot represent `0.1 + 0.2`, and a document off by
+    a cent is worse than one that fails.
+
+## The five bundled documents
+
+| Document | Class | What for |
+| --- | --- | --- |
+| `receipt` | `ReceiptDocument` | Receipt — proof of payment with the amount in words and a signature |
+| `quote` | `QuoteDocument` | Quote / proposal with line items, subtotal, discount and total |
+| `report` | `ReportDocument` | Paginated tabular report with a repeating header and a grand total |
+| `contract` | `ContractDocument` | Contract or declaration with numbered clauses and signatures |
+| `voucher` | `VoucherDocument` | Short receipt or label, half a page, with room for a QR code |
+
+Each has its own Pydantic schema. That is what makes bundling the templates
+worthwhile: an HTML file alone tells you nothing about which keys it needs, so
+the first missing field shows up as a blank space in a signed document. Here a
+receipt with no payer **does not render** — it fails validation, with the field
+named.
+
+### Quote: totals are computed, not accepted
+
+```python
+from datetime import date
+
+from tempest_fastapi_sdk.pdf import LineItem, Party, QuoteDocument
+
+quote = QuoteDocument(
+    number="ORC-2026-014",
+    issue_date=date(2026, 8, 13),
+    valid_until=date(2026, 9, 13),
+    issuer=Party(name="Acme Serviços LTDA"),
+    customer=Party(name="Ana Souza"),
+    items=[
+        LineItem(description="Consultoria técnica", quantity=40, unit="h", unit_price_cents=15000),
+        LineItem(description="Licença anual", unit_price_cents=250000),
+    ],
+    discount_cents=50000,
+    payment_terms="50% na assinatura, 50% na entrega.",
+)
+
+print(quote.subtotal_cents)  # 850000
+print(quote.total_cents)     # 800000
+```
+
+`subtotal_cents` and `total_cents` are computed from the items — there is no way
+to pass a total that disagrees with its own lines, which is the defect nobody
+catches by looking. A discount larger than the subtotal is rejected at
+validation: a negative total would print as if it were a real price.
+
+Fractional quantities round half-up to the cent so the line adds up to the
+total, and print with a comma (`2,5 mês`) — a dot reads as a thousands
+separator to the person holding the paper.
+
+### Report: what makes a printed listing usable
+
+```python
+from datetime import date
+
+from tempest_fastapi_sdk.pdf import ReportColumn, ReportDocument
+
+report = ReportDocument(
+    heading="Vendas por cliente",
+    subtitle="Julho de 2026",
+    generated_at=date(2026, 8, 13),
+    columns=[
+        ReportColumn(key="cliente", header="Cliente"),
+        ReportColumn(key="pedidos", header="Pedidos", align="right"),
+        ReportColumn(key="total_cents", header="Total", align="right", money=True),
+    ],
+    rows=[{"cliente": "Ana", "pedidos": 3, "total_cents": 125000}],
+    totals={"total_cents": 125000},
+)
+```
+
+Three things the template guarantees, all of which only surface once the report
+runs past one page:
+
+- **The table header repeats** on every page. A continuation page whose columns
+  are unlabelled is unreadable.
+- **Pages are numbered `página X de Y`.** Somebody has to be able to tell a
+  sheet is missing.
+- **The grand total prints once, on the last page.** The first version used
+  `<tfoot>`, which is `table-footer-group` and therefore **repeats** — the
+  total appeared at the foot of page 2, above rows that summed to something
+  else. It is pinned by a test that reads the text of the rendered pages.
+
+!!! note "A missing key prints empty"
+    A row without a column's key renders the cell blank instead of failing.
+    Reports are routinely assembled from partial data, and dropping the whole
+    document over one absent cell helps nobody.
+
+### Voucher: the QR code comes from here
+
+Ticket, Pix charge, parcel label: a voucher almost always carries a QR code.
+Pass the **text** and the SDK encodes it:
+
+```python
+from tempest_fastapi_sdk.pdf import VoucherDocument
+
+ticket = VoucherDocument(
+    heading="TICKET",
+    subtitle="Saturday show · 8 pm",
+    fields={"Section": "Floor", "Holder": "Ana Souza"},
+    qr_content="https://example.com/v/8f3a2c1d",
+    note="Show this QR code at the door.",
+)
+
+print(ticket.qr_image is not None)  # True
+```
+
+You do not pick error correction, scale or margin — the `26mm` box the image
+lands in belongs to the SDK's template, so the calibration lives next to it:
+
+- **Error correction H** (recovers 30 % of the symbol). A voucher is printed,
+  folded and scanned off a crease. A 197-character Pix BR Code comes out at
+  version 15, with `0.32mm` modules, and rendered by WeasyPrint and
+  rasterized at 100 dpi it still decodes.
+- **A 2-module margin** inside the image. The standard asks for 4; the rest
+  comes from the voucher's own white space, instead of shrinking every
+  module.
+- **`image-rendering: pixelated`** in the template, which makes WeasyPrint
+  write `/Interpolate false`: without it the PDF asks the viewer to smooth
+  the image.
+
+Content too long for any QR version fails at **validation**, as a
+`ValidationError`, not halfway through rendering.
+
+Need another calibration, or an encoder of your own? `qr_data_uri(...)` is
+public, with the same defaults as keyword-only arguments, and the document's
+`qr_data_uri` field takes the finished image:
+
+```python
+from tempest_fastapi_sdk.pdf import VoucherDocument, qr_data_uri
+
+label = VoucherDocument(
+    heading="PARCEL 3/5",
+    qr_data_uri=qr_data_uri("ORD-2026-0042/3", error="m"),
+)
+```
+
+Both together raise `ValidationError`: one is text for the SDK to encode, the
+other an image already encoded, and there is no right answer to which wins.
+
+!!! note "`segno` ships in the `[pdf]` extra"
+    Pure Python, no runtime dependency and no upper bound — it caps nobody's
+    lock. It is imported at the first encode.
+
+## Serving over HTTP
+
+```python
+# src/api/app.py
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk.pdf import PdfRenderer, make_pdf_router
+
+from src.api.dependencies.auth import require_user
+
+
+def create_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(
+        make_pdf_router(
+            PdfRenderer(),
+            dependencies=[Depends(require_user)],
+        ),
+    )
+    return app
+```
+
+That mounts two routes:
+
+- `GET /pdf/documents` — lists the documents with the **full JSON Schema** of
+  each payload, enough for a client to build the form without reading the SDK
+  source.
+- `POST /pdf/documents/{document}` — validates and returns the bytes with a
+  `Content-Disposition` header.
+
+!!! warning "The router adds no auth by itself"
+    Rendering is CPU-bound and the caller holds the connection open.
+    `dependencies=` is where the service's authentication and rate limit go —
+    the router does not guess which, because guessing is how a document
+    endpoint ends up public.
+
+A client-supplied filename goes through `safe_filename`: a quote ends the
+header value and a newline splits the response into two.
+
+## The CLI: the template-editing loop
+
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/installation.md#cli).
+
+```bash
+tempest pdf list                                    # what exists
+tempest pdf schema receipt                          # the payload it accepts
+tempest pdf render receipt data.json -o receipt.pdf
+tempest pdf render receipt data.json --html -o preview.html
+```
+
+`--html` stops before layout and writes the HTML — it opens in a browser and
+reloads instantly. It is the fast way to iterate on a layout before checking
+how it actually paginates.
+
+`--template-dir` points at the project's own templates, so you can preview your
+overrides without starting the service.
+
+## Overriding a template
+
+The renderer looks in the project's `template_dir` first and falls back to the
+bundled set — the same shadowing rule `EmailUtils` uses. To replace just the
+receipt, drop a `receipt.html` into your directory:
+
+```html
+{% extends "_base.html" %}
+
+{% block heading %}RECIBO — {{ doc.issuer.name }}{% endblock %}
+
+{% block content %}
+<p>Recebi {{ doc.amount_cents | brl }} ({{ doc.amount_cents | extenso }})
+   de {{ doc.payer.name }}.</p>
+{% endblock %}
+```
+
+```python
+from tempest_fastapi_sdk.pdf import PdfRenderer
+
+renderer = PdfRenderer(template_dir="src/templates/pdf")
+```
+
+The filters available in any template:
+
+| Filter | Input | Output |
+| --- | --- | --- |
+| `brl` | `125000` | `R$ 1.250,00` |
+| `extenso` | `125000` | `mil, duzentos e cinquenta reais` |
+| `data` | `date(2026, 8, 13)` | `13/08/2026` |
+| `data_extenso` | `date(2026, 8, 13)` | `13 de agosto de 2026` |
+| `doc` | `"12345678901"` | `123.456.789-01` |
+| `qtd` | `2.5` | `2,5` |
+
+`_base.html` exposes the blocks `lang`, `doc_title`, `extra_head`, `header`,
+`heading`, `subheading`, `header_meta` and `content`.
+
+## Security: what a template may load
+
+This is the part worth reading carefully.
+
+An HTML renderer resolves URLs on the page's behalf: `<img src>`, `@import`,
+`url()` in CSS. Point that at a document whose contents came from a user and it
+becomes two bugs at once — `file:///etc/passwd` reads the host, and
+`http://169.254.169.254/` reaches the cloud metadata endpoint from inside your
+network.
+
+**The default denies everything.** `data:` always passes, because it carries
+its own bytes and fetches nothing. Anything else has to be named:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import AssetPolicy, PdfRenderer
+
+renderer = PdfRenderer(
+    assets=AssetPolicy(allow_dirs=(Path("src/assets"),)),
+)
+```
+
+The check is on the **resolved** path: neither `../` nor a symlink pointing
+outside gets through. A directory that does not exist fails at construction,
+because a typo would read as "nothing is allowed" and only surface later as a
+document missing its images.
+
+And refusal is **loud**: WeasyPrint's default is to log the failure and carry
+on, which would turn a blocked logo into a silent hole in an invoice. The SDK
+aborts the render at the first refusal. `strict_assets=False` restores the
+lenient behavior — and still logs what it dropped.
+
+!!! danger "`allow_remote=True` is SSRF surface"
+    Turning it on means anything that reaches the template controls a request
+    made from inside your network. Prefer embedding the image as a `data:` URI.
+
+That is why `Branding.logo_data_uri` only accepts `data:` — a URL would be
+refused at render time and silently produce a document with no logo. And
+`accent_color` / `page_size` / `margin` have a constrained shape: those values
+are written **into the stylesheet**, and one carrying `;` or `}` could close
+the rule and add declarations of its own.
+
+## Deployment: the system libraries
+
+WeasyPrint draws text through **Pango** and resolves fonts through
+**fontconfig**. A `python:slim` image has neither, and the error does not
+appear at build time — it appears at the first render, as an `OSError` from
+cffi.
+
+```dockerfile
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz0b \
+        fontconfig \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+`tempest generate --dockerfile` emits that block automatically when the project
+pins the `[pdf]` extra in its `pyproject.toml`.
+
+!!! note "About the font"
+    Measured on `python:3.13-slim`: `fonts-dejavu-core` arrives **with** the
+    Pango packages, and the document comes out readable without asking for the
+    font explicitly. It stays in the list on purpose — it is the guarantee that
+    the family named in the stylesheet exists, and it costs nothing. On a base
+    that pulls in no font at all (distroless, say), the layout is right and
+    every glyph is a rectangle, which is the hardest failure on this list to
+    diagnose.
+
+!!! info "The error does not mention Pango"
+    Without the libraries the import succeeds and the **first render** fails
+    with `OSError: cannot load library 'libgobject-2.0-0'` — that is the name
+    you will see, not `pango`. Verified on `python:3.13-slim`.
+
+## Reproducible output (needs an environment variable)
+
+WeasyPrint writes no creation date and no document identifier, so the PDF
+itself carries no clock. The **embedded font** does: the subset `fontTools`
+produces stamps a timestamp into the `head` table, and its checksum ends up in
+the file. Two renders of the same payload seconds apart produce different
+bytes.
+
+Measured: three runs of the same container, three different hashes; the
+difference is the font's `head` checksum, inside the compressed stream.
+
+`fontTools` honors the `SOURCE_DATE_EPOCH` reproducible-build convention. With
+it pinned, the output becomes byte-identical across processes:
+
+```bash
+SOURCE_DATE_EPOCH=1700000000 python -m src.server
+```
+
+```python
+import asyncio
+import hashlib
+
+from tempest_fastapi_sdk.pdf import PdfRenderer, ReceiptDocument
+
+
+async def digest(receipt: ReceiptDocument) -> str:
+    """Hash a rendered receipt.
+
+    Stable across processes only with ``SOURCE_DATE_EPOCH`` pinned in the
+    environment.
+    """
+    pdf: bytes = await PdfRenderer().render_document(receipt)
+    return hashlib.sha256(pdf).hexdigest()
+```
+
+!!! warning "Do not compare hashes across machines"
+    Even with `SOURCE_DATE_EPOCH`, the bytes depend on the **font version** and
+    the WeasyPrint version. A hash computed in CI will not match production if
+    the images differ. For "this document is the one I issued", store the hash
+    alongside the artifact — do not recompute it in another environment and
+    expect a match.
+
+Passing `metadata=` (for instance `{"pdf_identifier": True}`) gives the
+reproducibility up on purpose.
+
+## Concurrency
+
+Layout is CPU-bound. Every render goes through a worker thread behind a
+semaphore, so the event loop never stalls:
+
+```python
+from tempest_fastapi_sdk.pdf import PdfRenderer
+
+renderer = PdfRenderer(max_concurrent=8)
+```
+
+The default is 4. More workers than cores turns latency into queueing, not
+throughput.
+
+### One `AssetPolicy` for every render
+
+The same instance — and the `AssetPolicy` you handed it — serves every render
+running in parallel. Only the **rules** are shared: each render collects its
+refusals in a copy of its own (`AssetPolicy.for_render()`), so an
+`AssetRefused`'s `details["refused"]` lists only the URLs of the document
+**that** call asked for, and with `strict_assets=False` each render logs its
+own warning.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.pdf import AssetPolicy, AssetRefused, PdfRenderer
+
+policy = AssetPolicy()
+renderer = PdfRenderer(assets=policy)
+
+
+async def render(url: str) -> list[str]:
+    try:
+        await renderer.render_html(f'<html><body><img src="{url}"></body></html>')
+    except AssetRefused as exc:
+        return list(exc.details["refused"])
+    return []
+
+
+async def main() -> None:
+    first, second = await asyncio.gather(
+        render("http://a.test/logo.png?token=a"),
+        render("http://b.test/logo.png?token=b"),
+    )
+    print(first)
+    print(second)
+    print(policy.refusals)
+
+
+asyncio.run(main())
+```
+
+```text
+['http://a.test/logo.png?token=a — remote assets are not allowed by this policy']
+['http://b.test/logo.png?token=b — remote assets are not allowed by this policy']
+[]
+```
+
+The last line shows the other half of the contract: the renderer neither reads
+nor clears the `refusals` list of the object you passed in — refusals reach you
+through `AssetRefused` (or the log, in lenient mode), never through it.
+
+!!! info "Why not a lock"
+    Up to 0.308.0 every render read and cleared the same list. With two in
+    parallel, one's error could carry the other's URL — and asset URLs often
+    carry a token in the query string — while the owner's refusal vanished.
+    A lock would only make the swap synchronous; what fixes it is giving each
+    render its own collector.
+
+## Reading a PDF back
+
+Writing is half of it. The other half is reading — the first step of every
+pipeline that hands a PDF to a model: an invoice to classify, a contract to
+summarize, a tender to transcribe.
+
+This lives in a **separate** extra, `[pdf-read]`, which pulls only `pypdf`:
+
+```bash
+uv add "tempest-fastapi-sdk[pdf-read]"
+```
+
+Separate on purpose. Rendering pulls WeasyPrint plus Pango and fontconfig from
+the system; a service that only reads should carry none of that.
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+data: bytes = Path("invoice.pdf").read_bytes()
+text: str = extract_pdf_text(data)
+print(text)
+```
+
+For a three-page PDF the output comes out marked:
+
+```text
+=== PAGE 1 ===
+Recibo 001
+Valor: R$ 1.234,56
+
+=== PAGE 2 ===
+Page two
+Signature
+
+=== PAGE 3 ===
+Page three
+Attachment
+```
+
+The marker is not decoration: it gives the model something to cite when you
+ask where a value came from. Match it to the language of the surrounding
+prompt with `page_marker=`:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+data: bytes = Path("invoice.pdf").read_bytes()
+text: str = extract_pdf_text(data, page_marker="=== PÁGINA {page} ===")
+```
+
+### Page by page
+
+When you want to decide per page instead of receiving one blob,
+`extract_pdf_pages` returns `(number, text)` tuples, numbered from **one**:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import PageText, extract_pdf_pages
+
+data: bytes = Path("invoice.pdf").read_bytes()
+pages: list[PageText] = extract_pdf_pages(data)
+for number, text in pages:
+    print(number, text[:40])
+```
+
+```text
+1 Recibo 001
+Valor: R$ 1.234,56
+2 Page two
+Signature
+3 Page three
+Attachment
+```
+
+### Cutting without lying
+
+`max_chars` bounds the extracted text and **announces** the cut:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+data: bytes = Path("invoice.pdf").read_bytes()
+text: str = extract_pdf_text(data, max_chars=60)
+```
+
+The last line becomes:
+
+```text
+=== DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===
+```
+
+!!! check "`max_chars` is a hard ceiling, and text always comes back (v0.252.0)"
+    Three things changed, because all three were wrong:
+
+    | Before | Now |
+    | --- | --- |
+    | notice and markers were added **on top** of the limit (`max_chars=40` → 46 chars) | the result **never** exceeds `max_chars` |
+    | a `max_chars` below page 1 returned **only the notice** | document text comes back, cut inside the page |
+    | the notice said `PAGE 0`, a page that does not exist | the lowest page it can name is 1 |
+
+    The order of preference: whole pages while they fit; if not even the first
+    fits, a cut inside it announced by
+    `=== PAGE 1 OF 3 TRUNCATED MID-PAGE ===`; and if the budget cannot hold a
+    notice while leaving at least **a third** for text, the whole budget goes
+    to text — with no notice and no page marker, because an annotation that
+    swallows the content is the defect this fixes.
+
+    The notice describes the cut that **actually** happened, not the branch
+    the code took: `MID-PAGE` appears only when the returned text is a strict
+    prefix of the page. When the whole of page 1 fits, the line is
+    `=== DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===` — measured on a 3-page
+    document, `max_chars=120` returns 106 characters in that shape. And at the
+    budget that holds the page but not that notice (100, same document, where
+    the boundary form needs 106), the cut gives up one character so the
+    `MID-PAGE` warning stays true: 58 of page 1's 59 characters with a
+    warning beat all 59 with pages 2 and 3 gone in silence.
+
+    Measured on a 239-character page: up to `max_chars=60` the answer is raw
+    text exactly as long as the budget; at `max_chars=61` the notice becomes
+    affordable and the answer carries 20 characters of document beside it;
+    from there the text only grows. The step down happens **once** — at the
+    budget where the notice becomes affordable — and it is the price of
+    knowing half is missing. A test pins it: nowhere else between 1 and 300
+    does a larger budget return less document.
+
+    If your flow relied on the old behaviour (a whole number of pages every
+    time), use `extract_pdf_pages` and assemble it yourself: it returns page
+    by page, with no ceiling.
+
+A silent cut is the dangerous one: the model answers about the half it was
+shown, with no sign that a half is missing. Override the sentence with
+`truncation_notice=` when your prompt is in another language.
+
+!!! danger "Text layer only — there is no OCR here"
+    A PDF produced by a word processor carries its text. A PDF that is a scan
+    carries page images and nothing else. For that one `extract_pdf_text`
+    returns an **empty string**, and `extract_pdf_pages` returns one entry per
+    page with empty text — measured: a one-page blank PDF gives `[(1, "")]`
+    and `""`.
+
+    Handing a model an empty prompt is how a confident answer gets invented
+    about a page nobody read. Check for it explicitly:
+
+    ```python
+    from pathlib import Path
+
+    from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+    data: bytes = Path("invoice.pdf").read_bytes()
+    text: str = extract_pdf_text(data)
+    if not text:
+        raise ValueError("PDF has no text layer — it is probably a scan")
+    ```
+
+    Route those files to an OCR path.
+
+!!! info "Without the extra, the error says what to install"
+    Without `pypdf` the call raises `ImportError` carrying the full
+    instruction:
+
+    ```text
+    pypdf is required to read PDFs. Install the extra:
+    pip install "tempest-fastapi-sdk[pdf-read]"
+    ```
+
+## Reading a PDF received by the API
+
+`extract_pdf_text` and `extract_pdf_pages` answer "give me the text" for code
+that already holds the bytes. In an API the PDF arrives as an upload, and
+what you want to return (or pass along in your own code) is an **object**:
+how many pages, each page's text, the tables, with a schema OpenAPI can
+describe.
+
+That is what `read_pdf_pages` does. It takes the bytes and returns a
+`PdfPagesResult`, a Pydantic schema shipped by the SDK:
+
+| Field | Type | What it is |
+| --- | --- | --- |
+| `extractor` | `PdfExtractorEnum` | which reader produced the result (`text` or `layout`) |
+| `page_count` | `int` | number of pages read |
+| `pages` | `list[PdfPage]` | one entry per page, in document order |
+
+Each `PdfPage` carries `page_number` (starting at 1), `text` and `tables`.
+
+### The route
+
+Install both reading extras: `[pdf-read]` for the text reader and
+`[pdf-layout]` for the one that recovers columns and tables.
+
+```bash
+uv add "tempest-fastapi-sdk[pdf-read,pdf-layout,upload]"
+```
+
+```python
+# main.py
+from typing import Annotated
+
+from fastapi import FastAPI, File, Form, UploadFile
+
+from tempest_fastapi_sdk import BodySizeLimitMiddleware, register_exception_handlers
+from tempest_fastapi_sdk.pdf import PdfExtractorEnum, PdfPagesResult, read_pdf_pages
+
+app: FastAPI = FastAPI()
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=10 * 1024 * 1024)
+register_exception_handlers(app)
+
+
+@app.post("/api/documents/read", response_model=PdfPagesResult)
+async def read_document(
+    file: Annotated[UploadFile, File()],
+    extractor: Annotated[PdfExtractorEnum, Form()] = PdfExtractorEnum.TEXT,
+    password: Annotated[str | None, Form()] = None,
+) -> PdfPagesResult:
+    data: bytes = await file.read()
+    return await read_pdf_pages(data, extractor=extractor, password=password)
+```
+
+Start it with `uv run uvicorn main:app` and send a two-page PDF:
+
+```bash
+curl -s http://127.0.0.1:8000/api/documents/read -F file=@contrato.pdf
+```
+
+```json
+{
+  "extractor": "text",
+  "page_count": 2,
+  "pages": [
+    {"page_number": 1, "text": "Contrato 042\nValor total: R$ 1.234,56", "tables": []},
+    {"page_number": 2, "text": "Anexo\nItem Qtd\nParafuso 10\nPorca 20", "tables": []}
+  ]
+}
+```
+
+Piece by piece:
+
+- **`File()` and `Form()`.** The upload is `multipart/form-data`, so the
+  fields next to the file (`extractor`, `password`) come in as `Form`, not
+  JSON. `[upload]` brings `python-multipart`, which FastAPI requires to read
+  that format.
+- **`extractor` is the enum.** FastAPI validates the value: `extractor=ocr`
+  returns `422` with `Input should be 'text' or 'layout'` before anything is
+  read.
+- **`await file.read()`** hands over the bytes; `read_pdf_pages` does the
+  rest.
+- **`read_pdf_pages` is `async`.** Both readers are synchronous and
+  CPU-bound, so it runs the work in a thread (`asyncio.to_thread`) instead of
+  blocking the event loop.
+- **`response_model=PdfPagesResult`.** Since the return type is an SDK
+  schema, the route's OpenAPI already describes `PdfPagesResult`, `PdfPage`
+  and `PdfExtractorEnum` without you declaring anything.
+- **`BodySizeLimitMiddleware`** refuses an oversized body before any parsing
+  (details below).
+
+!!! tip "PDF with a table: `extractor=layout`"
+    The same file with `-F extractor=layout` fills `tables` on page 2:
+
+    ```json
+    {"page_number": 2, "text": "Anexo\nItem Qtd\nParafuso 10\nPorca 20", "tables": [[["Item", "Qtd"], ["Parafuso", "10"], ["Porca", "20"]]]}
+    ```
+
+    `text` is `pypdf`: fast, running prose, `tables` always empty. `layout`
+    is `pdfplumber`: slower, but it recovers columns and returns each table
+    as a list of rows, each row a list of cells (`str`, never `None`).
+
+### Iterating over the pages
+
+In the route above the object goes straight into the response. When your
+service needs to **do** something with the document, it is a regular
+Pydantic schema: iterate `pages`.
+
+```python
+import asyncio
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import PdfExtractorEnum, PdfPagesResult, read_pdf_pages
+
+
+async def main() -> None:
+    data: bytes = Path("contrato.pdf").read_bytes()
+    result: PdfPagesResult = await read_pdf_pages(data, extractor=PdfExtractorEnum.LAYOUT)
+    print(f"{result.page_count} pages, reader {result.extractor}")
+    for page in result.pages:
+        print(f"--- page {page.page_number} ---")
+        print(page.text)
+        for table in page.tables:
+            header, *rows = table
+            for row in rows:
+                print(dict(zip(header, row, strict=True)))
+
+
+asyncio.run(main())
+```
+
+```text
+2 pages, reader layout
+--- page 1 ---
+Contrato 042
+Valor total: R$ 1.234,56
+--- page 2 ---
+Anexo
+Item Qtd
+Parafuso 10
+Porca 20
+{'Item': 'Parafuso', 'Qtd': '10'}
+{'Item': 'Porca', 'Qtd': '20'}
+```
+
+`page_number` is the number a human reads in the footer, and entry `n` is
+always page `n`: a page without text comes back with `text=""` instead of
+disappearing from the list.
+
+### When the PDF does not cooperate
+
+With `register_exception_handlers`, each failure becomes the SDK envelope,
+with a stable `code` for the client to act on:
+
+| Situation | HTTP | `code` |
+| --- | --- | --- |
+| encrypted PDF with no password, or the wrong one | `400` | `PDF_DECRYPT_FAILED` |
+| a file that is not a PDF | `422` | `PDF_EXTRACT_FAILED` |
+| body above `max_bytes` | `413` | `REQUEST_BODY_TOO_LARGE` |
+| `extractor` outside the enum | `422` | FastAPI validation error |
+| a scan (no text layer) | `200` | none: `text` is `""` |
+
+```bash
+curl -s http://127.0.0.1:8000/api/documents/read -F file=@contrato-protegido.pdf
+```
+
+```json
+{"detail": "PDF is encrypted. Provide the correct password.", "code": "PDF_DECRYPT_FAILED", "details": {}}
+```
+
+With the right `-F password=...`, the response matches the unencrypted PDF.
+For a file that is not a PDF:
+
+```json
+{"detail": "Failed to extract PDF content.", "code": "PDF_EXTRACT_FAILED", "details": {"reason": "Stream has ended unexpectedly"}}
+```
+
+`reason` comes from the reader and changes with it: the same file with
+`extractor=layout` says `No /Root object! - Is this really a PDF?`. Branch on
+`code`, never on the `reason` text.
+
+!!! info "Without `register_exception_handlers`, the `code` is gone"
+    The status stays right, but the body becomes just
+    `{"detail": "PDF is encrypted. Provide the correct password."}`. The
+    client loses `code` and ends up comparing messages.
+
+!!! warning "A scan is a `200` with empty text"
+    The case that does **not** become an error is the dangerous one: a
+    scanned PDF is an image with no text layer, and the response is `200`
+    with `"text": ""` on every page. Before handing the result to a model,
+    check:
+
+    ```python
+    import asyncio
+    from pathlib import Path
+
+    from tempest_fastapi_sdk.pdf import PdfPagesResult, read_pdf_pages
+
+
+    async def main() -> None:
+        for name in ("contrato.pdf", "digitalizado.pdf"):
+            result: PdfPagesResult = await read_pdf_pages(Path(name).read_bytes())
+            without_text: list[int] = [
+                page.page_number for page in result.pages if not page.text
+            ]
+            print(name, without_text)
+
+
+    asyncio.run(main())
+    ```
+
+    ```text
+    contrato.pdf []
+    digitalizado.pdf [1]
+    ```
+
+    Pages in that list go to an OCR path, which this module does not have.
+
+!!! note "Why the limit is middleware and not an `if` in the route"
+    By the time your function runs, Starlette **has already read the whole
+    upload**: the file goes into a `SpooledTemporaryFile` (1 MiB in memory,
+    the rest on disk). An `if len(data) > ...` inside the route arrives too
+    late. `BodySizeLimitMiddleware` cuts earlier, from `Content-Length` or by
+    counting bytes on a `chunked` upload, and answers `413`.
+
+    The ceiling applies to the request **body**, not the file: multipart adds
+    headers and the `extractor` field. Measured: a file of exactly 10 MiB is
+    refused with `max_bytes=10 * 1024 * 1024`. Leave headroom. The
+    middleware covers the whole app; a route that accepts larger files goes
+    into `exclude_paths=` and applies its own limit (see the
+    [HTTP recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http.md)).
+
+## Recap
+
+- `PdfRenderer` renders HTML, a template, or a typed document; always `async`.
+- Five bundled documents, each with a Pydantic schema — totals computed, a
+  missing field fails validation.
+- The report paginates properly: repeating header, `página X de Y`, grand total
+  on the last page only.
+- The voucher encodes its own QR code with `qr_content=`, calibrated for the
+  template's box; `qr_data_uri(...)` stays public for another calibration.
+- `make_pdf_router` serves it over HTTP; `dependencies=` is where auth and rate
+  limiting go.
+- `tempest pdf render --html` is the fast loop for adjusting a template.
+- The asset default **denies everything**; opening it is an explicit decision.
+- The container needs Pango + fontconfig + a font.
+- `extract_pdf_text` / `extract_pdf_pages` read one back, in the separate
+  `[pdf-read]` extra. **Text layer only**: a scan returns `""`, and checking
+  for that is on you.
+- `read_pdf_pages` returns a typed `PdfPagesResult` (`pages`, each with
+  `page_number`, `text` and `tables`): it is what an upload route returns, with
+  `BodySizeLimitMiddleware` in front and `register_exception_handlers` for the
+  `code` of an encrypted or invalid PDF.
+
+Next: [Transactional email](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/email.md) to send the document as an attachment, or
+[Versioned artifacts](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/artifact-registry.md) if you need to keep every issued
+document with a hash.

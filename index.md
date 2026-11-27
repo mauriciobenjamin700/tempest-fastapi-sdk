@@ -1,0 +1,133 @@
+# tempest-fastapi-sdk
+
+> Blocos compartilhados de FastAPI / SQLAlchemy / Pydantic usados em todos os serviços backend do Tempest. **Comece todo projeto com a mesma fundação opinativa já pronta.**
+
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![PyPI](https://img.shields.io/pypi/v/tempest-fastapi-sdk)
+
+!!! tip "Um serviço inteiro, rodando"
+    O [Serviço completo](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/full-service.md) monta um projeto mínimo executável com settings compostas, migrations no lifespan, cadastro e login, upload protegido e um teste ponta a ponta — o ponto de partida mais curto para ver as peças do SDK juntas.
+
+---
+
+## O que você ganha de fábrica
+
+!!! tip "Use o SDK sempre que for copiar e colar isto"
+    `BaseModel` SQLAlchemy, `BaseUserModel` + `BaseUserTokenModel` abstratos, `BaseRepository` async com `bulk_create_values`/`bulk_upsert`, schemas Pydantic + paginação (offset + cursor), envelope de exceções + handlers, mixins de settings com `title`/`description`/`examples`, managers async de DB / Redis / RabbitMQ / TaskIQ, validadores brasileiros, utilitários de JWT / senha / e-mail (com templates Jinja2) / upload (com backends pluggable Local + MinIO), Server-Sent Events, Web Push, painel admin estilo Django, fluxo de auth bundled (signup / activate / login / reset), OAuth2/OIDC (Google/GitHub + genérico), middlewares de CSRF / Idempotency / BodySize / Prometheus / RateLimit, `HTTPClient` httpx tipado com retry + circuit-breaker, MinIO/S3 (`AsyncMinIOClient`), hook de Alembic que reordena colunas-base e uma CLI única (`tempest db`, `tempest user`, `tempest new`, `tempest generate`).
+
+| Módulo | Exporta |
+| --- | --- |
+| `tempest_fastapi_sdk.admin` | `AdminSite`, `AdminModel`, `make_admin_router`, `UserModelAuthBackend` |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `apply_cors`, `RequestIDMiddleware`, `IdempotencyMiddleware`, `BodySizeLimitMiddleware`, `AccessLogMiddleware`, `HoneypotBanMiddleware`, `CSRFMiddleware`, `PrometheusMiddleware`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, OAuth (`GoogleOAuthClient` / `GitHubOAuthClient` / `OIDCProvider`), dependências JWT/role/permissão, `HardenedStaticFiles`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `run_server` |
+| `tempest_fastapi_sdk.auth` | `UserAuthService`, `make_auth_router`, schemas (`SignupSchema`, `LoginSchema`, `PasswordResetRequestSchema`, …) |
+| `tempest_fastapi_sdk.cache` | `AsyncRedisManager`, `@cached` |
+| `tempest_fastapi_sdk.controllers` | `BaseController` |
+| `tempest_fastapi_sdk.core` | `JSONFormatter`, `configure_logging`, contexto de request-ID, `BaseStrEnum` / `BaseIntEnum` |
+| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `UserTokenPurposeEnum`, `BaseRepository` (com `bulk_*`), `AsyncDatabaseManager`, `AlembicHelper` (+ `sync_schema` / `adopt`), `SchemaSyncOutcomeEnum`, `AuditMixin`, `SoftDeleteMixin`, `reorder_base_columns_first`, `compose_hooks` |
+| `tempest_fastapi_sdk.exceptions` | hierarquia `AppException` (404 / 409 / 401 / 403 / 422 / 429 / arquivo grande demais / tipo de arquivo inválido / JWT) |
+| `tempest_fastapi_sdk.queue` | `MessageBroker` (fachada tipada recomendada), `AsyncQueueManager` / `AsyncBrokerManager` (wrappers de ciclo de vida FastStream / RabbitMQ) |
+| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema`, paginação por cursor |
+| `tempest_fastapi_sdk.services` | `BaseService` |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `KafkaSettings`, `JWTSettings`, `AuthSettings`, `CORSSettings`, `EmailSettings`, `LogSettings`, `TokenSettings`, `UploadSettings`, `WebPushSettings`, `TaskIQSettings` |
+| `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response`, `SSEBroker` |
+| `tempest_fastapi_sdk.storage` | `AsyncMinIOClient`, `ObjectStat` |
+| `tempest_fastapi_sdk.tasks` | `TaskQueue` (fachada tipada recomendada), `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
+| `tempest_fastapi_sdk.testing` | `make_test_session`, `make_test_database`, helpers de SQLite em memória |
+| `tempest_fastapi_sdk.utils` | `PasswordUtils`, `JWTUtils`, `EmailUtils` (com `render_template`), `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage`, `HTTPClient`, `RetryPolicy`, `MetricsUtils`, `LogUtils`, `AttemptThrottle`, `DownloadUtils`, helpers BR, helpers de token opaco |
+| `tempest_fastapi_sdk.webpush` | `WebPushDispatcher`, `WebPushPayloadSchema`, `WebPushSubscriptionSchema` |
+
+## Início rápido em cinco minutos
+
+```bash
+# 1. Instale o CLI `tempest` (com todos os extras) via uv
+uv tool install "tempest-fastapi-sdk[all]"
+
+# 2. Gere um novo serviço no diretório atual
+tempest new .
+
+# 3. Sincronize as deps do projeto gerado + rode o smoke test
+uv sync
+uv run pytest
+```
+
+!!! note "Do CLI ao projeto"
+    O passo 1 instala o **CLI** `tempest` num ambiente próprio (via `uv tool`). O `tempest new` gera um projeto com o **seu próprio `pyproject.toml`**; do passo 3 em diante é o `uv` desse projeto que resolve e roda tudo (`uv sync` cria o `.venv` local a partir das deps geradas). Prefira `uv` de ponta a ponta — misturar `pip install` global com o `uv sync` do projeto resolve dois ambientes diferentes.
+
+!!! note "Sobre o `[all]`"
+    O extra `[all]` traz os helpers de aplicação, e deixa de fora os **18** extras que puxam stack pesado ou binário nativo: os de modelo local (`[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`), os de ONNX/visão (`[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`), mais `[admin-sql]`, `[firebase]` e `[slides-mermaid]`. Instale esses à parte quando precisar. Os clients leves de GenAI (Ollama, Chroma) já vêm no `[all]`. Veja **[Instalação »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/installation.md)** para a tabela completa de extras.
+
+!!! example "O que o `tempest new` produz"
+    ```text
+    my-service/
+    ├── main.py                 # one-liner que importa run de src.server
+    ├── pyproject.toml
+    ├── .env.example
+    └── src/
+        ├── server.py           # entrypoint uvicorn + app no nível do módulo
+        ├── api/                # routers, dependencies, factory do app
+        ├── controllers/        # orquestração fina sobre os services
+        ├── services/           # lógica de negócio
+        ├── schemas/            # DTOs de request/response
+        ├── db/
+        │   ├── models/
+        │   └── repositories/
+        └── core/               # settings + constants + exceptions
+    ```
+
+## Por onde continuar
+
+<div class="grid cards" markdown>
+
+-   **[Começando do zero »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/uv.md)**
+
+    Trilha para iniciantes: instalar o `uv`, escolher a versão do Python, criar o primeiro projeto e onde ficam as documentações oficiais.
+
+-   **[Instalação »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/installation.md)**
+
+    Passo a passo por extra: o que cada um traz, o que fica de fora do `[all]` e como pinar a versão.
+
+-   **[Arquitetura »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/architecture.md)**
+
+    O fatiamento em camadas (router → controller → service → repository) e por que ele é obrigatório.
+
+-   **[Tutorial »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial.md)**
+
+    Linear, do zero: constrói a feature *Users* inteira passo a passo.
+
+-   **[Frontend em Python »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/tempestweb-frontend.md)**
+
+    A UI também é Python: o **tempestweb** escreve a tela (WASM no browser ou server-mode) e o SDK serve o build compilado com `make_web_app_router` / `build_web_app`, na mesma origem da API. Para páginas renderizadas no servidor, a camada `ui` do extra `[ssr]`.
+
+-   **[Receitas »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/index.md)**
+
+    O coração da doc: o **tour do SDK** (um exemplo mínimo por bloco), o índice das **93 receitas**, os **exemplos completos** (checkout Pix, marketplace, admin, fullstack web, GenAI) e o **SSR tipado**.
+
+-   **[Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference.md)**
+
+    A API completa gerada dos docstrings — assinatura, parâmetros, retorno, exceções e link pro código.
+
+-   **[Projetos de aprendizado »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/learning/index.md)**
+
+    Um projeto guiado (marketplace) com regras de negócio, modelo de domínio, fluxos críticos e mapa de endpoints — pra estudar decisões, não só APIs.
+
+-   **[Roadmap »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/roadmap.md)**
+
+    O que já foi entregue por versão e o que está na fila. Honesto, não aspiracional.
+
+-   **[Guia de migração »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration.md)** · **[Changelog »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/changelog.md)**
+
+    Mudanças que quebram compatibilidade e o histórico versão a versão.
+
+</div>
+
+!!! tip "Achou algo faltando ou errado na doc?"
+    [Abra uma issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/new/choose) — tratamos regressão de doc como regressão de código. Veja **[Contribuindo »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/contributing.md)**.
+
+## Status
+
+| Superfície | Estado |
+| --- | --- |
+| Python | 3.12 / 3.13 / 3.14 (matriz testada com `make test-matrix`) |
+| Testes | 10.400+ casos de pytest e 90 % de cobertura (linhas + branches) na v0.302.0 (medidos, sem gate de cobertura no CI) |
+| Type-checking | `mypy --strict`, `py.typed` distribuído (PEP 561) |
+| Lint / format | `ruff` (check + fix + format) |
+| Pipeline de release | publicação confiável no PyPI a cada tag `vX.Y.Z` |

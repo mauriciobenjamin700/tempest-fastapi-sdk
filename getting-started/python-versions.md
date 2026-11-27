@@ -1,0 +1,189 @@
+# Escolher a versão do Python
+
+Com o `uv` instalado ([página anterior](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/uv.md)), o Python deixa de ser algo que você "tem na máquina" e passa a ser **uma escolha por projeto**. Esta página mostra como fazer essa escolha e como não ser mordido por ela depois.
+
+## Por que a versão importa
+
+O SDK declara o piso no `pyproject.toml`:
+
+```toml
+requires-python = ">=3.12"
+```
+
+Isso significa: **3.12 é o mínimo**. A política completa:
+
+| Python | Status |
+| --- | --- |
+| 3.14 | Suportado |
+| 3.13 | Suportado — a versão do `.python-version` do repositório |
+| 3.12 | Suportado (mínimo) |
+| 3.11 | Não suportado desde a 0.314.0 — fica na 0.313.x ([migração](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration.md)) |
+| 3.10 e anteriores | Não suportado |
+
+!!! tip "Na dúvida, use 3.13"
+    É a que o `.python-version` do repositório fixa, então é onde o SDK é
+    desenvolvido. A suíte inteira roda nas três versões suportadas com
+    `make test-matrix`, uma venv por versão. Use 3.12 só quando algo fora do
+    seu controle exigir (uma imagem Docker antiga, um servidor legado).
+
+!!! info "Como o Python numera versões"
+    `3.13.2` é `major.minor.patch`. Quem quebra compatibilidade é o **minor** (3.12 → 3.13); o patch (3.13.1 → 3.13.2) só corrige bugs e segurança. Por isso a gente fixa "3.13" e deixa o patch flutuar. O calendário de suporte de cada versão está em <https://devguide.python.org/versions/>.
+
+## Veja o que você tem
+
+```bash
+uv python list
+```
+
+A saída lista tudo que o `uv` conhece — versões já baixadas por ele, versões instaladas pelo sistema e versões disponíveis para download:
+
+```text
+cpython-3.13.2-linux-x86_64-gnu     /home/você/.local/share/uv/python/cpython-3.13.2/bin/python3.13
+cpython-3.12.9-linux-x86_64-gnu     <download available>
+cpython-3.14.6-linux-x86_64-gnu     /usr/bin/python3.14
+```
+
+Só o que já está instalado:
+
+```bash
+uv python list --only-installed
+```
+
+## Instale uma versão
+
+```bash
+uv python install 3.13
+```
+
+Pode instalar várias de uma vez — útil para testar o mesmo código nas três versões suportadas:
+
+```bash
+uv python install 3.12 3.13 3.14
+```
+
+!!! note "Isso não mexe no Python do sistema"
+    O `uv` guarda os interpretadores dele num diretório próprio (veja com `uv python dir`). O `python3` que o seu sistema operacional usa continua intocado — nada quebra.
+
+## Fixe a versão do projeto
+
+Dentro da pasta do projeto:
+
+```bash
+uv python pin 3.13
+```
+
+O comando cria um arquivo `.python-version` com uma linha:
+
+```text
+3.13
+```
+
+A partir daí, todo `uv run`, `uv sync` e `uv venv` naquele diretório usa 3.13 — para você e para qualquer pessoa que clonar o repositório.
+
+!!! check "Commite o `.python-version`"
+    Ele é a resposta à pergunta "qual Python esse projeto usa?". Deixar de versioná-lo é como não versionar o `pyproject.toml`.
+
+### Dois arquivos, dois papéis
+
+Iniciante confunde os dois o tempo todo. A diferença:
+
+| Arquivo | Diz o quê | Quem lê |
+| --- | --- | --- |
+| `pyproject.toml` → `requires-python` | a **faixa** que o código suporta, ex. `>=3.12` | quem instala o seu pacote (inclusive o PyPI) |
+| `.python-version` | a versão **exata** que este checkout usa, ex. `3.13` | o `uv`, na sua máquina e na CI |
+
+Um é contrato público, o outro é preferência local. Ambos convivem.
+
+## Crie o ambiente
+
+Um **ambiente virtual** (venv) é uma pasta com um Python e as dependências daquele projeto — isolada de todos os outros. Sem isso, dois projetos que pedem versões diferentes da mesma biblioteca brigam.
+
+```bash
+uv venv --python 3.12
+```
+
+Isso cria `.venv/` usando 3.12, ignorando o `.python-version` só desta vez. Na prática você raramente vai precisar: `uv sync` e `uv run` criam e mantêm o `.venv` sozinhos.
+
+## Rode algo em outra versão, pontualmente
+
+```bash
+uv run --python 3.12 python -c "import sys; print(sys.version)"
+```
+
+Ou via variável de ambiente, que vale para o comando inteiro:
+
+```bash
+UV_PYTHON=3.12 uv run pytest
+```
+
+!!! example "É assim que o SDK roda os próprios gates"
+    O `make test-matrix` do `tempest-fastapi-sdk` roda a suíte uma vez por
+    versão (3.12, 3.13 e 3.14), cada uma com `--python` apontando para ela e
+    numa venv própria. Escolher o interpretador explicitamente é o que faz a
+    matriz valer: sem isso o `.python-version` (que fixa 3.13) ganha, e as três
+    rodadas montam o mesmo venv 3.13. O `make release` local roda o
+    `make check` no Python do `.python-version` e o smoke da wheel num venv
+    3.12, o piso.
+
+## Teste nas três versões suportadas
+
+Vale para qualquer serviço que você publique:
+
+```bash
+for v in 3.12 3.13 3.14; do
+    echo "=== Python $v ==="
+    UV_PYTHON=$v uv run --isolated pytest -q
+done
+```
+
+O `--isolated` faz o `uv` montar um ambiente temporário por rodada, em vez de reciclar o `.venv` da versão anterior.
+
+## Remova o que não usa
+
+```bash
+uv python uninstall 3.12
+```
+
+## Quando der errado
+
+??? failure "`No interpreter found for Python 3.X`"
+    O `uv` não achou a versão pedida e não tinha permissão/rede para baixar. Instale explicitamente:
+
+    ```bash
+    uv python install 3.13
+    ```
+
+??? failure "O projeto insiste numa versão antiga"
+    Alguém deixou um `.python-version` para trás, ou existe um em um diretório **acima** do seu. Verifique qual interpretador o `uv` resolveria:
+
+    ```bash
+    uv python find
+    ```
+
+    E corrija o pin:
+
+    ```bash
+    uv python pin 3.13
+    ```
+
+??? failure "`The requested interpreter resolved to Python 3.11.x, which is incompatible with the project`"
+    A versão resolvida está abaixo do `requires-python`. É o SDK protegendo você de instalar algo que não roda. Instale e fixe uma versão suportada (3.12+).
+
+## Recapitulando
+
+- `requires-python` é a faixa suportada; `.python-version` é a versão deste checkout. Commite os dois.
+- `uv python install` baixa, `uv python pin` fixa, `uv python list` mostra.
+- `UV_PYTHON=<versão> uv run ...` roda algo pontual em outra versão.
+- Na dúvida: **3.13**.
+
+Próximo passo: **[Seu primeiro projeto »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/first-project.md)**.
+
+## Documentação oficial
+
+| Recurso | Link |
+| --- | --- |
+| Versões do Python no `uv` | <https://docs.astral.sh/uv/concepts/python-versions/> |
+| Ambientes virtuais no `uv` | <https://docs.astral.sh/uv/pip/environments/> |
+| Calendário de versões do Python | <https://devguide.python.org/versions/> |
+| Downloads oficiais do Python | <https://www.python.org/downloads/> |
+| Módulo `venv` (documentação da linguagem) | <https://docs.python.org/3/library/venv.html> |

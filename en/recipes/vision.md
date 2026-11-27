@@ -1,0 +1,290 @@
+# Computer vision (ONNX)
+
+Classification, detection and segmentation APIs running on ONNX Runtime
+via [`ort-vision-sdk`](https://pypi.org/project/ort-vision-sdk/). The
+`[vision]` extra brings the inference engine; the
+`tempest_fastapi_sdk.vision` module adds the layer an API needs: the
+**Pydantic response schemas** and the **mappers** that turn a model
+result into them.
+
+```bash
+uv add "tempest-fastapi-sdk[vision]"
+```
+
+!!! info "Submodule, not top-level"
+    Like `cache`/`queue`/`tasks`, vision is heavy (ONNX Runtime) and
+    lives in its submodule: `from tempest_fastapi_sdk.vision import Detector`.
+    Accessing `Detector`/`Classifier`/`Segmenter` without the extra
+    installed raises a clear `ImportError` pointing at `[vision]`. The
+    schemas and mappers carry no such dependency — they always import.
+
+## Detection
+
+`Detector` loads an ONNX model (YOLO by default) and runs `async_predict`
+(async via `asyncio.to_thread`). Each call returns a length-1 `list[...]`
+— take `[0]` and map it to schemas:
+
+```python
+# src/api/routers/vision.py
+from fastapi import APIRouter, UploadFile
+
+from tempest_fastapi_sdk.utils import read_upload_capped
+from tempest_fastapi_sdk.vision import DetectionSchema, Detector, to_detection_schemas
+
+router = APIRouter(prefix="/api/vision", tags=["vision"])
+
+# Load the model once (at startup / as a singleton), not per request.
+detector = Detector("models/yolov8n.onnx", labels="coco")
+
+
+@router.post("/detect")
+async def detect(file: UploadFile) -> list[DetectionSchema]:
+    """Detect objects in the uploaded image."""
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await detector.async_predict(data))[0]
+    return to_detection_schemas(results)
+```
+
+Each `DetectionSchema` carries `class_id`, `class_name`, `confidence` and
+`box` (`x1/y1/x2/y2` in pixels). No detections → `[]`.
+
+!!! tip "Load the model once"
+    Instantiating `Detector` reads and optimizes the ONNX file — costly.
+    Do it at startup (or a singleton on `app.state` / a dependency) and
+    reuse it across requests. `async_predict` already offloads inference
+    to a thread, so it won't block the event loop.
+
+## Classification
+
+`Classifier` returns the top-1 plus the ranked list.
+`to_classification_schema` returns **one** `ClassificationSchema` (not a
+list):
+
+```python
+from fastapi import APIRouter, UploadFile
+
+from tempest_fastapi_sdk.utils import read_upload_capped
+from tempest_fastapi_sdk.vision import (
+    ClassificationSchema,
+    Classifier,
+    to_classification_schema,
+)
+
+router = APIRouter()
+
+
+classifier = Classifier("models/resnet.onnx", labels="imagenet")
+
+
+@router.post("/classify")
+async def classify(file: UploadFile) -> ClassificationSchema:
+    """Classify the image (top-1 + top-k probabilities)."""
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await classifier.async_predict(data, top_k=5))[0]
+    return to_classification_schema(results)
+```
+
+`ClassificationSchema`: `class_id`/`class_name`/`confidence` (top-1) +
+`probabilities: list[ClassProbabilitySchema]` (ranked).
+
+## Segmentation
+
+`Segmenter` is like the detector but with masks.
+`to_segmentation_schemas` returns box + label per instance — **the
+per-pixel mask is omitted** from the JSON (rarely what an API wants; read
+it from `SegmentationResult.mask` when you need the pixels):
+
+```python
+from fastapi import APIRouter, UploadFile
+
+from tempest_fastapi_sdk.utils import read_upload_capped
+from tempest_fastapi_sdk.vision import (
+    SegmentationSchema,
+    Segmenter,
+    to_segmentation_schemas,
+)
+
+router = APIRouter()
+
+
+segmenter = Segmenter("models/yolov8n-seg.onnx", labels="coco")
+
+
+@router.post("/segment")
+async def segment(file: UploadFile) -> list[SegmentationSchema]:
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await segmenter.async_predict(data))[0]
+    return to_segmentation_schemas(results)
+```
+
+## Detection + classification in one graph
+
+Sometimes the label that matters is not *what* is in the image but *what
+state* each found thing is in: a detector finds each sheep, and a
+classifier judges the mucosa of each one. Running the two stages as two
+models costs a round trip per detected object.
+
+`DetectClassify` runs an `.onnx` that already has both stages fused — one
+inference, however many objects there are:
+
+```python
+from fastapi import FastAPI, UploadFile
+
+from tempest_fastapi_sdk.utils import read_upload_capped
+from tempest_fastapi_sdk.vision import (
+    DetectClassify,
+    DetectClassifySchema,
+    to_detect_classify_schemas,
+)
+
+app: FastAPI = FastAPI()
+pipeline: DetectClassify = DetectClassify("fused.onnx")
+
+
+@app.post("/triage")
+async def triage(file: UploadFile) -> list[DetectClassifySchema]:
+    """Detect every animal and classify the crop of each one.
+
+    Args:
+        file (UploadFile): The uploaded image.
+
+    Returns:
+        list[DetectClassifySchema]: One entry per detected object, each
+            carrying the second-stage verdict.
+    """
+    data: bytes = await read_upload_capped(file, max_bytes=20 * 1024 * 1024)
+    results = (await pipeline.async_predict(data))[0]
+    return to_detect_classify_schemas(results)
+```
+
+The response nests the second stage inside each detection:
+
+```json
+[
+  {
+    "class_id": 18,
+    "class_name": "sheep",
+    "confidence": 0.94,
+    "box": {"x1": 12.0, "y1": 40.0, "x2": 210.0, "y2": 300.0},
+    "classification": {
+      "class_id": 3,
+      "class_name": "famacha_3",
+      "confidence": 0.77,
+      "probabilities": [
+        {"class_id": 3, "class_name": "famacha_3", "probability": 0.77},
+        {"class_id": 2, "class_name": "famacha_2", "probability": 0.21}
+      ]
+    }
+  }
+]
+```
+
+!!! warning "The two `class_id` values are not comparable"
+    Detector and classifier have **independent** label spaces: `sheep`'s
+    `18` and `famacha_3`'s `3` have nothing to do with each other. That is
+    why the classifier's verdict is nested under `classification` rather
+    than flattened alongside — flattening would make the two ids look like
+    the same scale.
+
+    `classification` is `null` when the pipeline produced no second stage
+    for that object.
+
+!!! tip "Running is `[vision]`; fusing is `[modelops-compose]`"
+    The fused `.onnx` is a build artifact. Serving it pulls **no** `onnx`
+    — just `[vision]`, like the rest of this page. The file itself is
+    built by `fuse_detect_classify`, in the
+    [Modelops](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/formats.md#fusing-a-detector-and-a-classifier) recipe.
+
+## Accepted inputs + execution
+
+`async_predict` accepts the same inputs as `ort-vision-sdk`: a path,
+`bytes`, a `numpy.ndarray` or a PIL image — so the upload's bytes go
+straight in. Read them with `read_upload_capped(file, max_bytes=...)` rather
+than `await file.read()`: it reads in chunks and answers `413` as soon as the
+ceiling is crossed, before the whole upload occupies the memory the ceiling
+was meant to deny.
+
+| Method | When to use |
+| --- | --- |
+| `predict(img)` | Synchronous — scripts, offline jobs. |
+| `async_predict(img)` | The FastAPI default — runs via `asyncio.to_thread`, never blocks the loop. |
+| `ort_async_predict(img)` | ORT-native `run_async` — high concurrency. |
+
+!!! note "Acceleration extras"
+    GPU: `tempest-fastapi-sdk[vision]` + `pip install ort-vision-sdk[gpu]`
+    (swaps in `onnxruntime-gpu`). OpenCV image backend:
+    `ort-vision-sdk[opencv]`. Pick the providers in the constructor
+    (`Detector(..., providers=[...])`).
+
+## Ready endpoint: `make_vision_router`
+
+Instead of wiring each route by hand, inject the objects you loaded and the
+router mounts **only** the matching endpoints (mirrors `make_genai_router`):
+
+```python
+from fastapi import FastAPI
+from tempest_fastapi_sdk.vision import Detector, make_vision_router
+
+app = FastAPI()
+app.include_router(make_vision_router(detector=Detector("yolov8n.onnx", labels="coco")))
+# -> POST /api/vision/detect (UploadFile) -> list[DetectionSchema]
+```
+
+`classifier=` mounts `POST /classify`, `segmenter=` mounts `POST /segment`.
+Only what you inject shows up; with no object it raises `ValueError`. Each
+endpoint reads the `UploadFile`, calls `async_predict` and maps via
+`to_*_schemas`.
+
+
+### Upload and pixel limits
+
+Every `make_vision_router` route checks three things **before** it runs the
+model, and refuses when any of them fails — `413 UPLOAD_TOO_LARGE` for
+the upload size, `422` for the rest:
+
+| Parameter | Default | What it stops |
+| --- | --- | --- |
+| `max_upload_bytes` | `DEFAULT_MAX_IMAGE_UPLOAD_BYTES` (20 MiB) | an upload that is too large — read in chunks, refused when it crosses the ceiling |
+| `max_image_pixels` | `DEFAULT_MAX_IMAGE_PIXELS` (50 MP) | a canvas declared in the header above the ceiling — read without decoding |
+| — | — | bytes that are not an image, a truncated image — the pixels are decoded in a thread before the model runs —, and `ort-vision-sdk`'s `ImageLoadError` (which used to become a `500`) |
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.vision import Detector, make_vision_router
+
+app: FastAPI = FastAPI()
+app.include_router(
+    make_vision_router(
+        detector=Detector("yolov8n.onnx", labels="coco"),
+        max_upload_bytes=5 * 1024 * 1024,
+        max_image_pixels=12_000_000,
+    ),
+)
+```
+
+!!! info "Why count pixels when there is a byte ceiling"
+    A flat-colour PNG compresses by orders of magnitude. Measured with
+    Pillow 13.0.0 and `ort-vision-sdk` 0.12.0: a blank 9400 x 9400 PNG of
+    10 804 bytes decodes into a 265 080 000-byte RGB array — and slips past
+    Pillow's own decompression-bomb warning, because 88.36 MP sits under its
+    89.48 MP threshold. The byte ceiling does not catch that file; the pixel
+    ceiling does, from the header alone.
+
+`max_image_pixels=None` turns the header and truncation checks off (and the
+Pillow import), leaving only Pillow's own guard inside the decoder.
+
+!!! warning "Without the check, a truncated image reaches the model when `[pdf]` is installed"
+    `import weasyprint` turns on `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, and
+    with it `ort-vision-sdk` decodes half an image with the rest in gray.
+    With `max_image_pixels` set, the router decodes the pixels first and
+    answers `422`, switch on or off. The cost is one extra decode: measured
+    on a 12 MP JPEG, about 70 ms, against `ort-vision-sdk`'s own 107 ms.
+
+## Recap
+
+- `uv add "tempest-fastapi-sdk[vision]"`; import from `tempest_fastapi_sdk.vision` (submodule).
+- `Detector` / `Classifier` / `Segmenter` (lazy; clear `ImportError` without the extra).
+- Load the model **once**; use `async_predict` in FastAPI.
+- Take `[0]` of the return and map it: `to_detection_schemas`, `to_classification_schema`, `to_segmentation_schemas`.
+- The schemas (`DetectionSchema`/`ClassificationSchema`/`SegmentationSchema`) serialize straight into the response; the pixel mask stays out of JSON.

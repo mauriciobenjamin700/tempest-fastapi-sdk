@@ -1,0 +1,541 @@
+# A React SPA inside FastAPI
+
+This recipe builds a fullstack stack with **a single deployment**: a React SPA
+served by the FastAPI process itself, with [`tempest-react-sdk`](https://github.com/mauriciobenjamin700/tempest-react-sdk)
+on the client talking to this SDK on the server. 🚀
+
+Three modes, in the order you will use them:
+
+1. **Development** — `vite dev` on 5173 proxying `/api` to FastAPI on 8000.
+   Hot reload intact.
+2. **Same-origin production** — `make_spa_router` serves Vite's `dist/` from
+   FastAPI. No CORS, no `SameSite=None` cookie, one container.
+3. **Scaffold** — `create-tempest-app` creates `web/` inside the project, and a
+   multi-stage `Dockerfile` compiles the SPA and copies the build.
+
+!!! info "Why same-origin is the recommended default"
+    Serving the SPA and the API from one origin removes CORS, preflight,
+    `SameSite=None; Secure` on the refresh cookie and the CSRF configuration
+    that comes with it — all at once. The browser never makes a cross-origin
+    request, so half the auth configuration surface simply does not exist.
+
+## 1. Development — Vite with a proxy
+
+### The React side
+
+```bash
+npx create-tempest-app web
+cd web && npm install
+```
+
+The template already ships a `vite.config.ts` pointing at the SDK helper.
+Uncomment the proxy:
+
+```typescript
+// web/vite.config.ts
+import { createViteConfig } from "tempest-react-sdk/vite";
+
+export default createViteConfig({
+    proxy: { "/api": "http://127.0.0.1:8000" },
+});
+```
+
+`createViteConfig` already wires `@vitejs/plugin-react`, the `@` → `src` alias
+and dev-server defaults (port 5173, host `127.0.0.1`). A string in `proxy` is
+expanded to `{ target, changeOrigin: true }`; pass an object to control
+everything.
+
+### The FastAPI side
+
+Nothing to do beyond running on 8000 — the scaffold default:
+
+```bash
+python main.py     # uvicorn on 127.0.0.1:8000
+```
+
+!!! tip "With a proxy you need no CORS in dev"
+    The browser only ever talks to 5173; Vite talks to 8000 server-side. There
+    is no cross-origin request, so `CORSSettings` can stay off even in
+    development. If you would rather call the API directly (no proxy), then you
+    do need CORS:
+
+    ```python
+    from tempest_fastapi_sdk import apply_cors
+
+    apply_cors(app, origins=["http://127.0.0.1:5173"], allow_credentials=True)
+    ```
+
+### The HTTP client
+
+```typescript
+// web/src/lib/api.ts
+import { createApiClient } from "tempest-react-sdk";
+
+export const api = createApiClient({
+    baseURL: import.meta.env.VITE_API_URL ?? window.location.origin,
+    withCredentials: true,
+});
+```
+
+Using the **current origin** as `baseURL` is what makes one piece of code serve
+both modes with no branching: in dev the origin is Vite's (5173) and the proxy
+forwards `/api` to FastAPI; in production the SPA and the API share an origin
+and the path resolves directly. `VITE_API_URL` stays as the escape hatch for
+separate origins.
+
+!!! danger "Two URL details that break quietly"
+    **`baseURL` must be absolute.** The client builds the URL with
+    `new URL(path, baseURL)`, and a relative base is not a valid URL:
+
+    ```typescript
+    createApiClient({ baseURL: "/api" });   // ❌ TypeError: Invalid URL
+    ```
+
+    **A `path` starting with `/` discards the base's path.** That is `URL`
+    semantics, not the SDK's:
+
+    ```typescript
+    const api = createApiClient({ baseURL: "https://x.dev/api" });
+    await api.get("/users");   // → https://x.dev/users        (lost the /api)
+    await api.get("users");    // → https://x.dev/api/users     ✅
+    ```
+
+    Pick one and stay consistent: origin in the base + prefix in the path
+    (`baseURL: origin` + `get("/api/users")`), or prefix in the base +
+    relative path (`baseURL: origin + "/api"` + `get("users")`). Mixing the two
+    is what produces a 404 that looks like a backend routing bug.
+
+## 2. Production — FastAPI serves the build
+
+```bash
+cd web && npm run build     # produces web/dist/
+```
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import make_spa_router, register_exception_handlers
+
+from src.api.routers import users_router
+
+
+def create_app() -> FastAPI:
+    """Build the application, API first and the SPA last.
+
+    Returns:
+        FastAPI: The configured application.
+    """
+    app = FastAPI(title="My Service")
+    register_exception_handlers(app)
+    app.include_router(users_router, prefix="/api/users", tags=["users"])
+    app.include_router(make_spa_router("web/dist"))
+    return app
+
+
+app = create_app()
+```
+
+!!! danger "`make_spa_router` goes last — always"
+    It registers a catch-all `GET /{path:path}`. FastAPI matches routes in
+    registration order, so **anything included after it becomes
+    unreachable**. Include the whole API first.
+
+### What the router solves
+
+Mounting `StaticFiles` alone does not serve a SPA. A client-side router owns
+paths like `/users/42`, which exist in the browser and **not** on disk — so a
+bare static mount answers 404 on every deep link and every page refresh. The
+missing piece is the **SPA fallback**.
+
+Beyond that, three details that are easy to get wrong:
+
+| Detail | Behavior |
+| --- | --- |
+| `index.html` cache | `no-store, must-revalidate` |
+| Hashed asset cache | `public, max-age=31536000, immutable` |
+| API paths | Excluded from the fallback — JSON 404, not HTML |
+| Methods | Only `GET`/`HEAD` fall back |
+| Path traversal | `..` (in any encoding) cannot escape `dist/` |
+| Security headers | An **application** CSP (`DEFAULT_SPA_SECURITY_HEADERS`) |
+
+!!! warning "The classic inverted-cache bug"
+    `index.html` is the **only** file whose name does not change between
+    deploys. Cache it and the browser keeps loading the old bundle after a
+    deploy — the new, freshly hashed assets are never even requested. That is
+    why the document is `no-store` and the assets are `immutable`: exactly the
+    opposite of what intuition suggests.
+
+!!! check "Why an API 404 must not become HTML"
+    If `/api/typo` returned `index.html` with a **200**, the client would get
+    HTML where it expects JSON and report a parse error. Whoever debugs it
+    looks at the client, not at the route that does not exist. So the prefixes
+    in `DEFAULT_EXCLUDED_PREFIXES` (`/api`, `/docs`, `/openapi.json`,
+    `/health`, `/metrics`, `/logs`, `/admin`, `/auth`, `/redoc`) never fall
+    back.
+
+    Using a different prefix? Pass your own:
+
+    ```python
+    app.include_router(
+        make_spa_router("web/dist", excluded_prefixes=("/api", "/graphql", "/rpc"))
+    )
+    ```
+
+### The CSP you get by default
+
+The router serves an **application**, so the policy is "everything from the same origin, nothing from anywhere else":
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+img-src 'self' data:; font-src 'self' data:; connect-src 'self';
+form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'
+```
+
+Plus `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` and `Cross-Origin-Resource-Policy: same-origin`. All of it is `DEFAULT_SPA_SECURITY_HEADERS`, and it is the default for `security_headers=`.
+
+!!! danger "Do not pass `DEFAULT_STATIC_SECURITY_HEADERS` here (it was the default up to v0.251.0)"
+    That set is for a **file you do not trust** — a third-party upload, an attachment — and blocks execution by design: `default-src 'none'; sandbox`. Pointed at a compiled SPA it blocks the page's own bundle and stylesheet, and `sandbox` without `allow-scripts` blocks script execution. Result: a blank document.
+
+    Measured in a real browser (Playwright), with the old default:
+
+    ```text
+    Loading the stylesheet '/assets/app.css' violates the following Content
+    Security Policy directive: "default-src 'none'"
+    Blocked script execution in '/' because the document's frame is sandboxed
+    and the 'allow-scripts' permission is not set
+    ```
+
+    With the new default: zero console messages, the script ran, the external CSS applied, and the inline `style` attribute applied.
+
+    **Since v0.277.0 `make_spa_router` refuses this** with a `ValueError`
+    instead of serving the blank page. The check is on the policy's **shape** —
+    `sandbox` without `allow-scripts`, or `default-src 'none'` with no
+    `script-src` — so a hand-written equivalent lands in the same place.
+    `security_headers` is still a raw override: a caller who genuinely wants the
+    strict policy passes `allow_blocking_headers=True`, which separates "I meant
+    this" from "I copied an old snippet".
+
+!!! info "Why `'unsafe-inline'` stays in `style-src`"
+    React — and the component libraries built on it — writes the `style` attribute inline. A policy that breaks the UI is a policy that gets deleted. It stays **scoped to styles**: `script-src` remains `'self'`, so an injected `<script>` or an inline handler is still refused.
+
+    If you control your component tree, tighten it to `style-src 'self'` plus `style-src-attr 'unsafe-inline'` and pass the result through `security_headers=`.
+
+### Fail early, not in staging
+
+```pycon
+>>> make_spa_router("web/dist")
+FileNotFoundError: SPA build directory not found: /app/web/dist. Run the
+frontend build (e.g. `npm run build`) before starting the app, or point
+`dist_dir` at the right path.
+```
+
+Raising at wiring time is deliberate. The alternative is a service that
+**boots fine** and answers 404 on every page — something usually discovered in
+staging, or worse.
+
+## 3. Auth shared across both SDKs
+
+Same-origin makes the cookie flow the simplest path: the refresh token lives in
+an `HttpOnly` cookie JavaScript cannot reach.
+
+### Server
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+)
+app = FastAPI()
+
+
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        token_delivery="cookie",
+        prefix="/api/auth",
+    ),
+)
+```
+
+With `token_delivery="cookie"` the `/login`, `/refresh` and `/logout` endpoints
+write and read the token pair as cookies. The refresh cookie is scoped to the
+auth base path, so it reaches `/refresh` and `/logout` but does **not** ride
+along on every API call.
+
+!!! warning "The prefix goes on `make_auth_router`, not on `include_router`"
+    The auth router is born with `prefix="/auth"`, and that value is where
+    the refresh cookie's `Path` comes from. Passing `prefix="/api/auth"` to
+    `include_router` **adds** the two: the routes become
+    `/api/auth/auth/login` and the cookie ships with `Path=/auth`, which the
+    browser never sends to `/api/auth/auth/refresh`. With
+    `prefix="/api/auth"` on `make_auth_router`, the routes live at
+    `/api/auth/login` and the cookie at `Path=/api/auth`.
+
+### Client
+
+```typescript
+// web/src/lib/auth.ts
+import { createTempestAuth } from "tempest-react-sdk";
+
+export const auth = createTempestAuth({
+    baseURL: import.meta.env.VITE_API_URL ?? window.location.origin,
+    loginPath: "/api/auth/login",
+    refreshPath: "/api/auth/refresh",
+    mePath: "/api/auth/me",
+    withCredentials: true,
+});
+```
+
+`createTempestAuth` **builds its own client** — it does not take a ready-made
+one. It returns `{ useAuthStore, api, login, logout, refresh }`, and that
+`auth.api` is the one to use for authenticated calls: it already carries bearer
+auth plus the `401 → refresh → retry` cycle, deduplicated across concurrent
+callers.
+
+`withCredentials: true` is what allows the `HttpOnly` cookie refresh; without
+it the browser does not send the cookie and `refresh` fails.
+
+And guarding routes — `AuthGuard` is router-agnostic and takes the state
+explicitly:
+
+```tsx
+// web/src/App.tsx
+import { AuthGuard } from "tempest-react-sdk";
+import { Navigate } from "react-router";
+
+import { auth } from "./lib/auth";
+
+export function App() {
+    const isAuthenticated = auth.useAuthStore((state) => state.isAuthenticated);
+    return (
+        <AuthGuard
+            isAuthenticated={isAuthenticated}
+            fallback={<Navigate to="/login" />}
+        >
+            <Dashboard />
+        </AuthGuard>
+    );
+}
+```
+
+!!! tip "The error envelope is the same contract on both sides"
+    `tempest-react-sdk`'s `TempestApiError` deserializes exactly the
+    `{detail, code, details}` envelope
+    [`register_exception_handlers`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openapi-errors.md) emits. Branch on `code`,
+    never on `detail` — which changes with the negotiated locale:
+
+    ```typescript
+    import { isApiError } from "tempest-react-sdk";
+
+    try {
+        await api.post("/jobs/x/candidates", body);
+    } catch (error) {
+        if (isApiError(error) && error.code === "CANDIDATE_ALREADY_EXISTS") {
+            showAlreadyApplied();
+        }
+    }
+    ```
+
+    Run [`tempest openapi-client`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openapi-client.md) against **your own** spec
+    and the frontend gets the schemas and typed `code` values for free.
+
+## 4. Scaffold and container
+
+### Layout
+
+```text
+my-service/
+├── main.py
+├── pyproject.toml
+├── src/                    # the backend (see Architecture)
+│   └── api/app.py          # includes make_spa_router("web/dist") last
+└── web/                    # the SPA, from create-tempest-app
+    ├── package.json
+    ├── vite.config.ts
+    └── src/
+```
+
+### Multi-stage Dockerfile
+
+The generator handles this. With a `web/package.json` present,
+`tempest generate --dockerfile` detects the SPA and emits the Node stage:
+
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/installation.md#cli).
+
+```bash
+tempest generate --dockerfile --force
+```
+
+```text
+Regenerated Dockerfile
+Regenerated .dockerignore
+  SPA stage: builds web/ and copies web/dist into the image.
+```
+
+Detection is by `package.json` — under `web/`, `frontend/`, `client/` or
+`ui/`. An empty directory does **not** count, otherwise the image build would
+die inside `npm ci`. For another layout use `--spa-dir apps-web`; to force a
+backend-only image in a project that has a frontend, `--no-spa`.
+
+The generated `.dockerignore` gains `web/node_modules/` and `web/dist/` too —
+`dist/` is ignored on purpose because the Node stage produces it. Copying a
+local `dist/` in would ship your machine's build instead of the reproducible
+one.
+
+For a `my_service` project with the SPA under `web/`, the generated file is
+this (pasted from the generator's output):
+
+```dockerfile
+# Dockerfile — generated by `tempest new` for my_service.
+#
+# Multi-stage build using uv (https://docs.astral.sh/uv/):
+#   * builder stage installs dependencies into /app/.venv
+#   * final stage copies only the venv + source, runs as a non-root user
+#
+# Build:  docker build -t my_service .
+#
+# A single-page app was detected in web/, so this build is
+# fullstack: a Node stage compiles it and only the emitted dist/ is
+# copied into the final image — node_modules and the Node toolchain
+# never reach the runtime. Serve it from FastAPI with
+# `make_spa_router("web/dist")`, included after every API router.
+#
+# Run:    docker run --rm -p 8000:8000 --env-file .env my_service
+#
+# The image binds SERVER_HOST=0.0.0.0 (see the final stage) so the app is
+# reachable from outside the container even without a .env file. The infra
+# in docker-compose.yaml (Postgres, etc.) is separate — point DATABASE_URL
+# at it via --env-file or `environment:` when you wire this image in.
+
+# ---- spa --------------------------------------------------------------------
+FROM node:22-alpine AS spa
+
+WORKDIR /spa
+
+# Install with the lockfile first so this layer caches on dependency
+# changes only. `npm ci` needs a lockfile; the glob keeps the COPY
+# working before one is committed, and the fallback covers that case.
+COPY web/package.json web/package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+COPY web/ ./
+RUN npm run build
+
+# ---- builder ----------------------------------------------------------------
+FROM python:3.13-slim AS builder
+
+# uv ships as a static binary; pin the tag in production for reproducibility.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy bytecode-compiled packages instead of symlinking — the venv must be
+# self-contained when copied across stages.
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+WORKDIR /app
+
+# Install dependencies first (without the project) so this layer is cached
+# and only re-runs when pyproject.toml / uv.lock change. uv.lock is optional
+# in a fresh scaffold — the glob keeps the COPY from failing when it is absent.
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --no-dev --no-install-project
+
+# Now copy the source and install the project itself.
+COPY . .
+RUN uv sync --no-dev
+
+# ---- final ------------------------------------------------------------------
+FROM python:3.13-slim
+
+# Run as an unprivileged user. /app is owned by it so the app can write
+# logs/ and the default SQLite app.db without root.
+RUN useradd --create-home --uid 1000 app
+
+WORKDIR /app
+COPY --from=builder --chown=app:app /app /app
+
+# WORKDIR created /app as root before the COPY, and `COPY --chown` only sets
+# ownership on the copied *contents* — not on the pre-existing /app directory
+# node itself. So the app user cannot create new entries (the runtime logs/
+# dir, the default SQLite app.db, etc.) inside /app and the app crashes at
+# startup with `PermissionError: [Errno 13] ... 'logs'`. Chown the directory
+# and pre-create logs/ so the SDK's file logging (LOG_DIR=logs) works.
+RUN mkdir -p /app/logs && chown -R app:app /app
+
+# The compiled SPA, from the Node stage. Nothing else crosses over, so
+# the runtime image carries no Node runtime and no node_modules.
+COPY --from=spa --chown=app:app /spa/dist /app/web/dist
+
+# Put the venv on PATH so `python` resolves to the project interpreter.
+# SERVER_HOST=0.0.0.0 binds all interfaces inside the container so the app
+# is reachable from the host (overridable via .env / `environment:`).
+ENV PATH="/app/.venv/bin:$PATH" \
+    SERVER_HOST=0.0.0.0 \
+    SERVER_PORT=8000
+
+USER app
+EXPOSE 8000
+
+CMD ["python", "main.py"]
+```
+
+The SPA build happens in the `spa` stage and only `dist/` travels to the
+final image, so neither `node_modules` nor the Node toolchain enters the
+runtime. The
+process runs as `app`, not root, and `logs/` exists before the first log
+line.
+
+!!! warning "`SERVER_HOST` in a container: `--env-file` beats `ENV`"
+    The image already sets `SERVER_HOST=0.0.0.0` in the final stage, so it
+    is reachable from outside with no configuration. The risk is the `.env`:
+    the scaffold's `.env.example` carries `SERVER_HOST=127.0.0.1`, and a
+    variable from `--env-file` (or from `environment:` in compose)
+    **overrides** the image's `ENV`. A `.env` copied from the example and
+    passed with `docker run --env-file .env` puts the bind back on
+    `127.0.0.1`, and the container only accepts connections from inside
+    itself. Drop `SERVER_HOST` from the `.env` that goes to the container, or
+    set `SERVER_HOST=0.0.0.0` in it.
+
+### `.dockerignore`
+
+The generator appends to the default `.dockerignore`:
+
+```text
+web/node_modules/
+web/dist/
+```
+
+`dist/` is ignored on purpose: the `spa` stage produces it. Copying a local
+`dist/` into the build would ship your machine's build instead of the
+reproducible one.
+
+## Recap
+
+1. **Dev**: `createViteConfig({ proxy: { "/api": "http://127.0.0.1:8000" } })`.
+   No CORS, hot reload intact.
+2. **Prod**: `app.include_router(make_spa_router("web/dist"))` **last**. One
+   origin, one container.
+3. **An absolute `baseURL`** (the current origin) in `createApiClient` makes one
+   piece of code serve both modes — and remember a leading-`/` path discards the
+   base's path.
+4. **Deliberately inverted caching**: document `no-store`, assets `immutable`.
+5. **Cookie auth** with `token_delivery="cookie"` + `createTempestAuth` /
+   `AuthGuard`.
+6. **Branch on the envelope's `code`**, and generate the typed client with
+   `tempest openapi-client`.

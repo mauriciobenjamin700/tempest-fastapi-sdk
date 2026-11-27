@@ -1,0 +1,856 @@
+# SSR: páginas tipadas em Python renderizadas para HTML
+
+Seu serviço FastAPI, full-stack, **tipado**, sem linguagem de template. 🚀
+
+A camada de SSR (Server-Side Rendering) do SDK deixa você descrever
+páginas como **componentes Python tipados** e devolvê-las de uma rota
+já renderizadas em HTML. Nada de Jinja, nada de strings soltas: o mesmo
+verificador de tipos que cobre seus schemas e services cobre também a
+sua interface.
+
+!!! info "O que você vai precisar"
+    A camada de SSR mora no extra opcional `[ssr]`, que traz o
+    renderizador [`tempestweb`](https://pypi.org/project/tempestweb/)
+    (e, transitivamente, o `tempest-core` com os widgets tipados).
+
+    ```bash
+    uv add "tempest-fastapi-sdk[ssr]"
+    ```
+
+## Por que isso existe
+
+Numa API tradicional você devolve JSON e um front-end separado desenha a
+tela. Quando você só precisa de páginas server-driven (um painel interno,
+um fluxo de onboarding, uma landing), montar um SPA inteiro é peso morto.
+
+A alternativa clássica — um mecanismo de templates — te tira do mundo
+tipado: o template é uma string, o editor não te ajuda, e um campo
+renomeado no schema só quebra em produção.
+
+A camada de SSR resolve isso mantendo **tudo em Python tipado**:
+
+- Você declara a página como uma classe (`Page`) com campos tipados.
+- Você monta o corpo com widgets (`Column`, `Row`, `Text`, `Button`, ...).
+- Você devolve `html_response(...)` da rota — e recebe um `HTMLResponse`.
+
+## Exemplo mínimo completo
+
+Este é um programa completo e executável. Salve como `main.py`, instale o
+extra e rode com `uvicorn main:app`.
+
+```python
+from tempest_core import Column, Text, Widget
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+app: FastAPI = FastAPI()
+
+
+class HomePage(Page):
+    """A página inicial, com um único campo tipado."""
+
+    user: str
+
+    def body(self) -> Widget:
+        """O conteúdo principal da página."""
+        return Column(
+            tag="main",
+            children=[
+                Text(content=f"Olá, {self.user}!", tag="h1"),
+                Text(content="Bem-vindo ao seu app tipado.", tag="p"),
+            ],
+        )
+
+
+@app.get("/")
+def home() -> object:
+    """Renderiza a HomePage como um documento HTML completo."""
+    return html_response(HomePage(title="Início", user="Ana"), title="Início")
+```
+
+Acesse `http://127.0.0.1:8000/` e você recebe um documento HTML5 completo
+com `<!doctype html>`, `<title>Início</title>` e o corpo `<main>` — tudo
+gerado a partir das classes acima.
+
+## Explicando peça por peça
+
+### A classe `Page`
+
+```python
+from tempest_core import Column, Text, Widget
+
+from tempest_fastapi_sdk.ssr import Page
+
+
+class HomePage(Page):
+    user: str
+
+    def body(self) -> Widget:
+        return Column(tag="main", children=[Text(content=f"Olá, {self.user}!")])
+```
+
+`Page` é um **componente `tempest_core`** (um modelo Pydantic). Isso
+significa que os dados da página são **campos tipados** — aqui, `user: str`.
+O campo herdado `title: str` alimenta o `<title>` do documento.
+
+Você implementa **`body()`**, que devolve a árvore de widgets do conteúdo
+principal. É o único método obrigatório.
+
+!!! tip "Tags semânticas"
+    Todo widget aceita `tag=` e `attrs=`. Use `tag="main"`, `tag="h1"`,
+    `tag="nav"` para emitir HTML semântico em vez das tags neutras
+    padrão (`<div>` / `<span>`).
+
+### A função `html_response`
+
+```python
+from tempest_fastapi_sdk.ssr import html_response
+
+from src.web.pages import HomePage
+
+
+return html_response(HomePage(title="Início", user="Ana"), title="Início")
+```
+
+`html_response` renderiza a árvore e devolve um `HTMLResponse` do FastAPI.
+Sua assinatura:
+
+```python
+from collections.abc import Sequence
+
+from fastapi.responses import HTMLResponse
+from tempest_core import Widget
+
+
+def html_response(
+    widget: Widget,
+    *,
+    title: str | None = None,
+    status_code: int = 200,
+    htmx: bool = False,
+    document: bool = True,
+    lang: str = "pt-BR",
+    stylesheets: Sequence[str] | None = None,
+    head: str | None = None,
+    confirm: bool | None = None,
+) -> HTMLResponse: ...
+```
+
+- **`document=True`** (padrão) → documento HTML5 completo. O `<title>`
+  vem do `title=`; sem ele, de `page.document_title()` quando o widget é
+  uma `Page` (o `title` da página mais o `title_suffix` da classe).
+- **`document=False`** → fragmento HTML puro (sem `<!doctype>`), ideal
+  para trocas parciais com HTMX.
+- **`status_code`** → repassado ao `HTMLResponse`.
+- **`htmx=True`** → injeta o `<script>` do HTMX **servido localmente**
+  (nunca de uma CDN — veja abaixo).
+- **`stylesheets` / `head`** → `None` (padrão) usa o que a página declara
+  nos atributos de classe `Page.stylesheets` e `Page.head`; um valor
+  explícito **substitui** o da página. Veja
+  [Camada UI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui.md#exemplo-minimo-completo).
+- **`confirm`** → inclui o `/_ssr/confirm.js` que pergunta antes de uma
+  ação destrutiva. `None` (padrão) inclui quando o documento usa
+  `data-confirm` ou quando `htmx=True`. Veja
+  [Ações SSR](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ssr-actions.md).
+
+!!! warning "`title` é obrigatório para documentos que não são `Page`"
+    Chamar `html_response(widget)` com `document=True` (o padrão), sem
+    `title` e com um widget que não é `Page` levanta `ValueError`. Para
+    fragmentos (`document=False`), o `title` é ignorado.
+
+## Layout compartilhado com `shell()`
+
+Toda página costuma dividir o mesmo cabeçalho, navegação e rodapé.
+Em vez de repetir, sobrescreva **`shell()`** numa página base e herde por
+herança normal de Python.
+
+```python
+from tempest_core import Column, Row, Text, Widget
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+
+class BasePage(Page):
+    """Layout compartilhado: barra de navegação + área principal."""
+
+    def shell(self, body: Widget) -> Widget:
+        return Column(
+            tag="body",
+            children=[
+                Row(tag="nav", children=[Text(content="MeuApp")]),
+                Column(tag="main", children=[body]),
+            ],
+        )
+
+
+class DashboardPage(BasePage):
+    """Herda a navegação, define só o próprio corpo."""
+
+    def body(self) -> Widget:
+        return Text(content="Painel", tag="h2")
+
+
+class ReportsPage(BasePage):
+    """Mesma navegação, corpo diferente."""
+
+    def body(self) -> Widget:
+        return Text(content="Relatórios", tag="h2")
+```
+
+`render()` (o gancho do componente) já compõe `shell(body())` para você —
+**não sobrescreva `render()`**; sobrescreva `body()` e, se quiser,
+`shell()`.
+
+!!! note "Como a composição funciona"
+    `Page.render()` devolve `self.shell(self.body())`. O renderizador
+    expande componentes recursivamente, então uma página é só mais um
+    widget na árvore.
+
+## Catálogo de widgets
+
+Os widgets vêm do `tempest_core`. Para SSR você usa um punhado deles como
+blocos de montagem; **todos** aceitam `tag=`, `attrs=`, `style=` e `key=`.
+
+| Widget | Renderiza | Uso |
+|--------|-----------|-----|
+| `Text(content=...)` | `<span>` (ou a `tag`) com o texto **escapado** | Qualquer texto: título, parágrafo, `<option>`, `<label>` |
+| `Column(children=[...])` | `<div>` com `display:flex; flex-direction:column` | Empilhar verticalmente |
+| `Row(children=[...])` | `<div>` com `display:flex` (linha) | Alinhar horizontalmente |
+| `Container(child=...)` | `<div>` **neutro** (sem flex), um filho | Wrapper semântico (`tag="section"`, `tag="article"`) |
+| `Button(label=...)` | `<button>` estilizado | Ações (via `attrs` HTMX — veja abaixo) |
+| `Spacer()` | espaço flexível | Empurrar itens numa `Row`/`Column` |
+
+```python
+from tempest_core import Column, Container, Row, Spacer, Text
+
+Container(
+    tag="section",
+    child=Row(
+        children=[
+            Text(content="Título", tag="h2"),
+            Spacer(),
+            Text(content="v1.0", tag="small"),
+        ],
+    ),
+)
+# <section><div style="display: flex; flex-direction: row"><h2>Título</h2><div style="flex-grow: 1"></div><small>v1.0</small></div></section>
+```
+
+!!! warning "`Button.on_click` é ignorado no SSR"
+    `on_click` é um handler de runtime (WASM/server), **não** roda em HTML
+    estático. Para interatividade no SSR, use `attrs` com HTMX
+    (`hx-post`, `hx-get`, …) — veja [HTMX](#htmx-servido-localmente-sem-cdn).
+
+!!! tip "`tag` + `attrs` são o escape hatch universal"
+    Não existe widget dedicado para cada tag HTML — e nem precisa. Qualquer
+    elemento sai de um widget de container com `tag=` e `attrs=`:
+    `Text(content="", tag="input", attrs={"name": "email", "type": "email"})`
+    vira `<input name="email" type="email" />`. Para `hx-*`/`aria-*`/`data-*`
+    há builders tipados — veja [Atributos tipados](#atributos-tipados-htmx-aria-data).
+
+## Estilização tipada com `Style`
+
+Em vez de CSS solto, cada widget aceita um `Style` tipado que o
+renderizador converte em CSS inline. Espaçamentos usam `Edge`.
+
+```python
+from tempest_core import Column, Style, Text
+from tempest_core.style import Edge
+
+Column(
+    style=Style(gap=12.0, padding=Edge.all(16)),
+    children=[Text(content="Card", tag="h3")],
+)
+# <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 16px 16px">…
+```
+
+- `Edge.all(16)` / `Edge.symmetric(vertical=8, horizontal=16)` /
+  `Edge(top=4)` — margens e paddings tipados (não há `Edge.only`; os
+  lados que você não passa ficam em `0`).
+- `gap`, `padding`, `margin`, cores e tipografia saem no `style=""` inline.
+- A conversão `Style → CSS` do renderizador Python (SSR) é um port do
+  `styleToCss` do cliente JS (WASM/server), e o `tempestweb` declara as
+  duas saídas idênticas byte a byte, para a página não "pular" quando o
+  cliente re-renderiza. Medido no `tempestweb` 0.127.0 (então o piso do
+  extra `[ssr]`) com três `Style` — o deste exemplo, um `Edge.symmetric` com
+  `radius`, e um com margem, borda, cores, `font_size` e `width`
+  fracionário —, as duas funções emitiram a mesma string nos três. É uma
+  amostra, não prova para todo campo do `Style`.
+
+!!! info "Para seletor, `:hover` e media query, use a folha tipada"
+    O `Style` inline é ótimo para layout local e componentes
+    autocontidos, mas não expressa seletor, pseudo-classe nem media
+    query. Isso vive numa `StyleSheet` — CSS escrito em Python, servido
+    pelo próprio app com ETag: veja
+    **[CSS tipado (StyleSheet e tokens) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui-css.md)**.
+
+## Componentes reutilizáveis
+
+!!! tip "O SDK já traz os componentes comuns"
+    `Card`, `Alert`, `DataTable`, `Pagination`, `EmptyState`, `NavBar`,
+    `Shell` e `Grid` vêm prontos em
+    **[Camada UI (páginas e componentes) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui.md)**, que também
+    define onde cada arquivo do seu `src/ui/` mora. O que segue é como
+    escrever um componente próprio.
+
+`Page` é um `Component`. Você pode extrair **qualquer** subárvore num
+`Component` tipado e reusar — a página fica declarativa e testável em
+pedaços.
+
+```python
+from tempest_core import Column, Text, Widget
+from tempest_core.widgets import Component
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+
+class Card(Component):
+    """Um cartão reutilizável com título + corpo."""
+
+    heading: str
+    body_text: str
+
+    def render(self) -> Widget:
+        return Column(
+            tag="section",
+            attrs={"class": "card"},
+            children=[
+                Text(content=self.heading, tag="h3"),
+                Text(content=self.body_text, tag="p"),
+            ],
+        )
+
+
+class HomePage(Page):
+    def body(self) -> Widget:
+        return Column(
+            tag="main",
+            children=[
+                Card(heading="Vendas", body_text="R$ 12.400 hoje"),
+                Card(heading="Usuários", body_text="312 ativos"),
+            ],
+        )
+```
+
+Num `Component` você sobrescreve **`render()`** (não `body()`/`shell()` —
+esses são só do `Page`). O renderizador expande cada `Component` pela sua
+`render()`, recursivamente.
+
+## Formulários e inputs
+
+!!! tip "Não escreva o formulário na mão"
+    A partir da v0.224.0, `form_for(Schema, action=...)` gera o
+    formulário inteiro a partir do schema Pydantic, e `parse_form` lê a
+    submissão de volta com erro por campo e valores preservados. Veja
+    **[Formulários a partir de schemas Pydantic »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui-forms.md)**.
+    O que segue é o caminho manual, para quando você quer controle total
+    da marcação.
+
+Não há widget de formulário dedicado — você compõe com `tag`/`attrs` e
+recebe o POST com o `Form` do FastAPI, como em qualquer rota.
+
+```python
+from tempest_core import Button, Column, Text, Widget
+from fastapi import FastAPI, Form
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+app: FastAPI = FastAPI()
+
+
+class SignupPage(Page):
+    def body(self) -> Widget:
+        return Column(
+            tag="form",
+            attrs={"method": "post", "action": "/signup"},
+            children=[
+                Text(content="", tag="input",
+                     attrs={"name": "email", "type": "email", "required": "required"}),
+                Text(content="", tag="input",
+                     attrs={"name": "password", "type": "password", "required": "required"}),
+                Button(label="Criar conta", attrs={"type": "submit"}),
+            ],
+        )
+
+
+@app.get("/signup")
+def signup_form() -> object:
+    return html_response(SignupPage(title="Cadastro"), title="Cadastro")
+
+
+@app.post("/signup")
+def signup(email: str = Form(...), password: str = Form(...)) -> object:
+    # ... crie o usuário via um Service/Repository do SDK ...
+    return html_response(
+        Text(content=f"Conta criada para {email}", tag="p"), document=False
+    )
+```
+
+Um `<select>` sai da mesma forma: uma `Column(tag="select", ...)` com
+`Text(tag="option", attrs={"value": ...})` como filhos.
+
+## HTMX servido localmente (sem CDN)
+
+Para interatividade server-driven sem escrever JavaScript, o SDK embute
+o HTMX 2.x **dentro do pacote** e o serve a partir do seu próprio app —
+CSP-friendly e offline. Nada de CDN.
+
+Monte o router e ligue o `htmx=True`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import make_htmx_router
+
+app = FastAPI()
+
+
+app.include_router(make_htmx_router())  # serve GET /_ssr/htmx.js
+```
+
+Quando você chama `html_response(page, title=..., htmx=True)`, o
+documento gerado aponta para `/_ssr/htmx.js` (o mesmo caminho servido
+pelo router), nunca para `https://unpkg.com/...`.
+
+### Receita: contador server-driven com HTMX
+
+Um botão que incrementa um contador no servidor e troca só um fragmento —
+sem escrever JavaScript. Programa completo:
+
+```python
+from tempest_core import Button, Column, Text, Widget
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import Page, html_response, make_htmx_router
+
+app: FastAPI = FastAPI()
+app.include_router(make_htmx_router())
+
+_count: int = 0
+
+
+class CounterFragment(Page):
+    """O fragmento trocado a cada clique."""
+
+    value: int
+
+    def body(self) -> Widget:
+        return Column(
+            attrs={"id": "counter"},
+            children=[
+                Text(content=f"Total: {self.value}", tag="p"),
+                Button(
+                    label="Incrementar",
+                    attrs={
+                        "hx-post": "/increment",
+                        "hx-target": "#counter",
+                        "hx-swap": "outerHTML",
+                    },
+                ),
+            ],
+        )
+
+
+class CounterPage(Page):
+    """A página completa que carrega o HTMX e mostra o contador."""
+
+    value: int
+
+    def body(self) -> Widget:
+        return CounterFragment(title="", value=self.value)
+
+
+@app.get("/")
+def index() -> object:
+    """Documento completo, com o HTMX local carregado (htmx=True)."""
+    return html_response(
+        CounterPage(title="Contador", value=_count), title="Contador", htmx=True
+    )
+
+
+@app.post("/increment")
+def increment() -> object:
+    """Incrementa e devolve só o fragmento (document=False)."""
+    global _count
+    _count += 1
+    return html_response(CounterFragment(title="", value=_count), document=False)
+```
+
+Como funciona:
+
+1. `GET /` devolve o **documento completo** (`document=True`, `htmx=True`),
+   então o HTMX local é carregado.
+2. O botão tem `hx-post="/increment"` e `hx-swap="outerHTML"`.
+3. `POST /increment` devolve só o **fragmento** (`document=False`), e o
+   HTMX troca o `<div id="counter">` no lugar.
+
+!!! check "Segurança por padrão"
+    Todo texto é escapado na renderização. Um `Text(content="<script>")`
+    vira `&lt;script&gt;` no HTML final — sem injeção acidental. Isso vale
+    para `content` e para os valores em `attrs` — nunca monte HTML por
+    concatenação de string; deixe os widgets escaparem.
+
+### Padrões de HTMX que você vai repetir
+
+O HTMX lê atributos `hx-*` do HTML e faz o AJAX pra você. Os que mais
+aparecem em páginas SSR:
+
+| Atributo | O que faz |
+|----------|-----------|
+| `hx-get` / `hx-post` / `hx-put` / `hx-delete` | Dispara a request no método indicado |
+| `hx-target` | Seletor CSS do elemento que recebe a resposta (`#id`, `closest li`) |
+| `hx-swap` | Como aplicar: `outerHTML`, `innerHTML`, `beforeend` (append), `delete` |
+| `hx-trigger` | O que dispara: `click` (padrão), `submit`, `keyup changed delay:300ms` |
+| `hx-confirm` | Mostra um `confirm()` antes de enviar |
+| `hx-indicator` | Seletor de um spinner mostrado durante a request |
+| `hx-on::after-request` | JS inline num evento HTMX (ex.: `this.reset()` após enviar) |
+
+A regra de ouro: a rota devolve **um fragmento** (`document=False`) e o
+HTMX o encaixa via `hx-target` + `hx-swap`. Um fragmento vazio
+(`Text(content="", tag="span")`) com `hx-swap="outerHTML"` **remove** o
+elemento — é assim que "excluir" funciona.
+
+!!! tip "Append numa lista"
+    `hx-target="#lista"` + `hx-swap="beforeend"` num `<form>` faz cada
+    submit **acrescentar** o novo `<li>` devolvido, sem recarregar o resto.
+
+## Atributos tipados: `htmx()`, `aria()`, `data()`
+
+`attrs` é `dict[str, str]` porque o espaço de atributos HTML é aberto — mas
+digitar `{"hx-post": ..., "hx-target": ..., "hx-swap": ...}` na mão é
+propenso a typo e não tem autocomplete. O SDK oferece **builders tipados**
+que montam esse dict a partir de argumentos nomeados. Sem mágica: o retorno
+é **exatamente** o dict que você escreveria — inspecionável e mesclável.
+
+```python
+from tempest_fastapi_sdk.ssr import aria, data, htmx
+
+htmx(post="/tasks", target="#tasks", swap="beforeend")
+# {"hx-post": "/tasks", "hx-target": "#tasks", "hx-swap": "beforeend"}
+
+aria(label="Fechar", role="button", expanded=False)
+# {"aria-label": "Fechar", "role": "button", "aria-expanded": "false"}
+
+data(user_id="42", active=True)
+# {"data-user-id": "42", "data-active": "true"}
+```
+
+Antes (stringly-typed) e depois (claro e tipado):
+
+```python
+# antes
+Button(label="Salvar", attrs={"hx-post": "/save", "hx-swap": "outerHTML"})
+
+# depois
+
+from tempest_core import Button
+
+from tempest_fastapi_sdk.ssr import htmx
+
+
+Button(label="Salvar", attrs=htmx(post="/save", swap="outerHTML"))
+```
+
+Cada builder devolve um `dict[str, str]`, então você mescla livremente com
+outros builders e chaves cruas:
+
+```python
+from tempest_core import Row
+from tempest_fastapi_sdk.ssr import aria, htmx
+
+
+Row(
+    tag="li",
+    attrs={**htmx(delete="/tasks/1", swap="outerHTML"), **aria(label="Excluir"), "id": "task-1"},
+)
+```
+
+- **`htmx(...)`** — `get`/`post`/`put`/`patch`/`delete` (URLs), `target`,
+  `swap`, `trigger`, `confirm`, `indicator`, `push_url`, `boost`, … Os
+  booleanos viram `"true"`/`"false"`; `vals`/`headers` aceitam um dict e são
+  **JSON-encodados** por você; `on={":after-request": "this.reset()"}` vira
+  `hx-on::after-request`.
+- **`aria(...)`** — `label`/`role`/`hidden`/`expanded`/`live`/… → `aria-*`
+  (e o `role` puro). Acessibilidade sem decorar os nomes.
+- **`data(...)`** — kwargs → `data-*` (underscore vira hífen: `user_id` →
+  `data-user-id`).
+
+!!! check "Da 'mágica' pra clareza"
+    O tipo base continua `dict[str, str]` (a fronteira HTML é aberta por
+    natureza), mas o **call-site fica tipado**: autocomplete, checagem
+    estática, sem typo silencioso em `hx-post`. Você escreve tipado e ainda
+    desagua no `attrs` — nada some, nada vira mágica.
+
+## Testando páginas SSR
+
+Uma página SSR é só uma rota que devolve HTML — teste com o `TestClient`
+e verifique os pedaços que importam. Rápido e sem browser:
+
+```python
+from fastapi.testclient import TestClient
+
+from main import app
+
+
+def test_home_renders() -> None:
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert "<!doctype html>" in response.text.lower()
+    assert "<title>Início</title>" in response.text
+    assert "Olá, Ana!" in response.text
+
+
+def test_increment_returns_fragment() -> None:
+    with TestClient(app) as client:
+        fragment = client.post("/increment")
+    # Fragmento: sem <!doctype>, só o pedaço trocado.
+    assert "<!doctype" not in fragment.text.lower()
+    assert 'id="counter"' in fragment.text
+```
+
+!!! tip "Renderizar sem HTTP"
+    Para um teste de unidade puro, chame o renderizador diretamente:
+    `from tempestweb.html import render_to_html; html = render_to_html(MyPage(title="x").render())`.
+
+## Qual abordagem usar
+
+O SDK cobre o espectro inteiro de "HTML no servidor" até "SPA no browser".
+Escolha pelo cenário:
+
+| Você quer… | Use | Custo |
+|------------|-----|-------|
+| Página server-rendered, SEO, pouca interação | **SSR** (`Page` + `html_response`) | Nenhum build; HTML a cada request |
+| Interação sem SPA nem JavaScript escrito | **SSR + HTMX** (`make_htmx_router`) | Nenhum build; trocas parciais |
+| App rico que roda offline no browser | **SPA WASM** (`make_web_app_router`) | `tempestweb build --mode wasm` |
+| UI reativa dirigida pelo servidor, boot instantâneo | **Server-mode** (`build_web_app`) | `tempestweb build --mode server` |
+
+Os três últimos são projetos completos e rodáveis em
+[Fullstack web](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/fullstack-web.md). Para o **frontend chamando o backend
+do SDK** (HTTP tipado, idempotência, retry), veja a receita
+[Frontend tempestweb + backend SDK](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/tempestweb-frontend.md).
+
+## Servir um build compilado do tempestweb
+
+As seções acima renderizam páginas **a cada request**. Se em vez disso
+você compilou um frontend com o `tempestweb build`, o SDK hospeda o
+artefato pronto — só serve o `dist/`, não builda (isso fica no CLI/CI do
+tempestweb). São dois artefatos, cada um com a forma que combina:
+
+| Artefato | O que é | Como servir |
+|----------|---------|-------------|
+| `dist/wasm` | SPA **estática** (Pyodide roda no browser: `index.html` + `bootstrap.js` + wasm + service worker) | `make_web_app_router` → `APIRouter` |
+| `dist/server` | App **vivo** sobre WebSocket/SSE (engine server do tempestweb) | `build_web_app` → `FastAPI` (sub-app pra montar) |
+
+`detect_build_mode(dir)` diz qual é (`"wasm"` ou `"server"`).
+
+### SPA estática (`make_web_app_router`)
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import make_web_app_router
+
+app = FastAPI()
+
+# ... inclua PRIMEIRO os seus routers de API ...
+# app.include_router(api_router)
+
+# ... e o do frontend POR ÚLTIMO, pra as rotas específicas vencerem:
+app.include_router(make_web_app_router("dist/wasm"))
+```
+
+O router serve cada arquivo do build e, pra qualquer caminho não
+encontrado, cai no `index.html` (history fallback do SPA — refresh no
+meio de uma rota client-side funciona).
+
+!!! warning "Inclua por último e na raiz"
+    A rota é um catch-all (`/{resource:path}`). O FastAPI casa na ordem de
+    registro, então inclua o router do frontend **depois** dos seus
+    routers de API — assim `/api/...` vence o fallback. O artefato wasm
+    referencia `/sw.js` na raiz do site, então monte na raiz da app.
+
+!!! tip "Transparente, sem mágica"
+    - `index.html` e `sw.js` saem sempre com `Cache-Control: no-cache`
+      (um redeploy é visto na hora); os demais assets usam
+      `asset_cache_control` (padrão `public, max-age=3600`), salvo os
+      caminhos imutáveis (abaixo).
+    - MIME correto pros arquivos que o `mimetypes` não conhece
+      (`.wasm` → `application/wasm`, `.mjs`/`.js` → `text/javascript`,
+      `.webmanifest`).
+    - `sw.js` ganha `Service-Worker-Allowed: /` pra reivindicar o escopo
+      da origem inteira.
+    - **Nenhum CSP é imposto** — é código first-party e o Pyodide precisa
+      de `wasm-unsafe-eval`; passe `security_headers=` pra adicionar o seu.
+    - Traversal de caminho (`../`) é bloqueado.
+
+#### Revalidação e caminhos imutáveis
+
+Toda resposta de arquivo sai com `ETag` e `Last-Modified`, e o router
+responde à revalidação: um `GET` (ou `HEAD`) com `If-None-Match` que casa
+— comparação fraca, lista separada por vírgula ou `*` — ou, sem ele, com
+`If-Modified-Since` não anterior ao `Last-Modified` recebe
+**`304 Not Modified`** sem corpo, com o mesmo `ETag` e `Cache-Control`.
+Vale para os assets, para o `index.html` e para o fallback do SPA. Por
+isso `asset_cache_control="no-cache"` significa "pergunte antes de usar",
+e não "baixe tudo de novo": a cada visita o navegador manda uma requisição
+condicional por arquivo e recebe um `304` vazio enquanto nada mudou.
+
+Para ir além e nem perguntar, declare os caminhos **endereçados por
+conteúdo** — aqueles cujo nome muda sempre que os bytes mudam — e eles
+saem com `Cache-Control: public, max-age=31536000, immutable`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import make_web_app_router
+
+app = FastAPI()
+app.include_router(
+    make_web_app_router(
+        "dist/wasm",
+        asset_cache_control="no-cache",
+        immutable=["client-*/**", "tempestweb-pkg.*.zip"],
+    ),
+)
+```
+
+Os padrões são relativos à raiz do build: `**` atravessa diretórios, `*` e
+`?` ficam dentro de um segmento. Todo o resto continua com
+`asset_cache_control`.
+
+O build também pode declarar os próprios caminhos imutáveis num arquivo
+`immutable.json` na raiz (`immutable_manifest=` troca o nome; `None`
+desliga a leitura). O formato é um objeto com uma lista de padrões, no
+mesmo dialeto acima; outras chaves são ignoradas:
+
+```json
+{"immutable": ["client-3f2a9c/**", "tempestweb-pkg.3f2a9c.zip"]}
+```
+
+Os padrões do arquivo se somam aos de `immutable=`. O arquivo é lido uma
+vez, quando o router é montado; manifesto malformado derruba o boot com
+`ValueError` em vez de cachear nada em silêncio.
+
+!!! warning "Ponto de entrada nunca é imutável"
+    `index.html`, `sw.js`, `bootstrap.js`, `register.js`,
+    `manifest.webmanifest` e o próprio manifesto são referenciados por nome
+    fixo — o nome não muda quando o conteúdo muda — então nunca recebem
+    `immutable`, nem com `immutable=["**"]`. O shell (gerado ou `shell=`)
+    sai sempre `no-cache`.
+
+!!! info "Compressão fica no proxy"
+    O router não comprime. Os assets de texto de um build wasm encolhem
+    bem com gzip (no scaffold do tempestweb 0.127.0, 646 KB viram 222 KB),
+    mas o `tempestweb-pkg.zip` já é comprimido (467 KB viram 454 KB). O
+    lugar certo é o nginx na frente (`gzip on;` com `gzip_types` incluindo
+    `text/javascript` e `application/wasm`): ele comprime fora do processo
+    Python e enfraquece o `ETag` da resposta comprimida (`W/"..."`, medido
+    no nginx 1.27), como a RFC 9110 pede para validador forte — e o `304`
+    continua valendo, porque a comparação do router é fraca. O `GZipMiddleware` do Starlette também
+    funciona com este router — o `304` continua valendo —, mas comprime
+    toda resposta da aplicação e mantém o mesmo `ETag` forte nas duas
+    codificações.
+
+### App server-mode (`build_web_app`)
+
+O artefato server é um app **vivo** (rotas `/ws` + `/sse`), então é um
+sub-app que você monta, não um router:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import build_web_app
+
+app = FastAPI()
+# ... seus routers de API ...
+
+# monta o app do tempestweb (WebSocket/SSE + shell + /static) na raiz:
+app.mount("/", build_web_app("dist/server"))
+```
+
+`build_web_app` carrega o `app.py` do artefato (contrato `make_state` +
+`view`), monta o engine server do tempestweb via
+`tempestweb.server.create_app`, serve o cliente em `/static` e o shell em
+`/` — a mesma fiação que o `server.py` gerado faz, in-process. Dá pra
+rodar direto com uvicorn também.
+
+#### A paleta do app (`theme=`)
+
+Cor chega numa tela tempestweb por dois caminhos independentes, e um deles
+o CSS não alcança: um widget assa a cor que resolveu num `style` **inline**.
+Rebrandar só as custom properties deixa esses fills no baseline Material.
+
+`theme=` entrega a paleta ao `App` de cada sessão:
+
+```python
+from fastapi import FastAPI
+from tempest_core import Theme, ThemeMode
+from tempest_core.style import Color
+
+from tempest_fastapi_sdk.ssr import build_web_app
+
+app = FastAPI()
+
+marca: Theme = Theme.from_seed(Color(r=39, g=58, b=79), mode=ThemeMode.SYSTEM)
+
+app.mount("/", build_web_app("dist/server", theme=marca))
+```
+
+Pronto: os componentes que a `view` constrói resolvem a cor contra essa
+paleta, sem mudar nenhum call site.
+
+```python
+from tempest_core import App, Widget
+from tempestweb.components import filled_button
+
+
+def view(app: App[object]) -> Widget:
+    """Renderiza um botão que segue a paleta da sessão."""
+    return filled_button("Comprar", key="buy")
+```
+
+!!! info "Por que a capacidade exige `tempestweb` 0.67.0 ou mais"
+    O componente resolve a cor na **construção** e a assa num `style`
+    inline — rebrandar só as custom properties não alcança isso. O que
+    conecta a paleta ao componente é o `tempest-core` 0.12.0, que instala
+    o tema em volta da chamada da `view`; a `tempestweb` 0.67.0 é onde
+    essa capacidade entra. Com `tempestweb` 0.66.0 o `theme=` é aceito e
+    a página pinta baseline em silêncio.
+
+    A 0.67.0 é onde a capacidade nasceu, não o que o SDK declara hoje: o
+    piso declarado é `tempestweb>=0.141.1`, a versão contra a qual esta
+    release foi medida.
+
+!!! tip "Um `theme=` explícito no widget ainda vence"
+    O tema da sessão é o piso, não a gaiola: passar `theme=` direto num
+    widget sobrepõe a paleta ambiente naquele ponto da árvore.
+
+!!! tip "Rebrand completo são as duas metades"
+    `theme=` cobre o que o componente resolve em Python. Para o que a
+    stylesheet base pinta, injete `tempestweb.html.theme_css(theme)` no
+    `<head>` do shell, via `shell=`.
+
+## Recap
+
+- **`Page`** — componente tipado; declare campos, implemente `body()`,
+  opcionalmente sobrescreva `shell()` para layout compartilhado. Não
+  sobrescreva `render()`.
+- **`html_response(widget, *, title, status_code, htmx, document, lang, stylesheets, head, confirm)`** —
+  renderiza e devolve um `HTMLResponse`. Com `document=True`, o `title` vem
+  do argumento ou, para um `Page`, do `title` da página mais o `title_suffix` (qualquer
+  outro widget sem `title` levanta `ValueError`); `stylesheets=` e `head=`
+  substituem os do `Page`; `confirm=` liga o listener de `data-confirm`.
+  `document=False` devolve um fragmento para trocas HTMX.
+- **`make_htmx_router(prefix="/_ssr")`** — serve o HTMX embutido
+  localmente em `GET /_ssr/htmx.js`; combine com `htmx=True`.
+- **`make_web_app_router(dir)`** — serve um build **wasm** (SPA estática)
+  com history fallback; inclua por último. **`build_web_app(dir)`** —
+  hospeda um build **server** (WebSocket/SSE) como sub-app pra montar;
+  `theme=` entrega a paleta ao `App` de cada sessão, e os componentes que a
+  `view` constrói resolvem contra ela (capacidade desde a 0.67.0; piso
+  declarado `tempestweb>=0.141.1`).
+  **`detect_build_mode(dir)`** distingue os dois.
+- Tudo mora no extra `[ssr]` (`uv add "tempest-fastapi-sdk[ssr]"`),
+  carregado sob demanda — `import tempest_fastapi_sdk` nunca exige o extra.

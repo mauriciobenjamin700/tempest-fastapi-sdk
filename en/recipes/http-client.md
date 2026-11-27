@@ -1,0 +1,286 @@
+# HTTP client (outbound)
+
+`HTTPClient` is a typed wrapper over `httpx.AsyncClient` for **calling
+external services** with retries + exponential backoff, a circuit-breaker,
+default timeouts, and `X-Request-ID` propagation. It's the outbound
+counterpart of the [HTTP middleware](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http.md) (which handles inbound
+traffic). `httpx` already ships with the base package, so no extra is
+needed; `[http]` still exists as an explicit (and optional) way to declare
+the dependency.
+
+## Basic usage
+
+The client is safe to share across requests on the same event loop — it
+reuses the internal connection pool. Use it as an async context manager (or
+keep a singleton in [`resources.py`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/architecture.md) and close it on the
+lifespan).
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk import HTTPClient
+
+
+async def fetch_user(user_id: str) -> dict[str, Any]:
+    """GET /users/{id} on the external service."""
+    async with HTTPClient(base_url="https://api.example.com", timeout=10.0) as client:
+        response = await client.get(f"/users/{user_id}")
+        response.raise_for_status()
+        return response.json()
+```
+
+!!! warning "Don't reuse a client that's already closed"
+    Leaving the `async with` block calls `__aexit__`, which closes the
+    connection pool (`aclose()`). For one-off calls, build the client inside the
+    `async with` as above. To reuse it across requests, keep a singleton and
+    close it **once** on the lifespan (see the circuit-breaker example below) —
+    never wrap each call of a shared singleton in `async with`.
+
+Methods: `get` / `post` / `put` / `patch` / `delete` (plus a generic
+`request`), all forwarding kwargs to httpx (`json=`, `params=`, `headers=`,
+...) and returning an `httpx.Response`.
+
+## Retry + backoff + circuit-breaker
+
+Pass a `RetryPolicy` and tune the breaker thresholds at construction:
+
+```python
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import CircuitOpenError, HTTPClient, RetryPolicy
+
+client = HTTPClient(
+    base_url="https://api.example.com",
+    timeout=5.0,
+    retry_policy=RetryPolicy(
+        max_attempts=3,                # 1 try + 2 retries
+        backoff_initial_seconds=0.5,   # 0.5s, 1s, 2s... (exponential)
+        backoff_max_seconds=8.0,       # cap per wait
+    ),
+    failure_threshold=5,               # open the circuit after 5 straight failures
+    recovery_seconds=30.0,             # half-open after 30s
+    default_headers={"X-Api-Key": "..."},
+    propagate_request_id=True,         # forward the current request's X-Request-ID
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Close the shared connection pool on shutdown."""
+    yield
+    await client.aclose()
+
+
+async def call() -> None:
+    # Shared singleton — call it directly, no per-call `async with`
+    # (that would close the pool). The pool is closed once in the lifespan above.
+    try:
+        await client.post("/charge", json={"amount": 100})
+    except CircuitOpenError:
+        # The circuit is open — don't hammer the downed upstream.
+        ...
+```
+
+- **Retry**: retried on transient errors (timeouts, 5xx, connection
+  failures) up to `max_attempts`, with exponential backoff capped by
+  `backoff_max_seconds`. `RetryPolicy(retry_on_read_timeout=False)` takes
+  `ReadTimeout` off that list and keeps the rest — see the warning below.
+- **Circuit-breaker**: after `failure_threshold` consecutive failures the
+  circuit **opens** and calls raise `CircuitOpenError` immediately (without
+  touching the network) until `recovery_seconds` elapse, then it half-opens
+  to probe.
+- **Request-ID**: with `propagate_request_id=True`, the in-flight request's
+  `X-Request-ID` (from `RequestIDMiddleware`) is forwarded to the upstream,
+  stitching logs end-to-end.
+
+!!! warning "`stream()` only retries before the first line"
+    In `client.stream(...)`, retry and the circuit-breaker cover only
+    **opening** the stream. Once the first line was yielded, a mid-stream
+    failure (including a `ReadTimeout` between two chunks) propagates to the
+    caller — re-sending the POST would replay lines you already consumed.
+    Up to this release a mid-stream `ReadTimeout` was retried, and the
+    caller saw `["Hello ", "Hello ", "world"]` from two POSTs.
+
+!!! warning "A read timeout on an expensive call"
+    A `ReadTimeout` means the request **reached** the server and the
+    response did not arrive in time. On a quick call that is a stalled
+    connection, and retrying fixes it. On a call whose cost is the server's
+    work — a model generation — the server aborts the work when the client
+    gives up, and the next attempt starts from zero with the same timeout:
+    the failure arrives after `max_attempts` × the timeout instead of one.
+    For those, pass `RetryPolicy(retry_on_read_timeout=False)`; a
+    `ConnectError` is still retried, since no work started. The
+    [`genai`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai.md) generators already default to it on the client they
+    build.
+
+!!! info "Binary bodies: `stream_bytes()`"
+    `client.stream_bytes(...)` has the same retry and circuit-breaker
+    contract as `stream()`, but yields the body as `bytes` chunks as the
+    server flushes them — audio, a file download. In both, an error status
+    has its body read before the raise, so `exc.response.content` carries the
+    server's message.
+
+!!! tip "Keep it as a singleton in resources.py"
+    Build the `HTTPClient` once (in `src/api/dependencies/resources.py`),
+    expose a `get_http_client`, and close it on the lifespan with
+    `await client.aclose()` — so the connection pool is reused across
+    requests.
+
+### The outbound header name: `request_id_header=`
+
+`RequestIDMiddleware(header_name=...)` decides where the id is **read
+from**. The name it **leaves** under belongs to `HTTPClient`: `X-Request-ID`
+by default (the `REQUEST_ID_HEADER` constant), or whatever you pass in
+`request_id_header=`. They are independent on purpose: each upstream expects
+its own name.
+
+```python
+import httpx
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import HTTPClient, RequestIDMiddleware
+
+seen: list[dict[str, str | None]] = []
+
+
+def upstream(request: httpx.Request) -> httpx.Response:
+    seen.append(
+        {
+            "X-Request-ID": request.headers.get("X-Request-ID"),
+            "X-Correlation-ID": request.headers.get("X-Correlation-ID"),
+        }
+    )
+    return httpx.Response(200, json={})
+
+
+default_client: HTTPClient = HTTPClient(base_url="http://upstream", transport=httpx.MockTransport(upstream))
+partner_client: HTTPClient = HTTPClient(
+    base_url="http://upstream",
+    request_id_header="X-Correlation-ID",
+    transport=httpx.MockTransport(upstream),
+)
+app: FastAPI = FastAPI()
+app.add_middleware(RequestIDMiddleware, header_name="X-Correlation-ID")
+
+
+@app.get("/call")
+async def call() -> list[dict[str, str | None]]:
+    seen.clear()
+    await default_client.get("/")
+    await partner_client.get("/")
+    await partner_client.get("/", headers={"x-correlation-id": "manual"})
+    return list(seen)
+
+
+for row in TestClient(app).get("/call", headers={"X-Correlation-ID": "abc-123"}).json():
+    print(row)
+```
+
+```text
+{'X-Request-ID': 'abc-123', 'X-Correlation-ID': None}
+{'X-Request-ID': None, 'X-Correlation-ID': 'abc-123'}
+{'X-Request-ID': None, 'X-Correlation-ID': 'manual'}
+```
+
+- `default_client` forwards the id under the default name, `X-Request-ID`,
+  even with the middleware reading `X-Correlation-ID`.
+- `partner_client` forwards it under the name the partner expects.
+- A header passed on the call wins over the propagated one, and the
+  comparison ignores case: an explicit `x-correlation-id` replaces the id
+  instead of sending two values.
+
+!!! check "Since 0.341.0"
+    Up to 0.340.0 the outbound name was fixed at `X-Request-ID`, and an
+    explicit lowercase `x-request-id` was sent **alongside** the propagated
+    id, as two values in the same header.
+
+## The same curve outside HTTP — `async_retry`
+
+`RetryPolicy` describes the waiting: how many tries, how long between them,
+with a cap. That is not an HTTP idea — a RabbitMQ connect on boot, a push
+dispatch and a third-party call all want the same curve. Only `HTTPClient`
+cares about `retry_statuses`.
+
+`async_retry` applies the curve to any coroutine:
+
+```python
+from tempest_fastapi_sdk import RetryPolicy, async_retry
+
+BOOT: RetryPolicy = RetryPolicy(max_attempts=5, backoff_initial_seconds=0.5)
+
+
+@async_retry(BOOT, (ConnectionError, TimeoutError))
+async def connect_broker(url: str) -> None:
+    """Connect to the broker, tolerating a server still coming up."""
+    raise ConnectionError(f"{url} unavailable")
+```
+
+Three decisions a hand-written loop tends to get wrong, made explicit here:
+
+* **What counts as transient is yours.** The second argument is the tuple of
+  exceptions that consume an attempt. Anything outside it propagates
+  immediately without spending budget — a `TypeError` retried three times is
+  the same bug, later.
+* **The last exception propagates**, not a wrapper. A caller that knew how to
+  react to a permanent `ConnectionError` still sees a `ConnectionError`.
+* **Cancellation is honored.** The default `(Exception,)` lets
+  `asyncio.CancelledError` through, since it derives from `BaseException` as
+  of 3.8 — retrying a cancelled task fights the cancellation.
+
+!!! warning "`max_attempts` counts the first try"
+    `max_attempts=3` is one attempt plus two retries, with two waits. Zero is
+    refused at decoration time: it would run the callable zero times and
+    return `None` from something annotated to return `T`.
+
+
+### Where the records go — `logger=`
+
+`async_retry` writes exactly one WARNING per retry and one ERROR when the
+budget runs out. The `logger=` parameter takes anything that can make those
+two calls — the stdlib `logging.Logger`, or the `LogUtils` this same SDK
+hands the service:
+
+```python
+from tempest_fastapi_sdk import LogUtils, RetryPolicy, async_retry
+
+logger: LogUtils = LogUtils(__name__)
+BROKER: RetryPolicy = RetryPolicy(max_attempts=4, backoff_initial_seconds=0.2)
+
+
+@async_retry(BROKER, (ConnectionError,), logger=logger)
+async def publish(payload: dict[str, str]) -> None:
+    """Publish to the broker, tolerating a reconnect in flight."""
+    raise ConnectionError(f"broker unavailable for {payload}")
+```
+
+!!! info "The contract is `RetryLogger`, not `logging.Logger`"
+    Up to 0.280.0 the annotation was `logging.Logger | None`, and `LogUtils`
+    **is not** a `logging.Logger` — it wraps one. The code above ran, because
+    the shapes match, and failed only under the type checker:
+
+    ```text
+    error: Argument "logger" to "async_retry" has incompatible type "LogUtils";
+           expected "Logger | None"  [arg-type]
+    ```
+
+    A service without a type-checker never found out; one with a type-checker
+    wrote `logger=logger.logger`, reaching under the facade. The parameter is
+    now typed `RetryLogger` — a `Protocol` with `warning` and `error`, which is
+    all the function uses — and both pass. Its required parameters are
+    positional-only on purpose: `logging.Logger` calls the first one `msg` and
+    `LogUtils` calls it `message`, and a protocol that named the parameter
+    would reject one of the two under basedpyright.
+
+
+## Recap
+
+- `HTTPClient` = typed `httpx.AsyncClient` + retry/backoff/circuit-breaker + X-Request-ID (outbound name via `request_id_header=`).
+- No extra required (`httpx` ships with the base package; `[http]` is optional). Methods `get/post/put/patch/delete/request` → `httpx.Response`.
+- `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controls retries; `retry_on_read_timeout=False` for an expensive call (generation).
+- `async_retry(policy, exceptions, logger=)` applies the curve to any coroutine; `logger=` takes a `logging.Logger` or a `LogUtils`.
+- `failure_threshold` / `recovery_seconds` control the breaker; `CircuitOpenError` when open.
+- Share a singleton and close it with `aclose()` on shutdown.

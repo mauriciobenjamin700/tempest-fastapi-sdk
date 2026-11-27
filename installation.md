@@ -1,0 +1,403 @@
+# Instalação
+
+## Resumo
+
+```bash
+pip install tempest-fastapi-sdk
+```
+
+Requer **Python 3.12+** (3.12, 3.13 e 3.14).
+
+!!! tip "Use o `uv`"
+    `uv add tempest-fastapi-sdk` é mais rápido e já escreve no `pyproject.toml` para você.
+
+!!! info "O comando `tempest` é o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Desde a 0.308.0 a CLI (`tempest new`, `tempest check`, `tempest db`, …) não vem no pacote base — o gate de qualidade traz o `ruff`, que não tem lugar na imagem de produção. Em desenvolvimento, instale como ferramenta: `uv tool install "tempest-fastapi-sdk[cli]"`, ou no grupo dev do projeto: `uv add --dev "tempest-fastapi-sdk[cli]"`. Para ter o `tempest` no servidor (`doctor`, `db`, `shell` e os comandos do projeto), use o `[cli-ops]`, que não traz `tempest-cli` nem `ruff`: `uv add "tempest-fastapi-sdk[cli-ops]"`.
+
+!!! info "Primeira vez com Python moderno?"
+    Esta página assume que você já tem um ambiente pronto. Se não tem, siga a trilha para iniciantes, que começa do zero absoluto: **[Instalar o uv »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/uv.md)** → **[Escolher a versão do Python »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/python-versions.md)** → **[Seu primeiro projeto »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/first-project.md)** → **[Documentação oficial de referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/references.md)**.
+
+## Extras opcionais
+
+Os helpers mais ricos puxam dependências de terceiros que só são necessárias quando você de fato usa o helper. Escolha os extras que o seu serviço consome:
+
+| Extra | Puxa | Habilita |
+| --- | --- | --- |
+| `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
+| `[admin-sql]` | `sqlglot` | console SQL do admin: `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas), análise real do statement, auditoria de toda tentativa |
+| `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, fluxo bundled `UserAuthService` + `make_auth_router` |
+| `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
+| `[cli]` | `tempest-cli` (que exige `ruff`), `typer`, `click` | o comando `tempest` inteiro (`new`, `check`, `db`, …), gate de qualidade incluído. Ferramenta de dev: `uv add --dev "tempest-fastapi-sdk[cli]"` ou `uv tool install "tempest-fastapi-sdk[cli]"`. Sem ele nem o `[cli-ops]`, o `tempest` imprime a instrução de instalação e sai com código 2. Entra no `[all]`. [Receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli.md) |
+| `[cli-ops]` | `typer`, `click` | o comando `tempest` sem o gate, para o servidor: `doctor`, `db`, `shell`, `user`, `routes` e os `[tool.tempest] commands` rodam; `tempest lint` e os outros comandos do gate saem com código 2 apontando o `[cli]`. Sem `tempest-cli`, sem `ruff`. O `[cli]` já o contém. [Receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/new-service.md#servidor-x-desenvolvimento-cli-ops-e-cli) |
+| `[genai-onnx]` | `onnxruntime`, `tokenizers` | inferência de modelo local exportado para ONNX, sem PyTorch no runtime |
+| `[genai-structured]` | `lm-format-enforcer` | saída estruturada garantida por gramática: o modelo local só consegue emitir JSON que casa com o schema |
+| `[genai-vlm]` | `pillow`, `torchvision` | modelo de visão-linguagem local: descrever imagem, responder pergunta sobre imagem |
+| `[openapi]` | `pyyaml` | ler spec OpenAPI em YAML para `tempest openapi-client` / `tempest openapi-errors` |
+| `[pdf-read]` | `pypdf` | **ler** PDF (extrair texto/páginas); o `[pdf]` é para **gerar** |
+| `[pdf-layout]` | `pdfplumber` | ler PDF **com layout e tabelas** (coluna recuperada, tabela como grade); mais lento que o `[pdf-read]` |
+| `[spreadsheet]` | `openpyxl` | planilhas `.xlsx`: leitura tipada, escrita e import em massa |
+| `[websocket]` | `websockets` | Driver de protocolo do `make_websocket_router` — sem ele o handshake devolve 404 |
+| `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (com `render_template` + templates Jinja2) |
+| `[faces]` | `onnxruntime`, `pillow`, `numpy` | reconhecimento facial em ONNX Runtime, sem opencv e sem torch: `FaceRecognizer` (detectar/embutir/comparar), `compare_faces`. Modelos de 16 MB baixados por `ensure_models()`. **Nenhuma biblioteca de sistema** |
+| `[fastmcp]` | `fastmcp` | MCP nas duas direções: `mount_mcp` (servidor `FastMCP` em `/mcp` atrás do `current_user`), `add_agent_tools`, `add_fastapi_routes`, `MCPToolset` (ferramentas de outro servidor MCP num `Agent`, stdio e HTTP). Soma 47 pacotes à instalação base (fastmcp 4.1.8), entre eles o `httpx2` — e por isso fica **fora do `[all]`** |
+| `[firebase]` | `firebase-admin` | verificação de ID token do Firebase: `FirebaseAuth` (init idempotente, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Pesado — 33 pacotes, 52 MB medidos com `firebase-admin` 7.5.0 — e por isso **fora do `[all]`** |
+| `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | GenAI local (pesado): `TextGenerator`, `Embedder`, `MusicGenerator`, `BarkSpeech`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
+| `[genai-audio]` | `faster-whisper`, `torch` | STT (Whisper). Desde a 0.349.0 não traz mais o Coqui: o `torchaudio` dele derrubava o Bark na GPU ([detalhes](#genai-audio-coqui-split)) |
+| `[genai-tts-coqui]` | `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `six` | TTS (Coqui XTTS v2) — o runtime do Coqui vem junto; sem o teto `transformers<5` desde a 0.342.0 ([detalhes](#genai-audio-transformers-bound)) |
+| `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |
+| `[genai-diarization]` | `sherpa-onnx` | diarização (quem falou quando) via `sherpa-onnx` em ONNX Runtime, sem PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Modelos (46 MB) baixados por `ensure_models()` |
+| `[genai-hosted]` | `httpx` (já vem no pacote base) | provedores hospedados: `AnthropicGenerator`, `OpenAICompatGenerator` (OpenAI, DeepSeek), `OpenAICompatEmbedder`, `OpenAICompatSpeech` (transcrição remota), `HostedGenAISettings`. Nenhum SDK de fornecedor |
+| `[genai-hub]` | `huggingface-hub` | ciclo de vida do peso: `resolve_revision` (fixar sha), `download_model` (baixar antes de servir, com preflight de disco), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
+| `[genai-image]` | `diffusers`, `pillow` | geração de imagem local: `ImageGenerator` (`generate` texto→imagem, `edit` imagem→imagem), `ImageGenerationConfig`, rota `POST /image` |
+| `[genai-sound]` | `diffusers` | efeitos sonoros e música locais (com `[genai]`): `AudioGenerator`, `AudioGenerationConfig`, `GeneratedAudio`, rota `POST /audio` |
+| `[genai-ollama]` | `httpx` | backend Ollama: `OllamaGenerator`, `OllamaEmbedder`, `OllamaSpeech` (voz e transcrição) |
+| `[genai-quant]` | `bitsandbytes` | quantização 4/8-bit dos modelos locais do `[genai]` |
+| `[genai-rag]` | `trafilatura`, `pymupdf`, `pgvector`, `httpx` | ingestão RAG: scraping web, extração de PDF e embeddings em pgvector |
+| `[geo]` | `httpx` | helpers geoespaciais: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + rotas), `GeoPointMixin` |
+| `[google-drive]` | `httpx`, `pyjwt`, `cryptography` | backend de upload no Google Drive via service account: `GoogleDriveUploadStorage` (para `UploadUtils(backend=...)`), `GoogleDriveClient`, `ServiceAccountTokenProvider`, `GoogleDriveSettings` — [receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/google-drive.md) |
+| `[http]` | `httpx` (já vem no pacote base) | `HTTPClient` + `RetryPolicy` + circuit-breaker. O extra é opcional: o `HTTPClient` funciona na instalação base, e declarar o extra só registra a intenção no `pyproject.toml` do serviço |
+| `[image]` | `pillow`, `segno` | `strip_image_metadata`: recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, com teto de pixels contra decompression bomb; `ShareCardRenderer`: o card PNG 1200×630 da prévia de link; `render_qr` e `ShareFrameRenderer`: QR Code com logo e a moldura para compartilhar (traz o `segno`; card e moldura precisam de fonte TrueType na máquina, `fonts-dejavu-core`) |
+| `[kurrentdb]` | `kurrentdbclient` (+ `grpcio`, `grpcio-tools`, `setuptools`, `protobuf`) | backend KurrentDB (antigo EventStoreDB) do event store: `KurrentDBEventStore`. O backend SQL (`SqlEventStore`) não precisa de extra. Entra no `[all]`. Pesa 34 MB numa venv limpa (`kurrentdbclient` 1.3.6: `grpc` 18 MB, `grpc_tools` 7,9 MB, `setuptools` 3,9 MB), porque o cliente pede `grpcio[protobuf]`; `pip-audit` sem advisory na resolução de 2026-11-12. [Receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/event-sourcing.md) |
+| `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
+| `[mfa]` | `pyotp`, `segno` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth + QR code do cadastro (`provisioning_qr_terminal`, `provisioning_qr_data_uri`) |
+| `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
+| `[modelops]` | `psutil`, `nvidia-ml-py`, `numpy` | benchmark de qualquer callable: latência, RAM, GPU e energia (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`); monitoramento de deriva (`baseline_from_samples`, `PredictionMonitor`) e leitura do formato compacto (`read_compact`, `predict_compact`) |
+| `[modelops-compose]` | `ort-vision-sdk[compose]` | fundir um detector e um classificador num único `.onnx`: `fuse_detect_classify`. Rodar o grafo fundido é `[vision]` (`DetectClassify`), que não puxa `onnx` |
+| `[modelops-onnx]` | `onnx`, `onnxruntime` | análise estática, benchmark ONNX, `.onnx` → `.ort`, otimização de grafo e quantização — de grafos crus (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) e de exports transformers (`optimize_hf_onnx`, `quantize_hf_onnx`) |
+| `[modelops-sklearn]` | `skl2onnx` | exportar modelos scikit-learn para ONNX (borda): `export_sklearn_to_onnx`, `verify_sklearn_onnx`, `edge_bundle` |
+| `[oidc]` | `PyJWT`, `cryptography` | verificação offline de access token de realm OIDC (Keycloak, Auth0, Okta …): `OIDCTokenVerifier`, e `OIDCProvider(token_verifier=...)` no login social |
+| `[otel]` | `opentelemetry-sdk`, exporter OTLP + instrumentações FastAPI/SQLAlchemy/httpx | instrumentação OpenTelemetry via `setup_tracing` |
+| `[pdf]` | `weasyprint`, `jinja2`, `segno` | geração de PDF a partir de templates HTML: `PdfRenderer`, cinco documentos prontos com schema tipado, `make_pdf_router`, `tempest pdf`. **Exige Pango + fontconfig no sistema** — veja a receita |
+| `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
+| `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker.rabbitmq`, `AsyncBrokerManager` |
+| `[queue-kafka]` | `faststream[kafka]`, `aiokafka>=0.10.0` | `MessageBroker.kafka` e `MessageBroker.kafka_from_settings` (com `KafkaSettings`): tópico, `key` de partição, `group_id`, `auto_offset_reset`, SASL e TLS. Herda `aiokafka<0.15` do FastStream. [Receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/broker.md#kafka-chave-grupo-e-commit) |
+| `[queue-nats]` | `faststream[nats]` | `MessageBroker.nats` |
+| `[queue-redis]` | `faststream[redis]` | `MessageBroker.redis` |
+| `[slides]` | `weasyprint`, `jinja2`, `python-pptx`, `python-docx`, `markdown` | slides e gabaritos a partir de texto estruturado (HTML, PDF, PPTX, DOCX, Markdown) e Markdown em PDF com folha de estilo própria ou ABNT: `parse_slides`, `SlideRenderer`, `AnswerKeyRenderer`, `MarkdownPdfRenderer`. **Exige Pango + fontconfig no sistema**, como o `[pdf]`. [Receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/slides.md) |
+| `[slides-mermaid]` | `playwright` | desenhar blocos `` ```mermaid `` no `MarkdownPdfRenderer` (`render_mermaid=True`). Exige `playwright install chromium`; por isso fica **fora do `[all]`** |
+| `[sqlite]` | `aiosqlite` | driver async SQLite para URLs `sqlite+aiosqlite://` (default de dev) |
+| `[ssr]` | `tempestweb` | SSR com HTMX: `build_web_app`, `make_htmx_router`, `Page`, helper `htmx` |
+| `[storage-encryption]` | `cryptography` | cifra em repouso do `LocalObjectStorageClient` (`encryption_keys`, `STORAGE_LOCAL_ENCRYPTION_KEYS`) e os comandos `tempest storage encrypt-local` / `reencrypt-local`. [Receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/local-storage.md#cifra-em-repouso) |
+| `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
+| `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` sobre Redis Streams, result backend e o lease do scheduler |
+| `[tests]` | `pytest`, `pytest-asyncio`, `pytest-xdist` | a suíte do serviço e o `tempest test` em paralelo (o padrão desde o `tempest-cli` 0.6.0). Sem teto próprio; herda `pytest<10` do `pytest-asyncio` e `pluggy<2` do `pytest`. Ferramenta de teste, não helper — fica **fora do `[all]`**. [Receita](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/testing.md#a-suite-em-paralelo-o-padrao-do-tempest-test) |
+| `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils`, `LocalUploadStorage` |
+| `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
+| `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |
+| `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
+| `[all]` | tudo acima **exceto** os 19 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-tts-coqui]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-sound]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[fastmcp]`, `[firebase]`, `[slides-mermaid]` | os helpers de aplicação — instale os 19 acima à parte (e o `[tests]`, que é ferramenta de teste, no grupo de dev). Traz os quatro transportes do `MessageBroker` (`faststream[rabbit,kafka,nats,redis]`) e, com eles, os tetos que o FastStream declara nos próprios extras: `aio-pika<11`, `aiokafka<0.15`, `nats-py<=3.0.0` e `redis<9.0.0` (iguais no FastStream 0.7.5 e 0.7.8). Somado ao `redis>=8.1.0` do `[cache]`, o `[all]` fica no `redis` 8.x; o `aiokafka` 0.15.0 já saiu e fica de fora |
+
+=== "Subconjunto (recomendado)"
+
+    ```bash
+    pip install "tempest-fastapi-sdk[auth,upload,cache]"
+    ```
+
+=== "Tudo"
+
+    ```bash
+    pip install "tempest-fastapi-sdk[all]"
+    ```
+
+=== "uv add"
+
+    ```bash
+    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.171.0"
+    ```
+
+=== "pyproject.toml"
+
+    ```toml
+    dependencies = [
+        "tempest-fastapi-sdk[auth,upload,postgres]>=0.171.0",
+    ]
+    ```
+
+<a id="genai-audio-coqui-split"></a>
+
+!!! warning "Desde a 0.349.0 o Coqui (XTTS) está no `[genai-tts-coqui]`"
+    O `[genai-audio]` trazia o `coqui-tts` e, com ele, o `torchaudio`. O Bark
+    não usa `torchaudio`, mas o `transformers` o importa quando ele está
+    instalado, ao montar o `AutoProcessor`. Na GPU, o `torchaudio` 2.11.1 do
+    PyPI é build CUDA 13 e não carrega ao lado de um `torch` CUDA 12, então
+    `POST /audio/speech` respondia 500 (medido no tempest-ai, RTX 4070 Ti
+    SUPER, SDK 0.348.0 — issue #723).
+
+    Agora `[genai-audio]` é só o STT (`faster-whisper` + `torch`) e o Coqui
+    tem extra próprio. Resolvido com `uv pip compile` (Python 3.12) em
+    2026-11-10:
+
+    | Extra | traz | não traz |
+    | --- | --- | --- |
+    | `[genai-audio]` | faster-whisper 1.2.1, ctranslate2 4.8.5, torch 2.15.0 | `torchaudio`, `transformers`, `coqui-tts` |
+    | `[genai-tts-coqui]` | coqui-tts 0.28.0, torchaudio 2.11.1, transformers 5.22.2, torch 2.15.0 | — |
+
+    **Quem usa `TextToSpeech` (XTTS)** troca `[genai-audio]` por
+    `[genai-audio,genai-tts-coqui]` (ou só `[genai-tts-coqui]`, sem STT).
+
+<a id="genai-audio-transformers-bound"></a>
+
+!!! check "Desde a 0.342.0 o extra do Coqui não fixa mais `transformers<5`"
+    Até a 0.341.0 o extra tinha o teto `transformers<5`: o `coqui-tts` 0.27.5
+    importava `isin_mps_friendly`, símbolo que a transformers 5.1 removeu. Isso
+    prendia quem instalava o extra na transformers 4.57.6, e com ela o
+    `huggingface-hub`, o `tokenizers` e, ao lado do `[genai-image]`, o
+    `diffusers`. O `coqui-tts` 0.28.0 não importa mais o símbolo, e o extra passou
+    a exigir essa versão.
+
+    Resolvido com `uv pip compile` (Python 3.12) em 2026-11-01, quando o Coqui
+    ainda estava no `[genai-audio]` (hoje está no `[genai-tts-coqui]`, ver
+    acima), o extra não rebaixava mais nada:
+
+    | Extras | `transformers` | `huggingface-hub` | `tokenizers` | `diffusers` |
+    | --- | --- | --- | --- | --- |
+    | `[genai-audio]` | 5.22.1 | 2.4.0 | 0.23.3 | — |
+    | `[genai-audio,genai-image]` | 5.22.1 | 2.4.0 | 0.23.3 | 0.42.1 |
+    | `[genai-image]` sem o `[genai-audio]` | — | 2.4.0 | — | 0.42.1 |
+
+    O extra declara `six` porque o `coqui-tts` 0.28.0 o importa sem declarar:
+    numa venv limpa sem ele, `import TTS.api` morre com
+    `ModuleNotFoundError: No module named 'six'`.
+
+!!! warning "O SDK não traz driver de banco por padrão"
+    `sqlalchemy[asyncio]` é dependência core, mas o DBAPI async é escolha
+    do seu deploy: instale `[sqlite]` (`aiosqlite`, default de dev) ou
+    `[postgres]` (`asyncpg`, produção). Sem nenhum, o engine levanta
+    `ModuleNotFoundError` do driver na primeira conexão. Serviços
+    criados com `tempest new` já pinam `aiosqlite` e `asyncpg` no
+    `pyproject.toml` — o segundo é o que o profile `prod` do
+    `docker-compose.yaml` gerado usa.
+
+!!! info "Imports preguiçosos"
+    Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então `import tempest_fastapi_sdk` funciona mesmo quando só um subconjunto de extras está instalado. Instanciar um helper cujo extra está faltando levanta `ImportError` com uma dica clara apontando para o extra certo. Desde a 0.326.0 os módulos do próprio SDK também carregam sob demanda: `import tempest_fastapi_sdk` carrega um módulo em vez de 269 mais SQLAlchemy, FastAPI, Alembic, Jinja2 e bcrypt, e o `tempest --help` caiu de 0,94 s para 0,14 s (melhor de 5, medido neste repositório). `from tempest_fastapi_sdk import X` e a checagem de tipos strict funcionam como antes.
+
+<a id="genai-audio-gpu"></a>
+
+### GPU com `[genai-audio]`
+
+O `[genai-audio]` transcreve com o **faster-whisper**, que roda sobre o
+**CTranslate2**. As wheels do `ctranslate2` 4.x são linkadas contra o **CUDA
+12** e, na primeira transcrição em `device="cuda"`, procuram a
+`libcublas.so.12`. O `torch` que o PyPI entrega desde a 2.14 é build **CUDA
+13**: ele instala as bibliotecas `.so.13`, e não as `.so.12`. Com a resolução
+padrão, então, a primeira transcrição na GPU morre assim:
+
+```text
+RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+```
+
+A saída é instalar o `torch` do índice **CUDA 12** do PyTorch, que traz o
+cuBLAS e o cuDNN de CUDA 12 em pacotes `nvidia-*-cu12`.
+
+#### Passo 1: o `torch` do índice cu126
+
+No `pyproject.toml` do seu serviço, declare o índice como `explicit` (só os
+pacotes que você apontar vêm dele) e aponte o `torch` para lá:
+
+```toml
+[project]
+name = "meu-servico"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "tempest-fastapi-sdk[genai-audio]>=0.349.0",
+    "torch>=2.14.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+```
+
+O `torch` aparece em `dependencies` mesmo já vindo pelo extra: o
+`[tool.uv.sources]` só vale para dependência **direta**. Depois, `uv sync`.
+
+!!! note "Usa também o Coqui (`[genai-tts-coqui]`)?"
+    O `torchaudio` do PyPI também é build CUDA 13 e não carrega ao lado de um
+    `torch` CUDA 12 (`libcudart.so.13: cannot open shared object file`).
+    Aponte ele para o mesmo índice — e, de novo, como dependência direta:
+
+    ```toml
+    [project]
+    name = "meu-servico"
+    version = "0.1.0"
+    requires-python = ">=3.12"
+    dependencies = [
+        "tempest-fastapi-sdk[genai-audio,genai-tts-coqui]>=0.349.0",
+        "torch>=2.14.0",
+        "torchaudio>=2.11.0",
+    ]
+
+    [[tool.uv.index]]
+    name = "pytorch-cu126"
+    url = "https://download.pytorch.org/whl/cu126"
+    explicit = true
+
+    [tool.uv.sources]
+    torch = { index = "pytorch-cu126" }
+    torchaudio = { index = "pytorch-cu126" }
+    ```
+
+    Quem usa só o STT não precisa dessas linhas: desde a 0.349.0 o
+    `[genai-audio]` não traz `torchaudio` ([por quê](#genai-audio-coqui-split)).
+    Até a 0.348.0 ele trazia, então nessas versões declare o `torchaudio` como
+    acima mesmo sem usar o Coqui.
+
+#### Passo 2: o `LD_LIBRARY_PATH` do CTranslate2
+
+Os pacotes `nvidia-cublas-cu12` e `nvidia-cudnn-cu12` ficam dentro do
+`site-packages`, fora do caminho que o carregador dinâmico procura. O `torch`
+os acha sozinho; o CTranslate2 não. Aponte o `LD_LIBRARY_PATH` para eles antes
+de subir o processo:
+
+```bash
+SITE_PACKAGES="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+export LD_LIBRARY_PATH="$SITE_PACKAGES/nvidia/cublas/lib:$SITE_PACKAGES/nvidia/cudnn/lib:${LD_LIBRARY_PATH:-}"
+```
+
+Num `Dockerfile`, escreva o caminho do venv da imagem, por exemplo
+`ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib`.
+
+!!! info "Por que às vezes funciona sem o `LD_LIBRARY_PATH`"
+    Quando o processo importa o `torch` antes de carregar o Whisper, o
+    `torch` já deixa o cuBLAS e o cuDNN de CUDA 12 carregados, e o
+    CTranslate2 os reaproveita. É o que acontece com
+    `SpeechToText(device="auto")`, que importa o `torch` para detectar a GPU,
+    ou depois de um `probe_hardware()`. Com `device="cuda"` explícito, nada
+    importa o `torch` antes, e sem a variável a transcrição falha. Exporte a
+    variável de qualquer forma: depender da ordem de import é frágil.
+
+    Num host com o CUDA 12 instalado no sistema (a `libcublas.so.12` no
+    `ldconfig`), as duas falhas desta seção não aparecem — o carregador acha
+    a biblioteca do sistema. Container `python:3.12-slim` não tem isso.
+
+#### Passo 3: confira
+
+Gere um WAV curto (aqui com o `espeak-ng`) e transcreva na GPU:
+
+```bash
+espeak-ng -v en -w hello.wav "The quick brown fox jumps over the lazy dog."
+```
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import SpeechToText
+
+
+async def main() -> None:
+    """Transcribe a short WAV on the GPU."""
+    stt = SpeechToText("small", device="cuda")
+    with open("hello.wav", "rb") as handle:
+        result = await stt.transcribe(handle.read())
+    print(stt.device, result.text)
+
+
+asyncio.run(main())
+```
+
+```text
+cuda The quick brown fox jumps over the lazy dog.
+```
+
+O `probe_hardware()` também avisa do par errado antes da primeira transcrição:
+com um `torch` CUDA 13 e o `ctranslate2` instalados, o `HardwareInfo.warnings`
+diz o que vai falhar e manda para esta seção (veja
+[Sondando o hardware](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/hardware.md#sondando-o-hardware)).
+
+!!! check "O que foi medido"
+    **Neste repositório**, em 2026-11-10, num container `python:3.12-slim`
+    com `--gpus all` numa RTX 4070 Ti SUPER (WSL2, driver do Windows 591.86), Python
+    3.12, `faster-whisper` 1.2.1 e `ctranslate2` 4.8.5, modelo `small` em
+    `float16`, transcrevendo o WAV acima:
+
+    | `torch` | `LD_LIBRARY_PATH` | `torch` importado antes | resultado |
+    | --- | --- | --- | --- |
+    | 2.15.0+cu132 (PyPI) | não | não | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | não | sim | `libcublas.so.12 is not found` |
+    | 2.15.0+cu132 (PyPI) | `nvidia/{cublas,cudnn}/lib` | não | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (índice cu126) | não | não | `libcublas.so.12 is not found` |
+    | 2.14.1+cu126 (índice cu126) | não | sim | transcreve |
+    | 2.14.1+cu126 (índice cu126) | `nvidia/{cublas,cudnn}/lib` | não | transcreve |
+
+    As linhas de cima foram medidas chamando o `WhisperModel` direto; com o
+    SDK instalado por cima, `SpeechToText(device="cuda")` deu o mesmo par
+    (falha sem a variável, transcreve com ela) e `SpeechToText(device="auto")`
+    transcreveu sem a variável. A venv foi montada com o `pyproject.toml` do
+    passo 1 trocando o `tempest-fastapi-sdk[genai-audio]` pelo
+    `faster-whisper`, que é o que o extra traz, e o SDK do branch instalado
+    por cima. O áudio foi o WAV acima convertido para 16 kHz com o `ffmpeg`;
+    o WAV original (22 050 Hz) deu o mesmo texto pelo `SpeechToText` na CPU.
+    No host WSL2 fora do container, que tem a `libcublas.so.12` do sistema no
+    `ldconfig`, a venv cu126 transcreveu sem a variável e sem importar o
+    `torch` — por isso a tabela é do container.
+
+    **No tempest-ai** (issue #723; `python:3.12-slim`, RTX 4070 Ti SUPER, SDK
+    0.348.0) a mesma correção foi aplicada no serviço, com `torch==2.14.1+cu126`
+    e `torchaudio==2.11.0+cu126` do índice cu126: o `BarkSpeech`
+    (`suno/bark-small`) sintetizou em português — 5,95 s de áudio em 9,6 s e
+    16,76 s em 23,6 s, com o modelo já carregado.
+
+    **Não medido:** o Coqui (`[genai-tts-coqui]`) na GPU com o `torchaudio`
+    do índice cu126 deste repositório, e outras GPUs, drivers ou CUDA 12.x
+    além do 12.6.
+
+**Recap:** o faster-whisper precisa de CUDA 12; o `torch` do PyPI é CUDA 13.
+Tire o `torch` (e o `torchaudio`, se usar o Coqui) do índice cu126, como
+dependência direta, e exporte o `LD_LIBRARY_PATH` para
+`nvidia/{cublas,cudnn}/lib`.
+
+## CLI
+
+Use quando você vai rodar o comando `tempest`. Ele não vem na instalação
+base: é o extra `[cli]` em desenvolvimento, ou o `[cli-ops]` no servidor.
+
+| Extra | Instale com | Comandos |
+| --- | --- | --- |
+| `[cli]` | `uv add --dev "tempest-fastapi-sdk[cli]"` ou `uv tool install "tempest-fastapi-sdk[cli]"` | todos, incluindo os gates (`lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check`, `pr-prompt`) |
+| `[cli-ops]` | `uv add "tempest-fastapi-sdk[cli-ops]"` | todos menos os gates, que saem com código 2 apontando o `[cli]` |
+
+Sem nenhum dos dois, `tempest` imprime `error: missing typer, click. The
+tempest CLI needs the optional [cli-ops] or [cli] extra.` com os três
+comandos de instalação e sai com código 2 (medido na 0.374.0).
+
+
+```bash
+tempest --version              # mostra a versão instalada do SDK
+tempest new                    # gera um serviço em camadas no diretório atual
+tempest new myproject          # gera dentro de ./myproject
+tempest generate --docker      # regenera docker-compose.yaml a partir dos extras já escolhidos
+tempest db init                # bootstrapa diretório alembic (alembic.ini sem credenciais)
+tempest db revision -m "msg"   # autogenerate revision aplicando o reorder hook
+tempest db upgrade             # roda upgrade até head (lê DATABASE_URL do .env)
+tempest db downgrade -1        # volta uma revisão
+tempest db current             # mostra revisão atual
+tempest db history             # log de revisões
+tempest user create --email admin@local --admin   # `--email` obrigatório; senha pedida interativamente
+tempest user list --admin      # lista somente os admins (omita `--admin` pra listar todos)
+tempest fix                    # ruff check --fix-only . + ruff format . + ruff check .
+tempest check                  # lint + fmt-check + mypy + pytest
+```
+
+Veja **[Receitas → CLI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli.md)** para o detalhamento completo.
+
+## Verifique a instalação
+
+```bash
+python -c "import tempest_fastapi_sdk; print(tempest_fastapi_sdk.__version__)"
+```
+
+## Política de versões do Python
+
+| Python | Status |
+| --- | --- |
+| 3.14 | Suportado |
+| 3.13 | Suportado — a versão do `.python-version` do repositório |
+| 3.12 | Suportado (mínimo) |
+| 3.11 | Não suportado desde a 0.314.0 — fica na 0.313.x ([migração](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration.md)) |
+| 3.10 e anteriores | Não suportado (usa a sintaxe ``X | None`` do PEP 604) |

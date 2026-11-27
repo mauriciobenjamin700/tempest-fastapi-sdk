@@ -1,0 +1,719 @@
+# Segurança
+
+Primitivos defensivos: rate-limit por falha (login/OTP), tokens opacos single-use, serviço de arquivos estáticos endurecido com headers de segurança, helpers de cookie HttpOnly/Secure/SameSite, e resolvedor de IP do cliente atrás de proxies confiáveis.
+
+## Throttling de força bruta
+
+`AttemptThrottle` conta tentativas falhas por chave (tipicamente `<endpoint>:<identificador>` — e-mail de login, alvo de reset de senha, IP, etc.). Quando o limite é cruzado, `raise_if_blocked` levanta `TooManyRequestsException` direto; ou você lê `status`/`hit` e decide o que fazer.
+
+!!! tip "Usa o `make_auth_router`? O login já vem limitado"
+    O router de auth aplica um `AttemptThrottle` por e-mail no `/auth/login` por padrão, e aceita `login_ip_throttle` e `signup_throttle` por IP. Veja [Limite de tentativas no login e no cadastro](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/endpoints.md#limite-de-tentativas-no-login-e-no-cadastro). Esta seção é para o fluxo que você escreve à mão.
+
+O construtor recebe um `backend` (qualquer objeto que case com o `Protocol` `ThrottleBackend`) + `max_attempts` + `window_seconds`. Para um processo só (servidor de dev, testes) o `InMemoryThrottleBackend` bundled funciona sem Redis; ele conta por processo, então com mais de um worker use o cliente Redis do `AsyncRedisManager`.
+
+!!! check "`redis.asyncio.Redis` e `fakeredis` passam no `Protocol`, medido"
+
+    Desde a v0.263.0 todo parâmetro obrigatório do `ThrottleBackend` é
+    posicional, então o nome que o cliente dá aos seus parâmetros deixou de
+    importar. Conferido nos dois checkers contra redis-py 8.1.0 e
+    `fakeredis.aioredis.FakeRedis`: mypy e basedpyright aceitam os dois. Até
+    a v0.262.0 o basedpyright recusava ambos, porque o protocolo exigia
+    `expire(..., seconds=...)` e o redis-py chama esse parâmetro de `time`.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from tempest_fastapi_sdk import (
+    AttemptThrottle,
+    PasswordUtils,
+    TooManyRequestsException,
+    UnauthorizedException,
+)
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+from src.core.settings import settings
+from src.db.models import User
+from src.db.repositories import UserRepository
+
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+password_utils = PasswordUtils()
+
+users_repo = UserRepository(session)
+
+
+cache = AsyncRedisManager(settings.REDIS_URL)
+throttle: AttemptThrottle
+
+
+async def on_startup() -> None:
+    """Connect Redis and build the throttle at application startup.
+
+    `cache.client` raises RuntimeError until `connect()` runs, so the
+    manager must be connected before the throttle is built. Wire this
+    to your app lifespan (`FastAPI(lifespan=...)`).
+    """
+    global throttle
+    await (
+        cache.connect()
+    )  # obrigatório — `cache.client` levanta RuntimeError até conectar
+    # `cache.client` is `redis.asyncio.Redis` — matches the ThrottleBackend Protocol
+    throttle = AttemptThrottle(
+        cache.client,
+        max_attempts=5,
+        window_seconds=300,  # janela fixa; também é o TTL no primeiro fail
+        namespace="login",  # prefixo de key — multiplos throttles podem coexistir
+        fail_open=True,  # outage do Redis = libera, não trava todo mundo
+    )
+
+
+async def login(email: str, password: str) -> User:
+    key = f"login:{email}"
+    await throttle.reserve(key)  # gasta 1 tentativa antes de verificar; 429 se estourou
+
+    user = await users_repo.get_or_none({"email": email})
+    if user is None or not password_utils.verify(password, user.hashed_password):
+        raise UnauthorizedException(message="Invalid credentials.")
+
+    await throttle.reset(key)  # zera contagem no sucesso
+    return user
+```
+
+`throttle.status(key)` (peek sem incrementar) e `throttle.hit(key)` (incrementar) retornam `ThrottleStatus` — um `dataclass` frozen com:
+
+- `attempts: int` — falhas registradas na janela atual.
+- `blocked: bool` — `True` quando `attempts >= max_attempts`.
+- `retry_after_seconds: int` — segundos até a janela resetar (`0` quando não bloqueado).
+
+!!! warning "Reserve antes de verificar"
+    `raise_if_blocked` só **lê** o contador. Seguido de um `hit` depois da verificação, ele limita tentativas em sequência, mas não em paralelo: uma rajada de requisições simultâneas lê "não bloqueado" antes de qualquer `hit` cair, e todas verificam a senha. `reserve` incrementa (atomicamente, `INCR`) antes da checagem e recusa quem passa de `max_attempts`, então no máximo `max_attempts` verificações rodam por janela. Quando a tentativa não é falha, `reset` zera a chave ou `release` devolve só aquela vaga.
+
+Use os campos pra montar payloads de erro amigáveis. `raise_if_blocked` já cria a `TooManyRequestsException` com `Retry-After` no header — não precisa lê-los manualmente.
+
+!!! note "Conecte o `AsyncRedisManager` no startup"
+    `cache.client` levanta `RuntimeError` enquanto `connect()` não for chamado. Conecte o manager no startup da aplicação (via `FastAPI(lifespan=...)` ou `on_startup`) antes de acessar `cache.client` — e chame `cache.disconnect()` no shutdown.
+
+!!! warning "`InMemoryThrottleBackend` conta por processo"
+    Com `uvicorn --workers`, gunicorn ou mais de um pod, cada processo tem o próprio contador e o limite efetivo vira `max_attempts` vezes o número de workers: aí o backend é o Redis. Para testar contra a API do Redis sem subir um, use [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`): `fakeredis.aioredis.FakeRedis` satisfaz o `ThrottleBackend` (métodos `get`, `incr`, `expire`, `ttl`, `delete`) e expõe um Redis funcional 100% em memória. Conferido no type-checker **e** em runtime: `tests/utils/test_throttle.py::TestTheClientsTheRecipeNames` roda a janela inteira sobre um `FakeRedis` — contagem, bloqueio, `TooManyRequestsException`, `reset`, e o TTL de 900s que o primeiro `hit` gravou.
+
+## Tipos de token JWT (`typ`)
+
+Um serviço com o fluxo de auth bundled emite três JWTs **com o mesmo segredo**: o access token, o refresh token e o token intermediário que liga os dois passos de um login com MFA. Assinatura válida, portanto, não diz nada sobre *qual* deles chegou — e um guard de rota que só lê `sub` aceitaria os três.
+
+O `typ` é o que separa. `UserAuthService` estampa um em tudo que emite:
+
+| Token | `typ` | Onde vale |
+| --- | --- | --- |
+| Access | `ACCESS_TOKEN_TYPE` (`"access"`) | Qualquer rota autenticada |
+| Refresh | `REFRESH_TOKEN_TYPE` (`"refresh"`) | Só `POST /auth/refresh` |
+| MFA pendente | `MFA_TOKEN_TYPE` (`"mfa"`) | Só `POST /auth/mfa/verify` |
+
+`make_bearer_token_dependency` e `make_jwt_user_dependency` aceitam **só** `access` por padrão:
+
+```python
+from tempest_fastapi_sdk import (
+    ACCESS_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+    JWTUtils,
+    make_bearer_token_dependency,
+)
+
+tokens = JWTUtils(secret="…" * 8)
+
+# Padrão: access-only. Um refresh ou um MFA-pendente devolve 401.
+require_claims = make_bearer_token_dependency(tokens)
+
+# Rota que de propósito recebe outro tipo (ex.: um endpoint de rotação):
+require_refresh = make_bearer_token_dependency(
+    tokens,
+    accepted_typ=(REFRESH_TOKEN_TYPE,),
+)
+```
+
+!!! danger "Por que isso importa"
+    O `mfa_token` é devolvido pelo `/login` a um cliente que provou **só a senha**. Sem a checagem de tipo ele serve como bearer em qualquer rota autenticada — o segundo fator vira decoração. O mesmo vale pro refresh token: ele tem vida longa de propósito, e aceitá-lo como access anula o motivo de o access token ser curto.
+
+!!! note "Token sem `typ` continua valendo"
+    Um access token assinado direto com `JWTUtils.encode()` e sem tipo nenhum continua aceito, senão atualizar o SDK derrubaria toda sessão ativa. Os dois marcadores antigos que o SDK já estampava — `refresh: True` e `purpose: "mfa_pending"` — são reconhecidos e **rejeitados** como access, e **qualquer outro `purpose`** também: um token que declara para que serve (`{"purpose": "password_reset"}`) é um token de propósito único, nunca uma sessão. Token de propósito único que você mesmo assina — link de reset, convite — deve estampar o próprio `typ` (`{"sub": ..., "typ": "password_reset"}`) e conferi-lo ao consumir; aí nenhum guard de access o aceita, `strict` ou não. Use `token_type_allowed()` se precisar da mesma decisão fora de uma dependency.
+
+!!! warning "Se o **seu** serviço já emitia o tipo com outro nome de claim"
+    O default acima é seguro para token que o SDK mintou, e furado para token
+    que você mintou. Um serviço que separava access de refresh com um claim
+    próprio (`type`, `token_type`) não tem `typ` em nenhum token legado e não
+    tem nenhum dos dois marcadores do SDK — então **todos** caem no "aceita" e
+    um refresh token autoriza chamada de API pela vida inteira do refresh.
+
+    Duas chaves fecham isso, e as duas são keyword-only:
+
+    ```python
+    from tempest_fastapi_sdk import ACCESS_TOKEN_TYPE, token_type_allowed
+
+    legado = {"sub": "u1", "type": "refresh"}
+
+    token_type_allowed(legado, [ACCESS_TOKEN_TYPE])
+    # True  — o SDK não conhece o claim `type`, e sem tipo declarado aceita
+
+    token_type_allowed(
+        legado,
+        [ACCESS_TOKEN_TYPE],
+        strict=True,
+        legacy_claims=("type",),
+    )
+    # False — lê o tipo do claim que é seu, e recusa o que continua sem tipo
+    ```
+
+    `legacy_claims` é lido em ordem, e só quando `typ` está ausente — token
+    novo continua decidindo por `typ`. `strict=True` sozinho recusa o que ficar
+    sem classificação, mas **não** desliga os marcadores antigos do SDK:
+    `refresh: True` continua sendo refresh, inclusive sob `strict`.
+
+    **As factories repassam os dois desde a v0.274.0.** Antes, a única forma de
+    alcançar o modo estrito era não usar as factories — o consumidor
+    reimplementava a verificação inteira para chegar num parâmetro que já
+    existia. Agora as três portas aceitam:
+
+    ```python
+    from tempest_fastapi_sdk import make_bearer_token_dependency, JWTUtils
+
+    tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+    claims_dependency = make_bearer_token_dependency(
+        tokens,
+        strict=True,
+        legacy_claims=("type",),
+    )
+    ```
+
+    O mesmo par vale em `make_jwt_user_dependency`, em
+    `UserAuthService.current_user_dependency` e — como `token_strict=` /
+    `token_legacy_claims=` — em `make_auth_router`, que é quem guarda
+    `/auth/me`, `/auth/password-change` e o resto das rotas autenticadas do
+    fluxo bundled. Medido, com um refresh token legado (`{"type": "refresh"}`)
+    apresentado como bearer:
+
+    ```text
+    default (strict=False)               -> HTTP 200
+    strict=True                          -> HTTP 401
+    strict=True, legacy_claims=('type',) -> HTTP 401
+    o access legado, mesmas opções       -> HTTP 200
+    ```
+
+## Tokens opacos single-use
+
+`generate_opaque_token()` produz `(plaintext, token_hash)` em uma chamada — `plaintext` é uma string URL-safe (default 32 bytes ≈ 43 chars), `token_hash` é o digest SHA-256 hex em lowercase (64 chars). Você guarda **só o hash** no banco; o `plaintext` sai pelo e-mail/SMS uma única vez. Use pra password reset, confirmação de e-mail, API keys, IDs de sessão opacos — qualquer coisa onde o segredo emitido nunca volta a ser inspecionado.
+
+!!! info "Sem pepper, sem HMAC"
+    O hash é SHA-256 puro (`hashlib.sha256(plain).hexdigest()`) por design: tokens opacos têm 256 bits de entropia (já fora de alcance de força bruta), então pepper extra não adiciona segurança prática. Pra credenciais com baixa entropia (senha humana), use `PasswordUtils.hash` (bcrypt) — não os helpers desta seção.
+
+```python
+from datetime import timedelta
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from tempest_fastapi_sdk import (
+    generate_opaque_token,
+    hash_opaque_token,
+    verify_opaque_token,
+)
+from tempest_fastapi_sdk.utils import utcnow
+
+from src.db.models import PasswordResetToken
+from src.db.repositories import UserTokenRepository
+
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+reset_tokens_repo = UserTokenRepository(session)
+
+
+async def issue_reset_token(user_id: UUID) -> str:
+    plaintext, token_hash = generate_opaque_token()
+    await reset_tokens_repo.add(
+        PasswordResetToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            expires_at=utcnow() + timedelta(hours=1),
+        ),
+    )
+    return plaintext  # mostre uma vez — never store
+
+
+async def consume_reset_token(plaintext: str, user_id: UUID) -> bool:
+    record = await reset_tokens_repo.get_or_none(
+        {"user_id": user_id, "used_at": None},
+    )
+    if record is None or record.expires_at < utcnow():
+        return False
+    if not verify_opaque_token(plaintext, record.token_hash):
+        return False
+    record.used_at = utcnow()
+    await reset_tokens_repo.update(record)
+    return True
+```
+
+!!! tip "Pra fluxo completo, use `UserAuthService`"
+    Signup + activation + login + password reset prontos com tokens opacos one-shot, TTL, anti-enumeração e e-mail Jinja2 bundled estão em [`auth-flow.md`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md). Use estes helpers diretos só quando você precisa de um fluxo customizado fora do `UserAuthService`.
+
+## Arquivos estáticos endurecidos
+
+`HardenedStaticFiles` estende `starlette.staticfiles.StaticFiles` carimbando headers anti-XSS em toda resposta — defesa em profundidade contra um arquivo malicioso que tenha caído no diretório (bypass de upload-validation, ação manual de operador) sendo servido como uma primitiva de stored-XSS.
+
+`DEFAULT_STATIC_SECURITY_HEADERS` aplica:
+
+- `X-Content-Type-Options: nosniff` — navegador não chuta o MIME por bytes.
+- `Content-Security-Policy: default-src 'none'; sandbox` — script embutido não executa; sandbox bloqueia formulários e navegação top-level.
+- `Cross-Origin-Resource-Policy: same-site` — limita leitura cross-origin.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import DEFAULT_STATIC_SECURITY_HEADERS, HardenedStaticFiles
+
+app = FastAPI()
+app.mount(
+    "/static",
+    HardenedStaticFiles(
+        directory="public/",
+        # Override or extend the defaults — merging is the caller's job.
+        security_headers={
+            **DEFAULT_STATIC_SECURITY_HEADERS,
+            "Cache-Control": "public, max-age=86400, immutable",
+        },
+    ),
+    name="static",
+)
+```
+
+### Downloads levam os mesmos headers
+
+Arquivo servido por `DownloadUtils`, `FileStoreUtils` ou
+`AsyncMinIOClient.download_response` não passa pelo `HardenedStaticFiles`, mas
+sai com os mesmos `DEFAULT_STATIC_SECURITY_HEADERS` — header com o mesmo nome
+passado em `headers=` vence. E `as_attachment=False` só vira `inline` para tipo
+em `INLINE_SAFE_MEDIA_TYPES` (imagem raster, PDF, texto puro, áudio e vídeo);
+HTML e SVG saem como `attachment`. No modo `X-Accel-Redirect` quem entrega é o
+nginx, e os headers vão no bloco dele. Detalhe em
+[Downloads](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/downloads.md#headers-de-seguranca-e-o-que-vai-inline) e
+[Storage](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/storage.md#o-bloco-do-nginx).
+
+## CSRF em fluxo com cookie (`CSRFMiddleware`)
+
+Sessão por cookie tem um problema que bearer token não tem: o browser reenvia o
+cookie **sozinho**, mesmo numa request disparada por outro site. `SameSite=lax`
+barra a maior parte disso, mas não POST de formulário em subdomínio nem cliente
+antigo. `CSRFMiddleware` fecha com double-submit:
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import CSRFMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(
+    CSRFMiddleware,
+    exclude_paths=("/api/", "/webhooks/"),
+)
+```
+
+Em `POST`/`PUT`/`PATCH`/`DELETE` a request precisa carregar **as duas** coisas
+com o mesmo valor: o cookie `csrf_token` e o header `X-CSRF-Token`. Faltando ou
+divergindo, a resposta é `403` no envelope canônico do SDK. `GET`/`HEAD`/
+`OPTIONS` passam sempre. Os defaults estão em `CSRF_COOKIE_NAME` e
+`CSRF_HEADER_NAME`; troque com `cookie_name=`/`header_name=`.
+
+!!! info "Por que excluir `/api/`"
+    Rota autenticada por `Authorization: Bearer` **não** é vulnerável a CSRF —
+    o browser não anexa o header sozinho. Exigir token ali só quebraria cliente
+    mobile. Webhook assinado (`WebhookSignatureVerifier`) idem: a autenticação
+    já é a assinatura. O match de `exclude_paths` é por prefixo (`startswith`).
+
+Pra emitir o token, monte `make_csrf_token_dependency()` na rota que renderiza a
+página — ela **grava o cookie** quando falta e devolve o valor pro template. As
+duas metades são necessárias: o double-submit compara cookie e header, então uma
+dependency que só devolvesse o valor deixaria o cookie ausente e o `POST`
+seguinte — justamente aquele pra que a página foi renderizada — cairia com 403.
+
+```python
+# src/api/routers/pages.py
+from fastapi import APIRouter, Depends
+from tempest_fastapi_sdk import make_csrf_token_dependency
+
+router: APIRouter = APIRouter()
+csrf_token = make_csrf_token_dependency()
+
+
+@router.get("/login")
+async def login_page(token: str = Depends(csrf_token)) -> dict[str, str]:
+    """Render the login shell carrying the CSRF token."""
+    return {"csrf_token": token}
+```
+
+!!! info "Esse cookie não é `HttpOnly`, de propósito"
+    O cliente precisa **ler** o valor pra ecoar no header `X-CSRF-Token` — é o
+    mecanismo inteiro do double-submit. `HttpOnly` quebraria isso. É seguro
+    enquanto o cookie carregar só o token CSRF; nunca coloque outra coisa nele.
+    Ele sai com `Secure` e `SameSite=Lax` por padrão: use
+    `make_csrf_token_dependency(secure=False)` só num dev server em HTTP puro,
+    e `samesite="none"` (com `secure=True`) quando o frontend está em outra
+    origem.
+
+O cliente reenvia esse valor no header a cada request de escrita:
+
+```javascript
+await fetch("/auth/login", {
+  method: "POST",
+  credentials: "include",
+  headers: { "X-CSRF-Token": token, "Content-Type": "application/json" },
+  body: JSON.stringify({ email, password }),
+});
+```
+
+`generate_csrf_token(n_bytes=32)` está exposto pra quem quer emitir o token fora
+de uma dependency (um handler SSR, por exemplo).
+
+!!! warning "CSRF só importa se a credencial viaja automática"
+    Use quando a sessão está em cookie — `AUTH_TOKEN_DELIVERY=cookie`/`both`
+    ([receita de auth](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md)) ou sessão server-side
+    ([receita de sessões](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sessions.md)). Serviço 100% bearer não precisa do
+    middleware.
+
+## Cookies de sessão
+
+`set_cookie` / `clear_cookie` escrevem cookies com defaults seguros (`HttpOnly=True`, `Secure=True`, `samesite="lax"`). `SameSite` é um **type alias** `Literal["lax", "strict", "none"]` — passe a string literal, não um enum.
+
+```python
+from fastapi import Response
+
+from tempest_fastapi_sdk import clear_cookie, set_cookie
+
+
+def login(response: Response, token: str) -> None:
+    set_cookie(
+        response,
+        "session",                 # name (posicional)
+        token,                     # value (posicional)
+        max_age=3600,
+        samesite="lax",            # "lax" (default), "strict" ou "none"
+        # secure=True,             # default — você precisa setar False só pra HTTP local
+        # http_only=True,          # default
+        path="/",
+    )
+
+
+def logout(response: Response) -> None:
+    clear_cookie(response, "session", path="/")
+```
+
+!!! warning "`SameSite=\"none\"` exige `Secure=True`"
+    Quando o navegador vê `SameSite=None` sem `Secure`, ele rejeita o cookie. O SDK **não** força `secure=True` automaticamente — passe explicitamente `samesite="none", secure=True` em cenários cross-site (iframe widget, OAuth callback de domínio diferente).
+
+## Extração do IP do cliente
+
+`get_client_ip(request)` e `get_client_ip_from_scope(scope)` retornam o IP real do cliente atrás de proxies. Por design simples: a função aceita **um** nome de header confiável (`trusted_header=`) que sua infraestrutura sabe que só o edge proxy pode setar (típico: `"x-real-ip"` num Nginx que sobrescreve o header, `"cf-connecting-ip"` atrás do Cloudflare). Sem `trusted_header=`, a função usa o peer address direto.
+
+O valor do header precisa ser **um** endereço IP (`parse_client_ip`, sobre `ipaddress.ip_address`), e volta na forma canônica (`2001:0db8::1` vira `2001:db8::1`). Lista, porta, hostname ou texto qualquer cai no peer address — sem isso, um cliente que a borda esqueceu de sanitizar mandava um valor novo a cada request e ganhava um orçamento de rate limit novo a cada vez.
+
+```python
+from fastapi import APIRouter, Request
+
+from tempest_fastapi_sdk import AttemptThrottle, get_client_ip
+
+from src.schemas import LoginIn, LoginOut
+
+# Built in the app lifespan: `cache.client` raises until `connect()` runs.
+throttle: AttemptThrottle | None = None
+
+router = APIRouter()
+
+
+@router.post("/login")
+async def login(request: Request, payload: LoginIn) -> LoginOut:
+    # Atrás de Nginx que sobrescreve X-Real-IP com o peer real:
+    ip = get_client_ip(request, trusted_header="x-real-ip")
+    await throttle.reserve(f"login:{ip}")
+    ...
+```
+
+!!! warning "Configure no edge proxy, não no Python"
+    A defesa contra spoofing de `X-Forwarded-For` precisa acontecer no proxy (Nginx, ALB, CloudFront) — o proxy **sobrescreve** o header com o peer real antes do request bater no FastAPI. O SDK só lê o header que você confia. Se você expõe a app direto na internet, **não** passe `trusted_header=` — use o peer address.
+
+Use `get_client_ip_from_scope(scope, trusted_header=...)` em middleware ou handlers de WebSocket onde só o scope ASGI está ao alcance.
+
+### Um setting para todos: `TRUSTED_IP_HEADER`
+
+O mesmo nome de header precisa chegar a **todo** lugar que resolve o IP:
+`get_client_ip`, `RateLimitMiddleware`, `AccessLogMiddleware`,
+`HoneypotBanMiddleware`. Esquecer um deles deixa aquele um chaveado no IP do
+proxy — todo cliente vira o mesmo cliente. O `ServerSettings` modela o valor
+uma vez, em `TRUSTED_IP_HEADER`:
+
+```bash
+# .env
+TRUSTED_IP_HEADER=X-Real-IP
+```
+
+```python
+from fastapi import FastAPI, Request
+from tempest_fastapi_sdk import (
+    AccessLogMiddleware,
+    BaseAppSettings,
+    HoneypotBanMiddleware,
+    MemoryBanStore,
+    RateLimitMiddleware,
+    ServerSettings,
+    get_client_ip,
+)
+
+
+class Settings(ServerSettings, BaseAppSettings):
+    """Settings do serviço."""
+
+
+settings = Settings()
+
+app = FastAPI()
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=100,
+    window_seconds=60.0,
+    trusted_ip_header=settings.TRUSTED_IP_HEADER,
+)
+app.add_middleware(AccessLogMiddleware, trusted_ip_header=settings.TRUSTED_IP_HEADER)
+app.add_middleware(
+    HoneypotBanMiddleware,
+    store=MemoryBanStore(),
+    trusted_ip_header=settings.TRUSTED_IP_HEADER,
+)
+
+
+@app.get("/whoami")
+async def whoami(request: Request) -> dict[str, str]:
+    """Devolve o IP que o app enxerga."""
+    return {"ip": get_client_ip(request, trusted_header=settings.TRUSTED_IP_HEADER)}
+```
+
+Com `X-Real-IP: 203.0.113.7` na requisição, `/whoami` responde
+`{"ip": "203.0.113.7"}`. O valor é normalizado para minúsculas
+(`settings.TRUSTED_IP_HEADER == "x-real-ip"`) e vazio vira `None` — o peer
+direto.
+
+!!! danger "`X-Forwarded-For` é recusado"
+    `TRUSTED_IP_HEADER=X-Forwarded-For` (ou `Forwarded`) falha na validação,
+    com a explicação na mensagem: o proxy **acrescenta** a esses headers em vez
+    de sobrescrever, então o conteúdo é o que o cliente mandou. Configure o
+    edge para sobrescrever um header de um salto só (no Nginx,
+    `proxy_set_header X-Real-IP $remote_addr`) ou use o header verificado da
+    CDN (`cf-connecting-ip`, `true-client-ip`).
+
+## Scheme público atrás de proxy (`SERVER_PUBLIC_SCHEME`)
+
+Com um proxy terminando o TLS na frente (nginx, Caddy, o balanceador da
+plataforma), o browser fala `https` com o proxy e o proxy fala `http` com a
+app. O Starlette monta toda URL absoluta — `request.url_for`, e por ele o
+`action` de cada formulário do painel admin — a partir do scheme da conexão,
+então a página HTTPS sai com `<form action="http://...">`. O browser marca o
+formulário de senha como **não seguro**, e os cookies `Secure` do admin não
+voltam no envio.
+
+O `ServerSettings` declara o scheme uma vez, e o `PublicSchemeMiddleware` o
+carimba em toda request:
+
+```bash
+# .env
+SERVER_PUBLIC_SCHEME=https
+```
+
+```python
+from fastapi import FastAPI, Request
+from tempest_fastapi_sdk import BaseAppSettings, PublicSchemeMiddleware, ServerSettings
+
+
+class Settings(ServerSettings, BaseAppSettings):
+    """Settings do serviço."""
+
+
+settings = Settings()
+
+app = FastAPI()
+app.add_middleware(PublicSchemeMiddleware, scheme=settings.SERVER_PUBLIC_SCHEME)
+
+
+@app.get("/whereami", name="whereami")
+async def whereami(request: Request) -> dict[str, str]:
+    """Devolve a URL que o app monta para esta rota."""
+    return {"url": str(request.url_for("whereami"))}
+```
+
+Com `SERVER_PUBLIC_SCHEME=https`, uma request que chega do proxy como
+`http://api.example.com/whereami` responde
+`{"url": "https://api.example.com/whereami"}`. Vazio (o default) deixa o
+scheme da conexão — o certo no dev local, sem proxy. Websocket recebe `wss`.
+
+Adicione o middleware **por último** no `create_app`: o último
+`add_middleware` é a camada mais externa, e toda camada abaixo dele passa a
+montar URL no scheme público. Projeto criado pelo `tempest new` já vem assim.
+
+!!! warning "Por que não `--forwarded-allow-ips`?"
+    O uvicorn lê `X-Forwarded-Proto` dos IPs listados em
+    `FORWARDED_ALLOW_IPS`, e junto passa a confiar no `X-Forwarded-For`.
+    Com a porta da app publicada (`ports:` no compose), uma request que pula
+    o proxy chega do gateway do Docker — confiar nessa sub-rede deixa qualquer
+    cliente forjar os headers encaminhados, inclusive o IP que o rate limit
+    usa como chave. Declarado na configuração, o scheme não depende de nada
+    que o cliente mande.
+
+O painel admin avisa quando falta isso: com `cookie_secure=True`, o
+`GET /admin/login` que chega como `http` num host público (fora de
+`localhost`, `127.0.0.1` e `::1`) loga um `WARNING` em
+`tempest_fastapi_sdk.admin.router` citando `SERVER_PUBLIC_SCHEME=https`.
+
+## Ban de scanner (`HoneypotBanMiddleware`)
+
+Toda API pública recebe um fluxo constante de scanner automatizado pedindo
+`/.env`, `/.git/config`, `/wp-admin/`, `/phpmyadmin/`, `/xmlrpc.php` e algumas
+centenas de irmãos. Nenhum deles é caminho que um cliente honesto peça — o que
+faz de **um único hit** um sinal bem mais confiável do que qualquer coisa que um
+rate limiter consiga inferir de volume.
+
+O `RateLimitMiddleware` não sabe expressar isso. Ele responde *essa chave passou
+de N requests em W segundos*, e um scanner que sonda doze caminhos uma vez cada
+e vai embora nunca o dispara. Os dois são complementares: o limiter delimita o
+cliente honesto, este delimita o desonesto.
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import HoneypotBanMiddleware, RedisBanStore
+
+from src.db.configs.redis import redis_manager
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(
+    HoneypotBanMiddleware,
+    store=RedisBanStore(redis_manager.client),
+    trusted_ip_header="x-real-ip",
+)
+```
+
+Um IP banido é respondido **antes** do roteamento, da autenticação e do rate
+limiter — a rejeição mais barata possível, que é o motivo de banir em vez de
+limitar.
+
+### A lista é a entrega
+
+`DEFAULT_HONEYPOT_PATTERNS` é o que este middleware realmente entrega: uma lista
+curada e versionada de assinaturas — dotfiles, recon de PHP, scanner de CMS,
+extensão de backup/dump e sonda de credencial —, casada contra o **path**, sem
+nada específico do serviço que a hospeda. A query string, que carrega o que o
+usuário digita, é casada à parte por `DEFAULT_HONEYPOT_QUERY_PATTERNS`, que só
+reconhece a injeção de argumento do PHP-CGI (`?-d+...`). É pura pesquisa, e
+envelhece; vindo do SDK, você pega assinatura nova com um bump em vez de manter
+regex na mão.
+
+Ela é sobrescrevível de propósito, porque o julgamento não é universal — em
+algum lugar existe um serviço que serve `/wp-admin` legitimamente:
+
+```python
+# src/api/app.py
+import re
+
+from fastapi import FastAPI
+from tempest_fastapi_sdk import (
+    DEFAULT_HONEYPOT_PATTERNS,
+    HoneypotBanMiddleware,
+    RedisBanStore,
+)
+
+from src.db.configs.redis import redis_manager
+
+app: FastAPI = FastAPI()
+
+EXTRA: tuple[re.Pattern[str], ...] = (re.compile(r"(?:^|/)\.terraform(?:/|$)"),)
+
+app.add_middleware(
+    HoneypotBanMiddleware,
+    store=RedisBanStore(redis_manager.client),
+    patterns=DEFAULT_HONEYPOT_PATTERNS + EXTRA,
+    exempt_paths=("/wp-admin",),
+)
+```
+
+`/.well-known/` **não** está na lista: ACME e `security.txt` moram lá e são
+legítimos, então as regras de dotfile nomeiam os diretórios em vez de casar
+`/.` genérico.
+
+Um único acerto vale ban de 24 horas para o IP inteiro (e todo mundo atrás do
+mesmo NAT), então a lista evita o que um cliente honesto pede:
+
+- palavra solta (`phpinfo`, `server-status`) só casa como segmento inteiro do
+  path — uma busca `?q=phpinfo` não bane;
+- extensão de backup/dump (`.zip`, `.sql`, `.bak`) e o `~` de backup de editor
+  só casam num arquivo na raiz ou sob `/backup/` — o download assinado
+  `/storage/<bucket>/<uuid>.zip` do `make_local_storage_router` passa;
+- `credentials` e `secrets` só casam na raiz — o
+  `/auth/webauthn/credentials` do router de auth passa.
+
+Até a 0.334.1 o `patterns=` era casado contra `path?query`. Padrão próprio que
+mira a query vai para `query_patterns=`.
+
+### Falha aberta, por padrão
+
+Toda chamada ao store é guardada. Store que levanta vira `WARNING` no log e o
+request segue. Blocklist que não alcança o Redis **precisa** deixar o tráfego
+passar — inverter isso transforma uma queda de cache numa queda da API inteira.
+A falha continua visível no log em vez de ser engolida.
+
+O único efeito de uma queda do store no caminho de escrita é que o ban não é
+gravado: o request ofensor é recusado do mesmo jeito.
+
+!!! danger "O IP tem que vir de um header que só o edge escreve"
+    Atrás de Nginx, `X-Forwarded-For` é **acrescentado** ao que o cliente
+    mandou, então a entrada mais à esquerda é escolhida pelo atacante. Uma
+    blocklist escrita à mão que lê esse header direto bane o IP errado — e pode
+    ser induzida a banir um usuário real. `trusted_ip_header` é repassado ao
+    `get_client_ip_from_scope`, que lê **um** header setado pelo edge e, na
+    falta dele, cai no peer da conexão. Sem proxy na frente, não passe o
+    parâmetro.
+
+### A resposta não conta nada
+
+O 403 diz apenas `{"detail": "Forbidden"}`. Um scanner que aprende que está
+banido aprende a rodar de IP. `status_code=` troca o código se você preferir
+outro; `ban_seconds=` troca a duração (default 24 h — o bastante para sobreviver
+a uma passada de varredura, curto o bastante para um endereço reciclado não
+pagar pelo antecessor).
+
+### Store
+
+| Store | Quando |
+| --- | --- |
+| `MemoryBanStore` | um worker só, ou teste. Os bans morrem com o processo. |
+| `RedisBanStore` | qualquer coisa com réplica: o ban é compartilhado no instante em que é escrito e o Redis é dono da expiração. Precisa do extra `[cache]`. |
+
+O contrato é o `BanStore` — `is_banned(ip)` e `ban(ip, ttl_seconds=…, reason=…)`
+—, então um store próprio (Postgres, um serviço de reputação) entra sem tocar no
+middleware.
+
+## Recap
+
+- `AttemptThrottle` conta falha por chave (`login:<email>`, `reset:<ip>`) e
+  bloqueia a chave, não o serviço — força bruta fica caro sem punir quem
+  digitou errado uma vez.
+- O claim `typ` separa os três JWTs que compartilham o mesmo segredo: access,
+  refresh e o intermediário do MFA. Sem ele, um refresh passaria como access.
+- `generate_opaque_token()` devolve `(plaintext, token_hash)` numa chamada: o
+  plaintext vai no e-mail, o hash vai no banco, e vazamento de tabela não vira
+  login.
+- `HardenedStaticFiles` carimba header de segurança em toda resposta e recusa
+  caminho que escapa da base — defesa em profundidade contra travessia. Os
+  helpers de download levam os mesmos headers e só servem `inline` tipo seguro.
+- `CSRFMiddleware` cobre o que bearer token não precisa e cookie precisa: o
+  browser reenviando credencial em request que o seu serviço não iniciou.
+- `set_cookie` / `clear_cookie` já vêm com `HttpOnly`, `Secure` e `SameSite`
+  seguros, e `get_client_ip` resolve o IP real atrás de proxy.
+- `TRUSTED_IP_HEADER` no `ServerSettings` leva o mesmo header a
+  `get_client_ip` e aos três middlewares, e recusa `X-Forwarded-For`.
+- `SERVER_PUBLIC_SCHEME=https` com o `PublicSchemeMiddleware` faz toda URL
+  absoluta sair em `https://` atrás de um proxy que termina o TLS — o
+  formulário de login do admin incluído.

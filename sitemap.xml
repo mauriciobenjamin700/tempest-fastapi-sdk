@@ -190,6 +190,90 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/learning/marketplace/flows/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-22x-0-23x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-22x-0-23x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-22x-0-23x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-25x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-25x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-25x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-26x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-26x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-26x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-27x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-27x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-27x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-30x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-30x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-30x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-31x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-31x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-31x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-32x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-32x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-32x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-33x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-33x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-33x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-34x-0-35x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-34x-0-35x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-34x-0-35x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-36x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-36x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-36x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-37x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-37x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-37x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-8-0-17x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-8-0-17x/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-8-0-17x/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/</loc>
         <lastmod>2026-11-27</lastmod>
         <changefreq>daily</changefreq>
@@ -433,6 +517,13 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fleet-traffic/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/fleet-traffic/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/full-service/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/full-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/full-service/"/>
     </url>
     <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fuzzy-matching/</loc>
@@ -827,6 +918,13 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/sessions/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/settings/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/settings/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/share-preview/</loc>
         <lastmod>2026-11-27</lastmod>
         <changefreq>daily</changefreq>
@@ -1023,6 +1121,559 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/zap/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/actions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/actions/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/actions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/audit/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/audit/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/audit/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/dashboard/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/dashboard/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/dashboard/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/forms/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/forms/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/forms/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/list/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/list/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/list/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/operator/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/operator/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/operator/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/permissions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/permissions/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/permissions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/search/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/search/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/search/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/setup/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/setup/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/setup/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/backend-only/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/backend-only/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/backend-only/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/current-user/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/current-user/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/current-user/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-change/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-change/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/email-change/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-failures/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-failures/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/email-failures/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/emails/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/emails/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/emails/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/endpoints/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/endpoints/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/endpoints/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/errors/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/errors/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/errors/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/i18n/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/i18n/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/i18n/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/modes/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/modes/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/modes/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/recovery/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/recovery/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/recovery/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/settings/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/settings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/setup/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/setup/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/setup/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/token-delivery/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/token-delivery/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/token-delivery/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/docker/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/docker/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/docker/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/integrations/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/integrations/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/integrations/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/lint-layers/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/lint-layers/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/lint-layers/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/lint-schemas/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/lint-schemas/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/lint-schemas/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/new-service/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/new-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/new-service/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/ops/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/ops/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/ops/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/quality/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/quality/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/quality/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/routes-openapi/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/routes-openapi/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/routes-openapi/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/run/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/run/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/run/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/users-secrets/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/users-secrets/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/users-secrets/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/bulk/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/bulk/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/bulk/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/connection/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/connection/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/connection/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/filters/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/filters/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/filters/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/migrations/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/migrations/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/migrations/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/mixins/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/mixins/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/mixins/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/models/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/models/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/models/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/pagination/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/pagination/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/pagination/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/repository/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/repository/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/repository/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/slow-queries/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/slow-queries/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/slow-queries/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/audio/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/audio/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/audio/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/chat/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/chat/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/chat/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/diarization/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/diarization/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/diarization/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/embeddings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/embeddings/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/embeddings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/hardware/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/hardware/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/hardware/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/memory/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/memory/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/memory/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/ollama/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/ollama/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/ollama/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/operations/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/operations/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/operations/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/rag/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/rag/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/rag/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/router/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/router/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/router/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/sound/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/sound/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/sound/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/structured/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/structured/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/structured/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/text/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/text/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/text/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/vision/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/vision/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/vision/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/auth/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/auth/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/auth/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/body-cache/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/body-cache/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/body-cache/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/bootstrap/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/bootstrap/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/bootstrap/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/extras/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/extras/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/extras/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/jwt/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/jwt/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/jwt/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/rate-limit/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/rate-limit/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/rate-limit/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/upload-email/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/upload-email/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/upload-email/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/webhooks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/webhooks/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/webhooks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/edge/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/edge/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/edge/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/formats/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/formats/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/formats/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/measure/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/measure/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/measure/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/monitoring/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/monitoring/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/monitoring/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/playbook/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/playbook/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/playbook/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/quantize/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/quantize/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/quantize/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/sklearn/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/sklearn/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/sklearn/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/start/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/start/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/start/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/broker/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/broker/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/broker/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/events-reliability/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/events-reliability/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/events-reliability/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/from-settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/from-settings/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/from-settings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/periodic/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/periodic/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/periodic/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/production/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/production/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/production/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/tasks-reliability/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/tasks-reliability/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/tasks-reliability/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/tasks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/tasks/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/tasks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/topology/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/topology/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/topology/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/</loc>
         <lastmod>2026-11-27</lastmod>
         <changefreq>daily</changefreq>
@@ -1077,6 +1728,524 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-sql-shell/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-sql-shell/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-sql-shell/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-storage/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-tasks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-tasks/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-tasks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/api/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/api/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/api/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/auth/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/auth/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/auth/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/authz/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/authz/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/authz/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/cache/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/cache/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/cache/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/core/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/db/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/db/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/db/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/exceptions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/exceptions/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/exceptions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/schemas/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/schemas/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/schemas/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/services-controllers/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/services-controllers/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/services-controllers/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/sessions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/sessions/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/sessions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/settings/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/settings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/agents/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/agents/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/agents/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/faces/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/faces/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/faces/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-audio/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-audio/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-audio/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-hub/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-hub/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-hub/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-image/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-image/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-image/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-inventory/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-inventory/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-inventory/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-rag/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-rag/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-rag/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/modelops/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/modelops/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/modelops/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/text/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/text/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/text/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/vision/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/vision/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/vision/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/artifacts/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/artifacts/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/artifacts/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/pdf/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/pdf/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/pdf/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/privacy/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/share/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/share/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/share/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/slides/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/slides/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/slides/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/spreadsheet/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/spreadsheet/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/spreadsheet/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/storage/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/storage/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/storage/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/app-errors/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/app-errors/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/app-errors/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap-inbox/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap-inbox/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap-inbox/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap-router/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap-router/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap-router/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-adapters/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-adapters/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-adapters/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-base/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-base/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-base/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-mercado-pago/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-mercado-pago/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-mercado-pago/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-openpix/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-openpix/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-openpix/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-routing/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-routing/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-routing/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-settlement/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-settlement/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-settlement/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-stripe/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-stripe/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-stripe/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-storage-google-drive/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-storage-google-drive/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-storage-google-drive/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-subscriptions-revenuecat/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-subscriptions-revenuecat/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-subscriptions-revenuecat/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/wallet/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/wallet/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/wallet/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/openapi/asyncapi/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/openapi/asyncapi/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/openapi/asyncapi/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/openapi/openapi/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/openapi/openapi/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/openapi/openapi/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/chat/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/chat/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/chat/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/eventsourcing/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/eventsourcing/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/eventsourcing/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/flags/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/flags/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/flags/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/mcp/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/mcp/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/mcp/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/push/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/push/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/push/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/queue/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/queue/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/queue/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/reviews/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/reviews/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/reviews/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/rooms/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/rooms/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/rooms/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/sse/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/sse/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/sse/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/tasks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/tasks/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/tasks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/webpush/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/webpush/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/webpush/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/websockets/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/websockets/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/websockets/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/checks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/checks/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/checks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/geo/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/geo/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/geo/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/hostbridge/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/hostbridge/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/hostbridge/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ssr/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ssr/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ssr/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/testing-fakes/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/testing-fakes/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/testing-fakes/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/testing/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/testing/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/testing/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-components/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-components/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-components/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-css/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-css/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-css/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-forms/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-forms/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-forms/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-layout/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-layout/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-layout/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-pages/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-pages/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-pages/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/utils/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/utils/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/utils/"/>
     </url>
     <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/</loc>
@@ -1266,6 +2435,90 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/learning/marketplace/flows/"/>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/learning/marketplace/flows/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-22x-0-23x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-22x-0-23x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-22x-0-23x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-25x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-25x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-25x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-26x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-26x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-26x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-27x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-27x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-27x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-30x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-30x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-30x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-31x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-31x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-31x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-32x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-32x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-32x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-33x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-33x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-33x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-34x-0-35x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-34x-0-35x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-34x-0-35x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-36x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-36x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-36x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-37x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-37x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-37x/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-8-0-17x/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-8-0-17x/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/0-8-0-17x/"/>
     </url>
     <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/</loc>
@@ -1511,6 +2764,13 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/fleet-traffic/"/>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fleet-traffic/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/full-service/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/full-service/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/full-service/"/>
     </url>
     <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/fuzzy-matching/</loc>
@@ -1905,6 +3165,13 @@
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sessions/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/settings/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/settings/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/share-preview/</loc>
         <lastmod>2026-11-27</lastmod>
         <changefreq>daily</changefreq>
@@ -2101,6 +3368,559 @@
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/zap/"/>
     </url>
     <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/actions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/actions/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/actions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/audit/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/audit/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/audit/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/dashboard/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/dashboard/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/dashboard/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/forms/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/forms/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/forms/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/list/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/list/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/list/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/operator/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/operator/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/operator/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/permissions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/permissions/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/permissions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/search/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/search/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/search/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/setup/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/setup/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/setup/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/backend-only/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/backend-only/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/backend-only/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/current-user/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/current-user/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/current-user/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/email-change/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/email-change/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-change/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/email-failures/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/email-failures/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-failures/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/emails/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/emails/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/emails/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/endpoints/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/endpoints/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/endpoints/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/errors/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/errors/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/errors/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/i18n/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/i18n/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/i18n/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/modes/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/modes/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/modes/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/recovery/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/recovery/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/recovery/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/settings/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/settings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/setup/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/setup/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/setup/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/token-delivery/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/token-delivery/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/token-delivery/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/docker/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/docker/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/docker/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/integrations/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/integrations/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/integrations/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/lint-layers/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/lint-layers/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/lint-layers/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/lint-schemas/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/lint-schemas/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/lint-schemas/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/new-service/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/new-service/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/new-service/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/ops/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/ops/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/ops/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/quality/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/quality/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/quality/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/routes-openapi/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/routes-openapi/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/routes-openapi/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/run/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/run/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/run/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/users-secrets/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli/users-secrets/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/users-secrets/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/bulk/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/bulk/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/bulk/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/connection/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/connection/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/connection/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/filters/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/filters/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/filters/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/migrations/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/migrations/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/migrations/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/mixins/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/mixins/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/mixins/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/models/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/models/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/models/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/pagination/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/pagination/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/pagination/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/repository/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/repository/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/repository/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/slow-queries/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/slow-queries/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/slow-queries/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/audio/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/audio/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/audio/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/chat/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/chat/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/chat/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/diarization/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/diarization/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/diarization/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/embeddings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/embeddings/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/embeddings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/hardware/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/hardware/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/hardware/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/memory/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/memory/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/memory/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/ollama/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/ollama/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/ollama/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/operations/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/operations/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/operations/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/rag/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/rag/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/rag/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/router/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/router/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/router/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/sound/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/sound/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/sound/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/structured/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/structured/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/structured/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/text/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/text/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/text/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/vision/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/vision/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai/vision/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/auth/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/auth/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/auth/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/body-cache/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/body-cache/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/body-cache/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/bootstrap/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/bootstrap/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/bootstrap/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/extras/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/extras/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/extras/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/jwt/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/jwt/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/jwt/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/rate-limit/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/rate-limit/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/rate-limit/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/upload-email/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/upload-email/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/upload-email/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/webhooks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/http/webhooks/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/webhooks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/edge/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/edge/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/edge/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/formats/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/formats/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/formats/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/measure/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/measure/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/measure/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/monitoring/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/monitoring/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/monitoring/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/playbook/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/playbook/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/playbook/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/quantize/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/quantize/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/quantize/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/sklearn/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/sklearn/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/sklearn/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/start/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/modelops/start/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops/start/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/broker/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/broker/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/broker/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/events-reliability/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/events-reliability/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/events-reliability/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/from-settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/from-settings/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/from-settings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/periodic/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/periodic/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/periodic/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/production/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/production/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/production/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/tasks-reliability/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/tasks-reliability/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/tasks-reliability/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/tasks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/tasks/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/tasks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/topology/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/topology/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/topology/"/>
+    </url>
+    <url>
         <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/</loc>
         <lastmod>2026-11-27</lastmod>
         <changefreq>daily</changefreq>
@@ -2155,5 +3975,523 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/"/>
         <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-sql-shell/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-sql-shell/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-sql-shell/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-storage/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-storage/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-tasks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin-tasks/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-tasks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/admin/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/api/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/api/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/api/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/auth/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/auth/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/auth/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/authz/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/authz/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/authz/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/cache/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/cache/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/cache/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/core/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/core/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/db/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/db/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/db/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/exceptions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/exceptions/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/exceptions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/schemas/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/schemas/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/schemas/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/services-controllers/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/services-controllers/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/services-controllers/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/sessions/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/sessions/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/sessions/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/settings/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/admin-data-api/settings/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/settings/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/agents/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/agents/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/agents/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/faces/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/faces/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/faces/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-audio/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-audio/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-audio/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-hub/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-hub/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-hub/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-image/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-image/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-image/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-inventory/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-inventory/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-inventory/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-rag/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai-rag/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai-rag/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/genai/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/genai/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/modelops/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/modelops/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/modelops/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/text/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/text/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/text/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/vision/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/ai-vision/vision/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/ai-vision/vision/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/artifacts/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/artifacts/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/artifacts/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/pdf/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/pdf/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/pdf/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/privacy/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/privacy/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/share/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/share/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/share/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/slides/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/slides/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/slides/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/spreadsheet/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/spreadsheet/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/spreadsheet/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/storage/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/documents-files/storage/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/storage/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/app-errors/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/app-errors/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/app-errors/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap-inbox/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap-inbox/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap-inbox/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap-router/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap-router/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap-router/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-messaging-zap/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-messaging-zap/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-adapters/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-adapters/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-adapters/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-base/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-base/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-base/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-mercado-pago/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-mercado-pago/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-mercado-pago/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-openpix/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-openpix/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-openpix/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-routing/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-routing/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-routing/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-settlement/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-settlement/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-settlement/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-stripe/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-payment-stripe/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-payment-stripe/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-storage-google-drive/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-storage-google-drive/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-storage-google-drive/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-subscriptions-revenuecat/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/integrations-subscriptions-revenuecat/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/integrations-subscriptions-revenuecat/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/wallet/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/integrations-payments/wallet/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/integrations-payments/wallet/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/openapi/asyncapi/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/openapi/asyncapi/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/openapi/asyncapi/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/openapi/openapi/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/openapi/openapi/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/openapi/openapi/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/chat/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/chat/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/chat/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/eventsourcing/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/eventsourcing/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/eventsourcing/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/flags/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/flags/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/flags/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/mcp/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/mcp/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/mcp/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/push/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/push/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/push/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/queue/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/queue/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/queue/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/reviews/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/reviews/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/reviews/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/rooms/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/rooms/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/rooms/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/sse/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/sse/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/sse/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/tasks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/tasks/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/tasks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/webpush/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/webpush/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/webpush/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/websockets/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/realtime-messaging/websockets/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/realtime-messaging/websockets/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/checks/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/checks/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/checks/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/geo/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/geo/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/geo/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/hostbridge/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/hostbridge/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/hostbridge/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ssr/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ssr/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ssr/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/testing-fakes/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/testing-fakes/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/testing-fakes/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/testing/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/testing/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/testing/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-components/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-components/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-components/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-css/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-css/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-css/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-forms/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-forms/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-forms/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-layout/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-layout/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-layout/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-pages/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui-pages/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui-pages/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/ui/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/ui/"/>
+    </url>
+    <url>
+        <loc>https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/utils/</loc>
+        <lastmod>2026-11-27</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/web-ui-utils/utils/"/>
+        <xhtml:link rel="alternate" hreflang="pt" href="https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/web-ui-utils/utils/"/>
     </url>
 </urlset>

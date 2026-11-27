@@ -1,0 +1,42 @@
+# `tempest_fastapi_sdk.admin.storage`
+
+A fonte de dados do navegador de storage do admin: um bucket de object store.
+
+[« Admin, dados e API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api.md)
+
+---
+
+- [`tempest_fastapi_sdk.admin.storage`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage)
+- [`tempest_fastapi_sdk.admin.storage.DEFAULT_STORAGE_PAGE_SIZE`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.DEFAULT_STORAGE_PAGE_SIZE)
+- [`tempest_fastapi_sdk.admin.storage.DEFAULT_STORAGE_MAX_UPLOAD_BYTES`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.DEFAULT_STORAGE_MAX_UPLOAD_BYTES)
+- [`tempest_fastapi_sdk.admin.storage.DEFAULT_STORAGE_MAX_TEXT_BYTES`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.DEFAULT_STORAGE_MAX_TEXT_BYTES)
+- [`tempest_fastapi_sdk.admin.storage.STORAGE_KEY_MAX_BYTES`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.STORAGE_KEY_MAX_BYTES)
+- [`tempest_fastapi_sdk.admin.storage.STORAGE_SPOOL_BYTES`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.STORAGE_SPOOL_BYTES)
+- [`tempest_fastapi_sdk.admin.storage.STORAGE_STAT_CONCURRENCY`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.STORAGE_STAT_CONCURRENCY)
+- [`tempest_fastapi_sdk.admin.storage.TEXT_MEDIA_TYPES`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.TEXT_MEDIA_TYPES)
+- [`tempest_fastapi_sdk.admin.storage.StoragePreviewEnum`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StoragePreviewEnum)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserError`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserError)
+- [`tempest_fastapi_sdk.admin.storage.StorageObjectMissingError`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageObjectMissingError)
+- [`tempest_fastapi_sdk.admin.storage.AdminStorageClient`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.AdminStorageClient)
+- [`tempest_fastapi_sdk.admin.storage.AdminStorageClient.list_objects`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.AdminStorageClient.list_objects)
+- [`tempest_fastapi_sdk.admin.storage.AdminStorageClient.stat_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.AdminStorageClient.stat_object)
+- [`tempest_fastapi_sdk.admin.storage.AdminStorageClient.stream_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.AdminStorageClient.stream_object)
+- [`tempest_fastapi_sdk.admin.storage.AdminStorageClient.put_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.AdminStorageClient.put_object)
+- [`tempest_fastapi_sdk.admin.storage.AdminStorageClient.remove_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.AdminStorageClient.remove_object)
+- [`tempest_fastapi_sdk.admin.storage.StorageEntry`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageEntry)
+- [`tempest_fastapi_sdk.admin.storage.StorageCrumb`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageCrumb)
+- [`tempest_fastapi_sdk.admin.storage.StorageListing`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageListing)
+- [`tempest_fastapi_sdk.admin.storage.StorageObjectView`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageObjectView)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.exists`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.exists)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.browse`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.browse)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.describe`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.describe)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.upload`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.upload)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.replace`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.replace)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.save_text`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.save_text)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.rename`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.rename)
+- [`tempest_fastapi_sdk.admin.storage.StorageBrowserService.delete`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.StorageBrowserService.delete)
+- [`tempest_fastapi_sdk.admin.storage.check_storage_key`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.check_storage_key)
+- [`tempest_fastapi_sdk.admin.storage.normalize_storage_prefix`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.normalize_storage_prefix)
+- [`tempest_fastapi_sdk.admin.storage.guess_storage_content_type`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.guess_storage_content_type)
+- [`tempest_fastapi_sdk.admin.storage.storage_preview_for`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/admin-storage/#tempest_fastapi_sdk.admin.storage.storage_preview_for)

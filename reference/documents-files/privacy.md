@@ -1,0 +1,43 @@
+# `tempest_fastapi_sdk.privacy`
+
+Exportação e apagamento de dados do titular (LGPD art. 18, GDPR art. 15/17).
+
+[« Documentos e arquivos](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files.md)
+
+---
+
+- [`tempest_fastapi_sdk.privacy`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy)
+- [`tempest_fastapi_sdk.privacy.DEFAULT_SECRET_MARKERS`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.DEFAULT_SECRET_MARKERS)
+- [`tempest_fastapi_sdk.privacy.SECRET_INFO_KEY`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SECRET_INFO_KEY)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.tables`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.tables)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.violations`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.violations)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.is_secret`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.is_secret)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.exported_columns`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.exported_columns)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.condition`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.condition)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.export`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.export)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.count`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.count)
+- [`tempest_fastapi_sdk.privacy.SubjectGraph.erase`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectGraph.erase)
+- [`tempest_fastapi_sdk.privacy.SubjectErasureError`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectErasureError)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.subject_prefix`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.subject_prefix)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.key`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.key)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.put`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.put)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.presign`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.presign)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.presign_put`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.presign_put)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.presign_post`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.presign_post)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.stat`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.stat)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.read`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.read)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.names`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.names)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.delete`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.delete)
+- [`tempest_fastapi_sdk.privacy.SubjectObjectStorage.delete_all`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectObjectStorage.delete_all)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.put_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.put_object)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.presigned_get_url`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.presigned_get_url)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.presigned_put_url`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.presigned_put_url)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.presigned_post_policy`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.presigned_post_policy)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.stat_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.stat_object)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.stream_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.stream_object)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.list_objects`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.list_objects)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.remove_object`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.remove_object)
+- [`tempest_fastapi_sdk.privacy.SubjectStorageClient.remove_objects`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/documents-files/privacy/#tempest_fastapi_sdk.privacy.SubjectStorageClient.remove_objects)

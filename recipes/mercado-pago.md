@@ -1,0 +1,698 @@
+# Mercado Pago: cobrando no gateway mais usado do Brasil
+
+Pix, cartão, boleto e presencial, com a superfície inteira já gerada da
+especificação oficial do provedor.
+
+## Instalando e conectando
+
+```python
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    DEFAULT_BASE_URL,
+    MercadoPagoClient,
+)
+
+http: HTTPClient = HTTPClient(
+    base_url=DEFAULT_BASE_URL,
+    default_headers={"Authorization": "Bearer <seu access token>"},
+)
+client: MercadoPagoClient = MercadoPagoClient(http)
+```
+
+Ou pelo mixin de settings, que já resolve o prefixo:
+
+```python
+from tempest_fastapi_sdk import HTTPClient, MercadoPagoSettings
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import MercadoPagoClient
+
+
+def build_client(settings: MercadoPagoSettings) -> MercadoPagoClient:
+    """Build the client from configuration.
+
+    Args:
+        settings (MercadoPagoSettings): The loaded settings.
+
+    Returns:
+        MercadoPagoClient: The configured client.
+    """
+    return MercadoPagoClient(HTTPClient(**settings.mercado_pago_kwargs()))
+```
+
+!!! danger "Não existe host de sandbox"
+    Medido na especificação pinada: `servers` tem **uma** entrada,
+    `https://api.mercadopago.com`. O que separa uma cobrança de teste de uma
+    real é **qual token** você está segurando, não qual host você chama.
+
+    É o oposto do OpenPix, onde o ambiente troca o domínio. Aqui um token de
+    produção apontado para essa mesma URL move dinheiro de verdade, e não há
+    configuração que o impeça.
+
+## Dinheiro é em reais, não em centavos
+
+```python
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    from_cents,
+    to_cents,
+)
+
+
+def exemplo() -> tuple[int, str]:
+    """Convert both ways.
+
+    Returns:
+        tuple[int, str]: Cents parsed from reais, and reais rendered back.
+    """
+    cents: int = to_cents(19.9)
+    return cents, str(from_cents(cents))
+```
+
+!!! warning "A armadilha de fator 100"
+    Mercado Pago declara dinheiro em **reais**, de dois jeitos. Contado nos
+    componentes do documento corrigido em 2026-10-10: 21 propriedades
+    `number` / `format: float` (entre elas `PreferenceItem.unit_price`,
+    `Refund.amount`, `MerchantOrder.total_amount`) e, na API de Orders, 7
+    campos de valor como **string decimal** (`OrderRequest.total_amount`,
+    `OrderPayment.amount`, `Order.total_paid_amount`…). `to_cents` aceita os
+    dois.
+
+    O OpenPix também usa `number`, mas declara em **centavos**. Mesmo tipo
+    errado, unidade diferente. Trocar um pelo outro cobra R$ 1.990,00 por um
+    item de R$ 19,90 — e o erro só aparece no extrato do cliente.
+
+    Por isso `to_cents` **recusa** fração de centavo em vez de arredondar:
+    arredondar esconderia a divergência atrás de um número plausível.
+
+## Checkout Pro: a preferência
+
+O comprador é redirecionado para uma tela do Mercado Pago:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    MercadoPagoClient,
+    PreferenceItem,
+    PreferenceRequest,
+)
+
+
+async def criar_preferencia(client: MercadoPagoClient) -> str | None:
+    """Create a Checkout Pro preference and return where to send the buyer.
+
+    Args:
+        client (MercadoPagoClient): The configured client.
+
+    Returns:
+        str | None: The ``init_point`` URL, when the provider returned one.
+    """
+    preference = await client.create_preference(
+        body=PreferenceRequest(
+            items=[
+                PreferenceItem(
+                    title="Pedido 1042",
+                    quantity=1,
+                    unit_price=19.9,
+                )
+            ],
+            external_reference="pedido-1042",
+        )
+    )
+    return preference.init_point
+```
+
+## Checkout Transparente: Pix e cartão pela API de Orders
+
+Sem redirecionar o comprador, a cobrança passa pela **API de Orders**
+(`/v1/orders`). A API de Payments (`/v1/payments`) aparece no painel do
+Mercado Pago com o aviso *"Esta API será descontinuada em breve"*, e este SDK
+deixou de modelá-la — o [guia de migração](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration.md) diz o que trocar.
+
+Os dois adapters falam Orders e entregam os contratos canônicos de
+`integrations.payment`: `MercadoPagoPixProvider` (o `PixProvider`) e
+`MercadoPagoCardProvider` (o `CardProvider`). O script abaixo roda contra o
+sandbox com as credenciais da receita
+[contas e credenciais de teste](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mercado-pago-sandbox.md):
+
+```python
+import asyncio
+import os
+from datetime import timedelta
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment import (
+    CardChargeRequest,
+    PixChargeRequest,
+    PixPayer,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoCardProvider,
+    MercadoPagoPixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
+
+
+async def main() -> None:
+    """Open a Pix, then charge, decline and refund a test card."""
+    payer: PixPayer = PixPayer(email="comprador@example.com")
+    async with HTTPClient(
+        base_url=DEFAULT_BASE_URL,
+        default_headers={
+            "Authorization": f"Bearer {os.environ['MERCADO_PAGO_TEST_SELLER_ACCESS_TOKEN']}"
+        },
+    ) as http:
+        pix = MercadoPagoPixProvider(http)
+        charge = await pix.create_pix_charge(
+            PixChargeRequest(
+                amount_cents=1990,
+                reference="pedido-1042",
+                expires_in=timedelta(minutes=30),
+                payer=payer,
+            ),
+        )
+        print("pix", charge.status.value, bool(charge.br_code))
+        print("pix", (await pix.cancel_pix_charge(charge.provider_charge_id)).status.value)
+
+        card = MercadoPagoCardProvider(http)
+        token = (
+            await http.request(
+                "POST",
+                "/v1/card_tokens",
+                json={
+                    "card_number": "4235647728025682",
+                    "expiration_month": 11,
+                    "expiration_year": 2030,
+                    "security_code": "123",
+                    "cardholder": {
+                        "name": "APRO",
+                        "identification": {"type": "CPF", "number": "12345678909"},
+                    },
+                },
+            )
+        ).json()["id"]
+        paid = await card.create_card_charge(
+            CardChargeRequest(
+                amount_cents=10000,
+                reference="pedido-1043",
+                card_token=token,
+                payment_method_id="visa",
+                payer=payer,
+            ),
+        )
+        print("card", paid.status.value, paid.status_detail)
+        refunded = await card.refund_card_charge(paid.provider_charge_id, amount_cents=3000)
+        print("card", refunded.status.value, refunded.refunded_cents)
+
+
+asyncio.run(main())
+```
+
+Saída medida em 2026-10-09:
+
+```text
+pix pending True
+pix cancelled
+card paid accredited
+card paid 3000
+```
+
+!!! warning "O número do cartão não passa pelo seu servidor"
+    O script tokeniza o Visa **de teste** no servidor só porque ele não é um
+    cartão. Em produção, o front tokeniza com a **Public Key** (MercadoPago.js
+    ou o Card Payment Brick) e manda ao backend o token, a bandeira e as
+    parcelas. Receber o número no servidor coloca o serviço no escopo do PCI
+    DSS.
+
+O que os adapters decidem por você, cada item medido no sandbox:
+
+- **Dinheiro em centavos no contrato, decimal em string no fio.** Orders
+  escreve `"19.90"`; `from_cents` / `to_cents` convertem sem passar por
+  `float`.
+- **Recusa de cartão é HTTP 402, e volta como resultado.** O corpo traz o
+  motivo em `errors` e a order em `data`. `create_card_charge` devolve um
+  `CardCharge` com `status` `FAILED` e o motivo em `status_detail`
+  (`rejected_by_issuer`), em vez de levantar.
+- **Autorizar e capturar depois.** `capture=False` manda
+  `capture_mode: manual`; a cobrança volta `AUTHORIZED` (`waiting_capture`) e
+  espera `capture_card_charge` ou `cancel_card_charge`.
+- **Reembolso parcial endereça o pagamento.** Uma order tem um id (`ORD…`) e
+  o pagamento dentro dela outro (`PAY…`); `refund_card_charge` e
+  `refund_pix_charge` acham o segundo sozinhos. Sem valor, reembolsam o que
+  sobrou. No cartão, `refunded_cents` soma os reembolsos processados; no Pix,
+  eles ficam em `raw["transactions"]["refunds"]`.
+- **Estorno de Pix idempotente.** Com `refund_reference=`,
+  `refund_pix_charge` deriva a `X-Idempotency-Key` da referência e devolve um
+  `PixRefund`; repetir com a mesma referência não estorna de novo. Sem ela, a
+  forma antiga continua: um `PixCharge` e uma chave nova por chamada. Veja
+  [Estorno de Pix (idempotente)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-refund.md).
+- **Pix só se estorna depois de pago.** Medido em 2026-10-10: o parcial
+  deixa a cobrança `PAID` (o `status_detail` `partially_refunded` fica em `raw`), o resto a deixa
+  `REFUNDED`. Num Pix ainda não pago, a resposta é
+  `409 cannot_refund_order`: ele se cancela, não se estorna.
+- **Capturar e reembolsar releem a order.** As duas respostas trazem só id,
+  estado e transações, sem `total_amount`; o adapter faz um `GET` em seguida
+  para devolver a cobrança inteira.
+- **"Ainda não" é repetido.** Logo depois de criar, cancelar uma
+  autorização respondeu `409 processor_communication_error` em 3 de 10
+  tentativas, e reembolsar uma aprovação respondeu
+  `422 unprocessable_entity` em 7 de 10 e
+  `409 post_processing_operation_pending` em 1 de 10 — a captura assíncrona
+  ainda terminava. O adapter repete essas respostas, e só essas, com a mesma chave,
+  após 1, 2 e 4 s (`action_retry_delays=` muda ou desliga); todas as medidas
+  passaram em até ~5 s.
+- **Expiração do Pix em segundos.** `expires_in` vira `PT1800S`; sem ela, a
+  order expira em 24 horas. Vencido o prazo, a order lê
+  `canceled` / `expired` e a cobrança vira `EXPIRED`, não `CANCELLED`
+  (medido com `PT60S`).
+- **Pagador é obrigatório.** Order sem `payer` volta
+  `400 '$.payer' - minimum 1 properties allowed`.
+- **Pix: a reference é a chave de idempotência.** O `MercadoPagoPixProvider`
+  deriva a `X-Idempotency-Key` da `reference`
+  (`reference_idempotency_key`, um UUID5 — a especificação declara o header
+  `format: uuid`), então repetir o `create_pix_charge` com o mesmo pedido
+  devolve a order que a primeira chamada abriu, como o
+  [contrato Pix](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-protocol.md) promete. O provedor honra a chave (medido
+  em 2026-10-10): a mesma chave com o mesmo corpo devolve a **mesma** order,
+  e com outro corpo volta `409 idempotency_key_already_used`. O adapter deixa
+  esse `409` sair como `httpx.HTTPStatusError`: reusar uma reference com
+  outro valor é defeito de quem chama, e devolver a order antiga entregaria
+  uma cobrança de valor errado. Até a v0.357.0 o padrão era um UUID4 novo por
+  chamada, e um create repetido abria uma segunda order.
+- **Cartão: uma chave por chamada**, que o `HTTPClient` reaproveita nos
+  próprios retries. Cartão recusado é refeito com outro token sob a mesma
+  reference — outro corpo, então uma chave derivada da reference voltaria
+  `409`. Passe `idempotency_key=` a qualquer um dos adapters para escolher.
+- **Parcelas dependem do cartão e do valor.** A consulta de parcelas
+  (`get_installments`) responde pelo BIN: o Visa de teste (`423564`) oferece
+  só 1x, na vendedora de teste e na conta real, e pedir 3x volta
+  `400 invalid_transaction_amount`; o Amex de teste (`375365`) oferece de 1x a
+  18x em R$ 1.000,00. Consulte as parcelas e mande uma das oferecidas.
+- **Com parcelas, `amount_cents` continua sendo o preço.** Não mande o total
+  da oferta: o provedor soma os juros. Medido em 2026-10-30 com 3x de
+  R$ 1.000,00 no Amex: `amount_cents` 100000, `installment_amount_cents`
+  37077, `payer_total_cents` 111231. O estorno total devolveu R$ 1.000,00 — o
+  preço, não o que o pagador pagou.
+
+!!! note "O cliente gerado, para ir além"
+    `MercadoPagoClient` traz a API de Orders inteira (`create_order`,
+    `get_order`, `capture_order`, `refund_order`, `cancel_order`, transações).
+    Os estados de `Order` e de `OrderTransactionPayment` aceitam qualquer
+    string: o sandbox devolveu `failed`, `refunded`, `waiting_transfer` e
+    `rejected_by_issuer`, que o documento não lista, e com o enum fechado
+    `create_order` levantava `ValidationError` ao criar um Pix. Lá a recusa
+    de cartão é um `402` que `raise_for_status()` transforma em exceção — é
+    o adapter que a lê como resultado.
+
+## Verificando o webhook
+
+```python
+from typing import Any
+
+from fastapi import APIRouter, Depends
+
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    MercadoPagoWebhookEvent,
+    make_mercado_pago_webhook_dependency,
+)
+
+from src.core.settings import settings
+
+router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+verified = make_mercado_pago_webhook_dependency(
+    settings.MERCADOPAGO_WEBHOOK_SECRET,
+)
+
+
+@router.post("/mercado-pago", include_in_schema=False)
+async def mercado_pago_webhook(
+    event: MercadoPagoWebhookEvent = Depends(verified),
+) -> dict[str, Any]:
+    """Recebe uma notificação já verificada."""
+    action = str(event.payload.get("action") or "")
+    if event.topic == "order" or action.startswith("order."):
+        return {"handled": True, "order": event.data_id}
+    return {"handled": False, "topic": event.topic}
+```
+
+A fábrica lê `data.id` da query string e `x-signature` / `x-request-id` dos
+headers, roda `verify_signature` e entrega um `MercadoPagoWebhookEvent`. Você
+não extrai nada do request à mão, e não decide o que fazer com um `False`:
+
+- Assinatura ausente, inválida, fora da janela de `tolerance_seconds`, ou um
+  `data.id` / `x-request-id` que a assinatura cobria e o request não trouxe →
+  **401** (`{"detail": "Invalid Mercado Pago webhook signature", "code":
+  "UNAUTHORIZED", "details": {}}`), **antes** do seu handler.
+- Segredo vazio recusa tudo — "nenhum segredo configurado" não vira rota
+  aberta.
+- Tópico que este SDK não nomeia **não** derruba a rota: `event` vira
+  `MercadoPagoEventEnum.UNKNOWN` e `topic` guarda a string. Corpo que não é JSON
+  também não: `payload` fica vazio e `body` traz os bytes.
+
+- Notificação de Orders chega com o tópico `order` e uma ação `order.*`: o
+  documento do provedor lista `order.created` e `order.updated`, e uma
+  entrega real que um serviço em produção recebeu em 2026-11-13 trazia
+  `type=order` e `action: "order.canceled"`
+  ([#498](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/498)).
+  `event.event` é `MercadoPagoEventEnum.ORDER` desde esta release; até a
+  v0.357.0 era `UNKNOWN`. O exemplo decide pelo `topic` e pela ação, como faz
+  `make_mercado_pago_webhook_delivery_dependency` (seção seguinte), que além
+  disso relê a order.
+
+!!! warning "A assinatura não cobre o corpo"
+    O manifesto assinado é `data.id`, `x-request-id` e `ts` — o corpo fica
+    de fora. Por isso `event.data_id` vem da **query**, que é o valor que o
+    provedor assinou, e não do `data.id` do JSON. `payload` e `topic`
+    chegaram sem assinatura: releia o recurso pela API usando `data_id`
+    antes de agir sobre ele.
+
+O algoritmo é **portado do validador do próprio Mercado Pago**
+(`mercadopago/sdk-nodejs`, `src/utils/webhook/index.ts`, commit `99857f33`),
+que é o módulo para o qual a documentação deles aponta o integrador. A
+especificação vendorizada não modela nada disso:
+`grep -c "x-signature" vendor/mercadopago-openapi.yaml` devolve `2`, e as duas
+ocorrências são prosa dentro de `description` — **nenhum** parâmetro ou header
+declarado leva esse nome, e o algoritmo de validação não está lá.
+
+O manifesto assinado **omite par ausente**. Não é template fixo:
+
+```text
+tudo presente     id:<data.id>;request-id:<x-request-id>;ts:<ts>;
+sem data.id       request-id:<x-request-id>;ts:<ts>;
+sem os dois       ts:<ts>;
+```
+
+E o **`data.id` é assinado em minúsculas**. Um id de Orders chega como
+`ORD01M7B5HWREYRJCAPJ61QTF1SRW` e o provedor assina
+`id:ord01m7b5hwreyrjcapj61qtf1srw;...`. O `build_manifest` (e por ele o
+`sign_manifest` e o `verify_signature`) passa o id para minúsculas; o
+`event.data_id` guarda o id como chegou, que é o que o
+`GET /v1/orders/{id}` aceita.
+
+!!! warning "Toda entrega de Orders era 401 até esta release"
+    Até a v0.357.0 o manifesto levava o id como chegou, então **toda**
+    notificação real de Orders era recusada com
+    `401 Invalid Mercado Pago webhook signature`
+    ([#753](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/753)).
+    Esta regra diverge do arquivo upstream no `99857f33`: o validador deles
+    passava o id para minúsculas quando saiu e deixou de passar no `ac20999a`
+    (2026-06-17). As entregas reais só verificam em minúsculas — a evidência
+    vence o port.
+
+!!! warning "Isto era um defeito até a v0.250.0"
+    Até então este módulo renderizava um template fixo, então uma entrega sem
+    `data.id` assinava `id:;request-id:...;ts:...;` — e nenhuma entrega desse
+    tipo verificava. Se você tratava a rejeição como "notificação inválida",
+    estava descartando notificação legítima.
+
+`build_manifest` está exportado para você conferir o que seria assinado:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import build_manifest
+
+
+def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
+    """Show the exact string the signature covers.
+
+    Args:
+        data_id (str): The ``data.id`` query parameter, empty when absent.
+        request_id (str): The ``x-request-id`` header, empty when absent.
+        ts (str): The ``ts`` component of ``x-signature``.
+
+    Returns:
+        str: The manifest, with absent pairs left out.
+    """
+    return build_manifest(data_id=data_id, request_id=request_id, timestamp=ts)
+```
+
+!!! info "A janela de tolerância vem ligada"
+    Desde a 0.341.0, `verify_signature` e as duas fábricas de dependency
+    recusam `ts` a mais de `DEFAULT_TOLERANCE_SECONDS` (`300.0`) do relógio.
+    Sem a janela, uma entrega capturada do fio verifica para sempre: a
+    assinatura cobre um timestamp que ninguém confere. O upstream deixa a
+    janela opcional; `tolerance_seconds=None` devolve esse comportamento. A
+    unidade do `ts` é lida pela magnitude — os próprios artefatos do provedor
+    discordam entre segundos e milissegundos, e a
+    [issue #458 deles](https://github.com/mercadopago/sdk-nodejs/issues/458)
+    foi exatamente essa confusão.
+
+!!! warning "Reenvio com o `ts` original ainda não foi medido"
+    Se o Mercado Pago reenviar uma notificação que falhou mantendo o `ts` da
+    primeira tentativa, o reenvio que chega depois de cinco minutos é
+    recusado com 401. Nenhuma entrega real foi observada ainda para dizer se
+    o reenvio reassina. Se a sua rota responde erro de propósito para forçar
+    reenvio, passe uma janela maior (`tolerance_seconds=3600.0`).
+
+!!! info "Migração para `v2` não precisa de release"
+    O header pode carregar mais de um hash (`ts=..,v1=..,v2=..`). O verificador
+    usa a primeira versão que você aceitar, então
+    `versions=("v2", "v1")` adota a nova antes de este pacote mudar. O default
+    é `("v1",)` — falhar fechado é o comportamento certo para versão que o
+    provedor ainda não mandou.
+
+!!! warning "Um tópico real observado, não todos"
+    Medido neste pacote: os manifestos, byte a byte, e os digests, contra
+    vetores calculados com `openssl dgst -sha256 -hmac`, que é outra
+    implementação de HMAC que não a do Python.
+
+    Observado por um consumidor em produção em 2026-11-13: entregas reais do
+    tópico `order`, que só verificam com o `data.id` em minúsculas. Os outros
+    tópicos não passaram por `verify_signature` contra uma entrega real; abra
+    uma issue se algum for rejeitado.
+
+!!! warning "Notificação de QR Code não é assinada"
+    O upstream diz isso explicitamente: essas entregas não carregam
+    assinatura e vão falhar sempre. Não passe QR Code por aqui — proteja essa
+    rota de outra forma.
+
+## O webhook pelo contrato: relendo a order
+
+A notificação do Mercado Pago assina só o `data.id` — o id da order — e não
+diz se ela foi paga. Um `parse_webhook` que lesse só a notificação teria um
+evento possível, `UNKNOWN`, e um serviço que libera pedido em `CHARGE_PAID`
+nunca liberaria nada. Por isso a dependency verifica a assinatura **e** relê
+a order antes de entregar ao seu handler:
+
+```python
+from typing import Any
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment import (
+    PixEventTypeEnum,
+    confirm_pix_payment,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters import (
+    MercadoPagoCardProvider,
+    MercadoPagoOrderDelivery,
+    MercadoPagoPixProvider,
+    make_mercado_pago_webhook_delivery_dependency,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import DEFAULT_BASE_URL
+
+http: HTTPClient = HTTPClient(
+    base_url=DEFAULT_BASE_URL,
+    default_headers={"Authorization": "Bearer <access token da vendedora>"},
+)
+pix: MercadoPagoPixProvider = MercadoPagoPixProvider(http)
+delivery_dependency = make_mercado_pago_webhook_delivery_dependency(
+    "<segredo do webhook>",
+    pix,
+)
+
+app: FastAPI = FastAPI()
+
+
+@app.post("/webhooks/mercado-pago", include_in_schema=False)
+async def webhook(
+    delivery: MercadoPagoOrderDelivery = Depends(delivery_dependency),
+) -> dict[str, Any]:
+    """Libera o pedido quando a order relida está paga."""
+    card = MercadoPagoCardProvider.charge_from_delivery(delivery)
+    if card is not None:
+        return {"card": card.status.value, "detail": card.status_detail}
+    event = pix.parse_webhook(delivery)
+    if event.type is not PixEventTypeEnum.CHARGE_PAID or event.charge is None:
+        return {"settled": None}
+    confirmation = await confirm_pix_payment(
+        pix,
+        event.charge.provider_charge_id,
+        reference=event.charge.reference,
+        amount_cents=event.charge.amount_cents,
+    )
+    return {"settled": confirmation.paid}
+```
+
+!!! danger "No seu serviço, o id e o valor vêm do seu banco"
+    O exemplo confirma contra os dados da própria order relida, para caber
+    numa página. No serviço, `confirm_pix_payment` recebe o
+    `provider_charge_id` e o valor que **você** guardou ao abrir a cobrança —
+    é o que impede uma order de outro pedido de liberar este. O
+    [protocolo de Pix](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-protocol.md#passo-4-o-service-que-so-fala-contrato)
+    monta o service completo.
+
+O que a dependency faz, nesta ordem:
+
+1. **Verifica a assinatura** (`x-signature` sobre `data.id`, `x-request-id` e
+   `ts`). Assinatura ausente ou errada é `401` antes do handler, sem
+   nenhuma requisição ao Mercado Pago.
+2. **Decide se a notificação é de uma order**: tópico `order`, ou ação
+   começando com `order.`. O documento do provedor lista `order.created` e
+   `order.updated`, e a entrega real observada em 2026-11-13 trazia
+   `type=order`.
+3. **Confere o formato do id** (`[A-Za-z0-9]+`) antes de pôr no path.
+4. **Relê a order** por esse id. `404` é resposta, não falha: é um
+   id que a API não conhece (provavelmente o que a "simulação de notificação"
+   do painel manda; ainda não observado), e levantar ali faria o Mercado Pago
+   reenviar, segundo a documentação do provedor. Outros erros sobem e a rota
+   responde 5xx (o reenvio do provedor é o esperado, não observado aqui).
+
+Depois, `parse_webhook` tira o tipo do evento do **estado relido**
+(`processed` → `CHARGE_PAID`, `canceled` → `CHARGE_CANCELLED`, `refunded` →
+`CHARGE_REFUNDED`, pendente → `CHARGE_CREATED`). Passar a notificação crua
+levanta `TypeError` com a dica da dependency. Estados sem evento canônico
+(`failed`, chargeback) viram `UNKNOWN`, e o estado fica em
+`event.charge.status`.
+
+Para testar tudo isso localmente, com notificações simuladas e assinadas,
+veja [Mercado Pago: testando webhooks](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mercado-pago-webhooks.md).
+
+## Como saber se uma operação é confiável
+
+O documento que este SDK usa vem do provedor: é, byte a byte, o `spec3.yaml`
+de [`github.com/mercadopago/openapi`](https://github.com/mercadopago/openapi),
+o repositório de especificação da própria empresa. `make mercadopago-fetch`
+rebaixa.
+
+Mas o documento **não é completo**: medido em 2026-08-30, ele omite sete
+operações que o SDK oficial do próprio Mercado Pago chama, e três operações que
+ele carrega responderam `404` quando sondadas. Rebaixar responde *"o documento
+mudou?"*, não *"esta operação existe?"*.
+
+O cliente também **não carrega o que o provedor está aposentando**: as 8
+operações da API de Payments e as 7 de QR presencial que a própria spec marca
+`deprecated: true`. O SDK oficial ainda chama 7 delas (as de Payments), e é a
+única lacuna permitida na regra "o que o SDK chama, a gente modela".
+
+Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 132:
+
+| Balde | Qtd | O que responde por ela |
+| --- | --- | --- |
+| O SDK oficial chama | 58 | O provedor, no próprio `mercadopago` do PyPI (65 chamadas na 3.5.0 e na 3.6.0, menos as 7 da API de Payments) |
+| Separada no sandbox (não-`GET`) | 27 | Requisição que não pode dar certo respondeu diferente de um path inventado no mesmo prefixo (2026-10-09) |
+| Separada no sandbox (`GET`) | 20 | `GET` com o token da vendedora de teste respondeu diferente de um irmão inventado (2026-10-10) |
+| Não roteada | 4 | O sandbox respondeu como responde a um path que não existe |
+| Nada responde | 23 | Resposta igual à do path inventado: nenhuma sonda distingue |
+
+!!! info "Por que não existe mais o balde “sondada viva”"
+    Até a 0.311.0, 34 `GET` se apoiavam só numa requisição **sem
+    credencial** que respondeu `401`/`403`/`400` em 2026-08-28. A sondagem de
+    2026-10-09 mostrou que em vários prefixos esse status sai antes do
+    roteamento, então ele sozinho não prova rota. Em 2026-10-10 as 34 foram
+    medidas de novo, com o token da vendedora de teste e cada uma contra um
+    irmão inventado (issue #488): 20 se distinguiram, 2 responderam como não
+    roteadas (`get_release_report` e `get_settlement_report`) e 12 não se
+    distinguem — barradas pelo PolicyAgent ou pelo proxy, ou com o último
+    segmento parametrizado e um "não encontrado" genérico — e passaram a
+    carregar o marcador abaixo.
+
+**As 23 dizem isso na própria docstring:**
+
+```
+**Unverified.** Neither the provider's SDK nor an unauthenticated probe
+covers this operation, so nothing here confirms the API routes it.
+```
+
+**E as 4 não roteadas também**, com a medição: `update_chargeback`,
+`create_qr_integrator_config`, `get_release_report` e `get_settlement_report`
+carregam `**Not routed.**` e o que o sandbox respondeu. Elas continuam no
+cliente, porque remover método público é outra decisão, mas não espere que
+funcionem.
+
+!!! warning "Status diferente de `404` não prova rota"
+    Medido no sandbox em 2026-10-09: em vários prefixos um gate de política
+    responde **antes** do roteamento. `POST /terminals/v1/<qualquer-coisa>`
+    responde `401` e `POST /post-purchase/v1/claims/<id>/<qualquer-coisa>`
+    responde `403`, para paths que não existem. Por isso o balde "separada no
+    sandbox" só conta uma operação quando a resposta dela difere da de um path
+    inventado sob o mesmo prefixo, e as 11 que não diferiram ficam marcadas.
+
+    A sonda também é por **método e path**: `GET /v1/customers` responde `404`
+    enquanto `POST /v1/customers` é onde o SDK oficial cria cliente.
+
+Se você usa uma das 11 e ela funciona, isso é evidência que o repositório não
+tem. Vale abrir issue com o que você observou.
+
+### `get_authenticated_user` devolve um modelo
+
+`GET /users/me` foi observado no sandbox, e o método responde
+`AuthenticatedUser` em vez de `dict[str, Any]`. Todo campo declarado veio com
+valor na resposta observada, e nenhum é obrigatório. O que não foi declarado
+(reputação, `status`, campos que vieram `null`) fica em `model_extra`, sem
+perda:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    DEFAULT_BASE_URL,
+    AuthenticatedUser,
+    MercadoPagoClient,
+)
+
+
+async def main() -> None:
+    """Mostra a conta dona do token."""
+    http: HTTPClient = HTTPClient(
+        base_url=DEFAULT_BASE_URL,
+        default_headers={"Authorization": "Bearer <seu access token>"},
+    )
+    async with http:
+        user: AuthenticatedUser = await MercadoPagoClient(http).get_authenticated_user()
+    print(user.id, user.site_id, user.tags)
+
+
+asyncio.run(main())
+```
+
+`search_chargebacks(payment_id=...)` devolve `ChargebackSearchResponse`
+(`paging` + `results`), também observado: medido em 2026-10-10 com o token da
+vendedora de teste, a busca **exige** `payment_id` — sem ele, até com só
+`limit` e `offset`, a resposta é `400 Wrong parameters in Search Cases`. Os
+itens de `results` nunca foram vistos (toda busca voltou vazia) e continuam
+`dict[str, Any]`.
+
+As cinco operações de advanced payments continuam `dict[str, Any]`: com o
+token `TEST-` e com o da vendedora de teste, todas responderam `403` do
+PolicyAgent — e um path inventado sob o mesmo prefixo também, então a
+política barra antes do roteamento e não houve resposta para observar.
+
+Para ver os baldes:
+
+```bash
+make mercadopago-diff
+```
+
+
+## Recapitulando
+
+- Um único host: o que separa teste de produção é o token.
+- Dinheiro em reais; converta na fronteira com `to_cents` / `from_cents`.
+- Pix e cartão passam pela API de Orders; a de Payments saiu do SDK porque o
+  provedor a está descontinuando.
+- `MercadoPagoPixProvider` e `MercadoPagoCardProvider` entregam os contratos
+  canônicos: centavos, estados canônicos, recusa de cartão como resultado
+  (`402`), autorizar e capturar, reembolso parcial de cartão e de Pix, Pix
+  vencido como `EXPIRED`.
+- Cartão exige tokenização no cliente, com a Public Key.
+- A verificação de webhook é portada do validador do provedor, com o
+  manifesto omitindo par ausente e digests conferidos contra `openssl`;
+  falta só uma entrega real para confirmar. A janela de `ts` vem ligada
+  (300 s).
+- `make_mercado_pago_webhook_dependency` monta a rota: lê `data.id`,
+  `x-signature` e `x-request-id`, recusa com 401 antes do handler e entrega o
+  `data_id` assinado — o corpo não é assinado.
+- Notificação de QR Code não é assinada — não passe por `verify_signature`.
+- Nem toda operação tem o mesmo lastro: 23 dizem `**Unverified.**` e 4 dizem
+  `**Not routed.**` na docstring. `get_authenticated_user` devolve
+  `AuthenticatedUser`, observado no sandbox.
+- O webhook entra por `make_mercado_pago_webhook_delivery_dependency`, que
+  verifica a assinatura e relê a order antes de virar evento.

@@ -1,0 +1,351 @@
+# Introspection auth (resource server)
+
+Not every service issues its own tokens. Often your service is just a
+**resource server** in the OAuth2 pattern: it receives an opaque bearer
+minted by an upstream identity provider and must validate it by asking
+that provider **who owns the token**. You don't decode a JWT or verify a
+signature — you call a `userinfo` / introspection endpoint and trust the
+response.
+
+`IntrospectionAuth` wraps exactly that pattern:
+
+- it validates the bearer by calling `GET <userinfo_url>` with
+  `Authorization: Bearer <token>`,
+- it **caches** successful lookups in-process for a short TTL, so a burst
+  of requests carrying the same token doesn't hammer the upstream,
+- with `audiences=`, it **binds the token to this service**: the response
+  must name one of them in `aud`, `azp` or `client_id`,
+- it can optionally **gate access** on an application claim
+  (`access_apps` by default), and
+- it extracts the user id from the subject claim (`sub` by default).
+
+!!! info "Installation"
+    `IntrospectionAuth` needs the `[http]` extra — `uv add "tempest-fastapi-sdk[http]"` (pulls in `httpx`, used to call the upstream `userinfo`).
+
+!!! info "When to use this"
+    Use it when **another service** (IAGRO, a Keycloak, an Auth0, your
+    own identity service) mints the tokens and your service only needs to
+    accept them. If **your** service is the one that logs users in and
+    issues tokens, you want `UserAuthService` + `make_auth_router` (see
+    [Auth flow](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow.md)), not this.
+
+## The minimal path
+
+Instantiate once, pointing at the provider's userinfo endpoint, and use
+the two methods as FastAPI dependencies:
+
+```python
+# src/api/dependencies/auth.py
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+auth = IntrospectionAuth(
+    userinfo_url=settings.IAGRO_USERINFO_URL,   # e.g. https://id.iagro.gov/users/me
+    audiences=["famacha-api"],                  # this service's client id at the provider
+    required_app="famacha",                     # per-app access gate
+)
+```
+
+```python
+# src/api/routers/animals.py
+
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import auth
+from src.services.animals import animals
+
+
+router = APIRouter(prefix="/api/animals", tags=["animals"])
+
+
+@router.get("/me")
+async def whoami(
+    claims: dict[str, Any] = Depends(auth.get_claims),
+) -> dict[str, Any]:
+    """Return the raw claims of the authenticated user."""
+    return claims
+
+
+@router.get("/")
+async def list_animals(
+    user_id: UUID = Depends(auth.get_user_id),
+) -> list[str]:
+    """List the user's animals — id already resolved from the token."""
+    return await animals.list_for(user_id)
+```
+
+!!! note "`animals` is your application's glue"
+    `animals.list_for(...)` stands in for your own service/repository layer —
+    it is not part of the SDK. Swap it for your project's real call.
+
+That's it. A request without `Authorization` gets **401**; a token the
+upstream rejects gets **401**; a token issued to another client of the
+provider gets **401**; a user without `famacha` in `access_apps` gets
+**403**.
+
+!!! tip "Wire up the exception handlers"
+    `IntrospectionAuth` raises the SDK's own `UnauthorizedException`
+    (401) and `ForbiddenException` (403). Call
+    `register_exception_handlers(app)` (the `create_app()` that `tempest new` generates already
+    does) so they become the right HTTP statuses instead of 500.
+
+## How it works, piece by piece
+
+### `get_claims` — the heart
+
+`get_claims` is the primary dependency. It:
+
+1. reads the bearer via `HTTPBearer(auto_error=False)` — **no** header →
+   `UnauthorizedException`;
+2. calls `fetch_userinfo(token)` (cached), which with `audiences` refuses
+   the response for a token issued to another client;
+3. if `required_app` is set, requires it to be in
+   `claims.get(app_claim) or []`, otherwise `ForbiddenException`;
+4. returns the claims dict.
+
+```python
+import asyncio
+from typing import Any
+
+from fastapi.security import HTTPAuthorizationCredentials
+
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
+
+credentials = HTTPAuthorizationCredentials(
+    scheme="Bearer",
+    credentials="eyJhbGciOiJIUzI1NiJ9.token",
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    claims: dict[str, Any] = await auth.get_claims(credentials)
+    # {"sub": "…", "access_apps": ["famacha"], "email": "…", ...}
+
+
+asyncio.run(main())
+```
+
+### `get_user_id` — the common shortcut
+
+Most routes only want the user id, not the whole dict. `get_user_id`
+depends on the same bearer, calls `get_claims` internally, and does
+`UUID(str(claims["sub"]))`:
+
+```python
+import asyncio
+from uuid import UUID
+
+from fastapi.security import HTTPAuthorizationCredentials
+
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
+
+credentials = HTTPAuthorizationCredentials(
+    scheme="Bearer",
+    credentials="eyJhbGciOiJIUzI1NiJ9.token",
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    user_id: UUID = await auth.get_user_id(credentials)
+
+
+asyncio.run(main())
+```
+
+A missing subject, or one that isn't a valid UUID, becomes
+`UnauthorizedException`.
+
+!!! note "Why doesn't `get_user_id` declare `Depends(self.get_claims)`?"
+    Default arguments are evaluated **at method-definition time**, when
+    the `self` instance doesn't exist yet — so you can't write
+    `Depends(self.get_claims)` in the signature. The fix: `get_user_id`
+    depends on the **bearer directly** and calls
+    `await self.get_claims(credentials)` in its body. It still wires
+    cleanly as `Depends(auth.get_user_id)`.
+
+### Bind the token to this service — `audiences`
+
+A `200` from `userinfo` proves the token is valid **at the provider**, not
+that it was issued **to your service**. A provider that serves several
+clients (your app, a partner app, an internal tool) usually answers
+`userinfo` for the token of any of them. Without a binding, a token the
+user handed to **another** app at the same provider authenticates here as
+that user — and whoever runs that app can replay it.
+
+`audiences=` closes that: the response must name one of the values in
+`aud` (a string or a list), `azp` or `client_id`. None of them matches, or
+the response carries none of the three → **401**, and the refused response
+is not cached.
+
+```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+auth = IntrospectionAuth(
+    userinfo_url="https://id.example.com/users/me",
+    audiences=["famacha-api"],
+)
+```
+
+| Upstream response | With `audiences=["famacha-api"]` |
+| --- | --- |
+| `{"sub": "…", "aud": "famacha-api"}` | accepted |
+| `{"sub": "…", "aud": ["account", "famacha-api"]}` | accepted |
+| `{"sub": "…", "aud": "account", "azp": "famacha-api"}` | accepted (Keycloak) |
+| `{"sub": "…", "client_id": "famacha-api"}` | accepted (RFC 7662) |
+| `{"sub": "…", "aud": "other-app", "azp": "other-app"}` | **401** |
+| `{"sub": "…"}` | **401** |
+
+!!! warning "Without `audiences`, behaviour is unchanged — with a warning"
+    The parameter is optional so existing users of the class keep working,
+    but an instance built without it logs a `WARNING` on the
+    `tempest_fastapi_sdk.auth.introspection` logger, once per instance. If
+    your provider returns none of these claims from `userinfo`, check
+    whether it exposes introspection (RFC 7662), which returns
+    `client_id`.
+
+### The cache
+
+Every `200` response is stored for `cache_ttl_seconds` (30 by default),
+with a `time.monotonic()` clock and the raw token as the key. Within the
+TTL, the second call does **not** hit the upstream. A `401`/`403`
+**evicts** the token immediately. `cache_ttl_seconds=0` disables caching.
+
+```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+
+auth = IntrospectionAuth(
+    userinfo_url=settings.IAGRO_USERINFO_URL,
+    cache_ttl_seconds=60,   # tolerate up to 60s of a revoked token
+)
+```
+
+!!! warning "TTL is a revocation window"
+    While a claim is cached, an upstream revocation isn't seen. Pick a
+    short TTL (seconds to a few minutes) to balance provider load against
+    freshness. `0` disables the cache and always revalidates.
+
+### Lazy URL (callable)
+
+`userinfo_url` accepts a `str` **or** a zero-argument callable, resolved
+**on every call**. That lets you pass a settings property read only at
+runtime (handy when the URL arrives late from the environment, or varies
+per tenant):
+
+```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+
+auth = IntrospectionAuth(
+    userinfo_url=lambda: settings.IAGRO_USERINFO_URL,
+)
+```
+
+### Custom claims
+
+If your provider uses different names, tweak them:
+
+```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+
+auth = IntrospectionAuth(
+    userinfo_url=settings.IDP_USERINFO_URL,
+    required_app="famacha",
+    app_claim="apps",        # instead of "access_apps"
+    subject_claim="user_id", # instead of "sub"
+)
+```
+
+### HTTP client
+
+By default the instance creates **one** shared `httpx.AsyncClient`
+(lazily, with `httpx.Timeout(timeout)`) and reuses it. You can inject
+your own — handy in tests or to share a pool / limits:
+
+```python
+import httpx
+
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+
+client = httpx.AsyncClient(timeout=httpx.Timeout(5.0))
+auth = IntrospectionAuth(
+    userinfo_url=settings.IDP_USERINFO_URL,
+    http_client=client,
+)
+```
+
+The cache is **per instance**, not global — the app can create several
+`IntrospectionAuth` objects (one per upstream) without one leaking state
+into another.
+
+## Testing
+
+Inject an `httpx.AsyncClient` with a `MockTransport` so you never touch
+the network:
+
+```python
+import httpx
+import pytest
+from fastapi.security import HTTPAuthorizationCredentials
+
+from tempest_fastapi_sdk import IntrospectionAuth
+
+
+def _handler(request: httpx.Request) -> httpx.Response:
+    assert request.headers["Authorization"] == "Bearer tok"
+    return httpx.Response(200, json={"sub": "…", "access_apps": ["famacha"]})
+
+
+@pytest.mark.asyncio
+async def test_valid_token() -> None:
+    auth = IntrospectionAuth(
+        userinfo_url="https://id.example.com/users/me",
+        required_app="famacha",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(_handler)),
+    )
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="tok")
+    claims = await auth.get_claims(creds)
+    assert claims["access_apps"] == ["famacha"]
+```
+
+## Recap
+
+- `IntrospectionAuth` is for the **resource server** pattern: it
+  validates opaque bearers against an upstream `userinfo` — it never
+  issues tokens.
+- `get_claims` and `get_user_id` are **bound methods** usable directly as
+  `Depends(auth.get_claims)` / `Depends(auth.get_user_id)`.
+- No credentials → 401; rejected token / upstream down → 401; token of
+  another client (with `audiences`) → 401; app not granted → 403; invalid
+  subject → 401.
+- Pass `audiences=` with the service's client id: without it, a token
+  issued to another app at the same provider authenticates here.
+- In-process per-token cache with a `time.monotonic()` TTL; `401`/`403`
+  evicts; `cache_ttl_seconds=0` disables it.
+- `userinfo_url` can be a `str` or a callable (resolved per call); claims
+  (`app_claim`, `subject_claim`) and the `httpx` client are configurable.
+  Cache and client are **per instance**.

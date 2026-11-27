@@ -1,0 +1,438 @@
+# Email transacional
+
+Envio de email via SMTP com `EmailUtils` — corpo texto + alternativa HTML,
+anexos, e renderização de templates Jinja2. Requer o extra `[email]`
+(`aiosmtplib` + `jinja2` + `email-validator`).
+
+## Configuração
+
+`EmailSettings` traz os campos SMTP prontos (`SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDR`, `SMTP_USE_TLS`,
+`SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS`). Componha no seu `Settings` e use
+`email_kwargs()` para construir o utilitário sem mapear campo a campo:
+
+```python
+# src/core/mailer.py
+from tempest_fastapi_sdk import EmailUtils
+
+from src.core.settings import settings
+
+
+mailer = EmailUtils(**settings.email_kwargs())
+```
+
+`email_kwargs()` faz a ponte dos nomes SMTP para os do `EmailUtils`:
+`SMTP_USE_TLS` (STARTTLS, porta 587) → `use_starttls`; `SMTP_USE_SSL`
+(TLS desde o início, porta 465) → `use_tls`.
+
+### `SMTP_USE_TLS` ou `SMTP_USE_SSL`: quem manda é a porta
+
+Os dois nomes confundem, e trocar um pelo outro quebra **todo** envio. A
+porta decide:
+
+| `SMTP_PORT` | Modo | `SMTP_USE_TLS` | `SMTP_USE_SSL` |
+| --- | --- | --- | --- |
+| `587` | STARTTLS: conecta em texto e faz upgrade | `true` | `false` |
+| `465` | TLS implícito (SMTPS): cifrado desde o primeiro byte | `false` | `true` |
+
+`SMTP_USE_SSL=true` na `587` é o erro clássico: o cliente abre o handshake
+TLS, o servidor responde o banner `220` em texto, e o envio falha com
+`[SSL: WRONG_VERSION_NUMBER]`. Com `ENV=production` e o e-mail ligado, o
+guard **recusa o boot** nas três combinações que não funcionam:
+`SMTP_USE_SSL` e `SMTP_USE_TLS` os dois `true`, `SMTP_USE_SSL=true` na
+`587`, e `SMTP_USE_TLS=true` na `465`. Outras portas (um relay próprio na
+`2525`, por exemplo) não são julgadas.
+
+!!! tip "STARTTLS vs SSL/TLS — oportunístico por padrão"
+    Porta **587** → `SMTP_USE_TLS=true` (default): conecta em texto e faz
+    upgrade via STARTTLS. Porta **465** → `SMTP_USE_SSL=true`: conecta já
+    cifrado. O STARTTLS é **oportunístico**: o `EmailUtils` só faz o
+    upgrade quando o servidor anuncia STARTTLS, então um servidor plain
+    (**MailHog em `:1025`**, ou `:25`) funciona de cara — sem mais
+    `SMTPException: SMTP STARTTLS extension not supported by server.`
+    (desde a v0.38.1). Para forçar texto puro sem nem tentar o upgrade,
+    use `SMTP_USE_TLS=false`; o `.env.example` gerado pelo `tempest new`
+    com `[email]` já vem assim para o MailHog.
+
+## Produção: SMTP real e credenciais
+
+Em produção o SMTP **não é opcional** — você manda email por um provedor
+real (Gmail/Workspace, AWS SES, SendGrid, Mailgun, ...) e isso exige
+**host, porta, usuário e senha**. A regra de ouro: essas credenciais
+**vêm sempre do ambiente** (`.env` / secret manager / variáveis do
+container), **nunca** ficam no código nem versionadas no Git.
+
+!!! danger "Credencial SMTP é segredo — trate como senha de banco"
+    - `SMTP_PASSWORD` **nunca** entra no repositório. Mantenha `.env` no
+      `.gitignore` e versione só um `.env.example` com valores fake.
+    - Para Gmail/Workspace **não use a senha da conta** — gere uma
+      **App Password** (<https://myaccount.google.com/apppasswords>) com
+      2FA ligado. A senha normal falha com `535 Authentication failed`.
+    - O `SMTP_FROM_ADDR` deve ser um endereço de um domínio que você
+      controla e autenticou (SPF/DKIM/DMARC), senão o email cai em spam
+      ou é rejeitado.
+
+Os serviços de produção já seguem esse padrão — declare os campos SMTP no
+seu `Settings` e leia tudo do ambiente:
+
+```python
+# src/core/settings.py
+from pydantic import Field
+from tempest_fastapi_sdk import BaseAppSettings, EmailSettings
+
+
+class Settings(EmailSettings, BaseAppSettings):
+    """Settings da aplicação. SMTP herdado de EmailSettings."""
+
+    FRONTEND_URL: str = Field(
+        default="http://localhost:3000",
+        description="Base URL do frontend (usada nos links dos emails).",
+    )
+
+
+settings: Settings = Settings()
+```
+
+```ini
+# .env.example  (commitado — valores fake)
+# .env real (NÃO commitado) tem as credenciais de verdade
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=seu_email@example.com
+SMTP_PASSWORD="sua_app_password"
+SMTP_FROM_ADDR=seu_email@example.com
+SMTP_USE_TLS=true        # STARTTLS na 587
+SMTP_USE_SSL=false       # use true (e PORT=465) para TLS implícito
+```
+
+Provedores comuns e a combinação de porta/TLS:
+
+| Provedor            | `SMTP_HOST`            | `SMTP_PORT` | `SMTP_USE_TLS` (STARTTLS) | `SMTP_USE_SSL` (TLS implícito) |
+| ------------------- | ---------------------- | ----------- | ------------------------- | ------------------------------ |
+| Gmail / Workspace   | `smtp.gmail.com`       | `587`       | `true`                    | `false`                        |
+| Gmail (TLS direto)  | `smtp.gmail.com`       | `465`       | `false`                   | `true`                         |
+| AWS SES             | `email-smtp.<região>.amazonaws.com` | `587` | `true`            | `false`                        |
+| SendGrid            | `smtp.sendgrid.net`    | `587`       | `true`                    | `false`                        |
+| MailHog (dev local) | `localhost`            | `1025`      | `false`                   | `false`                        |
+
+!!! note "Como alofans-api e transport-backend fazem"
+    São os dois padrões em produção: **alofans-api** usa **Gmail na porta
+    587 (STARTTLS) com App Password** — `SMTP_USE_TLS=true`. O
+    **transport-backend** usa **porta 465 (TLS implícito)** —
+    `SMTP_USE_SSL=true`, `SMTP_PORT=465`. Os dois leem `SMTP_*` do
+    ambiente e nunca embutem a senha no código. Escolha STARTTLS (587) ou
+    SSL (465) conforme o seu provedor; **não ligue os dois ao mesmo
+    tempo**.
+
+## Enviar um email
+
+Cada `send()` abre uma conexão SMTP nova. `to` aceita uma string ou um
+iterável; o `body` (texto puro) é sempre enviado e o `html` vira a
+alternativa multipart quando presente.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import EmailUtils
+
+from src.core.settings import settings
+
+mailer = EmailUtils(**settings.email_kwargs())
+
+
+async def main() -> None:
+    """Run this example."""
+    await mailer.send(
+        to="ana@example.com",
+        subject="Bem-vinda!",
+        body="Sua conta foi criada.",
+        html="<p>Sua conta foi <strong>criada</strong>.</p>",
+    )
+
+
+asyncio.run(main())
+```
+
+Parâmetros opcionais por mensagem: `cc`, `bcc`, `attachments`
+(`Path` ou `EmailAttachment` — veja [Anexos](#anexos-arquivo-em-disco-ou-bytes-em-memoria)), `reply_to` e `from_addr` (sobrescreve o remetente
+padrão). Toda falha de transporte — host que não resolve, conexão
+recusada ou que estoura o timeout, handshake TLS quebrado, login negado,
+mensagem recusada pelo servidor — levanta `EmailDeliveryException`
+(`503`, `code="EMAIL_UNAVAILABLE"`). Falha de rede ou de TLS leva o erro
+original do `aiosmtplib` em `__cause__`; recusa respondida pelo servidor
+(login negado, destinatário recusado) sai `from None`, porque a resposta
+pode citar o endereço — e o handler de `AppException` loga todo 5xx com o
+traceback. Antes de levantar, o `EmailUtils` loga uma vez em `ERROR` com
+`smtp_host`, `smtp_port`, `smtp_error` e `smtp_code` (o código SMTP da
+recusa), nunca o destinatário. Erro que é seu — um anexo que não existe, argumento
+inválido — sai com o tipo original.
+
+!!! warning "Quem pegava `aiosmtplib.SMTPException` precisa pegar a nova"
+    `send` não deixa mais escapar erro do `aiosmtplib`. Um
+    `except aiosmtplib.SMTPException` em volta do envio não pega mais
+    nada; troque por `except EmailDeliveryException` (de
+    `tempest_fastapi_sdk`). O código SMTP da recusa fica no log
+    (`smtp_code`), não na exceção.
+
+## Anexos: arquivo em disco ou bytes em memória
+
+`attachments` aceita `Path` (lido do disco) e `EmailAttachment` (bytes que
+você já tem em memória), misturados na mesma lista. Conteúdo gerado na hora —
+um relatório, uma planilha, o PDF do `PdfRenderer` — vai direto, sem arquivo
+temporário para gravar e apagar:
+
+```python
+import asyncio
+import csv
+import io
+
+from tempest_fastapi_sdk import EmailAttachment, EmailUtils
+
+mailer = EmailUtils(host="localhost", port=1025, from_addr="no-reply@example.com")
+
+
+def build_report() -> bytes:
+    """Monta o CSV de vendas em memória."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["produto", "quantidade"])
+    writer.writerow(["passagem", 3])
+    return buffer.getvalue().encode("utf-8")
+
+
+async def main() -> None:
+    """Run this example."""
+    await mailer.send(
+        to="ana@example.com",
+        subject="Relatório do dia",
+        body="Segue o relatório em anexo.",
+        attachments=[EmailAttachment(filename="vendas.csv", content=build_report())],
+    )
+
+
+asyncio.run(main())
+```
+
+O `Content-Type` de cada parte sai do nome do arquivo, por
+`mimetypes.guess_type` — `vendas.csv` vai como `text/csv`, `comprovante.pdf`
+como `application/pdf`, `logo.png` como `image/png`. Vale para `Path` e para
+`EmailAttachment` sem tipo explícito. Extensão desconhecida (ou sem extensão)
+e sufixo de compressão (`backup.tar.gz`, `dados.csv.gz`) caem em
+`application/octet-stream`: nesses casos o `guess_type` descreve o conteúdo
+**descomprimido**, que não é o que os bytes são.
+
+Para fixar o tipo, passe `content_type`:
+`EmailAttachment("comprovante", pdf_bytes, content_type="application/pdf")`.
+O PDF do [`PdfRenderer`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pdf.md) entra assim — `render_document` devolve
+`bytes`.
+
+O `EmailAttachment` recusa na construção, com `ValueError`:
+
+- `content_type` que não é um `tipo/subtipo` puro (`"pdf"`,
+  `"text/csv; charset=utf-8"`, com espaço ou quebra de linha);
+- `filename` vazio, ou com quebra de linha, NUL, `/` ou `\`. Quebra de linha
+  seria injeção de cabeçalho (a biblioteca padrão também recusa, mas só na
+  hora de montar a mensagem); barra faz do nome um caminho. Um `Path` cujo
+  nome tenha um desses caracteres é recusado igual, antes de qualquer envio.
+
+!!! note "Mudança de comportamento para `Path`"
+    Até aqui todo anexo saía como `application/octet-stream`. Agora um
+    `Path` `.pdf` sai como `application/pdf`. Quem depende do tipo antigo
+    passa, no lugar do `Path`,
+    `EmailAttachment(path.name, path.read_bytes(), "application/octet-stream")`.
+
+## Enviar para muita gente: `send_many`
+
+`send()` é para a mensagem transacional de um destinatário. Avisar a base
+inteira — manutenção, comunicado, campanha — é o caso em que o laço ingênuo
+custa caro:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import BulkEmailReport, EmailUtils
+
+from src.core.settings import settings
+
+mailer = EmailUtils(**settings.email_kwargs())
+
+destinatarios = ["ana@example.com", "bruno@example.com", "cadu@example.com"]
+
+
+async def main() -> None:
+    """Avisa a base e trata o que não entregou."""
+    report: BulkEmailReport = await mailer.send_many(
+        destinatarios,
+        subject="Manutenção programada",
+        body="Vamos ficar fora das 02h às 03h.",
+        batch_size=500,
+        max_concurrency=32,
+    )
+
+    print(report.delivered, "entregues,", report.failed, "não")
+
+    for morto in report.permanent:
+        print(f"podar {morto.email}: {morto.code} {morto.message}")
+
+    for depois in report.transient:
+        print(f"reenfileirar {depois.email}: {depois.code}")
+
+
+asyncio.run(main())
+```
+
+O que isso faz que o `for user in users: await mailer.send(...)` não faz:
+
+| | Laço com `send()` | `send_many()` |
+| --- | --- | --- |
+| Conexões SMTP | uma por mensagem | uma por lote (`batch_size`) |
+| Paralelismo | nenhum, ou `gather` sem teto | `max_concurrency` conexões abertas |
+| Endereço ruim | levanta e aborta o resto | entra no relatório |
+| `5xx` vs `4xx` | indistinguíveis | `permanent` vs `transient` |
+
+!!! note "Concorrência é por conexão, não por mensagem"
+    SMTP é serial num socket só: um lote é enviado sequencialmente pela
+    **sua** conexão, e o paralelismo vem de rodar vários lotes ao mesmo tempo.
+    Por isso `max_concurrency` conta conexões abertas — que é exatamente o
+    número que o provedor limita.
+
+!!! warning "Só falha de operação levanta"
+    Host que não resolve, conexão recusada, autenticação negada: isso levanta
+    `EmailDeliveryException`, como no `send`, porque a operação falhou. Os
+    lotes que já tinham saído não aparecem em relatório nenhum — a exceção
+    toma o lugar dele. Recusa de **um** destinatário nunca levanta — ela
+    é o relatório. `5xx` significa que a caixa não existe (pode podar da sua
+    base); `4xx` significa cheia ou greylisted (reenfileire). Recusa sem código
+    entra como transitória: o erro barato é tentar de novo, não apagar
+    endereço bom.
+
+## Templates Jinja2
+
+Passe `template_dir=` na construção e renderize com `render_template()` —
+o ambiente Jinja2 é criado preguiçosamente na primeira chamada e memoizado.
+Autoescape liga para `.html` / `.htm` / `.xml`.
+
+```python
+# src/core/mailer.py
+
+import asyncio
+
+from tempest_fastapi_sdk import EmailUtils
+
+from src.core.settings import settings
+
+
+mailer = EmailUtils(
+    host=settings.SMTP_HOST,
+    port=settings.SMTP_PORT,
+    from_addr=settings.SMTP_FROM_ADDR,
+    template_dir="src/templates/emails",
+)
+
+html: str = mailer.render_template(
+    "welcome.html",
+    {"user_name": "Ana", "app_url": "https://app.example.com"},
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    await mailer.send(
+        to="ana@example.com",
+        subject="Bem-vinda!",
+        body="Bem-vinda, Ana!",
+        html=html,
+    )
+
+
+asyncio.run(main())
+```
+
+!!! info "Templates bundled do fluxo de auth"
+    O fluxo bundled de auth (`make_auth_router`) já manda email de
+    ativação e reset de senha usando templates embutidos
+    (`activation.html`, `password_reset.html`). Coloque arquivos de
+    mesmo nome no seu `template_dir` para sobrescrevê-los. Veja
+    [Auth flow](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md).
+
+## Exemplo: reset de senha
+
+Serviço que manda um link de reset com um JWT de vida curta. Note que
+`request_reset` retorna em silêncio para um email não cadastrado — evita
+enumeração de contas. Pelo mesmo motivo ele engole a falha de envio: um
+`503` só para contas que existem diria quais endereços estão cadastrados.
+
+```python
+# src/services/password_reset.py
+import logging
+from datetime import timedelta
+
+from tempest_fastapi_sdk import EmailDeliveryException, EmailUtils, JWTUtils
+
+from src.db.repositories import UserRepository
+
+logger: logging.Logger = logging.getLogger(__name__)
+
+
+class PasswordResetService:
+    def __init__(
+        self,
+        repo: UserRepository,
+        tokens: JWTUtils,
+        mailer: EmailUtils,
+    ) -> None:
+        self.repo: UserRepository = repo
+        self.tokens: JWTUtils = tokens
+        self.mailer: EmailUtils = mailer
+
+    async def request_reset(self, email: str) -> None:
+        """Manda um link de reset para ``email`` (silencioso se não existe)."""
+        user = await self.repo.get_or_none({"email": email})
+        if user is None:
+            return
+        token: str = self.tokens.encode(
+            {"sub": str(user.id), "typ": "password_reset"},
+            ttl=timedelta(minutes=15),
+        )
+        reset_url: str = f"https://app.example.com/reset-password?token={token}"
+        try:
+            await self.mailer.send(
+                to=user.email,
+                subject="Redefina sua senha",
+                body=f"Abra para redefinir: {reset_url}",
+                html=f'<p>Clique <a href="{reset_url}">aqui</a> para redefinir.</p>',
+            )
+        except EmailDeliveryException:
+            logger.error("Link de reset não enviado; resposta mantida igual")
+```
+
+## E-mail desligado (`EMAIL_ENABLED=false`)
+
+Com `EMAIL_ENABLED=true` e `ENV=production`, o guard recusa o que só pode
+ser desenvolvimento: host `mailpit`/`mailhog`, `localhost` na porta `1025`,
+o `SMTP_HOST` default (`localhost`) sem `SMTP_USERNAME`, `SMTP_FROM_ADDR`
+default (`noreply@example.com`), vazio ou com domínio reservado, e o modo
+TLS trocado com a porta (veja
+[quem manda é a porta](#smtp_use_tls-ou-smtp_use_ssl-quem-manda-e-a-porta)). Um relay
+local autenticado passa, e o Gmail (`smtp.gmail.com:587`, STARTTLS, senha
+de app, remetente real) também.
+
+Ainda sem SMTP? `EMAIL_ENABLED=false` pula essas regras, e o mesmo
+`EmailUtils(**settings.email_kwargs())` passa a recusar `send` e
+`send_many` com `IntegrationDisabledException` (`503`,
+`details={"integration": "email"}`) antes de montar a mensagem.
+`render_template` segue funcionando, e o extra `[email]` não é exigido. O
+fluxo de auth recusa o cadastro **antes** de criar a conta — veja
+[E-mail desligado](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-failures.md#e-mail-desligado) e
+[Ligar e desligar integrações](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/system-checks.md#ligar-e-desligar-integracoes-deploy-por-partes).
+
+## Recap
+
+- Instale `[email]` e componha `EmailSettings` no seu `Settings`.
+- Uma instância de `EmailUtils` por app; `send()` é async e abre conexão por chamada.
+- `body` texto é obrigatório; `html` é a alternativa multipart opcional.
+- `attachments` mistura `Path` e `EmailAttachment` (bytes em memória); o `Content-Type` sai do nome do arquivo, com `application/octet-stream` quando não dá para adivinhar.
+- `render_template()` (com `template_dir`) gera o HTML a partir de Jinja2.
+- O fluxo bundled de auth já envia ativação/reset com templates sobrescrevíveis.
+- Porta `587` pede `SMTP_USE_TLS=true`; `465` pede `SMTP_USE_SSL=true` — o guard de produção recusa o par trocado.
+- Falha de SMTP levanta `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`); veja [SMTP fora do ar](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow/email-failures.md#smtp-fora-do-ar) para o que cada rota de auth responde.

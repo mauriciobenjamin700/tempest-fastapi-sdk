@@ -1,0 +1,48 @@
+# `tempest_fastapi_sdk.core`
+
+Primitivas transversais: tipagem estrita, logging, redação de dados sensíveis e locale da documentação.
+
+[« Admin, dados e API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api.md)
+
+---
+
+- [`tempest_fastapi_sdk.core.typed.strict_types`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.typed.strict_types)
+- [`tempest_fastapi_sdk.core.typed.typed`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.typed.typed)
+- [`tempest_fastapi_sdk.core.typed.require_annotations`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.typed.require_annotations)
+- [`tempest_fastapi_sdk.core.docs_locale.normalize_docs_locale`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.docs_locale.normalize_docs_locale)
+- [`tempest_fastapi_sdk.core.docs_locale.DocsLocale`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.docs_locale.DocsLocale)
+- [`tempest_fastapi_sdk.core.logging.configure_root_once`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.configure_root_once)
+- [`tempest_fastapi_sdk.core.logging.reinitialize_logging`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.reinitialize_logging)
+- [`tempest_fastapi_sdk.core.redaction.RedactionPolicy`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.RedactionPolicy)
+- [`tempest_fastapi_sdk.core.redaction.RedactionPolicy.is_sensitive_key`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.RedactionPolicy.is_sensitive_key)
+- [`tempest_fastapi_sdk.core.redaction.RedactionPolicy.redact_text`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.RedactionPolicy.redact_text)
+- [`tempest_fastapi_sdk.core.redaction.RedactionPolicy.redact_value`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.RedactionPolicy.redact_value)
+- [`tempest_fastapi_sdk.core.redaction.RedactionFilter`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.RedactionFilter)
+- [`tempest_fastapi_sdk.core.redaction.RedactionFilter.filter`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.RedactionFilter.filter)
+- [`tempest_fastapi_sdk.core.redaction.REDACTED`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.REDACTED)
+- [`tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_KEYS`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_KEYS)
+- [`tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_PATTERNS`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.DEFAULT_REDACT_PATTERNS)
+- [`tempest_fastapi_sdk.core.redaction.EMAIL_PATTERN`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.EMAIL_PATTERN)
+- [`tempest_fastapi_sdk.core.redaction.BEARER_PATTERN`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.BEARER_PATTERN)
+- [`tempest_fastapi_sdk.core.redaction.JWT_PATTERN`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.JWT_PATTERN)
+- [`tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_PATTERN`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_PATTERN)
+- [`tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_SEGMENTS`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.CAPABILITY_PATH_SEGMENTS)
+- [`tempest_fastapi_sdk.core.redaction.CAPABILITY_QUERY_PATTERN`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.CAPABILITY_QUERY_PATTERN)
+- [`tempest_fastapi_sdk.core.redaction.redact_capability_url`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.redaction.redact_capability_url)
+- [`tempest_fastapi_sdk.core.context.clear_request_id`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.context.clear_request_id)
+- [`tempest_fastapi_sdk.core.context.get_request_id`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.context.get_request_id)
+- [`tempest_fastapi_sdk.core.context.request_id_ctx`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.context.request_id_ctx)
+- [`tempest_fastapi_sdk.core.context.set_request_id`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.context.set_request_id)
+- [`tempest_fastapi_sdk.core.enums.BaseIntEnum`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.enums.BaseIntEnum)
+- [`tempest_fastapi_sdk.core.enums.BaseStrEnum`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.enums.BaseStrEnum)
+- [`tempest_fastapi_sdk.core.enums.LocaleEnum`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.enums.LocaleEnum)
+- [`tempest_fastapi_sdk.core.enums.normalize_locale_tag`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.enums.normalize_locale_tag)
+- [`tempest_fastapi_sdk.core.logging.configure_logging`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.configure_logging)
+- [`tempest_fastapi_sdk.core.logging.DEFAULT_LOG_BACKUP_COUNT`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.DEFAULT_LOG_BACKUP_COUNT)
+- [`tempest_fastapi_sdk.core.logging.DEFAULT_LOG_MAX_BYTES`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.DEFAULT_LOG_MAX_BYTES)
+- [`tempest_fastapi_sdk.core.logging.HTTP_500_MARKER`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.HTTP_500_MARKER)
+- [`tempest_fastapi_sdk.core.logging.JSONFormatter`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.JSONFormatter)
+- [`tempest_fastapi_sdk.core.logging.JSONFormatter.format`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.JSONFormatter.format)
+- [`tempest_fastapi_sdk.core.logging.LOG_ROTATE_WHEN_CHOICES`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.LOG_ROTATE_WHEN_CHOICES)
+- [`tempest_fastapi_sdk.core.logging.validate_rotate_when`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/core/#tempest_fastapi_sdk.core.logging.validate_rotate_when)
+

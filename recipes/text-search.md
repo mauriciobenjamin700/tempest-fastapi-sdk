@@ -1,0 +1,393 @@
+# Busca textual (LIKE + full-text)
+
+Duas camadas, porque respondem a perguntas diferentes. A portátil se
+comporta **igual** no PostgreSQL e no SQLite e não precisa de índice,
+extensão nem migration. A de full-text usa o motor do PostgreSQL — com
+radicalização, peso por campo e nota de relevância — e degrada para a
+primeira onde esse motor não existe.
+
+## Camada portátil: `search()`
+
+```python
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository
+
+
+async def find(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
+    """Busca o termo em duas colunas.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+
+    Returns:
+        list[ArticleModel]: Os artigos encontrados.
+    """
+    return await articles.search("nota fiscal", fields=["title", "body"])
+```
+
+Cada palavra do termo é procurada, sem diferenciar maiúsculas, em **todas**
+as colunas listadas; as palavras combinam com `AND`. Ou seja: digitar mais
+palavras restringe o resultado, que é o que se espera de uma caixa de
+busca. `nota` pode estar no título e `rodapé` no corpo — a linha entra
+assim mesmo.
+
+!!! check "O `%` do usuário é literal"
+    `search("100%", fields=["title"])` procura o caractere `%`. Sem o
+    escape, esse termo casaria com todas as linhas — o modo mais discreto
+    de uma busca ficar errada.
+
+Termo vazio não aplica filtro nenhum, então a caixa de busca vazia
+**lista** em vez de esconder.
+
+### Colunas tipadas
+
+`fields` aceita o nome ou o próprio atributo mapeado, então dá para o
+type-checker pegar uma coluna renomeada:
+
+```python
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository
+
+
+async def by_author(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
+    """Busca pelo atributo mapeado, não pelo nome em string.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+
+    Returns:
+        list[ArticleModel]: Os artigos encontrados.
+    """
+    return await articles.search("joao", fields=[ArticleModel.author])
+```
+
+### Combinando com o resto
+
+`search()` aceita `filters`, `where`, `order_by`, `with_` e `limit`:
+
+```python
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository
+
+
+async def find_by_author(
+    articles: BaseRepository[ArticleModel],
+    author: str,
+) -> list[ArticleModel]:
+    """Combina busca textual com um filtro comum.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+        author (str): O autor a filtrar.
+
+    Returns:
+        list[ArticleModel]: Os artigos encontrados.
+    """
+    return await articles.search(
+        "nota",
+        fields=["title", "body"],
+        filters={"author": author},
+        limit=20,
+    )
+```
+
+### Campos escolhidos pela requisição
+
+Buscar é um oráculo sobre a coluna buscada: quais linhas voltam diz, linha a
+linha, se o valor contém o termo. Por isso `search()`,
+`search_condition()`, `full_text_search()` e `full_text_condition()`
+**sempre** recusam `hashed_password` e as colunas que o model declara em
+`__secret_columns__`, com `422`. Quando `fields` vem de um query parameter,
+declare também quais colunas a busca pode nomear — o mesmo formato do
+`orderable_columns`:
+
+```python
+from typing import ClassVar
+
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository
+
+
+class ArticleRepository(BaseRepository[ArticleModel]):
+    """Repositório de artigos com a busca restrita a três colunas."""
+
+    searchable_columns: ClassVar[frozenset[str] | None] = frozenset(
+        {"title", "body", "author"}
+    )
+
+
+async def find(
+    articles: ArticleRepository,
+    term: str,
+    fields: list[str],
+) -> list[ArticleModel]:
+    """Busca nas colunas que o cliente pediu, dentro do conjunto declarado.
+
+    Args:
+        articles (ArticleRepository): Repositório de artigos.
+        term (str): O termo digitado.
+        fields (list[str]): As colunas vindas da query string.
+
+    Returns:
+        list[ArticleModel]: Os artigos encontrados.
+    """
+    return await articles.search(term, fields=fields)
+```
+
+Uma coluna fora do conjunto vira `ValidationException` (`422`) com
+`details={"field": <nome>, "allowed": [...]}`, e `allowed` lista só o
+conjunto declarado. Sem conjunto declarado, `details` traz só o `field`: a
+recusa nunca publica a lista de colunas do model. O construtor também aceita
+`searchable_columns=`, e declarar uma coluna que o model não mapeia ou uma
+coluna secreta falha na construção, com `ValueError`.
+
+
+#### O mesmo conjunto no schema da requisição
+
+A recusa do repositório é a fronteira; o `BaseSearchSchema` a antecipa para a
+validação da requisição, do mesmo jeito que o `orderable_columns` do
+`BasePaginationFilterSchema` faz com o `order_by`. Os campos têm os nomes dos
+argumentos do `search()` (`q` é o termo, de 1 a 256 caracteres; `fields`, as
+colunas), e o conjunto declarado aparece no OpenAPI como `enum`:
+
+```python
+from typing import ClassVar
+
+from fastapi import APIRouter, FastAPI
+
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    BaseSearchSchema,
+    register_exception_handlers,
+)
+
+
+class ArticleRepository(BaseRepository[ArticleModel]):
+    """Repositório de artigos com a busca restrita a três colunas."""
+
+    searchable_columns: ClassVar[frozenset[str] | None] = frozenset(
+        {"title", "body", "author"}
+    )
+
+
+class ArticleSearchSchema(BaseSearchSchema):
+    """Busca de artigos: as mesmas três colunas do repositório."""
+
+    searchable_columns: ClassVar[frozenset[str] | None] = (
+        ArticleRepository.searchable_columns
+    )
+
+
+router = APIRouter()
+
+
+@router.post("/articles/search")
+async def search_articles(body: ArticleSearchSchema) -> list[str]:
+    """Valida as colunas antes de qualquer consulta.
+
+    Args:
+        body (ArticleSearchSchema): Termo e colunas.
+
+    Returns:
+        list[str]: As colunas aceitas.
+    """
+    return body.fields
+
+
+app = FastAPI()
+register_exception_handlers(app)
+app.include_router(router)
+```
+
+A recusa é uma `ValidationException`, um `HTTPException`: sem
+`register_exception_handlers(app)` o FastAPI ainda responde `422`, mas só com
+`detail` (medido: `{"detail": "'hashed_password' is not a searchable column"}`),
+sem `code` nem `details`. Medido com os handlers:
+`{"q": "x", "fields": ["hashed_password"]}` respondeu `422` com
+`code="VALIDATION_ERROR"` e
+`details={"field": "hashed_password", "allowed": ["author", "body", "title"]}` (o
+mesmo envelope do repositório) antes de o handler rodar.
+
+## Paginando uma busca
+
+`search()` devolve uma lista. Para paginar e contar, peça a **condição** e
+passe em `where=` — daí a busca vira um filtro como qualquer outro:
+
+```python
+from typing import Any
+
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository
+
+
+async def search_page(
+    articles: BaseRepository[ArticleModel],
+    term: str,
+) -> dict[str, Any]:
+    """Pagina e conta uma busca como qualquer outro filtro.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+        term (str): O termo digitado pelo usuário.
+
+    Returns:
+        dict[str, Any]: A página, com total e itens.
+    """
+    return await articles.paginate(
+        where=articles.search_condition(term, fields=["title", "body"]),
+        page=2,
+        page_size=20,
+    )
+```
+
+Isso funciona porque `where=` passou a aceitar tanto um `Q` quanto uma
+cláusula SQLAlchemy pronta. `count()` e `list()` aceitam a mesma coisa.
+
+O `cursor_paginate()` **não** tem `where=` — passar um levanta
+`TypeError: ... got an unexpected keyword argument 'where'`. Ele recebe um
+`Select` pronto em `query=`, e a condição entra ali:
+
+```python
+from typing import Any
+
+from sqlalchemy import select
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import ArticleModel
+
+
+async def search_feed(
+    articles: BaseRepository[ArticleModel],
+    term: str,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Pagina uma busca por cursor.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+        term (str): O termo digitado pelo usuário.
+        cursor (str | None): O `next_cursor` da página anterior.
+
+    Returns:
+        dict[str, Any]: `items`, `next_cursor`, `has_more` e `limit`.
+    """
+    query = select(ArticleModel)
+    condition = articles.search_condition(term, fields=["title", "body"])
+    if condition is not None:
+        query = query.where(condition)
+    return await articles.cursor_paginate(query=query, cursor=cursor, limit=20)
+```
+
+O `if` não é enfeite: termo em branco faz o `search_condition` devolver
+`None` — via `where=` isso já significa "sem filtro", mas um `Select` montado à
+mão precisa pular o `.where(...)` sozinho.
+
+## Camada full-text: `full_text_search()`
+
+```python
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository, TextSearchLanguageEnum
+
+
+async def ranked(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
+    """Busca com radicalização e ordenada por relevância.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+
+    Returns:
+        list[ArticleModel]: Os artigos, do mais relevante ao menos.
+    """
+    return await articles.full_text_search(
+        "nota fiscal",
+        fields=["title", "body"],
+        language=TextSearchLanguageEnum.PORTUGUESE,
+    )
+```
+
+No PostgreSQL isso compila para
+`to_tsvector(...) @@ websearch_to_tsquery('portuguese', termo)` e o
+resultado volta ordenado por `ts_rank`, do mais relevante para o menos.
+
+O que a camada portátil não faz e esta faz:
+
+- **Radicalização.** `comprou` encontra `comprar`.
+- **Stop words.** `de`, `a`, `para` não estreitam a busca à toa.
+- **Sintaxe de buscador.** `websearch_to_tsquery` aceita o que o usuário
+  já digita — `"frase exata"` entre aspas e `-excluída` com hífen — e
+  nunca levanta erro de sintaxe com pontuação solta, ao contrário do
+  `to_tsquery`.
+- **Nota de relevância**, que é o que permite ordenar.
+
+### Peso por campo
+
+Um termo no título deve valer mais que o mesmo termo no corpo:
+
+```python
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository, TextSearchWeightEnum
+
+
+async def title_first(articles: BaseRepository[ArticleModel]) -> list[ArticleModel]:
+    """Faz o título pesar mais que o corpo na nota de relevância.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+
+    Returns:
+        list[ArticleModel]: Os artigos, ordenados por relevância.
+    """
+    return await articles.full_text_search(
+        "nota fiscal",
+        fields=["title", "body"],
+        weights={"title": TextSearchWeightEnum.A},
+    )
+```
+
+O PostgreSQL ordena `A` como o mais importante e `D` como o menos; campos
+que você não listar ficam em `D`.
+
+## No SQLite
+
+`full_text_search()` continua devolvendo **as linhas certas** — ele cai na
+camada portátil. O que não existe é a radicalização e o ranking. Pergunte
+antes de prometer uma barra de relevância na interface:
+
+```python
+from src.db.models import ArticleModel
+from tempest_fastapi_sdk import BaseRepository
+
+
+def can_rank(articles: BaseRepository[ArticleModel]) -> bool:
+    """Diz se o backend consegue ordenar por relevância.
+
+    Args:
+        articles (BaseRepository[ArticleModel]): Repositório de artigos.
+
+    Returns:
+        bool: ``True`` quando há ``ts_rank``.
+    """
+    return articles.supports_full_text
+```
+
+!!! warning "Não confunda com um índice"
+    A busca full-text aqui é calculada na hora, sem coluna `tsvector`
+    materializada nem índice GIN. Isso a torna correta e sem migration,
+    mas ela lê a tabela. Em tabela grande e consulta quente, o passo
+    seguinte é uma coluna gerada com índice GIN — que o SDK ainda não
+    empacota.
+
+## Recapitulando
+
+- `search()` — igual nos dois bancos, escapa o input, `AND` entre
+  palavras, `OR` entre colunas.
+- `search_condition()` / `full_text_condition()` devolvem a cláusula, e é
+  por isso que a busca pagina e conta como qualquer filtro.
+- `full_text_search()` — radicaliza, aceita a sintaxe do usuário, ordena
+  por relevância no PostgreSQL; degrada para a camada portátil no resto.
+- `supports_full_text` diz qual das duas você recebeu.
+- `hashed_password` e `__secret_columns__` nunca são buscáveis;
+  `searchable_columns` restringe `fields` quando ele vem da requisição.
+- `TextSearchLanguageEnum`, `TextSearchWeightEnum` e `TokenMatchEnum` são enums: nada
+  de string mágica no call site.

@@ -1,0 +1,212 @@
+# Unified file store — `FileStoreUtils`
+
+Storing a file, serving it back and signing a temporary URL usually means
+wiring **three** pieces by hand: `UploadUtils` (validate + persist),
+`DownloadUtils` (serve bytes through the API) and `AsyncMinIOClient`
+(presigned URLs). `FileStoreUtils` wraps all three behind **one object**, with
+**one configuration**, targeting the **same storage backend**.
+
+!!! tip "When to use it"
+    Reach for `FileStoreUtils` when a service both **stores and serves** the
+    same files. If you only need one half (upload only, or download only), the
+    standalone `UploadUtils` / `DownloadUtils` are still there — the facade
+    just joins them over a shared backend.
+
+Requires the `[upload]` extra for local disk and `[minio]` for MinIO/S3.
+
+## The basics — local disk
+
+The backend is picked **once at construction**: pass a directory to store files
+on local disk.
+
+```python
+from fastapi import APIRouter, UploadFile
+from starlette.responses import Response
+
+from tempest_fastapi_sdk import FileStoreUtils
+
+router = APIRouter()
+store = FileStoreUtils("var/uploads", max_size_bytes=10 * 1024 * 1024)
+
+
+@router.post("/files")
+async def upload(file: UploadFile) -> dict[str, str]:
+    """Validate and persist; returns the key (relative to the base dir)."""
+    key = await store.save(file)
+    return {"key": str(key)}
+
+
+@router.get("/files/{key}")
+async def download(key: str) -> Response:
+    """Serve the file back through the API itself."""
+    return await store.download(key)
+```
+
+The same `store` object persists (`save`), serves (`download`), removes
+(`delete`), checks existence (`exists`) and swaps (`replace`) — no extra
+instances.
+
+## MinIO / S3 — just change `source`
+
+Pass an `AsyncMinIOClient` instead of the directory. Nothing else in your code
+changes:
+
+```python
+import asyncio
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import AsyncMinIOClient, FileStoreUtils
+
+file: UploadFile = ...  # comes from the endpoint signature
+
+
+minio = AsyncMinIOClient(
+    endpoint="minio:9000",
+    access_key="...",
+    secret_key="...",
+    default_bucket="avatars",
+)
+store = FileStoreUtils(minio, max_size_bytes=5 * 1024 * 1024)
+
+
+async def main() -> None:
+    """Run this example."""
+    key = await store.save(file, subdir="users/42")   # writes to the bucket
+    url = await store.presigned_get_url(str(key))       # signed read URL
+
+
+asyncio.run(main())
+```
+
+!!! info "Bucket"
+    To target a specific bucket, set the `AsyncMinIOClient`'s
+    `default_bucket` — both halves (upload and download) read it.
+
+## Presigned URLs
+
+On the MinIO backend, `FileStoreUtils` exposes both presign shortcuts — let the
+client download/upload straight from MinIO without streaming the bytes through
+your API:
+
+```python
+import asyncio
+from datetime import timedelta
+
+from tempest_fastapi_sdk import AsyncMinIOClient, FileStoreUtils
+
+key = "users/42/ana.png"
+
+minio = AsyncMinIOClient(
+    endpoint="minio:9000",
+    access_key="...",
+    secret_key="...",
+    default_bucket="avatars",
+    region="us-east-1",
+)
+store = FileStoreUtils(minio)
+
+
+async def main() -> None:
+    """Run this example."""
+    get_url = await store.presigned_get_url(key, expires=timedelta(hours=1))
+    put_url = await store.presigned_put_url(key, expires=timedelta(minutes=15))
+
+
+asyncio.run(main())
+```
+
+!!! note "Local returns `None`"
+    Local disk has no public URL, so `presigned_get_url` and
+    `presigned_put_url` return `None` — the same call site works for both
+    backends, no `if backend == ...`.
+
+!!! tip "Many keys at once *(v0.133.0+)*"
+    `presigned_get_url` signs **one** key. For a whole page (one key per row),
+    reach for the underlying MinIO client —
+    `store.client.presigned_get_urls([...])` (see
+    [Batch operations](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/storage.md#batch-operations-presign-upload-download-v01330)) —
+    which fans the signings out concurrently and returns a `dict` key→URL. In a
+    **service**, the shortcut is `StoredFileServiceMixin`'s
+    [`file_urls`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/stored-files.md#a-whole-page-file_urls-v01330).
+
+## Validation
+
+Validation (size, extension, MIME, magic bytes, `content_validator`) is
+`UploadUtils`' own — configured in the constructor and applied **before** any
+byte reaches the backend:
+
+```python
+from tempest_fastapi_sdk import FileStoreUtils
+
+
+store = FileStoreUtils(
+    "var/uploads",
+    max_size_bytes=5 * 1024 * 1024,
+    allowed_extensions={"png", "jpg", "jpeg"},
+    allowed_mimetypes={"image/png", "image/jpeg"},
+    verify_magic_bytes=True,
+)
+```
+
+!!! tip "An empty set and `0` turn the check off"
+    `allowed_extensions=set()`, `allowed_mimetypes=set()` and
+    `max_size_bytes=0` mean the same as `None`: **no restriction**. That is
+    the `UploadSettings` contract (an empty `UPLOAD_ALLOWED_EXTENSIONS` means
+    any extension, `UPLOAD_MAX_SIZE_BYTES=0` disables the limit), so the
+    mixin defaults passed through `**settings.upload_kwargs()` accept any file
+    instead of refusing everything with 415.
+
+## Replace a file (avatar / attachment)
+
+`replace` writes the new object **first** (a validation error leaves the old
+one intact), then deletes the old one — through the same backend:
+
+```python
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import FileStoreUtils
+
+from src.db.models import UserModel
+
+store = FileStoreUtils(source="./uploads")
+
+
+async def change_avatar(user: UserModel, file: UploadFile) -> None:
+    """Swap the avatar: write the new one, only then delete the old.
+
+    Args:
+        user (UserModel): The already-loaded user (e.g. `current_user`).
+        file (UploadFile): The file from the endpoint signature.
+    """
+    new_key = await store.replace(user.avatar_key, file, filename=f"{user.id}.png")
+    user.avatar_key = str(new_key)
+```
+
+## Escape hatches
+
+The internal pieces stay reachable when you need finer control:
+
+```python
+from tempest_fastapi_sdk import FileStoreUtils
+
+store = FileStoreUtils(source="./uploads")
+
+
+store.uploader     # UploadUtils     — save/replace/delete/validate
+store.downloader   # DownloadUtils   — download/file_response/stream/resolve
+store.backend      # UploadStorage   — write_stream/delete/exists/presigned_url
+store.client       # AsyncMinIOClient | None  — None for local disk
+```
+
+## Recap
+
+- `FileStoreUtils(source, ...)` — **one** object to store, serve and sign.
+- `source` is a directory (local disk) **or** an `AsyncMinIOClient` (MinIO/S3);
+  the rest of your code is identical between the two.
+- A single `UploadStorage` backend is built and **shared** with the upload
+  half; on MinIO the **same** client goes to the download half (shared
+  connection pool).
+- Presign exists only on MinIO — local disk returns `None`, keeping the call
+  site uniform.
+- Only need one half? `UploadUtils` / `DownloadUtils` are still standalone.

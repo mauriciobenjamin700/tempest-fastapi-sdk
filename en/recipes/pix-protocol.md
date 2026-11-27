@@ -1,0 +1,1417 @@
+# Pix protocol: one contract, many providers
+
+Your service charges over Pix. Today the provider is OpenPix; tomorrow it
+might be Mercado Pago, because the fee changed or because your customer
+already has an account there.
+
+If your service speaks the provider's language, that switch rewrites the
+service. This recipe shows how not to speak it.
+
+## The problem, concretely
+
+The two providers the SDK already bundles disagree on nearly everything
+that matters:
+
+| | OpenPix | Mercado Pago |
+| --- | --- | --- |
+| amount | cents, in an `int` | reais, in a `float` |
+| states | `ACTIVE`, `COMPLETED`, `EXPIRED` | 9 in `Payment`, 5 in `Order`, 4 in `OrderTransactionPayment` |
+| copy-and-paste code | `brCode` | `qr_code` |
+| QR image | a **URL** | **Base64** |
+| your reference | `correlationID` | `external_reference` |
+
+Writing `if charge.status == "COMPLETED"` does not couple your code to Pix.
+It couples it to OpenPix.
+
+## The contract
+
+```python
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatusEnum,
+    PixCharge,
+    PixChargeRequest,
+    PixEventTypeEnum,
+    PixPaymentEvent,
+    PixPayer,
+    PixProvider,
+)
+```
+
+!!! info "No extra for the contract"
+    Measured on an install with no extras: the import above and
+    `OpenPixPixProvider` both resolve from the core. Extras are each
+    provider's HTTP client's business, not the contract's.
+
+`PixProvider` is one attribute and four methods — this is
+`integrations/payment/base.py`, unsimplified:
+
+```text
+provider_name: str
+
+async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge
+async def get_pix_charge(self, charge_id: str) -> PixCharge
+async def cancel_pix_charge(self, charge_id: str) -> PixCharge
+def parse_webhook(self, event: Any) -> PixPaymentEvent
+```
+
+A `Protocol`, not a base class: an adapter satisfies it **by shape**, with
+nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
+`QuotaStore`, `ModerationBackend` and `PushDispatcher`.
+
+!!! note "Why it is not `runtime_checkable`"
+    `isinstance` against a runtime-checkable protocol only checks that the
+    **names** exist: an adapter whose `create_pix_charge` takes the wrong
+    arguments would pass the check and fail the charge. What actually checks
+    is `tests/integrations/payment/test_contract.py`, comparing
+    `inspect.signature` — and your type-checker, if you declare the type as
+    `PixProvider` (the next section shows where).
+
+### What goes in: `PixChargeRequest`
+
+| field | type | for |
+| --- | --- | --- |
+| `amount_cents` | `int` | amount in cents — an **integer**, never a `float` |
+| `reference` | `str` | your identifier; comes back in `PixCharge.reference` |
+| `description` | `str` or `None` | the text the payer sees |
+| `expires_in` | `timedelta` or `None` | the payment window |
+| `payer` | `PixPayer` or `None` | payer details, where the provider accepts them |
+
+!!! note "What the adapter does with an incomplete `payer` (v0.270.0)"
+    Every `PixPayer` field is optional, but a provider has its own rule
+    about the set. OpenPix requires `name` **and** at least one of
+    `taxID`, `email` or `phone` — all three variants of its `oneOf` ask
+    for `name` plus a contact, so `name` is necessary in all three and
+    sufficient in none.
+
+    The adapter **omits** the block when the payer reaches no variant,
+    rather than sending one the provider's own specification rejects, and
+    rather than inventing a contact to fill it — made-up data would end up
+    on the payer's receipt. A charge is valid with no payer block at all.
+
+!!! tip "`reference` may contain a reserved character"
+    `reference` is the identifier **you** choose, and it becomes OpenPix's
+    `correlationID`, which in turn goes into the path of the read and
+    cancel routes. The SDK escapes the segment (`quote(..., safe="")`), so
+    `order#42` and `order/1042` address the right charge. Before v0.270.0
+    the `#` was read as a fragment and the call hit a different resource —
+    on a `DELETE`. And `""`, `"."` and `".."` raise `ValueError` before
+    sending: the dot is not escaped, and up to v0.334.1 `..` climbed one
+    level up the path.
+
+!!! check "Repeating a create answers the same charge"
+    `reference` is also the create's idempotency key. When the response is
+    lost (timeout, dropped connection) and you repeat `create_pix_charge`
+    with the same `reference`, you get the charge that already exists, not
+    a second one. On OpenPix that is `?return_existing=true`, which the
+    adapter sends since v0.346.0 (Woovi's spec describes it as "make the
+    endpoint idempotent"); on Mercado Pago, an `X-Idempotency-Key` derived
+    from the `reference` (a UUID5), the default since
+    v0.358.0 — before it, each call carried a new key and a repeat opened a
+    second order. `FakePixProvider` answers the existing charge too, so a
+    test over the fake sees the same contract.
+
+    How far that is measured: on Mercado Pago, the same key with the same
+    body returned the same order in the sandbox (2026-10-10); on OpenPix, the
+    SDK tests the request that leaves, and a repeat against the sandbox has
+    not been measured yet.
+
+!!! warning "Same `reference`, different charge: `409` on Mercado Pago"
+    The key collapses **the same** request. Repeating a `reference` with
+    another amount, payer, description or expiry makes Mercado Pago answer
+    `409 idempotency_key_already_used`, which the adapter raises as
+    `httpx.HTTPStatusError` — it does not read the old order back, because
+    that order is for an amount nobody asked for now. A new charge for the
+    same purchase needs a new `reference`.
+
+### What comes out: `PixCharge`
+
+| field | type | for |
+| --- | --- | --- |
+| `provider` | `str` | who issued it (copied from `provider_name`) |
+| `provider_charge_id` | `str` | **the id you store** — it is the argument to `get_pix_charge` and `cancel_pix_charge` |
+| `reference` | `str` | your own identifier, back again |
+| `amount_cents` | `int` | amount, in cents |
+| `currency` | `str` | ISO 4217, defaults to `BRL` |
+| `status` | `PaymentStatusEnum` | the state you branch on |
+| `provider_status` | `str` | the state as the provider names it, raw |
+| `br_code` | `str` or `None` | the EMV copy-and-paste string |
+| `qr_code_image_url` | `str` or `None` | QR as a URL (what OpenPix returns) |
+| `qr_code_base64` | `str` or `None` | QR as Base64 (what Mercado Pago returns) |
+| `end_to_end_id` | `str` or `None` | the Pix settlement identifier |
+| `expires_at` | `datetime` or `None` | when the window closes |
+| `paid_at` | `datetime` or `None` | when it settled |
+| `raw` | `dict[str, Any]` | everything the provider said beyond this |
+
+!!! tip "The QR arrives in both formats because the providers disagree"
+    The contract carries `qr_code_image_url` **and** `qr_code_base64`, and
+    fills in whichever the provider delivers. Your template reads whichever
+    is there, instead of knowing which provider is behind it.
+
+## Charging
+
+A whole program, from the HTTP client to the charge:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatusEnum,
+    PixChargeRequest,
+    PixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
+    OpenPixPixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    OpenPixClient,
+    OpenPixEnvironmentEnum,
+)
+
+
+async def charge_it(provider: PixProvider) -> None:
+    """Emit a Pix charge and print what the payer needs to see.
+
+    Args:
+        provider (PixProvider): Any provider that implements the contract.
+    """
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(
+            amount_cents=1990,
+            reference="order-1042",
+            description="Order 1042",
+        )
+    )
+
+    print(charge.status is PaymentStatusEnum.PENDING)
+    print(charge.br_code)
+    print(charge.provider)
+
+
+async def main() -> None:
+    """Wire the OpenPix client and charge through the contract."""
+    http: HTTPClient = HTTPClient(
+        base_url=OpenPixEnvironmentEnum.SANDBOX.base_url,
+        default_headers={"Authorization": "<your AppID>"},
+    )
+    await charge_it(OpenPixPixProvider(OpenPixClient(http)))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Look at the type of `charge_it`: it takes `PixProvider`, not
+`OpenPixPixProvider`. That is the whole difference between a portable
+service and a coupled one.
+
+!!! tip "The amount is an `int`, always"
+    `amount_cents` is an integer number of cents. Both providers type money
+    as `number` in their specification — and money that has been through a
+    `float` is money that can be wrong. Converting to whatever unit each
+    provider expects is the adapter's problem.
+
+## Reading it back, and cancelling
+
+Creating is a quarter of the contract. The rest of the cycle uses the
+`provider_charge_id` the charge came back with — store that field next to
+your order, because it is the only way back to the provider:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatusEnum,
+    PixCharge,
+    PixChargeRequest,
+    PixProvider,
+)
+
+
+async def charge_and_follow(provider: PixProvider) -> PixCharge:
+    """Create a charge, read it back, and withdraw it if it is still open.
+
+    Args:
+        provider (PixProvider): Any provider that implements the contract.
+
+    Returns:
+        PixCharge: The charge in its final observed state.
+    """
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(amount_cents=1990, reference="order-1042"),
+    )
+    charge_id: str = charge.provider_charge_id
+
+    current = await provider.get_pix_charge(charge_id)
+    if current.status is PaymentStatusEnum.PAID:
+        return current
+
+    return await provider.cancel_pix_charge(charge_id)
+```
+
+!!! warning "Polling does not replace the webhook, and the webhook does not replace polling"
+    `get_pix_charge` is the source you control: it answers when you ask. The
+    webhook is the one that arrives first, and may not arrive at all. A
+    service that only listens gets stuck when a delivery fails; one that only
+    polls pays latency on every order. The [OpenPix »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openpix.md) recipe
+    shows both sides wired up — the webhook to react, the read-back to
+    reconcile.
+
+!!! tip "What about refunds?"
+    Refunding is not on `PixProvider`: it is on `PixRefundProvider`, which
+    extends it with `refund_pix_charge(..., refund_reference=)` and
+    `get_refunded_cents`. All three providers in the SDK (OpenPix, Mercado
+    Pago and `FakePixProvider`) implement it, and a retry with the same
+    reference does not refund twice. See
+    [Pix refunds (idempotent)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/pix-refund.md).
+
+## Switching provider
+
+The adapter is the only line that changes. Keep the choice in one place and
+return the **contract**, never the adapter:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PixProvider
+from tempest_fastapi_sdk.integrations.payment.adapters.openpix import (
+    OpenPixPixProvider,
+)
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
+
+
+def build_provider(client: OpenPixClient) -> PixProvider:
+    """Choose the Pix provider this deployment charges with.
+
+    Args:
+        client (OpenPixClient): The configured OpenPix client.
+
+    Returns:
+        PixProvider: The provider, seen through the contract.
+    """
+    return OpenPixPixProvider(client)
+```
+
+Because the return type is the `Protocol`, the type-checker starts holding
+you to the contract everywhere else in the service — and it is the one that
+tells you, not production. In a FastAPI service this function is the body of
+the `Depends`: the router receives a `PixProvider` and never learns which
+adapter arrived — that is the point, and the next section builds the whole
+service around it.
+
+!!! info "How many adapters exist today: two"
+    The SDK ships **two** ready adapters: `OpenPixPixProvider`, in
+    `integrations/payment/adapters/openpix.py`, and `MercadoPagoPixProvider`,
+    in `integrations/payment/adapters/mercado_pago.py`. Stripe comes in
+    through another door, because it [does not do Pix](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/stripe.md). To move
+    from one to the other without switching the first off at once, see
+    [Turning the second provider on without turning the first off](#turning-the-second-provider-on-without-turning-the-first-off).
+
+## In your service's architecture
+
+So far the provider has arrived ready-made, as an argument. In a FastAPI
+application someone has to **build** it — and that construction is what
+decides whether switching provider is one line or a refactor.
+
+This section wires the whole path, bottom up: HTTP client → adapter →
+dependency → order → service → router. The service that comes out of it has
+**two** files that know the name "OpenPix"; everything else speaks the
+contract. And it releases an order only after **reading the charge back from
+the provider** — the webhook notifies, the API confirms, exactly as the
+[OpenPix »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openpix.md#flow-2-find-out-whether-it-was-paid) recipe requires.
+
+### Where each piece lives
+
+```text
+src/
+├── core/
+│   └── settings.py              # OPENPIX_APP_ID + environment + DATABASE_URL
+├── api/
+│   ├── app.py                   # create_app() + lifespan
+│   ├── dependencies/
+│   │   ├── orders.py            # per-request session + the order repository
+│   │   └── payments.py          # HTTPClient -> OpenPixClient -> adapter
+│   └── routers/
+│       ├── checkout.py          # POST /api/checkout/{order_id}
+│       └── webhooks.py          # POST /webhooks/pix (include_in_schema=False)
+├── schemas/
+│   └── checkout.py              # what your own client sees
+├── services/
+│   └── checkout.py              # business rules, written on the contract only
+└── db/
+    ├── models/
+    │   └── orders.py            # amount, provider_charge_id and paid_at
+    └── repositories/
+        └── orders.py            # where the release-once guard (claim_once) lives
+```
+
+| Layer | May import | Never imports |
+| --- | --- | --- |
+| `api/dependencies` | `HTTPClient`, `OpenPixClient`, the adapter, services | — |
+| `api/routers` | the dependencies, `schemas` | the adapter, `OpenPixClient` |
+| `services` | `PixProvider`, `PixCharge`, repositories | the adapter, `fastapi` |
+| `schemas` | `BaseSchema` | the contract and the adapter |
+| `db/repositories` | `db/models`, `claim_once` | anything about payments |
+
+`api/dependencies` is the only layer allowed to know the provider because it
+is the only one whose job is **assembly**. It is the composition root: the
+place where the concrete becomes the contract, and the only one that changes
+on the day of the switch.
+
+### Step 1 — configuration
+
+```python
+from tempest_fastapi_sdk import DatabaseSettings, OpenPixSettings
+
+
+class Settings(OpenPixSettings, DatabaseSettings):
+    """The service's settings."""
+
+
+settings: Settings = Settings()
+```
+
+`OpenPixSettings` brings `OPENPIX_APP_ID` and `OPENPIX_ENVIRONMENT`, and
+`settings.openpix_kwargs()` returns the resolved `base_url` and the
+`Authorization` header — the two arguments `HTTPClient` needs. The
+environments are covered in [OpenPix »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openpix.md). `DatabaseSettings`
+brings `DATABASE_URL`, and `settings.database_kwargs()` is the splat for the
+`AsyncDatabaseManager` in step 3.
+
+### Step 2 — the HTTP client and the provider, built once
+
+This is the whole file. It is the composition root:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Request
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment import PixProvider
+from tempest_fastapi_sdk.integrations.payment.adapters import OpenPixPixProvider
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    OpenPixClient,
+    OpenPixWebhookEvent,
+    make_openpix_webhook_dependency,
+)
+
+from src.api.dependencies.orders import OrderRepositoryDep
+from src.core.settings import settings
+from src.services.checkout import CheckoutService
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Build one HTTP client and one provider for the whole process.
+
+    Args:
+        app (FastAPI): The application the provider is stored on.
+
+    Yields:
+        None: While the application serves requests.
+    """
+    http: HTTPClient = HTTPClient(**settings.openpix_kwargs(), timeout=15.0)
+    app.state.pix_provider = OpenPixPixProvider(OpenPixClient(http))
+    try:
+        yield
+    finally:
+        await http.aclose()
+
+
+def get_pix_provider(request: Request) -> PixProvider:
+    """Hand out the process-wide provider, seen through the contract.
+
+    Args:
+        request (Request): The request in flight.
+
+    Returns:
+        PixProvider: The configured provider.
+    """
+    provider: PixProvider = request.app.state.pix_provider
+    return provider
+
+
+PixProviderDep = Annotated[PixProvider, Depends(get_pix_provider)]
+"""The contract, injected."""
+
+verified_delivery = make_openpix_webhook_dependency()
+"""The provider's own verifier, as a dependency tests can override."""
+
+WebhookDeliveryDep = Annotated[OpenPixWebhookEvent, Depends(verified_delivery)]
+"""A delivery whose signature the verifier already accepted."""
+
+
+def get_checkout_service(
+    provider: PixProviderDep,
+    orders: OrderRepositoryDep,
+) -> CheckoutService:
+    """Assemble the service the routers call.
+
+    Args:
+        provider (PixProviderDep): The provider, through the contract.
+        orders (OrderRepositoryDep): The order repository.
+
+    Returns:
+        CheckoutService: The service, ready to charge.
+    """
+    return CheckoutService(provider, orders)
+
+
+CheckoutServiceDep = Annotated[CheckoutService, Depends(get_checkout_service)]
+"""The checkout service, injected."""
+```
+
+Four things happen there, and each is worth reading on its own.
+
+**The assembly is three layers in one line.**
+`OpenPixPixProvider(OpenPixClient(http))` stacks transport → provider client
+→ adapter. Each does one job: the `HTTPClient` has retries, timeout and a
+per-host circuit breaker; the `OpenPixClient` knows the routes; the adapter
+translates into the contract.
+
+**There is one `HTTPClient`, created in the `lifespan`.** It is safe to
+share across requests on the same event loop, and the connection pool, the
+retries and the breaker are *its* state. Creating one per request throws all
+three away and opens a fresh socket on every checkout — and `aclose()` in the
+`finally` is what closes the pool at shutdown.
+
+**The return annotation is the seam.** `get_pix_provider` promises
+`PixProvider`, not `OpenPixPixProvider`. From there up, the type-checker
+refuses any use of something the contract does not carry.
+
+**`verified_delivery` is a named variable on purpose.** It is the callable
+`Depends` registers — and it is the key into `app.dependency_overrides` in
+the test. Writing `Depends(make_openpix_webhook_dependency())` inline in the
+`Annotated` leaves the function anonymous, with no way to replace it.
+
+!!! warning "`app.state` is `Any` — re-annotate on the way out"
+    `request.app.state.pix_provider` has no type: `app.state` accepts any
+    attribute. Without the `provider: PixProvider = ...` line,
+    `mypy --strict` rejects the module:
+
+    ```text
+    src/api/dependencies/payments.py:50: error: Returning Any from function
+    declared to return "PixProvider"  [no-any-return]
+    ```
+
+    The annotation is not decoration: it is the point where the value exists
+    again for the type-checker. With it, the whole service passes
+    `mypy --strict`.
+
+### Step 3 — the order, and the column that releases it once
+
+The webhook will arrive more than once: OpenPix redelivers when it does not
+get a 200, and a captured delivery keeps a valid signature forever. The
+order needs a column that says "already released" — and that only **one**
+request can fill.
+
+```python
+from datetime import datetime
+
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class OrderModel(BaseModel):
+    """An order, and the Pix charge that pays it."""
+
+    __tablename__ = "orders"
+
+    reference: Mapped[str] = mapped_column(unique=True)
+    amount_cents: Mapped[int] = mapped_column()
+    provider_charge_id: Mapped[str | None] = mapped_column(default=None)
+    paid_at: Mapped[datetime | None] = mapped_column(default=None)
+```
+
+The repository is what talks to the database, so the release-once guard
+lives there:
+
+```python
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.wallet import claim_once
+
+from src.db.models import OrderModel
+
+
+class OrderRepository(BaseRepository[OrderModel]):
+    """Data access for orders."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind the repository to the request session.
+
+        Args:
+            session (AsyncSession): The request-scoped session.
+        """
+        super().__init__(session, model=OrderModel)
+
+    async def open(
+        self, reference: str, amount_cents: int, provider_charge_id: str
+    ) -> OrderModel:
+        """Persist an order together with the charge that pays it.
+
+        Args:
+            reference (str): The order's identifier, sent as the reference.
+            amount_cents (int): What the order costs, in cents.
+            provider_charge_id (str): How to address the charge later.
+
+        Returns:
+            OrderModel: The stored order.
+        """
+        return await self.add(
+            OrderModel(
+                reference=reference,
+                amount_cents=amount_cents,
+                provider_charge_id=provider_charge_id,
+            ),
+        )
+
+    async def get_by_reference(self, reference: str) -> OrderModel | None:
+        """Find an order by the reference its charge carries.
+
+        Args:
+            reference (str): The order's identifier.
+
+        Returns:
+            OrderModel | None: The order, or None when nothing matches.
+        """
+        return await self.get_or_none({"reference": reference})
+
+    async def claim_paid(self, order_id: UUID) -> bool:
+        """Stamp paid_at, only if no one stamped it before.
+
+        Args:
+            order_id (UUID): The order to claim.
+
+        Returns:
+            bool: True for the one call that claimed the order.
+        """
+        return await claim_once(self.session, OrderModel, order_id, "paid_at")
+```
+
+`claim_once` is an `UPDATE orders SET paid_at = now WHERE id = :id AND
+paid_at IS NULL`. Two deliveries of the same event issue the same `UPDATE`;
+only one finds the column empty, and the other gets `False`. It does **not**
+commit: it joins the same transaction block as the release's effects, and a
+failure in those effects rolls the claim back too. It is the same guard the
+[Wallet »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/wallet.md#settling-once) recipe uses.
+
+And the per-request session the repository receives:
+
+```python
+from functools import lru_cache
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AsyncDatabaseManager, session_dependency_for
+
+from src.core.settings import settings
+from src.db.repositories import OrderRepository
+
+
+@lru_cache
+def get_db() -> AsyncDatabaseManager:
+    """Build the database manager once, on first use.
+
+    Returns:
+        AsyncDatabaseManager: The process-wide manager.
+    """
+    return AsyncDatabaseManager(**settings.database_kwargs())
+
+
+get_session = session_dependency_for(get_db)
+"""One uncommitted session per request; the repository commits."""
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+"""The request session, injected."""
+
+
+def get_order_repository(session: SessionDep) -> OrderRepository:
+    """Bind the order repository to the request session.
+
+    Args:
+        session (SessionDep): The request session.
+
+    Returns:
+        OrderRepository: The repository.
+    """
+    return OrderRepository(session)
+
+
+OrderRepositoryDep = Annotated[OrderRepository, Depends(get_order_repository)]
+"""The order repository, injected."""
+```
+
+`get_session` is a named variable for the same reason `verified_delivery`
+is: it is the key the step 7 test swaps for a temporary database.
+
+### Step 4 — the service, which speaks only the contract
+
+```python
+from datetime import timedelta
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PixCharge,
+    PixChargeRequest,
+    PixEventTypeEnum,
+    PixPaymentEvent,
+    PixProvider,
+    confirm_pix_payment,
+)
+
+from src.db.repositories import OrderRepository
+
+
+class CheckoutService:
+    """Open and settle Pix charges for orders."""
+
+    def __init__(self, provider: PixProvider, orders: OrderRepository) -> None:
+        """Take the contract and the repository.
+
+        Args:
+            provider (PixProvider): Any provider that implements the contract.
+            orders (OrderRepository): Where the order and its charge live.
+        """
+        self._provider: PixProvider = provider
+        self._orders: OrderRepository = orders
+
+    async def open_charge(self, order_id: str, amount_cents: int) -> PixCharge:
+        """Charge an order and remember how to address the charge later.
+
+        Args:
+            order_id (str): The order's identifier, sent as the reference.
+            amount_cents (int): The amount, in cents.
+
+        Returns:
+            PixCharge: The created charge, in canonical shape.
+        """
+        charge = await self._provider.create_pix_charge(
+            PixChargeRequest(
+                amount_cents=amount_cents,
+                reference=order_id,
+                description=f"Order {order_id}",
+                expires_in=timedelta(minutes=30),
+            ),
+        )
+        await self._orders.open(order_id, amount_cents, charge.provider_charge_id)
+        return charge
+
+    async def settle(self, event: PixPaymentEvent) -> str | None:
+        """Release an order once the provider confirms it is paid.
+
+        The event is only the notice. What authorizes the release is the
+        provider answering, on a fresh read of the charge this service
+        stored, that it is paid for this order and amount.
+
+        Args:
+            event (PixPaymentEvent): The parsed event.
+
+        Returns:
+            str | None: The order released by this call, or None when the
+            event says something else, the charge is not confirmed, or an
+            earlier delivery already released the order.
+        """
+        if event.type is not PixEventTypeEnum.CHARGE_PAID or event.charge is None:
+            return None
+        order = await self._orders.get_by_reference(event.charge.reference)
+        if order is None or order.provider_charge_id is None:
+            return None
+        confirmation = await confirm_pix_payment(
+            self._provider,
+            order.provider_charge_id,
+            reference=order.reference,
+            amount_cents=order.amount_cents,
+        )
+        if not confirmation.paid:
+            return None
+        async with self._orders.transaction():
+            if not await self._orders.claim_paid(order.id):
+                return None
+        return order.reference
+```
+
+Look at the import block: no `adapters`, no `openpix`. That is a rule you
+can check with `grep` instead of with review.
+
+`settle` is where money moves, and every line in it is there for a reason:
+
+1. **The event is only the trigger.** One thing comes out of it: which
+   order to look at (`event.charge.reference`). The status and amount the
+   delivery carried decide nothing.
+2. **The re-read uses the id you stored.** `confirm_pix_payment` calls
+   `provider.get_pix_charge(order.provider_charge_id)` — the id saved in
+   `open_charge`, not an id the delivery brought. A forged or replayed
+   delivery can, at most, make the service ask the provider about a charge
+   it already owns.
+3. **Paid is three checks.** The re-read charge must belong to this order
+   (`reference`), be `PAID` and carry the order's amount (`amount_cents`,
+   exact equality). `confirmation.outcome` says which one failed:
+   `REFERENCE_MISMATCH`, `NOT_PAID` or `AMOUNT_MISMATCH`.
+4. **The release happens once.** `claim_paid` runs inside
+   `self._orders.transaction()`; the second delivery of the same event finds
+   `paid_at` filled and returns `None`. Release effects — taking stock,
+   sending the e-mail, crediting the seller's wallet — go **inside** that
+   block, after `claim_paid`, so they fall together if an effect fails.
+
+!!! tip "A provider error is not \"not paid\""
+    If `get_pix_charge` raises (timeout, provider down),
+    `confirm_pix_payment` lets the exception through, and the order stays
+    unreleased — which is right for an unanswered question. Measured with
+    the fake's `get_pix_charge` raising `TimeoutError`: the delivery answers
+    **500**; the next redelivery, with the provider back, answers
+    `{"settled": "order-1042"}`. Redelivering is the provider's job when it
+    does not get a 200 (see [OpenPix »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openpix.md)).
+
+The `reference` is **your** order's id, and `provider_charge_id` is written
+in the same transaction the charge is born in. One is how the webhook finds
+you; the other is how you get back to the provider to read or cancel. Losing
+the second means a charge that exists at the provider and that your service
+can no longer address.
+
+### Step 5 — the router returns your schema, not `PixCharge`
+
+```python
+from fastapi import APIRouter, status
+
+from src.api.dependencies import CheckoutServiceDep
+from src.schemas import CheckoutCreateSchema, CheckoutResponseSchema
+
+router: APIRouter = APIRouter(prefix="/api/checkout", tags=["checkout"])
+
+
+@router.post("/{order_id}", status_code=status.HTTP_201_CREATED)
+async def open_checkout(
+    order_id: str,
+    payload: CheckoutCreateSchema,
+    service: CheckoutServiceDep,
+) -> CheckoutResponseSchema:
+    """Open a Pix charge for an order.
+
+    Args:
+        order_id (str): The order to charge.
+        payload (CheckoutCreateSchema): How much to charge.
+        service (CheckoutServiceDep): The checkout service.
+
+    Returns:
+        CheckoutResponseSchema: What the payment screen needs.
+    """
+    charge = await service.open_charge(order_id, payload.amount_cents)
+    return CheckoutResponseSchema(
+        order_id=charge.reference,
+        amount_cents=charge.amount_cents,
+        br_code=charge.br_code,
+        qr_code_image_url=charge.qr_code_image_url,
+        qr_code_base64=charge.qr_code_base64,
+    )
+```
+
+!!! danger "`PixCharge` is a Pydantic schema — which is exactly why returning it leaks"
+    Nothing stops a router from annotating `-> PixCharge`: it serializes.
+    The problem is **what** it serializes. A `model_dump(mode="json")` of a
+    charge has 14 fields, and two of them are not your client's business:
+
+    ```text
+    ['amount_cents', 'br_code', 'currency', 'end_to_end_id', 'expires_at',
+     'paid_at', 'provider', 'provider_charge_id', 'provider_status',
+     'qr_code_base64', 'qr_code_image_url', 'raw', 'reference', 'status']
+    ```
+
+    `raw` is the provider's payload as decoded — on the OpenPix path it is
+    the whole `Charge`, `customer` included, with the payer's `name`,
+    `email` and `taxID` — the wire spelling, which is what `raw` uses.
+    `provider_charge_id` is your write key at the
+    provider. A response schema of your own, carrying the fields the screen
+    uses, is what separates your API from a third party's payload.
+
+### Step 6 — the webhook: verification at the edge, contract inside
+
+```python
+from fastapi import APIRouter
+
+from src.api.dependencies import CheckoutServiceDep, PixProviderDep, WebhookDeliveryDep
+
+router: APIRouter = APIRouter(prefix="/webhooks", include_in_schema=False)
+
+
+@router.post("/pix")
+async def receive_pix(
+    delivery: WebhookDeliveryDep,
+    provider: PixProviderDep,
+    service: CheckoutServiceDep,
+) -> dict[str, str | None]:
+    """Turn a verified delivery into a settled order.
+
+    Args:
+        delivery (WebhookDeliveryDep): The verified delivery.
+        provider (PixProviderDep): The provider that parses it.
+        service (CheckoutServiceDep): The service that acts on it.
+
+    Returns:
+        dict[str, str | None]: The order settled by this delivery, if any.
+    """
+    event = provider.parse_webhook(delivery)
+    return {"settled": await service.settle(event)}
+```
+
+The router does not import `OpenPixWebhookEvent`, and does not know there is
+RSA anywhere on the path: it receives a `WebhookDeliveryDep`, hands it to the
+provider's `parse_webhook` and acts on the `PixPaymentEvent` that comes out.
+Signature verification — the part no contract unifies — stayed entirely
+inside the composition root's `Annotated`.
+
+And it releases nothing on its own: `service.settle` reads the charge back
+and stamps the order under `claim_once` (step 4). A valid signature proves
+the delivery came from the provider; what authorizes moving money is the
+re-read. That is why the same delivery, redelivered, answers
+`{"settled": null}` the second time.
+
+!!! note "`include_in_schema=False` is not cosmetic"
+    A webhook is not an endpoint of your public API: what authenticates
+    there is a signature, not your user's token. With the router out of the
+    schema, this service's `app.openapi()` lists exactly one route:
+
+    ```text
+    ['/api/checkout/{order_id}']
+    ```
+
+### Step 7 — in tests, the fake enters through the dependency
+
+The in-memory adapter from this page's last section is not just for scripts:
+it takes the provider's place through `dependency_overrides`, and the whole
+suite runs without a network.
+
+```python
+import asyncio
+from pathlib import Path
+from typing import Any
+
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import AsyncDatabaseManager, session_dependency_for
+from tempest_fastapi_sdk.integrations.payment import PixProvider
+
+from src.api.app import create_app
+from src.api.dependencies import get_pix_provider, get_session, verified_delivery
+from tests.fakes import FakePixProvider
+
+
+def test_checkout_and_webhook(tmp_path: Path) -> None:
+    """Charge, settle, and replay the delivery, on the fake and a real SQLite."""
+    db = AsyncDatabaseManager(f"sqlite+aiosqlite:///{tmp_path / 'orders.db'}")
+    asyncio.run(db.create_tables())
+
+    app = create_app()
+    provider: PixProvider = FakePixProvider()
+    app.dependency_overrides[get_pix_provider] = lambda: provider
+    app.dependency_overrides[get_session] = session_dependency_for(lambda: db)
+
+    def fake_delivery() -> Any:
+        """Stand in for the verified delivery.
+
+        Returns:
+            Any: What this provider's parse_webhook reads.
+        """
+        return {"charge_id": "fake-1"}
+
+    app.dependency_overrides[verified_delivery] = fake_delivery
+
+    with TestClient(app) as client:
+        created = client.post("/api/checkout/order-1042", json={"amount_cents": 1990})
+        assert created.status_code == 201
+        assert created.json()["br_code"] == "000201fake-1"
+
+        first = client.post("/webhooks/pix")
+        assert first.json() == {"settled": "order-1042"}
+
+        replay = client.post("/webhooks/pix")
+        assert replay.json() == {"settled": None}
+```
+
+The three responses, running:
+
+```text
+POST /api/checkout/order-1042 -> 201 {'order_id': 'order-1042', 'amount_cents': 1990, 'br_code': '000201fake-1', 'qr_code_image_url': None, 'qr_code_base64': None}
+POST /webhooks/pix -> 200 {'settled': 'order-1042'}
+POST /webhooks/pix -> 200 {'settled': None}
+```
+
+The third line is the redelivery: the fake answers `PAID` again on the
+re-read, but `paid_at` is already filled and `claim_once` returns `False`.
+
+There are three overrides, and they differ on purpose. The **provider**
+one swaps the entire provider for the fake. The **verified delivery** one
+swaps only the verifier — because signing is the part a fake cannot imitate,
+and faking verification in a test beats turning it off in production. The
+**session** one points at a SQLite file in a temporary directory:
+`claim_once` is a real `UPDATE`, and testing it against a dict would prove
+nothing.
+
+!!! tip "What the type-checker holds your fake to"
+    The line `provider: PixProvider = FakePixProvider()` is what makes
+    `mypy --strict` check the fake against the contract. Change
+    `create_pix_charge`'s parameter to `str` and the rejection is immediate,
+    naming the member:
+
+    ```text
+    tests/fakes.py:43: error: "str" has no attribute "reference"  [attr-defined]
+    tests/fakes.py:44: error: "str" has no attribute "amount_cents"  [attr-defined]
+    tests/test_checkout.py:21: error: Incompatible types in assignment (expression has type "FakePixProvider", variable has type "PixProvider")  [assignment]
+    tests/test_checkout.py:21: note: Following member(s) of "FakePixProvider" have conflicts:
+    tests/test_checkout.py:21: note:     Expected:
+    tests/test_checkout.py:21: note:         def create_pix_charge(self, request: PixChargeRequest) -> Coroutine[Any, Any, PixCharge]
+    tests/test_checkout.py:21: note:     Got:
+    tests/test_checkout.py:21: note:         def create_pix_charge(self, request: str) -> Coroutine[Any, Any, PixCharge]
+    ```
+
+    Without the annotation, `dependency_overrides` accepts any callable and
+    the defect only shows up on the first charge.
+
+### What switching provider costs in this service
+
+Sweeping the service above for the provider's name finds **two** files:
+
+```text
+src/core/settings.py
+src/api/dependencies/payments.py
+```
+
+The first only because the credentials really are the provider's. The second
+is the composition root — and it is the `OpenPixPixProvider(OpenPixClient(http))`
+line that changes when the adapter is another one. Neither the service, nor
+the routers, nor the schemas show up in that list: that is how you measure
+whether the seam is where you think it is.
+
+### Turning the second provider on without turning the first off
+
+Switching provider in a single deploy is a bet on everything the sandbox did
+not show. The safe path is a rollout: a slice of new orders goes to the new
+provider, every charge already open keeps being read and cancelled where it
+was born, and the slice grows (or drops back to zero) without a deploy. That
+is what `PixProviderRouter` does:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PixChargeRequest,
+    PixProviderRouter,
+)
+from tempest_fastapi_sdk.testing.fakes import FakePixProvider
+
+
+async def main() -> None:
+    """Send 10% of new charges to the candidate, read each where it was born."""
+    router: PixProviderRouter = PixProviderRouter(
+        [
+            FakePixProvider(provider_name="openpix"),
+            FakePixProvider(provider_name="mercado_pago"),
+        ],
+        primary="openpix",
+        candidate="mercado_pago",
+        candidate_percent=10,
+    )
+    charge = await router.create_pix_charge(
+        PixChargeRequest(amount_cents=1990, reference="order-1017"),
+    )
+    again = await router.get_pix_charge(charge.provider, charge.provider_charge_id)
+    print(charge.provider, again.provider_charge_id == charge.provider_charge_id)
+
+
+asyncio.run(main())
+```
+
+The script prints `mercado_pago True`: `bucket("order-1017")` is `2`, below
+the slice's 10, so the charge was born at the candidate and read back there.
+
+Three decisions live in that object:
+
+1. **The slice is a function of the `reference`, not a coin flip.**
+   `bucket(reference)` is a SHA-256 reduced to `0..99`, the same in every
+   process. The same order, reopened after a timeout, lands on the same
+   provider, and raising the percentage only **adds** orders to the
+   candidate's slice.
+2. **Reads and cancellations go by the stored provider.** `get_pix_charge`
+   and `cancel_pix_charge` take `charge.provider` besides the id. That is why
+   the order stores **both** columns, `provider` and `provider_charge_id`.
+   The step 3 model stores only the id, and with two providers it needs the
+   other one.
+3. **`candidate_percent=0` is the kill switch.** Nothing new goes to the
+   candidate, and what is already there keeps being served, because the
+   provider stays registered.
+
+The router is not a `PixProvider`: the contract's `get_pix_charge` takes only
+the id, and an id alone does not say whom to ask. For `confirm_pix_payment`,
+pass `router.provider_for(order.provider)`.
+
+!!! warning "Each provider has its own webhook route"
+    Verification is per provider, and a Mercado Pago delivery **does not
+    carry the order's state**: only the id, signed. The
+    `make_mercado_pago_webhook_delivery_dependency` dependency verifies the
+    signature and re-reads the order before handing it to
+    `parse_webhook`, and the adapter's `parse_webhook` refuses the bare
+    notification. Mount `/webhooks/openpix` and `/webhooks/mercado-pago` side
+    by side, each with its own dependency, and the same `service.settle`
+    behind both. Details in
+    [Mercado Pago »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/mercado-pago.md#the-webhook-through-the-contract-re-reading-the-order).
+
+## States
+
+You branch on `PaymentStatusEnum`, never on the provider's string:
+
+| canonical | means |
+| --- | --- |
+| `PENDING` | created, waiting for the payer |
+| `AUTHORIZED` | card approved by the issuer and held, not captured yet |
+| `PAID` | settled |
+| `EXPIRED` | the window closed unpaid |
+| `CANCELLED` | withdrawn by you or the provider |
+| `REFUNDED` | paid and returned |
+| `CHARGED_BACK` | reversed by the payer's institution |
+| `IN_ANALYSIS` | held for review |
+| `FAILED` | refused |
+| `UNKNOWN` | a state this SDK version does not classify |
+
+The original string is not lost: it lives in `provider_status`, which is
+what you put in the log and show to support.
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PaymentStatusEnum, PixCharge
+
+
+def release_order(charge: PixCharge) -> bool:
+    """Decide whether the order can be released.
+
+    Args:
+        charge (PixCharge): The charge as get_pix_charge re-read it, never
+            the copy a webhook delivered.
+
+    Returns:
+        bool: Whether the money is in.
+    """
+    return charge.status is PaymentStatusEnum.PAID
+```
+
+!!! warning "`is` works here — and it would not, for free"
+    `PixCharge` turns off the `use_enum_values` that `BaseSchema` turns on.
+    Without that, `charge.status` would hold the **string** `"paid"` and
+    `charge.status is PaymentStatusEnum.PAID` would be `False` on every charge,
+    silently, while `==` kept working. That is the kind of defect that
+    survives review precisely because the obvious check still passes.
+
+!!! tip "A provider can invent a state — and that must not break the read"
+    `UNKNOWN` exists because providers add states without warning. Both
+    ways of hiding that are worse: falling through to `PENDING` claims the
+    charge is awaiting payment right after the provider said it is not,
+    and refusing the read turns a state the SDK does not know into a
+    failed request, with the real state nowhere you can see it.
+
+    The original string stays in `provider_status`, so you can branch on
+    it while the canonical mapping does not exist yet:
+
+    ```python
+    if charge.status is PaymentStatusEnum.UNKNOWN:
+        logger.warning("new OpenPix state: %s", charge.provider_status)
+    ```
+
+## Webhooks
+
+Signature verification stays with each provider — RSA-1024 at OpenPix, HMAC
+at Stripe. What the contract unifies is what comes out of it:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PixEventTypeEnum, PixProvider
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixWebhookEvent
+
+
+def handle(provider: PixProvider, delivery: OpenPixWebhookEvent) -> str | None:
+    """Find which order a verified delivery is about.
+
+    Args:
+        provider (PixProvider): The provider that verified the delivery.
+        delivery (OpenPixWebhookEvent): The verified event.
+
+    Returns:
+        str | None: The reference of the order to re-check, if any.
+    """
+    event = provider.parse_webhook(delivery)
+    if event.type is PixEventTypeEnum.CHARGE_PAID and event.charge is not None:
+        return event.charge.reference
+    return None
+```
+
+What comes out of it is **which order to check**, not a paid order.
+Releasing is the `settle` from
+[step 4](#step-4-the-service-which-speaks-only-the-contract): it reads the
+charge back with `confirm_pix_payment` and stamps it under `claim_once`.
+
+An event the SDK does not classify becomes `PixEventTypeEnum.UNKNOWN` **with the
+original name preserved** in `provider_event_name`. It stays visible rather
+than swallowed.
+
+There are six canonical types:
+
+| `PixEventTypeEnum` | fired when |
+| --- | --- |
+| `CHARGE_CREATED` | the charge was opened |
+| `CHARGE_PAID` | the money arrived |
+| `CHARGE_EXPIRED` | the window closed unpaid |
+| `CHARGE_CANCELLED` | the charge was withdrawn |
+| `CHARGE_REFUNDED` | the amount was returned |
+| `UNKNOWN` | the provider sent something the SDK does not map |
+
+!!! note "Why `parse_webhook` takes `Any`"
+    Each provider delivers a different type: OpenPix delivers an
+    `OpenPixWebhookEvent`, already verified; another provider would deliver
+    the body's dict, or an object of its own. Typing the parameter as one
+    provider's type would tie the contract to that provider — exactly the
+    coupling this page avoids. The adapter knows its own type; the contract
+    only knows what comes **out**, which is `PixPaymentEvent`.
+
+    Verifying the signature happens **before** this, and stays each
+    provider's job: RSA-1024 at OpenPix, HMAC at Stripe. The step-by-step on
+    the OpenPix side, including how to register the URL, is in
+    [OpenPix »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openpix.md).
+
+## What the provider says beyond the contract
+
+It lives in `raw`:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PixCharge
+
+
+def payment_link(charge: PixCharge) -> object | None:
+    """Read a provider-specific field the contract does not model.
+
+    Args:
+        charge (PixCharge): The charge.
+
+    Returns:
+        object | None: OpenPix's payment link, when present.
+    """
+    return charge.raw.get("paymentLinkUrl")
+```
+
+!!! info "Why `raw` has to exist"
+    The SDK's `BaseSchema` is `extra="ignore"`. Without this field,
+    everything a provider sends beyond the contract would vanish during
+    validation — no error, no warning. `raw` is what makes going through
+    the contract lossless.
+
+    **`raw` uses the wire's spelling on both paths**, which is why the
+    lookup above is `raw["paymentLinkUrl"]` and not
+    `raw["payment_link_url"]`. The name the provider documents is the only
+    one you can predict from the provider's own documentation.
+
+!!! warning "Changed in v0.270.0"
+    Up to v0.269.0 the API path dumped without `by_alias`, so a
+    **declared** field came out in `snake_case` while an undeclared one
+    (which `extra="allow"` keeps) came out in `camelCase` — `raw` was a
+    mixture, and `raw["paymentLinkUrl"]` answered `None` on every charge
+    read back from the API. A service already reading `raw` with
+    `snake_case` keys has to switch to the wire names.
+
+    The previous admonition also explained this wrongly. It said that on
+    the API path `raw` was the payload "after the generated schema
+    validated it, so fields the specification does not declare are already
+    gone". That stopped being true when response models became
+    `extra="allow"` (v0.259/v0.260): `paidAt` **survives** validation and
+    is in `raw` on both paths. What is still different is only that
+    OpenPix's adapter reads `paid_at` on the webhook delivery and not on
+    the API path.
+
+## Writing an adapter
+
+An adapter is a class with `provider_name` and the four methods. Nothing to
+inherit. The example below talks to no provider at all — it keeps charges in
+a dict — and that makes it the way to **test your service without a
+network**, which is the first adapter worth writing:
+
+```python
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatusEnum,
+    PixCharge,
+    PixChargeRequest,
+    PixEventTypeEnum,
+    PixPaymentEvent,
+    PixProvider,
+)
+
+
+class FakePixProvider:
+    """A provider that keeps charges in a dict instead of calling anyone.
+
+    Attributes:
+        provider_name (str): The identifier copied into
+            ``PixCharge.provider``.
+    """
+
+    provider_name: str = "fake"
+
+    def __init__(self) -> None:
+        """Start with no charges."""
+        self._charges: dict[str, PixCharge] = {}
+        self._next_id: int = 1
+
+    async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge:
+        """Create a charge in memory.
+
+        Args:
+            request (PixChargeRequest): What the service asked to charge.
+
+        Returns:
+            PixCharge: The charge, in canonical shape.
+        """
+        charge_id = f"fake-{self._next_id}"
+        self._next_id += 1
+        charge = PixCharge(
+            provider=self.provider_name,
+            provider_charge_id=charge_id,
+            reference=request.reference,
+            amount_cents=request.amount_cents,
+            status=PaymentStatusEnum.PENDING,
+            provider_status="created",
+            br_code=f"000201{charge_id}",
+        )
+        self._charges[charge_id] = charge
+        return charge
+
+    async def get_pix_charge(self, charge_id: str) -> PixCharge:
+        """Read a charge back.
+
+        Args:
+            charge_id (str): The provider-side id.
+
+        Returns:
+            PixCharge: The stored charge.
+
+        Raises:
+            KeyError: When no charge carries that id.
+        """
+        return self._charges[charge_id]
+
+    async def cancel_pix_charge(self, charge_id: str) -> PixCharge:
+        """Withdraw an unpaid charge.
+
+        Args:
+            charge_id (str): The provider-side id.
+
+        Returns:
+            PixCharge: The charge in its cancelled shape.
+        """
+        charge = self._charges[charge_id]
+        cancelled = charge.model_copy(
+            update={
+                "status": PaymentStatusEnum.CANCELLED,
+                "provider_status": "cancelled",
+            },
+        )
+        self._charges[charge_id] = cancelled
+        return cancelled
+
+    def parse_webhook(self, event: Any) -> PixPaymentEvent:
+        """Turn a delivery into a canonical event.
+
+        Args:
+            event (Any): Whatever this provider delivers.
+
+        Returns:
+            PixPaymentEvent: The canonical event.
+        """
+        charge = self._charges[str(event["charge_id"])]
+        paid = charge.model_copy(
+            update={"status": PaymentStatusEnum.PAID, "provider_status": "paid"},
+        )
+        self._charges[paid.provider_charge_id] = paid
+        return PixPaymentEvent(
+            provider=self.provider_name,
+            type=PixEventTypeEnum.CHARGE_PAID,
+            provider_event_name="fake.paid",
+            charge=paid,
+            raw=dict(event),
+        )
+
+
+async def main() -> None:
+    """Exercise the whole contract against the fake."""
+    provider: PixProvider = FakePixProvider()
+
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(amount_cents=1990, reference="order-1042"),
+    )
+    print(charge.provider_charge_id, charge.status.value)
+
+    event = provider.parse_webhook({"charge_id": charge.provider_charge_id})
+    print(event.type.value, event.charge is not None)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Run it and you get:
+
+```text
+fake-1 pending
+charge_paid True
+```
+
+The line doing the checking is `provider: PixProvider = FakePixProvider()`.
+It changes nothing at runtime — it changes what the type-checker demands of
+you. If a method comes out with the wrong signature, `mypy --strict` fails
+there, and not on the day of the first charge.
+
+!!! tip "Three things a real provider's adapter does on top"
+    1. **Converts the unit.** The contract is whole cents; the provider may
+       want decimal currency. The conversion belongs to the adapter, which is
+       why it lives in exactly one place.
+    2. **Maps the state.** The provider's string becomes a `PaymentStatusEnum`,
+       and the original is copied into `provider_status` — nothing discarded.
+    3. **Fills `raw`.** Everything the provider says beyond the contract goes
+       there, so no information dies in translation.
+
+    `OpenPixPixProvider` is the reference for how the three sit together:
+    `integrations/payment/adapters/openpix.py`.
+
+## Recap
+
+- Your service depends on `PixProvider` and receives `PixCharge`.
+- The contract has four methods: create, read, cancel and parse the webhook.
+  Store `provider_charge_id` — it is the argument to the middle two.
+- Money crosses the contract as an `int` of cents.
+- The state you branch on is `PaymentStatusEnum`; the provider's own sits
+  beside it in `provider_status`.
+- Webhook signatures stay per provider; the event that comes out is
+  canonical, and whatever the SDK does not map arrives as `UNKNOWN` with the
+  original name.
+- Nothing is lost: whatever the provider says beyond the contract is in
+  `raw`.
+- An adapter is a class with `provider_name` and the four methods, no
+  inheritance. The SDK ships two today (OpenPix and Mercado Pago); the
+  in-memory fake above is the one you write first, to test without a network.
+- To migrate provider, `PixProviderRouter` sends a stable slice of new orders
+  to the candidate and reads each charge from the provider that created it.
+- In the architecture: the provider is assembled in `api/dependencies` and
+  leaves it as a `PixProvider`. One `HTTPClient` per process, in the
+  `lifespan` — and `app.state` is `Any`, so re-annotate the type on the way
+  out.
+- The router returns your own schema, not `PixCharge`: the canonical charge
+  carries `raw` (the provider's payload, `customer` included) and
+  `provider_charge_id`.
+- The webhook notifies, the API confirms: `settle` reads the charge back
+  by the stored `provider_charge_id` with `confirm_pix_payment` (this order,
+  `PAID`, same amount) and releases under `claim_once`, so a redelivery does
+  not pay twice.
+- In tests, `dependency_overrides` swaps the provider for the fake, the
+  verified delivery for a stub and the session for a temporary SQLite —
+  three overrides, and the suite runs without a network.

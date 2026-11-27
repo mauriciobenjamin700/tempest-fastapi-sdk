@@ -1,0 +1,444 @@
+# Roadmap
+
+Esta página registra o backlog que guiou o SDK e o que dele já foi entregue — hoje, todo o Tier S abaixo está marcado ✅ com a versão que o trouxe. Ordenado por impacto, não por ordem de implementação — a release é puxada pela pressão de negócio, não pela posição na lista.
+
+!!! tip "O que o SDK já cobre"
+    Auth completa (JWT/bearer/role/permission/X-Token + bundled signup/activate/login/reset via `UserAuthService` + `make_auth_router`), OAuth2/OIDC (Google/GitHub + genérico), verificação de ID token do Firebase (`FirebaseAuth` + `FirebaseIdentity` + `FirebaseUserResolver`, extra `[firebase]`), CSRF middleware, DB (`AsyncDatabaseManager` + `BaseRepository` + bulk ops + `AlembicHelper` + `BaseModel` + `BaseUserModel` + `BaseUserTokenModel` + mixins de auditoria/soft-delete + Alembic hook que reordena colunas base), exceções padronizadas, logging estruturado + arquivos por nível + endpoint `/logs`, métricas (CPU/RAM/GPU/Disco + Prometheus `/metrics` + `PrometheusMiddleware`), rate limiting, idempotência (`IdempotencyMiddleware` + memory/Redis stores), body-size limit, paginação (offset + cursor), settings por mixin com `title`/`description`/`examples`, SSE, throttle, upload/download local + storage pluggável (`LocalUploadStorage` + `MinIOUploadStorage`), MinIO/S3 (`AsyncMinIOClient`), WebPush + push unificado web/mobile (`DeviceService` + `WebPushTransport` + `FCMTransport`), assinatura de webhook, integrações de pagamento (OpenPix gerada da spec + Stripe com escrita form-encoded, idempotência e webhook verificado), validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX, paridade com Django admin — list view com busca/filtros/colunas ordenáveis, CRUD completo, ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens + métricas, MFA TOTP no login, trilha de auditoria `created_by`/`updated_by`), email (SMTP + Jinja2 templates), cache Redis, fila FastStream, tarefas TaskIQ, hardened static files, runner de servidor, health, tool-spec router, request-id middleware, CORS, HTTP client typed (`HTTPClient` httpx wrapper com retry/backoff/circuit-breaker), IA generativa self-hosted (`tempest_fastapi_sdk.genai` — hardware-check, LLM local `TextGenerator` + quantização, `Embedder`, RAG web+PDF+vector store, áudio STT/TTS PT-BR/EN-US), CLI completo (`tempest new`, `tempest generate --docker` — credenciais do compose resolvidas do `.env` via `${VAR:-default}`, não hardcoded —, `tempest db <subcommand>`, `tempest user <subcommand>`, quality gates).
+
+## Tier S — toda API séria precisa
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| `IdempotencyMiddleware` + tabela `idempotency_keys` | ✅ v0.24.0 | `tempest_fastapi_sdk.api.middlewares.idempotency` |
+| `UploadUtils` com backends pluggáveis (`LocalUploadStorage`, `MinIOUploadStorage`) | ✅ v0.24.0 | `tempest_fastapi_sdk.utils.storage_backends` |
+| `HTTPClient` (wrapper typed do httpx) com retry/backoff/circuit-breaker | ✅ v0.28.0 | `tempest_fastapi_sdk.utils.http_client` |
+| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | ✅ v0.43.0 | `tempest_fastapi_sdk.api.tracing` |
+| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | ✅ v0.44.0 | `BaseRepository.save_with_outbox` + `tempest_fastapi_sdk.db.outbox` |
+
+## Tier A — comuns em backend SaaS
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| `EmailUtils.render_template(path, ctx)` com Jinja2 | ✅ v0.24.0 | `EmailUtils.render_template` + templates bundled |
+| OAuth2 / OIDC providers (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`) | ✅ v0.29.0 | `tempest_fastapi_sdk.api.oauth` |
+| Login social dentro do `make_auth_router` (`AUTH_OAUTH_ENABLED` + `oauth_clients=`, quatro rotas `/auth/oauth/*`, `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`) | ✅ v0.273.0 | `tempest_fastapi_sdk.auth` |
+| `CSRFMiddleware` + `make_csrf_token_dependency` | ✅ v0.29.0 | `tempest_fastapi_sdk.api.middlewares.csrf` |
+| `BodySizeLimitMiddleware` | ✅ v0.28.0 | `tempest_fastapi_sdk.api.middlewares.body_size` |
+| `AccessLogMiddleware` — uma linha estruturada por request, com `redact` e `exempt_paths` | ✅ v0.275.0 | `tempest_fastapi_sdk.api.middlewares.access_log` |
+| `HoneypotBanMiddleware` + `DEFAULT_HONEYPOT_PATTERNS` — ban de scanner, fail-open, IP por header confiável | ✅ v0.275.0 | `tempest_fastapi_sdk.api.middlewares.honeypot` |
+| `AlembicHelper.sync_schema` / `adopt` / `base_revision` — bootstrap de schema no primeiro boot | ✅ v0.275.0 | `tempest_fastapi_sdk.db.migrations` |
+| `BaseRepository.bulk_create_values / bulk_upsert` | ✅ v0.28.0 | `BaseRepository` |
+| Endpoint Prometheus `/metrics` | ✅ v0.28.0 | `tempest_fastapi_sdk.api.routers.metrics` |
+| Bundled signup / activate / login / password-reset | ✅ v0.31.0 | `tempest_fastapi_sdk.auth` |
+| Modo backend-only (signup / activate / reset renderizado pelo backend) | ✅ v0.32.0 | `tempest_fastapi_sdk.auth` + HTML templates |
+| `make_websocket_router` — bearer auth, heartbeat, broadcast | ✅ v0.33.0 | `tempest_fastapi_sdk.websockets` |
+| Sessões server-side (alternativa ao JWT) | ✅ v0.34.0 | `tempest_fastapi_sdk.sessions` |
+| 2FA / TOTP (`pyotp` wrapper + recovery codes) | ✅ v0.35.0 | `TOTPHelper` + `UserAuthService.mfa_*` + `BaseUserRecoveryCodeModel` |
+| `tempest db` + `tempest user` CLI | ✅ v0.30.0 | `tempest_fastapi_sdk.cli.db` / `cli.user` |
+| `BaseRepository.bulk_update` (filters + values) | ✅ pré-existente | `BaseRepository.bulk_update` |
+| **Escopo multi-tenant** — `TenantScopedRepository(tenant_id)` auto-injetando `WHERE tenant_id = …` em toda query do repository | ✅ v0.45.0 | `tempest_fastapi_sdk.db.tenant` |
+
+## Tier B — quando o serviço crescer
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| `SlowQueryLogger` — evento SQLAlchemy logando query > N ms com `EXPLAIN` | ✅ v0.59.1 | `tempest_fastapi_sdk.db.slow_query` |
+| `AlembicHelper.safe_upgrade()` — bloqueia migrations destrutivas sem `--force` | ✅ v0.46.0 | `AlembicHelper.safe_upgrade` (`tempest_fastapi_sdk.db.migrations`) |
+| Graceful shutdown — drenar requisições in-flight no `SIGTERM` | ✅ v0.46.0 | `GracefulShutdownMiddleware` (`tempest_fastapi_sdk.api.middlewares.graceful`) |
+| `tempest db seed` — carregar fixtures JSON/Python | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.db` |
+| CLI: `tempest secrets rotate` | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.secrets` |
+| F() / Q() expressions wrappers para SQLAlchemy | ✅ v0.111.0 | `tempest_fastapi_sdk.db` (`F` / `Q`) |
+| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ✅ v0.109.0 | `with_=` em `get`/`get_or_none`/`get_by_id`/`first`/`list` |
+| Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) no `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
+| Permissions framework granular com object-level (`user.has_perm("order.delete", obj=order)`) | ✅ v0.110.0 | `tempest_fastapi_sdk.authz` |
+| System checks no startup (`tempest check-config`) | ✅ v0.112.0 | `tempest_fastapi_sdk.checks` |
+| Management commands framework — projeto registra `tempest <cmd>` próprio | ✅ v0.113.0 | `[tool.tempest] commands` + `src/commands.py` |
+
+## Painel admin — evolução
+
+O painel admin já existe (`AdminSite` / `AdminModel` / `make_admin_router`, Jinja + HTMX, CSRF token). Os itens abaixo elevam ele de "CRUD funcional" para "admin de produção", reaproveitando primitivos que o SDK já tem (`AuditMixin`, `MetricsUtils`, `TOTPHelper`, `UploadUtils`).
+
+| Feature | Por que importa | Reaproveita |
+|---------|-----------------|-------------|
+| **Filtros / busca / ordenação por coluna** na listagem ✅ v0.36.0 | `AdminModel(list_filter=…, search_fields=…, ordering=…)` mais ordenação clicável por ``?sort=<coluna>&dir=asc|desc``, validada contra as colunas exibidas. | `BaseRepository.list` + paginação |
+| **Bulk actions** (deletar / ativar em massa) ✅ v0.36.0 | `POST {prefix}/m/{slug}/bulk` aplica delete / activate / deactivate na seleção; `AdminModel(actions=[…])` acrescenta ação própria ao mesmo dropdown. | `@admin_action` + CSRF |
+| **Widgets de campo** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK como `<select>`, data com picker, upload via `UploadUtils`; FKs grandes viram caixa de busca HTMX (`autocomplete_fields`). | `UploadUtils` + storage backends |
+| **Inline / related editing** ✅ v0.116.0 (leitura + navegar) + edição in-place ✅ v0.127.0 | Filhos (1-N) listados no detail do pai, com link pro admin do filho e "Add" pré-preenchendo o FK (`inlines=[Inline(...)]`); `Inline(editable=True, can_delete=True)` edita, cria e remove filhos na mesma tela. | `BaseRepository` + relationships |
+| **Export CSV / JSON** ✅ v0.36.0 | `GET {prefix}/m/{slug}/export.csv` / `.json` respeita busca, filtros e ordenação ativos; `make_admin_router(export_max_rows=…)` limita o tamanho (default 5000). | listagem + filtros |
+| **Audit log visível no admin** ✅ v0.114.0 | Quem mudou o quê e quando, direto na UI — timeline por registro no detail. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
+| **Dashboard com métricas** (sistema ✅) + **cards de negócio** ✅ v0.117.0 | CPU/RAM/contadores + cards value/trend/partition computados dos seus dados (`AdminSite(dashboard_cards=[...])`). | `MetricsUtils` + `MetricCard` |
+| **MFA no login do admin** ✅ v0.36.0 | Segundo fator no acesso mais sensível do sistema; encaixe natural agora que o TOTP existe. | `TOTPHelper` + `MFAMixin` + recovery codes |
+
+## Tudo que já entregamos
+
+O histórico completo de releases — cada versão com o que entrou em **Added** / **Changed** / **Fixed** — vive no [changelog](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/changelog.md), no formato [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ele é a fonte da verdade; esta página só resume o backlog.
+
+## Próximos passos
+
+O backlog Tier S/A/B e a evolução do painel admin (Tiers 1–3 + refino)
+estão **concluídos**; o roadmap genai self-hosted (v0.139–0.154 — tools,
+structured output, VLM, reranker, hybrid search, ONNX embeddings, cache de
+geração, token/contexto, vision router, métricas, moderação + integração no
+pipeline) também. Os candidatos abaixo saíram da análise de visão geral de
+2026-07-24 e **também estão todos entregues** — os dois últimos, rate-limit
+avançado e WebAuthn, saíram nas v0.216.0 e v0.217.0.
+
+**A fila está vazia.** O próximo tema vem de pressão de negócio, não desta
+página. Manter aqui um item aspiracional só porque a seção ficaria curta é
+exatamente o que a nota do rodapé proíbe.
+
+### ✅ Hardening GenAI — dívida transformers 5.x (entregue v0.155.0)
+
+Structured output constrained agora funciona no transformers 5.x
+(`build_prefix_allowed_tokens_fn` reimplementado a partir do **core** do
+`lm-format-enforcer`, sem o módulo `integrations.transformers` quebrado); e o
+`VisionTextGenerator` carrega no tf5 (`AutoModelForImageTextToText` +
+`torchvision` no extra `[genai-vlm]`). Ambos validados no GPU (Qwen2.5-3B /
+Qwen2-VL-2B). Caveat remanescente: acurácia multimodal depende do wiring do
+processor por família (não-blocker) — ver `planning/genai/manual-validation.md`.
+
+### Observabilidade de filas + tracing genai
+
+Tema entregue em fatias, uma release por fatia:
+
+- ✅ **Spans OTel nas chamadas genai** (`generate`/`chat`/`embed`/`rag`) —
+  entregue na **v0.156.0**. `genai_span` ambiente reusa o `TracerProvider` do
+  `setup_tracing` (convenções semânticas GenAI); no-op sem o extra `[otel]`.
+  Ver a receita genai (*Tracing distribuído*).
+- ✅ **`TaskQueue`: retry + dead-letter + métricas por task** — entregue na
+  **v0.157.0**. `RetryPolicy` + `enable_retries`, `DeadLetterSink` +
+  `dead_letter` (destino é seu, sem backend assumido), `TaskMetrics` no
+  `/metrics` compartilhado. Middleware opt-in, importa sem o extra `[tasks]`.
+  Ver a receita de filas (*Confiabilidade e observabilidade das tarefas*).
+- ✅ **Painel de tasks no admin** — entregue na **v0.158.0** como
+  dead-letter + inventário (não como clone do Flower). `BaseDeadLetterModel`
+  + `make_dead_letter_model`, `DbDeadLetterSink` (persiste falhas terminais),
+  `make_dead_letter_admin_model` (AdminModel read-mostly + ação **requeue**),
+  `task_inventory` (tasks registradas). Sem introspecção viva de fila —
+  o TaskIQ não expõe (o Flower é específico do Celery); mostra o que é real e
+  persistido. Ver a receita de filas (*Painel de dead-letter no admin*).
+
+### Camada de performance HTTP
+
+- ✅ **`ResponseCacheMiddleware`** — entregue na **v0.159.0**. ETag / GET
+  condicional (`304`) sempre ligado + cache server-side opt-in
+  (`ResponseCacheStore`/`Memory`/`Redis`), respeita `no-store`/`private`/
+  `Set-Cookie`, chave por `vary=`. Ver a receita HTTP (*Cache de resposta HTTP*).
+- ✅ **Rate-limit avançado** — entregue na **v0.216.0**. `RateLimitRule`
+  (janela deslizante, ou token bucket quando `burst` é definido),
+  `StaticRateLimitPolicy` / `PlanRateLimitPolicy` (+ `plan_by_jwt_claim` /
+  `plan_by_header` / `key_by_plan_principal`) e `MemoryQuotaStore` /
+  `RedisQuotaStore`, que decidem a lista inteira antes de escrever qualquer
+  regra — requisição barrada não gasta o orçamento das outras. Headers
+  `RateLimit-*` na resposta. Ver a receita HTTP (*Rajada tolerada: token
+  bucket*).
+
+### ✅ Auth moderno — WebAuthn / passkeys (entregue v0.217.0)
+
+`WebAuthnService` roda as duas cerimônias (registro e login) sobre o `fido2`,
+`BaseWebAuthnCredentialModel` + `make_web_authn_credential_model` guardam as
+chaves públicas, e `make_auth_router(webauthn=...)` monta as seis rotas quando
+`AUTH_WEBAUTHN_ENABLED` está ligado. Além do que a biblioteca verifica, o SDK
+recusa contador de assinatura que não avançou (sinal de autenticador clonado),
+gasta o desafio no uso, e nunca revela se uma conta existe no `begin`. Store de
+desafios em memória ou Redis (`GETDEL`). Extra `[webauthn]`.
+[Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/webauthn.md)
+
+**Fora de escopo por decisão:** cliente OpenAI-compatible (foco self-hosted),
+GraphQL/gRPC (REST por decisão).
+
+!!! note "O roadmap é honesto, não aspiracional"
+    Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## Entregue na v0.173.0
+
+Modelops — exportar, medir e quantizar os modelos que o serviço serve:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Benchmark de CPU/RAM/GPU/energia** | ✅ v0.173 | `benchmark` cronometra qualquer callable; `benchmark_onnx`/`benchmark_torch`/`benchmark_models` são construídos em cima. Warm-up descartado + N repetições, mediana e IQR primeiro (latência tem cauda pesada), p95/p99, throughput, pico e delta de RSS, memória de GPU. [Modelops »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops.md) |
+| **Medição de energia com proveniência** | ✅ v0.173 | `NvmlPowerSampler` (prefere o contador de energia total do driver, cai pra integração de potência), `NvidiaSmiPowerSampler`, `RaplEnergySampler` (energia do pacote de CPU via powercap, com wraparound) e `NullPowerSampler`. Todo número carrega um `EnergySourceEnum` — nenhum deles é wall-plug. Execução em CPU não resolve sampler de GPU. |
+| **Ranking: score composto + Pareto** | ✅ v0.173 | `composite_scores` com pesos renormalizados sobre as dimensões efetivamente medidas, `pareto_points` pulando eixos não medidos em vez de assumir o melhor, `rank` → `BenchmarkReport` com pesos efetivos e descrição do host. |
+| **`.onnx` → `.ort` e otimização de grafo** | ✅ v0.173 | `export_onnx_to_ort` (arquivo ou diretório, estilo `FIXED`/`RUNTIME`, `target_platform`, type reduction, `.required_operators.config` pro build mínimo), `export_torch_to_onnx` e `optimize_onnx_graph`. |
+| **Quantização ONNX e HuggingFace** | ✅ v0.173 | `quantize_onnx_dynamic`, `quantize_onnx_static` (reader de calibração a partir de qualquer iterável de feeds), e o caminho de export transformers sobre o ferramental do próprio ONNX Runtime: `optimize_hf_onnx` (`O1`–`O4`), `quantize_hf_onnx` (arm64/avx2/avx512/avx512_vnni) — mais `quantize_hf_bnb` (int4/int8 em PyTorch). Sem dependência de `optimum`, então nada aqui limita a sua versão de `transformers`. |
+| **CLI `tempest model`** | ✅ v0.173 | `analyze` / `bench` / `optimize` / `quantize` / `export-ort` / `hardware`, com `--json` nos comandos de relatório. Extra ausente sai com código 2 e a linha de instalação. [CLI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli.md) |
+
+## Entregue na v0.168.0
+
+Guards de permissão com metadata:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Segundo parâmetro `meta: dict[str, Any]`** | ✅ v0.168 | Um guard pode declarar um segundo parâmetro e receber metadata, o que transforma um guard genérico em checagem específica por rota: escreve-se `has_role` uma vez e cada call site declara `meta={"role": "manager"}`. Guards de um parâmetro seguem intactos — o segundo argumento só vai para quem o declara. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/permission-guards.md) |
+| **`include_args=True`** | ✅ v0.168 | Mescla os argumentos da chamada (path params, body, outras dependências) no mesmo dicionário, então um guard de posse lê `meta["order_id"]` sem a rota repassar nada. Usuário fora, default de parâmetro omitido incluído, marcador `Depends(...)` descartado, literal de `meta=` ganhando de argumento homônimo. |
+| **Erro de uso ainda no import** | ✅ v0.168 | `TempestPermissionError` quando `meta=` não é mapping, quando `meta=`/`include_args=` não têm nenhum guard que receba, e quando o guard pede 3+ parâmetros. `guard_metadata(fn)` expõe os literais declarados. |
+| **Checagem estática nova** | ✅ v0.168 | `tempest permissions` ganhou `meta-unused` (erro), `guard-meta-missing`, `guard-meta-annotation` e `meta-key-collision` (warnings); `guard-arity` passou a aceitar 1 ou 2 parâmetros. O veredito `meta-unused` é retido quando algum guard da decoração não pôde ser resolvido. |
+
+## Entregue na v0.167.0
+
+Guards de permissão — decorator + linter em duas camadas:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`@requires(*guards, user_param=None)`** | ✅ v0.167 | Roda guards que recebem o usuário e devolvem o usuário (ou `None`) antes do corpo, em rota, controller ou service, sync ou `async`. Guard nega levantando `AppException`; retorno não-`None` substitui o usuário visto pelo próximo guard e pelo corpo — é assim que `require_active` estreita `Optional[UserT]` para `UserT`. Param do usuário resolvido pela anotação (`BaseModel`/`BaseUserModel`), `user_param=` desempata. Assinatura preservada, então DI e schema OpenAPI ficam intactos. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/permission-guards.md) |
+| **Erro de uso em tempo de import** | ✅ v0.167 | `TempestPermissionError` para `@requires()` sem guard, guard não-callable, aridade errada, guard `async` em função sync e param de usuário ausente ou ambíguo. A aplicação não sobe com uma checagem que nunca roda. |
+| **Aviso de contrato em tempo de chamada** | ✅ v0.167 | `GuardContractWarning` quando o guard levanta fora da hierarquia `AppException` (a API responderia 500 sem `code`) ou devolve valor não-usuário como `False` (negação que seria ignorada). A exceção original continua propagando. |
+| **`tempest permissions --check` / `--strict` / `--path`** | ✅ v0.167 | Checagem estática (`ast`, sem importar a app) do que o runtime não vê: guard cujo `raise` nenhum teste exercita, guard nunca ligado. Erros `no-guards`/`user-param-missing`/`user-param-ambiguous`/`guard-arity`/`guard-async-in-sync`/`guard-returns-bool`/`guard-foreign-exception`; warnings `guard-never-denies`/`guard-missing-annotation`/`guard-return-type`/`guard-unresolved`. Guard ambíguo ou fora do escopo é reportado, nunca adivinhado. |
+| **Integração com os erros do OpenAPI** | ✅ v0.167 | `tempest openapi-errors` segue os guards do `@requires`, então a exceção de um guard aparece como `undocumented` até a rota declarar — e `--fix` escreve. `declared_guards` / `guarded_user_param` expõem os guards de uma rota para auditoria. |
+
+## Entregue na v0.166.0
+
+Erros documentados no OpenAPI — correção automática:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`tempest openapi-errors --fix`** | ✅ v0.166 | Escreve as declarações que o `--check` apontava: injeta `responses=error_responses(...)` na rota, estende a declaração que já existir (`error_responses` ou `@raises`) preservando a ordem, e adiciona os imports que faltam. Edições ancoradas em posições da AST, saída passada por `ruff check --select I --fix` + `ruff format`. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-errors.md#passo-5-fix-escreve-as-declaracoes-por-voce) |
+| **Só acrescenta, com árvore limpa** | ✅ v0.166 | Findings `unreachable` nunca são removidos — alcançabilidade não enxerga raise dinâmico, então apagar por conta dela removeria declaração correta. Exige árvore git limpa, para `git diff` ser a revisão e `git checkout` o desfazer; `--dry-run` mostra o diff formatado e roda em árvore suja. |
+| **Formatação com a config do projeto** | ✅ v0.166.1 | O arquivo temporário entregue ao ruff é criado ao lado do arquivo reescrito, então `line-length` e seções de `isort` do projeto valem — e o que é escrito passa no `ruff format --check` do CI dele. Não achando um ruff que rode (`PATH`, `python -m ruff`, `uv run ruff`, cada um testado com `--version`), o comando grava e avisa. |
+
+## Entregue na v0.163.0
+
+SPA React servida pelo próprio FastAPI:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`make_spa_router(dist_dir)`** | ✅ v0.163 | Serve o `dist/` de um build Vite/React com history fallback, política de cache invertida (documento `no-store`, assets com hash `immutable`) e prefixos de API excluídos do fallback. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/react-spa.md) |
+| **`tempest generate --dockerfile` com estágio de SPA** | ✅ v0.163 | Detecta `web/`, `frontend/`, `client/` ou `ui/` e emite um estágio Node que roda `npm ci && npm run build` antes do estágio Python, copiando só o `dist/` para a imagem final. |
+
+## Entregue na v0.161.0
+
+Geração de código a partir de uma especificação OpenAPI:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`tempest openapi-client <spec>`** | ✅ v0.161 | Aponte para a spec (URL ou arquivo, JSON ou YAML) e receba ``<src|app>/integrations/<name>/`` com `schemas.py` + `client.py`. Fim da transcrição manual de documentação de terceiro. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-client.md) |
+| **Schemas com metadados** | ✅ v0.161 | Uma classe `BaseSchema` por componente, com `title`/`description`/`examples` **da spec** em todo `Field` — o módulo gerado é a documentação da integração. Nomes pythônicos + `alias` do nome de rede + `populate_by_name`; palavra reservada resolvida (`class` → `class_`); coleção opcional como lista vazia; enums em `BaseStrEnum`/`BaseIntEnum`; `allOf` achatado; recursão via `model_rebuild()`. Nada é inventado quando a spec não documenta. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-client.md#schemaspy) |
+| **Cliente HTTP tipado** | ✅ v0.161 | Um método `async` por operação, sobre um `HTTPClient` **injetado** — retry/backoff/circuit-breaker/credenciais continuam do chamador, e `httpx.MockTransport` testa a integração inteira sem rede. Params de path/query tipados, corpo e resposta validados, docstring Google completa. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-client.md#clientpy) |
+| **Saída que passa nos gates** | ✅ v0.161 | O código emitido passa `ruff check` + `ruff format --check` **antes** da passada de formatação (testado contra a saída crua), então `--no-format` ou uma máquina sem ruff ainda entregam pacote utilizável. Regenerar uma spec inalterada produz arquivo byte a byte idêntico, então o `git diff` de um `--force` é o changelog da integração. |
+| **Nunca chuta** | ✅ v0.161 | Construção não representável (`not`, `$ref` externo, Swagger 2.0, corpo não-JSON, param de header) vira `Any` + comentário `# openapi: unsupported` + linha no resumo do comando. Um schema errado que parece certo é pior que uma lacuna documentada. |
+
+## Entregue na v0.160.0
+
+Erros documentados no OpenAPI:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`ErrorResponseSchema`** | ✅ v0.160 | O envelope `{detail, code, details}` que os handlers já emitiam agora existe como schema exportado — antes não havia para onde apontar um `responses={409: ...}` escrito à mão. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-errors.md#errorresponseschema) |
+| **`error_responses(*exceptions)`** | ✅ v0.160 | Monta o `responses=` do FastAPI a partir das classes de exception. Agrupa por status (OpenAPI só aceita um response object por status) e distingue os `code` num mapa de `examples` — Swagger/ReDoc renderizam como seletor, então dois 404 com codes diferentes ficam visíveis. `summary` do `__doc__`, `detail` do `message` ou de um `MessageCatalog`. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-errors.md#passo-2-error_responsesexceptions) |
+| **`@raises(...)` + `TempestAPIRouter`** | ✅ v0.160 | Mesma declaração junto do handler; o router expande a tag em `responses=` antes de construir a rota (então o modelo chega em `components.schemas` como `$ref`). Um `responses=` explícito ganha por status. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-errors.md#passo-3-raises-tempestapirouter) |
+| **`InheritedErrorCodeWarning`** | ✅ v0.160 | Subclasse que não declara `code` próprio e herda um genérico do SDK avisa na criação da classe — defeito silencioso que fez uma subclasse emitir `code: "CONFLICT"` por meses em produção. Não dispara para `code` de domínio nem quando há `message_key`. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-errors.md#o-aviso-que-pega-o-defeito-silencioso) |
+| **`tempest openapi-errors --check`** | ✅ v0.160 | Compara, por rota, o declarado com o alcançável em `router -> controller -> service -> repository`. Estático (`ast`, sem importar a app), lê `raise` **e** seções `Raises:`. Reporta `undocumented` + `unreachable`, sai não-zero como gate de CI. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-errors.md#passo-4-tempest-openapi-errors-check) |
+
+## Entregue na v0.129.0
+
+SSR — builders tipados de atributos:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`htmx()` / `aria()` / `data()`** | ✅ v0.129 | Montam o `attrs: dict[str, str]` aberto do widget a partir de args tipados — `hx-*`/`aria-*`/`data-*` deixam de ser dict stringly-typed e viram call-site com autocomplete + checagem estática. Retornam exatamente o dict que você escreveria (mescláveis). Sem mágica, sem dep nova. [Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/ssr.md#atributos-tipados-htmx-aria-data) |
+
+## Entregue na v0.128.0
+
+SSR — servir um build compilado do tempestweb:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`make_web_app_router` + `build_web_app` + `detect_build_mode`** | ✅ v0.128 | Hospeda um artefato `tempestweb build` direto no FastAPI: `make_web_app_router(dir)` serve o build **wasm** (SPA estática) como `APIRouter` com history fallback, MIME certo, cache do shell/SW, sem CSP imposto (Pyodide); `build_web_app(dir)` hospeda o build **server** (WebSocket/SSE) como sub-app. Só serve o `dist/` pronto — build fica no CLI do tempestweb. `[ssr]`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/ssr.md) |
+
+## Entregue na v0.127.0
+
+Admin — edição inline in-place:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`Inline(editable=True, can_delete=True)`** | ✅ v0.127 | O detail do pai renderiza os filhos 1-N como um formset editável (uma linha de inputs por filho + uma linha em branco pra adicionar) que dá POST em `/inlines/<filho>` — editar, adicionar e excluir sem sair da tela. O FK do pai é implícito (forçado ao pai, nunca um input), as linhas são escopadas ao pai, colunas de upload/autocomplete ficam no form próprio do filho, e erros de validação re-renderizam in-place. Requer o admin registrado do filho + `can_edit`/`can_delete`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.126.0
+
+Utilitários de teste — factories de modelo:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`ModelFactory` + `seq`** | ✅ v0.126 | Amarra modelo + defaults à sessão: `build` (solta), `create`/`create_many` (add+flush+refresh). Default/override **callable** recebe o índice da linha → campos únicos; `seq("u{n}@x")` é o atalho. Sem mágica: você declara os defaults. `from tempest_fastapi_sdk.testing import ModelFactory, seq`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/testing.md) |
+
+## Entregue na v0.125.0
+
+Webhooks de saída — assinar + entregar com retry:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`WebhookSender`** | ✅ v0.125 | POST do evento JSON assinado com o mesmo `WebhookSignatureVerifier`; re-tenta transitórios (5xx/429/conexão) com backoff, 4xx não. `send`/`send_many` → `WebhookDelivery`. httpx injetado; casa com o outbox. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http.md) |
+
+## Entregue na v0.124.0
+
+Observabilidade — métricas de negócio custom no `/metrics`:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`BusinessMetrics`** | ✅ v0.124 | Fábrica tipada de `counter`/`gauge`/`histogram` no registry compartilhado (namespace opcional, dedup por nome); saem no mesmo `GET /metrics`. Objetos são os do `prometheus_client` — sem mágica. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/metrics.md) |
+
+## Entregue na v0.123.0
+
+Mais operadores de filtro `campo__op` (no `Q` e no dict do repository):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Operadores `in`/`notin`/`isnull`/`contains`/`startswith`/`endswith`** | ✅ v0.123 | Somam-se a `gt`/`gte`/`lt`/`lte`/`ne`; `build_filter_condition` (base do `Q` + dict). [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) |
+
+## Entregue na v0.122.0
+
+Refino do admin — polish de consistência/UX:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Polish do admin** | ✅ v0.122 | Corrigido `--tempest-border` (não definido → bordas na cor do texto) + cards/autocomplete que usavam o bg escuro da sidebar; detail reordenado (inlines logo após os campos, audit/history por último) e colunas `JSON` pretty-print no detail. |
+
+## Entregue na v0.121.0
+
+Refino do admin — novos widgets de campo:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Widgets JSON + time** | ✅ v0.121 | Colunas `JSON` viram um editor JSON monoespaçado (pretty-print ao carregar, parse+validação no submit); colunas `Time` viram `<input type=time>`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.120.0
+
+Painel admin — lenses / visões salvas (Tier 3), fechando a evolução do admin:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Lenses** | ✅ v0.120 | `AdminModel(lenses=[Lens("Abertos", filters={"status": "open"}, order_by="-created_at")])` → abas acima da lista; clicar aplica os filtros (ANDeados com busca/filtros do usuário) + ordenação via `?lens=<slug>`. Aba "All" volta ao padrão. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.119.0
+
+Painel admin — RBAC granular (Tier 3):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **RBAC granular** | ✅ v0.119 | `make_admin_router(access_policy=...)` — hook `(principal, admin, AdminPermissionEnum)` → bool consultado em toda ação (VIEW/CREATE/EDIT/DELETE). Nega → `403`, e some do dashboard/nav no VIEW. Compõe com os flags `can_*` (ambos precisam liberar). Restringe um admin não-super a subconjuntos de modelo/ação. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.118.0
+
+Painel admin — import CSV (Tier 3), contraparte do export:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` expõe `GET/POST /m/{slug}/import`: sobe um CSV, cada linha é validada/coagida como no create e vira um registro. Relatório com total criado + erros por linha (na v0.118 era best-effort; desde a 0.370.0 há prévia sem gravar e confirmação tudo ou nada — veja a receita). Link "Import CSV" na list view. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.117.0
+
+Painel admin — cards de métricas de negócio no dashboard (fecha o Tier 2
+da evolução do admin):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Dashboard business metrics** | ✅ v0.117 | `AdminSite(dashboard_cards=[MetricCard(label, compute)])` renderiza cards no topo do dashboard, computados dos seus dados: `MetricValue` (número), `MetricTrend` (vs período anterior, com delta/%/direção) e `MetricPartition` (breakdown com barras). Distinto do painel CPU/RAM. Card que falha é pulado (não quebra a página). [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.116.0
+
+Painel admin — inlines / relações aninhadas (Tier 2 da evolução do admin):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Inlines (leitura + navegar)** | ✅ v0.116 | `AdminModel(inlines=[Inline(Child, Child.parent_id)])` lista os filhos 1-N no detail do pai como tabela, com link pro admin do filho e "Add" pré-preenchendo o FK (via query param no create). Reaproveita o `list_display`/CRUD do admin filho. Edição in-place na mesma tela: `editable=True` (v0.127). [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.115.0
+
+Painel admin — campos FK com autocomplete (Tier 2 da evolução do admin):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Autocomplete FK** | ✅ v0.115 | `AdminModel(autocomplete_fields=[...])` troca o `<select>` de todas as linhas por uma caixa de busca HTMX — sem o cap de 1000 linhas nem o fallback de UUID cru. O endpoint `/m/{slug}/autocomplete/{field}` busca nos `search_fields` do admin alvo (ILIKE, OR), limita a 20; o edit pré-preenche o rótulo atual. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.114.0
+
+Painel admin — visualizador de histórico de auditoria por registro
+(primeiro item do Tier 1 da evolução do admin):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Audit history viewer** | ✅ v0.114 | `AdminModel(audit_model=...)` renderiza no detail uma timeline das mudanças do registro, lida do `BaseAuditLogModel` (match `entity` + `entity_id`), com diff campo-a-campo (antes/depois) e ator/data por entrada. Pareie com `BaseRepository(audit_model=...)` + `add_audited`/`update_audited`/`delete_audited`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md) |
+
+## Entregue na v0.113.0
+
+Framework de management commands — o serviço pluga comandos próprios na
+CLI `tempest`:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Management commands** | ✅ v0.113 | Exponha um `typer.Typer` chamado `commands` em `src/commands.py` (auto-detectado; ou `[tool.tempest] commands = "..."`) → vira `tempest <cmd>`, ao lado dos embutidos. Colisão com embutido → embutido vence (aviso). Typer puro (args/options/tipos/grupos). [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/management-commands.md) |
+
+## Entregue na v0.112.0
+
+Framework de system checks estilo Django + a CLI `tempest check-config`:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **System checks** | ✅ v0.112 | `tempest_fastapi_sdk.checks`: `@check` registra um validador `(settings) -> [CheckMessage]`; embutidos p/ segredo vazio/fraco, CORS `*`+credenciais, SQLite-em-prod, DEBUG, bind `0.0.0.0`. `tempest check-config` roda tudo (auto-detecta as settings, `--tag`/`--fail-level`, sai ≠ 0 em ERROR); `run_system_checks(settings)` aborta boot mal-configurado no lifespan. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/system-checks.md) |
+
+## Entregue na v0.111.0
+
+Wrappers `F` / `Q` estilo Django sobre o SQLAlchemy, plugados no
+`BaseRepository`:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`F` (expressão de coluna)** | ✅ v0.111 | `F("stock") - 1` computa no banco numa instrução — update atômico sem race. Aritmética dos dois lados e entre colunas; resolvido em `bulk_update`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) |
+| **`Q` (condições compostas)** | ✅ v0.111 | ``Q(status="open") | Q(...)``, `&`, `~` para `OR`/`NOT` que o dict de filtros não expressa; mesmas convenções (`campo__gte`, `name` ILIKE, iterável → `IN`). `where=` em `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) |
+
+## Entregue na v0.110.0
+
+Autorização object-level — a pergunta que o guard estático não responde:
+"esse usuário pode editar **esse** objeto?".
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Permissions object-level** | ✅ v0.110 | `tempest_fastapi_sdk.authz`: registre uma regra `(user, obj) -> bool` com `@permission("order.delete")`, cheque com `has_perm`/`check_permission`, proteja a rota com `make_permission_checker`. Bypass de superusuário + fallback estático injetáveis via `PermissionRegistry`; wildcards (`order.*`/`*`); handlers sync ou async; `PermissionMixin` dá `await user.has_perm(...)`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/authz.md) |
+
+## Entregue na v0.109.0
+
+Duas melhorias no `BaseRepository`, ambas puxadas do "Próximos passos"
+acima:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Eager-load (`with_=`)** | ✅ v0.109 | `get`/`get_or_none`/`get_by_id`/`first`/`list` aceitam `with_=["autor", "livros.reviews"]` (paths pontilhados p/ nested); usa `selectinload`, então N relacionados custam 1 query extra, não N. Elimina o `MissingGreenlet` ao acessar relacionamento fora do contexto async. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) |
+| **Signals de ciclo de vida** | ✅ v0.109 | `tempest_fastapi_sdk.db.signals`: `connect`/`on_signal`/`disconnect` registram handlers (sync ou async) por modelo para `PRE_SAVE`/`POST_SAVE`/`PRE_DELETE`/`POST_DELETE`. Disparam no caminho unit-of-work (`add`/`update`/`delete`/…); os bulk set-based fazem bypass por design. Um handler de `PRE_SAVE` que levanta veta a escrita. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) |
+
+## Entregue na v0.107.0 / v0.108.0
+
+Paridade GenAI self-hosted ponta a ponta — chat com IA rodando in-process,
+para que um microserviço de inferência vire escolha de organização, não
+necessidade:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Backend Ollama** (`OllamaGenerator` / `OllamaEmbedder`) | ✅ v0.107 | HTTP puro (sem torch), drop-in no `make_genai_router` / `Retriever`. Extra `[genai-ollama]`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **Visão + tool-calling no Ollama** | ✅ v0.108 | `generate(images=…)` + `images` por mensagem em `chat()` + `chat_with_tools()`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **STT paridade** | ✅ v0.108 | `beam_size` / `vad_filter` (default + override por chamada) + `language_probability` em `Transcription`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **`ChromaVectorStore`** | ✅ v0.108 | `VectorStore` sobre ChromaDB (efêmero / persistente / client injetado). Extra `[genai-chroma]`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **`ChatMemory`** | ✅ v0.108 | Memória long-term por usuário sobre Chroma: embed + upsert com eviction por cota, busca com filtro de similaridade + decay de recência. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **`AIChatPipeline`** | ✅ v0.108 | Orquestrador: memória → web-search → gera (com loop de tool-calling) → TTS → index. `Tool` + `make_ai_chat_router` (`/chat` + `/chat/stream` SSE, stateless). [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+
+## Entregue na v0.105.0
+
+O plano de ergonomia GenAI + os dois módulos de aplicação abaixo já
+**entraram** (antes eram "planejados" aqui):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`GenerationConfig` tipado** | ✅ v0.105 | Params de geração validados no lugar de `**kwargs`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **`make_genai_router`** | ✅ v0.105 | Endpoints prontos (`/generate`+SSE, `/chat`, `/embed`, `/rag`, `/transcribe`, `/tts`), monta só o que você injeta. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **`RedisEmbeddingCache`** | ✅ v0.105 | Cache de vetores async compartilhado entre workers; `Embedder` aceita cache sync ou async. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md) |
+| **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + tabelas base + `make_chat_router` + tempo real via `SSEBroker`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/chat.md) |
+| **Comentários + avaliações (`reviews`)** | ✅ v0.105 | `ReviewService` (comentar, avaliar 0–5, agregar) + `make_reviews_router`; `RatingField`. [Receita »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/reviews.md) |
+
+## Como pedir uma feature
+
+Abra issue em <https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues> descrevendo:
+
+1. O caso de uso real (não a solução).
+2. O que você faz hoje como workaround.
+3. Por que o workaround dói (perf, segurança, ergonomia, manutenção).
+
+Issues com caso de uso concreto sobem na fila — abstrações sem demanda não entram, mesmo quando "fariam sentido".

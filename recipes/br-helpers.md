@@ -1,0 +1,544 @@
+# Helpers brasileiros
+
+Validadores de documentos (CPF, CNPJ, CEP) e normalizador/validador de telefone para formatos BR. Pura stdlib — sem deps extras.
+
+## CPF / CNPJ / telefone
+
+
+`tempest_fastapi_sdk.utils.regex` traz padrões de regex prontos, validadores, normalizadores e tipos Pydantic para os campos de identidade/contato que aparecem em quase toda API brasileira. Sem extra — pura stdlib + Pydantic (já é uma dependência core).
+
+| Símbolo | Tipo | Propósito |
+| --- | --- | --- |
+| `CPF_PATTERN`, `CNPJ_PATTERN`, `CPF_CNPJ_PATTERN`, `PHONE_BR_PATTERN` | `re.Pattern[str]` | Regex compilada (entrada com máscara ou crua). |
+| `is_valid_cpf`, `is_valid_cnpj`, `is_valid_cpf_cnpj` | `(str) -> bool` | Match de formato **+** matemática dos dígitos verificadores. Sequências de dígitos iguais rejeitadas. |
+| `is_valid_phone_br` | `(str) -> bool` | Formato de telefone BR: `+55` opcional, DDD opcional, nono dígito opcional. Aceita fixo. |
+| `is_valid_mobile_phone_br` | `(str) -> bool` | Só celular: DDD + 9 dígitos começando em `9`. Recusa fixo. |
+| `parse_phone_br` | `(str)` para `PhoneNumberBR` ou `None` | Quebra em DDD, número, `is_mobile` e E.164. `None` no que a ANATEL não atribui. |
+| `normalize_cpf`, `normalize_cnpj`, `normalize_cpf_cnpj`, `normalize_phone_br` | `(str) -> str` | Remove a máscara deixando só dígitos; levanta `ValueError` se inválido. |
+| `normalize_mobile_phone_br` | `(str) -> str` | Sempre os 11 dígitos da forma nacional; levanta `ValueError` em fixo. |
+| `only_digits` | `(str) -> str` | Remove todo caractere que não é dígito. |
+| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `MobilePhoneBRField` | `Annotated[str, AfterValidator(...)]` | Tipos de campo Pydantic plug-and-play — validam + normalizam automaticamente. |
+
+!!! info "Sufixo `Field` (a partir da v0.76)"
+    Os tipos de campo passaram a usar o sufixo `Field` (`CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`) pra deixar claro que são campos de schema — igual `UFField` / `CityNameField`. Os nomes antigos (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`) continuam funcionando como **alias deprecado**; prefira os novos.
+
+#### Uso em schema
+
+```python
+from pydantic import EmailStr, Field
+
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import CPFOrCNPJField, PhoneBRField
+
+
+class CustomerCreateSchema(BaseSchema):
+    """Payload for POST /customers.
+
+    `document` accepts CPF or CNPJ in masked or raw form and is
+    stored digits-only after validation. `phone` is normalized the
+    same way. Invalid values surface as a Pydantic `ValidationError`
+    (HTTP 422 via the SDK exception handler).
+    """
+
+    name: str = Field(min_length=1, max_length=128)
+    email: EmailStr
+    document: CPFOrCNPJField
+    phone: PhoneBRField
+```
+
+Entrada válida:
+
+```json
+{
+    "name": "Ana",
+    "email": "ana@example.com",
+    "document": "529.982.247-25",
+    "phone": "+55 (11) 98888-7777"
+}
+```
+
+Após a validação:
+
+```python
+from src.schemas import CustomerCreateSchema
+
+
+CustomerCreateSchema(...).document  # "52998224725"
+CustomerCreateSchema(...).phone     # "5511988887777"
+```
+
+#### Celular, não telefone
+
+`is_valid_phone_br` responde a uma pergunta de formato: *isto tem cara de telefone brasileiro?* Quando o número é um **endereço de entrega** — WhatsApp, SMS, um código de verificação — a pergunta é outra: *isto é um celular?* Um fixo passa pelo validador de formato, entra no cadastro inteiro sem reclamação, e só falha lá na frente, na hora em que a notificação não é entregue — sem erro para o usuário e sem log óbvio para quem opera.
+
+```python
+from tempest_fastapi_sdk.utils import is_valid_mobile_phone_br, is_valid_phone_br
+
+
+is_valid_phone_br("(11) 3333-4444")          # True  — é um telefone
+is_valid_mobile_phone_br("(11) 3333-4444")   # False — mas não é um celular
+is_valid_mobile_phone_br("(11) 98888-7777")  # True
+```
+
+Em schema, é a troca de um tipo de campo por outro:
+
+```python
+from pydantic import EmailStr, Field
+
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import MobilePhoneBRField
+
+
+class NotificationTargetSchema(BaseSchema):
+    """Payload de POST /users, onde o telefone é canal de entrega.
+
+    `MobilePhoneBRField` recusa fixo com `ValidationError` (HTTP 422
+    pelo handler do SDK) e normaliza o valor para os 11 dígitos da
+    forma nacional.
+    """
+
+    name: str = Field(min_length=1, max_length=128)
+    email: EmailStr
+    phone: MobilePhoneBRField
+```
+
+Entrada válida:
+
+```json
+{
+    "name": "Ana",
+    "email": "ana@example.com",
+    "phone": "+55 (11) 98888-7777"
+}
+```
+
+Depois da validação, `phone` vale `"11988887777"` — e `"(11) 3333-4444"` no lugar dela devolve 422.
+
+!!! warning "As duas normalizações não devolvem a mesma coisa"
+    `normalize_phone_br` preserva o que o usuário digitou: com `+55` na entrada, o `55` sai no resultado, então a mesma linha vira `"5511988887777"` ou `"11988887777"` conforme a digitação, e a coluna guarda duas strings diferentes para o mesmo número.
+
+    `normalize_mobile_phone_br` sempre devolve os **11 dígitos da forma nacional** (DDD + número), independente da grafia de entrada — que é o que faz duas grafias comparar iguais no banco. Precisa do `+55`? Use `parse_phone_br(...).e164`.
+
+#### Quando você precisa das partes: `parse_phone_br`
+
+Formatar para exibição, gravar E.164 no provedor de push, ramificar por DDD — tudo isso quer o número já quebrado em pedaços, não uma string de dígitos:
+
+```python
+from tempest_fastapi_sdk.utils import parse_phone_br
+
+
+parsed = parse_phone_br("+55 (11) 98888-7777")
+
+parsed.area_code  # "11"
+parsed.number     # "988887777"
+parsed.is_mobile  # True
+parsed.e164       # "+5511988887777"
+```
+
+O retorno é `PhoneNumberBR | None` — `None` para qualquer coisa que não seja um número que o Brasil atribui. O código de país nunca vaza para `area_code` nem para `number`, então as quatro grafias da mesma linha (`"11988887777"`, `"+5511988887777"`, `"5511988887777"`, `"(11) 98888-7777"`) produzem exatamente as mesmas partes.
+
+!!! note "Mais estrito que `is_valid_phone_br`, de propósito"
+    `parse_phone_br` aplica as regras de prefixo da ANATEL: número de assinante de 8 dígitos começa em `2`-`5`. Então `"8912345678"` passa por `is_valid_phone_br` e volta `None` aqui — não é uma faixa que a ANATEL atribui.
+
+!!! tip "DDD 55 não é o código do país"
+    Santa Maria (RS) usa o DDD 55, que colide com o `+55`. `parse_phone_br("(55) 99123-4567")` devolve `area_code="55"` e `e164="+5555991234567"` — o prefixo de país só é descartado quando o total de dígitos (12 ou 13) prova que ele está lá.
+
+#### Validação manual (services, controllers, handlers de fila)
+
+```python
+from tempest_fastapi_sdk.exceptions import ValidationException
+from tempest_fastapi_sdk.utils import is_valid_cpf_cnpj, normalize_cpf_cnpj
+
+
+def validate_document(raw_document: str) -> str:
+    """Valida um CPF/CNPJ e devolve a forma canônica só-dígitos.
+
+    Args:
+        raw_document (str): O documento vindo do payload (com ou sem máscara).
+
+    Returns:
+        str: O documento normalizado, apenas dígitos.
+
+    Raises:
+        ValidationException: Se o documento for inválido.
+    """
+    if not is_valid_cpf_cnpj(raw_document):
+        raise ValidationException(message="Documento inválido")
+
+    return normalize_cpf_cnpj(raw_document)
+```
+
+#### Filtrando pelos dígitos armazenados
+
+Os normalizadores removem as máscaras antes de salvar, então os filtros de repository e as constraints de unicidade funcionam sobre a forma canônica só-dígitos:
+
+```python
+import asyncio
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
+
+from src.db.repositories import CustomerRepository
+
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+query = "529.982.247-25"
+
+repo = CustomerRepository(session)
+
+
+async def main() -> None:
+    """Run this example."""
+    await repo.get({"document": normalize_cpf_cnpj(query)})
+
+
+asyncio.run(main())
+```
+
+---
+
+
+## CEP
+
+
+`CEPField` é um tipo `Annotated[str, AfterValidator(normalize_cep)]` — coloque-o em um schema Pydantic e os valores de entrada são aceitos como `"01310-100"` ou `"01310100"`, normalizados para 8 dígitos, e rejeitados (`ValidationError` → envelope HTTP 422) quando não casam com o formato. CEPs não têm dígitos verificadores, então a validação é só de formato.
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import CEPField
+
+
+class AddressCreateSchema(BaseSchema):
+    cep: CEPField
+    street: str
+    number: str
+```
+
+Variantes imperativas: `is_valid_cep(value)`, `normalize_cep(value)`, mais `CEP_PATTERN` para uso de regex cru. Use-os dentro de services / handlers de fila onde você não quer um round-trip Pydantic.
+
+
+## Estados e municípios
+
+Toda aplicação brasileira acaba precisando de um `<select>` de estado e cidade, ou de validar que a UF e o município que chegaram no payload existem de verdade. O SDK embute essa tabela — **27 estados e 5606 municípios** — então você não precisa chamar a API do IBGE nem versionar um JSON por serviço.
+
+!!! info "Offline e sem dependências"
+    Os dados moram em `tempest_fastapi_sdk/utils/data/br_locations.json` e são carregados sob demanda na primeira chamada, depois ficam em cache pelo processo todo. Zero rede, zero extra a instalar.
+
+A UF é uma `StrEnum` e cada estado conhece sua macro-região oficial do IBGE:
+
+```python
+from tempest_fastapi_sdk import UFEnum, RegionEnum, list_states, get_state, states_by_region
+
+
+# Todos os 27 estados, ordenados pela sigla.
+states = list_states()
+print(len(states))  # 27
+
+# Um estado específico (sigla em qualquer caixa, ou um membro de UF).
+sp = get_state("sp")
+print(sp.uf, sp.name, sp.region)        # SP São Paulo Sudeste
+print(len(sp.cities), sp.cities[:2])    # 645 ['Adamantina', 'Adolfo']
+
+# Agrupando por região.
+sudeste = states_by_region(RegionEnum.SOUTHEAST)
+print([state.uf.value for state in sudeste])  # ['ES', 'MG', 'RJ', 'SP']
+```
+
+Cada item é um `StateBR` (`uf: UFEnum`, `name: str`, `region: RegionEnum`, `cities: list[str]`), pronto pra retornar direto de um endpoint.
+
+### Validando UF e cidade em um schema
+
+`UFField` aceita a sigla em qualquer caixa (`"sp"`, `" RJ "`) e devolve um membro de `UFEnum`. `CityNameField` só apara espaços — a validação cruzada "esta cidade existe nesta UF" é regra de negócio, então roda no service com `is_valid_city` / `normalize_city`:
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import UFField, CityNameField
+
+
+class AddressCreateSchema(BaseSchema):
+    uf: UFField
+    city: CityNameField
+    street: str
+    number: str
+```
+
+```python
+from tempest_fastapi_sdk import UFEnum, is_valid_city, normalize_city
+from tempest_fastapi_sdk.exceptions import ValidationException
+
+
+def validate_address(uf: UFEnum, city: str) -> str:
+    """Garante que a cidade pertence à UF e devolve o nome canônico.
+
+    Args:
+        uf (UFEnum): A unidade federativa do endereço.
+        city (str): O nome da cidade vindo do payload.
+
+    Returns:
+        str: O nome do município em caixa canônica (ex.: "São Paulo").
+
+    Raises:
+        ValidationException: Se a cidade não existe na UF informada.
+    """
+    if not is_valid_city(uf, city):
+        raise ValidationException(f"city {city!r} not found in {uf.value}")
+    return normalize_city(uf, city)
+```
+
+!!! tip "A busca de cidade ignora acentos e caixa"
+    `is_valid_city("SP", "sao paulo")` e `normalize_city("rj", "RIO DE JANEIRO")` funcionam — a comparação derruba acentos, caixa e espaços nas pontas. `normalize_city` sempre devolve o nome canônico em caixa correta (`"São Paulo"`, `"Rio de Janeiro"`).
+
+### Choices prontas para o `<select>` do frontend
+
+Os mesmos dados servem para **dois papéis**: validar a entrada (os campos `UFField` / `CityNameField` acima) **e** alimentar os dropdowns do frontend. Para o segundo, `uf_choices`, `region_choices` e `city_choices` devolvem `list[ChoiceBR]` — cada item é um `value` (o que você guarda/envia) + `label` (o que o usuário vê), exatamente o formato que um `<option>` quer:
+
+```python
+from uuid import UUID
+
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk.utils import ChoiceBR, city_choices, region_choices, uf_choices
+
+router = APIRouter(prefix="/api/localidades", tags=["localidades"])
+
+
+@router.get("/ufs")
+def list_uf_choices() -> list[ChoiceBR]:
+    """Choices de UF: value = sigla, label = nome do estado."""
+    return uf_choices()
+
+
+@router.get("/regioes")
+def list_region_choices() -> list[ChoiceBR]:
+    """Choices das 5 macro-regiões do IBGE."""
+    return region_choices()
+
+
+@router.get("/ufs/{uf}/cidades")
+def list_city_choices(uf: str) -> list[ChoiceBR]:
+    """Choices de cidade de uma UF: value = label = nome do município."""
+    return city_choices(uf)
+```
+
+O `value` de `uf_choices()` é a sigla — o mesmo valor que `UFField` valida na volta, então o que o `<select>` envia já entra direto no seu schema:
+
+```python
+from tempest_fastapi_sdk.utils import city_choices, region_choices, uf_choices
+
+
+uf_choices()[0]          # ChoiceBR(value="AC", label="Acre")
+region_choices()[0]      # ChoiceBR(value="Norte", label="Norte")
+city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
+```
+
+!!! info "Por que `ChoiceBR` e não uma tupla?"
+    `ChoiceBR` é um schema Pydantic (`value: str`, `label: str`), então serializa como `{"value": ..., "label": ...}` no JSON e aparece tipado no OpenAPI/Swagger — sem o "campo mágico sem tipo". Para o caso clássico estado→cidade, o front chama `/ufs`, e ao escolher uma UF chama `/ufs/{uf}/cidades`.
+
+### Variantes imperativas
+
+| Função | O que faz |
+| --- | --- |
+| `is_valid_uf(value)` | `True` se a sigla existe (qualquer caixa/espaço). |
+| `normalize_uf(value)` | Devolve o `UFEnum`; levanta `ValueError` se inválido. |
+| `cities_by_uf(uf)` | Lista de municípios da UF, ordenada. |
+| `is_valid_city(uf, city)` | `True` se a cidade pertence à UF (ignora acentos/caixa). |
+| `normalize_city(uf, city)` | Nome canônico do município; levanta `ValueError` se não existe. |
+
+!!! note "Endpoint de estados/cidades para o frontend"
+    Para `<select>`, prefira `uf_choices()` / `region_choices()` / `city_choices(uf)` (formato `value`/`label`). Se precisar do estado inteiro com a lista de cidades junto, `list_states()` devolve cada `StateBR` com seu `cities`. Como é tudo em memória, não toca o banco.
+
+#### Recapitulando
+
+- `UFEnum` (StrEnum, 27 siglas) + `RegionEnum` (5 macro-regiões do IBGE).
+- `StateBR` / `CityBR` para respostas tipadas; `ChoiceBR` (`value`/`label`) para dropdowns.
+- `list_states`, `get_state`, `cities_by_uf`, `states_by_region` para consultar a tabela embutida.
+- `uf_choices`, `region_choices`, `city_choices` para `<select>` do frontend.
+- `UFField` / `CityNameField` para campos de schema; `is_valid_*` / `normalize_*` para validação imperativa no service.
+
+
+## Dinheiro em real
+
+
+Duas direções, ambas em `tempest_fastapi_sdk.utils`, sem extra nenhum.
+
+**Ler** o que um documento imprimiu, com `parse_currency_br`:
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk.utils import parse_currency_br
+
+parse_currency_br("R$ 2.930,00")   # Decimal("2930.00")
+parse_currency_br("2.930,00")      # Decimal("2930.00")
+parse_currency_br("2,930.00")      # Decimal("2930.00") — notação US também
+parse_currency_br("-R$ 0,01")      # Decimal("-0.01")
+parse_currency_br("sem valor")     # None
+```
+
+Todo serviço que ingere dinheiro escrito para humanos precisa disso: um
+modelo transcrevendo um PDF, um CSV importado, uma página raspada. Passar
+esse valor por `float` antes é o que move o centavo em silêncio.
+
+!!! warning "`None` não é zero"
+    `None` significa "o documento não imprimiu preço"; `Decimal("0.00")`
+    significa "o documento imprimiu R$ 0,00". Colapsar os dois é perder a
+    diferença entre linha sem dado e linha gratuita.
+
+!!! note "A regra do ponto sozinho"
+    O **último** separador presente é o decimal. O caso genuinamente ambíguo
+    é um ponto seguido de exatamente três dígitos: `"2.930"` é lido como dois
+    mil novecentos e trinta, que é o que a notação significa nos documentos
+    que isso lê.
+
+**Escrever** para prosa — PDF, e-mail, página:
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk.utils import (
+    format_currency_br,
+    format_percent_br,
+    format_quantity_br,
+    quantize_money,
+)
+
+format_currency_br(Decimal("484365.84"))                # "R$ 484.365,84"
+format_currency_br(Decimal("2930"), symbol=False)       # "2.930,00"
+format_currency_br(Decimal("-0.01"))                    # "-R$ 0,01"
+format_percent_br(Decimal("0.30"))                      # "30,00%"
+format_percent_br(Decimal("0.2999998"), places=5)       # "29,99998%"
+format_quantity_br(Decimal("1250"))                     # "1.250,00"
+quantize_money(Decimal("1.005"))                        # Decimal("1.01")
+```
+
+Nada disso passa por `locale`, que é global do processo, depende de locales
+gerados no container e não é thread-safe.
+
+!!! info "`quantize_money` arredonda meio para cima"
+    Não é o padrão do `Decimal` (banker's rounding). A prática contábil
+    brasileira arredonda meio **para longe do zero**, e é isso que faz um
+    documento gerado reproduzir centavo por centavo um montado à mão.
+
+Precisa de outro arredondamento, por exemplo o bancário numa série longa de
+rateios? As duas constantes que os helpers usam são públicas: `CENT`
+(`Decimal("0.01")`, o alvo da quantização) e `HUNDRED` (`Decimal("100")`,
+razão para percentual).
+
+```python
+from decimal import ROUND_HALF_EVEN, Decimal
+
+from tempest_fastapi_sdk.utils import CENT, HUNDRED, quantize_money
+
+amount: Decimal = Decimal("2.345")
+print(quantize_money(amount))
+print(amount.quantize(CENT, rounding=ROUND_HALF_EVEN))
+
+ratio: Decimal = Decimal("0.1275")
+print((ratio * HUNDRED).quantize(CENT))
+```
+
+```text
+2.35
+2.34
+12.75
+```
+
+!!! tip "Célula de planilha recebe número, não texto"
+    Estas funções são para prosa. Em `.xlsx`, escreva o `Decimal` e deixe a
+    máscara apresentar — veja [Planilhas](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/spreadsheets.md#numeros-nao-strings).
+
+Para valores já guardados em centavos inteiros (a convenção `CentsField`),
+`tempest_fastapi_sdk.pdf.format_cents` faz o mesmo e delega para cá.
+
+
+## Helpers utilitários (utcnow, to_utc, modify_dict)
+
+
+Pequenos helpers stateless de `tempest_fastapi_sdk.utils` dos quais o próprio SDK depende e que aparecem em todo serviço. Disponíveis sem nenhum extra.
+
+| Helper | Assinatura | Propósito |
+| --- | --- | --- |
+| `utcnow()` | `() -> datetime` | Horário atual como datetime UTC ciente de timezone — o SDK usa isto para os defaults de `created_at` / `updated_at`. |
+| `to_utc(value)` | `(datetime) -> datetime` | Converte datetimes naive para UTC (assumido UTC) e datetimes aware para UTC via `astimezone`. Usado pelos field validators de `BaseResponseSchema`. |
+| `modify_dict(data, exclude=None, include=None)` | ``(dict, list[str] | None, dict | None) -> dict`` | Filtro + merge em uma passada. Remove chaves sensíveis antes de logar ou faz merge de campos computados ao mapear payloads para modelos ORM. |
+
+#### Timestamps do mesmo jeito em todo lugar
+
+`utcnow` é o "agora" canônico do SDK. Use-o para timestamps de soft-delete, `iat` / `exp` de JWT, trilhas de auditoria — qualquer coisa onde misturar datetimes naive e aware te queimaria depois.
+
+```python
+from datetime import datetime, timedelta
+
+from fastapi import Request
+
+from tempest_fastapi_sdk import to_utc, utcnow
+
+
+now = utcnow()                      # timezone-aware UTC
+expires_at = now + timedelta(hours=1)
+
+
+async def parse_scheduled(request: Request) -> datetime:
+    """Normalize whatever the caller gave you to a timezone-aware UTC datetime."""
+    payload = await request.json()                              # request.json() is async
+    incoming: str = payload["scheduled_for"]                    # naive or aware ISO-8601
+    return to_utc(datetime.fromisoformat(incoming))
+```
+
+Um datetime naive é marcado como UTC (não convertido do horário local) para ser previsível em workers headless e containers Docker onde `time.timezone` é incerto.
+
+#### Remova chaves sensíveis antes de logar / mapear
+
+`modify_dict` é o pequeno utilitário que alimenta `BaseSchema.to_dict(exclude=..., include=...)` e `BaseModel.update_from_dict(...)`. Use-o diretamente quando não quiser chamar round-trips do Pydantic:
+
+```python
+from tempest_fastapi_sdk import LogUtils, PasswordUtils, modify_dict
+
+passwords = PasswordUtils()
+
+
+log = LogUtils("app.users")
+
+payload = {"email": "ana@example.com", "password": "s3cr3t", "display_name": "Ana"}
+
+# Strip password before logging
+log.info("user_signup", **modify_dict(payload, exclude=["password"]))
+
+# Merge a computed hash before persisting
+user_row = modify_dict(
+    payload,
+    exclude=["password"],
+    include={"password_hash": passwords.hash(payload["password"])},
+)
+```
+
+`include` vence sobre `data`, então ele dobra como um helper de "definir ou sobrescrever" sem mutar o dict de origem.
+
+#### Onde cada outro helper está documentado
+
+Todo helper tem sua própria receita — esta seção é o mapa rápido:
+
+| Helper | Receita |
+| --- | --- |
+| `PasswordUtils`, `JWTUtils` | [Receita de autenticação](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/auth.md) |
+| `EmailUtils` | [Receita de e-mail transacional](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/upload-email.md#e-mail-transacional) |
+| `UploadUtils` | [Receita de upload de arquivos](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/upload-email.md#upload-de-arquivos) |
+| `DownloadUtils`, `build_content_disposition` | [Servindo arquivos privados pela API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/upload-email.md#servindo-arquivos-privados-pela-api-downloadutils) |
+| `LogUtils` + `configure_logging` | [Receita de logging estruturado & request IDs](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/logging.md) |
+| `MetricsUtils` (CPU/memória/disco/GPU) | [Receita de métricas do sistema](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/metrics.md) |
+| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-telefone) |
+| `UFEnum`, `RegionEnum`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`, `region_choices`, `city_choices`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [Estados e municípios](#estados-e-municipios) |
+
+## Recap
+
+- `tempest_fastapi_sdk.utils.regex` traz regex, validador, normalizador e tipo
+  Pydantic para CPF, CNPJ, telefone e CEP — tudo stdlib, sem extra nenhum.
+- O tipo `Annotated` (`CPFField`, `CEPField`, …) normaliza na entrada, então o
+  schema aceita `"013.100-000"` e o seu código lê só dígito.
+- UF e município saem de tabela embutida, para validar payload e montar
+  `<select>` sem consultar serviço externo.
+- Dinheiro tem as duas direções: número para texto em real, e texto de volta
+  para `Decimal` em reais (`Decimal("2930.00")`, não `293000`).
+- `utcnow`, `to_utc` e `modify_dict` são os helpers stateless que o próprio SDK
+  usa — disponíveis sem extra.

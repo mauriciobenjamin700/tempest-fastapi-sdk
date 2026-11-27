@@ -1,0 +1,1209 @@
+# Logging
+
+Nesta receita você configura logs JSON estruturados com correlação por request, um arquivo por nível de severidade e um endpoint HTTP para lê-los. O objetivo é que cada linha de log seja parseável, rastreável até a requisição que a originou e inspecionável sem SSH no servidor.
+
+`configure_logging` instala um handler JSON no logger raiz que emite registros JSON de uma linha carregando o request ID ativo. `LogUtils` é uma fachada fina que adiciona métodos por nível aceitando `**fields` estruturados.
+
+```python
+from tempest_fastapi_sdk import LogUtils, configure_logging
+from tempest_fastapi_sdk.core import get_request_id
+
+from src.db.models import UserModel
+
+
+def risky() -> None:
+    """Blow up, so the log shows a real traceback."""
+    raise RuntimeError("boom")
+
+
+user = UserModel(email="ana@example.com")
+
+
+# Imperativo — chame uma vez durante o bootstrap.
+configure_logging(level="INFO", json_output=True)
+
+# Fachada — útil para singletons de serviço.
+log = LogUtils("app.users", level="INFO")
+log.info("user_created", user_id=str(user.id), email=user.email)
+log.warning("login_throttled", ip="1.2.3.4", attempts=5)
+
+try:
+    risky()
+except RuntimeError:
+    log.exception("risky_failed", op="reconcile")  # appends traceback
+
+# Exponha o ID de correlação fora da linha de log, se necessário.
+request_id = get_request_id()
+```
+
+!!! tip "Adotando num serviço que já loga em `%`-style"
+    Os métodos por nível aceitam os posicionais do `logging`, então call site
+    existente entra sem reescrita — e continua com interpolação **lazy** e com
+    o template estável que a ferramenta de log agrega:
+
+    ```python
+    from tempest_fastapi_sdk import LogUtils
+
+    log = LogUtils("app.email", level="INFO")
+
+    log.info("Email enviado com sucesso para %s", "ana@example.com")
+    log.error("Falha ao enviar para %s: %s", "bruno@x.com", "timeout")
+
+    log.error("Falha ao enviar para %s: %s", "bruno@x.com", "timeout", op="send")
+    ```
+
+    A última linha mostra que os dois estilos convivem: os posicionais montam
+    a mensagem, e o `**fields` continua virando chave de topo no JSON.
+
+    `funcName`/`lineno` apontam para o **seu** call site, não para dentro da
+    fachada — o default é `stacklevel=2`. Quem embrulha o `LogUtils` numa
+    camada própria passa `stacklevel=3` (ou mais) para atravessar os frames
+    extras.
+
+Saída JSON (uma linha — formatada aqui para legibilidade):
+
+```json
+{
+  "timestamp": "2026-05-16T20:14:33.412Z",
+  "level": "INFO",
+  "logger": "app.users",
+  "message": "user_created",
+  "request_id": "d83e4b0c-7c2f-4bd6-aaa1-7d4f6cf5e5e9",
+  "user_id": "9c1a5b2d-...",
+  "email": "ana@example.com"
+}
+```
+
+O middleware aceita um nome de header customizado (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); o mesmo header é ecoado de volta em toda resposta.
+
+
+## Um conjunto de handlers, não um por módulo
+
+`LogUtils(__name__)` é como a classe se lê, e é como ela é usada: uma linha no
+topo de cada módulo. Desde a v0.280.0 é também o que ela faz bem.
+
+```python
+# src/services/user.py
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+logger.info("Usuário %s criado", "u-1")
+```
+
+```python
+# src/services/payment.py
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+logger.warning("Cobrança %s expirou", "c-9")
+```
+
+Os dois módulos escrevem nos mesmos arquivos, através do **mesmo** conjunto de
+handlers: o construtor configura o logger **raiz**, uma vez por processo, e
+liga `__name__` a ele por propagação. O nome do logger continua em toda linha
+(campo `logger`), então você ainda sabe quem escreveu o quê.
+
+!!! danger "Por que isso importa mais do que parece"
+    Até a v0.279.0 o construtor chamava `configure_logging(logger_name=name)`,
+    que põe `propagate = False` naquele logger e lhe dá handlers próprios. Medido:
+    **7 handlers por logger** (1 stdout + 6 de arquivo), então um serviço com
+    27 módulos abria 27 stdout e 162 de arquivo, todos nos mesmos seis caminhos — e
+    `RotatingFileHandler` não coordena rollover entre instâncias: quando o
+    arquivo chega no teto, várias tentam rotacionar o mesmo caminho e o
+    resultado é registro perdido e `.1`/`.2` embaralhados.
+
+    Medido num processo com cinco instâncias: **7 handlers no raiz**
+    (1 stdout + 6 arquivos) e zero em cada logger de módulo.
+
+!!! warning "A primeira instância decide nível e formato"
+    "Uma vez por processo" tem consequência: a segunda chamada não
+    reconfigura nada, então `level=` e `json_output=` da segunda em diante são
+    ignorados. Isso é o que se quer num serviço — o bootstrap decide —, mas
+    surpreende em teste, onde cada caso quer o seu. Chame
+    `reinitialize_logging()` entre eles.
+
+Para isolar um logger de propósito — um subsistema cujo stream você não quer
+misturado —, peça a forma antiga:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+audit: LogUtils = LogUtils("audit", log_dir="logs/audit", scope="logger")
+```
+
+
+## Arquivos por nível + `500.log` isolado
+
+**Por padrão, o SDK escreve simultaneamente no stdout E em `logs/`** (um arquivo JSON por nível). Cada arquivo recebe **apenas o seu próprio nível** (correspondência exata — um `ERROR` nunca cai no `warning.log`), então toda severidade vira um fluxo isolado e fácil de inspecionar com `grep`.
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+# Defaults — stdout + logs/{debug,info,warning,error,critical,500}.log
+configure_logging(level="INFO")
+
+# Customizar diretório
+configure_logging(level="INFO", log_dir="/var/log/myapp")
+
+# Desligar arquivos (stdout puro — útil em serverless ou FS read-only)
+configure_logging(level="INFO", file_output=False)
+
+# Desligar stdout (sidecar coleta de disco)
+configure_logging(level="INFO", stdout=False)
+
+# Teto de crescimento: cada arquivo rotaciona em ~10 MB, guardando 5 gerações
+configure_logging(level="INFO", max_bytes=10_000_000, backup_count=5)
+
+# Sem rotação — quando o logrotate do host (ou um sidecar) é o dono da retenção
+configure_logging(level="INFO", max_bytes=0)
+```
+
+!!! danger "Os arquivos rotacionam por padrão — e é por isso"
+    `FileHandler` puro cresce sem teto. Num serviço com uma linha de log por
+    request, rodando em host de longa duração, o `info.log` é o que enche o
+    disco — e disco cheio derruba o serviço **e** o que mais dividir a
+    partição. Por isso o default é `RotatingFileHandler` com
+    `max_bytes=10_000_000` e `backup_count=5`: ~60 MB por nível, teto duro.
+
+    O outro lado deste par já tinha o teto: o `make_logs_router` limita a
+    leitura a 20 mil registros por arquivo, adicionado depois que um serviço
+    com diretório de log em gigabytes respondeu com worker morto. Isto é o lado
+    de quem escreve.
+
+    Os arquivos rotacionados (`info.log.1`, `info.log.2`, …) **são** lidos
+    pelo `/logs` e pela página `/admin/logs`, junto do arquivo corrente e
+    dentro do mesmo teto de 20 mil registros por nível. Retenção mais longa
+    que isso é trabalho de coletor.
+
+!!! warning "Não desligue os dois"
+    `configure_logging(stdout=False, file_output=False)` lança
+    `ValueError` — silenciar todos os handlers deixa a aplicação
+    cega.
+
+!!! check "Log em arquivo é best-effort — nunca derruba o boot"
+    Se o `log_dir` não puder ser criado ou seus arquivos não puderem ser
+    abertos (FS read-only, falta de permissão de escrita, container
+    endurecido, serverless, CI), o SDK **pula** os handlers de arquivo,
+    emite um aviso (no logger quando o stdout está ligado, senão direto no
+    `stderr`) e segue rodando só com stdout — em vez de morrer no import com
+    `PermissionError: [Errno 13] ... 'logs'`. Para abrir mão do log em
+    arquivo de forma explícita, passe `file_output=False`.
+
+O resultado em disco:
+
+```text
+logs/
+├── debug.log      # só registros DEBUG
+├── info.log       # só registros INFO
+├── warning.log    # só registros WARNING
+├── error.log      # só registros ERROR (um 500 também cai aqui)
+├── critical.log   # só registros CRITICAL
+└── 500.log        # só erros 500 não tratados (isolado)
+```
+
+!!! danger "Erros 500 são graves — por isso ganham arquivo próprio"
+    O handler catch-all registrado por `register_exception_handlers`
+    marca toda exceção não tratada com o `extra` `http_500=True`. O
+    `configure_logging(log_dir=...)` roteia esses registros para um
+    `500.log` dedicado, **além** do `error.log`. Assim a falha mais
+    grave nunca fica soterrada no meio dos outros erros.
+
+    Isso vale para `scope="root"`, o default. Com `scope="logger"` a raiz
+    não é configurada, o logger do SDK fica fora da árvore, e o registro
+    não chega a nenhum dos dois arquivos — passe
+    `register_exception_handlers(app, logger=log.logger)` para roteá-lo.
+    Detalhe medido em
+    [Avisando alguém, e escolhendo para onde o registro vai](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/bootstrap.md#avisando-alguem-e-escolhendo-para-onde-o-registro-vai).
+
+!!! tip "Sempre nos logs, nunca no body"
+    O traceback vai para os arquivos/terminal via logging — **não** para
+    o corpo da resposta. O body de um 500 é só o envelope genérico
+    (`{"detail": "Internal server error", "code": "INTERNAL_SERVER_ERROR"}`).
+    Veja [Camada HTTP](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http.md) para os flags `log_traceback` /
+    `include_traceback`.
+
+!!! note "Arquivos são sempre JSON"
+    Os handlers de arquivo usam o `JSONFormatter` independente de
+    `json_output`, para que o endpoint `/logs` consiga parseá-los. O
+    `json_output` controla apenas o formato do stdout.
+
+No scaffold, o diretório vem de `LOG_DIR` (padrão `"logs"`; deixe vazio para desativar o log em arquivo). Adicione `logs/` ao `.gitignore`.
+
+O mixin `LogSettings` modela a configuração inteira, rotação incluída, e
+`logging_kwargs()` a entrega pronta para o splat — assim a tradução
+campo → argumento mora num lugar só, em vez de numa chamada escrita à mão onde
+os dois argumentos mais novos são justamente os que ficam de fora:
+
+```python
+from tempest_fastapi_sdk import configure_logging
+from tempest_fastapi_sdk.settings import LogSettings
+
+
+class Settings(LogSettings):
+    """Configuração do serviço."""
+
+
+config = Settings()
+configure_logging(**config.logging_kwargs())
+```
+
+| Variável | Padrão | O que decide |
+| --- | --- | --- |
+| `LOG_LEVEL` | `INFO` | Nível mínimo emitido. |
+| `LOG_JSON` | `True` | JSON no stdout (arquivo é sempre JSON). |
+| `LOG_DIR` | `logs` | Diretório dos arquivos; vazio desliga o log em arquivo. |
+| `LOG_MAX_BYTES` | `10000000` | Tamanho em que cada arquivo rotaciona; `0` desliga a rotação. |
+| `LOG_BACKUP_COUNT` | `5` | Gerações mantidas por nível. |
+| `LOG_ROTATE_WHEN` | vazio | Rotaciona por tempo (`midnight`, `H`, `D`, `W0`–`W6`, `S`, `M`); vazio mantém a rotação por tamanho. |
+| `LOG_ROTATE_INTERVAL` | `1` | Quantas unidades de `LOG_ROTATE_WHEN` formam um período. |
+
+O orçamento de disco é `LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)` por nível,
+vezes os seis arquivos — sob rotação por tamanho.
+
+### Rotacionar por tempo — manter uma semana
+
+Teto em bytes responde "quanto disco", não "quanto tempo". Quando a
+pergunta é "quero exatamente a última semana de logs", rotacione por
+tempo: `rotate_when` troca cada handler de arquivo por um
+`TimedRotatingFileHandler` (sempre em UTC), e `backup_count` passa a
+contar **períodos**.
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+configure_logging(
+    level="INFO",
+    log_dir="logs",
+    rotate_when="midnight",
+    backup_count=7,
+)
+```
+
+Pelo ambiente, com o `LogSettings` da seção anterior:
+
+```bash
+LOG_ROTATE_WHEN=midnight
+LOG_BACKUP_COUNT=7
+```
+
+À meia-noite UTC o arquivo do dia vira um backup com a data do período no
+nome, e o mais antigo além do sétimo é apagado:
+
+```text
+logs/
+├── info.log              # hoje
+├── info.log.2026-10-19   # ontem
+├── info.log.2026-10-18
+│   ...
+└── info.log.2026-10-13   # sete dias atrás — o oitavo some na próxima virada
+```
+
+Conferido em `tests/core/test_logging_time_rotation.py`: dez viradas
+seguidas com `backup_count=7` deixam exatamente os sete dias mais novos.
+
+| `rotate_when` | Período | Nome do backup |
+| --- | --- | --- |
+| `"S"` / `"M"` / `"H"` | segundo / minuto / hora | `info.log.2026-10-20_13-05-00` / `info.log.2026-10-20_13-05` / `info.log.2026-10-20_13` |
+| `"D"` | 24 h a partir da subida | `info.log.2026-10-20` |
+| `"midnight"` | dia, virando à meia-noite UTC | `info.log.2026-10-20` |
+| `"W0"`–`"W6"` | semana, virando no dia indicado (`W0` = segunda) | `info.log.2026-10-20` |
+
+`rotate_interval` multiplica a unidade: `rotate_when="H", rotate_interval=6`
+rotaciona a cada seis horas.
+
+!!! warning "Sob rotação por tempo, `max_bytes` é ignorado"
+    O arquivo do período nunca é cortado por tamanho: uma rajada de log
+    dentro de um dia faz o arquivo daquele dia crescer. Se o volume por
+    período não for previsível, prefira a rotação por tamanho (o default)
+    ou deixe a retenção com o `logrotate` do host.
+
+!!! check "Unidade inválida falha na hora, não no primeiro log"
+    `configure_logging(rotate_when="daily")` levanta `ValueError` listando as
+    unidades aceitas (`validate_rotate_when`) **antes** de remover os
+    handlers atuais — e `LOG_ROTATE_WHEN=daily` derruba o boot na validação
+    do `Settings`.
+
+!!! info "Os leitores enxergam os dois formatos de backup"
+    `read_log_entries`, o `GET /logs` e a página `/admin/logs` leem o arquivo
+    corrente e seus backups — `info.log.1` ou `info.log.2026-10-20` —, do mais
+    novo pro mais antigo (`rotated_log_files`). Um diretório que trocou de
+    modo continua mostrando o que o modo anterior deixou.
+
+
+## Reportando um 500 seu — `error_500`
+
+O handler catch-all do SDK marca toda exceção não tratada com `http_500=True`,
+que é o filtro do `500.log`. Quando o **seu** código detecta uma falha grave
+que não vira exceção — um crédito de carteira que fez rollback, uma
+transferência retida no gateway —, `error_500` põe o registro no mesmo arquivo:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+
+def settle(charge_id: str) -> None:
+    """Credit a wallet, escalating a rollback to the 500 stream."""
+    try:
+        raise RuntimeError("commit failed")
+    except RuntimeError:
+        logger.error_500(
+            "CRITICAL: crédito de carteira falhou para a cobrança %s",
+            charge_id,
+            charge_id=charge_id,
+        )
+```
+
+O registro cai no `500.log` **e** no `error.log` — o arquivo isolado existe
+para a falha grave não ficar soterrada, não para tirá-la do stream do nível. O
+traceback vai junto sempre que houver um sendo tratado.
+
+!!! tip "`exc_info="auto"` para o call site que às vezes está num `except`"
+    `logger.exception(...)` exige estar dentro de um `except`; `exc_info=True`
+    fora de um escreve o inútil `NoneType: None`. Um helper chamado dos dois
+    lugares pede a terceira opção:
+
+    ```python
+    from tempest_fastapi_sdk import LogUtils
+
+    logger: LogUtils = LogUtils(__name__)
+
+    logger.error("Falha ao enviar para %s", "ana@x.com", exc_info="auto")
+    ```
+
+    O default segue `False`, então call site existente não muda de saída.
+
+
+## 503 esperado não é falha — `log_level` na exceção
+
+Todo `AppException` com `status_code >= 500` cai no `500.log` com traceback,
+como bug. Só que alguns `5xx` são **resposta prevista**: a integração que o
+`.env` desligou (`STORAGE_ENABLED=false`) responde `503 INTEGRATION_DISABLED`
+de propósito. Num serviço com storage e IA desligados, 8 dos 11 registros da
+fonte "500" do painel eram esse `503`, cada um com o traceback inteiro, e o
+único bug de verdade ficou no meio deles.
+
+A exceção declara a severidade do próprio log no atributo de classe
+`log_level`:
+
+```python
+import logging
+from typing import ClassVar
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from tempest_fastapi_sdk import (
+    AppException,
+    IntegrationDisabledException,
+    register_exception_handlers,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+
+class MaintenanceException(AppException):
+    """Manutenção programada: 503 esperado, não falha."""
+
+    status_code: int = 503
+    message: str = "Em manutenção programada"
+    code: str = "MAINTENANCE"
+    log_level: ClassVar[int | None] = logging.WARNING
+
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/arquivos")
+async def arquivos() -> None:
+    raise IntegrationDisabledException("storage")
+
+
+@app.get("/relatorio")
+async def relatorio() -> None:
+    raise MaintenanceException()
+
+
+client: TestClient = TestClient(app)
+print(client.get("/arquivos").status_code)
+print(client.get("/relatorio").status_code)
+```
+
+Saída (medida; as linhas `httpx` do `TestClient` foram omitidas):
+
+```text
+WARNING tempest_fastapi_sdk.api.handlers: AppException 503 (INTEGRATION_DISABLED) during GET /arquivos: The storage integration is disabled in this environment
+WARNING tempest_fastapi_sdk.api.handlers: AppException 503 (MAINTENANCE) during GET /relatorio: Em manutenção programada
+503
+503
+```
+
+Com `log_level` declarado, o handler:
+
+- loga **nesse nível**, sem traceback;
+- não põe o marcador `http_500`, então o registro fica fora do `500.log` e da
+  fonte "500" do painel (continua no `warning.log`);
+- não chama o `on_server_error`.
+
+O status e o envelope não mudam. `None`, o default, mantém a regra de antes.
+Do SDK, declaram `logging.WARNING` o `IntegrationDisabledException` e o
+`EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`), cuja falha de SMTP o mailer
+já loga em `ERROR` antes de levantar.
+
+!!! warning "Declare só o que é previsto"
+    Um `5xx` de falha real (o upstream caiu, o banco recusou) continua sem
+    `log_level`: é ele que precisa do traceback e do `500.log`.
+
+
+## O banco cita o valor — `redact_database_errors`
+
+Um `IntegrityError` que ninguém tratou chega ao catch-all, e o traceback que
+vai para o log termina no `str()` da exceção. No Postgres, esse texto é a
+frase do servidor, e ela **cita a linha**:
+
+```text
+sqlalchemy.exc.IntegrityError: (sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class 'asyncpg.exceptions.UniqueViolationError'>: duplicate key value violates unique constraint "p_cpf_key"
+DETAIL:  Key (cpf)=(123.456.789-00) already exists.
+[SQL: INSERT INTO p (cpf) VALUES ($1)]
+[SQL parameters hidden due to hide_parameters=True]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+```
+
+Repare na linha dos parâmetros: `hide_parameters=True` estava ligado. Ele tira o
+bloco de parâmetros que o SQLAlchemy anexa, mas o `DETAIL` é texto do
+servidor, repassado pelo driver, e fica. O CPF que o cliente mandou ia para o
+`error.log`, o `500.log`, o `GET /logs` e o painel `/admin/logs`.
+
+Por isso os três handlers de 5xx aplicam `redact_database_errors` antes de
+logar, por default. Com o mesmo erro, a última linha do traceback vira:
+
+```text
+tempest_fastapi_sdk.api.redaction.RedactedError: sqlalchemy.exc.IntegrityError: unique violation; constraint=p_cpf_key; table=p; columns=cpf; driver=sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.IntegrityError; database message withheld from the log
+```
+
+As duas saídas acima foram capturadas de um Postgres 16 real, com o
+`JSONFormatter` do SDK, no SQLAlchemy 2.0.52. No 2.1.1 o resumo é o mesmo,
+menos o `driver=`, que termina em
+`AsyncAdapt_asyncpg_dbapi.UniqueViolationError`.
+
+- **Os frames ficam.** Todo `File ..., line ...` é o do erro original; só o
+  texto do erro de banco muda.
+- **Os nomes de schema ficam.** Constraint, tabela e colunas vêm do
+  `parse_integrity_error` — são nomes do DDL, não dado.
+- **O texto do servidor sai inteiro**, para todo `DBAPIError`, não só
+  `IntegrityError`: um `DataError` também cita a entrada recusada. O
+  statement SQL sai junto, porque um `text()` montado com f-string carrega
+  o literal.
+- **Nada além do log muda.** A resposta é o mesmo envelope 500, e o
+  `on_server_error` recebe a exceção original — o Sentry que você pluga ali
+  continua vendo tudo, e decidir o que ele guarda é escolha sua.
+
+Um 500 sem erro de banco na cadeia loga exatamente como antes: a função
+devolve o mesmo objeto.
+
+O caminho **tratado** tinha o mesmo vazamento: ao converter o
+`IntegrityError` em `409`, o `BaseRepository` escrevia um `warning` com o
+texto do driver. Hoje ele escreve `IntegrityError on User.add: unique
+violation; constraint=...; table=...; columns=...`, montado por
+`describe_database_error` — a mesma função que dá o resumo acima, pública
+para o seu próprio `except IntegrityError`.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import register_exception_handlers
+
+app: FastAPI = FastAPI()
+
+register_exception_handlers(app)
+```
+
+É só isso: o default já protege. Para logar a exceção crua — num ambiente
+local, lendo o `DETAIL` de propósito —, passe `redact_exception=None`. Para
+uma política própria, passe qualquer callable
+`(BaseException) -> BaseException`:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import redact_database_errors, register_exception_handlers
+
+
+class PaymentGatewayError(Exception):
+    """Erro do gateway, cuja mensagem carrega o número do cartão."""
+
+
+def redact(error: BaseException) -> BaseException:
+    """Esconde o gateway além do banco."""
+    if isinstance(error, PaymentGatewayError):
+        return RuntimeError("payment gateway failed; message withheld")
+    return redact_database_errors(error)
+
+
+app: FastAPI = FastAPI()
+
+register_exception_handlers(app, redact_exception=redact)
+```
+
+!!! note "O que o resumo não diz"
+    A exceção do driver (o `UniqueViolationError` do asyncpg, e o adapter do
+    SQLAlchemy em volta dele) sai da cadeia, porque o texto dela é a mesma
+    frase do servidor. O tipo dela continua no resumo, como `driver=...`.
+
+## Dado pessoal fora de toda linha — `redact=True`
+
+Serviço que trata dado pessoal precisa garantir que nenhuma linha de log
+carregue e-mail, token ou código de verificação — inclusive as que você não
+escreveu: o traceback que cita o payload, o `extra=` passado inteiro, a lib
+de terceiro que loga o header `Authorization`. `configure_logging` resolve
+isso num parâmetro:
+
+```python
+import logging
+
+from tempest_fastapi_sdk import RedactionPolicy, configure_logging
+
+policy: RedactionPolicy = RedactionPolicy(extra_keys={"cpf"})
+configure_logging(file_output=False, redact=policy)
+log: logging.Logger = logging.getLogger("app.signup")
+
+log.info(
+    "código enviado para %s",
+    "ana@example.com",
+    extra={
+        "cpf": "123.456.789-00",
+        "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "plan": "free",
+    },
+)
+try:
+    raise ValueError("usuário ana@example.com não encontrado")
+except ValueError:
+    log.exception("falha no login")
+```
+
+Saída (capturada rodando o exemplo, Python 3.11):
+
+```text
+{"timestamp": "...", "level": "INFO", "logger": "app.signup", "message": "código enviado para [REDACTED]", "cpf": "[REDACTED]", "access_token": "[REDACTED]", "plan": "free"}
+{"timestamp": "...", "level": "ERROR", "logger": "app.signup", "message": "falha no login", "exception": "Traceback (most recent call last):\n  File \"...\", line ..., in <module>\nValueError: usuário [REDACTED] não encontrado"}
+```
+
+`redact=True` usa a política default; `RedactionPolicy(...)` acrescenta o que
+é do seu domínio. O que ela faz:
+
+- **Chave sensível** — todo campo de `extra=`, e toda chave de dict passado
+  como argumento ou aninhado num valor, cujo nome contém um fragmento de
+  `DEFAULT_REDACT_KEYS` (`password`, `token`, `secret`, `signature`,
+  `authorization`, `cookie`, `email`, `api_key`, ...) tem o valor trocado inteiro. O match é
+  por **substring**, em minúsculas e com `-` virando `_`: `access_token`,
+  `X-API-Key` e `Set-Cookie` casam.
+- **Padrão de texto** — mensagem, argumentos, traceback (`exc_text`),
+  `stack_info` e todo valor string passam por e-mail, `Bearer <credencial>`,
+  JWT e o segmento de token das rotas que o próprio SDK monta com credencial
+  na URL (`/activate/<token>`, `/password-reset/<token>`,
+  `/email-change/<token>`, `/email-verify/<token>` — fica
+  `/password-reset/[REDACTED]`), mais `chave=valor` / `chave: valor` quando a chave é sensível
+  (`?token=abc` na query, `{'password': 'x'}` citado numa exceção).
+- **`extra_keys` / `extra_patterns`** acrescentam sem repetir os defaults;
+  `keys` / `patterns` substituem. Padrão em string é compilado na
+  construção.
+- **`exact_keys`** compara por **igualdade**, para nome curto que a
+  substring pegaria demais: com `RedactionPolicy(exact_keys={"code"})`,
+  `"GET /invite?code=123456 status_code=200"` sai
+  `"GET /invite?code=[REDACTED] status_code=200"` — `code` some, o status da
+  resposta fica. Vale também para `extra=` e dict aninhado.
+
+O filtro vai em **todo handler** que `configure_logging` instala — stdout e
+os seis arquivos —, e não no logger: filtro de logger não roda para registro
+propagado de logger filho, filtro de handler roda. Handler que você
+pendura por conta própria (Sentry, syslog) recebe o mesmo filtro assim:
+
+```python
+import logging
+import sys
+
+from tempest_fastapi_sdk import RedactionFilter, RedactionPolicy
+
+handler: logging.Handler = logging.StreamHandler(sys.stderr)
+handler.addFilter(RedactionFilter(RedactionPolicy(extra_keys={"cpf"})))
+logging.getLogger().addHandler(handler)
+```
+
+!!! warning "O que muda no registro"
+    A redação reescreve o `LogRecord` no lugar: `msg` vira a mensagem já
+    renderizada e redigida, e `args` é limpo. Quem agrupa log pelo template
+    (`"código enviado para %s"`) passa a ver a mensagem final. E o match por
+    substring erra para o lado de esconder: `email_verified` e `token_type`
+    também saem como `[REDACTED]`.
+
+!!! info "Custo"
+    Medido com `configure_logging(file_output=False)` escrevendo em
+    `/dev/null`, 20 000 registros, melhor de 5 rodadas, Python 3.11: uma linha
+    no formato do `AccessLogMiddleware` (mensagem com 4 argumentos, 7 campos
+    de `extra=`) foi de ~13,5 µs para ~26 µs; um `logger.exception` com
+    traceback curto, de ~44 µs para ~66 µs. O registro é redigido uma vez,
+    não uma por handler. Com `redact=False` (o default) nenhum filtro é
+    instalado.
+
+O `JSONFormatter` também mudou para isso funcionar: o campo `exception` sai
+do `record.exc_text` quando um passo anterior já o renderizou — a mesma
+precedência do `logging.Formatter` da stdlib — e não do `exc_info` de novo.
+Antes, um filtro de handler que redigia o traceback era sobrescrito pelo
+texto original. Em `LogSettings`, `LOG_REDACT=true` liga a política default
+pelo `logging_kwargs()`.
+
+## `exc_info` em todos os níveis, e o nome que o `LogRecord` não cede
+
+`debug`, `info`, `warning`, `error` e `critical` aceitam `exc_info` como
+parâmetro nomeado — `bool` ou `"auto"`:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+
+def refresh_cache(key: str) -> None:
+    """Recarrega uma entrada, tolerando o cache indisponível."""
+    try:
+        raise ConnectionError("redis down")
+    except ConnectionError:
+        logger.warning("Cache miss em %s", key, exc_info="auto", op="refresh")
+```
+
+!!! danger "Até a 0.280.0 essa linha era um `KeyError` dormente"
+    Só `error` tinha o parâmetro. Nos outros quatro níveis o `exc_info=`
+    caía no `**fields`, virava `extra=`, e o `logging` recusa sobrescrever
+    atributo reservado do `LogRecord` — **dentro do `makeRecord`, depois da
+    checagem de nível**. Medido na 0.280.0:
+
+    ```text
+    nível ERROR, chamada warning(exc_info=...): NÃO levanta
+    nível DEBUG, mesma chamada -> KeyError: "Attempt to overwrite 'exc_info'
+                                            in LogRecord"
+    ```
+
+    Um serviço rodando em INFO carregava a falha adormecida até alguém subir a
+    verbosidade — ou seja, ela detonava durante o incidente, no minuto em que o
+    log é a única ferramenta que sobrou.
+
+Vale para qualquer nome que o `LogRecord` já usa, não só `exc_info`:
+`stack_info`, `msg`, `args`, `levelname`, `name`, `asctime` e mais. Um
+campo com esse nome agora é recusado **na chamada**, com `TypeError`,
+independente do nível:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+try:
+    logger.info("pedido processado", levelname="FAKE")
+except TypeError as error:
+    print(error)
+```
+
+```text
+LogUtils: reserved LogRecord attribute used as a structured field:
+'levelname'. logging would raise KeyError while building the record — after
+the level check, so the failure stays dormant until the verbosity goes up.
+Rename the field, or pass exc_info= as the named parameter every level method
+accepts.
+```
+
+O conjunto de nomes é lido de um `LogRecord` de verdade, não digitado à mão,
+então ele acompanha o interpretador. Medido: **22** nomes no 3.11, **23** no
+3.12 e no 3.13 — o que entra é `taskName`, que não existe no 3.11.
+
+!!! tip "Renomeie o campo, não a intenção"
+    Precisa de um campo estruturado com esse sentido? Prefixe:
+    `op_name` em vez de `name`, `record_args` em vez de `args`. O nome que o
+    `logging` reserva é da mecânica do registro, não do seu domínio.
+
+## Depois do Alembic — `reinitialize_logging`
+
+`logging.config.fileConfig()` desabilita, por padrão, todo logger que já
+existia. O `env.py` que este SDK ships chama exatamente isso, então uma
+migration silencia os loggers da aplicação pelo resto do processo — os
+registros são descartados antes de qualquer handler ver, o que parece problema
+de configuração de log e não é.
+
+```python
+from tempest_fastapi_sdk import reinitialize_logging
+
+reinitialize_logging()
+```
+
+Chame depois de qualquer código que reconfigure o sistema de logging. A função
+re-habilita os loggers e limpa o latch de "raiz já configurado", então o
+próximo `LogUtils(...)` volta a instalar handlers.
+
+
+## Lendo logs por HTTP — `make_logs_router`
+
+`make_logs_router` monta `GET /logs`, que lê os arquivos JSON em disco e devolve um `BasePaginationSchema[LogEntrySchema]` paginado (mais recentes primeiro).
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import make_logs_router
+
+from src.core.settings import settings
+
+app = FastAPI()
+
+
+app.include_router(
+    make_logs_router(log_dir="logs", token_secret=settings.TOKEN_SECRET),
+)
+```
+
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/installation.md#cli).
+
+!!! warning "Segredo vazio é recusado"
+    `GET /logs` expõe tracebacks e metadados de request, e `DELETE /logs`
+    trunca os arquivos. Os dois exigem o header `X-Token`, comparado com
+    `token_secret` via `make_token_dependency` — ou as suas `dependencies=`
+    (ver "Atrás da sua própria auth" abaixo). Um `token_secret` vazio (ou só
+    espaço) sem `dependencies=` faz o `make_logs_router` levantar
+    `ValueError` na construção: o app não sobe, em vez de subir com `/logs`
+    aberto.
+    Preencha o `TOKEN_SECRET` com `uv run tempest secrets init`.
+
+    O serviço gerado pelo `tempest new` monta `/logs` só quando
+    `TOKEN_SECRET` não está vazio, porque o `.env.example` sai com
+    `TOKEN_SECRET=` em branco.
+
+Para uma execução local que nada mais alcança, a recusa se desliga pelo
+nome, onde quem lê a chamada vê:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import make_logs_router
+
+app = FastAPI()
+
+
+app.include_router(
+    make_logs_router(log_dir="logs", allow_unauthenticated=True),
+)
+```
+
+Com `token_secret` preenchido, `allow_unauthenticated` não tem efeito: a
+requisição sem `X-Token` continua recebendo `401`.
+
+Exemplos de consulta:
+
+```bash
+# Últimos 20 registros de todos os níveis
+curl -H "X-Token: $TOKEN_SECRET" "http://localhost:8000/logs"
+
+# Só os 500 isolados, página 1, 50 por página
+curl -H "X-Token: $TOKEN_SECRET" "http://localhost:8000/logs?source=500&page_size=50"
+
+# Erros mencionando "timeout" numa janela de tempo
+curl -H "X-Token: $TOKEN_SECRET" \
+  "http://localhost:8000/logs?source=error&q=timeout&start=2026-05-31T00:00:00Z"
+```
+
+Parâmetros de query:
+
+| Parâmetro | Valores | Descrição |
+| --- | --- | --- |
+| `source` | `all` (padrão), `debug`, `info`, `warning`, `error`, `critical`, `500` | Qual arquivo ler. `all` mescla todos os níveis; `500` retorna só os 500 isolados. |
+| `q` | texto | Substring (case-insensitive) na mensagem. |
+| `start` / `end` | ISO-8601 | Limita os registros a uma janela de tempo. Um valor sem offset (`2026-05-31T00:00:00`, ou só a data) é lido como UTC. |
+| `page` / `page_size` | inteiros | Paginação (1-indexada). |
+
+!!! info "A leitura é limitada por arquivo"
+    Cada request lê os **20 000 registros mais recentes** de cada nível
+    selecionado (`DEFAULT_MAX_RECORDS_PER_FILE`) — o arquivo corrente e os
+    backups rotacionados somados, do mais novo pro mais antigo —, não o
+    histórico inteiro. O
+    endpoint ordena do mais novo pro mais antigo e pagina, então o que ficou de
+    fora não era alcançável de qualquer forma — e sem o limite um diretório de
+    log de vários gigabytes ia inteiro pra memória a cada request, derrubando o
+    worker antes de responder. Ajuste com
+    `make_logs_router(max_records_per_file=...)`; quando o corte acontece, um
+    `WARNING` é logado nomeando o `source`.
+
+### Limpando — `DELETE /logs`
+
+O mesmo router monta o verbo oposto, atrás do mesmo `X-Token`:
+
+```bash
+# Esvazia um nível
+curl -X DELETE -H "X-Token: $TOKEN_SECRET" \
+  "http://localhost:8000/logs?source=info"
+
+# Esvazia tudo, o 500.log incluído
+curl -X DELETE -H "X-Token: $TOKEN_SECRET" \
+  "http://localhost:8000/logs"
+```
+
+A resposta nomeia o que foi esvaziado:
+
+```json
+{"cleared": ["debug.log", "info.log", "warning.log", "error.log", "critical.log", "500.log"]}
+```
+
+!!! warning "`all` aqui alcança o `500.log`; na leitura, não"
+    É a única divergência entre os dois verbos, e é deliberada. Ler `all`
+    **não** inclui o `500.log` porque todo registro dele também está no
+    `error.log` — a página listaria o mesmo registro duas vezes. Limpar `all`
+    **inclui**, porque um clear que deixasse o stream de 500 para trás é o
+    desfecho que surpreende.
+
+!!! info "Trunca, nunca apaga — salvo os backups, se você pedir"
+    Os handlers que o `configure_logging` instalou seguram um descritor aberto
+    em cada caminho. Remover o arquivo os deixaria escrevendo num inode que
+    nada consegue ler de volta — o endpoint pareceria funcionar exatamente uma
+    vez. Arquivo ausente é criado vazio, então a pós-condição é a mesma.
+
+    Os backups rotacionados (`info.log.1`, `info.log.2026-10-20`) ficam
+    **intactos** por padrão: apagar histórico não tem volta. Como a leitura
+    os inclui, a página continua mostrando os períodos anteriores depois de
+    um clear. Para apagá-los também, peça explicitamente —
+    `DELETE /logs?delete_backups=true` ou
+    `clear_log_files(..., delete_backups=True)` —, e eles aparecem em
+    `cleared` logo depois do arquivo do nível.
+
+!!! warning "`log_dir` vazio nunca vira o diretório corrente"
+    `LOG_DIR=""` desliga o log em arquivo, mas `Path("")` é `.`. Por isso
+    `make_logs_router(log_dir="")` e `clear_log_files("")` levantam
+    `ValueError`, a leitura (`read_log_entries("")`) devolve nada, e a página
+    `/admin/logs` mostra o estado vazio — nenhum deles lê ou trunca o
+    `*.log` de onde o processo foi iniciado.
+
+Quem precisa dos caminhos fora de uma rota — um job de arquivamento, um
+coletor, um contador — usa o mesmo resolvedor que o router usa, em vez de
+recopiar o mapa de nível para nome de arquivo:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.api.routers.logs import resolve_log_files
+
+paths: list[Path] = resolve_log_files("logs", "error")
+every: list[Path] = resolve_log_files("logs", "all", include_http_500=True)
+```
+
+### Atrás da sua própria auth — `dependencies=`
+
+Serviço que já tem login próprio (Bearer JWT de admin, role, sessão) não
+precisa inventar um segredo compartilhado só para os logs. Passe a
+dependência que já protege o resto do painel em `dependencies=`, e ela vale
+para `GET` **e** `DELETE`:
+
+```python
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    configure_logging,
+    make_logs_router,
+    make_role_dependency,
+    register_exception_handlers,
+)
+
+configure_logging(log_dir="logs")
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+app: FastAPI = FastAPI()
+register_exception_handlers(app)
+app.include_router(
+    make_logs_router(log_dir="logs", dependencies=[Depends(require_admin)]),
+)
+```
+
+O que cada chamada recebe, medido com esse app:
+
+| Requisição | Resposta |
+| --- | --- |
+| sem `Authorization` | `401` (`UNAUTHORIZED`) |
+| Bearer com `roles: ["user"]` | `403` (`FORBIDDEN`) |
+| Bearer com `roles: ["admin"]` | `200`, sem `X-Token` nenhum |
+
+Cada item aceita as duas grafias, `Depends(require_admin)` ou só
+`require_admin`. O `Depends` pronto é usado como veio, não é embrulhado de
+novo.
+
+!!! info "Como `dependencies=` convive com o `X-Token`"
+    As duas peças **somam**, nunca se anulam:
+
+    - Só `dependencies=`: elas são o gate inteiro. Nenhum `X-Token` é lido, e
+      o header nem aparece no schema OpenAPI.
+    - `token_secret` **e** `dependencies=`: a requisição precisa do header
+      **e** de passar em toda dependência.
+    - Nenhuma das duas: `ValueError` na construção, como antes, a menos que
+      você passe `allow_unauthenticated=True`. Lista vazia
+      (`dependencies=[]`) não conta como gate.
+
+### Outro contrato de resposta — `read_log_entries` e `clear_log_files`
+
+O router é uma casca sobre duas funções públicas. Quando o painel precisa de
+outra forma de resposta, chame-as direto em vez de reescrever a leitura: é
+nela que mora o teto por arquivo, e um leitor feito à mão que carrega o
+arquivo inteiro funciona no diretório novo e derruba o worker no de vários
+gigabytes.
+
+As duas são síncronas (I/O de arquivo). Numa rota `async`, rode-as fora do
+event loop com `asyncio.to_thread`:
+
+```python
+import asyncio
+
+from fastapi import APIRouter, Depends, FastAPI
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    LogReadResult,
+    clear_log_files,
+    make_role_dependency,
+    read_log_entries,
+)
+
+tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+require_admin = make_role_dependency(tokens, ["admin"])
+
+
+class AppLogsResponseSchema(BaseModel):
+    messages: list[str]
+    truncated: bool
+
+
+router: APIRouter = APIRouter(
+    prefix="/api/admin/metrics",
+    dependencies=[Depends(require_admin)],
+)
+
+
+@router.get("/app-logs")
+async def app_logs(q: str | None = None, limit: int = 100) -> AppLogsResponseSchema:
+    result: LogReadResult = await asyncio.to_thread(
+        read_log_entries, "logs", "error", q=q
+    )
+    return AppLogsResponseSchema(
+        messages=[str(entry["message"]) for entry in result.entries[:limit]],
+        truncated=result.truncated,
+    )
+
+
+@router.delete("/app-logs")
+async def clear_app_logs() -> list[str]:
+    return await asyncio.to_thread(clear_log_files, "logs", "error")
+
+
+app: FastAPI = FastAPI()
+app.include_router(router)
+```
+
+Com um `logger.error("payment gateway timeout")` gravado, o
+`GET /api/admin/metrics/app-logs?q=timeout` de um admin respondeu:
+
+```json
+{"messages": ["payment gateway timeout"], "truncated": false}
+```
+
+e o `DELETE` respondeu `["error.log"]`.
+
+- `read_log_entries(log_dir, source="all", *, q, start, end, max_records_per_file)`
+  devolve um `LogReadResult`: `entries` já filtrados e do mais novo pro mais
+  antigo, e `truncated`, que diz se o teto cortou algum arquivo. Nada casou?
+  `entries` vem `[]`.
+- `clear_log_files(log_dir, source="all")` trunca no lugar e devolve os nomes
+  esvaziados. Em `"all"`, o `500.log` entra — a mesma regra do `DELETE /logs`.
+
+
+!!! check "Recap"
+    - `configure_logging(log_dir=...)` → stdout **+** um arquivo por nível.
+    - Exatidão por nível: cada arquivo só recebe a sua severidade.
+    - `500.log` isola erros 500 não tratados (marcador `http_500`).
+    - `make_logs_router` serve esses arquivos paginados e autenticados —
+      pelo `X-Token` ou pela sua própria auth em `dependencies=`.
+    - `read_log_entries` / `clear_log_files` são a leitura e a limpeza
+      sem o router, para outro contrato de resposta.
+
+## Uma linha por request — `AccessLogMiddleware`
+
+`configure_logging` formata o que você loga e `RequestIDMiddleware` amarra o id
+de correlação, mas nada disso emite a **linha por request** que faz o
+`make_logs_router` valer a leitura. Esse é o trabalho do `AccessLogMiddleware`:
+
+```python
+# src/api/app.py
+import logging
+
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware, RequestIDMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(AccessLogMiddleware, level=logging.INFO)
+app.add_middleware(RequestIDMiddleware)
+```
+
+Cada request vira um registro cujo `message` é a linha familiar
+(`GET /api/users 200 12.4ms`) e cujos detalhes vão como campos de verdade —
+`http_method`, `http_path`, `http_query`, `http_status`, `duration_ms`,
+`client_ip` — via `extra=`. É essa diferença que faz o `JSONFormatter` gravar
+chaves em vez de uma string interpolada, e portanto que faz o `GET /logs`
+conseguir filtrar por elas.
+
+!!! info "A ordem de registro não importa (desde a v0.277.0)"
+    O `request_id` vem de duas fontes, porque nenhuma sozinha sobrevive às
+    duas ordens: o context var que o `RequestIDMiddleware` amarra, e o header
+    que ele carimba na resposta. Medido:
+
+    ```text
+    AccessLogMiddleware por dentro do RequestIDMiddleware   context var: setado
+                                                            header:      ainda não escrito
+    AccessLogMiddleware por fora do RequestIDMiddleware     context var: limpo
+                                                            header:      presente
+    ```
+
+    O `RequestIDMiddleware` é um `BaseHTTPMiddleware`: carimba o header
+    **depois** que a app retorna, então o wrapper de `send` de um middleware
+    interno já rodou; e limpa o context var ao desenrolar, então um externo
+    não acha nada lá. Ler as duas cobre as duas.
+
+    Até a v0.276.0 isto era um `!!! danger` dizendo para registrar na ordem
+    certa. Aviso sobre passo mecânico com uma resposta certa é código não
+    escrito — a regra do repositório pegou o próprio SDK.
+
+### Nível: `ERROR` é onde a falha está
+
+Resposta abaixo de `500` sai no `level` que você configurou (default `INFO`).
+Resposta `5xx` sai em `ERROR` — tanto a que a aplicação renderizou quanto a que
+escapou de um handler. Achar request que falhou filtrando por nível é o motivo
+de escrever essas linhas.
+
+A exceção que escapa é o caso que mais precisa de log e o que mais falta nas
+versões escritas à mão: o handler estourou antes de mandar qualquer coisa, então
+não existe status para ler. O middleware registra `500`, acrescenta o campo
+`error` com o nome da classe da exceção, e **re-levanta** — quem decide o que o
+cliente vê continua sendo o seu tratamento de erro.
+
+### Stream não é request de uma hora
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(
+    AccessLogMiddleware,
+    exempt_paths=("/api/sse", "/api/metrics"),
+)
+```
+
+`exempt_paths` casa por **prefixo**, então `("/api/sse",)` cobre
+`/api/sse/stream`. Uma conexão SSE aberta por uma hora sairia no log, no
+fechamento, como um request que demorou uma hora.
+
+### Segredo na URL já foi logado
+
+Um endpoint depreciado que recebia um token equivalente a bearer como parâmetro
+de path chega ao middleware com o token na URL — recusar o request no handler
+**não** desfaz o log.
+
+As URLs com credencial que o **próprio SDK** emite já saem escondidas por
+padrão, sem configuração: o segmento de token de `/activate/{token}`,
+`/password-reset/{token}`, `/email-change/{token}` e `/email-verify/{token}`
+(o link do e-mail com `AUTH_BACKEND_LINKS=True` só confere o token, sem
+consumi-lo, então ele continua resgatável depois da visita) e o valor de todo
+parâmetro `signature=` ou `*token=` da query, como o `signature` de uma URL
+assinada. A linha sai como `GET /auth/password-reset/[REDACTED] 200`. Quem faz
+isso é `redact_capability_url`, ligado por `redact_capability_urls=True` (o
+default); desligue só se todo mundo que lê o log também pode resgatar esses
+links.
+
+Para segredo seu na URL, `redact` é a costura, aplicada ao path e à query
+separadamente, **depois** da redação acima:
+
+```python
+# src/api/app.py
+import re
+
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware
+
+_LEGACY_TOKEN_PATH: re.Pattern[str] = re.compile(
+    r"^(?P<prefix>/api)?/auth/google/[^/]+$"
+)
+
+app: FastAPI = FastAPI()
+
+
+def redact_path(value: str) -> str:
+    """Replace the secret segment of a legacy path before it is logged."""
+    if _LEGACY_TOKEN_PATH.match(value):
+        return _LEGACY_TOKEN_PATH.sub(r"\g<prefix>/auth/google/<redacted>", value)
+    return value
+
+
+app.add_middleware(AccessLogMiddleware, redact=redact_path)
+```
+
+### Atrás de proxy
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(AccessLogMiddleware, trusted_ip_header="x-real-ip")
+```
+
+`client_ip` sai de `get_client_ip_from_scope`. Nunca aponte
+`trusted_ip_header` para um `X-Forwarded-For` cru: esse header é **acrescentado**
+ao que o cliente mandou, então a entrada mais à esquerda é escolhida pelo
+atacante — e o log passaria a atribuir requests ao endereço que ele quis. Veja
+[Segurança »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/security.md).
+
+!!! check "Recap"
+    - `AccessLogMiddleware` é ASGI puro: lê o status do `http.response.start` e
+      deixa o caminho de exceção intocado.
+    - O `request_id` entra na linha em qualquer ordem de registro: do context
+      var quando ele é interno, do header da resposta quando é externo.
+    - `5xx` (renderizado ou escapado) sai em `ERROR`; o resto no `level`
+      configurado.
+    - `exempt_paths` casa por prefixo — é o que tira o SSE do log.
+    - Token das rotas de capacidade do SDK e `signature=` / `*token=` da query
+      saem como `[REDACTED]` por padrão; `redact` reescreve o resto de path e
+      query antes do registro existir.
+
+## Recap
+
+- `configure_logging` escreve JSON estruturado no stdout **e** em `logs/`, um
+  arquivo por nível, cada arquivo com apenas o seu próprio nível.
+- `500.log` fica isolado de propósito: o arquivo que você abre primeiro no
+  incidente não vem misturado com o resto.
+- O id da requisição entra em toda linha, então uma reclamação de usuário vira
+  um `grep` — é isso que separa log estruturado de log bonito.
+- `make_logs_router` monta `GET /logs` paginado sobre esses arquivos, mais
+  recentes primeiro, para ler sem acesso ao disco do container.
+- O traceback de um 5xx não carrega o texto do banco: `redact_database_errors`
+  troca o `DETAIL` que cita o valor por constraint e colunas, e o
+  `on_server_error` segue recebendo a exceção original.
+- Todo nível aceita `exc_info` (`bool` ou `"auto"`); campo estruturado que
+  colide com atributo do `LogRecord` é recusado na chamada, com `TypeError`.
+- Com `redact=True` (ou uma `RedactionPolicy`), todo handler redige e-mail,
+  `Bearer`, JWT, token das rotas de capacidade do SDK e chave sensível de mensagem, `extra=`, traceback e
+  `stack_info` antes de o registro ser escrito.

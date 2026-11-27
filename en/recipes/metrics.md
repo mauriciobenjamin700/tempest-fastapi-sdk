@@ -1,0 +1,301 @@
+# Metrics
+
+The SDK offers **two complementary metrics paths**:
+
+1. **Prometheus RED/USE for HTTP** (`PrometheusMiddleware` + `make_prometheus_router`) — listens to every request, increments `http_requests_total` + a latency histogram + `http_requests_in_progress`, and exposes it all on `GET /metrics` in Prometheus text format ready to be scraped by your Prometheus / Grafana / Datadog.
+2. **On-demand system snapshots** (`MetricsUtils`) — collects CPU / memory / disk / NVIDIA GPU stats for a custom endpoint (internal debug page, /oncall, etc.). No built-in Prometheus exporter — the goal is the instant snapshot.
+
+Use **#1** in production always. Add **#2** when you need to inspect the host where the app runs.
+
+## #1 Prometheus HTTP — `[prometheus]` extra
+
+Install with `[prometheus]` (pulls `prometheus-client`). The middleware measures every request; the router serves the scrape endpoint.
+
+```bash
+uv add "tempest-fastapi-sdk[prometheus]>=0.151.1"
+```
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    PrometheusMiddleware,
+    make_prometheus_registry,
+    make_prometheus_router,
+    make_token_dependency,
+    register_exception_handlers,
+)
+
+
+def create_app(metrics_token: str) -> FastAPI:
+    app = FastAPI(title="my-service")
+    register_exception_handlers(app)
+
+    registry = make_prometheus_registry()
+
+    app.add_middleware(PrometheusMiddleware, registry=registry)
+    app.include_router(
+        make_prometheus_router(
+            registry=registry,
+            dependencies=[make_token_dependency(metrics_token)],
+        )
+    )
+    return app
+```
+
+`make_prometheus_registry()` builds a per-app registry, which avoids
+collisions with other global `prometheus-client` users.
+`make_token_dependency(metrics_token)` gates the scrape behind a header:
+without `X-Token`, or with the wrong value, `GET /metrics` answers `401`; with
+`X-Token: <metrics_token>`, it answers `200`. The secret travels in the
+header, never in the URL, so it stays out of access logs. Read
+`metrics_token` from your `Settings`; don't hard-code it.
+
+!!! warning "Without `dependencies=`, `/metrics` is public"
+    `make_prometheus_router` defaults to **no authentication at all**:
+    `make_prometheus_router(registry=registry)` answers `200` to anyone who
+    reaches the port, and the labels expose the service's route map. Mount
+    it without `dependencies=` only when the port already sits on a private
+    network that only Prometheus reaches.
+
+!!! info "An empty secret fails the boot"
+    Since 0.342.0, `make_token_dependency("")` raises `ValueError` when the
+    dependency is built, instead of letting `GET /metrics` answer `200` with
+    no header:
+
+    ```text
+    ValueError: make_token_dependency() got an empty secret, which would let every request through. Set TOKEN_SECRET (e.g. with `tempest secrets init`), or pass allow_unauthenticated=True for a local run nothing else reaches.
+    ```
+
+    A `METRICS_TOKEN` forgotten in the environment shows up at boot, not
+    later. For a local run without the gate, pass
+    `allow_unauthenticated=True`.
+
+!!! info "Each `dependencies=` item is the function, or a ready `Depends(...)`"
+    Pass the **bare** dependency (`[make_token_dependency(token)]`) — the
+    router wraps it in `Depends` itself. An already-built `Depends(...)` /
+    `Security(...)` is accepted too and attached as-is, never wrapped twice.
+    What does **not** work is `require_x_token`: it is the imperative variant
+    (`require_x_token(secret, token)`), and FastAPI would read `secret` and
+    `token` from the **query string** — every scrape would turn into a
+    `422`, and the only way through would be putting the secret in the URL.
+    So the router refuses it at build time:
+
+    ```text
+    TypeError: require_x_token is not a FastAPI dependency: its 'secret' and 'token' parameters would be read from the query string. Pass make_token_dependency(secret) instead, which reads the X-Token header.
+    ```
+
+Done. After two requests to a `GET /api/users/{user_id}` route, `GET /metrics` with the header returns (an excerpt of the real output; the `..._created` lines and the remaining buckets are cut, and `in_progress` counts the scrape itself):
+
+```text
+# HELP http_requests_total HTTP requests by method, route template, and response status.
+# TYPE http_requests_total counter
+http_requests_total{method="GET",path="/api/users/{user_id}",status="200"} 2.0
+...
+# HELP http_request_duration_seconds HTTP request latency by method and route template (seconds).
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.005",method="GET",path="/api/users/{user_id}"} 2.0
+...
+http_request_duration_seconds_count{method="GET",path="/api/users/{user_id}"} 2.0
+...
+# HELP http_requests_in_progress HTTP requests currently being handled.
+# TYPE http_requests_in_progress gauge
+http_requests_in_progress{method="GET"} 1.0
+```
+
+Default buckets (`DEFAULT_LATENCY_BUCKETS`) cover 5ms → 10s — fits typical APIs. Override with `PrometheusMiddleware(registry=..., latency_buckets=(0.001, 0.005, 0.025, 0.1, 0.5, 2, 10))` when your workload is more granular.
+
+!!! tip "Path normalization"
+    The `path` label uses the route template (`/api/users/{user_id}`), not the concrete path, so cardinality doesn't explode with unique UUIDs. That comes from FastAPI/Starlette — no config needed on your end.
+
+    A request that matches no route (every `404`) is recorded as `path="<unmatched>"`, and a method outside the standard set (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `CONNECT`, `TRACE`) as `method="OTHER"`. No label takes a value the client chooses, so the series count stays bounded by routes × methods × statuses — an anonymous client inventing paths creates no new series.
+
+### Scrape config
+
+`prometheus.yml` — `http_headers` sends `X-Token` on every scrape, read from
+a file so the secret stays out of the YAML:
+
+```yaml
+scrape_configs:
+  - job_name: my-service
+    metrics_path: /metrics
+    http_headers:
+      X-Token:
+        files: ["/etc/prometheus/metrics_token"]
+    static_configs:
+      - targets: ["my-service:8000"]
+```
+
+Measured on Prometheus `v3.1.0`, scraping the app above: the job with
+`http_headers` reports `up == 1`; an identical job without the block reports
+`up == 0`, with `server returned HTTP status 401 Unauthorized` on the targets
+page.
+
+Or via compose (the `metrics_token` file holds the same value as
+`METRICS_TOKEN`):
+
+```yaml
+services:
+  my-service:
+    image: ...
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN}
+    ports: ["8000:8000"]
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./metrics_token:/etc/prometheus/metrics_token:ro
+    ports: ["9090:9090"]
+```
+
+### Business metrics — `BusinessMetrics`
+
+The middleware covers HTTP (RED). For **your domain** metrics — orders,
+queue depth, job duration — use `BusinessMetrics`: a typed factory of
+`Counter` / `Gauge` / `Histogram` bound to the **same** registry, so it
+all shows up on the same `GET /metrics`.
+
+```python
+import asyncio
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    BusinessMetrics,
+    make_prometheus_registry,
+)
+
+from src.db.models import UserModel
+
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+elapsed = 0.42
+
+repo = BaseRepository(session, model=UserModel)
+
+
+registry = make_prometheus_registry()
+metrics = BusinessMetrics(registry, namespace="shop")
+
+orders = metrics.counter("orders_total", "Orders placed", labelnames=["status"])
+queue = metrics.gauge("queue_depth", "Items in queue")
+job = metrics.histogram("job_seconds", "Job duration", buckets=[0.1, 1, 10])
+
+orders.labels(status="paid").inc()
+
+
+async def main() -> None:
+    """Run this example."""
+    queue.set(await repo.count({"status": "pending"}))
+    job.observe(elapsed)
+
+
+asyncio.run(main())
+```
+
+Shows on `/metrics` as `shop_orders_total{status="paid"}`, `shop_queue_depth`,
+`shop_job_seconds_bucket`. Creating the same name twice returns the **same**
+metric (no `Duplicated timeseries` on reload/tests).
+
+!!! note "No magic"
+    The returned objects are the real `prometheus_client`
+    `Counter`/`Gauge`/`Histogram` — `.inc()` / `.set()` / `.observe()` /
+    `.labels(...)` behave as upstream documents. `BusinessMetrics` only binds
+    them to the registry + namespace, hiding nothing.
+
+## #2 System snapshots — `[metrics]` extra
+
+`MetricsUtils` collects CPU, memory, disk and NVIDIA GPU usage via `psutil` + `pynvml`. Every method has a sync and an async variant (the async wrapper runs the same code via `asyncio.to_thread`). GPU sampling gracefully degrades to `[]` when `pynvml` or NVIDIA drivers are missing.
+
+Install with `[metrics]`.
+
+```python
+# src/api/routers/system.py
+from typing import Any
+
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk import MetricsUtils
+
+router = APIRouter()
+
+
+@router.get("/system-metrics")
+async def system_metrics() -> dict[str, Any]:
+    """JSON snapshot. NOT the Prometheus endpoint — that one is /metrics."""
+    snapshot = await MetricsUtils.snapshot_async(disk_paths=["/", "/data"])
+    return snapshot.to_dict()
+```
+
+!!! warning "Don't mount this at `/metrics`"
+    This endpoint is **not** the Prometheus one — mounting it on the same path collides with `make_prometheus_router` when both are active. Use `/system-metrics`, `/admin/sysinfo`, or some restricted oncall prefix.
+
+!!! warning "`MetricsUtils.cpu(interval=...)` blocks the event loop"
+    The sync call spends `interval` seconds sampling — the `cpu_async` wrapper avoids the block by running in a thread. Always prefer `MetricsUtils.snapshot_async()` from handlers.
+
+### Individual collectors
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import MetricsUtils
+
+
+async def main() -> None:
+    """Run this example."""
+    snapshot = await MetricsUtils.snapshot_async(disk_paths=["/"])
+
+    print(snapshot.cpu.percent, snapshot.memory.percent)
+    for disk in snapshot.disks:
+        print(disk.path, disk.percent)
+    for gpu in snapshot.gpus:
+        print(gpu.name, gpu.utilization_percent, gpu.memory_used_bytes)
+
+
+asyncio.run(main())
+```
+
+Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — plus their `*_async` variants. Each one returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.
+
+!!! warning "One disk: use `disk_async`, not `disks_async([path])`"
+    The two variants treat a bad path in opposite ways, and the difference
+    shows up exactly on a metrics endpoint:
+
+    ```python
+    import asyncio
+
+    from tempest_fastapi_sdk import DiskMetrics, MetricsUtils
+
+
+    async def main() -> None:
+        """Read the same missing path both ways."""
+        empty = await MetricsUtils.disks_async(["/mnt/gone"])
+        print(empty)  # [] — the error became a log line, the payload a gap
+
+        try:
+            disk: DiskMetrics = await MetricsUtils.disk_async("/mnt/gone")
+        except FileNotFoundError as exc:
+            print(f"propagated: {exc}")
+
+
+    asyncio.run(main())
+    ```
+
+    `disks_async` logs and skips because the list is plural — one bad path
+    should not take the other four down. For a single path that becomes silent
+    absence: the dashboard shows "no disk" where there was a permission error
+    or a mount that vanished. Callers passing several paths **and** wanting to
+    fail ask for `disks(paths, strict=True)` (or `disks_async(paths, strict=True)`).
+
+## Recap
+
+- **Path #1 (`[prometheus]`)** — `PrometheusMiddleware` + `make_prometheus_router` expose RED/USE series (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_progress`) on a scrape-ready `GET /metrics`. This is what you turn on in production — with `dependencies=[make_token_dependency(token)]`, because without it the endpoint is public.
+- **Path #2 (`[metrics]`)** — `MetricsUtils` gives an instant CPU / memory / disk / GPU snapshot on a custom endpoint. No Prometheus exporter — it's the on-demand photo of the host.
+
+## Next steps
+
+- [Observability](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/observability.md) — how to combine metrics with request-id, structured logging, and the typed `HTTPClient`.
+- [Logging](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/logging.md) — structured logging, per-level files, and the `/logs` endpoint.

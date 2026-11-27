@@ -1,0 +1,1046 @@
+# Server-Sent Events (SSE)
+
+SSE pushes data from the server to the browser over **one long-lived HTTP
+connection**, no polling. It's the simplest path to "one-way real time":
+a notification feed, a progress bar, a price ticker, live logs.
+
+!!! info "SSE vs WebSocket vs Web Push"
+    - **SSE** — server → client, text only, auto-reconnects, runs over
+      plain HTTP. Use when the client only **receives**.
+    - **WebSocket** — bidirectional, binary, more complex. Use when the
+      client also **sends** often. See [WebSocket](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/websocket.md).
+    - **Web Push** — arrives with the **page closed** (Service Worker).
+      See [Web Push](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/webpush.md).
+
+The SDK ships three pieces: `EventStream` (an in-memory async queue
+feeding one connection), `ServerSentEvent` (encodes a frame in the spec
+wire format) and `sse_response` (wraps the stream in a
+`StreamingResponse` with the right headers — `Cache-Control: no-cache`,
+`Connection: keep-alive`, `X-Accel-Buffering: no` to disable nginx
+buffering). Day to day you call the shortcuts `EventStream.response(...)` /
+`SSEBroker.response(channel)`, which wrap `sse_response` under the hood; reach
+for raw `sse_response` only when you want to drive the generator by hand.
+
+!!! info "Do you need to install anything? SSE is built in"
+    `EventStream`, `ServerSentEvent`, `sse_response` and the in-memory
+    `SSEBroker` are part of the **core** — no extra of their own, they ship
+    with `tempest-fastapi-sdk` (they depend only on `starlette`, which FastAPI
+    already pulls in). There is no `[sse]` extra. Only the **Redis bridge**
+    (multi-worker) needs the `[cache]` extra —
+    `uv add "tempest-fastapi-sdk[cache]"`, which pulls in `redis`. Cookie/query
+    auth uses `JWTUtils` from the `[auth]` extra.
+
+!!! tip "New in v0.91"
+    - **Backpressure** — the `EventStream` queue is now **bounded**
+      (`max_queue`, default `1000`): a slow client can't grow memory
+      without limit. The `overflow` policy decides what gives. See
+      [Backpressure](#backpressure-bounded-queue).
+    - **Lifecycle without boilerplate** — `sse_response(..., on_disconnect=)`,
+      `EventStream.response(...)` and `SSEBroker.response(channel)` tear
+      down the producer / unregister the channel on their own when the
+      client drops.
+    - **Auth for `EventSource`** — `EventSource` can't send a header;
+      `sse_router` solves it with a stream ticket. See
+      [Authentication](#authentication).
+
+## One SSE endpoint
+
+Create an `EventStream` per request, publish from a producer, and tie the
+producer's lifecycle to the client connection — if the client drops, the
+producer stops.
+
+```python
+# src/api/routers/events.py
+import asyncio
+
+from fastapi import APIRouter
+from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import EventStream
+
+router = APIRouter()
+
+
+@router.get("/events")
+async def events() -> StreamingResponse:
+    """Emit 3 SSE frames then close the stream."""
+    stream = EventStream(heartbeat_seconds=15.0)
+
+    async def producer() -> None:
+        try:
+            for n in range(1, 4):
+                await stream.publish({"n": n}, event="counter", id=str(n))
+                await asyncio.sleep(1)
+        finally:
+            await stream.close()
+
+    task = asyncio.create_task(producer())
+
+    # on_disconnect runs when the client drops OR the stream ends:
+    # that's where you cancel the producer so it doesn't leak.
+    return stream.response(on_disconnect=task.cancel)
+```
+
+!!! warning "Always tie the producer to the connection"
+    SSE streams are long-lived. If the client disconnects mid-stream you
+    don't want the producer running forever. Pass `on_disconnect=` to
+    `EventStream.response` (or `sse_response`) — it runs in the response
+    generator's `finally`, the one place that fires on disconnect.
+
+Start the API and watch the raw frames in your terminal — `curl -N`
+disables buffering and prints each frame as it arrives:
+
+```bash
+curl -N http://127.0.0.1:8000/events
+```
+
+```text
+event: counter
+id: 1
+data: {"n": 1}
+
+event: counter
+id: 2
+data: {"n": 2}
+
+event: counter
+id: 3
+data: {"n": 3}
+```
+
+Note the spec wire format: each frame is a block of `field: value` lines
+(`event`, `id`, then `data`), and the **blank line** (`\n\n`) separates one
+frame from the next. Because you passed a dict, `data` was JSON-serialized
+for you.
+
+??? note "Before v0.91: hand-rolled `try/finally`"
+    Up to v0.90 you wrapped `stream()` in an outer generator just to get
+    the `finally`. `on_disconnect=` replaces that boilerplate:
+
+    ```python
+    from collections.abc import AsyncIterator
+    from tempest_fastapi_sdk import sse_response
+
+    async def lifecycle_aware() -> AsyncIterator[bytes]:
+        try:
+            async for chunk in stream.stream():
+                yield chunk
+        finally:
+            task.cancel()
+
+    return sse_response(lifecycle_aware())
+    ```
+
+## Anatomy of an event
+
+`publish()` takes the four spec fields:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import EventStream
+
+stream = EventStream()
+
+
+async def main() -> None:
+    """Run this example."""
+    await stream.publish(
+        {"orderId": "abc", "status": "paid"},  # data: auto-JSON
+        event="order_update",                  # event: front-end listener name
+        id="42",                               # id: becomes Last-Event-ID (resume)
+        retry=3000,                            # retry: reconnect hint (ms)
+    )
+
+
+asyncio.run(main())
+```
+
+| Field | What it does |
+| --- | --- |
+| `data` | Payload. String/bytes go raw; any object becomes JSON. |
+| `event` | Event name — the front listens with `addEventListener(name)`. Without it, falls back to `"message"`. |
+| `id` | Becomes `Last-Event-ID`; the browser resends it on reconnect so you can resume. |
+| `retry` | Suggested reconnect delay (ms). |
+
+The `data` type is the exported alias **`SSEData`**
+(`str | bytes | Mapping | Sequence | int | float | bool | None`) — the JSON
+value shapes, plus raw `str`/`bytes`. To send an object that only serializes via
+`str()` (e.g. a bare `UUID`), wrap it in `str(...)` or a dict first.
+
+`heartbeat_seconds` emits a beat while the stream is idle so load-balancers
+don't cut the connection. By default that beat is an SSE **comment**
+(`: keepalive`), **invisible** to `EventSource`: it fires no listener, it
+just keeps the socket alive. `None` disables the heartbeat.
+
+!!! note "A control frame carries no `data:` line"
+    A frame with no payload and no `event` — only `comment`, `id` or `retry`
+    — leaves the encoder **without** a `data:` line. That matters because an
+    empty `data:` is not inert: the browser's field parser stores the empty
+    value plus a line feed, the dispatch step strips the feed, and `""` is
+    delivered as a `message` event. Measured in Chromium: three
+    `: keepalive\ndata: \n\n` frames fire `onmessage` three times with
+    `data === ""`; three `: keepalive\n\n` frames fire it zero times. A frame
+    that **names** an `event` keeps the line even with an empty body, because
+    there dispatching is the intent.
+
+    Fixed in **0.288.0** ([#270](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/270)).
+    On an earlier version, the client-side workaround is to subscribe by name
+    (`addEventListener`) and drop the default `message` name.
+
+### A visible beat: `heartbeat_event`
+
+A comment keeps the TCP connection alive, which is the point — but a client
+that uses the beat as **proof the connection is live** (to reconnect, to light
+a status indicator, to arm a watchdog) has nothing to listen for.
+`heartbeat_event` swaps the frame:
+
+```python
+from tempest_fastapi_sdk import EventStream, ServerSentEvent
+
+stream: EventStream = EventStream(
+    heartbeat_seconds=15.0,
+    heartbeat_event=ServerSentEvent(
+        data={"id": None, "type": "PING", "message": "ping"},
+        event="ping",
+    ),
+)
+```
+
+Now every 15 idle seconds put a `ping` event on the wire, which
+`addEventListener("ping", ...)` receives like any other.
+
+Need to stamp something that changes per beat — a timestamp, a counter, a
+queue depth? Pass a callable, resolved **per beat**:
+
+```python
+from datetime import UTC, datetime
+
+from tempest_fastapi_sdk import EventStream, ServerSentEvent
+
+
+def ping() -> ServerSentEvent:
+    """Build a fresh heartbeat frame carrying the current time.
+
+    Returns:
+        ServerSentEvent: The frame this beat puts on the wire.
+    """
+    return ServerSentEvent(
+        data={"type": "PING", "at": datetime.now(UTC).isoformat()},
+        event="ping",
+    )
+
+
+stream: EventStream = EventStream(heartbeat_seconds=15.0, heartbeat_event=ping)
+```
+
+!!! note "The two choices are separate now, and that was the problem"
+    `heartbeat_seconds` used to decide **both**: whether to beat and what the
+    beat puts on the wire. Anyone who wanted a visible `ping` had to disable
+    the heartbeat and reimplement it outside — a periodic loop publishing into
+    every open channel, which is generic infrastructure back inside the
+    service. Now `heartbeat_seconds` decides **when** and `heartbeat_event`
+    decides **what**.
+
+    `SSEBroker(heartbeat_event=...)` forwards it to every stream it opens,
+    which is the only way to configure this in a service that uses the broker:
+    `register` constructs the `EventStream` internally, so not even a subclass
+    gets into the path.
+
+## Backpressure (bounded queue)
+
+If a client **stops reading** (backgrounded tab, bad network) but the
+producer keeps publishing, the `EventStream` queue would grow forever — a
+classic memory leak. So the queue is **bounded**: `max_queue` (default
+`1000`) plus an `overflow` policy that decides what to do when it fills.
+
+```python
+from tempest_fastapi_sdk import EventStream
+
+# Live ticker: a stale frame is worthless -> drop the oldest.
+stream = EventStream(max_queue=500, overflow="drop_oldest")
+```
+
+| `overflow` | When the queue fills | Use when |
+| --- | --- | --- |
+| `"drop_oldest"` (default) | Evict the **oldest** event | Live data: ticker, progress, telemetry — only the recent state matters. |
+| `"drop_newest"` | Discard the **incoming** event | The start of the stream matters more than the end. |
+| `"block"` | Hold `publish()` until a slot frees | Producer dedicated to **one** connection and losing an event is unacceptable. |
+
+!!! danger "`block` can stall a shared producer"
+    With `overflow="block"`, a slow client **holds** `publish()`. If the
+    same producer feeds many clients (fan-out), one bad client stalls them
+    all. Only use `block` when the producer serves **one** connection.
+
+The `close()` sentinel is **never** dropped or blocked — the stream always
+terminates. `stream.dropped_events` counts how many events were lost to
+overflow, so you can surface it in metrics/logs:
+
+```python
+import logging
+
+from tempest_fastapi_sdk import EventStream
+
+logger = logging.getLogger(__name__)
+
+stream = EventStream()
+
+
+if stream.dropped_events:
+    logger.warning("Slow SSE client: %d events dropped", stream.dropped_events)
+```
+
+!!! tip "Back to the old behavior"
+    `max_queue=0` disables the bound (unbounded queue, pre-0.91). Only do
+    this if you're sure the producer stops together with the connection.
+
+## Broadcast to many clients (`SSEBroker`)
+
+`EventStream` is **one** connection. To send the same event to every
+client of a channel (e.g. a user's devices, or a topic), the SDK ships
+`SSEBroker` — a per-channel stream registry plus fan-out. The channel is
+any string (a user id, a room slug...).
+
+It takes **three steps**: create the broker once, keep that instance on the
+app (so everyone uses the same one), and inject it into endpoints.
+
+#### Step 1 — create the broker and the wiring
+
+`SSEBroker()` is a **process-wide singleton**: every open channel and stream
+lives inside it. So it must be **one** instance shared across the whole app —
+if each request made its own, a `publish` on one broker would never reach the
+streams pinned to another.
+
+```python
+# src/api/dependencies/resources.py
+from fastapi import FastAPI, Request
+
+from tempest_fastapi_sdk import SSEBroker
+
+broker = SSEBroker()
+
+
+def register_broker(app: FastAPI) -> None:
+    """Store the singleton broker on app.state (call it in create_app)."""
+    app.state.broker = broker
+
+
+def get_broker(request: Request) -> SSEBroker:
+    """Return the shared broker from app.state for use in Depends()."""
+    return request.app.state.broker
+```
+
+What each part does:
+
+- `broker = SSEBroker()` — creates the broker at module **import**. Since the
+  module is imported once, this is the same object for everyone who uses it.
+- `register_broker(app)` — pins the broker on `app.state.broker`. You call it
+  **once** when building the app (inside `create_app` or the lifespan):
+  `register_broker(app)`.
+- `get_broker(request)` — returns `request.app.state.broker`. This is what
+  endpoints receive via `Depends(get_broker)`, guaranteeing they all talk to
+  the **same** instance.
+
+#### Step 2 — the subscribe endpoint
+
+The client opens `GET /feed`; the endpoint subscribes it to its own user
+channel and returns the stream. One line does it all: `broker.response(channel)`.
+
+```python
+# src/api/routers/feed.py
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.api.dependencies.auth import get_current_user_id
+from src.api.dependencies.resources import get_broker
+
+router = APIRouter()
+
+
+@router.get("/feed")
+async def feed(
+    user_id: UUID = Depends(get_current_user_id),
+    broker: SSEBroker = Depends(get_broker),
+) -> StreamingResponse:
+    """Subscribe the caller to their own user channel and stream it."""
+    return broker.response(str(user_id))
+```
+
+Step by step, on each `GET /feed`:
+
+1. `Depends(get_current_user_id)` resolves **who** the client is. Their id
+   becomes the channel name — each user gets their own, isolated from others.
+2. `Depends(get_broker)` hands over the shared broker (the one from Step 1).
+3. `broker.response(str(user_id))` does **three things in a single call**:
+     - **register** — creates a fresh `EventStream` and subscribes it to the
+       `user_id` channel;
+     - **stream** — returns a `StreamingResponse` with the SSE headers already
+       set (the client starts receiving);
+     - **unregister** — wires an `on_disconnect` that removes this stream from
+       the channel when the client drops.
+
+!!! tip "Why `broker.response()` doesn't leak streams"
+    The three steps (register → stream → unregister) are tied together in one
+    call. The `unregister` runs in the response generator's `finally` — the one
+    point that fires on disconnect — so there's no `try/finally` for you to
+    forget: every client that leaves cleans up its own registration. And
+    `SSEBroker(max_queue=..., overflow=...)` applies the same backpressure
+    policy (see above) to every stream the broker opens.
+
+### A global notice: `broadcast()`
+
+`publish(channel, ...)` resolves one channel to N connections. The orthogonal
+axis — **one event to N channels** — is `broadcast()`:
+
+```python
+from tempest_fastapi_sdk import SSEBroker
+
+
+async def warn_maintenance(broker: SSEBroker) -> None:
+    """Warn every connected client, whichever channel they are on.
+
+    Args:
+        broker (SSEBroker): The process-wide broker.
+    """
+    await broker.broadcast(
+        {"type": "MAINTENANCE", "message": "Maintenance in 5 minutes."},
+        event="notice",
+    )
+```
+
+Same parameters as `publish`, minus the channel. In single-process mode it
+walks the local channels and delivers into each. With Redis it publishes to
+the reserved `__broadcast__` channel — which every worker's
+`PSUBSCRIBE {prefix}:*` **already reaches**, no new subscription — and each
+worker's `run()` re-fans it to all of its local streams.
+
+A stream subscribed to more than one channel receives the event **once**: the
+fan-out is over the set of streams, not the list of channels.
+
+!!! warning "`__broadcast__` is a reserved name"
+    `register("__broadcast__")` and `publish("__broadcast__", ...)` raise
+    `ValueError`. The name is how the receiving side decides between
+    delivering to one channel and delivering to all of them; a stream
+    subscribed under it would make that decision ambiguous. The constant is
+    `BROADCAST_CHANNEL`, in `tempest_fastapi_sdk.sse`.
+
+And for a "how many are connected right now" metric, `local_channels()` lists
+the channels with at least one open stream on **this** worker — the
+counterpart of `local_subscribers(channel)`, with no need to touch
+`_channels`:
+
+```python
+from tempest_fastapi_sdk import SSEBroker
+
+
+def connected(broker: SSEBroker) -> dict[str, int]:
+    """Count the live streams per channel on this worker.
+
+    Args:
+        broker (SSEBroker): The process-wide broker.
+
+    Returns:
+        dict[str, int]: Channel name to local subscriber count.
+    """
+    return {
+        channel: broker.local_subscribers(channel)
+        for channel in broker.local_channels()
+    }
+```
+
+### Firing from the domain (controller)
+
+Step 2 showed the **subscribe** side (the client joins a channel). What's left
+is the **publish** side — the *broadcast* itself.
+
+**What "broadcast" means here:** the broker keeps, per channel, the list of
+subscribed streams. When you call `broker.publish("<channel>", ...)`, it walks
+**every** stream on that channel and delivers the same event to each. One
+`publish` → N clients. If the channel is a user's id and they have two tabs
+open, both receive it; if nobody is subscribed, the `publish` is a no-op (no
+error).
+
+The **controller** is what fires the `publish`, when a business event happens
+(order created, payment confirmed, new message). It orchestrates the service
+(business rule) and the broker (live notification), using the id of the user to
+notify as the channel.
+
+```python
+# src/controllers/order.py
+from tempest_fastapi_sdk import SSEBroker
+
+from src.schemas import OrderCreateSchema, OrderResponseSchema
+from src.services import OrderService
+
+
+class OrderController:
+    """Orchestrates order creation and the live seller notification."""
+
+    def __init__(self, order_service: OrderService, broker: SSEBroker) -> None:
+        """Wire the order service and the SSE broker.
+
+        Args:
+            order_service (OrderService): Order business logic.
+            broker (SSEBroker): Fan-out broker for live notifications.
+        """
+        self.order_service = order_service
+        self.broker = broker
+
+    async def create_order(self, data: OrderCreateSchema) -> OrderResponseSchema:
+        """Create an order and notify the seller in real time.
+
+        Args:
+            data (OrderCreateSchema): The order creation payload.
+
+        Returns:
+            The created order.
+        """
+        order = await self.order_service.create(data)
+        await self.broker.publish(
+            str(order.seller_id),   # channel = id of whoever gets the notice
+            {"order_id": str(order.id), "total": str(order.total)},
+            event="order_created",
+            id=str(order.id),
+        )
+        return order
+```
+
+The heart of it is the `broker.publish(...)` call, argument by argument:
+
+- **1st argument (`str(order.seller_id)`)** — the **channel**. Sends the event
+  to every stream subscribed to that id (here, the seller's devices). This is
+  why the subscribe endpoint uses the user's id as the channel: both sides must
+  agree on the same string.
+- **2nd argument (the dict)** — the **payload** (SSE `data`). A non-string
+  object becomes JSON automatically (see [Anatomy](#anatomy-of-an-event)).
+- **`event="order_created"`** — the event **name**; the front listens with
+  `addEventListener("order_created", ...)`.
+- **`id=str(order.id)`** — becomes `Last-Event-ID`, so the client can resume
+  from the right spot if it reconnects.
+
+Notice the controller **never** touches `EventStream` or an HTTP response: it
+just hands the event to the broker, which handles the fan-out. Publishing is
+fire-and-forget.
+
+The provider builds the controller with its service and the broker injected —
+the same `get_broker` from Step 1:
+
+```python
+# src/api/dependencies/controllers.py
+from fastapi import Depends
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.api.dependencies.resources import get_broker
+from src.api.dependencies.services import get_order_service
+from src.controllers import OrderController
+from src.services import OrderService
+
+
+def get_order_controller(
+    order_service: OrderService = Depends(get_order_service),
+    broker: SSEBroker = Depends(get_broker),
+) -> OrderController:
+    """Build an OrderController with its service and the SSE broker."""
+    return OrderController(order_service, broker)
+```
+
+The router just receives the controller via `Depends` and delegates — no
+business rule, no loose `publish` in the route:
+
+```python
+# src/api/routers/orders.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.controllers import get_order_controller
+from src.controllers import OrderController
+from src.schemas import OrderCreateSchema, OrderResponseSchema
+
+router = APIRouter()
+
+
+@router.post("/orders")
+async def create_order(
+    data: OrderCreateSchema,
+    controller: OrderController = Depends(get_order_controller),
+) -> OrderResponseSchema:
+    """Create an order; the seller gets a live SSE notification."""
+    return await controller.create_order(data)
+```
+
+The seller with `GET /feed` open receives it instantly:
+
+```text
+event: order_created
+id: 9f3a...
+data: {"order_id": "9f3a...", "total": "149.90"}
+```
+
+!!! tip "Publishing from outside the request (queue, task, webhook)"
+    `broker.publish` is just a coroutine — call it from anywhere that has the
+    broker: a FastStream consumer, a TaskIQ task, a webhook. It only reaches
+    who is **connected right now** (the channel registration drops on
+    disconnect); for a **durable** notification, persist it in the database and
+    treat SSE as the live layer on top. In multi-worker mode (Redis), `publish`
+    reaches the worker the client is pinned to — see below.
+
+### Multi-worker: Redis bridge (ready, no extra code)
+
+An in-memory `SSEBroker` lives in **one** worker — with `--workers N` a
+`publish` only reaches the clients pinned to that process. Give the broker a
+Redis client and the **same `broker`** publishes via Redis `PUBLISH`; a
+background task (`run()`) `PSUBSCRIBE`-s and relays to **each** worker's local
+streams. Same call site, now horizontal.
+
+Use the SDK's **`AsyncRedisManager`** (`[cache]` extra) to open the connection —
+it's the same managed client (connect/disconnect/health-check) that cache,
+sessions and feature flags use; no raw `redis.asyncio`:
+
+```python
+# src/api/app.py
+import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+from src.core.settings import settings
+
+cache = AsyncRedisManager(**settings.redis_kwargs())
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Connect Redis, wire the cross-worker broker, run its fan-out loop."""
+    await cache.connect()
+    broker = SSEBroker(redis=cache.client, channel_prefix="orders-api:sse")
+    app.state.broker = broker
+    task = asyncio.create_task(broker.run())
+    try:
+        yield
+    finally:
+        task.cancel()
+        await broker.aclose()
+        await cache.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+# broker.publish(...) on any worker -> reaches ALL workers
+```
+
+What each part does:
+
+- `AsyncRedisManager(**settings.redis_kwargs())` — the SDK's managed Redis
+  client. `redis_kwargs()` comes from the `RedisSettings` mixin (URL +
+  `decode_responses`).
+- `await cache.connect()` **first** — before that, `cache.client` raises
+  `RuntimeError`. That's why the broker is built **inside the lifespan**, not at
+  module import.
+- `SSEBroker(redis=cache.client, ...)` — `cache.client` is the underlying raw
+  `redis.asyncio.Redis`; the broker uses it for `PUBLISH`/`PSUBSCRIBE`.
+- `channel_prefix="orders-api:sse"` — the service's namespace in Redis. Pub/sub
+  is **instance-wide**: it ignores the DB index (`SELECT`), so two services on
+  the same Redis, even on different DBs, with the same prefix subscribe to the
+  same `<prefix>:*` pattern and receive each other's `publish`/`broadcast`.
+  Give each service its own prefix. A nested prefix (`app` next to
+  `app:chat`) is safe since 0.340.0: the `app:*` pattern still receives
+  `app:chat`'s messages, but each envelope carries the prefix that published
+  it and the broker drops the ones that are not its own. A publisher from
+  before 0.340.0 (an envelope without the field), mid rolling deploy, is still
+  delivered. With Redis and the default `"sse"` prefix, the broker logs a
+  `WARNING` at boot saying so.
+- `run()` accepts only the envelope `publish` writes: a message that does not
+  decode (not JSON, not an object, a field of the wrong type) becomes a
+  `WARNING` carrying the channel and the error type — not the content — and is
+  skipped. The loop keeps delivering the rest.
+- `app.state.broker = broker` — the same wiring as **Step 1**, so the endpoints'
+  `get_broker` stays identical.
+- `asyncio.create_task(broker.run())` — background task that subscribes to Redis
+  and relays each event to the worker's local streams. On teardown: cancel the
+  task, close the broker, disconnect Redis.
+
+!!! tip "Start simple, scale later"
+    Without Redis, `SSEBroker()` already covers a single process. When you need
+    multiple workers/hosts, just pass the `AsyncRedisManager`'s `cache.client`
+    and start `run()` in the lifespan — no endpoint changes, `publish` becomes
+    cross-process for free. `AsyncRedisManager` comes from the `[cache]` extra
+    (`uv add "tempest-fastapi-sdk[cache]"`).
+
+### Multi-worker without Redis: bridge over RabbitMQ
+
+The built-in bridge (`SSEBroker.run()`) is **Redis-only** — the `redis=` param
+takes no other transport. If you **already run RabbitMQ** and don't want Redis
+just for this, you can build the cross-worker fan-out by hand: each worker keeps
+an in-memory `SSEBroker()` (no `redis=`), and a RabbitMQ subscriber in each
+worker relays the event to the **local** `broker.publish`.
+
+The piece that makes the broadcast work is the **fanout exchange**: every
+message published to it is copied to **all** bound queues. Each worker declares
+an **exclusive** queue (gone when the worker dies), so all of them receive every
+event — unlike RabbitMQ's default (work-queue), where only **one** consumer
+would get the message.
+
+```python
+# src/api/app.py
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from faststream.rabbit import ExchangeType, RabbitExchange, RabbitQueue
+
+from tempest_fastapi_sdk import SSEBroker
+from tempest_fastapi_sdk.queue import MessageBroker
+
+from src.core.settings import settings
+
+broker = SSEBroker()                                 # in-memory, one per worker
+mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)   # [queue] extra
+
+sse_exchange = RabbitExchange("sse.fanout", type=ExchangeType.FANOUT)
+worker_queue = RabbitQueue("", exclusive=True, auto_delete=True)
+
+
+@mq.broker.subscriber(worker_queue, sse_exchange)    # mq.broker = FastStream's RabbitBroker
+async def _fan(evt: dict) -> None:
+    """Relay one fanned-out event to this worker's local SSE streams."""
+    await broker.publish(evt["channel"], evt.get("data", ""), event=evt.get("event"))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    await mq.connect()          # opens the connection and starts the subscriber
+    app.state.broker = broker   # the same get_broker the endpoints use resolves this
+    try:
+        yield
+    finally:
+        await mq.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+```
+
+What each part does:
+
+- `SSEBroker()` with no `redis=` — fan-out **local** to the worker (only the streams pinned to it).
+- `RabbitExchange(..., type=FANOUT)` + `RabbitQueue("", exclusive=True, auto_delete=True)`
+  — the exchange copies to every bound queue; each worker declares its own, so
+  they all receive every event.
+- `@mq.broker.subscriber(worker_queue, sse_exchange)` — `mq.broker` is
+  FastStream's `RabbitBroker` (the escape hatch). The `MessageBroker.on(...)`
+  facade doesn't expose fanout, so we drop to the raw broker here.
+- `await mq.connect()` in the lifespan starts the consumer; `mq.disconnect()` stops it.
+
+The domain publishes **to the exchange** (not to `broker.publish` directly) — so
+it reaches every worker:
+
+```python
+import asyncio
+from uuid import UUID
+
+from src.queue import mq
+
+sse_exchange = "sse.fanout"
+
+user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
+order_id = UUID("9f3a6e1c-2d4b-4f8a-b1c7-5e0d9a3b2c41")
+
+
+async def main() -> None:
+    """Run this example."""
+    # from any worker/handler:
+    await mq.broker.publish(
+        {
+            "channel": str(user_id),
+            "event": "order_created",
+            "data": {"order_id": str(order_id)},
+        },
+        exchange=sse_exchange,
+    )
+
+
+asyncio.run(main())
+```
+
+!!! tip "Redis is still the simpler path"
+    RabbitMQ needs this fanout exchange + per-worker exclusive queue to replicate
+    what Redis pub/sub (`SSEBroker.run()`) does in one line. Prefer RabbitMQ when
+    it's **already** your infra; otherwise Redis (`[cache]`) is fewer moving parts.
+
+## Authentication
+
+Here's the SSE gotcha: the browser's native `EventSource` **can't** send
+a header. No `Authorization: Bearer` on the handshake. A stream route
+guarded by the usual `current_user_dependency()` answers `401` to **every**
+browser client, even right after a successful login.
+
+The old way out was putting the access token in the URL
+(`?access_token=...`). It works, but the access token is valid on the
+**whole API**, and URLs end up in access logs, history and the `Referer`
+header. The SDK ships the right path ready-made: a **stream ticket**.
+
+### The ready router: `auth_service.sse_router(...)`
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.services import auth_service   # your UserAuthService instance
+
+broker = SSEBroker()
+
+
+def create_app() -> FastAPI:
+    """Build the app with the authenticated stream under /api/sse."""
+    app = FastAPI()
+    app.include_router(auth_service.sse_router(broker), prefix="/api")
+    return app
+```
+
+That mounts two routes:
+
+| Route | Authenticates with | Answers |
+| --- | --- | --- |
+| `POST /api/sse/ticket` | `Authorization: Bearer` or the login cookie | `{"ticket": "...", "expires_in": 60}` |
+| `GET /api/sse/stream?ticket=...` | the ticket | the SSE stream on channel `str(user.id)` |
+
+Your code publishes to the user's channel as always —
+`await broker.publish(str(user.id), {...}, event="notice")` — and the event
+reaches the stream that user opened.
+
+On the frontend, ask for the ticket with your normal HTTP client and open
+the `EventSource` with it:
+
+```javascript
+async function openEvents(accessToken) {
+  const response = await fetch("/api/sse/ticket", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const { ticket } = await response.json();
+  const events = new EventSource(
+    `/api/sse/stream?ticket=${encodeURIComponent(ticket)}`,
+  );
+  events.onerror = () => {
+    events.close();
+    setTimeout(() => openEvents(accessToken), 1000);
+  };
+  return events;
+}
+```
+
+!!! info "Why a ticket and not the access token"
+    The ticket is a JWT with `typ="stream"`, signed with the same secret as
+    the access token, carrying the channel in the `ch` claim and living
+    **60 seconds**. Every bearer dependency in the SDK
+    (`current_user_dependency`, `make_bearer_token_dependency`) refuses that
+    `typ`, so a ticket copied out of a log opens **that** stream for a
+    minute and calls nothing else — it can't even buy another ticket. It
+    isn't single-use: within that minute it opens the stream as many times
+    as it's presented.
+    Measured in `tests/sse/test_router.py` (`TestTicketIsNotASession`,
+    `TestTicketIssuance`, `test_a_ticket_opens_the_stream_more_than_once`).
+
+    The channel comes **from inside** the signed ticket: the client doesn't
+    pick which channel it joins, and the stream route opens no database
+    session.
+
+!!! warning "A reconnect needs a fresh ticket"
+    The ticket is checked when the stream **opens**: an open stream isn't
+    cut when the ticket expires (measured: 1 s ticket, an event published
+    2 s later arrives). But the `EventSource` automatic reconnect reuses the
+    same URL, and after 60 s gets a `401` (measured on the server). Per the
+    HTML spec — not measured in a browser — the browser *fails the
+    connection*, no retry, when the response isn't `200`, which is why the `onerror` above closes, asks for a new ticket and reopens.
+
+!!! check "A deactivated account stops at once"
+    `POST /ticket` goes through the same active-account check as
+    `current_user_dependency`: a deactivated account gets `403`
+    `ACCOUNT_INACTIVE` and no new ticket. A stream it already had open keeps
+    going until the next reconnect.
+
+### Clients that send a header
+
+A client that **can** send a header (mobile app, `fetch` reading the
+stream) doesn't need the ticket: `GET /stream` also accepts
+`Authorization: Bearer <access token>`, and the login cookie when
+`AUTH_TOKEN_DELIVERY` is `"cookie"` or `"both"`. Header and cookie don't
+leak into the URL, so they're always on.
+
+### Migrating a client that already sends `?access_token=`
+
+If a frontend in production already opens `/stream?access_token=...`, turn
+on compatibility while it migrates:
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.services import auth_service   # your UserAuthService instance
+
+broker = SSEBroker()
+
+
+def create_app() -> FastAPI:
+    """Accept the old client while the frontend moves to the ticket."""
+    app = FastAPI()
+    app.include_router(
+        auth_service.sse_router(broker, allow_access_token_query=True),
+        prefix="/api",
+    )
+    return app
+```
+
+The old path still checks the signature, `typ="access"` and the active
+account — the refresh token doesn't get in. But it's the access token in the
+URL, valid on the whole API until it expires: **turn it off** once no client
+sends it anymore.
+
+!!! tip "No database session stays pinned to the stream"
+    A per-request session closes when the response ends, and an SSE
+    response only ends when the client leaves. Guarding the stream with
+    `current_user_dependency(session_dependency=...)` kept **one session
+    open per connected client**, until the disconnect (measured on fastapi
+    0.141.1). `sse_router` loads the user in a session of its own that closes
+    before the stream starts, and the ticket path doesn't open one at all.
+    Measured in `TestStreamHoldsNoSession`.
+
+### Channel, prefix and lifetime
+
+```python
+# src/api/app.py
+from datetime import timedelta
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.db.models import UserModel
+from src.services import auth_service   # your UserAuthService instance
+
+broker = SSEBroker()
+
+
+def tenant_channel(user: UserModel) -> str:
+    """One stream per company, not per user."""
+    return f"tenant:{user.tenant_id}"
+
+
+def create_app() -> FastAPI:
+    """Per-tenant stream under /api/events, with a 30 s ticket."""
+    app = FastAPI()
+    app.include_router(
+        auth_service.sse_router(
+            broker,
+            channel_for=tenant_channel,
+            prefix="/events",
+            ticket_ttl=timedelta(seconds=30),
+        ),
+        prefix="/api",
+    )
+    return app
+```
+
+- `channel_for` — user → channel. Default `str(user.id)`.
+- `prefix` / `tag` — where the routes mount and the OpenAPI tag. Default
+  `"/sse"` / `"SSE"`.
+- `ticket_ttl` — ticket lifetime. Default `DEFAULT_SSE_TICKET_TTL` (60 s);
+  under 1 s raises `ValueError`.
+- `ticket_param` — query parameter name. Default `"ticket"`.
+- `session_dependency`, `strict`, `legacy_claims` — the same as
+  `current_user_dependency`, applied to `POST /ticket`.
+
+The broker can be a factory (`lambda request: request.app.state.broker`)
+when it's born in `create_app`.
+
+### Without `UserAuthService`: `make_sse_router`
+
+`sse_router` is `make_sse_router` with the service's pieces already wired.
+With another auth, pass the pieces yourself:
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import SSEBroker, make_sse_router
+
+from src.api.dependencies.auth import get_current_user, jwt
+
+broker = SSEBroker()
+
+
+def create_app() -> FastAPI:
+    """Stream authenticated by ticket only."""
+    app = FastAPI()
+    app.include_router(
+        make_sse_router(broker, tokens=jwt, current_user=get_current_user),
+        prefix="/api",
+    )
+    return app
+```
+
+`tokens` is the `JWTUtils` that signs your access token, and `current_user`
+the dependency guarding `POST /ticket`. Without `fallback_user`, **only** the
+ticket opens the stream; pass a *soft* dependency (one that returns `None`
+instead of raising) to also accept a header or cookie.
+
+!!! info "Under the hood: `query_param`"
+    `current_user_dependency`, `make_jwt_user_dependency` and
+    `make_bearer_token_dependency` still accept `query_param=` (lookup order
+    header → cookie → query string). It's the piece
+    `allow_access_token_query` uses. For SSE, prefer `sse_router`.
+
+## Aligned with tempest-react-sdk
+
+`tempest-react-sdk`'s `createEventStream` / `useEventStream`
+([repo](https://github.com/mauriciobenjamin700/tempest-react-sdk))
+consumes these endpoints with built-in exponential-backoff reconnect:
+
+```typescript
+import { createEventStream } from "tempest-react-sdk";
+
+const stream = createEventStream<{ text: string }>("/feed", {
+    withCredentials: true,        // sends the auth cookie on the handshake
+    namedEvents: ["notice"],      // <- matches publish(event="notice")
+    onMessage: (m) => console.log(m.event, m.data),  // data already JSON-parsed
+});
+// stream.close() to tear down; stream.reconnect() to force a reconnect
+```
+
+!!! tip "Heartbeat: comment vs a `ping` event"
+    By default `EventStream`'s heartbeat is a **comment** — `EventSource`
+    ignores it, so the react-sdk does not even need `heartbeatEvents`. For a
+    **named**, visible heartbeat, pass
+    `heartbeat_event=ServerSentEvent(data="ping", event="ping")` to
+    `EventStream` (or to `SSEBroker`, which forwards it to every stream) and
+    set `heartbeatEvents: ["ping"]` on the front end (its default). Publishing
+    the `ping` by hand becomes unnecessary.
+
+Alignment points:
+
+- `publish(event="x")` ↔ `namedEvents: ["x"]` + `onMessage`.
+- non-string `data` becomes JSON ↔ the react default parser decodes JSON.
+- `id=` ↔ `Last-Event-ID` resent on reconnect (resume where you left off).
+- cookie auth ↔ `withCredentials: true`.
+
+## Recap
+
+- `EventStream` (one per connection) + `.response()` — an SSE endpoint with headers set (`sse_response` is the low-level primitive underneath).
+- Tie the producer to the connection with `on_disconnect=` (on `EventStream.response`, `sse_response` or `broker.response`) — no hand-rolled `try/finally`.
+- Queue is **bounded** (`max_queue`, default `1000`) + `overflow` (`drop_oldest`/`drop_newest`/`block`) prevents leaks from slow clients; `dropped_events` counts the discards.
+- `publish(data, event=, id=, retry=)` covers the 4 spec fields; non-string `data` becomes JSON.
+- Heartbeat: `heartbeat_seconds` decides **when**, `heartbeat_event` decides **what**. The default is a comment (invisible to EventSource); pass a `ServerSentEvent` (or a callable, resolved per beat) for a `ping` the client listens to; `None` on `heartbeat_seconds` disables it.
+- Broadcast = `SSEBroker`; `broker.response(channel)` does register + response + unregister; publish from controllers/tasks/queues with `broker.publish(channel, ...)`; multi-worker = pass a Redis client + start `broker.run()` in the lifespan.
+- A global notice = `broker.broadcast(...)`: one event to every channel, including on the other workers (reserved `__broadcast__` channel, already reached by the existing `PSUBSCRIBE`). `local_channels()` lists this worker's live channels.
+- Auth: `auth_service.sse_router(broker)` — `POST /sse/ticket` with the session, `GET /sse/stream?ticket=` with the ticket (`typ="stream"`, 60 s, valid on no other route). Header and cookie also open the stream; `?access_token=` only with `allow_access_token_query=True`, to migrate.
+- `tempest-react-sdk` `createEventStream`/`useEventStream` consumes with reconnect; `namedEvents` ↔ `publish(event=)`.

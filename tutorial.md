@@ -1,0 +1,1123 @@
+# Tutorial — construindo a feature *Users*
+
+Este tutorial passa pela conexão da feature **Users** usando todas as convenções do SDK. Ao final você terá:
+
+- Um `UserModel` SQLAlchemy com colunas de auditoria + soft-delete
+- Schemas Pydantic para create / update / response / filter
+- Um repository, service e controller herdando das bases do SDK
+- Routers com controllers injetados via `Depends`
+- Subclasses de exceção de domínio serializadas pelo exception handler do SDK
+- Um `GET /users` paginado e um `POST /users` de signup (com hashing de senha via `PasswordUtils`)
+
+!!! tip "Para os impacientes"
+    Se você só quer copiar o layout, gere-o: `tempest new my_service`. A CLI entrega o mesmo esqueleto que este tutorial percorre.
+
+!!! info "Já tem fluxo de auth pronto"
+    Este tutorial mostra como **construir** signup/login com `BaseRepository` + `BaseService` + `BaseController` — é a base para qualquer feature. Para o **fluxo de auth completo** (signup + activation por email + login com JWT + reset de senha), o SDK fornece `UserAuthService` + `make_auth_router` desde v0.31.0; pule para a receita **[Auth flow »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md)** quando quiser usar o atalho em vez de implementar manualmente.
+
+!!! info "Acompanhando"
+    Snippets de arquivo inteiro — os que começam com um comentário de caminho de arquivo isolado (ex.: `# src/db/models/users/user.py`) — são **standalone**: cole cada um no caminho indicado. Blocos marcados com `(continued)` ou com um comentário `# ... above ...` **anexam** ao arquivo mostrado logo acima, não são um arquivo novo. A árvore completa do projeto é o [layout obrigatório de projeto da Arquitetura →](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/architecture.md#layout-obrigatorio-do-projeto), e o porquê de cada forma está em [Arquitetura recomendada →](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recommended-architecture.md).
+
+Vamos construir uma feature `Users` completa do zero, de ponta a ponta. Todo arquivo abaixo é algo que você escreve no seu projeto; os primitivos do SDK são importados.
+
+### 1. Layout do projeto
+
+O layout canônico que todo serviço Python distribuído contra este SDK deve adotar — `main.py` é um one-liner, `src/server.py` expõe tanto `run()` quanto o `app` importável (ou o re-exporta de `src/api/app.py`), `api/dependencies/` é **sempre um pacote** (auth + provedores factory), `controllers/` é obrigatório mesmo quando é só um pass-through fino, `repositories/` vive **sob** `db/`, e cada camada com classe guarda seus módulos num **pacote de contexto** — aqui, `users/` —, uma classe por módulo.
+
+```text
+my-service/
+├── alembic.ini                   # gerado pelo AlembicHelper.init
+├── alembic/                      # env.py + versions/ (uma revision por mudança de schema)
+├── main.py                       # one-liner: from src.server import run; run()
+└── src/
+    ├── __init__.py               # re-exporta `run` de .server
+    ├── server.py                 # uvicorn.run(...) programático + `app` no nível do módulo
+    ├── core/
+    │   ├── __init__.py
+    │   ├── settings.py           # Settings(mixins..., BaseAppSettings)
+    │   └── exceptions/           # um módulo por status: not_found.py, conflict.py, ...
+    ├── db/
+    │   ├── __init__.py           # re-exporta BaseModel + todo modelo
+    │   ├── configs/
+    │   │   ├── __init__.py
+    │   │   └── migrations.py     # run_migrations: sync_schema_async() no lifespan
+    │   ├── models/
+    │   │   ├── __init__.py       # from .users import UserModel as UserModel
+    │   │   └── users/
+    │   │       ├── __init__.py
+    │   │       └── user.py       # UserModel(BaseModel)
+    │   └── repositories/
+    │       ├── __init__.py
+    │       └── users/
+    │           ├── __init__.py
+    │           └── user.py       # UserRepository(BaseRepository[UserModel])
+    ├── schemas/
+    │   ├── __init__.py
+    │   └── user.py               # UserCreate/Update/Response/Filter
+    ├── services/
+    │   ├── __init__.py
+    │   └── users/
+    │       ├── __init__.py
+    │       └── user.py           # UserService — lógica de negócio
+    ├── controllers/
+    │   ├── __init__.py
+    │   └── users/
+    │       ├── __init__.py
+    │       └── user.py           # UserController — orquestração (pass-through fino OK)
+    ├── scripts/
+    │   ├── __init__.py
+    │   └── composition.py        # build_user_controller — o grafo montado num lugar só
+    └── api/
+        ├── __init__.py
+        ├── app.py                # create_app() — middleware, CORS, exception handlers, build_api_router()
+        ├── docs/                 # texto do OpenAPI, um módulo por router
+        │   ├── __init__.py
+        │   ├── base.py           # EndpointDoc — TypedDict de summary + description
+        │   └── users.py          # um EndpointDoc por handler de routers/users.py
+        ├── routers/
+        │   ├── __init__.py
+        │   ├── api.py            # build_api_router(): o único lugar com /api
+        │   └── users.py          # TempestAPIRouter, um por arquivo, só com o próprio prefixo
+        └── dependencies/         # SEMPRE um pacote, nunca um módulo plano
+            ├── __init__.py
+            ├── auth.py           # dependências X-Token / current_user / require_role
+            ├── resources.py      # singletons de infra (db/storage/mail) + get_db/get_session
+            └── controllers.py    # providers get_<X>_controller, que chamam o composition root
+```
+
+
+Cada `__init__.py` reexporta os vizinhos com import **relativo** (`from .user import UserModel as UserModel`), e o resto do código importa pelo **pacote da camada**: `from src.schemas import UserCreateSchema`, nunca `from src.schemas.user import UserCreateSchema`. Isso mantém os refactors indolores — mova arquivos sem quebrar imports. O `tempest lint-layers` confere as duas coisas (`IMP001`, `IMP002`) e a forma das camadas (`LAY001`, `LAY002`).
+
+Se o seu serviço ainda não tem controllers/services/repositories, **ainda assim distribua pacotes vazios com os nomes certos** — a uniformidade importa mais do que pular um diretório. Descarte `db/`, `utils/`, `queue/` ou `tasks/` só quando o serviço genuinamente não precisa de persistência/utilitários/mensageria.
+
+### 2. Settings, server, factory do app & entrypoint
+
+Cinco arquivos mapeiam em cinco responsabilidades:
+
+| Arquivo | Responsabilidade |
+| --- | --- |
+| `src/core/settings.py` | `Settings(...mixins, BaseAppSettings)` — uma fonte única de verdade para env vars. |
+| `src/api/dependencies/resources.py` | singletons de infra (`db = AsyncDatabaseManager(**settings.database_kwargs())`, e — opt-in — storage/mail) + provedores `get_db` / `get_session`. Dono único do ciclo de vida dos recursos. |
+| `src/api/app.py` | factory `create_app()` magra — middleware + CORS + exception handlers + includes de router + instância `app` no nível do módulo. **Importa** os recursos de `dependencies`, não os constrói. |
+| `src/server.py` | `run()` invocando `uvicorn.run("src.api.app:app", ...)` programaticamente, mais re-exporta `app` para que runners externos (gunicorn, CLI do uvicorn) possam importá-lo. |
+| `main.py` | Entry point do processo — uma única linha sob `if __name__ == "__main__":` chamando `run()`. |
+
+```python
+# src/core/settings.py
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    DatabaseSettings,
+    EmailSettings,
+    JWTSettings,
+    ServerSettings,
+    UploadSettings,
+)
+
+
+class Settings(
+    ServerSettings,
+    DatabaseSettings,
+    JWTSettings,
+    EmailSettings,
+    UploadSettings,
+    BaseAppSettings,
+):
+    """All environment-driven configuration lives here.
+
+    Each mixin brings its own variables: SERVER_*, DATABASE_*, JWT_*,
+    SMTP_* and UPLOAD_*. Declare here only what no mixin models.
+    """
+
+
+settings: Settings = Settings()
+```
+
+Cada mixin traz as próprias variáveis, com default e validação —
+`JWT_SECRET`, `SMTP_HOST` e `UPLOAD_DIR` vêm de `JWTSettings`,
+`EmailSettings` e `UploadSettings`, sem redeclarar nada. A tabela com todos os
+mixins, o `.env.example` e o mapper `*_kwargs()` de cada um estão em
+[Settings](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/settings.md).
+
+!!! warning "`BaseAppSettings` é sempre a **última** base"
+
+    Todo mixin já herda `BaseAppSettings`; listado antes de um mixin, o
+    import falha com
+    `TypeError: Settings: BaseAppSettings must be the LAST base — ...`.
+    A mensagem completa e a regra estão em
+    [Settings](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/settings.md#listar-baseappsettings-por-ultimo).
+
+Os recursos de infra (o banco agora; storage / mail quando entrarem) vivem
+em `src/api/dependencies/resources.py`, construídos **uma vez** e acessados
+por provedores `get_*`. O `app.py` só os **importa** — assim ele não engorda
+com construção de recursos:
+
+```python
+# src/api/dependencies/resources.py
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+from src.core.settings import settings
+
+db = AsyncDatabaseManager(**settings.database_kwargs())
+get_session = db.session_dependency   # Depends(get_session) -> AsyncSession
+
+
+def get_db() -> AsyncDatabaseManager:
+    """Return the process-wide database manager."""
+    return db
+```
+
+```python
+# src/api/app.py
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    RequestIDMiddleware,
+    make_health_router,
+    register_exception_handlers,
+)
+
+from src.api.dependencies.resources import db
+from src.api.routers import build_api_router
+from src.core.settings import settings
+from src.db.configs import run_migrations
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    """Migrate the schema and connect on startup, dispose on shutdown."""
+    await run_migrations(settings.DATABASE_URL)
+    await db.connect()
+    try:
+        yield
+    finally:
+        await db.disconnect()
+
+
+def create_app() -> FastAPI:
+    """Build and configure the FastAPI app."""
+    app = FastAPI(title="my-service", version="0.1.0", lifespan=lifespan)
+
+    app.add_middleware(RequestIDMiddleware)
+    register_exception_handlers(app)
+
+    # Meta endpoints sit at the root prefix.
+    app.include_router(make_health_router(db=db, version="0.1.0"))
+
+    # Business endpoints sit under /api/<domain>, mounted once by build_api_router().
+    app.include_router(build_api_router())
+    return app
+
+
+app = create_app()
+```
+
+```python
+# src/server.py
+from tempest_fastapi_sdk import run_server
+
+from src.api.app import app  # noqa: F401 — re-exported for external runners
+from src.core.settings import settings
+
+
+def run() -> None:
+    """Start the API server programmatically."""
+    run_server("src.api.app:app", settings=settings)
+
+
+__all__: list[str] = ["app", "run"]
+```
+
+`run_server` lê `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` de `settings` (caindo para `127.0.0.1` / `8000` / `False`) e encaminha quaisquer kwargs extras (`workers=`, `log_config=`, `ssl_*=`) literalmente para `uvicorn.run`. Veja a [receita de ponto de entrada programático do servidor](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http/extras.md#ponto-de-entrada-programatico-do-servidor).
+
+```python
+# src/__init__.py
+from .server import run as run
+
+__all__: list[str] = ["run"]
+```
+
+```python
+# main.py
+from src.server import run
+
+if __name__ == "__main__":
+    run()
+```
+
+Defaults de bind: `127.0.0.1` para serviços internos (o default `ServerSettings.SERVER_HOST` do SDK), `0.0.0.0` só quando o serviço é consumido por uma origem separada (ex.: um dev server de frontend). Nunca inicie o uvicorn via `subprocess.run(["uvicorn", ...])` — sempre passe por `run_server` (ou `uvicorn.run("src.api.app:app", ...)` diretamente) para que reload, tratamento de sinais e shutdown gracioso se comportem corretamente.
+
+### 3. Modelo ORM
+
+```python
+# src/db/models/users/user.py
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class UserModel(BaseModel):
+    """One row per registered user.
+
+    Inherits from BaseModel, so it automatically gets:
+    - id (UUID v4, cross-DB portable via sqlalchemy.Uuid)
+    - is_active (bool, soft-delete flag)
+    - created_at, updated_at (timezone-aware TIMESTAMP, set by Python AND
+      the DB so the instance attribute is populated right after flush)
+    - __tablename__ = "user" (auto: class name without "Model" suffix,
+      snake-cased; override by assigning __tablename__ explicitly)
+    - __eq__/__hash__ by (type, id) so the same row across sessions
+      compares equal
+    - to_dict(exclude, include, remove_none) and
+      update_from_dict(data, allowed_fields) helpers
+    """
+
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    email: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+```
+
+Reexporte, do pacote de contexto para cima, sempre relativo:
+
+```python
+# src/db/models/users/__init__.py
+from .user import UserModel as UserModel
+
+__all__: list[str] = ["UserModel"]
+```
+
+```python
+# src/db/models/__init__.py
+from .users import UserModel as UserModel
+
+__all__: list[str] = ["UserModel"]
+```
+
+```python
+# src/db/__init__.py
+from tempest_fastapi_sdk import BaseModel as BaseModel
+
+from .models import UserModel as UserModel
+
+__all__: list[str] = ["BaseModel", "UserModel"]
+```
+
+> **Dica:** Sempre importe os modelos em `src/db/__init__.py`. O SQLAlchemy precisa "ver" todo modelo antes de `BaseModel.metadata` ficar completa, para que o autogenerate do Alembic (e o `create_tables()` das fixtures de teste) funcionem corretamente.
+
+#### O schema no banco: migrations
+
+A tabela `user` nasce de uma migration do Alembic, não de `create_tables()`
+no lifespan — `create_tables()` não acrescenta coluna em tabela que já
+existe, então o schema para de acompanhar o model na segunda subida. Gere o
+ambiente do Alembic uma vez, com o `AlembicHelper.init` do SDK em vez de
+escrever `alembic.ini` e `alembic/env.py` à mão:
+
+```python
+# scripts/alembic_init.py
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini").init(
+    "alembic",
+    metadata_module="src.db",
+    metadata_attr="BaseModel",
+)
+```
+
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/installation.md#cli).
+
+```bash
+uv run python scripts/alembic_init.py
+uv run tempest db revision -m "create users"
+```
+
+O `metadata_module` é `src.db` porque é ele que reexporta `BaseModel` e
+importa todo model. A revision é obrigatória: sem nenhuma, o passo seguinte
+não cria tabela.
+
+O lifespan do passo 2 chama `run_migrations`, na forma que o `tempest new`
+gera:
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
+
+
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
+```
+
+```python
+# src/db/configs/__init__.py
+from .migrations import ALEMBIC_INI_PATH as ALEMBIC_INI_PATH
+from .migrations import run_migrations as run_migrations
+
+__all__: list[str] = ["ALEMBIC_INI_PATH", "run_migrations"]
+```
+
+`sync_schema_async()` cobre banco vazio (roda todas as revisions), banco
+criado antes do Alembic (carimba a revision base e migra o resto) e banco já
+migrado (aplica só o que falta). O porquê de cada caminho está em
+[Migrations »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/migrations.md).
+
+### 4. Schemas
+
+!!! info "Instalação"
+    Os schemas abaixo usam `EmailStr`, que precisa do validador `email-validator` — traga-o com o extra `[email]` (`uv add "tempest-fastapi-sdk[email]"`) ou via `pydantic[email]`. Mais adiante o service usa `PasswordUtils` (hashing bcrypt), que depende do extra `[auth]` — `uv add "tempest-fastapi-sdk[auth]"`.
+
+O padrão de nomenclatura recomendado: um schema `*Create`, `*Update`, `*Response` e `*Filter` por recurso. Todo campo leva `title`, `description` e `examples` — é o que o `openapi.json` mostra ao cliente, e o `assert_schema_metadata` (e o `tempest lint-schemas`) cobra.
+
+```python
+# src/schemas/user.py
+from pydantic import EmailStr, Field
+
+from tempest_fastapi_sdk import (
+    BasePaginationFilterSchema,
+    BaseResponseSchema,
+    BaseSchema,
+)
+
+
+class UserCreateSchema(BaseSchema):
+    """Payload for POST /users."""
+
+    name: str = Field(
+        min_length=1,
+        max_length=64,
+        title="Name",
+        description="Display name.",
+        examples=["Ana"],
+    )
+    email: EmailStr = Field(
+        title="E-mail",
+        description="Login e-mail; unique.",
+        examples=["ana@example.com"],
+    )
+    password: str = Field(
+        min_length=8,
+        max_length=128,
+        title="Password",
+        description="Plain password, hashed before storage.",
+        examples=["s3cret-pass"],
+    )
+
+
+class UserUpdateSchema(BaseSchema):
+    """Partial payload for PATCH /users/{id}. Every field optional."""
+
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        title="Name",
+        description="New display name.",
+        examples=["Ana Maria"],
+    )
+    email: EmailStr | None = Field(
+        default=None,
+        title="E-mail",
+        description="New login e-mail.",
+        examples=["ana.maria@example.com"],
+    )
+
+
+class UserResponseSchema(BaseResponseSchema):
+    """Outbound representation.
+
+    Inherits id/is_active/created_at/updated_at from BaseResponseSchema
+    (timestamps already normalized to UTC by the field validator).
+    """
+
+    name: str = Field(title="Name", description="Display name.", examples=["Ana"])
+    email: EmailStr = Field(
+        title="E-mail",
+        description="Login e-mail.",
+        examples=["ana@example.com"],
+    )
+
+
+class UserFilterSchema(BasePaginationFilterSchema):
+    """Query-string filters for GET /users.
+
+    Inherits page/page_size/order_by/ascending/is_active from
+    BasePaginationFilterSchema. ``name`` is an ILIKE %name% search,
+    ``email`` an exact match.
+    """
+
+    name: str | None = Field(
+        default=None,
+        title="Name",
+        description="Part of the name to search for.",
+        examples=["an"],
+    )
+    email: EmailStr | None = Field(
+        default=None,
+        title="E-mail",
+        description="Exact e-mail to match.",
+        examples=["ana@example.com"],
+    )
+```
+
+```python
+# src/schemas/__init__.py
+from .user import UserCreateSchema as UserCreateSchema
+from .user import UserFilterSchema as UserFilterSchema
+from .user import UserResponseSchema as UserResponseSchema
+from .user import UserUpdateSchema as UserUpdateSchema
+
+__all__: list[str] = [
+    "UserCreateSchema",
+    "UserFilterSchema",
+    "UserResponseSchema",
+    "UserUpdateSchema",
+]
+```
+
+### 5. Exceções de domínio
+
+O SDK entrega `NotFoundException`, `ConflictException`, etc. genéricos. Subclasse-os por domínio para que o matching `isinstance` / `except DomainError` fique explícito. `message` / `code` / `status_code` a nível de classe são defaults aos quais o construtor recorre — você também pode sobrescrever qualquer um deles no ponto do raise sem subclassear:
+
+```python
+# src/core/exceptions/not_found.py
+from tempest_fastapi_sdk import NotFoundException
+
+
+class UserNotFoundError(NotFoundException):
+    """Subclass kept only for ``except UserNotFoundError`` matching."""
+
+    message: str = "Usuário não encontrado"
+    code: str = "USER_NOT_FOUND"
+```
+
+```python
+# src/core/exceptions/conflict.py
+from tempest_fastapi_sdk import ConflictException
+
+
+class UserEmailAlreadyTakenError(ConflictException):
+    """Raised when the e-mail is already taken by another user."""
+
+    message: str = "Já existe um usuário com esse e-mail"
+    code: str = "USER_EMAIL_TAKEN"
+```
+
+Um módulo por status: quem procura "o que devolve 409" abre `conflict.py`. O `__init__.py` reexporta, então o import continua `from src.core.exceptions import ...` (o padrão completo está em [Padrão de serviço](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/service-standard.md)):
+
+```python
+# src/core/exceptions/__init__.py
+from .conflict import UserEmailAlreadyTakenError as UserEmailAlreadyTakenError
+from .not_found import UserNotFoundError as UserNotFoundError
+
+__all__: list[str] = ["UserEmailAlreadyTakenError", "UserNotFoundError"]
+```
+
+Para códigos pontuais você não precisa de uma subclasse — passe-os ao construtor:
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import NotFoundException
+
+order_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+
+
+raise NotFoundException(
+    "Pedido não encontrado",
+    code="ORDER_NOT_FOUND",
+    details={"order_id": str(order_id)},
+)
+```
+
+O exception handler do SDK ([`register_exception_handlers`](#2-settings-server-factory-do-app-entrypoint)) os serializa para:
+
+```json
+{
+    "detail": "Usuário não encontrado",
+    "code": "USER_NOT_FOUND",
+    "details": {}
+}
+```
+
+O frontend ramifica no `code`, não na mensagem (que pode estar traduzida).
+
+### 6. Repository
+
+Para CRUD simples você não precisa de uma subclasse nenhuma — instancie `BaseRepository` diretamente e vincule o modelo pelo construtor:
+
+```python
+# anywhere a session is in scope
+
+import asyncio
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+
+
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+repository = BaseRepository(session, model=UserModel)
+
+
+async def main() -> None:
+    """Run this example."""
+    await repository.add(
+        UserModel(
+            email="ana@example.com",
+            name="Ana",
+            password_hash="<bcrypt-hash>",
+        )
+    )
+
+
+asyncio.run(main())
+```
+
+Subclasse quando quiser embutir mensagens específicas de domínio, trocar a exceção de not-found, sobrescrever os métodos de mapeamento ou adicionar queries custom. A assinatura do construtor (não os atributos de classe) é o contrato:
+
+```python
+# src/db/repositories/users/user.py
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+
+from src.core.exceptions import UserNotFoundError
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
+    """Data-access layer for users."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(
+            session,
+            model=UserModel,
+            not_found_exception=UserNotFoundError,
+            not_found_message="Usuário não encontrado",
+            create_conflict_message="Já existe um usuário com esse e-mail",
+            update_conflict_message="Conflito ao atualizar usuário",
+        )
+
+    def map_to_schema(self, instance: UserModel) -> UserResponseSchema:
+        return UserResponseSchema.model_validate(instance)
+
+    def map_to_response(self, instance: UserModel) -> UserResponseSchema:
+        return self.map_to_schema(instance)
+```
+
+Reexporte como no model — `src/db/repositories/users/__init__.py` com `from .user import UserRepository as UserRepository`, e `src/db/repositories/__init__.py` com `from .users import UserRepository as UserRepository`.
+
+O repo base te dá 20+ métodos de graça — veja a [tabela de referência](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/admin-data-api/db.md#tempest_fastapi_sdk.db.repository.BaseRepository) abaixo. Adicione queries custom em cima do mesmo `UserRepository`:
+
+```python
+# src/db/repositories/users/user.py  (continued)
+
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+
+class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
+    # ... __init__ and mappers above ...
+
+    # ──────── custom queries on top of the inherited bulk + read methods ────────
+
+    async def get_by_email(self, email: str) -> UserModel:
+        """Look up a user by email. Raises ``UserNotFoundError`` on miss."""
+        return await self.get({"email": email})
+```
+
+O bloco destacado (sob o comentário divisor) é o que você tipicamente adiciona por projeto — tudo acima dele é o boilerplate de que a classe base já cuida.
+
+### 7. Service
+
+O service é onde as regras de negócio vivem. Ele chama um ou mais repositories e nunca toca em tipos de HTTP ou SQLAlchemy diretamente.
+
+Herde de `BaseService[RepositoryT, ResponseT]`. Fazer isso te dá `get_by_id`, `get_or_none`, `list`, `paginate`, `count`, `exists` e `delete` de graça — cada um já conectado a `repository.map_to_response` (sync ou async). Sobrescreva só os métodos que precisam de lógica de domínio; adicione novos para casos de uso que a base não cobre (signup, reset de senha, etc.):
+
+```python
+# src/services/users/user.py
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseService, PasswordUtils
+
+from src.core.exceptions import UserEmailAlreadyTakenError
+from src.db.repositories import UserRepository
+from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
+
+
+class UserService(BaseService[UserRepository, UserResponseSchema]):
+    """Business logic for the user domain.
+
+    Inherits the canonical read-path methods (``get_by_id`` / ``list`` /
+    ``paginate`` / ``count`` / ``exists`` / ``delete``) from
+    :class:`BaseService` and adds the write-path methods that need
+    domain rules (uniqueness check, password hashing, mass-assignment
+    guard).
+    """
+
+    def __init__(
+        self,
+        repository: UserRepository,
+        *,
+        passwords: PasswordUtils,
+    ) -> None:
+        """Initialize the service.
+
+        Args:
+            repository (UserRepository): User-domain repository.
+            passwords (PasswordUtils): Shared bcrypt helper.
+        """
+        super().__init__(repository)
+        self.passwords: PasswordUtils = passwords
+
+    # ──────── overrides: domain rules live here ────────
+
+    async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
+        """Create a new user, enforcing email uniqueness + hashing the password."""
+        if await self.repository.exists({"email": data.email}):
+            raise UserEmailAlreadyTakenError()
+        instance = self.repository.map_to_model(
+            {
+                **data.to_dict(exclude=["password"]),
+                "password_hash": self.passwords.hash(data.password),
+            },
+        )
+        instance = await self.repository.add(instance)
+        return self.repository.map_to_response(instance)
+
+    async def update(
+        self,
+        user_id: UUID,
+        data: UserUpdateSchema,
+    ) -> UserResponseSchema:
+        """Apply a partial update, whitelisting the columns that may change."""
+        instance = await self.repository.get_by_id(user_id)
+        instance.update_from_dict(
+            data.to_dict(),
+            allowed_fields={"name", "email"},   # prevents mass-assignment
+        )
+        instance = await self.repository.update(instance)
+        return self.repository.map_to_response(instance)
+
+    async def soft_delete(self, user_id: UUID) -> None:
+        """Flip ``is_active=False`` instead of hard-deleting."""
+        await self.repository.soft_delete(user_id)
+```
+
+O service recebe o repository e o `PasswordUtils`, nunca a `AsyncSession` nem outro service — quem monta o grafo é o composition root do passo 9. Reexporte por `src/services/users/__init__.py` e `src/services/__init__.py`, como nas camadas acima (e o controller do passo 8 por `src/controllers/users/__init__.py` e `src/controllers/__init__.py`).
+
+Os métodos que você **não** escreve — `get_by_id(user_id)`, `get_or_none(filters)`, `list(filters=None, order_by=None, ascending=True)`, `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)`, `count(filters)`, `exists(filters)`, `delete(user_id)` — já existem na base, já aguardam um `map_to_response` async, e já retornam o `UserResponseSchema` tipado declarado no parâmetro genérico.
+
+Quando o caso de uso precisa de um pipeline custom (joins, projeções, fan-out transacional), sobrescreva o método herdado. A assinatura continua a mesma, então o controller não percebe:
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk import BaseService
+
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
+
+
+class UserService(BaseService[UserRepository, UserResponseSchema]):
+    # ... __init__ and overrides above ...
+
+    async def list(  # override the inherited pass-through
+        self,
+        filters: dict[str, Any] | None = None,
+        order_by: Any | None = None,
+        ascending: bool = True,
+    ) -> list[UserResponseSchema]:
+        """List active users only — domain rule baked into the base method."""
+        merged: dict[str, Any] = {**(filters or {}), "is_active": True}
+        return await super().list(filters=merged, order_by=order_by, ascending=ascending)
+```
+
+### 8. Controller
+
+Mesmo quando não há orquestração a fazer, `controllers/` existe como um **pass-through fino** para que o grafo de imports fique uniforme entre os serviços. No dia em que um caso de uso precisar coordenar dois services (ou fazer fan-out para uma fila), o controller já está lá.
+
+Herde de `BaseController[ServiceT]` (a forma antiga `BaseController[ServiceT, ResponseT]` continua aceita por compatibilidade, mas os métodos pass-through leem os tipos de resposta e update direto do service). A base encaminha `get_by_id`, `list`, `paginate`, `count`, `update` e `delete` para o service por você — você só declara métodos que adicionam coordenação entre services ou que não existem no service (casos de uso custom como `signup`):
+
+```python
+# src/controllers/users/user.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseController
+
+from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
+from src.services import UserService
+
+
+class UserController(BaseController[UserService]):
+    """Orchestrate user use cases.
+
+    Today every method is a thin pass-through to ``UserService``. As
+    soon as a use case needs to coordinate more than one service —
+    e.g. signup also sends a welcome email and enqueues a CRM sync —
+    the orchestration lives here, not in the router and not in the
+    service.
+    """
+
+    # ──────── new methods for use cases the base doesn't cover ────────
+
+    async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
+        """Create a user and (eventually) trigger downstream side effects."""
+        return await self.service.signup(data)
+
+    async def update(
+        self,
+        user_id: UUID,
+        data: UserUpdateSchema,
+    ) -> UserResponseSchema:
+        """Domain-specific partial update — distinct from the base ``delete``."""
+        return await self.service.update(user_id, data)
+
+    async def soft_delete(self, user_id: UUID) -> None:
+        """Soft-delete instead of the inherited hard ``delete``."""
+        await self.service.soft_delete(user_id)
+```
+
+`get_by_id` / `list` / `paginate` / `count` não são redeclarados — `BaseController` já os expõe. Quando o dia da coordenação entre services chegar, sobrescreva o pass-through no lugar:
+
+```python
+from tempest_fastapi_sdk import BaseController
+
+from src.schemas import UserCreateSchema, UserResponseSchema
+from src.services import UserService
+
+
+class UserController(BaseController[UserService]):
+    # ... methods above ...
+
+    async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
+        """Create the user, send a welcome email, enqueue the CRM sync."""
+        user = await self.service.signup(data)
+        await self.emails.send_welcome(user)            # second dependency
+        await self.tasks.enqueue("crm.user.created", {"id": str(user.id)})
+        return user
+```
+
+A assinatura do router nunca muda — só o corpo do controller cresce.
+
+### 9. Composition root e provedores de dependência
+
+O grafo `repository → service → controller` é montado **num lugar só**, o composition root, com uma função `build_*` por ponto de entrada. O provider de requisição chama essa função com o que o `Depends` resolveu; uma task, um script ou um teste chamam a mesma função. Nenhuma classe sabe montar a si mesma — não há `from_session`.
+
+```python
+# src/scripts/composition.py
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import PasswordUtils
+
+from src.controllers import UserController
+from src.db.repositories import UserRepository
+from src.services import UserService
+
+PASSWORDS: PasswordUtils = PasswordUtils()
+"""Stateless bcrypt helper, built once per process."""
+
+
+def build_user_controller(session: AsyncSession) -> UserController:
+    """Wire repository → service → controller over one session.
+
+    Args:
+        session (AsyncSession): The session the repository reads through.
+
+    Returns:
+        UserController: The controller, fully wired.
+    """
+    repository = UserRepository(session)
+    service = UserService(repository=repository, passwords=PASSWORDS)
+    return UserController(service=service)
+```
+
+```python
+# src/scripts/__init__.py
+from .composition import build_user_controller as build_user_controller
+
+__all__: list[str] = ["build_user_controller"]
+```
+
+`api/dependencies/` é **sempre um pacote**. `auth.py` hospeda as dependências de segredo compartilhado / usuário atual; `resources.py` hospeda os singletons de infra (`db`, e — opt-in — storage/mail) com os provedores `get_db` / `get_session`; `controllers.py` hospeda os providers dos quais os routers dependem. Nunca construa controllers, services ou recursos de infra inline dentro do arquivo do router (nem do `app.py`).
+
+```python
+# src/api/dependencies/controllers.py
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.dependencies.resources import get_session
+from src.controllers import UserController
+from src.scripts import build_user_controller
+
+
+def get_user_controller(
+    session: AsyncSession = Depends(get_session),
+) -> UserController:
+    """Build the user controller for a single request."""
+    return build_user_controller(session)
+```
+
+```python
+# src/api/dependencies/__init__.py
+from .controllers import get_user_controller as get_user_controller
+
+__all__: list[str] = ["get_user_controller"]
+```
+
+### 10. Router
+
+Routers recebem controllers via `Depends` do FastAPI — sem construção inline, sem lógica de negócio, sem chamadas de DB. Um router por arquivo, declarando só o próprio prefixo (`/users`); o `/api` é posto uma vez, no `build_api_router`. Endpoints meta (`/health`, `/tool-spec`) ficam no prefixo raiz.
+
+O texto que o Swagger mostra não fica no router. Ele mora em
+`src/api/docs/users.py`, um `EndpointDoc` por handler, e o router o espalha
+no decorator (`**user_docs.CREATE_USER`). O `EndpointDoc` é o `TypedDict`
+de `summary` + `description` que o `tempest new` já escreve em
+`src/api/docs/base.py` — o porquê está em
+[Padrão de serviço › Texto do OpenAPI fora do router](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/service-standard.md#texto-do-openapi-fora-do-router):
+
+```python
+# src/api/docs/users.py
+from .base import EndpointDoc
+
+CREATE_USER: EndpointDoc = {
+    "summary": "Cadastra um usuário",
+    "description": (
+        "Cria a conta e devolve o usuário. Responde 409 (USER_EMAIL_TAKEN) quando o e-mail já está em uso."
+    ),
+}
+
+
+GET_USER: EndpointDoc = {
+    "summary": "Busca um usuário",
+    "description": (
+        "Devolve o usuário pelo id. Responde 404 (USER_NOT_FOUND) quando ele não existe."
+    ),
+}
+
+
+UPDATE_USER: EndpointDoc = {
+    "summary": "Atualiza um usuário",
+    "description": (
+        "Aplica uma atualização parcial de nome e e-mail."
+    ),
+}
+
+
+DELETE_USER: EndpointDoc = {
+    "summary": "Desativa um usuário",
+    "description": (
+        "Marca o usuário como inativo, sem apagar a linha."
+    ),
+}
+
+
+LIST_USERS: EndpointDoc = {
+    "summary": "Lista usuários",
+    "description": (
+        "Devolve uma página de usuários, filtrada e ordenada pela query string."
+    ),
+}
+
+__all__: list[str] = ["CREATE_USER", "DELETE_USER", "GET_USER", "LIST_USERS", "UPDATE_USER"]
+```
+
+Reexporte o módulo em `src/api/docs/__init__.py`
+(`from . import users as users`).
+
+O router é um `TempestAPIRouter`, não um `fastapi.APIRouter`: o
+`@raises(...)` logo **abaixo** de cada decorator de rota lista as exceções
+que o fluxo levanta, e o `TempestAPIRouter` as transforma no `responses=`
+da rota — um `ErrorResponseSchema` por status, com um exemplo por `code`.
+Num `APIRouter` comum a mesma tag não faz nada
+([Erros da rota](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/service-standard.md#erros-da-rota-tempestapirouter-raises)):
+
+```python
+# src/api/routers/users.py
+from uuid import UUID
+
+from fastapi import Depends, status
+from tempest_fastapi_sdk import BasePaginationSchema, TempestAPIRouter, raises
+
+from src.api.dependencies import get_user_controller
+from src.api.docs import users as user_docs
+from src.controllers import UserController
+from src.core.exceptions import UserEmailAlreadyTakenError, UserNotFoundError
+from src.schemas import (
+    UserCreateSchema,
+    UserFilterSchema,
+    UserResponseSchema,
+    UserUpdateSchema,
+)
+
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/users", tags=["users"])
+
+
+@router.post(
+    "",
+    response_model=UserResponseSchema,
+    status_code=status.HTTP_201_CREATED,
+    **user_docs.CREATE_USER,
+)
+@raises(UserEmailAlreadyTakenError)
+async def create_user(
+    data: UserCreateSchema,
+    controller: UserController = Depends(get_user_controller),
+) -> UserResponseSchema:
+    return await controller.signup(data)
+
+
+@router.get("/{user_id}", response_model=UserResponseSchema, **user_docs.GET_USER)
+@raises(UserNotFoundError)
+async def get_user(
+    user_id: UUID,
+    controller: UserController = Depends(get_user_controller),
+) -> UserResponseSchema:
+    return await controller.get_by_id(user_id)
+
+
+@router.patch("/{user_id}", response_model=UserResponseSchema, **user_docs.UPDATE_USER)
+@raises(UserNotFoundError)
+async def update_user(
+    user_id: UUID,
+    data: UserUpdateSchema,
+    controller: UserController = Depends(get_user_controller),
+) -> UserResponseSchema:
+    return await controller.update(user_id, data)
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    **user_docs.DELETE_USER,
+)
+@raises(UserNotFoundError)
+async def delete_user(
+    user_id: UUID,
+    controller: UserController = Depends(get_user_controller),
+) -> None:
+    await controller.soft_delete(user_id)
+
+
+@router.get(
+    "",
+    response_model=BasePaginationSchema[UserResponseSchema],
+    **user_docs.LIST_USERS,
+)
+async def list_users(
+    filters: UserFilterSchema = Depends(),
+    controller: UserController = Depends(get_user_controller),
+) -> BasePaginationSchema[UserResponseSchema]:
+    result = await controller.paginate(
+        filters=filters.get_conditions(),
+        order_by=filters.order_by,
+        page=filters.page,
+        page_size=filters.page_size,
+        ascending=filters.ascending,
+    )
+    return BasePaginationSchema[UserResponseSchema](**result)
+```
+
+Monte-o no `build_api_router`, o único lugar onde `/api` aparece. O agregador continua um `APIRouter` comum: os erros são montados pelo router em que o handler é registrado, e o `include_router` os leva para cima sem mudança:
+
+```python
+# src/api/routers/api.py
+from fastapi import APIRouter
+
+from .users import router as users_router
+
+API_PREFIX: str = "/api"
+"""Prefix every business route lives under."""
+
+
+def build_api_router() -> APIRouter:
+    """Assemble the router ``create_app`` includes.
+
+    Returns:
+        APIRouter: ``/api`` with every domain router included.
+    """
+    api: APIRouter = APIRouter(prefix=API_PREFIX)
+    api.include_router(users_router)
+    return api
+```
+
+```python
+# src/api/routers/__init__.py
+from .api import build_api_router as build_api_router
+
+__all__: list[str] = ["build_api_router"]
+```
+
+### 11. Paginação
+
+O contrato de paginação é imposto de ponta a ponta pelos primitivos do SDK:
+
+- `UserFilterSchema(BasePaginationFilterSchema)` parseia `?page=&page_size=&order_by=&ascending=&is_active=&name=` da query string e expõe `.get_conditions()` retornando só os filtros de domínio (sem as chaves de paginação).
+- `UserRepository.paginate(...)` roda a query com o dict de filtro + ordenação + offset/limit + contagem, retornando o dict `{items, total, page, page_size, pages}` que você embrulha em `BasePaginationSchema[UserResponseSchema]`.
+- `BasePaginationSchema[UserResponseSchema]` embrulha o resultado para que o OpenAPI documente o formato da resposta corretamente.
+
+```http
+GET /api/users?page=2&page_size=20&order_by=name&ascending=true&is_active=true&name=ana
+```
+
+Retorna:
+
+```json
+{
+    "items": [
+        {"id": "...", "name": "Ana ...", "email": "...", ...},
+        ...
+    ],
+    "total": 142,
+    "page": 2,
+    "page_size": 20,
+    "pages": 8
+}
+```
+
+---
+
+## Revisão
+
+Você conectou a feature **Users** de ponta a ponta, uma camada por vez, cada uma apoiada num primitivo do SDK:
+
+- **Modelo** — `UserModel(BaseModel)` ganha `id` / `is_active` / `created_at` / `updated_at` + helpers de graça.
+- **Schemas** — `UserCreateSchema` / `UserUpdateSchema` / `UserResponseSchema` / `UserFilterSchema` sobre `BaseSchema` / `BaseResponseSchema` / `BasePaginationFilterSchema`.
+- **Exceções** — subclasses de domínio (`UserNotFoundError`, `UserEmailAlreadyTakenError`) serializadas pelo `register_exception_handlers`.
+- **Repository** — `UserRepository(BaseRepository[UserModel])` — 20+ métodos herdados + queries custom.
+- **Service** — `UserService(BaseService[...])` — regras de negócio (unicidade de e-mail, hash de senha) sobre o read-path herdado.
+- **Controller** — `UserController(BaseController[...])` — orquestração (pass-through fino hoje, coordenação amanhã).
+- **Composition root** — `build_user_controller` monta o grafo uma vez; o provider de requisição, uma task e um teste chamam a mesma função.
+- **Router** — endpoints com `UserController` injetado via `Depends`, um router por arquivo, montados sob `/api/users` pelo `build_api_router`.
+- **Layout** — cada camada em pacote de contexto (`users/`), `__init__` relativo, import pelo pacote da camada; o `tempest lint-layers` confere a forma, e a [Arquitetura recomendada](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recommended-architecture.md) explica o porquê de cada regra.
+- **Paginação** — `BasePaginationFilterSchema` → `paginate(...)` → `BasePaginationSchema[UserResponseSchema]` de ponta a ponta.
+
+### Próximos passos
+
+- **[Fluxo de auth »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md)** — troque o `signup` manual pelo `UserAuthService` + `make_auth_router` (signup + ativação por e-mail + login JWT + reset de senha).
+- **[Banco de dados »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md)** — migrations com Alembic, operações em lote e os mixins de auditoria/soft-delete do `BaseRepository`.
+- **[Testes »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/testing.md)** — teste a feature com `pytest` + SQLite in-memory.
+- **[Ponto de entrada do servidor »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http.md)** — middleware, CORS, health, tool-spec e `run_server`.
+- **[Segurança »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/security.md)** — endureça o serviço (rate limit, CSRF, idempotência, limites de corpo).
+- **[Frontend em Python »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/tempestweb-frontend.md)** — dê uma tela a essa API sem escrever JavaScript: o **tempestweb** consome os mesmos schemas com um cliente HTTP tipado, e o SDK serve o build compilado na mesma origem.

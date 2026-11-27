@@ -1,0 +1,827 @@
+# Chat (conversas + mensagens)
+
+Um módulo de chat encadeado pronto sobre os primitivos do SDK
+(`BaseModel` / `BaseRepository` / paginação / SSE). Você herda as tabelas
+concretas, monta o router e ganha conversas, mensagens e entrega em tempo
+real — sem escrever a camada de dados na mão.
+
+O módulo `tempest_fastapi_sdk.chat` traz três peças:
+
+- **Tabelas abstratas** — `BaseConversationModel`,
+  `BaseConversationParticipantModel`, `BaseMessageModel`,
+  `BaseMessageAttachmentModel`, `BaseMessageReactionModel` (+ fábricas
+  `make_*` para testes/scripts).
+- **`ChatService`** — a lógica de negócio: iniciar conversa, postar,
+  responder, editar, apagar para todos, reagir, encaminhar, marcar como
+  lida e administrar o grupo.
+- **`make_chat_router`** — os endpoints HTTP, no mesmo formato de
+  `make_auth_router` / `make_web_push_router`.
+
+!!! info "O que o módulo decide por você"
+    A superfície existe para não deixar cada serviço tomar sozinho as
+    decisões que erram igual em todo lugar:
+
+    - **recibo de leitura é marca d'água no participante**, não uma linha
+      por mensagem por leitor — num grupo de 200 pessoas o caminho óbvio
+      custa 200 linhas *por mensagem*, e marcar a thread como lida vira
+      um bulk insert;
+    - **uma reação por pessoa**, substituída ao reagir de novo — é a
+      `UniqueConstraint(message_id, user_id)`, e alargá-la para incluir o
+      emoji é o que transforma double-tap em duas reações;
+    - **apagar para todos limpa o `body` de verdade** e mantém a linha,
+      para a thread preservar a forma e as respostas continuarem tendo o
+      que citar;
+    - **conversa direta é idempotente por par** — duas threads entre as
+      mesmas duas pessoas é um estado que o usuário não conserta pela UI;
+    - **`client_id` gerado pelo cliente** faz o retry devolver a mensagem
+      que já foi gravada, em vez de postar a segunda.
+
+!!! info "Sem extra"
+    O módulo usa só o núcleo do SDK. Nada de instalar extras — importe e
+    use.
+
+## As tabelas
+
+Como as outras tabelas reutilizáveis do SDK, o SDK entrega a linha
+**abstrata** e o seu projeto entrega a **concreta** (para a FK e o
+`__tablename__` viverem na metadata da aplicação). Escreva-as à mão em
+produção:
+
+```python
+from tempest_fastapi_sdk.chat import (
+    BaseConversationModel,
+    BaseConversationParticipantModel,
+    BaseMessageModel,
+)
+from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+from uuid import UUID
+
+
+class ConversationModel(BaseConversationModel):
+    __tablename__ = "conversations"
+
+
+class ConversationParticipantModel(BaseConversationParticipantModel):
+    __tablename__ = "conversation_participants"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "user_id", name="uq_participant"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+
+class MessageModel(BaseMessageModel):
+    __tablename__ = "messages"
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    sender_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+```
+
+As colunas que essas tabelas trazem — `kind`, `client_id`,
+`reply_to_id`, `forwarded_from_id`, `forward_score`, `edited_at`,
+`revoked_at`, `payload` na mensagem; `role`, `joined_at`, `left_at`,
+`history_from`, `muted_until`, `is_pinned`, `is_archived`,
+`last_read_at`, `last_read_message_id`, `last_delivered_at` no
+participante — são o conjunto mínimo de uma thread entre pessoas. Duas
+delas carregam constraint que **muda o comportamento**, então a classe
+escrita à mão precisa declará-las:
+
+```python
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, Index, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk.chat import BaseMessageModel, BaseMessageReactionModel
+
+
+class MessageModel(BaseMessageModel):
+    """Uma mensagem postada numa conversa."""
+
+    __tablename__ = "messages"
+    __table_args__ = (
+        UniqueConstraint("sender_id", "client_id", name="uq_messages_sender_client"),
+        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    sender_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+
+class MessageReactionModel(BaseMessageReactionModel):
+    """A reação de uma pessoa a uma mensagem."""
+
+    __tablename__ = "message_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", name="uq_reaction_per_user"),
+    )
+
+    message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+```
+
+A primeira constraint é o que faz o retry devolver a linha existente em
+vez de postar a segunda; a segunda é o que faz reagir de novo
+**substituir** em vez de empilhar.
+
+!!! danger "`message_id` do anexo é nullable, e isso é o desenho"
+    Upload e post são **duas chamadas**: um vídeo de 40 MB que falha no
+    último byte não pode levar a legenda junto, e um post repetido não
+    pode reenviar o arquivo. A linha do anexo nasce quando os bytes
+    chegam, e a mensagem que a reivindica pode não existir por mais um
+    minuto — ou nunca, se o remetente desistir. Declarar a coluna
+    `NOT NULL` faz **todo** upload falhar com erro de integridade.
+
+!!! tip "Atalho para testes"
+    Em testes e scripts, as fábricas montam a classe concreta em runtime:
+
+    ```python
+    from tempest_fastapi_sdk.chat import (
+        make_conversation_model,
+        make_conversation_participant_model,
+        make_message_attachment_model,
+        make_message_model,
+        make_message_reaction_model,
+    )
+
+    Conversation = make_conversation_model()
+    Participant = make_conversation_participant_model()
+    Message = make_message_model()
+    Attachment = make_message_attachment_model()
+    Reaction = make_message_reaction_model()
+    ```
+
+    As fábricas já declaram as constraints acima — é a forma mais rápida
+    de ganhar o comportamento certo num teste.
+
+## O serviço
+
+`ChatService` recebe três repositórios obrigatórios — e, opcionalmente,
+`attachments=` e `reactions=` (veja [O router](#o-router)) e um `SSEBroker`
+para tempo real. Para o fluxo de texto abaixo, os três bastam:
+
+```python
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.chat import ChatService
+
+from src.db.models import ConversationModel, ConversationParticipantModel, MessageModel
+
+
+def build_chat_service(session: AsyncSession) -> ChatService:
+    return ChatService(
+        conversations=BaseRepository(session, model=ConversationModel),
+        participants=BaseRepository(session, model=ConversationParticipantModel),
+        messages=BaseRepository(session, model=MessageModel),
+    )
+
+
+async def demo(session: AsyncSession, alice: UUID, bob: UUID) -> None:
+    service = build_chat_service(session)
+
+    # O criador entra como participante automaticamente.
+    conversation = await service.start_conversation(alice, [bob], title="Projeto X")
+
+    await service.post_message(conversation.id, alice, "Bora começar?")
+    await service.post_message(conversation.id, bob, "Bora!")
+
+    page = await service.list_messages(conversation.id, page=1, page_size=20)
+    for message in page["items"]:
+        print(message.sender_id, message.body)
+
+    minhas = await service.list_conversations(alice)  # [] quando não há nenhuma
+```
+
+Rodando o `demo`, os dois `print` emitem cada mensagem em ordem (mais
+antiga primeiro), com o UUID do remetente e o corpo:
+
+```text
+2b1e9a4c-1f0d-4c3a-9c21-8e7f0a1b2c3d Bora começar?
+7d3c5f8a-6b2e-4a19-b0d4-1c2e3f4a5b6c Bora!
+```
+
+`list_messages` devolve o dicionário de paginação offset padrão do SDK
+(`items` já mapeados para `MessageResponseSchema`, `total`, `page`,
+`page_size`, `pages`), ordenado do mais antigo para o mais novo.
+
+### Responder, e o stub que a citação carrega
+
+Responder é a operação mais usada de um chat em grupo. A parte cara não
+é a FK: é o **stub**. A citação tem que renderizar sem um segundo
+round-trip, e reenviar a mensagem-pai inteira (com anexos e reações)
+sob cada resposta multiplica o payload da página.
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema
+
+
+async def responder(
+    service: ChatService,
+    conversation_id: UUID,
+    alice: UUID,
+    bob: UUID,
+) -> None:
+    """Posta uma pergunta e responde citando-a."""
+    parent = await service.post_message(
+        conversation_id,
+        alice,
+        MessageCreateSchema(body="alguém revisa o PR?"),
+    )
+    reply = await service.post_message(
+        conversation_id,
+        bob,
+        MessageCreateSchema(body="eu reviso", reply_to_id=parent.id),
+    )
+
+    assert reply.reply_to is not None
+    print(reply.reply_to.sender_id, reply.reply_to.excerpt, reply.reply_to.revoked)
+```
+
+```text
+2b1e9a4c-1f0d-4c3a-9c21-8e7f0a1b2c3d alguém revisa o PR? False
+```
+
+!!! danger "Apagar a mensagem citada apaga a citação"
+    O campo `revoked` é o que nenhuma implementação ingênua tem. Sem
+    ele, o texto apagado **vaza pelo quote de quem respondeu** — a
+    mensagem some da thread e continua legível dentro de cada resposta.
+    `revoke_message` limpa o `body` e o stub passa a responder
+    `revoked=True` com `excerpt` vazio.
+
+### Idempotência de envio
+
+Um `POST` de mensagem cujo `201` se perde deixa o cliente sem saber se
+ela foi. Reenviar às cegas manda duas; não reenviar perde. A saída é uma
+`client_id` gerada **pelo cliente antes** da requisição:
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema
+
+
+async def reenviar(
+    service: ChatService,
+    conversation_id: UUID,
+    alice: UUID,
+) -> None:
+    """Envia duas vezes com a mesma `client_id` e grava uma só."""
+    payload = MessageCreateSchema(body="oi", client_id="7f3a-1")
+
+    first = await service.post_message(conversation_id, alice, payload)
+    second = await service.post_message(conversation_id, alice, payload)
+
+    assert first.id == second.id  # a mesma linha, não uma cópia
+```
+
+É o mesmo problema que o `IdempotencyMiddleware` resolve para HTTP
+genérico — mas aqui a chave é de domínio: ela sobrevive à mensagem, não
+à requisição, e é única por `(sender_id, client_id)`, então dois
+clientes podem escolher ids independentes.
+
+!!! warning "A unicidade é por remetente, não por conversa"
+    Reaproveitar uma `client_id` numa **outra** conversa é recusado com
+    `422` nomeando o campo. Devolver a mensagem encontrada seria pior do
+    que parece: o cliente receberia `201` com uma linha de outra thread,
+    enquanto a mensagem que ele realmente enviou nunca foi escrita.
+    Gere uma id nova por mensagem (um UUID serve).
+
+### Recibos: marca d'água, não linha por leitor
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def marcar_lida(
+    service: ChatService,
+    conversation_id: UUID,
+    bob: UUID,
+    last_seen_id: UUID,
+) -> None:
+    """Move a marca d'água e lê as contagens derivadas dela."""
+    await service.mark_read(conversation_id, bob)  # tudo, agora
+    await service.mark_read(conversation_id, bob, message_id=last_seen_id)
+
+    page = await service.list_messages(conversation_id, with_receipts=True)
+    print(page["items"][0].receipts)
+```
+
+```text
+delivered=1 read=1 total=1
+```
+
+Uma linha por mensagem por leitor é O(mensagens × participantes): num
+grupo de 200 pessoas são 200 linhas por mensagem. A marca d'água são
+**200 linhas no total**, e marcar como lida é um `UPDATE`. A contagem de
+"quem leu" vira um agregado sobre `last_read_at >= message.created_at`.
+O custo é que "lida" passa a ser por instante, não por mensagem — que é
+exatamente a granularidade que a interface mostra.
+
+`unread_count` sai de graça em `list_conversations`.
+
+### Anexos
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKindEnum
+
+
+async def anexar(
+    service: ChatService,
+    conversation_id: UUID,
+    alice: UUID,
+    storage_key: str,
+    mime_type: str,
+    size_bytes: int,
+) -> None:
+    """Grava o arquivo primeiro e só depois posta a mensagem."""
+    attachment = await service.add_attachment(
+        alice,
+        storage_key=storage_key,  # chave, nunca URL
+        filename="foto.jpg",
+        mime_type=mime_type,
+        size_bytes=size_bytes,
+    )
+
+    await service.post_message(
+        conversation_id,
+        alice,
+        MessageCreateSchema(
+            kind=MessageKindEnum.IMAGE,
+            body="olha isso",  # legenda vive no body
+            attachment_ids=[attachment.id],
+        ),
+    )
+```
+
+`storage_key` é chave, **nunca URL**: URL é capability com TTL, e
+gravá-la congela um acesso na linha. Um id já reivindicado é recusado
+com `404` — o mesmo arquivo não entra em duas mensagens.
+
+`add_attachment` grava a linha com `uploader_id` preenchido, e o
+`post_message` só reivindica o anexo para uma mensagem **do mesmo
+usuário**. Outra pessoa que descubra o id — num log, numa URL
+compartilhada — recebe o mesmo `404` de um id que não existe, então a
+resposta não confirma que o arquivo está lá, e o arquivo continua livre
+para quem o enviou. Se o seu endpoint de upload grava a linha por conta
+própria, preencha `uploader_id` nela: linha sem uploader continua
+reivindicável por qualquer remetente.
+
+!!! warning "`uploader_id` é coluna nova: migre antes de atualizar"
+    A coluna vive em `BaseMessageAttachmentModel`, então toda tabela de
+    anexo concreta a herda e todo `SELECT` nela passa a nomeá-la.
+    Atualizar o pacote sem migrar quebra **toda rota que monta mensagem**,
+    inclusive mensagem de texto sem anexo, porque a resposta lê os anexos.
+    Medido com SQLite, rodando o código novo sobre a tabela antiga:
+
+    ```text
+    POST /api/chat/conversations/{id}/messages -> 500
+    GET  /api/chat/conversations/{id}/messages -> 500
+    sqlite3.OperationalError: no such column: message_attachments.uploader_id
+    ```
+
+    A migração é uma coluna nullable e um índice — o que o
+    `alembic revision --autogenerate` gera sobre a tabela antiga:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+
+    def upgrade() -> None:
+        op.add_column(
+            "message_attachments",
+            sa.Column("uploader_id", sa.Uuid(), nullable=True),
+        )
+        op.create_index(
+            op.f("ix_message_attachments_uploader_id"),
+            "message_attachments",
+            ["uploader_id"],
+            unique=False,
+        )
+
+
+    def downgrade() -> None:
+        op.drop_index(
+            op.f("ix_message_attachments_uploader_id"),
+            table_name="message_attachments",
+        )
+        op.drop_column("message_attachments", "uploader_id")
+    ```
+
+    Troque `message_attachments` pelo `__tablename__` da sua tabela. As
+    linhas que já existiam ficam com `uploader_id` `NULL` e seguem a regra
+    antiga — qualquer remetente as reivindica. É a janela de transição:
+    arquivo enviado antes do deploy e ainda não postado não fica preso, e
+    a janela fecha sozinha quando não sobra linha `NULL` sem mensagem.
+
+!!! tip "Validando o upload de texto"
+    `UploadUtils(verify_magic_bytes=True)` recusa assinatura
+    desconhecida, e `.txt` / `.csv` **não têm assinatura** — num chat
+    isso derruba anexo de texto. Use
+    `require_known_signature=False`: recusa só quando a assinatura
+    **contradiz** o tipo declarado. E para o checksum do arquivo inteiro
+    passe `hasher=hashlib.sha256()`, porque o `content_validator` vê só
+    o primeiro chunk.
+
+### Apagar para todos ≠ deletar a linha
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def apagar_para_todos(
+    service: ChatService,
+    uploads: UploadUtils,
+    message_id: UUID,
+    alice: UUID,
+) -> None:
+    """Revoga a mensagem e apaga os arquivos que ficaram órfãos."""
+    tombstone, orphaned_keys = await service.revoke_message(message_id, alice)
+
+    for key in orphaned_keys:
+        await uploads.delete(key)
+
+    assert tombstone.body == ""
+```
+
+A linha sobrevive (a thread mantém a forma, as respostas mantêm o que
+citar) mas o `body` é **limpo de verdade** — não escondido atrás de um
+flag que a próxima query esquece de filtrar. As chaves de storage saem
+no segundo item da tupla: o SDK não é dono do bucket, e chave esquecida
+é arquivo que sobrevive à mensagem que o justificava.
+
+A lista traz só chave que **nenhuma outra linha de anexo** ainda
+referencia. Encaminhar aponta a cópia para a mesma `storage_key`, então
+revogar a original de uma mensagem encaminhada devolve `[]` — a cópia
+ainda renderiza o arquivo — e a chave sai na revogação que remove a
+última referência. Apagar o que a lista devolve é sempre seguro.
+
+Editar e revogar exigem, além de ser o remetente, que você **ainda
+enxergue** a mensagem: participante ativo da conversa. Quem saiu não
+reescreve nem apaga o que disse lá.
+
+### Reação: uma por pessoa
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def reagir(service: ChatService, message_id: UUID, bob: UUID) -> None:
+    """Reage duas vezes; a segunda substitui a primeira."""
+    await service.react(message_id, bob, "👍")
+    updated = await service.react(message_id, bob, "🎉")
+
+    print([(r.emoji, r.count) for r in updated.reactions])
+```
+
+```text
+[('🎉', 1)]
+```
+
+### Preferências são da sua caixa
+
+Fixar, arquivar e silenciar moram no participante. Escritos na conversa,
+silenciam para todo mundo:
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def organizar_caixa(
+    service: ChatService,
+    conversation_id: UUID,
+    alice: UUID,
+) -> None:
+    """Fixa e arquiva a conversa para uma pessoa só."""
+    await service.set_preferences(conversation_id, alice, is_pinned=True)
+    await service.set_preferences(conversation_id, alice, is_archived=True)
+```
+
+`list_conversations` ordena fixadas primeiro, depois por mensagem mais
+recente, e esconde as arquivadas salvo `include_archived=True`.
+
+### Grupo de verdade
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import (
+    ChatService,
+    ConversationKindEnum,
+    ParticipantRoleEnum,
+)
+
+
+async def administrar_grupo(
+    service: ChatService,
+    alice: UUID,
+    bob: UUID,
+    carol: UUID,
+    dave: UUID,
+) -> None:
+    """Cria o grupo e mexe na composição dele."""
+    group = await service.start_conversation(
+        alice,
+        [bob, carol],
+        kind=ConversationKindEnum.GROUP,
+        title="Projeto X",
+    )
+    await service.add_participants(group.id, alice, [dave])  # history_from = agora
+    await service.set_role(group.id, alice, bob, ParticipantRoleEnum.ADMIN)
+    await service.remove_participant(group.id, alice, dave)
+    await service.leave(group.id, bob)
+```
+
+Quem entra depois **não herda o backlog** por padrão (`history_from` é
+carimbado na entrada); passe `share_history=True` para entregar o
+histórico. Quem sai mantém a linha com `left_at` — senão mensagens
+antigas perdem o nome do remetente. O dono não pode ser removido.
+
+Os papéis seguem uma hierarquia no `set_role`: um admin promove um
+membro a admin, mas só o dono concede `OWNER` ou muda o papel de um
+admin ou do próprio dono. Um admin que tenta rebaixar o dono, ou se
+promover a dono, recebe `ForbiddenException` — senão rebaixar e depois
+remover contornaria a proteção do dono.
+
+!!! tip "`kind` é inferido quando você não diz"
+    Sem `kind`, até duas pessoas vira `DIRECT` e mais que isso vira
+    `GROUP` — que é o que quem nunca ouviu falar da distinção quer
+    dizer. Pedir `DIRECT` **explicitamente** com outra contagem é
+    recusado com `422`.
+
+### Mensagem de sistema
+
+"Ana criou o grupo", "Bruno saiu". Cada mudança de composição posta uma
+mensagem `kind=system` com payload estruturado:
+
+```json
+{"event": "participant_left", "actor_id": "…", "user_ids": ["…"]}
+```
+
+O cliente renderiza **do payload** — assim o texto é localizado e os
+nomes viram link. O `body` que o servidor escreve é fallback para push e
+busca, nunca a representação primária.
+
+### Custo de uma página
+
+`list_messages` resolve a página inteira com um número **fixo** de
+queries — anexos, reações e as mensagens citadas saem em um `IN` cada,
+não um por linha. Medido numa página de 20 mensagens: resolvendo linha a
+linha eram 42 statements; em lote são 4, e continuam 4 quando a página
+cresce. Encaminhar copia a linha do anexo (mesma `storage_key`), nunca
+os bytes.
+
+## O router
+
+`make_chat_router` recebe **como** resolver a sessão, o serviço e o
+usuário autenticado — igual aos outros routers do SDK:
+
+```python
+from collections.abc import AsyncIterator
+from uuid import UUID
+
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk.chat import make_chat_router
+
+from src.api.dependencies.resources import db
+from src.api.dependencies.services import build_chat_service
+
+sessionmaker = db.get_session_context
+
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    async with sessionmaker() as session:
+        yield session
+
+
+def current_user_id() -> UUID:
+    ...  # sua dependência de auth (JWT/sessão) resolvendo o UUID do usuário
+
+
+app = FastAPI()
+app.include_router(
+    make_chat_router(
+        service_factory=build_chat_service,
+        session_factory=get_session,
+        current_user_id=current_user_id,
+    )
+)
+```
+
+Endpoints montados (todos exigem autenticação):
+
+| Método | Rota | Faz |
+| --- | --- | --- |
+| `POST` | `/api/chat/conversations` | Inicia conversa (criador vira participante) |
+| `GET` | `/api/chat/conversations` | Lista as conversas do usuário, fixadas primeiro |
+| `GET` | `/api/chat/conversations/{id}` | Uma conversa com os participantes |
+| `PATCH` | `/api/chat/conversations/{id}` | Edita título ou descrição do grupo |
+| `PUT` | `/api/chat/conversations/{id}/preferences` | Fixa, arquiva ou silencia só para quem chama |
+| `POST` | `/api/chat/conversations/{id}/participants` | Adiciona membros ao grupo |
+| `DELETE` | `/api/chat/conversations/{id}/participants/{participant_id}` | Remove um membro do grupo |
+| `POST` | `/api/chat/conversations/{id}/leave` | Sai da conversa |
+| `POST` | `/api/chat/conversations/{id}/read` | Move a marca de leitura de quem chama |
+| `POST` | `/api/chat/conversations/{id}/messages` | Posta mensagem (só participante) |
+| `GET` | `/api/chat/conversations/{id}/messages` | Pagina o histórico (só participante) |
+| `PATCH` | `/api/chat/messages/{id}` | Edita uma mensagem sua |
+| `DELETE` | `/api/chat/messages/{id}` | Apaga para todos, deixando a lápide |
+| `PUT` | `/api/chat/messages/{id}/reaction` | Reage, substituindo a reação anterior |
+| `DELETE` | `/api/chat/messages/{id}/reaction` | Remove a sua reação |
+| `POST` | `/api/chat/messages/{id}/forward` | Encaminha para outras conversas |
+| `GET` | `/api/chat/conversations/{id}/stream` | SSE de novas mensagens (só participante) |
+
+!!! warning "Reação e anexo precisam dos dois repositórios opcionais"
+    `attachments=` e `reactions=` são opcionais no `ChatService`. Sem
+    `reactions=`, o `PUT /messages/{id}/reaction` responde `422` com
+    `"this chat service was built without a reaction repository"`; sem
+    `attachments=`, postar com `attachment_ids` responde `422` também. Por
+    isso a fábrica de [Tempo real via SSE](#tempo-real-via-sse) passa os
+    cinco repositórios.
+
+!!! warning "Guarda de participante"
+    Postar, ler e assinar exigem que o usuário autenticado seja
+    participante da conversa; caso contrário o router responde `403`.
+
+As rotas que recebem só o id de uma mensagem (`PATCH`/`DELETE
+/messages/{id}`, `PUT`/`DELETE /messages/{id}/reaction` e
+`POST /messages/{id}/forward`) conferem a conversa **da mensagem**: o
+usuário precisa ser participante ativo dela, e a mensagem não pode ser
+anterior ao `history_from` dele. Fora disso a resposta é o mesmo `404`
+de uma mensagem que não existe — corpo idêntico —, para o id não virar
+oráculo de existência. Encaminhar é leitura da original: quem não a
+enxerga não a copia para outra conversa. E responder citando uma
+mensagem anterior ao seu `history_from` também é `404`, porque o stub da
+citação carregaria o trecho do backlog que você não recebeu.
+
+As cópias derivadas seguem a mesma regra para quem lê. Quando um membro
+antigo responde a uma mensagem anterior ao `history_from` de quem está
+lendo, o `reply_to` dessa resposta chega com `excerpt` vazio no histórico
+desse leitor (o `reply_to.created_at` diz quando a citada foi enviada).
+No stream SSE, cada assinante recebe os frames ajustados ao próprio
+`history_from`: edição, reação e revogação de mensagem anterior a ele não
+chegam, e a resposta que cita uma chega com o trecho vazio.
+
+### Limites de entrada
+
+O histórico aceita `page >= 1` e `1 <= page_size <= max_page_size`
+(`MESSAGES_PAGE_SIZE_MAX`, `100`, por padrão); fora disso é `422`. Antes,
+`page_size=0` era um `500` (divisão por zero) e `page_size=-1` virava
+`LIMIT -1`, que o SQLite lê como "sem limite" — 25 de 25 mensagens
+numa página. `ChatService.list_messages` recusa os mesmos valores com
+`ValidationException` quando chamado direto.
+
+Os schemas limitam o tamanho do que um request escreve, e passar do teto
+é `422`:
+
+| Campo | Teto | Constante |
+| --- | --- | --- |
+| `body` (postar e editar) | 65 536 caracteres | `MESSAGE_BODY_MAX_LENGTH` |
+| `attachment_ids` | 32 ids | `MESSAGE_ATTACHMENTS_MAX` |
+| `conversation_ids` (encaminhar) | 20 conversas | `FORWARD_TARGETS_MAX` |
+| `participant_ids` (iniciar, adicionar) | 256 ids | `PARTICIPANT_IDS_MAX` |
+| `title` / `description` | 255 / 512 caracteres | o tamanho da coluna |
+
+Passe `max_page_size=` para `make_chat_router` para mudar o teto da
+página; os outros vivem nos schemas.
+
+## Tempo real via SSE
+
+Injete um `SSEBroker` no serviço e cada mensagem postada também é
+publicada no canal da conversa (`str(conversation_id)`), reaproveitando o
+fan-out SSE que o SDK já tem. Sem broker, o endpoint `/stream` responde
+`404`.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.chat import ChatService
+from tempest_fastapi_sdk.sse import SSEBroker
+
+from src.db.models import (
+    ConversationModel,
+    ConversationParticipantModel,
+    MessageAttachmentModel,
+    MessageModel,
+    MessageReactionModel,
+)
+
+
+broker = SSEBroker()  # single-process; passe redis=<client> para multi-worker
+
+
+def build_chat_service(session: AsyncSession) -> ChatService:
+    return ChatService(
+        conversations=BaseRepository(session, model=ConversationModel),
+        participants=BaseRepository(session, model=ConversationParticipantModel),
+        messages=BaseRepository(session, model=MessageModel),
+        attachments=BaseRepository(session, model=MessageAttachmentModel),
+        reactions=BaseRepository(session, model=MessageReactionModel),
+        broker=broker,
+    )
+```
+
+O cliente assina com um `EventSource` apontando para
+`/api/chat/conversations/{id}/stream` e recebe eventos `message` cujo
+`data` é o JSON de `MessageResponseSchema`:
+
+```text
+event: message
+data: {"id": "7d3c5f8a-...", "conversation_id": "1a2b3c4d-...", "sender_id": "7d3c5f8a-...", "body": "Bora!", "created_at": "2026-07-18T14:32:07Z"}
+```
+
+### O stream não segura sessão de banco
+
+A checagem de participante do `/stream` recebe a sessão do
+`session_factory` como `Depends(..., scope="function")`, que o FastAPI
+**fecha quando o endpoint retorna, antes do primeiro byte**. Uma sessão
+com o escopo padrão ficaria aberta — conexão emprestada do pool,
+transação começada — enquanto o cliente continuasse conectado, e algumas
+centenas de abas ociosas esgotariam o pool. Isso vale para o que o
+router controla: se a sua dependência `current_user_id` abre sessão, ela
+continua aberta pela duração do stream.
+
+### O stream acaba quando a participação acaba
+
+`leave` e `remove_participant` publicam, depois do aviso de sistema, um
+evento `participant.removed` (`PARTICIPANT_REMOVED_EVENT`) cujo `data` é
+o `ParticipantResponseSchema` de quem saiu. O stream de quem ele nomeia
+entrega esse evento e fecha; o `EventSource` tenta reconectar e leva
+`403`. Os outros participantes recebem o evento e seguem conectados.
+
+Para saída que não passa pelo `ChatService` — um script, um `UPDATE`
+direto —, o stream relê a participação numa sessão curta a cada
+`membership_recheck_seconds` (`30.0` por padrão), contados nos frames que
+ele entrega, heartbeat incluído. `None` desliga a releitura e deixa só o
+evento.
+
+!!! tip "`get_session` com sub-dependências e a releitura"
+    A releitura roda com a resposta já saindo, fora da resolução de
+    dependências do FastAPI, então ela abre a sessão chamando
+    `stream_session_factory()`. Por padrão esse é o próprio
+    `session_factory`, desde que ele não receba parâmetro. Se o seu
+    `get_session` recebe `request: Request` ou `Depends(get_database)`,
+    passe um factory sem argumentos para a releitura
+    (`stream_session_factory=db.session_dependency`) — sem ele, com a
+    releitura ligada, o `make_chat_router` recusa a configuração com
+    `ValueError` na montagem, e não no primeiro stream.
+
+Veja a receita de
+**[Server-Sent Events »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sse.md)** para o lado do cliente e a ponte
+Redis multi-worker.
+
+## Recapitulando
+
+- Herde as cinco tabelas abstratas e aponte as FKs para o seu
+  `UserModel` — declarando as duas constraints que mudam comportamento
+  (`(sender_id, client_id)` e `(message_id, user_id)`).
+- `ChatService` cobre iniciar, postar, responder, editar, apagar para
+  todos, reagir, encaminhar, marcar como lida e administrar o grupo;
+  devolve schemas, não ORM.
+- Recibo é **marca d'água no participante**; reação é **uma por
+  pessoa**; revogar **limpa o body** e devolve as chaves de storage para
+  você apagar.
+- `client_id` torna o reenvio idempotente; conversa direta é idempotente
+  por par.
+- `make_chat_router` monta os endpoints com guarda de participante —
+  que considera quem **saiu** como não-participante. Rota que recebe só
+  o id da mensagem confere a conversa dela e responde `404` igual ao de
+  mensagem inexistente.
+- Passe um `SSEBroker` para ganhar entrega em tempo real de graça — o
+  stream não segura sessão de banco e fecha quando a participação acaba.

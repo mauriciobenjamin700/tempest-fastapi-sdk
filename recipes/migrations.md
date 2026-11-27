@@ -1,0 +1,786 @@
+# Migrations
+
+Toda receita de banco assume que o schema já existe. Esta é sobre o passo
+anterior: **como o schema nasce**, e por que a versão escrita à mão desse passo
+é errada de um jeito que fica invisível por semanas.
+
+O SDK entrega o caminho inteiro em um método — `AlembicHelper.sync_schema()` —
+e o resto da página explica o que ele decide, para você reconhecer o estado em
+que seu banco está.
+
+## O bootstrap completo
+
+São três passos, e só o último roda a cada subida. Um projeto gerado pelo
+`tempest new` já sai com os três feitos.
+
+### 1. Gere o ambiente com `AlembicHelper.init`
+
+Não escreva `alembic.ini` nem `alembic/env.py` à mão:
+
+```python
+# scripts/alembic_init.py
+from tempest_fastapi_sdk import AlembicHelper
+
+AlembicHelper("alembic.ini").init(
+    "alembic",
+    metadata_module="src.db.models",
+    metadata_attr="BaseModel",
+)
+```
+
+```bash
+uv run python scripts/alembic_init.py
+```
+
+O `metadata_module` é o módulo que expõe o `BaseModel` com todo model já
+importado — no projeto do `tempest new`, `src.db.models`; num layout em que
+só `src/db/__init__.py` reexporta o `BaseModel`, `src.db`. `tempest db init`
+faz a mesma chamada. Rodando o script acima num diretório
+vazio, o `alembic.ini` gerado é este:
+
+```ini
+[alembic]
+script_location = %(here)s/alembic
+prepend_sys_path = %(here)s
+path_separator = os
+sqlalchemy.url =
+file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(rev)s_%%(slug)s
+timezone = UTC
+
+[post_write_hooks]
+hooks = ruff
+ruff.type = module
+ruff.module = tempest_fastapi_sdk.db._ruff_post_write
+ruff.options = REVISION_SCRIPT_FILENAME
+```
+
+Três coisas nele que a versão escrita à mão costuma errar:
+
+- **`sqlalchemy.url` vazio.** A credencial não entra no controle de versão;
+  a URL chega pelo `db_url=` do `AlembicHelper` ou, sem ele, pela variável
+  `DATABASE_URL` do ambiente.
+- **Nenhuma seção `[loggers]`/`[handlers]`/`[formatters]`.** O `env.py`
+  gerado só chama o `fileConfig` do logging quando a seção existe, então a
+  migration que roda dentro do processo do serviço não reconfigura a árvore
+  de logging que o `configure_logging` já montou. O bloco padrão do
+  `alembic init -t async` traz `[logger_root]` com `level = WARNING`.
+- **`[post_write_hooks]` com `ruff format` e depois `ruff check --fix`**, para
+  a revision gerada já sair lint-clean. O hook procura um `ruff` que rode (no
+  `PATH`, depois no ambiente do Python que roda o Alembic); sem nenhum, como
+  na instalação `[cli-ops]` de servidor, a revision é criada sem formatação e
+  sem mensagem de erro.
+
+O `alembic/env.py` gerado é uma chamada a `run_alembic_env(target_metadata)`
+— veja [O `env.py` gerado](#o-envpy-gerado).
+
+### 2. Gere a revision inicial
+
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/installation.md#cli).
+
+```bash
+uv run tempest db revision -m "initial"
+```
+
+Sem revision nenhuma, o passo 3 não cria tabela: devolve
+`SchemaSyncOutcomeEnum.NO_MIGRATIONS` e deixa o banco como está. Medido num
+SQLite vazio, antes da primeira revision: `outcome: no_migrations`, zero
+tabelas.
+
+### 3. Sincronize o schema no lifespan
+
+A forma é a que o `tempest new` gera — um `run_migrations` em
+`src/db/configs/migrations.py`, com o caminho **absoluto** do `alembic.ini`
+para o lifespan achá-lo de qualquer diretório:
+
+```python
+# src/db/configs/migrations.py
+from pathlib import Path
+
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[3] / "alembic.ini"
+
+
+async def run_migrations(database_url: str) -> SchemaSyncOutcomeEnum:
+    """Bring the database schema to the Alembic head."""
+    return await AlembicHelper(
+        str(ALEMBIC_INI_PATH),
+        db_url=database_url,
+    ).sync_schema_async()
+```
+
+Chame isso do lifespan e o serviço sobe com o schema certo a partir de
+**qualquer** estado inicial:
+
+```python
+# src/api/app.py
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from src.core.settings import settings
+from src.db.configs import run_migrations
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Sync the schema before the first request is served."""
+    outcome = await run_migrations(settings.DATABASE_URL)
+    print(f"schema: {outcome.value}")
+    yield
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
+```
+
+Medido com um model, uma revision inicial e o lifespan acima subindo três
+bancos SQLite: o vazio sai `synced` com `alembic_version` e a tabela; o
+criado antes por `create_tables()` sai `adopted`; a segunda subida do
+primeiro sai `synced` sem mudar nada.
+
+### Nada de `create_tables()` no lifespan
+
+```python
+# src/api/app.py — errado: o schema para de evoluir na segunda subida.
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from src.api.dependencies.resources import db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the tables on every boot."""
+    await db.connect()
+    await db.create_tables()
+    yield
+    await db.disconnect()
+```
+
+A primeira subida funciona, e é por isso que essa forma sobrevive à revisão.
+Coluna nova no model não chega ao banco nas subidas seguintes:
+`create_tables()` é `CREATE TABLE IF NOT EXISTS` — o porquê está em
+[Por que `create_tables()` não serve](#por-que-create_tables-nao-serve). A
+regra é uma só: **no lifespan, `run_migrations`; `create_tables()` só em
+fixture de teste com SQLite em memória**
+([Onde `create_tables()` é legítimo](#onde-create_tables-e-legitimo)).
+
+## De código async, use o método `_async`
+
+O lifespan roda dentro do event loop do uvicorn. Todo método do `AlembicHelper`
+que executa o `alembic/env.py` tem um par `_async` — `upgrade_async`,
+`safe_upgrade_async`, `downgrade_async`, `stamp_async`, `revision_async`,
+`check_async`, `current_async`, `has_existing_schema_async`, `adopt_async`,
+`sync_schema_async`, `squash_async`, `pending_destructive_ops_async` — com a
+mesma assinatura, e é ele que você chama de código async. A única diferença é
+o `bind=` dos leitores, que no par `_async` recebe engine/conexão **async**
+(veja [a revision num readiness probe](#a-revision-num-readiness-probe)).
+
+O motivo é o `env.py` que o SDK gera: ele sobe o engine async com
+`asyncio.run(...)`, e `asyncio.run` não pode ser chamado com um loop já
+rodando. Chamar o método síncrono do lifespan agora falha **na hora**, com a
+instrução certa:
+
+```text
+RuntimeError: AlembicHelper.upgrade() was called from a running event loop. It runs alembic/env.py, which drives migrations with asyncio.run() and cannot nest inside the loop; use `await helper.upgrade_async(...)` instead.
+```
+
+Antes, o mesmo erro saía de dentro do Alembic como `asyncio.run() cannot be
+called from a running event loop`, acompanhado de um
+`RuntimeWarning: coroutine 'run_async_migrations' was never awaited` — e o
+`check()` nem levantava: engolia o erro e respondia `False`, como se o schema
+tivesse driftado.
+
+O método `_async` roda o síncrono numa thread de trabalho, que não tem loop
+próprio, então o `asyncio.run` do `env.py` funciona lá e o loop do serviço
+continua atendendo enquanto a migration roda. Como a thread não depende de
+nada novo no `env.py`, **o `env.py` que você já tem no repositório continua
+funcionando** — não precisa regenerar.
+
+!!! tip "`current()` síncrono continua funcionando no loop"
+    Ler a revision não passa pelo `env.py`: com um driver síncrono instalado
+    (o `sqlite3` da stdlib, ou `psycopg2` no PostgreSQL), `helper.current()`
+    funciona de código async como antes. Só a instalação só-async (`asyncpg`
+    sem driver síncrono) cai no caminho de `asyncio.run` — e aí ele também
+    levanta pedindo `current_async()`.
+
+??? info "Detalhes técnicos: compartilhar a conexão em vez de usar thread"
+    O Alembic tem uma receita oficial para rodar a migration **no próprio
+    loop**: abrir uma `AsyncConnection` e entregar a conexão síncrona que o
+    `run_sync` fornece em `config.attributes["connection"]`. O `env.py` que o
+    SDK gera a partir desta versão aceita isso — quando recebe a conexão,
+    migra nela, sem criar engine nem chamar `asyncio.run`:
+
+    ```python
+    # src/db/shared_connection.py
+    from alembic import command
+    from sqlalchemy.engine import Connection
+    from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+    from tempest_fastapi_sdk import AlembicHelper
+
+    from src.core.settings import settings
+
+
+    async def upgrade_on_shared_connection() -> None:
+        """Run every pending migration on a connection this code owns."""
+        helper: AlembicHelper = AlembicHelper(
+            "alembic.ini",
+            db_url=settings.DATABASE_URL,
+        )
+        config = helper.config
+
+        def _upgrade(connection: Connection) -> None:
+            """Hand the sync connection to env.py and upgrade on it."""
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+
+        engine: AsyncEngine = create_async_engine(settings.DATABASE_URL)
+        async with engine.begin() as conn:
+            await conn.run_sync(_upgrade)
+        await engine.dispose()
+    ```
+
+    Os métodos `_async` **não** usam esse caminho, e o motivo é
+    compatibilidade: o `env.py` gerado antes desta versão ignora
+    `config.attributes` e chama `asyncio.run` de qualquer jeito — dentro do
+    `run_sync` o loop está rodando, e ele falha com o mesmo erro de antes. A
+    thread funciona com qualquer `env.py` já gerado. Use o caminho acima
+    quando precisar que a migration rode na **sua** conexão ou transação, e
+    regenere o `env.py` para isso: rode `tempest db init` num diretório
+    vazio e copie o `alembic/env.py` gerado por cima do seu, conferindo o
+    import de metadata (o default é `from src.db.models import BaseModel`).
+
+    O `env.py` novo também recusa, com mensagem própria, ser executado de
+    dentro de um loop **sem** conexão entregue — o caso de quem chama
+    `command.upgrade` direto de código async.
+
+## A revision num readiness probe
+
+"O banco está na head?" é a pergunta de um readiness probe, e ela roda a cada
+poucos segundos. O `AlembicHelper` entrega o check pronto para o
+`make_health_router`:
+
+```python
+# src/api/health.py
+from fastapi import APIRouter
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager, make_health_router
+
+from src.core.settings import settings
+
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+helper: AlembicHelper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
+
+health_router: APIRouter = make_health_router(
+    db=db,
+    checks={"schema": helper.schema_at_head_check(db)},
+)
+```
+
+`schema_at_head_check(db)` devolve o `Callable[[], Awaitable[bool]]` que o
+`checks=` espera. A cada chamada ele lê a revision com
+`current_async(bind=db.engine)` — o pool que o app já tem aberto, resolvido na
+hora da chamada, por isso o check pode ser montado antes do lifespan conectar
+— e compara com `heads()`. Responde `True` só quando a árvore tem **uma**
+head e o banco está carimbado nela; árvore vazia, banco sem carimbo ou banco
+atrás da head dão `False`, e o readiness responde `503`.
+
+Rodando contra um SQLite com uma revision, antes e depois do
+`upgrade_async()`:
+
+```text
+before upgrade: 503 {'status': 'not_ready', 'checks': {'database': True, 'schema': False}}
+after upgrade: 200 {'status': 'ready', 'checks': {'database': True, 'schema': True}}
+```
+
+Duas coisas tornam isso barato:
+
+- **A leitura não loga.** `current()` e `current_async()` leem a
+  `alembic_version` com um `SELECT` direto, sem montar o `MigrationContext`
+  do Alembic. Até a 0.369.1, cada leitura logava `Context impl ...` e
+  `Will assume ... DDL.` em `INFO` no logger `alembic.runtime.migration` —
+  duas linhas por probe. Com o logger em `INFO`, um `upgrade_async()` seguido
+  de três readiness produz só as linhas do upgrade:
+
+    ```text
+    alembic.runtime.migration Context impl SQLiteImpl.
+    alembic.runtime.migration Will assume non-transactional DDL.
+    alembic.runtime.migration Running upgrade  -> a172a1a0e250, first
+    ```
+
+    `upgrade`, `downgrade` e `stamp` continuam passando pelo Alembic e logando
+    como antes, inclusive com uma leitura rodando em paralelo noutra thread.
+
+- **Com `bind=`, nenhum engine é criado.** Sem argumento, `current()` abre um
+  engine curto a partir da URL e o descarta no fim (e, em instalação
+  só-async, sobe um `asyncio.run` com engine async novo). Com
+  `bind=` — `Engine`/`Connection` no síncrono, `AsyncEngine`/`AsyncConnection`
+  no `_async` —, a leitura usa o que você passou e não cria nem descarta
+  engine; no `_async`, roda no seu loop via `run_sync`, sem thread de
+  trabalho. Vale para `current`, `current_async`, `has_existing_schema` e
+  `has_existing_schema_async`:
+
+    ```python
+    # src/db/revision.py
+    from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
+
+
+    async def stamped_revision(helper: AlembicHelper, db: AsyncDatabaseManager) -> str | None:
+        """Lê a revision carimbada usando o pool do app."""
+        return await helper.current_async(bind=db.engine)
+    ```
+
+!!! note "`version_table` customizada não é lida"
+    A leitura vai na tabela `alembic_version` do schema default da conexão —
+    o que o `env.py` gerado pelo SDK configura, e o que o `current()` sempre
+    leu. Um `env.py` editado à mão com `version_table=` ou
+    `version_table_schema=` no `context.configure` não é visto por ele.
+
+## Os três estados que ele distingue
+
+`sync_schema()` faz uma pergunta que quase todo bootstrap escrito à mão esquece:
+**o banco tem tabelas que o Alembic não criou?**
+
+| Estado inicial | O que roda | Retorno |
+| --- | --- | --- |
+| Banco vazio | `upgrade()` — a revision base cria as tabelas, sem o guard destrutivo | `SchemaSyncOutcomeEnum.SYNCED` |
+| Banco que **precede** o Alembic | carimba a **base**, depois `safe_upgrade()` | `SchemaSyncOutcomeEnum.ADOPTED` |
+| Banco já sob o Alembic | `safe_upgrade()` | `SchemaSyncOutcomeEnum.SYNCED` |
+| Projeto ainda sem nenhuma revision | nada | `SchemaSyncOutcomeEnum.NO_MIGRATIONS` |
+
+O banco vazio é o caso fácil, e é o que faz o resto funcionar: o schema que a
+revision base constrói é, por construção, **o mesmo** que as revisions
+seguintes assumem estar alterando — porque veio delas.
+
+!!! note "Banco vazio passa pelo `drop_column` do histórico"
+    Num banco sem stamp e sem tabela da aplicação, **toda** revision está
+    pendente. O guard do `safe_upgrade` olha o código delas, não o banco: um
+    projeto que algum dia apagou uma coluna seria recusado na primeira
+    subida, antes de criar uma tabela sequer. Por isso esse caminho roda
+    `upgrade()` direto — não há linha para apagar. Nos outros dois estados o
+    banco tem dado, e o guard vale como sempre.
+
+## Por que `create_tables()` não serve
+
+A receita de [Banco de dados](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) diz que `db.create_tables()` é só
+para teste e dev local. Vale a pena dizer também **o que acontece se você
+usar**, porque a proibição sem a consequência não faz ninguém enxergar o
+defeito no próprio código:
+
+!!! danger "`create_all` é `CREATE TABLE IF NOT EXISTS`"
+    Contra uma tabela que **já existe**, `create_tables()` não adiciona coluna
+    nenhuma. Ele não falha, não avisa, e não retorna nada diferente. É um
+    no-op silencioso.
+
+O defeito real, que derrubou um serviço por um dia:
+
+```python
+# scripts/broken_bootstrap.py — o defeito, reproduzido; não é receita.
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
+
+from src.core.settings import settings
+
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+
+
+async def broken_bootstrap() -> None:
+    """Reach the worst possible state: old schema, Alembic reporting head."""
+    helper: AlembicHelper = AlembicHelper(
+        "alembic.ini",
+        db_url=settings.DATABASE_URL,
+    )
+    if await helper.current_async() is None:
+        await db.create_tables()
+        await helper.stamp_async("head")
+        return
+    await helper.safe_upgrade_async()
+```
+
+Cada linha é plausível. Juntas produzem o pior estado possível: **schema velho,
+e o Alembic se declarando em dia.**
+
+```console
+$ alembic current
+a3f9c21e88b4 (head)
+
+$ alembic upgrade head
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+```
+
+Nada a fazer. `alembic history` não acusa nada. Semanas depois, a primeira query
+que usa uma coluna nova estoura longe da causa:
+
+```text
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: messages.edited_at
+```
+
+Do lado do usuário isso aparece como "mandar mensagem parou de funcionar": o
+`GET` do histórico dá 500, e nada no boot avisou.
+
+## Adotar um banco que precede o Alembic
+
+Este é o caso que o código acima tentava tratar. A resposta certa não é
+carimbar `head` — é carimbar a **revision base**:
+
+```python
+# src/db/schema.py
+from tempest_fastapi_sdk import AlembicHelper
+
+from src.core.settings import settings
+
+
+def adopt_existing_database() -> bool:
+    """Bring a pre-Alembic schema under Alembic, without upgrading it."""
+    helper: AlembicHelper = AlembicHelper(
+        "alembic.ini",
+        db_url=settings.DATABASE_URL,
+    )
+    return helper.adopt()
+```
+
+Carimbar a base diz *"a baseline já está aplicada"* — o que é verdade, porque as
+tabelas existem — e deixa **toda revision depois dela pendente**, o que também é
+verdade. O `safe_upgrade()` seguinte roda exatamente essas.
+
+Carimbar `head` diz *"tudo já está aplicado"*, o que é falso para todas menos a
+primeira.
+
+`adopt()` não faz nada quando não é o caso: banco já carimbado não tem o que
+adotar, e banco vazio precisa que a baseline **rode**, não que seja pulada. É
+por isso que `sync_schema()` pode chamá-lo sempre.
+
+!!! tip "Quem responde a pergunta é `has_existing_schema()`"
+    Ele lista as tabelas e desconta `alembic_version`, que o próprio Alembic
+    escreve — a presença dela não diz nada sobre o schema da aplicação.
+
+## Reparar um banco já carimbado errado
+
+Se você já está no estado ruim, o conserto tem dois passos. O primeiro limpa o
+ponteiro; o segundo re-adota corretamente:
+
+```python
+# scripts/repair_schema.py
+from tempest_fastapi_sdk import AlembicHelper, SchemaSyncOutcomeEnum
+
+from src.core.settings import settings
+
+
+def repair() -> SchemaSyncOutcomeEnum:
+    """Clear a wrong stamp and re-adopt the schema from the base."""
+    helper: AlembicHelper = AlembicHelper(
+        "alembic.ini",
+        db_url=settings.DATABASE_URL,
+    )
+    helper.stamp("base")
+    return helper.sync_schema()
+```
+
+`stamp("base")` é diferente de `stamp(helper.base_revision())`: `"base"` é a
+palavra do Alembic para *nenhuma revision aplicada*, e apaga a linha de
+`alembic_version`. Depois disso o banco volta a parecer o que é — schema
+existente, sem ponteiro — e o `sync_schema()` toma o caminho de adoção.
+
+!!! warning "Confira o que está pendente antes de subir"
+    Depois do `stamp("base")`, as revisions entre a base e o head vão rodar
+    contra um schema que talvez já tenha parte delas. Rode
+    `helper.pending_destructive_ops()` e leia o `helper.history()` antes — e
+    tenha backup. `safe_upgrade` recusa migration destrutiva sem `force=True`,
+    o que ajuda, mas não substitui olhar.
+
+## SQLite: migration roda com chave estrangeira desligada
+
+No SQLite, o Alembic altera tabela em **batch mode** (o `env.py` gerado liga
+`render_as_batch=True`): cria uma cópia com o formato novo, copia as linhas,
+**dropa a original** e renomeia a cópia. Com `PRAGMA foreign_keys=ON`, esse
+`DROP TABLE` executa as ações de chave estrangeira da tabela dropada — e um
+filho com `ON DELETE CASCADE` vai junto.
+
+Medido com Alembic 1.19.1 e SQLite 3.47.1, adicionando uma coluna anulável à
+tabela **pai** com `batch_alter_table("org", recreate="always")`:
+
+| `PRAGMA foreign_keys` | Linhas em `member` antes → depois | Erro |
+| --- | --- | --- |
+| `0` | 3 → 3 | nenhum |
+| `1` | 3 → **0** | nenhum |
+
+Por isso os engines que o SDK monta para migrar — o do `env.py` gerado e os
+de leitura do `AlembicHelper` (`current()`, `has_existing_schema()`) —
+**deixam a FK desligada**, enquanto o `AsyncDatabaseManager` a liga por
+padrão. Se você usa a receita de conexão compartilhada
+(`config.attributes["connection"]`, descrita
+[acima](#de-codigo-async-use-o-metodo-_async)), o `env.py` gerado confere o
+pragma da conexão recebida e **recusa** antes de migrar:
+
+```text
+RuntimeError: refusing to run migrations on a SQLite connection with PRAGMA foreign_keys=ON: Alembic batch mode recreates tables, and dropping the old copy of a parent table runs ON DELETE CASCADE on its children, deleting their rows without an error. ...
+```
+
+A saída é migrar numa conexão de um engine sem FK — um manager só para isso:
+
+```python
+# src/db/shared_connection.py
+from alembic import command
+from sqlalchemy.engine import Connection
+from tempest_fastapi_sdk import AlembicHelper, AsyncDatabaseManager
+
+from src.core.settings import settings
+
+
+async def upgrade_on_shared_connection() -> None:
+    """Migra numa conexão sem chave estrangeira conferida."""
+    helper: AlembicHelper = AlembicHelper(
+        "alembic.ini",
+        db_url=settings.DATABASE_URL,
+    )
+    config = helper.config
+
+    def _upgrade(connection: Connection) -> None:
+        """Entrega a conexão ao env.py e migra nela."""
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+
+    migrations_db: AsyncDatabaseManager = AsyncDatabaseManager(
+        settings.DATABASE_URL,
+        sqlite_foreign_keys=False,
+    )
+    await migrations_db.connect()
+    try:
+        async with migrations_db.engine.begin() as conn:
+            await conn.run_sync(_upgrade)
+    finally:
+        await migrations_db.disconnect()
+```
+
+!!! warning "`PRAGMA foreign_keys=OFF` não conserta uma conexão aberta"
+    O SQLite ignora o pragma dentro de uma transação, e a conexão que chega
+    ao `env.py` já está numa. Desligar tem que acontecer na criação do
+    engine (`sqlite_foreign_keys=False`, ou um `create_async_engine(url)`
+    simples), não na conexão.
+
+!!! danger "`env.py` gerado antes desta versão não recusa"
+    A conferência mora no `env.py`, e o seu foi copiado para o repositório
+    quando você rodou `tempest db init`. Se ele recebe a conexão de um
+    `AsyncDatabaseManager` — que agora liga a FK por padrão —, troque a
+    conexão por uma sem FK como acima **e** regenere o `env.py` (rode
+    `tempest db init` num diretório vazio e copie o `alembic/env.py` por
+    cima do seu, conferindo o import de metadata). Quem migra pelo
+    `AlembicHelper` ou pela CLI não é afetado: esses caminhos abrem o
+    próprio engine, sem FK.
+
+## O `env.py` gerado
+
+O `tempest db init` (ou `AlembicHelper.init`) escreve um `alembic/env.py` de
+três instruções — a docstring é a única prosa, sem comentário inline:
+
+```python
+"""Alembic environment script generated by tempest-fastapi-sdk."""
+
+from tempest_fastapi_sdk.db import run_alembic_env
+
+from src.db.models import BaseModel
+
+target_metadata = BaseModel.metadata
+
+run_alembic_env(target_metadata)
+```
+
+Tudo o que o arquivo fazia antes mora agora no `run_alembic_env`: resolver o
+`DATABASE_URL`, os hooks de revisão, o `render_enum_types`, o batch mode, os
+caminhos offline e online e a conexão entregue em
+`config.attributes["connection"]`. Duas razões, as duas vistas em serviço de
+verdade:
+
+- **Cópia drifta.** Um serviço reescreveu o `env.py` à mão para passar no lint,
+  ficou com a própria cópia da lógica do SDK — correção futura não chegava lá —
+  e perdeu no caminho o ajuste de `sys.path`, então `uv run alembic downgrade -1`
+  parou de importar `src`. Com uma chamada ao SDK, a correção chega no upgrade
+  do pacote.
+- **Arquivo cheio não passa no lint em toda configuração.** O diretório
+  `alembic/` ao lado do `pyproject.toml` faz o default do ruff
+  (`src = [".", "src"]`) tratar `alembic` como first-party, e o scaffold do
+  `tempest new` (`src = ["src", "tests"]`) como third-party. O
+  `from alembic import context` cai num bloco de import diferente em cada um,
+  então um dos dois sempre reporta `I001`. O arquivo gerado não importa
+  `alembic`, e ordena igual nos dois.
+
+O guard `tests/test_alembic_env_lint_guard.py` gera o arquivo num projeto
+temporário e roda `ruff check --select E,W,F,I` nas duas configurações (e a
+configuração inteira do scaffold): zero erro e zero comentário inline.
+
+### O CLI puro do Alembic também funciona
+
+O `alembic.ini` gerado traz `script_location = %(here)s/alembic` e
+`prepend_sys_path = %(here)s`, os dois ancorados no diretório do próprio ini.
+Então `uv run alembic upgrade head` e `uv run alembic downgrade -1` importam o
+seu pacote sem o CLI do `tempest`, e um lifespan que passa o caminho absoluto
+do ini (`AlembicHelper("/app/alembic.ini")`) acha os scripts qualquer que
+seja o diretório onde o processo subiu. Até a 0.312.x o ini trazia `alembic`
+e `.`, relativos ao diretório atual, e só funcionava rodado da raiz do
+projeto. Junto vem
+`path_separator = os`: sem ele, o Alembic 1.19.1 emite um
+`DeprecationWarning` sobre o jeito antigo de separar o `prepend_sys_path`, e
+quem roda com `-W error` (ou `filterwarnings = ["error"]`) vê a migration
+falhar.
+
+### Um hook a mais
+
+Os hooks que toda revisão atravessa estão em `DEFAULT_REVISION_HOOKS`.
+Para acrescentar um seu, componha e passe em `process_revision_directives=` —
+o valor substitui o default, então inclua os do SDK:
+
+```python
+"""Alembic environment script with one extra revision hook."""
+
+from collections.abc import Iterable
+
+from alembic.operations.ops import MigrationScript
+from alembic.runtime.migration import MigrationContext
+from tempest_fastapi_sdk.db import (
+    DEFAULT_REVISION_HOOKS,
+    compose_hooks,
+    run_alembic_env,
+)
+
+from src.db.models import BaseModel
+
+
+def skip_empty_revisions(
+    context: MigrationContext,
+    revision: str | Iterable[str | None],
+    directives: list[MigrationScript],
+) -> None:
+    """Não escreve arquivo quando o autogenerate não acha mudança."""
+    script = directives[0]
+    if script.upgrade_ops is not None and script.upgrade_ops.is_empty():
+        directives[:] = []
+
+
+run_alembic_env(
+    BaseModel.metadata,
+    process_revision_directives=compose_hooks(
+        *DEFAULT_REVISION_HOOKS,
+        skip_empty_revisions,
+    ),
+)
+```
+
+Medido contra PostgreSQL 16: depois do `upgrade head`, um
+`alembic revision --autogenerate` sem mudança no model não escreve arquivo.
+
+!!! tip "Já tem um `env.py` gerado antes?"
+    Ele continua funcionando. Para passar a receber as correções do SDK,
+    troque o conteúdo pelas três instruções acima (mantendo o **seu** import
+    de metadata) e acrescente `prepend_sys_path = %(here)s` e `path_separator = os`
+    à seção `[alembic]` do `alembic.ini`. As migrations já escritas não
+    mudam: `op.replace_enum` e `op.drop_enum_type` são registrados quando o
+    `env.py` importa `tempest_fastapi_sdk.db`.
+
+## O arquivo de cada revisão
+
+`tempest db revision -m "Cria tabela de anotações"` (e
+`AlembicHelper.revision`) escreve:
+
+```text
+alembic/versions/2026_10_11_2317-c16a7545f8f9_cria_tabela_de_anotacoes.py
+```
+
+- **Nome em ASCII.** A mensagem é dobrada para ASCII só para montar o nome do
+  arquivo, então `alembic/versions/` não tem módulo com acento; a docstring
+  da migration começa com a mensagem como você escreveu, com acento.
+- **Nenhuma linha de comentário.** O `tempest db init` grava um
+  `script.py.mako` do SDK, sem o `# revision identifiers` do template do
+  Alembic, e a revisão remove os marcadores
+  `# ### commands auto generated by Alembic ###` que o autogenerate põe em
+  volta das operações.
+
+!!! note "Com o `alembic revision` puro"
+    O template novo vale (sai sem `# revision identifiers`), mas o nome mantém
+    o acento e os marcadores continuam: medido com
+    `alembic revision --autogenerate -m "Cria anotações"`, o arquivo saiu
+    `..._cria_anotações.py` com os quatro marcadores. Use `tempest db revision`.
+
+!!! tip "Projeto inicializado antes disso?"
+    O nome em ASCII e a remoção dos marcadores já valem, porque estão no
+    `tempest db revision`. Para o template sem comentário, troque o
+    `alembic/script.py.mako` pelo do SDK:
+
+    ```bash
+    uv run python -c "from importlib import resources; print(resources.files('tempest_fastapi_sdk.db._alembic_templates').joinpath('script.py.mako').read_text())" > alembic/script.py.mako
+    ```
+
+## Onde `create_tables()` é legítimo
+
+Em teste e em dev local descartável — onde o banco nasce e morre no mesmo
+processo, e não existe migration para driftar:
+
+```python
+# tests/conftest.py
+from collections.abc import AsyncIterator
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+
+@pytest.fixture
+async def session() -> AsyncIterator[AsyncSession]:
+    """Yield a session over a fresh in-memory schema."""
+    db: AsyncDatabaseManager = AsyncDatabaseManager(
+        "sqlite+aiosqlite:///:memory:"
+    )
+    await db.create_tables()
+    async with db.get_session_context() as opened:
+        yield opened
+    await db.drop_tables()
+```
+
+A razão técnica de funcionar aqui e não em produção é a mesma nos dois casos:
+`create_all` só sabe criar o que falta. Num banco que acabou de nascer, "o que
+falta" é tudo — então ele acerta. Num banco que já rodou, "o que falta" é
+nenhuma tabela, mas possivelmente várias colunas — e coluna ele não olha.
+
+!!! check "Recap"
+    - `alembic.ini` e `alembic/env.py` saem do `AlembicHelper.init(...)` (ou
+      `tempest db init`), nunca à mão; sem revision inicial o
+      `sync_schema_async()` devolve `NO_MIGRATIONS` e não cria tabela.
+    - No lifespan, `run_migrations` (o `sync_schema_async()` do scaffold);
+      nunca `create_tables()`.
+    - `sync_schema()` é o bootstrap inteiro: distingue banco vazio, banco que
+      precede o Alembic e banco já migrado, e devolve qual caminho tomou.
+    - No banco vazio a árvore inteira roda sem o guard destrutivo (não há
+      dado a perder); com tabela da aplicação, `drop_*` pendente ainda
+      levanta `DestructiveMigrationError` sem `force=True`.
+    - De código async (lifespan, endpoint), chame o par `_async`
+      (`await helper.sync_schema_async()`); o método síncrono levanta com um
+      loop rodando, nomeando o `_async` a usar.
+    - Para readiness, `helper.schema_at_head_check(db)` no `checks=` do
+      `make_health_router`: lê a revision pelo pool do app
+      (`current_async(bind=db.engine)`), sem criar engine e sem logar.
+    - `create_tables()` é `CREATE TABLE IF NOT EXISTS` — **no-op silencioso**
+      numa tabela existente. Nunca é o passo que faz um schema evoluir.
+    - Ao adotar um schema existente, carimbe a **revision base**
+      (`helper.base_revision()`, ou simplesmente `helper.adopt()`), nunca
+      `head`.
+    - Para reparar um `stamp("head")` errado: `stamp("base")` e depois
+      `sync_schema()`.
+    - `create_tables()` fica legítimo onde não há migration para driftar:
+      teste e SQLite in-memory.
+    - No SQLite, migration roda em conexão **sem** chave estrangeira: o
+      batch mode recria a tabela e o cascade apagaria os filhos. O `env.py`
+      gerado recusa conexão entregue com a FK ligada.
+    - O `env.py` gerado é uma chamada a `run_alembic_env`: correção do SDK
+      chega no upgrade do pacote, e o arquivo passa no ruff sem comentário
+      inline. `prepend_sys_path = %(here)s` deixa o CLI puro do Alembic importar o
+      seu pacote.
+
+## Veja também
+
+- [Banco de dados »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) — sessão, repository, `AsyncDatabaseManager`.
+- [CLI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli.md) — `tempest db upgrade`, `revision`, `stamp`, `check`.
+- [Deploy seguro »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/deploy-safety.md) — `safe_upgrade` e o gate de drift na CI.

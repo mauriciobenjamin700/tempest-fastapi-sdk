@@ -1,0 +1,832 @@
+# Chat (conversations + messages)
+
+A ready threaded-chat module over the SDK primitives (`BaseModel` /
+`BaseRepository` / pagination / SSE). You inherit the concrete tables,
+mount the router, and get conversations, messages and real-time delivery
+— without hand-writing the data layer.
+
+The `tempest_fastapi_sdk.chat` module ships three pieces:
+
+- **Abstract tables** — `BaseConversationModel`,
+  `BaseConversationParticipantModel`, `BaseMessageModel`,
+  `BaseMessageAttachmentModel`, `BaseMessageReactionModel` (+ `make_*`
+  factories for tests/scripts).
+- **`ChatService`** — the business logic: start a conversation, post,
+  reply, edit, delete for everyone, react, forward, mark read and run
+  the group.
+- **`make_chat_router`** — the HTTP endpoints, in the same shape as
+  `make_auth_router` / `make_web_push_router`.
+
+!!! info "What the module decides for you"
+    The surface exists so each service stops taking, alone, the
+    decisions that go wrong the same way everywhere:
+
+    - **a read receipt is a watermark on the participant**, not a row
+      per message per reader — in a group of 200 the obvious path costs
+      200 rows *per message*, and marking the thread read becomes a bulk
+      insert;
+    - **one reaction per person**, replaced on re-react — that is the
+      `UniqueConstraint(message_id, user_id)`, and widening it to
+      include the emoji is what turns a double-tap into two reactions;
+    - **deleting for everyone actually clears `body`** and keeps the
+      row, so the thread holds its shape and replies still have
+      something to quote;
+    - **a direct conversation is idempotent per pair** — two threads
+      between the same two people is a state the user cannot repair from
+      the UI;
+    - **a client-generated `client_id`** makes a retry return the
+      message that was already stored instead of posting a second one.
+
+!!! info "No extra"
+    The module uses only the SDK core. No extras to install — import and
+    go.
+
+## The tables
+
+Like the SDK's other reusable tables, the SDK ships the **abstract** row
+and your project ships the **concrete** one (so the FK and
+`__tablename__` live in the application's metadata). Hand-write them in
+production:
+
+```python
+from tempest_fastapi_sdk.chat import (
+    BaseConversationModel,
+    BaseConversationParticipantModel,
+    BaseMessageModel,
+)
+from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+from uuid import UUID
+
+
+class ConversationModel(BaseConversationModel):
+    __tablename__ = "conversations"
+
+
+class ConversationParticipantModel(BaseConversationParticipantModel):
+    __tablename__ = "conversation_participants"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "user_id", name="uq_participant"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+
+class MessageModel(BaseMessageModel):
+    __tablename__ = "messages"
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    sender_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+```
+
+The columns these tables carry — `kind`, `client_id`, `reply_to_id`,
+`forwarded_from_id`, `forward_score`, `edited_at`, `revoked_at`,
+`payload` on the message; `role`, `joined_at`, `left_at`,
+`history_from`, `muted_until`, `is_pinned`, `is_archived`,
+`last_read_at`, `last_read_message_id`, `last_delivered_at` on the
+participant — are the minimum any thread between people needs. Two of
+them carry a constraint that **changes the behaviour**, so a
+hand-written class has to declare them:
+
+```python
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, Index, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk.chat import BaseMessageModel, BaseMessageReactionModel
+
+
+class MessageModel(BaseMessageModel):
+    """One message posted to a conversation."""
+
+    __tablename__ = "messages"
+    __table_args__ = (
+        UniqueConstraint("sender_id", "client_id", name="uq_messages_sender_client"),
+        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    sender_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+
+class MessageReactionModel(BaseMessageReactionModel):
+    """One person's reaction to one message."""
+
+    __tablename__ = "message_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", name="uq_reaction_per_user"),
+    )
+
+    message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+```
+
+The first constraint is what makes a retry return the existing row
+instead of posting a second one; the second is what makes reacting again
+**replace** rather than stack.
+
+!!! danger "The attachment's `message_id` is nullable, and that is the design"
+    Upload and post are **two calls**: a 40 MB video that fails on the
+    last byte must not take the caption with it, and a repeated post
+    must not re-send the file. The attachment row is written when the
+    bytes land, and the message that claims it may not exist for another
+    minute — or ever, if the sender gives up. Declaring the column
+    `NOT NULL` makes **every** upload fail with an integrity error.
+
+!!! tip "Shortcut for tests"
+    In tests and scripts, the factories build the concrete class at
+    runtime:
+
+    ```python
+    from tempest_fastapi_sdk.chat import (
+        make_conversation_model,
+        make_conversation_participant_model,
+        make_message_attachment_model,
+        make_message_model,
+        make_message_reaction_model,
+    )
+
+    Conversation = make_conversation_model()
+    Participant = make_conversation_participant_model()
+    Message = make_message_model()
+    Attachment = make_message_attachment_model()
+    Reaction = make_message_reaction_model()
+    ```
+
+    The factories already declare the constraints above — the quickest
+    way to get the right behaviour in a test.
+
+## The service
+
+`ChatService` takes three required repositories — plus, optionally,
+`attachments=` and `reactions=` (see [The router](#the-router)) and an
+`SSEBroker` for real time. For the text flow below, the three are enough:
+
+```python
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.chat import ChatService
+
+from src.db.models import ConversationModel, ConversationParticipantModel, MessageModel
+
+
+def build_chat_service(session: AsyncSession) -> ChatService:
+    return ChatService(
+        conversations=BaseRepository(session, model=ConversationModel),
+        participants=BaseRepository(session, model=ConversationParticipantModel),
+        messages=BaseRepository(session, model=MessageModel),
+    )
+
+
+async def demo(session: AsyncSession, alice: UUID, bob: UUID) -> None:
+    service = build_chat_service(session)
+
+    # The creator joins as a participant automatically.
+    conversation = await service.start_conversation(alice, [bob], title="Project X")
+
+    await service.post_message(conversation.id, alice, "Shall we start?")
+    await service.post_message(conversation.id, bob, "Let's!")
+
+    page = await service.list_messages(conversation.id, page=1, page_size=20)
+    for message in page["items"]:
+        print(message.sender_id, message.body)
+
+    mine = await service.list_conversations(alice)  # [] when there are none
+```
+
+Running `demo`, the two `print` calls emit each message in order
+(oldest first), with the sender's UUID and body:
+
+```text
+2b1e9a4c-1f0d-4c3a-9c21-8e7f0a1b2c3d Shall we start?
+7d3c5f8a-6b2e-4a19-b0d4-1c2e3f4a5b6c Let's!
+```
+
+`list_messages` returns the SDK's standard offset-pagination dict
+(`items` already mapped to `MessageResponseSchema`, `total`, `page`,
+`page_size`, `pages`), ordered oldest-first.
+
+### Replying, and the stub the quote carries
+
+Replying is the most-used operation in a group chat. The expensive part
+is not the FK — it is the **stub**. The quote has to render without a
+second round-trip, and re-sending the whole parent (attachments and
+reactions included) under every reply multiplies the page's payload.
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema
+
+
+async def reply_to_a_question(
+    service: ChatService,
+    conversation_id: UUID,
+    alice: UUID,
+    bob: UUID,
+) -> None:
+    """Post a question and reply quoting it."""
+    parent = await service.post_message(
+        conversation_id,
+        alice,
+        MessageCreateSchema(body="anyone reviewing the PR?"),
+    )
+    reply = await service.post_message(
+        conversation_id,
+        bob,
+        MessageCreateSchema(body="I will", reply_to_id=parent.id),
+    )
+
+    assert reply.reply_to is not None
+    print(reply.reply_to.sender_id, reply.reply_to.excerpt, reply.reply_to.revoked)
+```
+
+```text
+2b1e9a4c-1f0d-4c3a-9c21-8e7f0a1b2c3d anyone reviewing the PR? False
+```
+
+!!! danger "Deleting the quoted message deletes the quote"
+    The `revoked` field is the one no naive implementation has. Without
+    it the deleted text **leaks through whoever replied to it** — the
+    message disappears from the thread and stays readable inside every
+    reply. `revoke_message` clears `body`, and the stub then answers
+    `revoked=True` with an empty `excerpt`.
+
+### Idempotent sending
+
+A message `POST` whose `201` is lost leaves the client unable to tell
+whether it landed. Resending blindly posts two; not resending loses it.
+The way out is a `client_id` the **client generates before** the
+request:
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema
+
+
+async def resend(service: ChatService, conversation_id: UUID, alice: UUID) -> None:
+    """Send twice with the same `client_id` and store one row."""
+    payload = MessageCreateSchema(body="hi", client_id="7f3a-1")
+
+    first = await service.post_message(conversation_id, alice, payload)
+    second = await service.post_message(conversation_id, alice, payload)
+
+    assert first.id == second.id  # the same row, not a copy
+```
+
+It is the same problem `IdempotencyMiddleware` solves for HTTP in
+general — but this key is a domain value: it outlives the message rather
+than the request, and it is unique per `(sender_id, client_id)`, so two
+clients can pick ids independently.
+
+!!! warning "Uniqueness is per sender, not per conversation"
+    Reusing a `client_id` in a **different** conversation is refused with
+    a `422` naming the field. Handing back the message that was found
+    would be worse than it sounds: the client would get a `201` carrying
+    a row from another thread, while the message it actually sent was
+    never written. Generate a fresh id per message (a UUID will do).
+
+### Receipts: a watermark, not a row per reader
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def mark_as_read(
+    service: ChatService,
+    conversation_id: UUID,
+    bob: UUID,
+    last_seen_id: UUID,
+) -> None:
+    """Move the watermark and read the counts derived from it."""
+    await service.mark_read(conversation_id, bob)  # everything, now
+    await service.mark_read(conversation_id, bob, message_id=last_seen_id)
+
+    page = await service.list_messages(conversation_id, with_receipts=True)
+    print(page["items"][0].receipts)
+```
+
+```text
+delivered=1 read=1 total=1
+```
+
+A row per message per reader is O(messages × participants): in a group
+of 200 that is 200 rows per message. The watermark is **200 rows in
+total**, and marking read is one `UPDATE`. "Who read it" becomes an
+aggregate over `last_read_at >= message.created_at`. The cost is that
+"read" is per-instant rather than per-message — exactly the granularity
+the UI shows.
+
+`unread_count` comes free from `list_conversations`.
+
+### Attachments
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService, MessageCreateSchema, MessageKindEnum
+
+
+async def attach(
+    service: ChatService,
+    conversation_id: UUID,
+    alice: UUID,
+    storage_key: str,
+    mime_type: str,
+    size_bytes: int,
+) -> None:
+    """Store the file first, post the message afterwards."""
+    attachment = await service.add_attachment(
+        alice,
+        storage_key=storage_key,  # a key, never a URL
+        filename="photo.jpg",
+        mime_type=mime_type,
+        size_bytes=size_bytes,
+    )
+
+    await service.post_message(
+        conversation_id,
+        alice,
+        MessageCreateSchema(
+            kind=MessageKindEnum.IMAGE,
+            body="look at this",  # the caption lives in body
+            attachment_ids=[attachment.id],
+        ),
+    )
+```
+
+`storage_key` is a key, **never a URL**: a URL is a capability with a
+TTL, and storing one freezes an access into the row. An id that was
+already claimed is refused with `404` — the same file never enters two
+messages.
+
+`add_attachment` writes the row with `uploader_id` filled in, and
+`post_message` claims the attachment only for a message **from that same
+user**. Someone else who learns the id — from a log, a shared URL — gets
+the same `404` as for an id that does not exist, so the answer does not
+confirm the file is there, and the file stays free for whoever sent it.
+If your upload endpoint writes the row itself, fill `uploader_id` in: a
+row without an uploader stays claimable by any sender.
+
+!!! warning "`uploader_id` is a new column: migrate before upgrading"
+    The column lives on `BaseMessageAttachmentModel`, so every concrete
+    attachment table inherits it and every `SELECT` on it now names it.
+    Upgrading the package without migrating breaks **every route that
+    builds a message**, a text message without attachments included,
+    because the response reads the attachments. Measured with SQLite,
+    running the new code against the old table:
+
+    ```text
+    POST /api/chat/conversations/{id}/messages -> 500
+    GET  /api/chat/conversations/{id}/messages -> 500
+    sqlite3.OperationalError: no such column: message_attachments.uploader_id
+    ```
+
+    The migration is one nullable column and one index — what
+    `alembic revision --autogenerate` produces against the old table:
+
+    ```python
+    import sqlalchemy as sa
+    from alembic import op
+
+
+    def upgrade() -> None:
+        op.add_column(
+            "message_attachments",
+            sa.Column("uploader_id", sa.Uuid(), nullable=True),
+        )
+        op.create_index(
+            op.f("ix_message_attachments_uploader_id"),
+            "message_attachments",
+            ["uploader_id"],
+            unique=False,
+        )
+
+
+    def downgrade() -> None:
+        op.drop_index(
+            op.f("ix_message_attachments_uploader_id"),
+            table_name="message_attachments",
+        )
+        op.drop_column("message_attachments", "uploader_id")
+    ```
+
+    Replace `message_attachments` with your table's `__tablename__`. Rows
+    that already existed keep `uploader_id` `NULL` and follow the old rule
+    — any sender can claim them. That is the transition window: a file
+    uploaded before the deploy and not yet posted is not stranded, and the
+    window closes by itself once no `NULL` row is left without a message.
+
+!!! tip "Validating a text upload"
+    `UploadUtils(verify_magic_bytes=True)` rejects an unrecognized
+    signature, and `.txt` / `.csv` **have none** — in a chat that
+    refuses text attachments outright. Use
+    `require_known_signature=False`: it rejects only when the signature
+    **contradicts** the declared type. And for a checksum of the whole
+    file pass `hasher=hashlib.sha256()`, because `content_validator`
+    sees only the first chunk.
+
+### Delete for everyone ≠ delete the row
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def delete_for_everyone(
+    service: ChatService,
+    uploads: UploadUtils,
+    message_id: UUID,
+    alice: UUID,
+) -> None:
+    """Revoke the message and delete the files it orphaned."""
+    tombstone, orphaned_keys = await service.revoke_message(message_id, alice)
+
+    for key in orphaned_keys:
+        await uploads.delete(key)
+
+    assert tombstone.body == ""
+```
+
+The row survives (the thread keeps its shape, replies keep something to
+quote) but `body` is **actually cleared** — not hidden behind a flag the
+next query forgets to filter. The storage keys come back as the second
+item of the tuple: the SDK does not own the bucket, and a forgotten key
+is a file that outlives the message that justified it.
+
+The list only carries keys that **no other attachment row** still
+references. A forward points its copy at the same `storage_key`, so
+revoking the original of a forwarded message returns `[]` — the copy
+still renders the file — and the key comes out of the revoke that
+removes its last reference. Deleting what the list returns is always
+safe.
+
+Editing and revoking require, besides being the sender, that you **can
+still see** the message: an active participant of the conversation.
+Someone who left can no longer rewrite or delete what they said there.
+
+### Reactions: one per person
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def react_twice(service: ChatService, message_id: UUID, bob: UUID) -> None:
+    """React twice; the second one replaces the first."""
+    await service.react(message_id, bob, "👍")
+    updated = await service.react(message_id, bob, "🎉")
+
+    print([(r.emoji, r.count) for r in updated.reactions])
+```
+
+```text
+[('🎉', 1)]
+```
+
+### Preferences belong to your inbox
+
+Pinning, archiving and muting live on the participant. Written on the
+conversation they would silence it for everyone:
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import ChatService
+
+
+async def tidy_inbox(
+    service: ChatService,
+    conversation_id: UUID,
+    alice: UUID,
+) -> None:
+    """Pin and archive the conversation for one person only."""
+    await service.set_preferences(conversation_id, alice, is_pinned=True)
+    await service.set_preferences(conversation_id, alice, is_archived=True)
+```
+
+`list_conversations` sorts pinned first, then by newest message, and
+hides archived threads unless `include_archived=True`.
+
+### A real group
+
+```python
+from uuid import UUID
+
+from tempest_fastapi_sdk.chat import (
+    ChatService,
+    ConversationKindEnum,
+    ParticipantRoleEnum,
+)
+
+
+async def run_a_group(
+    service: ChatService,
+    alice: UUID,
+    bob: UUID,
+    carol: UUID,
+    dave: UUID,
+) -> None:
+    """Create the group and change its membership."""
+    group = await service.start_conversation(
+        alice,
+        [bob, carol],
+        kind=ConversationKindEnum.GROUP,
+        title="Project X",
+    )
+    await service.add_participants(group.id, alice, [dave])  # history_from = now
+    await service.set_role(group.id, alice, bob, ParticipantRoleEnum.ADMIN)
+    await service.remove_participant(group.id, alice, dave)
+    await service.leave(group.id, bob)
+```
+
+Someone who joins later does **not** inherit the backlog by default
+(`history_from` is stamped on join); pass `share_history=True` to hand
+it over. Someone who leaves keeps their row with `left_at` — otherwise
+old messages lose the sender's name. The owner cannot be removed.
+
+Roles follow a hierarchy in `set_role`: an admin can promote a member to
+admin, but only the owner grants `OWNER` or changes the role of an admin
+or of the owner. An admin who tries to demote the owner, or to make
+themselves owner, gets `ForbiddenException` — otherwise demoting and then
+removing would get around the owner's protection.
+
+!!! tip "`kind` is inferred when you don't say"
+    With no `kind`, up to two people is `DIRECT` and more is `GROUP` —
+    which is what someone who never heard of the distinction means.
+    Asking for `DIRECT` **explicitly** with any other headcount is
+    refused with `422`.
+
+### System messages
+
+"Ana created the group", "Bruno left". Every membership change posts a
+`kind=system` message with a structured payload:
+
+```json
+{"event": "participant_left", "actor_id": "…", "user_ids": ["…"]}
+```
+
+The client renders **from the payload** — so the text is localized and
+the names become links. The `body` the server writes is the fallback for
+push and search, never the primary representation.
+
+### What a page costs
+
+`list_messages` resolves the whole page in a **fixed** number of queries
+— attachments, reactions and the quoted messages each come back in one
+`IN`, not one per row. Measured on a 20-message page: resolving row by
+row was 42 statements; batched it is 4, and stays 4 as the page grows.
+Forwarding copies the attachment row (same `storage_key`), never the
+bytes.
+
+## The router
+
+`make_chat_router` takes **how** to resolve the session, the service and
+the authenticated user — like the SDK's other routers:
+
+```python
+from collections.abc import AsyncIterator
+from uuid import UUID
+
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk.chat import make_chat_router
+
+from src.api.dependencies.resources import db
+from src.api.dependencies.services import build_chat_service
+
+sessionmaker = db.get_session_context
+
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    async with sessionmaker() as session:
+        yield session
+
+
+def current_user_id() -> UUID:
+    ...  # your auth dependency (JWT/session) resolving the user's UUID
+
+
+app = FastAPI()
+app.include_router(
+    make_chat_router(
+        service_factory=build_chat_service,
+        session_factory=get_session,
+        current_user_id=current_user_id,
+    )
+)
+```
+
+Mounted endpoints (all require authentication):
+
+| Method | Route | Does |
+| --- | --- | --- |
+| `POST` | `/api/chat/conversations` | Start a conversation (creator becomes a participant) |
+| `GET` | `/api/chat/conversations` | List the user's conversations, pinned first |
+| `GET` | `/api/chat/conversations/{id}` | One conversation with its participants |
+| `PATCH` | `/api/chat/conversations/{id}` | Edit a group's title or description |
+| `PUT` | `/api/chat/conversations/{id}/preferences` | Pin, archive or mute for the caller only |
+| `POST` | `/api/chat/conversations/{id}/participants` | Add members to a group |
+| `DELETE` | `/api/chat/conversations/{id}/participants/{participant_id}` | Remove a member from a group |
+| `POST` | `/api/chat/conversations/{id}/leave` | Leave the conversation |
+| `POST` | `/api/chat/conversations/{id}/read` | Move the caller's read watermark |
+| `POST` | `/api/chat/conversations/{id}/messages` | Post a message (participant only) |
+| `GET` | `/api/chat/conversations/{id}/messages` | Page the history (participant only) |
+| `PATCH` | `/api/chat/messages/{id}` | Edit a message you sent |
+| `DELETE` | `/api/chat/messages/{id}` | Delete for everyone, leaving a tombstone |
+| `PUT` | `/api/chat/messages/{id}/reaction` | React, replacing your previous reaction |
+| `DELETE` | `/api/chat/messages/{id}/reaction` | Remove your reaction |
+| `POST` | `/api/chat/messages/{id}/forward` | Forward into other conversations |
+| `GET` | `/api/chat/conversations/{id}/stream` | SSE of new messages (participant only) |
+
+!!! warning "Reactions and attachments need the two optional repositories"
+    `attachments=` and `reactions=` are optional on `ChatService`. Without
+    `reactions=`, `PUT /messages/{id}/reaction` answers `422` with
+    `"this chat service was built without a reaction repository"`; without
+    `attachments=`, posting with `attachment_ids` answers `422` too. That
+    is why the factory in [Real time via SSE](#real-time-via-sse) passes all
+    five repositories.
+
+!!! warning "Participant guard"
+    Posting, reading and subscribing require the authenticated user to be
+    a participant of the conversation; otherwise the router responds
+    `403`.
+
+The routes that take only a message id (`PATCH`/`DELETE
+/messages/{id}`, `PUT`/`DELETE /messages/{id}/reaction` and
+`POST /messages/{id}/forward`) check **the message's** conversation: the
+user must be an active participant of it, and the message must not be
+older than their `history_from`. Otherwise the answer is the same `404`
+as a message that does not exist — identical body — so the id is not an
+existence oracle. Forwarding is a read of the original: whoever cannot
+see it cannot copy it into another conversation. And replying with a
+quote of a message older than your `history_from` is a `404` too,
+because the quote stub would carry an excerpt of the backlog you were
+not given.
+
+Derived copies follow the same rule for whoever reads them. When an
+older member replies to a message older than the reader's
+`history_from`, that reply's `reply_to` comes back with an empty
+`excerpt` in that reader's history (`reply_to.created_at` says when the
+quoted message was sent). On the SSE stream, each subscriber gets the
+frames fitted to their own `history_from`: edits, reactions and
+revocations of a message older than it are not delivered, and a reply
+quoting one arrives with an empty excerpt.
+
+### Input limits
+
+The history accepts `page >= 1` and `1 <= page_size <= max_page_size`
+(`MESSAGES_PAGE_SIZE_MAX`, `100`, by default); anything else is a `422`.
+Before, `page_size=0` was a `500` (division by zero) and `page_size=-1`
+became `LIMIT -1`, which SQLite reads as "no limit" — 25 of 25 messages
+on one page. `ChatService.list_messages` refuses the same values with a
+`ValidationException` when called directly.
+
+The schemas bound how much one request writes, and going over the
+ceiling is a `422`:
+
+| Field | Ceiling | Constant |
+| --- | --- | --- |
+| `body` (post and edit) | 65,536 characters | `MESSAGE_BODY_MAX_LENGTH` |
+| `attachment_ids` | 32 ids | `MESSAGE_ATTACHMENTS_MAX` |
+| `conversation_ids` (forward) | 20 conversations | `FORWARD_TARGETS_MAX` |
+| `participant_ids` (start, add) | 256 ids | `PARTICIPANT_IDS_MAX` |
+| `title` / `description` | 255 / 512 characters | the column size |
+
+Pass `max_page_size=` to `make_chat_router` to change the page ceiling;
+the others live in the schemas.
+
+## Real time via SSE
+
+Inject an `SSEBroker` into the service and every posted message is also
+published to the conversation's channel (`str(conversation_id)`),
+reusing the SSE fan-out the SDK already has. Without a broker, the
+`/stream` endpoint responds `404`.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.chat import ChatService
+from tempest_fastapi_sdk.sse import SSEBroker
+
+from src.db.models import (
+    ConversationModel,
+    ConversationParticipantModel,
+    MessageAttachmentModel,
+    MessageModel,
+    MessageReactionModel,
+)
+
+
+broker = SSEBroker()  # single-process; pass redis=<client> for multi-worker
+
+
+def build_chat_service(session: AsyncSession) -> ChatService:
+    return ChatService(
+        conversations=BaseRepository(session, model=ConversationModel),
+        participants=BaseRepository(session, model=ConversationParticipantModel),
+        messages=BaseRepository(session, model=MessageModel),
+        attachments=BaseRepository(session, model=MessageAttachmentModel),
+        reactions=BaseRepository(session, model=MessageReactionModel),
+        broker=broker,
+    )
+```
+
+The client subscribes with an `EventSource` pointing at
+`/api/chat/conversations/{id}/stream` and receives `message` events whose
+`data` is the JSON of `MessageResponseSchema`:
+
+```text
+event: message
+data: {"id": "7d3c5f8a-...", "conversation_id": "1a2b3c4d-...", "sender_id": "7d3c5f8a-...", "body": "Let's!", "created_at": "2026-07-18T14:32:07Z"}
+```
+
+### The stream holds no database session
+
+The `/stream` participant check takes its session from `session_factory`
+as `Depends(..., scope="function")`, which FastAPI **closes when the
+endpoint returns, before the first byte**. A session with the default
+scope would stay open — connection borrowed from the pool, transaction
+begun — for as long as the client stays connected, and a few hundred
+idle tabs would drain the pool. This covers what the router
+controls: if your `current_user_id` dependency opens a session, that one
+stays open for the life of the stream.
+
+### The stream ends when the membership does
+
+`leave` and `remove_participant` publish, after the system notice, a
+`participant.removed` event (`PARTICIPANT_REMOVED_EVENT`) whose `data` is
+the `ParticipantResponseSchema` of whoever left. The stream of the user
+it names delivers that event and closes; the `EventSource` tries to
+reconnect and gets a `403`. The other participants receive the event and
+stay connected.
+
+For a removal that does not go through `ChatService` — a script, a
+direct `UPDATE` — the stream re-reads the membership on a short-lived
+session every `membership_recheck_seconds` (`30.0` by default), counted
+on the frames it delivers, heartbeats included. `None` turns the re-read
+off and leaves only the event.
+
+!!! tip "A `get_session` with sub-dependencies and the re-read"
+    The re-read runs while the response is already streaming, outside
+    FastAPI's dependency resolution, so it opens its session by calling
+    `stream_session_factory()`. By default that is `session_factory`
+    itself, as long as it takes no parameters. If your `get_session` takes
+    `request: Request` or `Depends(get_database)`, pass a zero-argument
+    factory for the re-read (`stream_session_factory=db.session_dependency`)
+    — without it, with the re-read on, `make_chat_router` refuses the
+    configuration with a `ValueError` when the router is built, not on the
+    first stream.
+
+See the
+**[Server-Sent Events »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/sse.md)** recipe for the client side and the
+multi-worker Redis bridge.
+
+## Recap
+
+- Inherit the five abstract tables and point the FKs at your
+  `UserModel` — declaring the two constraints that change behaviour
+  (`(sender_id, client_id)` and `(message_id, user_id)`).
+- `ChatService` covers start, post, reply, edit, delete for everyone,
+  react, forward, mark read and run the group; it returns schemas, not
+  ORM rows.
+- A receipt is a **watermark on the participant**; a reaction is **one
+  per person**; revoking **clears the body** and hands you the storage
+  keys to delete.
+- `client_id` makes resending idempotent; a direct conversation is
+  idempotent per pair.
+- `make_chat_router` mounts the endpoints with the participant guard —
+  which treats someone who **left** as not a participant. A route that
+  takes only a message id checks that message's conversation and answers
+  with the same `404` as a missing message.
+- Pass an `SSEBroker` to get real-time delivery for free — the stream
+  holds no database session and closes when the membership ends.

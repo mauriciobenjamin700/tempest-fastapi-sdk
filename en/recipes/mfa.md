@@ -1,0 +1,939 @@
+# MFA / 2FA with TOTP (Authenticator)
+
+Since **v0.35.0** the bundled auth flow supports **two-factor authentication** with Authenticator apps (Google Authenticator, 1Password, Authy, etc.) following the **TOTP (RFC 6238)** standard. You get four ready-to-mount endpoints, single-use recovery codes, and a two-step login — all behind a global kill-switch.
+
+## What's in this recipe
+
+1. **[How it works in 30 seconds](#how-it-works)** — the mental model of the two-step flow.
+2. **[Setup](#setup)** — the `[mfa]` extra, new `UserModel` columns, recovery-code table.
+3. **[Wiring](#wiring)** — passing `recovery_code_model` to `make_auth_router`.
+4. **[The four endpoints](#endpoints)** — enroll / confirm / verify / disable.
+5. **[Two-step login](#two-step-login)** — how `POST /auth/login` changes when MFA is active.
+6. **[Routes that require MFA](#routes-that-require-mfa)** — the `amr` claim and `make_mfa_required_dependency`.
+7. **[Settings (`AuthSettings`)](#settings)** — flag by flag.
+8. **[Attempt limit](#attempt-limit)** — `429` after five failures, and single-use TOTP codes.
+9. **[Using just `UserAuthService` (no router)](#service-direct)** — for hand-rolled endpoints.
+10. **[Accounts that do not use emailed links](#email-link-refusal)** — `refuses_email_link` for operators and staff.
+11. **[Security](#security)**.
+12. **[Next steps](#next-steps)**.
+
+---
+
+## How it works
+
+TOTP is the 6-digit code that rolls over every 30 seconds in your Authenticator app. The server and the app share a **secret** (generated at enrollment); both derive the same code from the current clock. No SMS, no network — pure local math.
+
+The flow has two moments:
+
+- **Enrollment (once)** — the logged-in user requests a secret, scans the QR code, and confirms by typing the first code. From there MFA is active.
+- **Login (every time)** — the password validates step 1, but instead of the JWT pair the backend returns a short-lived `mfa_token`. The user types the Authenticator code; step 2 swaps `mfa_token` + code for the real JWT pair.
+
+!!! info "Why two steps and not all at once?"
+    Splitting keeps the password and the second factor decoupled. The `mfa_token` (5-min TTL by default) carries only the user's `sub` — intercepting it alone is not enough to log in, because the Authenticator code is still missing.
+
+---
+
+## Setup
+
+Requires the `[mfa]` extra (installs `pyotp` and `segno`, which draws the QR code), on top of `[auth]`:
+
+```bash
+uv add "tempest-fastapi-sdk[auth,mfa]>=0.151.1"
+```
+
+### Columns via `MFAMixin`
+
+The MFA columns (`totp_secret`, `totp_enabled_at`, `totp_last_step`) do **not** live on `BaseUserModel` — they come from an opt-in mixin, `MFAMixin`. Mix it into your `UserModel` only when you adopt MFA, so projects that never enable the feature carry no dead columns:
+
+```python
+# src/db/models/user.py
+from tempest_fastapi_sdk import BaseUserModel, MFAMixin
+
+
+class UserModel(MFAMixin, BaseUserModel):
+    """Concrete user table — MFAMixin adds the totp_* columns."""
+
+    __tablename__ = "users"
+```
+
+!!! note "MRO order"
+    The mixin comes **before** `BaseUserModel` in the base list — same pattern as `AuditMixin` / `SoftDeleteMixin`. The mixin also exposes an `is_mfa_active` property (`totp_enabled_at is not None`).
+
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/installation.md#cli).
+
+!!! warning "Migration required"
+    `totp_secret`, `totp_enabled_at` and `totp_last_step` are new columns. Run `uv run tempest db revision -m "mfa columns"` + `uv run tempest db upgrade` before flipping the flag.
+
+### Recovery-code table
+
+Recovery codes save the user who lost their phone. They are **single-use**, shown **once** at enrollment, and the database stores only the SHA-256 hash of each. `BaseUserRecoveryCodeModel` is abstract — use the `make_user_recovery_code_model` helper to build the concrete table bound to your users table:
+
+```python
+# src/db/models/__init__.py
+from tempest_fastapi_sdk import make_user_recovery_code_model
+
+from src.db.models.user import UserModel
+from src.db.models.user_token import UserTokenModel
+
+UserRecoveryCodeModel = make_user_recovery_code_model(
+    user_table="users",
+    tablename="user_recovery_codes",
+    class_name="UserRecoveryCodeModel",
+)
+
+__all__: list[str] = [
+    "UserModel",
+    "UserTokenModel",
+    "UserRecoveryCodeModel",
+]
+```
+
+??? note "Prefer subclassing by hand?"
+    The helper is just sugar. The explicit equivalent:
+
+    ```python
+    from uuid import UUID
+
+    from sqlalchemy import ForeignKey
+    from sqlalchemy.orm import Mapped, mapped_column
+    from tempest_fastapi_sdk import BaseUserRecoveryCodeModel
+
+
+    class UserRecoveryCodeModel(BaseUserRecoveryCodeModel):
+        __tablename__ = "user_recovery_codes"
+
+        user_id: Mapped[UUID] = mapped_column(
+            ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        )
+    ```
+
+---
+
+## Wiring
+
+Turn on the `AUTH_MFA_ENABLED` flag and pass the `recovery_code_model` to the router. Without the model, the router raises `RuntimeError` at build time — a deliberate guard:
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import AsyncDatabaseManager, UserAuthService, make_auth_router
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserRecoveryCodeModel, UserTokenModel
+
+app = FastAPI()
+
+
+db = AsyncDatabaseManager(settings.DATABASE_URL)
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,   # mixes in AuthSettings (AUTH_MFA_* below)
+    jwt_settings=settings,
+    email=None,
+)
+
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        recovery_code_model=UserRecoveryCodeModel,   # required when MFA is on
+    ),
+)
+```
+
+!!! tip "Global kill-switch"
+    With `AUTH_MFA_ENABLED=False` (default), the `/auth/mfa/*` endpoints respond `404` and login ignores any persisted `totp_secret` — handy to disable MFA during an Authenticator outage without touching the database.
+
+---
+
+## Endpoints
+
+The four are only mounted when `AUTH_MFA_ENABLED=True`:
+
+| Method | Path | Auth | Body / Output | Behavior |
+|--------|------|------|---------------|----------|
+| POST | `/auth/mfa/enroll` | Bearer JWT | — → `MFAEnrollResponseSchema` | Generates secret + QR URI + the drawn QR (`provisioning_qr`) + N recovery codes. **Shown only once.** Does NOT activate MFA yet. With MFA already active, answers `409` (`MFA_ALREADY_ENROLLED`) and changes nothing. |
+| POST | `/auth/mfa/confirm` | Bearer JWT | `MFAConfirmSchema` → `LoginResponseSchema` | Confirms enrollment with the first code. From here MFA is active. Revokes the user's refresh tokens and returns a new pair carrying the MFA `amr` ([details](#confirming-mfa-ends-the-other-sessions)). |
+| POST | `/auth/mfa/verify` | — | `MFAVerifySchema` → `LoginResponseSchema` | Login step 2: swaps `mfa_token` + code for the JWT pair. Five wrong codes per account in 15 min give `429` ([attempt limit](#attempt-limit)). |
+| POST | `/auth/mfa/disable` | Bearer JWT | `MFADisableSchema` | Disables MFA. Requires password **and** an active code (TOTP or recovery). |
+
+### Enrollment flow
+
+```python
+import httpx
+
+BASE = "http://localhost:8000"
+access = "<logged-in user's JWT>"
+headers = {"Authorization": f"Bearer {access}"}
+
+# 1. Enroll — returns secret, QR URI and the recovery codes (once!)
+r = httpx.post(f"{BASE}/auth/mfa/enroll", headers=headers)
+data = r.json()
+print(data["provisioning_qr"])    # SVG data URI: use it in <img src="...">
+print(data["recovery_codes"])     # show the user — save OFFLINE
+
+# 2. User scans the QR in the Authenticator and types the generated code:
+code = input("Authenticator code: ")
+httpx.post(f"{BASE}/auth/mfa/confirm", headers=headers, json={"code": code})
+# 200 → MFA active; the body carries a new pair, and the old refresh token is dead
+```
+
+!!! danger "Recovery codes appear ONCE"
+    The `enroll` response is the only time `secret` and `recovery_codes` leave in plaintext. Show them prominently and tell the user to store them offline.
+
+### QR code: in the terminal and in the response
+
+Every authenticator app reads QR codes, and it is the path people know. Typing 32 base32 characters by hand is slow and error-prone. That is why the `enroll` response already carries the `provisioning_uri` drawn, and the SDK has two functions to draw it wherever you need:
+
+| Function | Returns | For |
+|----------|---------|-----|
+| `provisioning_qr_data_uri(uri, *, kind="svg")` | `data:image/svg+xml;base64,...` (or `data:image/png;base64,...` with `kind="png"`) | an `<img>` in a page or in the app |
+| `provisioning_qr_terminal(uri, *, background="dark")` | text made of half blocks (`▀`, `▄`, `█` and space) | `print` / `typer.echo` in a CLI |
+
+Both run on `segno`, which ships with the `[mfa]` extra and is imported at the first call only.
+
+#### In the API response
+
+`POST /auth/mfa/enroll` returns the `provisioning_qr` field, an SVG data URI. The frontend drops it straight into an `<img src="...">`, with no QR library on its side:
+
+```json
+{
+  "secret": "GGZPWWOVQ6QIXMCMDOARELP3SR7JF424",
+  "provisioning_uri": "otpauth://totp/Tempest:ana%40example.com?secret=GGZPWWOVQ6QIXMCMDOARELP3SR7JF424&issuer=Tempest",
+  "provisioning_qr": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIH...",
+  "recovery_codes": ["..."]
+}
+```
+
+The field is **on by default, with no setting**: it is optional and purely additive, so whoever already consumes the response keeps reading the same fields. If the server does not have `segno` installed (say, it installed `pyotp` without the `[mfa]` extra), `provisioning_qr` comes back `null` and the rest of the response is unchanged — the route does not break for lack of a drawing.
+
+Mounting your own endpoint, call the function directly. This endpoint returns a page with the QR:
+
+```python
+from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService, provisioning_qr_data_uri
+
+from src.api.dependencies import get_auth_service, get_current_user, get_session
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+router = APIRouter()
+
+
+@router.post("/mfa/enroll-page", response_class=HTMLResponse)
+async def enroll_page(
+    service: UserAuthService = Depends(get_auth_service),
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+) -> HTMLResponse:
+    """Enroll TOTP and show the QR code once."""
+    secret, uri, codes = await service.mfa_enroll(
+        session,
+        user=user,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    await session.commit()
+    qr = provisioning_qr_data_uri(uri)
+    items = "".join(f"<li><code>{code}</code></li>" for code in codes)
+    return HTMLResponse(
+        f'<img src="{qr}" alt="Authenticator app QR code">'
+        f"<p>Or type the secret: <code>{secret}</code></p>"
+        f"<ul>{items}</ul>",
+        headers={"Cache-Control": "no-store"},
+    )
+```
+
+`Cache-Control: no-store` asks the browser and any proxy not to keep the page: it carries the secret.
+
+#### In the terminal
+
+`provisioning_qr_terminal` draws each character one module wide and two modules tall, so the QR stays square in a terminal, whose cells are taller than they are wide. A 95-character URI (issuer `Tempest`, `ana@example.com`, 32-character secret) prints **49 columns by 25 lines**, and a 159-character one (22-character issuer, 41-character e-mail) **61 columns** — both fit in 80 (measured with `segno` 1.6.6). This function enrolls and shows the QR:
+
+```python
+import typer
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService, provisioning_qr_terminal
+
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+
+async def enroll_in_terminal(
+    service: UserAuthService,
+    session: AsyncSession,
+    user: UserModel,
+) -> list[str]:
+    """Enroll TOTP and draw the QR in the terminal.
+
+    Returns:
+        The recovery codes, to show once.
+    """
+    secret, uri, codes = await service.mfa_enroll(
+        session,
+        user=user,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    typer.echo(provisioning_qr_terminal(uri))
+    typer.echo(f"or type the secret: {secret}")
+    return codes
+```
+
+!!! tip "Light terminal"
+    The characters paint in the text colour. On a dark terminal (the default) the function draws the **light** modules and the border, so the camera reads dark on light, as on paper. On a light-background terminal pass `background="light"`: then it draws the dark modules.
+
+`tempest user create --require-mfa` already does this: it prints the QR before the URI ([Bootstrapping the first privileged account](#bootstrapping-the-first-privileged-account)).
+
+!!! warning "The QR code IS the secret"
+    The QR carries the `provisioning_uri`, and the URI carries the TOTP secret. Whoever photographs the screen generates every future code of the account. So:
+
+    - **show it once**, in the `enroll` response, and offer no "see it again" — rotating the secret is `disable` + `enroll`;
+    - **never log** the QR, the URI or the secret, not even at `DEBUG`;
+    - **do not store the image** — not on disk, not in a cache, not in upload storage.
+
+### Rotating the secret: `disable`, then `enroll`
+
+Calling `enroll` again **before** `confirm` replaces the pending secret and codes: the enrollment is not active yet, so there is no factor to protect. After `confirm`, `enroll` refuses with `409` and touches nothing:
+
+```json
+{"detail":"MFA is already active — disable it before enrolling again","code":"MFA_ALREADY_ENROLLED","details":{}}
+```
+
+That is the body with `register_exception_handlers` mounted. The refusal exists because `enroll` only asks for the bearer token and wipes the recovery codes: accepting a second `enroll` over active MFA let whoever held just the access token switch the second factor off, without the password and the code `disable` demands. To rotate the secret (new phone, leaked secret), the user goes through `POST /auth/mfa/disable` with password + code and then redoes `enroll` + `confirm`. In the service, the same refusal is the `MFAAlreadyEnrolledException` exception (a `ConflictException` subclass), raised by `mfa_enroll` even with the `AUTH_MFA_ENABLED` kill-switch off.
+
+---
+
+## Two-step login
+
+When the user has MFA active, `POST /auth/login` no longer returns the JWT pair directly — it returns `mfa_required=True` + a short-lived `mfa_token`:
+
+```python
+import httpx
+
+BASE = "http://localhost:8000"
+
+# Step 1 — password
+r1 = httpx.post(
+    f"{BASE}/auth/login",
+    json={"email": "ana@example.com", "password": "strong-pass-12-chars"},
+)
+body = r1.json()
+# {
+#   "user_id": "...",
+#   "access_token": null,
+#   "refresh_token": null,
+#   "mfa_required": true,
+#   "mfa_token": "eyJhbGciOi..."
+# }
+
+# Step 2 — Authenticator code (or a recovery code)
+code = input("Authenticator code: ")
+r2 = httpx.post(
+    f"{BASE}/auth/mfa/verify",
+    json={"mfa_token": body["mfa_token"], "code": code},
+)
+tokens = r2.json()
+# { "access_token": "...", "refresh_token": "...", "mfa_required": false }
+```
+
+For users **without** MFA (or with the kill-switch off), `POST /auth/login` keeps returning the JWT pair directly, with `mfa_required=False` — the frontend just checks that field and branches.
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant API as Backend (SDK)
+    participant DB as Database
+
+    F->>API: POST /auth/login (email + password)
+    API->>DB: validate credentials
+    alt user has MFA active
+        API->>F: 200 {mfa_required: true, mfa_token: "..."}
+        F->>API: POST /auth/mfa/verify (mfa_token + code)
+        API->>DB: validate TOTP or recovery code
+        API->>F: 200 {access_token, refresh_token}
+    else MFA off / not enrolled
+        API->>F: 200 {access_token, refresh_token, mfa_required: false}
+    end
+```
+
+## Routes that require MFA
+
+Turning MFA on protects the **login**. A sensitive route (creating another
+staff member, changing bank details) wants to know something else: did **this
+session** pass the second factor? For that, every access token the SDK issues
+carries the `amr` claim (RFC 8176):
+
+| How the session started | `amr` |
+| --- | --- |
+| `POST /auth/login` with the password alone (and signup with auto-activation) | `["pwd"]` |
+| `POST /auth/activate/{token}` and `POST /auth/password-reset/confirm` of an account **without** MFA *(v0.314.0+)* | `["email"]` (`AMR_EMAIL_LINK`) |
+| `POST /auth/mfa/verify` (TOTP code or recovery code) | the first step + `"otp"`: `["pwd", "otp"]` after `/auth/login`, `["ext", "otp"]` after a social login, `["email", "otp"]` after an activation or a reset |
+| `POST /auth/mfa/confirm` (the new pair it returns) | `["pwd", "otp"]` |
+| `POST /auth/webauthn/authenticate/complete` | `["hwk"]` |
+| social login (`/auth/oauth/...`) of an account **without** MFA | `["ext"]` |
+
+On an account **with MFA enrolled**, `/auth/password-reset/confirm` and
+`/auth/activate/{token}` (for a reactivated account) do not issue a pair:
+they answer the `mfa_required=true` + `mfa_token` challenge, and the pair
+only comes out of `/auth/mfa/verify`, with `amr == ["email", "otp"]`. It is
+the same treatment as `/auth/login` — a compromised mailbox must not be a
+shortcut past the second factor. Since v0.314.0 social login follows the same
+rule: the callback and `/auth/oauth/{provider}/token` of an account with TOTP
+answer the challenge, and `/auth/mfa/verify` issues `["ext", "otp"]` (see the
+[social login recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/oauth.md)).
+
+!!! info "Why `email`, and neither `pwd` nor `otp`"
+    Activation takes no password at all, and the reset proves the mailbox
+    before it **stores** the new password — `pwd` would claim a check that
+    never ran. `email` sits outside the RFC 8176 registry, like `ext`, because
+    the RFC has no value for "single-use link sent by email". And it is not
+    `otp` on purpose: the link is **one** factor, and calling it a one-time
+    password would let it pass `make_mfa_required_dependency`. It stays out of
+    `MFA_AMR_METHODS`, so the gate keeps refusing it.
+
+`refresh` repeats the family's `amr` — it is stored on the refresh-token row
+(or inside the refresh JWT itself, in stateless mode) —, so a rotation never
+promotes a password session to MFA. `make_mfa_required_dependency` reads that
+claim:
+
+```python
+# src/api/routers/staff.py
+from typing import Any
+
+from fastapi import APIRouter, Depends
+
+from tempest_fastapi_sdk import JWTUtils, make_mfa_required_dependency
+
+jwt = JWTUtils("replace-with-a-secret-of-32-bytes-or-more")
+require_mfa = make_mfa_required_dependency(jwt)
+
+router = APIRouter(prefix="/staff", tags=["staff"])
+
+
+@router.post("/invite")
+async def invite_staff(claims: dict[str, Any] = Depends(require_mfa)) -> dict[str, str]:
+    """Only a session that passed the second factor invites another staff member."""
+    return {"invited_by": str(claims["sub"])}
+```
+
+A password-only token gets `403` with `code` `MFA_REQUIRED`
+(`MFARequiredException`); no token at all, `401`. A token **without** `amr` —
+issued before this version — also gets `403`: the rollout window never counts
+an unknown session as MFA, and the user leaves it by redoing the two-step
+login.
+
+!!! info "Does a passkey count as MFA?"
+    Not by default: `methods=` defaults to `{"otp"}`. If your
+    `AUTH_WEBAUTHN_USER_VERIFICATION` is `"required"`, the passkey already
+    proves possession **and** a local factor, and you can accept it with
+    `make_mfa_required_dependency(jwt, methods={"otp", "hwk"})`.
+
+### Reading `amr` outside the gate: `token_amr`
+
+`make_mfa_required_dependency` **blocks**. Sometimes you only want to
+**know**: show an "enable MFA" banner in the dashboard, record in the audit
+log whether the action came from a strong session, ask for extra
+confirmation instead of refusing. `token_amr` reads the claim from an
+already decoded payload and returns the tuple of methods, or `None` when the
+claim is missing or is not a list of strings.
+
+The values have names, so you do not scatter `"otp"` across your code:
+
+| Constant | Value |
+| --- | --- |
+| `AMR_CLAIM` | `"amr"` |
+| `AMR_PASSWORD` | `"pwd"` |
+| `AMR_OTP` | `"otp"` |
+| `AMR_HARDWARE_KEY` | `"hwk"` |
+| `AMR_EXTERNAL` | `"ext"` |
+| `AMR_EMAIL_LINK` | `"email"` |
+| `PASSWORD_AMR` | `("pwd",)` |
+| `MFA_AMR` | `("pwd", "otp")` |
+| `MFA_AMR_METHODS` | `frozenset({"otp"})`, the default for `methods=` |
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk import (
+    AMR_CLAIM,
+    MFA_AMR,
+    MFA_AMR_METHODS,
+    PASSWORD_AMR,
+    JWTUtils,
+    token_amr,
+)
+
+jwt: JWTUtils = JWTUtils("replace-with-a-secret-of-32-bytes-or-more")
+
+
+def second_factor_proven(claims: dict[str, Any]) -> bool:
+    methods: tuple[str, ...] | None = token_amr(claims)
+    return methods is not None and bool(MFA_AMR_METHODS.intersection(methods))
+
+
+for label, extra in [
+    ("password", {AMR_CLAIM: list(PASSWORD_AMR)}),
+    ("password + otp", {AMR_CLAIM: list(MFA_AMR)}),
+    ("no amr", {}),
+    ("malformed amr", {AMR_CLAIM: "pwd"}),
+]:
+    claims: dict[str, Any] = jwt.decode(jwt.encode({"sub": "42", **extra}))
+    print(f"{label:15} {token_amr(claims)!r:20} {second_factor_proven(claims)}")
+```
+
+```text
+password        ('pwd',)             False
+password + otp  ('pwd', 'otp')       True
+no amr          None                 False
+malformed amr   None                 False
+```
+
+`None` counts as "second factor not proven", the same rule as the gate: a
+token minted before the claim existed, or by another issuer, never passes
+as an MFA session. The passkey case above becomes
+`methods={AMR_OTP, AMR_HARDWARE_KEY}`.
+
+### Confirming MFA ends the other sessions
+
+Whoever turns MFA on usually does it because they suspect someone has the
+password. So `mfa_confirm` revokes **every** refresh token of the user in the
+same transaction: a session opened with the password alone, before the factor
+existed, gets `401` at its next `/auth/refresh`. The device that confirmed
+loses nothing — the `/auth/mfa/confirm` route answers `200` with a new pair,
+already carrying the MFA `amr` (in the body for a bearer caller, as cookies
+for a caller authenticated by the access cookie).
+
+Calling the service directly, the opt-out is explicit:
+`mfa_confirm(session, user=user, code=code, revoke_sessions=False)`. The
+session it keeps stays `["pwd"]`, never `"otp"`. An access token already
+issued lives until its short TTL ends, but it is `["pwd"]` too, so the
+dependency above refuses it.
+
+---
+
+## Settings
+
+Mix `AuthSettings` into your `Settings` class (as in the [auth flow recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow/settings.md)) and configure via env:
+
+```bash
+# .env — MFA
+AUTH_MFA_ENABLED=true                   # global kill-switch (default false)
+AUTH_MFA_ISSUER=Acme Inc.               # name shown in the Authenticator
+AUTH_MFA_RECOVERY_CODES_COUNT=10        # codes generated at enroll (2..50)
+AUTH_MFA_TOKEN_TTL_SECONDS=300          # mfa_token TTL between step 1 and 2 (30..900)
+AUTH_MFA_VERIFY_WINDOW=1                # drift tolerance, in 30s steps (0..4)
+```
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `AUTH_MFA_ENABLED` | `False` | Mounts the `/auth/mfa/*` endpoints and the two-step login. |
+| `AUTH_MFA_ISSUER` | `"Tempest"` | Label next to the email in the Authenticator app. Use your product name. |
+| `AUTH_MFA_RECOVERY_CODES_COUNT` | `10` | Number of recovery codes generated at enrollment. |
+| `AUTH_MFA_TOKEN_TTL_SECONDS` | `300` | Lifetime of the intermediate `mfa_token` (5 min). |
+| `AUTH_MFA_VERIFY_WINDOW` | `1` | Tolerance for the user's clock. `1` accepts previous + current + next step (90s). `0` is strict; above `2` weakens it. |
+
+## Attempt limit
+
+Since **0.306.0** step 2 of the login has two brakes you do not have to write.
+
+### Five wrong codes, and the account waits
+
+`POST /auth/mfa/verify` counts wrong codes **per account**, not per `mfa_token`. After five failures within fifteen minutes, the sixth attempt answers `429` without looking at the code, **even when it is right**:
+
+```json
+{"detail":"too many invalid MFA codes, try again later","code":"MFA_THROTTLED","details":{"retry_after_seconds":900}}
+```
+
+The response carries a `Retry-After` header with the seconds left in the window. That is the body with `register_exception_handlers` mounted.
+
+The key is the account because the `mfa_token` holds nothing back: whoever has the password asks `POST /auth/login` for another one at will. A fresh token keeps getting `429` until the window passes. A right code before the limit logs in normally and clears the count, so someone who mistypes a digit twice owes nothing.
+
+!!! warning "More than one worker? Pass Redis"
+    The default limit keeps the counter in an `InMemoryThrottleBackend`, which lives **in the process**. With `uvicorn --workers 4`, gunicorn or more than one pod, each process has its own counter, and the account reaches `5 * processes` attempts per window. In that case, pass an `AttemptThrottle` over the Redis your processes share:
+
+    ```python
+    from fastapi import FastAPI
+    from redis.asyncio import Redis
+
+    from tempest_fastapi_sdk import AttemptThrottle, UserAuthService, make_auth_router
+
+    from src.api.dependencies import get_session
+    from src.db.models import UserRecoveryCodeModel
+
+
+    def mount_auth(app: FastAPI, auth_service: UserAuthService, redis: Redis) -> None:
+        """Mount the auth router with the MFA limit on Redis."""
+        mfa_throttle = AttemptThrottle(redis, max_attempts=5, window_seconds=900)
+        app.include_router(
+            make_auth_router(
+                auth_service,
+                session_factory=get_session,
+                recovery_code_model=UserRecoveryCodeModel,
+                mfa_throttle=mfa_throttle,
+            ),
+        )
+    ```
+
+    The same parameter changes the budget (`max_attempts`, `window_seconds`).
+
+### One code, one login
+
+A TOTP code stays valid for the whole drift window (`AUTH_MFA_VERIFY_WINDOW=1` gives 90 seconds). With nothing else, anyone who saw the code go by (over a shoulder, in a log, at a proxy) could log in with it again inside those 90 seconds.
+
+The SDK now stores the 30-second step of the last accepted code in the `totp_last_step` column and refuses any code from the same step or an earlier one as if it were a wrong code (at `verify`, the same `401`). It holds for `confirm`, `verify`, `disable` and email recovery (`request_email_recovery`): the code used to activate MFA no longer works for the first login, and the user waits for the next one to show in the app. The admin panel's challenge (`POST /admin/mfa`) follows the same rule and has the same attempt limit: see [Admin](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin.md).
+
+The write is a conditional `UPDATE`: the stored row decides, not the loaded object, so a second session that read the user before the first acceptance is refused too (measured with SQLite, two sessions open over the same row).
+
+!!! warning "New column: `totp_last_step`"
+    Projects already on `MFAMixin` need the migration before running 0.306.0 — see the [migration guide](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-30x.md#03060-single-use-totp-codes-need-the-totp_last_step-column).
+
+---
+
+## Service direct
+
+If you mount your own endpoints (no `make_auth_router`), the `UserAuthService` methods cover the whole cycle:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+
+async def enroll_user(service: UserAuthService, session: AsyncSession, user: UserModel) -> None:
+    """Generate secret + recovery codes and show them to the user (once)."""
+    secret, provisioning_uri, recovery_codes = await service.mfa_enroll(
+        session,
+        user=user,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    await session.commit()
+    # render provisioning_uri as a QR; show recovery_codes
+
+
+async def confirm_user(
+    service: UserAuthService, session: AsyncSession, user: UserModel, code: str
+) -> None:
+    """Activate MFA after the user proves they scanned the QR."""
+    await service.mfa_confirm(session, user=user, code=code)
+    await session.commit()
+```
+
+Full surface:
+
+| Method | Signature (abridged) | Returns |
+|--------|----------------------|---------|
+| `is_mfa_enrolled` | `(user) -> bool` | `True` if MFA active (and kill-switch on). |
+| `issue_mfa_token` | `(user) -> str` | Short JWT bridging step 1 and step 2. |
+| `mfa_enroll` | `(session, *, user, recovery_code_model) -> tuple[str, str, list[str]]` | `(secret, provisioning_uri, recovery_codes)`. Raises `MFAAlreadyEnrolledException` while MFA is active. |
+| `mfa_confirm` | `(session, *, user, code) -> None` | Activates MFA. |
+| `mfa_verify` | `(session, *, mfa_token, code, recovery_code_model, throttle=None) -> UserModel` | Authenticated user (mint the JWT next). |
+| `mfa_disable` | `(session, *, user, password, code, recovery_code_model) -> None` | Clears secret + codes. |
+| `mfa_reset` | `(session, *, user, recovery_code_model, revoke_sessions=True, revoke_passkeys=True) -> int` | Clears secret + codes **without proof**, revokes the sessions and deletes the passkeys; returns how many sessions fell. An operator path — see [An account that lost its second factor](#mfa-reset). |
+| `change_password_with_mfa` | `(session, *, user, code, new_password, recovery_code_model=None, revoke_sessions=True, throttle=None) -> UserModel` | Replaces the password on proof of the factor. Raises `MFANotEnrolledException` on an account without MFA. |
+
+
+### Changing the password with the factor as proof
+
+A staff account forgot its password, and the e-mailed reset link will not do — the inbox is shared, or the e-mail is exactly what is not trusted. If the person still has the Authenticator app (or a recovery code), the factor is the proof: `change_password_with_mfa` replaces the password without the current one and without a link.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+
+async def reset_staff_password(
+    service: UserAuthService,
+    session: AsyncSession,
+    user: UserModel,
+    code: str,
+    new_password: str,
+) -> None:
+    """Replace the password of an account with MFA active, proving the factor."""
+    await service.change_password_with_mfa(
+        session,
+        user=user,
+        code=code,
+        new_password=new_password,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    await session.commit()
+```
+
+What the method guarantees, in this order:
+
+1. **An account without active MFA is refused** with `MFANotEnrolledException` (`422`, `code="MFA_NOT_ENROLLED"`) — including with the `AUTH_MFA_ENABLED` kill-switch off, which makes every account read as "no MFA", exactly as at login.
+2. **A password outside the policy is refused before the code is checked** (`ValidationException`), so a weak password does not burn a recovery code.
+3. **The code is checked by the same routine as `mfa_verify`**: a TOTP code is single-use and a recovery code gets `used_at`. A wrong code raises `UnauthorizedException` (`"invalid MFA code"`).
+4. **Sessions are revoked by default**, in the same transaction, as in `confirm_password_reset`. `revoke_sessions=False` is the explicit opt-out.
+
+It is not a login: no token pair is minted and `last_login_at` does not change. Without `recovery_code_model`, only TOTP codes are accepted. Pass `throttle=` to limit attempts: the key is `mfa:{user_id}`, the same as `mfa_verify`, so wrong codes here and at the login's second step spend one budget.
+
+!!! tip "From the terminal"
+    `tempest user set-password` uses this method when the account has MFA active — see [CLI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/cli.md).
+
+
+### Bootstrapping the first privileged account
+
+The route that creates staff can require MFA (`make_mfa_required_dependency`), but the **first** privileged account has nobody to invite it: it is born from the terminal. `tempest user create --require-mfa` makes sure it never exists without a second factor:
+
+```bash
+tempest user create --email staff@example.com --admin --require-mfa \
+    --audit-model src.db.models:AuditLogModel --event staff.bootstrapped
+```
+
+```text
+Add this account to the authenticator app:
+█████████████████████████████████████████████████
+█████████████████████████████████████████████████
+████ ▄▄▄▄▄ █▄ ▀ █▄█▄▄█  █  █▀  █▄▀▀ ██ ▄▄▄▄▄ ████
+████ █   █ █▀  ▀▄▄▀▄▀ ▄▄▄▀▄▄▄▀▀ ▀▄█▀▀█ █   █ ████
+████ █▄▄▄█ █  ▄▀▀ ▄  ▀▀ ███▄█  ▄  █▀██ █▄▄▄█ ████
+████▄▄▄▄▄▄▄█ ▀ ▀▄▀ █▄▀ █ ▀ ▀ █▄█ ▀ █ █▄▄▄▄▄▄▄████
+████▄▀▀▀▄▀▄▄ █ ▀█  ▄ ▄███▄▄▀██ ▀ ▄ █  ▄  ▄█▀ ████
+█████▄▄ ▄▄▄▀▄▀▄ ▄▀▀█▀▀ ▀█▀▄  ▄  ▄ █▀█▄▄▄▄ ▄ ▄████
+████▀▀▄▄▀█▄ ▀▀█▄█▀▄▀▀▀▀▀▄▄ ▄ █▀▀  ▀██ ▀▀▀█▀▀█████
+████▄▀  █ ▄█▄██ █ ▀▀ ▀█ ▀   █▄  █ ██ █  ██▄▀ ████
+████▄ ▄▀▀▄▄▄   ██ ▀▀ ▀▀█▀▄▀█▄ ▀▄▀▀▀ ▄ ▀ ▀▄▀█▀████
+████▀█▀▀▀▀▄██▄ ▄  ▄███▄▀█ ▄  █  █  █▄█ ▀█ ▄▀▄████
+████▄  ▀  ▄█▄█▀▀█▄▀█▀█▀▄▀█▀▀▄██ ▀▀█▄▄ ▀ ▀█ ▄▀████
+████▀ ▄▀▀▀▄▄▀ ▄▀█▄ █▄ ▄█▀ █▄▄▄ ▄▄▀ █▄▄ ▀▀███ ████
+████▄▄▀█ █▄ ▄▀▄▄  ▀▀ ▄▀▄▀▄ ▀▄▄█   █▄▀▀▀  ▄▀▀▀████
+████▄▄▀▀█▄▄▄▀▀ ▀█▀▄ █▀ █▀▀   █ ▄█ ▄██▄▄█ ▀█  ████
+████▀█▀█▀▄▄█▀▄ █▄█▀ ▄██ ▀▄▄█ ▀▄ ▀ ▀█▄ ▀▄▀█▀ █████
+██████▄▀▄ ▄█▄▀ ▀▄▀▀█ ▀▄█▄▀▄ ▀█▀ █  █ ▀ ▄█▄█▀▄████
+████▄▄▄▄██▄▄ ██▀▀███▄▄▄ █▀ █▄ ██▀█▀▄ ▄▄▄ █▀█ ████
+████ ▄▄▄▄▄ █▄ ▀▀▄██▀█ ▀▀▄█▀▄█▄▀▄▀ ▄▀ █▄█  ▄█ ████
+████ █   █ █▄█▄█▀▀ ███▄▄██▄▀█▀█▀█▄▀ ▄ ▄▄▄▄ █▀████
+████ █▄▄▄█ ██▀█▀  █▄▄▀▄█ ▀▄▄ █▄ █ ▄▄▀ █▀█▀▄▀ ████
+████▄▄▄▄▄▄▄█▄██████▄▄▄█▄█▄▄▄▄████▄██▄███▄▄█▄█████
+█████████████████████████████████████████████████
+█████████████████████████████████████████████████
+  otpauth URI: otpauth://totp/Tempest:staff%40example.com?secret=GGZPWWOVQ6QIXMCMDOARELP3SR7JF424&issuer=Tempest
+  secret:      GGZPWWOVQ6QIXMCMDOARELP3SR7JF424
+Code from the authenticator app: 123456
+Created admin: staff@example.com (id=2ced9167-4e7a-4dc5-8626-72b64ff7e4a7)
+MFA active. Recovery codes (shown once, store them now):
+  _MqMXAW-jzw
+  ...
+```
+
+Piece by piece:
+
+1. The user is inserted, `mfa_enroll` issues the secret and recovery codes, and `mfa_confirm` checks the code — all in **one transaction**, committed only with a valid code. Three wrong codes: it exits with code 1 and nothing is written.
+2. `--audit-model` writes `record_event` (`actor="cli"`, `changes` with `email`, `is_admin` and `mfa_enrolled`) in that same transaction. The model needs `AuditRequestMixin` — the `event` column holds the name. Without `--audit-model`, the command goes on and says on stderr that no event was recorded: a project without an audit table can still bootstrap.
+3. The recovery-code table comes from `--recovery-code-model` (default `src.db.models:UserRecoveryCodeModel`), and the `UserModel` needs `MFAMixin`; with either missing, the command exits with code 2 before writing.
+
+Afterwards, `tempest user set-password --email staff@example.com` on that account asks for the code (TOTP or recovery code) and changes the password through `change_password_with_mfa`. With `AUTH_MFA_ENABLED` off, neither login nor `set-password` asks for the factor.
+
+### An account that lost its second factor { #mfa-reset }
+
+The account holder lost the phone **and** the recovery codes. `disable` asks for the password and a code; the CLI's `set-password` asks for the code. Neither helps — and that is how it should be, because asking for the factor is the point. The way back belongs to the operator, explicit and audited:
+
+```bash
+tempest user mfa-reset --email staff@example.com \
+    --audit-model src.db.models:AuditLogModel
+```
+
+```text
+Remove the second factor of staff@example.com? It will log in with the password alone until it enrolls again. [y/N]: y
+MFA reset for staff@example.com (id=2ced9167-4e7a-4dc5-8626-72b64ff7e4a7)
+Revoked 2 active refresh token(s).
+Deleted 1 passkey(s).
+```
+
+Piece by piece:
+
+1. **Confirmation is required.** In a terminal, the command asks; outside one (CI, a pipe), it needs `--yes` and exits with code 1 without it. Declining the prompt changes nothing.
+2. **The reset is `UserAuthService.mfa_reset`**: it clears `totp_secret`, `totp_enabled_at` and `totp_last_step` and deletes **every** recovery code of the user — the same cleanup as `mfa_disable`, without the proof.
+3. **Sessions are revoked by default**, in the same transaction: whoever kept the lost phone may hold a live session too. `--keep-sessions` is the explicit opt-out; the table comes from `--refresh-token-model` (default `src.db.models:UserRefreshTokenModel`).
+4. **Passkeys are deleted by default too**, in the same transaction: a passkey signs in without the second factor, and one registered by whoever kept the phone would survive the reset. `--keep-passkeys` is the explicit opt-out; the table comes from `--webauthn-credential-model` (default `src.db.models:UserWebAuthnCredentialModel`). See [Password and MFA resets delete the passkeys](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/webauthn.md#password-and-mfa-resets-delete-the-passkeys).
+5. **`--audit-model` writes `record_event` in the same transaction** (`actor="cli"`, `changes` with `mfa_enabled`, `sessions_revoked` and `passkeys_revoked`), named by `--event` (default `user.mfa_reset`). If the audit write fails, the reset rolls back with it. Without `--audit-model`, the command goes on and says on stderr that no event was recorded.
+6. **An account without MFA active exits with code 2** and `has no MFA active, nothing to reset.` — nothing is written, not even the event.
+
+After the reset the account logs in with the password alone until it enrolls again — and `set-password` stops asking for a code. If the password is lost too, run both, in that order.
+
+From code, without the CLI — in a support panel, say, behind your own permission check:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.db.models import UserModel, UserRecoveryCodeModel
+
+
+async def support_mfa_reset(
+    service: UserAuthService,
+    session: AsyncSession,
+    user: UserModel,
+) -> int:
+    """Remove the second factor of an account that lost it. Returns revoked sessions."""
+    revoked = await service.mfa_reset(
+        session,
+        user=user,
+        recovery_code_model=UserRecoveryCodeModel,
+    )
+    await session.commit()
+    return revoked
+```
+
+!!! warning "`mfa_reset` proves nothing"
+    It checks neither password nor code: it is an operator path. Never expose it on a route the account holder reaches — there it becomes the shortcut `disable` exists to prevent. Record the audit event in the same transaction.
+
+
+---
+
+## Accounts that do not use emailed links *(v0.316.0+)* { #email-link-refusal }
+
+An operator, a staff account, a service account: whoever reads the inbox
+should not be able, on their own, to change the password or activate the
+account. With MFA enrolled the link no longer *logs in* (it answers the
+challenge), but it still **changes the password** — and whoever controls
+the inbox locks the owner out. The SDK accepts a per-account predicate
+that closes both link flows:
+
+```python
+# src/api/app.py
+
+from tempest_fastapi_sdk import UserAuthService
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+
+def refuses_email_link(user: UserModel) -> bool:
+    """Operators never use emailed links."""
+    return user.is_admin
+
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    refuses_email_link=refuses_email_link,
+)
+```
+
+The predicate receives an instance of **your** `UserModel` (so it can be
+typed against it) and returns a `bool` — `True` refuses. The
+`refuses_email_link=None` default keeps the previous behavior.
+
+When the predicate matches:
+
+- **`POST /auth/password-reset/request` and `POST /auth/activation/request`**
+  answer the same `202` with the same body as an unknown address, and
+  persist **no** token and send no email. The refusal cannot be enumerated.
+- **`POST /auth/password-reset/confirm` and `POST /auth/activate/{token}`**
+  answer `403` with the code `EMAIL_LINK_FORBIDDEN`. The token is consumed
+  and the spend is **committed** before the error (the link never works
+  again), and the password and `is_active` stay intact.
+- **The HTML pages of `AUTH_BACKEND_LINKS=true`** — `GET /auth/activate/{token}`,
+  `GET` and `POST /auth/password-reset/{token}` — render the flow's error
+  page with status `403`. The reset form `GET` does not even show the form
+  (and, since it only peeks the token, does not consume it).
+
+- **`POST /auth/signup` with `AUTH_AUTO_ACTIVATE=false`** creates the
+  account inactive and persists **no** activation token and sends no email.
+  The response is the same `201` as an ordinary pending signup
+  (`activation_required=true`, `activation_url=null`, no JWT pair): only the
+  `user_id` differs. Activate that account out of band —
+  `tempest user activate`, or create it already active with
+  `tempest user create`.
+
+The predicate sees the freshly inserted row, with the `signup_schema`
+columns already set and **before** `on_signup` runs: what it reads has to
+come in the signup body, not be written by the hook.
+
+!!! note "With `AUTH_AUTO_ACTIVATE=true` signup does not consult the predicate"
+    The account is born active and depends on no link, so `signup` returns
+    the JWT pair as always. The reset flows stay closed for it.
+
+!!! warning "In dev mode, the body tells them apart"
+    With `AUTH_RETURN_TOKEN_IN_RESPONSE=true` (or no `EmailUtils`) an
+    ordinary signup returns the `activation_url` in the body and a refused
+    one returns `null` — the same thing `POST /auth/activation/request`
+    already does in that mode. The identical response holds when the link
+    goes out by email.
+
+Callers of `UserAuthService.signup` get, in the second tuple item, `None`
+(the account was born active), an `ActivationToken` (link issued) or an
+`ActivationWithheld` (link withheld). Only `None` authorizes minting JWTs.
+
+!!! tip "Swap the code"
+    Like `account_inactive`, `email_link_forbidden` is a field of
+    `AuthExceptions`: pass a subclass with your own `code` so the consumer
+    keeps reacting to what it already knows. The body translation
+    (`EMAIL_LINK_FORBIDDEN`, PT-BR and EN in the default catalog) still
+    applies.
+
+---
+
+## Security
+
+- **TOTP secret persisted on the `UserModel`.** Consider encrypting the `totp_secret` column at rest (Postgres `pgcrypto` or an application-level Fernet wrapper).
+- **The QR code is the secret.** `provisioning_qr` and the URI leave only in the `enroll` response, and the SDK does not log them; show them once and do not store the image ([QR code](#qr-code-in-the-terminal-and-in-the-response)).
+- **Recovery codes stored as SHA-256 hashes.** The plaintext leaves only once at enrollment; a table leak yields no usable codes.
+- **Recovery codes are single-use.** `used_at` is stamped on consume; replay is rejected.
+- **`disable` requires password + code, and `enroll` is not a shortcut around it.** A hijacked session cannot disable MFA on its own — it needs the password **and** an active factor. `enroll` over active MFA answers `409` instead of wiping the recovery codes, so the access token alone cannot reset the factor.
+- **`mfa_token` is short and user-bound.** 5-min TTL by default; carries `purpose: "mfa_pending"` + the `sub`. Tokens of any other purpose are rejected in `mfa_verify`.
+- **Constant-time verification.** `TOTPHelper.matching_step` (and `verify`, which calls it) compares the code of each step in the window with `hmac.compare_digest`.
+- **Single-use TOTP codes and a per-account limit.** See [Attempt limit](#attempt-limit).
+
+---
+
+## Recap
+
+- TOTP is the 6-digit code in an Authenticator app: the server and the app
+  share a secret, and the code is derived from it plus the clock.
+- The extra is `[mfa]` (it brings `pyotp` and `segno`) on top of `[auth]`, and
+  nothing is mounted unless `AUTH_MFA_ENABLED=True`.
+- `enroll` returns the QR ready (`provisioning_qr`, an SVG data URI; `null`
+  without `segno`), and `provisioning_qr_terminal` draws the same QR in a CLI.
+  The QR is the secret: show it once, never log it, do not store it.
+- The router requires `recovery_code_model`: without it, it raises
+  `RuntimeError` at wiring time rather than in production — losing the phone
+  with no recovery code means losing the account.
+- With MFA on, `POST /auth/login` stops returning the JWT pair: it returns
+  `mfa_required=True` plus an intermediate token, and the second step trades a
+  code for the JWTs.
+- If you mount your own endpoints, the `UserAuthService` methods cover the
+  whole cycle without the router. `change_password_with_mfa` replaces the
+  password on proof of the factor, with no e-mail link and no token minted.
+- Whoever lost the phone **and** the recovery codes comes back through the
+  operator: `tempest user mfa-reset` (or `mfa_reset` in code) removes the
+  factor without proof, with confirmation, an audit event in the same
+  transaction, the sessions revoked and the passkeys deleted.
+- The TOTP secret lives on `UserModel` — consider encrypting that column at
+  rest.
+- `/auth/mfa/verify` answers `429` after five wrong codes per account in 15
+  minutes, and each TOTP code is worth one login. With more than one worker,
+  pass `mfa_throttle=` over Redis.
+- The access token says how the session started (`amr`), and
+  `make_mfa_required_dependency` refuses with `403` `MFA_REQUIRED` the one
+  that never passed the second factor. Confirming MFA ends the other sessions.
+- `refuses_email_link=` closes the emailed-link flow for accounts such as
+  operators: the request answers like an unknown address, confirmation
+  returns `403` `EMAIL_LINK_FORBIDDEN` without changing the password, and
+  signup creates the account inactive without sending a link.
+
+## Next steps
+
+- **[Auth flow (signup/reset) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/auth-flow.md)** — the local-account flow MFA extends.
+- **[Server-side sessions »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/sessions.md)** — JWT alternative, combinable with MFA at step 1.
+- **[Security »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/security.md)** — CSRF, rate-limit and body-size limit for the auth endpoints.

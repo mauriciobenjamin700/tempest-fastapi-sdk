@@ -1,0 +1,1178 @@
+# Object storage — MinIO / S3
+
+`AsyncMinIOClient` é uma fachada async sobre o pacote oficial `minio`. Cobre o que serviço FastAPI típico precisa: bucket (ensure/exists/list/remove), object I/O (put/get/stream/stat/list/remove/copy) e presigned URLs (GET/PUT). Operações avançadas (versioning, lifecycle XML, SSE-KMS, multipart fine-tuning) ficam acessíveis via atributo `.client`.
+
+!!! tip "Por que esse wrapper existe"
+    `minio-py` é **síncrono**. Chamar `client.put_object(...)` direto dentro de uma rota FastAPI bloqueia o event loop durante o upload inteiro. O wrapper envolve cada chamada em `asyncio.to_thread`, então o loop continua respondendo enquanto a operação roda no executor.
+
+## Instalação
+
+```bash
+pip install "tempest-fastapi-sdk[minio]"
+# ou:
+uv add "tempest-fastapi-sdk[minio]"
+```
+
+O pacote `minio` é lazy-loaded — só carrega quando `AsyncMinIOClient` é instanciado. Projetos sem storage não precisam do extra.
+
+## Configuração via settings mixin
+
+```python
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    ServerSettings,
+    StorageSettings,
+)
+
+
+class Settings(
+    ServerSettings,
+    StorageSettings,
+    BaseAppSettings,
+):
+    """Service settings — herda os defaults de storage (MinIO local)."""
+```
+
+`.env`:
+
+```bash
+STORAGE_ENDPOINT=minio.internal:9000
+STORAGE_ACCESS_KEY=...
+STORAGE_SECRET_KEY=...
+STORAGE_SECURE=true
+STORAGE_REGION=us-east-1
+STORAGE_DEFAULT_BUCKET=uploads
+```
+
+O mixin fala com **qualquer** storage S3-compatível (AWS S3, MinIO, R2, B2,
+Wasabi, Spaces) — o `MinIO` de `AsyncMinIOClient` é a biblioteca que o
+cliente usa, não exigência sobre o servidor. Por isso as variáveis se chamam
+`STORAGE_*`.
+
+### Vindo de `MinIOSettings`
+
+Até aqui o mixin se chamava `MinIOSettings` e as variáveis eram `MINIO_*`.
+Nada quebra na troca:
+
+- **As variáveis antigas continuam valendo.** Cada campo lê `STORAGE_X`
+  primeiro e cai para `MINIO_X` quando o novo não está definido — no ambiente
+  e no `.env`.
+- **`MinIOSettings` continua importável**, como subclasse deprecada de
+  `StorageSettings`: compor ou instanciar emite `DeprecationWarning`, e os
+  atributos `settings.MINIO_*` continuam respondendo.
+- **`minio_kwargs()` continua existindo** e devolve o mesmo dicionário que
+  `storage_kwargs()`.
+
+| Variável antiga | Variável nova |
+| --- | --- |
+| `MINIO_ENDPOINT` | `STORAGE_ENDPOINT` |
+| `MINIO_ACCESS_KEY` | `STORAGE_ACCESS_KEY` |
+| `MINIO_SECRET_KEY` | `STORAGE_SECRET_KEY` |
+| `MINIO_SECURE` | `STORAGE_SECURE` |
+| `MINIO_REGION` | `STORAGE_REGION` |
+| `MINIO_DEFAULT_BUCKET` | `STORAGE_DEFAULT_BUCKET` |
+| `MINIO_PUBLIC_ENDPOINT` | `STORAGE_PUBLIC_ENDPOINT` |
+| `MINIO_PUBLIC_SECURE` | `STORAGE_PUBLIC_SECURE` |
+
+!!! warning "Os dois nomes com valores diferentes derrubam o boot"
+    Com `STORAGE_ENDPOINT=minio:9000` no ambiente e um `MINIO_ENDPOINT=localhost:9000`
+    esquecido no `.env`, a construção do settings levanta `SettingsError`
+    nomeando o par (`STORAGE_ENDPOINT and MINIO_ENDPOINT`), sem imprimir valor.
+    Sem essa checagem, o `AliasChoices` ficaria com o nome novo em silêncio e o
+    antigo pareceria configurado. Os dois nomes com o **mesmo** valor são
+    aceitos, para a janela de migração. Remova o nome antigo para resolver.
+
+    Isso vale também para quem regenerar só o `docker-compose.yaml` com o
+    `tempest`: o bloco gerado agora escreve `STORAGE_ENDPOINT`, e um
+    `MINIO_ENDPOINT` diferente no `.env` lido pelo container é recusado.
+
+!!! tip "Em produção"
+    Com [`EnvironmentSettings`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/system-checks.md#guard-de-producao-environmentsettings)
+    e `ENV=production`, o boot recusa as chaves `minioadmin` do default,
+    `STORAGE_SECURE=false` e `STORAGE_PUBLIC_SECURE=false` explícito.
+
+## Wiring no `create_app()`
+
+```python
+from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator
+
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
+
+
+# settings.storage_kwargs() mapeia os STORAGE_* -> endpoint,
+# access_key, secret_key, default_bucket, secure, region, public_endpoint,
+# public_secure, accel_redirect e accel_prefix: nada a repetir campo a campo.
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    """Garante que o bucket padrão existe antes de servir tráfego."""
+    await storage.ensure_bucket()
+    yield
+
+
+def create_app() -> FastAPI:
+    """Build the configured FastAPI instance."""
+    return FastAPI(lifespan=lifespan)
+```
+
+## Receitas
+
+### Upload de `UploadFile` (FastAPI)
+
+```python
+from fastapi import APIRouter, UploadFile
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+@router.post("/files")
+async def upload_file(file: UploadFile) -> dict[str, str]:
+    """Persiste o arquivo recebido no bucket padrão."""
+    body = await file.read()
+    etag = await storage.put_object(
+        file.filename or "unnamed",
+        body,
+        content_type=file.content_type or "application/octet-stream",
+        metadata={"original-name": file.filename or ""},
+    )
+    return {"key": file.filename or "unnamed", "etag": etag}
+```
+
+### Streaming de download
+
+Quando o download precisa passar pelo backend — arquivo com autorização, ou
+bucket que o navegador não alcança —, `download_response` faz stat + stream
+numa chamada só, chunk a chunk, sem carregar o objeto na memória. O
+[`DownloadUtils(minio)`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/downloads.md) embrulha a mesma chamada.
+
+Passe o `request`. É ele que deixa o `<video>` avançar, o download retomar e
+a imagem ser revalidada em vez de baixada de novo:
+
+```python
+from fastapi import APIRouter, Request
+from starlette.responses import Response
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+@router.get("/files/{key}")
+async def download_file(key: str, request: Request) -> Response:
+    """Stream do objeto no bucket padrão, com Range e revalidação."""
+    return await storage.download_response(
+        key,
+        request=request,
+        as_attachment=False,
+        cache_control="private, max-age=3600",
+    )
+```
+
+Toda resposta leva `Accept-Ranges: bytes`, o `ETag` do objeto (entre aspas)
+e o `Last-Modified`, mais os headers de segurança de todo download
+(`nosniff`, a CSP `sandbox` e o CORP `same-site`). O `as_attachment=False`
+só vira `inline` quando o tipo guardado no objeto está em
+`INLINE_SAFE_MEDIA_TYPES` — um `text/html` sai como `attachment`. Detalhe em
+[Downloads](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/downloads.md#headers-de-seguranca-e-o-que-vai-inline). Com o `request` em mãos, a rota responde assim:
+
+| O cliente manda | Resposta |
+| --- | --- |
+| nada de especial | `200`, objeto inteiro |
+| `Range: bytes=1000-1999`, `bytes=1000-` ou `bytes=-300` | `206` com `Content-Range`, lendo **só** o trecho no bucket |
+| `Range` que começa no fim do objeto ou depois | `416` com `Content-Range: bytes */<tamanho>` |
+| `Range: bytes=0-1,5-6` (vários trechos) | `200`, objeto inteiro |
+| `If-None-Match` com o `ETag` atual | `304`, sem corpo e sem ler o objeto |
+| `If-Modified-Since` não mais antigo que o objeto (sem `If-None-Match`) | `304` |
+| `Range` + `If-Range` que não bate mais com o objeto | `200`, objeto inteiro |
+
+Cada linha da tabela é um teste contra um MinIO de verdade em container
+(`tests/storage/test_download_live.py`, `make test-docker`). O `206` passa
+`offset`/`length` ao `get_object` do `minio-py`, que manda o `Range` ao
+bucket — o teste espiona essa chamada e confere que foi só o trecho.
+
+!!! info "Por que vários trechos viram `200`"
+    O RFC 9110 permite ignorar o `Range` e responder o objeto inteiro. A
+    alternativa, um corpo `multipart/byteranges`, não é o que `<video>`,
+    `<audio>` ou gerenciador de download pedem — eles mandam um trecho só.
+
+!!! tip "`If-Range` protege a retomada"
+    O gerenciador de download que retoma manda `If-Range` com o `ETag` que
+    tinha. Se o arquivo mudou no meio, o SDK ignora o `Range` e manda o
+    arquivo novo inteiro, em vez de emendar bytes de duas versões.
+
+O lado do navegador não precisa de nada além da tag:
+
+```html
+<video src="/files/aula-01.mp4" controls preload="metadata"></video>
+```
+
+Medido num Chromium (Playwright) com um MP4 de 60 s e 30 033 093 bytes servido
+pela rota acima: o player abriu com `Range: bytes=0-` (`206`) e, ao pular para
+os 50 s, pediu `bytes=24969216-30033092`, respondido com `206`; o vídeo parou
+em `currentTime == 50`, sem erro de mídia.
+
+!!! warning "Sem `request`, é o comportamento antigo"
+    `download_response(key)` sem `request` não lê header nenhum da requisição
+    e responde sempre `200` com o objeto inteiro — só os headers
+    `Accept-Ranges`/`ETag`/`Last-Modified` são novos. Nesse modo o `<video>`
+    não avança.
+
+Quer só os bytes, sem montar resposta? `stream_object(key, offset=, length=)`
+devolve o iterador do trecho.
+
+### Entrega pelo nginx — `X-Accel-Redirect`
+
+No `download_response`, todo byte passa pelo processo Python. Funciona, mas
+para vídeo e tráfego alto você quer outra divisão de trabalho: **o backend só
+autoriza, e o nginx entrega**.
+
+A rota confere a permissão e responde uma resposta **vazia** com um header:
+
+```text
+X-Accel-Redirect: /_bucket/media/aula.mp4?X-Amz-Algorithm=...&X-Amz-Signature=...
+```
+
+O nginx intercepta esse header, segue para uma `location` interna, busca o
+arquivo no bucket pela rede privada e faz o streaming para o cliente. O
+backend não carrega bytes, o bucket continua privado e o cliente só vê o
+domínio do backend.
+
+#### Quando escolher cada modo
+
+| | Proxy (`download_response`) | Redirect (`accel_redirect_response`) |
+| --- | --- | --- |
+| Quem move os bytes | o processo Python | o nginx |
+| Precisa de nginx na frente | não | sim, com a `location` interna abaixo |
+| `206` / `304` | respondidos pelo SDK | respondidos pelo bucket, atrás do nginx |
+| Bom para | arquivo pequeno, dev local, deploy sem nginx | vídeo, arquivo grande, tráfego alto |
+
+#### Liga por configuração
+
+Os dois modos saem da **mesma rota**. `serve_object` escolhe pelo que o
+cliente recebeu no construtor, e o `StorageSettings` mapeia duas variáveis
+novas:
+
+```bash
+# .env
+STORAGE_ENDPOINT=bucket:9000          # endpoint INTERNO: é contra ele que o SDK assina
+STORAGE_ACCEL_REDIRECT=true         # false (default) = proxy pelo app
+STORAGE_ACCEL_PREFIX=/_bucket/      # a location interna do nginx
+```
+
+```python
+from fastapi import APIRouter, Request
+from starlette.responses import Response
+from tempest_fastapi_sdk import AsyncMinIOClient, guess_media_type
+
+from src.core.settings import settings
+
+router = APIRouter()
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+
+
+@router.get("/files/{key:path}")
+async def download_file(key: str, request: Request) -> Response:
+    """Autoriza e entrega — pelo app ou pelo nginx, conforme o .env."""
+    return await storage.serve_object(
+        key,
+        request=request,
+        media_type=guess_media_type(key),
+        as_attachment=False,
+    )
+```
+
+!!! warning "No modo redirect, `inline` exige `media_type=`"
+    O `accel_redirect_response` não faz `stat`, então não sabe com que tipo o
+    bucket vai responder. Sem `media_type=`, o `as_attachment=False` sai
+    `attachment`. Com ele, o tipo é assinado na URL (o bucket responde com
+    esse, não com o guardado) e só vira `inline` se estiver em
+    `INLINE_SAFE_MEDIA_TYPES`. O `guess_media_type(key)` acima resolve pela
+    extensão da chave: `aula.mp4` vai inline, `pagina.html` vira download.
+    O default do `accel_redirect_response` é `as_attachment=True`. O
+    `media_type=` passa pela mesma checagem do `presigned_get_url`: só
+    `tipo/subtipo`, sem parâmetro, vírgula ou quebra de linha — fora disso
+    sobe `ValueError` antes de assinar qualquer coisa.
+
+Com `STORAGE_ACCEL_REDIRECT=false`, é o `download_response` da seção
+anterior. Com `true`, é o `accel_redirect_response`, e o `request` não é
+usado: o nginx repassa sozinho o `Range` e o `If-None-Match` do cliente ao
+bucket.
+
+!!! info "`accel_redirect_response` direto"
+    Quer o redirect numa rota só, sem depender da flag? Chame
+    `storage.accel_redirect_response(key, internal_prefix="/_bucket/",
+    expires=timedelta(minutes=5), filename=..., media_type=...,
+    as_attachment=False, cache_control=...)`. Ele **nunca** usa o
+    `STORAGE_PUBLIC_ENDPOINT`: a URL é assinada contra o `STORAGE_ENDPOINT`, que é
+    o host que o nginx vai chamar.
+
+#### O bloco do nginx
+
+```nginx
+upstream app {
+    server app:8000;
+}
+
+server {
+    listen 80;
+    server_name exemplo.com;
+
+    location / {
+        proxy_pass http://app;
+        proxy_set_header Host $host;
+    }
+
+    location /_bucket/ {
+        internal;
+        proxy_pass http://bucket:9000/;
+        proxy_set_header Host bucket:9000;
+        proxy_hide_header X-Content-Type-Options;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+        add_header Cross-Origin-Resource-Policy "same-site" always;
+    }
+}
+```
+
+As linhas da `location /_bucket/` têm, cada uma, um porquê:
+
+- **`internal;`** — só o nginx entra aqui, seguindo um `X-Accel-Redirect`. O
+  cliente que pede `/_bucket/...` direto recebe `404`.
+- **`proxy_pass http://bucket:9000/;` com a barra final** — com a barra, o
+  nginx troca o prefixo `/_bucket/` por `/`, e o bucket recebe
+  `/media/aula.mp4?X-Amz-...`, exatamente o path que foi assinado. Sem a
+  barra, o prefixo vai junto, o MinIO lê `_bucket` como nome do bucket e
+  responde `400 InvalidBucketName`.
+- **`proxy_set_header Host bucket:9000;`** — a assinatura SigV4 cobre o
+  `Host`. Ele precisa ser o `STORAGE_ENDPOINT` que assinou a URL. O perigo é a
+  herança: `proxy_set_header` definido no `server` (o `Host $host` que quase
+  todo config tem para o app) é herdado pela `location` que não define
+  nenhum. Aí o bucket recebe `Host: exemplo.com` e responde
+  `403 SignatureDoesNotMatch` — o sintoma é "o arquivo não carrega".
+- **Os `add_header ... always`** — são os headers de segurança de todo
+  download, e aqui é o único lugar onde eles chegam ao cliente. O nginx
+  responde com a resposta do bucket, não com a resposta vazia do app: um
+  header que o app pusesse nela não passaria (medido — por isso o SDK nem
+  põe). Sem o `always`, o nginx só acrescenta o header a uma parte dos
+  status — é como a documentação do `add_header` o define.
+- **`proxy_hide_header X-Content-Type-Options;`** — o MinIO já manda
+  `nosniff`; sem esconder o dele, o cliente recebe `nosniff, nosniff`
+  (medido). Esconder e reemitir deixa um valor só, qualquer que seja o
+  storage atrás.
+
+!!! warning "O `Content-Type` e o `Content-Disposition` vão dentro da URL"
+    O SDK não põe esses headers na resposta vazia: ele os assina na URL como
+    os overrides `response-content-type`, `response-content-disposition` e
+    `response-cache-control` do S3, e o bucket os devolve junto com os bytes.
+    Medido no nginx 1.27.5: o `Content-Type` do bucket vence o que o app
+    define, e um `Content-Disposition` definido nos dois chega duplicado no
+    cliente.
+
+!!! danger "Sem nginx na frente, a flag vaza a URL assinada"
+    Com `STORAGE_ACCEL_REDIRECT=true` e nenhum nginx interceptando, o cliente
+    recebe um `200` vazio com o `X-Accel-Redirect` — path e assinatura
+    incluídos. A URL aponta para o host interno e vale por `expires` (5
+    minutos por padrão). Ligue a flag só no ambiente que tem o bloco acima.
+
+#### O que foi medido
+
+`tests/storage/test_accel_redirect_live.py` (`make test-docker`) sobe um
+MinIO e um nginx em container e o app com uvicorn, e baixa pela rota. O
+mesmo arquivo passou inteiro no nginx 1.22.1, 1.27.5 e 1.29.8:
+
+| Requisição | Resultado |
+| --- | --- |
+| `GET /files/clip.mp4` | `200`, bytes do objeto, `Content-Type` guardado no bucket |
+| `GET /files/clip.mp4` com `Range: bytes=100-199` | `206`, `Content-Range: bytes 100-199/1048576` |
+| `GET /files/clip.mp4` com `If-None-Match: <etag>` | `304` |
+| chave com espaço, acento e `+` | `200` |
+| `GET /_bucket/media/clip.mp4` direto do cliente | `404` |
+| `location` que herda `Host $host` | `403 SignatureDoesNotMatch` |
+| `proxy_pass` sem a barra final | `400 InvalidBucketName` |
+| `GET /files/clip.mp4`, `location` com os `add_header` | `X-Content-Type-Options`, CSP e CORP, um valor cada |
+| `location` sem os `add_header` | `200` sem CSP nem CORP, mesmo com o app pondo os dois na resposta vazia |
+| `as_attachment=False` sem `media_type=` | `Content-Disposition: attachment` |
+| mesma rota com `STORAGE_ACCEL_REDIRECT=false` e `Range: bytes=-10` | `206` pelo app |
+
+No teste, bucket, app e nginx rodam na rede do host, então o endpoint
+interno é `127.0.0.1:<porta>` em vez de `bucket:9000`. O que importa é o
+mesmo: o `Host` que o nginx manda é o host que assinou a URL.
+
+### Arquivo privado com URL assinada da própria rota
+
+Quando o frontend só fala com o backend, um arquivo privado precisa de uma URL
+**do backend** que o navegador abra sozinho. `<img src>`, `<video src>` e um
+link de download não mandam `Authorization: Bearer`, e cookie de sessão entre
+o domínio do app e o da API esbarra em `SameSite`. A URL presignada do bucket
+não serve: ela leva o navegador ao bucket, não à sua rota.
+
+A saída tem o mesmo formato da URL presignada, só que aponta para a rota do
+app. O mapper que já autorizou o caller gera
+`/api/files/<key>?expires=<ts>&signature=<mac>` com `sign_path`, e a rota
+confere a assinatura com `make_signed_path_dependency` antes de fazer o
+streaming:
+
+```python
+from datetime import timedelta
+
+from fastapi import Depends, FastAPI, Request
+from starlette.responses import Response
+from tempest_fastapi_sdk import (
+    AsyncMinIOClient,
+    BaseSchema,
+    make_signed_path_dependency,
+    register_exception_handlers,
+    sign_path,
+)
+
+FILES_SECRET: str = "troque-pelo-settings.JWT_SECRET"
+FILES_PURPOSE: str = "files"
+
+storage = AsyncMinIOClient(
+    endpoint="minio.internal:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    default_bucket="uploads",
+)
+signed_file = make_signed_path_dependency(secret=FILES_SECRET, purpose=FILES_PURPOSE)
+
+
+class AttachmentResponseSchema(BaseSchema):
+    """Anexo como o frontend recebe: a chave e a URL que o navegador abre."""
+
+    key: str
+    url: str
+
+
+def to_attachment_response(key: str) -> AttachmentResponseSchema:
+    """Mapeia a chave guardada para o schema, com a URL já assinada."""
+    return AttachmentResponseSchema(
+        key=key,
+        url=sign_path(
+            f"/api/files/{key}",
+            secret=FILES_SECRET,
+            expires_in=timedelta(minutes=15),
+            purpose=FILES_PURPOSE,
+        ),
+    )
+
+
+app = FastAPI()
+register_exception_handlers(app)
+
+
+@app.get("/api/attachments/{key:path}")
+async def get_attachment(key: str) -> AttachmentResponseSchema:
+    """A sua autorização entra aqui: JWT, dono do recurso, papel."""
+    return to_attachment_response(key)
+
+
+@app.get("/api/files/{key:path}", dependencies=[Depends(signed_file)])
+async def download_file(key: str, request: Request) -> Response:
+    """Só chega aqui com URL assinada e dentro da validade."""
+    return await storage.download_response(
+        key, request=request, as_attachment=False
+    )
+```
+
+O `url` que o frontend recebe para a chave `aulas/aula 01.mp4`, assinado às
+12:00 UTC de 1º de outubro de 2026, é:
+
+```text
+/api/files/aulas/aula%2001.mp4?expires=1790856900&signature=e9vPzlJkaaLXY6fJ0dSsV6RS6D3pOElruFdeskdikck
+```
+
+E vai direto na tag, sem header nenhum:
+
+```html
+<video src="/api/files/aulas/aula%2001.mp4?expires=1790856900&signature=e9vPzlJkaaLXY6fJ0dSsV6RS6D3pOElruFdeskdikck" controls></video>
+```
+
+Pedaço por pedaço:
+
+- **`sign_path` no mapper.** Ele roda depois da autorização, então só quem
+  pôde ver o anexo recebe a URL. Quem tem a URL abre o arquivo até o
+  `expires` — é uma capacidade, como a URL presignada, e por isso a validade
+  é curta.
+- **`make_signed_path_dependency` na rota.** A dependency lê `expires` e
+  `signature` da query e confere contra o path decodificado da requisição. O
+  handler só roda com assinatura válida e dentro da validade: o bucket nem é
+  consultado numa URL recusada.
+- **`download_response(..., request=)` continua igual.** O `Range` passa pela
+  assinatura, então o `<video>` avança e o download retoma do mesmo jeito.
+  Trocando por `serve_object`, a mesma dependency guarda o modo
+  `X-Accel-Redirect` da seção anterior.
+
+`tests/storage/test_signed_url_live.py` (`make test-docker`) monta essa rota
+contra um MinIO em container e mede: `200` com o objeto inteiro pela URL
+assinada, `206` com `Range: bytes=1000-1999` e só o trecho, e `403` numa URL
+adulterada ou sem assinatura, sem nenhum `stat_object` no bucket. Com
+`serve_object` e `accel_redirect=True`, a URL assinada responde o
+`X-Accel-Redirect` e a adulterada responde `403` sem ele.
+
+#### O que a assinatura cobre
+
+- **O path e o `expires`.** A assinatura é
+  `HMAC-SHA256(chave, "<expires>\n<path>")`. Mudar a chave do objeto ou
+  esticar o `expires` quebra o MAC. Outros parâmetros de query **não** entram.
+- **O `purpose`.** A chave do MAC é derivada do segredo com o `purpose`
+  (`HMAC-SHA256(secret, "tempest-fastapi-sdk.signed-url.v1\0" + purpose)`), e
+  nunca é o segredo cru. Por isso reusar o `JWT_SECRET` é seguro, e uma URL
+  assinada para `"files"` não vale numa rota protegida com `"email-link"`.
+- **Comparação em tempo constante**, com `hmac.compare_digest`.
+
+| A requisição | Resposta |
+| --- | --- |
+| URL assinada, dentro da validade | o handler roda |
+| `expires` alterado | `403`, `code: "SIGNED_URL_INVALID"` |
+| path alterado | `403`, `code: "SIGNED_URL_INVALID"` |
+| assinada com outro `purpose` ou outro segredo | `403`, `code: "SIGNED_URL_INVALID"` |
+| sem `expires`/`signature`, ou `expires` que não é número | `403`, `code: "SIGNED_URL_INVALID"` (nunca `422`) |
+| autêntica, mas no segundo do `expires` ou depois | `403`, `code: "SIGNED_URL_EXPIRED"` |
+
+Cada linha é um teste de `tests/api/test_signed_path_dependency.py`. O corpo
+segue o envelope do SDK:
+
+```json
+{"detail": "Signed URL has expired", "code": "SIGNED_URL_EXPIRED", "details": {}}
+```
+
+!!! info "Por que `403`, e não `401`"
+    Uma URL assinada é uma capacidade, não um login: nenhuma credencial que o
+    cliente mande conserta a URL. O S3 responde `403` para presignada vencida
+    ou adulterada pelo mesmo motivo. E `401` dispararia o interceptor de
+    "sessão expirada, volte ao login" que quase todo frontend tem, com a
+    sessão do usuário intacta. Os dois `code` existem para o frontend separar
+    "peça uma URL nova ao backend" (`SIGNED_URL_EXPIRED`) de "este link foi
+    adulterado" (`SIGNED_URL_INVALID`).
+
+#### A regra de encoding do path
+
+`sign_path` recebe o path **decodificado**, do jeito que a rota vai vê-lo em
+`request.scope["path"]` (é o que o `{key:path}` recebe), e devolve a URL já
+com percent-encoding. O Starlette decodifica o path antes de rotear, então os
+dois lados assinam a mesma string:
+
+- `aula 01.mp4` viaja como `aula%2001.mp4`, `100%.pdf` como `100%25.pdf`, e
+  `á.txt` como `%C3%A1.txt`; a rota recebe a chave original;
+- `/api/files/a%2Fb.pdf` e `/api/files/a/b.pdf` chegam à rota como o mesmo
+  path, com a mesma chave `a/b.pdf`, e valem com a mesma assinatura.
+
+Medido no Starlette 0.46.0 e no 1.6.0 — o piso que `fastapi>=0.165.0` exige
+hoje; a suíte roda no 1.10.0.
+
+!!! warning "Passe o path decodificado, nunca um já codificado"
+    `sign_path("/api/files/aula%2001.mp4", ...)` assina a chave literal
+    `aula%2001.mp4`, que vira `aula%252001.mp4` na URL. Monte o path com a
+    chave como ela está guardada.
+
+!!! tip "App montado e `root_path`"
+    Sob `app.mount("/v1", sub_app)`, a rota vê `/v1/api/files/...`, então
+    assine com o prefixo do `mount`. Já o `root_path` de proxy (o prefixo que
+    o proxy reverso tira antes de repassar) **não** aparece em
+    `request.scope["path"]`: assine sem ele e acrescente o prefixo na URL que
+    o navegador recebe.
+
+### Presigned URL — upload direto do browser
+
+Padrão recomendado pra arquivos grandes: o cliente faz `PUT` direto no MinIO/S3, os bytes não passam pelo FastAPI.
+
+```python
+from datetime import timedelta
+from uuid import uuid4
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+class PresignedUploadResponse(BaseModel):
+    key: str
+    url: str
+
+
+@router.post("/uploads/presign")
+async def presign_upload() -> PresignedUploadResponse:
+    """Devolve URL temporária pro cliente fazer PUT direto."""
+    key = f"uploads/{uuid4().hex}"
+    url = await storage.presigned_put_url(key, expires=timedelta(minutes=15))
+    return PresignedUploadResponse(key=key, url=url)
+```
+
+Cliente JS:
+
+```javascript
+const { key, url } = await fetch("/uploads/presign", { method: "POST" }).then(r => r.json());
+await fetch(url, { method: "PUT", body: file });
+```
+
+!!! warning "O `PUT` assinado não limita tamanho"
+    Nada do corpo entra na assinatura de um `PUT`: o cliente manda quantos
+    bytes quiser e o serviço só descobre o tamanho depois do upload. Para
+    um teto que o próprio S3 aplica, use `presigned_post_policy` (abaixo).
+
+### Upload direto com teto — `presigned_post_policy`
+
+O `POST` de formulário do S3 carrega uma *policy* assinada. Nela vão a
+chave, o `Content-Type` e a condição `content-length-range`, e é o **store**
+que recusa o que passar disso, antes de gravar:
+
+```python
+from uuid import uuid4
+
+from fastapi import APIRouter
+
+from src.api.app import storage
+from tempest_fastapi_sdk import BaseSchema
+
+router = APIRouter()
+
+MAX_PHOTO_BYTES: int = 5 * 1024 * 1024
+
+
+class PresignedFormResponse(BaseSchema):
+    key: str
+    url: str
+    fields: dict[str, str]
+
+
+@router.post("/uploads/photo")
+async def presign_photo() -> PresignedFormResponse:
+    """Devolve um formulário que o store aceita só até 5 MiB, em JPEG."""
+    key = f"uploads/{uuid4().hex}.jpg"
+    post = await storage.presigned_post_policy(
+        key,
+        max_bytes=MAX_PHOTO_BYTES,
+        content_type="image/jpeg",
+    )
+    return PresignedFormResponse(key=key, url=post.url, fields=post.fields)
+```
+
+Cliente JS — os campos primeiro, o arquivo **por último** (o S3 ignora o
+que vem depois dele):
+
+```javascript
+const { url, fields } = await fetch("/uploads/photo", { method: "POST" }).then(r => r.json());
+const form = new FormData();
+Object.entries(fields).forEach(([name, value]) => form.append(name, value));
+form.append("file", file);
+await fetch(url, { method: "POST", body: form });
+```
+
+Medido contra MinIO `RELEASE.2025-04-22T22-12-26Z`
+(`tests/storage/test_presign_live.py`):
+
+| Upload | Resposta do store |
+| --- | --- |
+| dentro do teto | `204` |
+| 1 byte acima de `max_bytes` | `400 EntityTooLarge` |
+| abaixo de `min_bytes` | `400 EntityTooSmall` |
+| outro `Content-Type` ou outra `key` | `403 AccessDenied` |
+
+Nas recusas nada é gravado.
+
+!!! tip "Mesmo formato no backend local"
+    `LocalObjectStorageClient.presigned_post_policy` devolve o mesmo
+    `PresignedPost`, e a rota do `make_local_storage_router` aplica os
+    mesmos limites (`413`/`400`/`403`). O JavaScript acima não muda quando
+    o serviço troca de backend — veja [Storage local](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/local-storage.md).
+
+!!! info "O tipo declarado não é o conteúdo"
+    A condição de `Content-Type` prende o tipo **declarado** no formulário,
+    não os bytes. Antes de confiar no arquivo, leia o começo dele no
+    servidor (`stream_object`) e confira a assinatura do formato.
+
+### Presigned URL — download temporário
+
+Para servir arquivos privados sem rotear bytes pela API:
+
+```python
+from datetime import timedelta
+
+from fastapi import APIRouter
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+@router.get("/files/{key}/url")
+async def get_download_url(key: str) -> dict[str, str]:
+    """URL de download válida por 1 hora."""
+    url = await storage.presigned_get_url(key, expires=timedelta(hours=1))
+    return {"url": url}
+```
+
+#### Com o tipo que o servidor conferiu
+
+`filename`, `media_type` e `as_attachment` entram na URL como os overrides
+`response-*` do S3, **assinados**: o store responde com eles, e editar
+qualquer um na URL dá `403`. É o que serve o arquivo com o tipo que o
+servidor conferiu, não com o que o cliente declarou no upload:
+
+```python
+from datetime import timedelta
+
+from src.api.app import storage
+
+
+async def photo_url(key: str) -> str:
+    """Link que abre inline numa <img>, como JPEG, por 10 minutos."""
+    return await storage.presigned_get_url(
+        key,
+        expires=timedelta(minutes=10),
+        media_type="image/jpeg",
+        as_attachment=False,
+    )
+```
+
+`as_attachment=False` só vira `inline` para tipo seguro de exibir
+(`INLINE_SAFE_MEDIA_TYPES`); `text/html` e `image/svg+xml` continuam
+`attachment`. `media_type` aceita só `tipo/subtipo`, sem parâmetro. Sem
+nenhum dos três, o link responde com o que foi gravado, como antes.
+
+### Endpoint público separado para presigned URLs *(v0.88.0+)*
+
+Cenário comum em produção: o backend fala com o MinIO por uma **rede privada rápida** (`servus-storage:9000`, sem TLS), mas o **browser** não alcança esse host — precisa de um host **público com HTTPS**. Se você assinar a presigned URL com o endpoint interno, o link vem com `servus-storage:9000` e o navegador não abre.
+
+Solução: `STORAGE_PUBLIC_ENDPOINT`. As presigned URLs (`presigned_get_url` / `presigned_put_url`) passam a ser **assinadas contra o host público**, enquanto **todas as operações servidor→MinIO continuam no endpoint interno**.
+
+```bash
+# .env
+STORAGE_ENDPOINT=servus-storage:9000            # rede interna Docker (ops)
+STORAGE_SECURE=false
+STORAGE_PUBLIC_ENDPOINT=https://storage.example.com   # browser (presigned)
+# STORAGE_PUBLIC_SECURE=true                     # opcional; https:// já implica true
+```
+
+!!! info "Por que dois clients e não um replace de host"
+    A presigned URL é assinada (SigV4) incluindo o header `Host`. Trocar o host **depois** de assinar invalida a assinatura. Por isso o SDK mantém um segundo `minio.Minio` (mesmas credenciais) só para **assinar** contra o host público — o `AsyncMinIOClient.client` interno segue fazendo put/get/stat/ensure_bucket pela rede privada.
+
+!!! tip "Sem `STORAGE_PUBLIC_ENDPOINT`"
+    Comportamento inalterado: presigned URLs são assinadas com `STORAGE_ENDPOINT` (modo endpoint único). O split é 100% opt-in.
+
+O proxy do host público precisa rotear para a **API S3 do MinIO (porta 9000)** com TLS e repassar o `Host` correto (a assinatura valida o host).
+
+### Operações em lote — presign / upload / download *(v0.133.0+)*
+
+Endpoints de **listagem** normalmente precisam resolver **uma chave por linha** — uma página de perfis, cada um com sua foto. Fazer isso num `for` com `await presigned_get_url(...)` **serializa** os N hops de thread (cada chamada do `minio` roda em `asyncio.to_thread`). Os três métodos batch disparam o fan-out de uma vez, com um teto de concorrência:
+
+- `presigned_get_urls(keys)` → `dict[str, str]` (chave → URL)
+- `put_objects(items)` → `dict[str, str]` (chave → ETag)
+- `get_objects_bytes(keys)` → `dict[str, bytes]` (chave → payload)
+
+```python
+from fastapi import APIRouter
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+@router.post("/files/urls")
+async def sign_many(keys: list[str]) -> dict[str, str]:
+    """Assina uma página de chaves de uma vez, em vez de uma por request."""
+    return await storage.presigned_get_urls(keys)
+```
+
+Chaves **duplicadas são deduplicadas** (cada objeto é assinado/baixado uma vez), e o retorno é um `dict` — faça o lookup por chave com `result.get(row.key)`.
+
+!!! tip "No serviço: `file_urls` para páginas"
+    Se o serviço usa `StoredFileServiceMixin`, prefira `file_urls([...])` — o par em lote de `file_url`. Ele **descarta chaves `None`/vazias** e devolve `dict`, ideal pra montar uma página de respostas:
+
+    ```python
+    users = [...]  # linhas da página
+    urls = await user_service.file_urls([u.profile_picture for u in users])
+    for user in users:
+        user.profile_picture_url = urls.get(user.profile_picture)  # None se vazia
+    ```
+
+!!! note "Semântica fail-fast"
+    Os três métodos são **fail-fast**: a primeira falha aborta o lote e propaga (`asyncio.gather` padrão) — mesmo comportamento de rodar as operações uma a uma. Precisa tolerar falha parcial? Rode os itens individualmente e trate cada exceção.
+
+!!! info "Teto de concorrência (`max_concurrency`, padrão 16)"
+    Cada operação vai pra um thread do executor default. Agendar milhares de uma vez satura o pool e estoura memória. Um `asyncio.Semaphore` limita quantas rodam ao mesmo tempo, preservando a ordem. Ajuste via `max_concurrency=` (mínimo 1; `0` ou negativo levanta `ValueError`).
+
+Upload em lote usa `PutObjectItem`, que espelha os argumentos por-objeto de `put_object` (content-type, metadata, length para streams):
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
+
+from src.core.settings import settings
+
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+
+# No seu código estes vêm do disco (`Path(...).read_bytes()`) ou do upload.
+thumb_a = b"\xff\xd8\xff\xdb bytes do primeiro JPEG"
+thumb_b = b"\xff\xd8\xff\xdb bytes do segundo JPEG"
+
+
+async def main() -> None:
+    """Run this example."""
+    etags = await storage.put_objects(
+        [
+            PutObjectItem(key="thumbs/a.jpg", data=thumb_a, content_type="image/jpeg"),
+            PutObjectItem(key="thumbs/b.jpg", data=thumb_b, content_type="image/jpeg"),
+        ]
+    )
+
+
+asyncio.run(main())
+```
+
+!!! warning "`get_objects_bytes` carrega tudo em memória"
+    Como `get_object_bytes`, o lote é para objetos **pequenos** — cada payload vira `bytes` na RAM. Para arquivos grandes, faça streaming individual com `stream_object`.
+
+### Listar objetos por prefixo
+
+```python
+from fastapi import APIRouter
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+@router.get("/files")
+async def list_files(prefix: str = "") -> list[str]:
+    """Lista chaves no bucket padrão sob ``prefix``."""
+    return await storage.list_objects(prefix)
+```
+
+`list_objects` devolve `[]` quando nada bate — em linha com a convenção do SDK ("nenhum match não é erro").
+
+### Remover em lote
+
+`remove_objects` apaga muitas chaves com o `DeleteObjects` do S3 — uma
+requisição por 1000 chaves, em vez de um `DELETE` por objeto — e devolve só o
+que o storage recusou:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+storage = AsyncMinIOClient(
+    endpoint="localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    default_bucket="uploads",
+)
+
+
+async def main() -> None:
+    """Apaga tudo sob um prefixo."""
+    keys = await storage.list_objects("tmp/")
+    errors = await storage.remove_objects(keys)
+    for error in errors:
+        print(error.key, error.code, error.message)
+
+
+asyncio.run(main())
+```
+
+Lista vazia é sucesso. Para apagar **os arquivos de um titular** (LGPD), use
+`SubjectObjectStorage.delete_all` — veja
+[Exportação e exclusão de titular](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/subject-data.md).
+
+### Copiar / mover
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
+
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+
+
+async def main() -> None:
+    """Run this example."""
+    await storage.copy_object("uploads/draft-1", "uploads/final-1")
+    await storage.remove_object("uploads/draft-1")
+
+
+asyncio.run(main())
+```
+
+## Quando NÃO usar `AsyncMinIOClient`
+
+- Quando você precisa de operações **fora** das listadas (SSE-KMS, ACLs S3 v2, bucket replication). Use `storage.client.<método>` direto — `minio-py` continua acessível.
+- Para upload com retomada vindo do navegador — `minio-py` faz multipart automático, mas não retoma um envio interrompido. Use o servidor tus do SDK: [Upload resumível (tus)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/resumable-upload.md), com `S3TusStore` sobre este mesmo `AsyncMinIOClient`.
+
+## Bucket privado atrás de HTTPS
+
+Em produção o guard recusa `STORAGE_SECURE=false` — com uma exceção, para
+um formato comum de deploy: o servidor S3 compatível roda como container na
+mesma rede privada do compose (`STORAGE_ENDPOINT=bucket:9000`, HTTP puro
+dentro da rede), e o cliente só enxerga URLs pré-assinadas de um host
+público com TLS terminado no nginx. O HTTP puro fica confinado ao salto
+privado, e o guard aceita quando **as três** condições valem:
+
+1. o host de `STORAGE_ENDPOINT` é privado — nome sem ponto (o nome do
+   serviço no Docker), `localhost`, loopback, ou IP RFC 1918
+   (`10.x`, `172.16–31.x`, `192.168.x`), link-local ou IPv6 ULA;
+2. `STORAGE_PUBLIC_ENDPOINT` está preenchido;
+3. o esquema público é HTTPS — `STORAGE_PUBLIC_SECURE=true` (ou
+   `STORAGE_PUBLIC_ENDPOINT` começando com `https://`).
+
+Faltou uma delas, a violação continua, e a mensagem diz a saída:
+
+```text
+- STORAGE_SECURE: storage traffic over plain HTTP (allowed only for a private STORAGE_ENDPOINT behind an HTTPS STORAGE_PUBLIC_ENDPOINT) [type=value_error]
+```
+
+O `.env` de produção:
+
+```text
+ENV=production
+STORAGE_ENDPOINT=bucket:9000
+STORAGE_SECURE=false
+STORAGE_PUBLIC_ENDPOINT=storage.example.com
+STORAGE_PUBLIC_SECURE=true
+STORAGE_ACCESS_KEY=app-key
+STORAGE_SECRET_KEY=app-secret-value
+```
+
+```python
+from tempest_fastapi_sdk import (
+    AsyncMinIOClient,
+    BaseAppSettings,
+    EnvironmentSettings,
+    StorageSettings,
+)
+
+
+class Settings(EnvironmentSettings, StorageSettings, BaseAppSettings):
+    """Bucket na rede privada do compose, URLs públicas por HTTPS."""
+
+
+settings = Settings()
+print(settings.production_violations())
+storage = AsyncMinIOClient(**settings.storage_kwargs())
+print(storage.endpoint, storage.secure, storage.public_endpoint, storage.public_secure)
+```
+
+```text
+[]
+bucket:9000 False storage.example.com True
+```
+
+O app fala com `bucket:9000` em HTTP; as URLs pré-assinadas são assinadas
+para `storage.example.com` em HTTPS. O compose não publica a porta do
+bucket — só o nginx chega nele:
+
+```yaml
+services:
+  bucket:
+    image: mauriciobenjamin700/tempest-bucket:latest
+    expose:
+      - "9000"
+  api:
+    build: .
+    env_file: .env
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+```
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name storage.example.com;
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+    location /minio/ {
+        return 403;
+    }
+
+    location / {
+        proxy_pass http://bucket:9000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        client_max_body_size 100m;
+    }
+}
+```
+
+!!! warning "O `Host` tem que chegar intacto"
+    O SigV4 assina o header `Host`: a URL foi assinada para
+    `storage.example.com`, então o bucket precisa receber esse mesmo
+    `Host`. Por isso o `proxy_set_header Host $host` — sem ele, o nginx
+    manda `bucket:9000` e toda URL pré-assinada responde
+    `SignatureDoesNotMatch`. E não exponha a API de administração: bloqueie
+    o caminho de admin do servidor (`/minio/` no MinIO e compatíveis) e
+    nunca publique a porta do console.
+
+## Uma chave por bucket
+
+Alguns storages S3-compatíveis amarram cada chave de acesso a **um** bucket:
+a chave criada para as imagens públicas não lê nem grava os documentos
+privados. Com uma credencial só, todo upload, URL pré-assinada, listagem e
+limpeza no segundo bucket responde `AccessDenied`.
+
+`STORAGE_BUCKET_CREDENTIALS` dá a cada bucket a sua chave. É um JSON de
+`bucket → {"access_key", "secret_key"}`; os buckets que não estão nele
+continuam com `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
+
+`.env`:
+
+```bash
+STORAGE_ENDPOINT=storage.example.com
+STORAGE_SECURE=true
+STORAGE_DEFAULT_BUCKET=images
+STORAGE_ACCESS_KEY=images-key
+STORAGE_SECRET_KEY=images-secret
+STORAGE_BUCKET_CREDENTIALS='{"documents": {"access_key": "documents-key", "secret_key": "documents-secret"}}'
+```
+
+Com ele preenchido, `build_storage_client()` devolve um
+`BucketRoutedMinIOClient` — subclasse de `AsyncMinIOClient`, então a
+anotação e as chamadas do serviço não mudam. Cada operação que recebe
+`bucket` é assinada com a chave daquele bucket, URL pré-assinada inclusive:
+
+```python
+import asyncio
+from urllib.parse import parse_qs, urlsplit
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    BucketRoutedMinIOClient,
+    StorageSettings,
+)
+
+
+class Settings(StorageSettings, BaseAppSettings):
+    """Dois buckets, uma chave para cada."""
+
+
+async def main() -> None:
+    """Assina um link em cada bucket e mostra qual chave assinou."""
+    settings = Settings()
+    print(settings.STORAGE_BUCKET_CREDENTIALS)
+    storage = settings.build_storage_client()
+    assert isinstance(storage, BucketRoutedMinIOClient)
+    print(sorted(storage.routed_buckets))
+    for bucket in ("images", "documents"):
+        url = await storage.presigned_get_url("contrato.pdf", bucket=bucket)
+        credential = parse_qs(urlsplit(url).query)["X-Amz-Credential"][0]
+        print(bucket, "->", credential.split("/")[0])
+
+
+asyncio.run(main())
+```
+
+A assinatura é local (o `minio` não consulta o servidor para assinar com
+`STORAGE_REGION` definido), então isto roda sem bucket nenhum no ar:
+
+```text
+{'documents': StorageBucketCredential(access_key='documents-key', secret_key=SecretStr('**********'))}
+['documents']
+images -> images-key
+documents -> documents-key
+```
+
+O segredo é `SecretStr`: sai mascarado no `repr`, no `str` e no
+`model_dump()`.
+
+As regras do roteamento:
+
+- **Bucket listado** usa a chave dele; **bucket fora da lista** usa a
+  principal. A chamada sem `bucket` vai para `STORAGE_DEFAULT_BUCKET`, que é
+  roteado como qualquer outro.
+- **`list_buckets()` e o atributo `client`** não nomeiam bucket e ficam na
+  credencial principal.
+- **`copy_object` com os dois buckets na mesma credencial** é a cópia do
+  próprio servidor, como antes. **Com credenciais diferentes**, nenhuma chave
+  lê a origem e grava o destino ao mesmo tempo, então o objeto é baixado com
+  a chave da origem para um arquivo temporário (apagado no fim) e enviado com
+  a chave do destino, levando `Content-Type` e metadados de usuário. Os bytes
+  passam pelo app nesse caminho, e outros headers gravados
+  (`Cache-Control`, `Content-Disposition`) não são copiados.
+- **`tempest storage`** monta o mesmo cliente, então
+  `tempest storage ls --bucket documents` assina com a chave dos documentos.
+
+O boot recusa credencial pela metade — chave sem segredo, segredo sem
+chave, valor vazio ou campo com nome errado (`"secret"` no lugar de
+`"secret_key"`) —, e o erro não ecoa o valor:
+
+```text
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+STORAGE_BUCKET_CREDENTIALS.documents.secret_key
+  Field required [type=missing]
+```
+
+Em `ENV=production` o guard também recusa um bucket cujo segredo ainda é o
+`minioadmin` do MinIO local, e `STORAGE_BUCKET_CREDENTIALS` preenchido com
+`STORAGE_BACKEND=local`, que nunca o lê.
+
+!!! tip "Quem monta o cliente na mão"
+    `storage_kwargs()` não muda: `AsyncMinIOClient(**settings.storage_kwargs())`
+    continua com uma credencial só. Para o roteamento, use
+    `settings.build_storage_client()` ou passe
+    `bucket_credentials=settings.STORAGE_BUCKET_CREDENTIALS` para
+    `BucketRoutedMinIOClient`.
+
+## Storage desligado (`STORAGE_ENABLED=false`)
+
+Subindo para produção antes de o bucket existir? `STORAGE_ENABLED=false`
+faz o guard de produção pular as regras de `STORAGE_*`, e o mesmo
+`AsyncMinIOClient(**settings.storage_kwargs())` passa a recusar **toda**
+operação — inclusive o atributo `client` — com
+`IntegrationDisabledException` (`503`, `code="INTEGRATION_DISABLED"`,
+`details={"integration": "storage"}`). Um `SubjectObjectStorage` por cima
+herda a recusa. Sem `if` no seu código, e sem o extra `[minio]` instalado
+enquanto a integração estiver desligada. O exemplo completo está em
+[Ligar e desligar integrações](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/system-checks.md#ligar-e-desligar-integracoes-deploy-por-partes).
+
+## Recap
+
+- `AsyncMinIOClient` é fachada async sobre o pacote oficial `minio`, no extra
+  `[minio]`: bucket, objeto e URL pré-assinada, que é o que um serviço FastAPI
+  costuma precisar.
+- A configuração vem do settings mixin, e o cliente é montado no `lifespan` do
+  `create_app()` — uma instância por processo, não uma por request.
+- URL pré-assinada é a forma de entregar arquivo privado sem passar os bytes
+  pelo seu processo.
+- Quando os bytes precisam passar pelo backend, `download_response(key,
+  request=request)` responde `206`, `304` e `416` — sem o `request`, é sempre
+  `200` inteiro.
+- Para o nginx entregar no lugar do app, `serve_object` com
+  `STORAGE_ACCEL_REDIRECT=true` responde `X-Accel-Redirect`; a `location`
+  interna precisa de `proxy_pass` com barra final, `Host` igual ao
+  `STORAGE_ENDPOINT` e os `add_header` de segurança — o nginx não repassa os
+  do app.
+- Para o navegador abrir arquivo privado pela **rota do app**, assine o
+  path no mapper com `sign_path` e proteja a rota com
+  `make_signed_path_dependency`: a assinatura cobre path, `expires` e
+  `purpose`, e a recusa é `403` (`SIGNED_URL_INVALID` ou `SIGNED_URL_EXPIRED`).
+- Storage que amarra cada chave a um bucket: `STORAGE_BUCKET_CREDENTIALS`
+  faz o `build_storage_client()` devolver o `BucketRoutedMinIOClient`, que
+  assina cada chamada com a chave do bucket dela e cai na principal.
+- Operação fora da fachada não é bloqueada: chame `storage.client.<método>` e
+  use o `minio-py` direto, em vez de esperar que a fachada cresça.
+- Para alternar disco local e MinIO por configuração, o backend pluggável de
+  upload é o caminho — a fachada é para quem já decidiu usar MinIO.
+
+## Próximos passos
+
+- O backend pluggable de upload `MinIOUploadStorage` está disponível desde a v0.24.0 — para o pipeline que alterna disco local ↔ MinIO/S3 via flag de settings, veja a [receita de uploads](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/uploads.md).

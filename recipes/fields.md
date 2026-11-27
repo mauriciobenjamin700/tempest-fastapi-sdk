@@ -1,0 +1,405 @@
+# Campos validados (tipos prontos)
+
+Em vez de repetir `Field(gt=0, ...)` em cada schema, o SDK traz tipos
+`Annotated` com a regra de validação embutida — o campo passa a se
+**autodescrever**. Seguem a mesma convenção `*Field` dos campos BR
+(`CPFField`, `UFField`, ...): tudo que termina em `Field` é um tipo de
+campo pronto pra schema. Valor inválido vira `ValidationError` → HTTP 422
+pelo handler do SDK.
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import CentsField, PercentField, SlugField
+
+
+class ProductCreateSchema(BaseSchema):
+    slug: SlugField              # kebab-case minúsculo
+    price_cents: CentsField      # int >= 0 (dinheiro em centavos)
+    discount: PercentField       # float em [0, 100]
+```
+
+## Inteiros
+
+| Tipo | Regra | Uso |
+| --- | --- | --- |
+| `PositiveIntField` | `> 0` | quantidades, contagens, ids 1-based |
+| `NonNegativeIntField` | `>= 0` | contadores que zeram |
+| `CentsField` | `>= 0` | dinheiro em unidades menores (centavos) |
+| `PortField` | `1..65535` | porta TCP/UDP |
+
+!!! tip "Dinheiro em centavos"
+    Guarde valores monetários como **inteiro de centavos** (`CentsField`)
+    pra fugir do arredondamento de float binário. Divida por 100 só na
+    borda de apresentação. Quando o contrato exige decimal exato (ex.:
+    payload de gateway), use `PriceField`.
+
+## Floats
+
+| Tipo | Regra |
+| --- | --- |
+| `PositiveFloatField` | `> 0` |
+| `NonNegativeFloatField` | `>= 0` |
+| `PercentField` | `0..100` |
+| `RatioField` | `0..1` (frações/probabilidades) |
+| `LatitudeField` | `-90..90` |
+| `LongitudeField` | `-180..180` |
+
+## Decimais
+
+`PriceField` é um `Decimal` não-negativo com 2 casas:
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import PriceField
+
+
+class InvoiceSchema(BaseSchema):
+    total: PriceField     # "9.99" -> Decimal("9.99"); "1.999" e "-1" rejeitados
+```
+
+Para **razões e percentuais**, existe o par decimal de `RatioField` /
+`PercentField`:
+
+| Tipo | Regra | Quando |
+| --- | --- | --- |
+| `DecimalRatioField` | `Decimal` em `0..1` | Fração que multiplica dinheiro |
+| `DecimalPercentField` | `Decimal` em `0..100` | Percentual que multiplica dinheiro |
+| `SignedDecimalRatioField` | `Decimal` `<= 1` | Fração derivada que pode ficar negativa |
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import DecimalRatioField, PriceField
+
+
+class QuoteSchema(BaseSchema):
+    reference: PriceField
+    discount: DecimalRatioField    # Decimal("0.28"), não 0.28
+
+    def proposal(self) -> Decimal:
+        """Return the reference amount minus the discount."""
+        return self.reference * (Decimal(1) - self.discount)
+```
+
+!!! danger "Não use `RatioField` quando a fração multiplica dinheiro"
+    `RatioField` e `PercentField` são anotados em `float`. `Decimal("0.28")`
+    vira `0.28`, o Pydantic aceita calado, e a primeira multiplicação por um
+    `PriceField` levanta `TypeError` — ou pior, alguém "conserta" com um
+    `float()` e o centavo se perde. Em orçamento de licitação, um centavo
+    desclassifica proposta.
+
+!!! note "Por que `SignedDecimalRatioField` tem teto mas não piso"
+    Ele é para uma fração **derivada**: a linha de saldo que as premissas não
+    deixaram folga, a diferença de fechamento que o documento precisa expor
+    em vez de zerar. Acima de 100% é bug; abaixo de 0% é notícia.
+
+## Strings
+
+| Tipo | Regra |
+| --- | --- |
+| `NonEmptyStrField` | apara espaços e rejeita vazio (só-espaço também) |
+| `SlugField` | kebab-case minúsculo (`meu-post-1`) |
+| `RawTextField` | guarda o texto **exatamente** como veio, sem aparar espaço |
+| `HexColorField` | cor hex CSS (`#fff` ou `#abc123`) |
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import HexColorField, NonEmptyStrField, SlugField
+
+
+class CategorySchema(BaseSchema):
+    name: NonEmptyStrField     # "  Bebidas " -> "Bebidas"; "   " rejeitado
+    slug: SlugField
+    color: HexColorField
+```
+
+### Texto livre: `RawTextField`
+
+O `BaseSchema` liga `str_strip_whitespace=True`: todo `str` chega aparado.
+Para nome e e-mail é o certo; para **conteúdo** corrompe o dado. Um delta de
+streaming `" mundo"` vira `"mundo"`, e o prompt chega ao modelo diferente do
+que o cliente mandou. Anote o campo de conteúdo com `RawTextField`:
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import RawTextField
+
+
+class ChatDeltaSchema(BaseSchema):
+    """A streamed chunk of a model answer."""
+
+    role: str
+    content: RawTextField
+
+
+chunk = ChatDeltaSchema(role=" assistant ", content=" mundo\n")
+print(repr(chunk.role), repr(chunk.content))
+```
+
+Saída (medida, pydantic 2.13.5):
+
+```text
+'assistant' ' mundo\n'
+```
+
+O `role` continua aparado; só o campo anotado escapa. Vale também na
+atribuição (`validate_assignment`): `chunk.content = "  x "` guarda `"  x "`.
+
+## Locale
+
+`LocaleField` é o par do `UFField` para idioma: um `Annotated[LocaleEnum, ...]`
+que **normaliza a entrada** para a forma canônica do enum
+[`LocaleEnum`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference.md). Sob `BaseSchema` o atributo populado é a `str`
+canônica, não o membro — `BaseSchema` liga `use_enum_values=True`, então
+`"pt_BR"` entra e `"pt-BR"` sai, e `isinstance(valor, LocaleEnum)` é `False`.
+Num `pydantic.BaseModel` puro, sem essa config, você recebe o membro. Aceita variação de caixa/separador
+(`"pt_BR"`, `"PT-BR"`) e o subtag primário (`"pt"` → `LocaleEnum.PT_BR`); uma
+tag fora do enum vira `422`.
+
+```python
+from tempest_fastapi_sdk import BaseSchema, LocaleEnum
+from tempest_fastapi_sdk.utils import LocaleField
+
+
+class ProfileUpdateSchema(BaseSchema):
+    locale: LocaleField | None = None   # "pt_BR" -> LocaleEnum.PT_BR; "xx-YY" -> 422
+```
+
+!!! tip "Enum vs. Field"
+    Use o **enum `LocaleEnum`** quando você já tem a tag canônica (constantes,
+    lógica interna). Use o **`LocaleField`** num schema de request, quando a
+    entrada é do cliente e vale normalizar — mesma relação de `UFEnum` para
+    `UFField`. Para gravar o idioma numa tabela, veja o
+    [`LocaleColumnMixin`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database/mixins.md#locale-idioma-preferido-do-usuario).
+
+## Chave Pix
+
+`PixKeyField` valida os **cinco tipos** de chave Pix do BACEN num campo só
+e normaliza pra forma canônica. Chave inválida → `ValidationError` → 422.
+
+| Tipo | Exemplo | Normaliza pra |
+| --- | --- | --- |
+| CPF | `529.982.247-25` | `52998224725` (dígitos) |
+| CNPJ | `11.222.333/0001-81` | `11222333000181` (dígitos) |
+| E-mail | `Ana@Example.com` | `ana@example.com` (minúsculo) |
+| Telefone | `+5511999998888` | `+5511999998888` (E.164) |
+| Aleatória (EVP) | `123e4567-e89b-12d3-a456-426614174000` | mesmo, minúsculo (UUID) |
+
+```python
+from tempest_fastapi_sdk import BaseSchema, CentsField
+from tempest_fastapi_sdk.utils import PixKeyField
+
+
+class PixTransferSchema(BaseSchema):
+    to_key: PixKeyField      # aceita CPF/CNPJ/e-mail/telefone/aleatória
+    amount_cents: CentsField
+```
+
+Precisa saber **qual** tipo a chave é (roteamento, UI, regra de negócio)?
+Use os helpers — não exigem o campo:
+
+```python
+from tempest_fastapi_sdk.utils import PixKeyType, detect_pix_key_type, is_valid_pix_key
+
+
+detect_pix_key_type("ana@example.com")   # -> PixKeyType.EMAIL
+detect_pix_key_type("+5511999998888")    # -> PixKeyType.PHONE
+detect_pix_key_type("chave-invalida")    # -> None
+is_valid_pix_key("529.982.247-25")       # -> True
+```
+
+Fora de um schema (num service, num handler de fila), `normalize_pix_key`
+faz a mesma normalização da tabela acima e levanta `ValueError` para chave
+inválida. Use-a antes de gravar ou comparar chaves, para `Ana@Example.com` e
+`ana@example.com` serem a mesma linha:
+
+```python
+from tempest_fastapi_sdk.utils import normalize_pix_key
+
+for key in ["529.982.247-25", "  Ana@Example.com ", "123E4567-E89B-12D3-A456-426614174000", "chave-invalida"]:
+    try:
+        print(repr(normalize_pix_key(key)))
+    except ValueError as exc:
+        print("ValueError:", exc)
+```
+
+```text
+'52998224725'
+'ana@example.com'
+'123e4567-e89b-12d3-a456-426614174000'
+ValueError: invalid PIX key
+```
+
+!!! info "Validação por forma + dígitos"
+    A detecção é por formato: `@` → e-mail, `+` inicial → telefone E.164,
+    UUID → aleatória; senão, dígitos + **dígitos verificadores** decidem
+    entre CPF e CNPJ (um CPF com DV errado é rejeitado). O telefone segue
+    E.164 brasileiro (`+55` + DDD + número, 10–11 dígitos após o `+55`).
+    Chave com mais de **77 caracteres** depois do `strip` (o teto do BACEN
+    para e-mail, a mais longa das cinco) é recusada antes de qualquer regex
+    rodar, então o custo da validação não cresce com o tamanho do valor
+    enviado. O e-mail exige domínio com rótulos não vazios: `a@b..c`,
+    `a@.b` e `a@b.c.` são recusados.
+
+## Exemplo completo (schema + rota + 422)
+
+Os tipos são `Annotated` puros — funcionam em qualquer `BaseSchema`, e o
+próprio FastAPI converte a falha de validação do corpo em **422**.
+Programa completo:
+
+```python
+# src/schemas/product.py
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import (
+    CentsField,
+    NonEmptyStrField,
+    PercentField,
+    SlugField,
+)
+
+
+class ProductCreateSchema(BaseSchema):
+    name: NonEmptyStrField
+    slug: SlugField
+    price_cents: CentsField
+    discount_percent: PercentField = 0.0
+```
+
+```python
+# src/api/routers/products.py
+from fastapi import APIRouter
+
+from src.schemas.product import ProductCreateSchema
+
+router = APIRouter()
+
+
+@router.post("/products")
+async def create_product(payload: ProductCreateSchema) -> dict[str, str]:
+    """Cria um produto. Payload inválido nunca chega aqui — vira 422."""
+    return {"slug": payload.slug}
+```
+
+Um `POST` inválido (`{"name": "x", "slug": "Não Slug", "price_cents": -5}`)
+recebe **422** com o corpo **padrão do FastAPI** — uma lista por campo, na
+ordem em que os campos aparecem no schema (`slug` antes de `price_cents`),
+com o valor enviado ecoado em `input`:
+
+```json
+{
+  "detail": [
+    {
+      "type": "string_pattern_mismatch",
+      "loc": ["body", "slug"],
+      "msg": "String should match pattern '^[a-z0-9]+(?:-[a-z0-9]+)*$'",
+      "input": "Não Slug",
+      "ctx": {"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+    },
+    {
+      "type": "greater_than_equal",
+      "loc": ["body", "price_cents"],
+      "msg": "Input should be greater than or equal to 0",
+      "input": -5,
+      "ctx": {"ge": 0}
+    }
+  ]
+}
+```
+
+Esse é o corpo com ou sem `register_exception_handlers(app)`: por padrão o
+SDK não mexe no 422. Para o envelope do SDK — o mesmo formato dos outros
+erros, com `code`, mensagens do `MessageCatalog` e **sem** ecoar o
+`input` —, ligue `envelope_validation_errors=True`:
+
+```python
+from fastapi import FastAPI
+from tempest_fastapi_sdk import register_exception_handlers
+
+from src.api.routers.products import router
+
+app = FastAPI()
+register_exception_handlers(app, envelope_validation_errors=True)
+app.include_router(router)
+```
+
+O mesmo `POST` passa a receber:
+
+```json
+{
+  "detail": "Validation error",
+  "code": "VALIDATION_ERROR",
+  "details": {
+    "errors": [
+      {
+        "loc": ["body", "slug"],
+        "type": "string_pattern_mismatch",
+        "msg": "String should match pattern '^[a-z0-9]+(?:-[a-z0-9]+)*$'"
+      },
+      {
+        "loc": ["body", "price_cents"],
+        "type": "greater_than_equal",
+        "msg": "Input should be greater than or equal to 0"
+      }
+    ]
+  }
+}
+```
+
+!!! tip "Opcional, default e lista"
+    Compõem como qualquer tipo Pydantic: `CentsField | None = None`,
+    `discount: PercentField = 0.0`, `list[SlugField]`. A regra continua
+    valendo em cada elemento da lista.
+
+## Compondo seus próprios campos
+
+Todo `*Field` é só um `Annotated[tipo, Field(...)]`. Precisa de uma regra
+que o SDK não traz? Monte a sua com o mesmo padrão — nada de mágica:
+
+```python
+from typing import Annotated
+
+from pydantic import Field
+
+from tempest_fastapi_sdk import BaseSchema
+
+
+# Quantidade em estoque: inteiro de 0 a 100000.
+StockField = Annotated[int, Field(ge=0, le=100_000)]
+
+# Sigla de 3 letras maiúsculas (ex.: moeda ISO-4217).
+CurrencyCodeField = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
+
+
+class SkuSchema(BaseSchema):
+    stock: StockField
+    currency: CurrencyCodeField      # "BRL" ok; "brl" / "REAL" rejeitados
+```
+
+Prefira os tipos do SDK quando existir um equivalente (autodescrição +
+consistência entre serviços); crie os seus só pras regras específicas do
+domínio.
+
+!!! warning "Pegadinhas comuns"
+    - **`CentsField` vs `PriceField`** — guarde dinheiro como inteiro de
+      centavos (`CentsField`) pra fugir do float binário; use `PriceField`
+      (`Decimal`, 2 casas) só quando o **contrato** exige decimal.
+    - **`PercentField` vs `RatioField`** — `Percent` é `0..100` (o humano
+      digita "15"); `Ratio` é `0..1` (fração/probabilidade, "0.15"). Não
+      misture os dois no mesmo fluxo.
+    - **`NonEmptyStrField`** apara espaços **antes** de validar — `"  "`
+      (só espaço) é rejeitado como vazio.
+
+## Recap
+
+- Tudo `Annotated[..., regra]`, com sufixo `*Field` — autodescritivo,
+  sem repetir `Field(...)` no schema.
+- Inteiros: `PositiveIntField`, `NonNegativeIntField`, `CentsField`, `PortField`.
+- Floats: `PositiveFloatField`, `NonNegativeFloatField`, `PercentField`,
+  `RatioField`, `LatitudeField`, `LongitudeField`.
+- Decimal: `PriceField` (2 casas, `>= 0`).
+- Strings: `NonEmptyStrField`, `SlugField`, `HexColorField`.
+- BR: `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `UFField`, `CityNameField` (veja [Helpers brasileiros](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/br-helpers.md)).
+- Pix: `PixKeyField` (CPF/CNPJ/e-mail/telefone/aleatória) + `detect_pix_key_type` / `is_valid_pix_key`.
+- Dinheiro: prefira `CentsField` (inteiro) pra guardar; `PriceField` no contrato decimal.
+- Componha os seus com `Annotated[tipo, Field(...)]` pras regras do domínio.

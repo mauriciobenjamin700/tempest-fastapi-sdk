@@ -1,0 +1,627 @@
+# Receitas
+
+Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qual problema resolve**, **quando recorrer a ela** e um exemplo de código completo que você pode copiar literalmente.
+
+!!! tip "Comece por aqui"
+    - **Serviço novo do zero?** Siga o **[Tutorial »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial.md)** — linear, constrói a feature *Users* passo a passo.
+    - **Só precisa de uma assinatura?** Pule para a **[Referência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference.md)**.
+    - **Conectando uma peça específica?** Você está no lugar certo — o [tour](#tour-do-sdk-um-exemplo-por-bloco) abaixo dá o mapa, e o [índice](#indice-das-receitas) leva à receita completa.
+    - **Quer ver tudo junto num app real?** Vá para os **[exemplos completos](#exemplos-completos)**.
+    - **Quer estudar num projeto guiado?** Veja os **[Projetos de aprendizado »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/learning/index.md)**.
+
+## Tour do SDK — um exemplo por bloco
+
+Um passeio por **tudo** que o `tempest-fastapi-sdk` oferece: cada bloco tem o conceito em uma linha, um exemplo mínimo runnable e o link pra receita completa. Leia de cima a baixo pra ter o mapa mental, ou pule pro que precisa — instale só os extras que usar (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.171.0"`).
+
+### Fundação
+
+`BaseAppSettings` e `AsyncDatabaseManager` vêm do SDK. A factory `create_app()` e o `run()` são do **seu** serviço, não do pacote: o `tempest new` escreve os dois (`src/api/app.py` e `src/server.py`, cujo `run()` delega a `run_server`).
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager, BaseAppSettings
+
+
+class Settings(BaseAppSettings):
+    DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"
+
+
+settings = Settings()
+db = AsyncDatabaseManager(settings.DATABASE_URL)
+```
+
+Veja o [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial.md) e a receita de [Banco de dados](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md).
+
+### Schemas e campos validados
+
+`BaseSchema` + tipos `Annotated` que se autodescrevem (dinheiro, %, slug,
+lat/long, e brasileiros: CPF/CNPJ/CEP/telefone + **chave Pix**).
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import CentsField, PixKeyField, SlugField
+
+
+class ProductSchema(BaseSchema):
+    slug: SlugField
+    price_cents: CentsField          # int >= 0
+    pix_key: PixKeyField             # CPF/CNPJ/e-mail/telefone/aleatória
+```
+
+Receitas: [Campos validados](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fields.md), [Helpers brasileiros](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/br-helpers.md).
+
+### Repository, Service, Controller
+
+`BaseRepository[Model]` (CRUD + bulk ops), `BaseService`, `BaseController`
+com `get_by_id`/`list`/`paginate`/`update`/`delete` prontos.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository, BaseService
+
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+
+class UserRepository(BaseRepository[UserModel]):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=UserModel)
+
+
+class UserService(BaseService[UserRepository, UserResponseSchema]):
+    ...
+```
+
+Receitas: [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial.md), [Banco de dados](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md).
+
+### Paginação
+
+Offset e cursor, com header `Link`.
+
+```python
+from tempest_fastapi_sdk import BasePaginationFilterSchema, CursorPaginationFilterSchema
+```
+
+### Exceções padronizadas
+
+`AppException` + subclasses → HTTP correto; `register_exception_handlers(app)`.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import NotFoundException, register_exception_handlers
+
+app = FastAPI()
+
+
+register_exception_handlers(app)
+raise NotFoundException(message="user not found")   # -> 404 padronizado
+```
+
+### Autenticação completa
+
+Fluxo bundled: signup/activate/login/reset/**troca e recuperação de
+e-mail**/MFA + deps JWT (header/cookie/query).
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+app = FastAPI()
+
+
+auth = UserAuthService(user_model=UserModel, token_model=UserTokenModel,
+                       auth_settings=settings, jwt_settings=settings)
+app.include_router(make_auth_router(auth, session_factory=db.session_dependency))
+```
+
+Receitas: [Auth flow](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md), [MFA](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mfa.md),
+[Refresh tokens](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/refresh-tokens.md), [Sessões](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sessions.md).
+
+### Cache
+
+`AsyncRedisManager` + `@cached` + `CacheInvalidator` (namespace/tag).
+
+```python
+from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
+
+from src.core.settings import settings
+
+
+redis = AsyncRedisManager(settings.REDIS_URL)
+
+
+@cached(redis, ttl=300, namespace="products", tags=lambda a, k: [f"p:{k['pid']}"])
+async def get_product(*, pid: str) -> dict: ...
+```
+
+Receita: [Cache](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cache.md).
+
+### Fila e tarefas em background
+
+`MessageBroker` (pub/sub FastStream), `TaskQueue` (TaskIQ) + cron por
+enum/helper, ambos escondendo a lib.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+from tempest_fastapi_sdk.tasks import CronEnum, CronOffsetEnum, TaskQueue
+
+from src.core.settings import settings
+from src.queue import OrderPaid
+
+
+mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)
+tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
+
+
+@mq.on("orders.paid")
+async def on_paid(event: OrderPaid) -> None: ...
+
+
+@tq.cron(CronEnum.EVERY_WEEKDAY_9AM, cron_offset=CronOffsetEnum.BRASILIA)
+async def digest() -> None: ...
+```
+
+Receitas: [Fila e Tarefas](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks.md), [Outbox](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/outbox.md).
+
+### Tempo real
+
+SSE (`EventStream`/`SSEBroker` com backpressure), WebSocket router, Web Push.
+
+```python
+import asyncio
+
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+from tempest_fastapi_sdk import EventStream
+
+app = FastAPI()
+
+
+@app.get("/events")
+async def events() -> StreamingResponse:
+    """Stream one tick per second until the client disconnects.
+
+    Returns:
+        StreamingResponse: The SSE response. ``on_disconnect`` cancels the
+        publisher, so it never outlives the connection.
+    """
+    stream = EventStream()
+
+    async def pump() -> None:
+        """Publish a tick every second."""
+        while True:
+            await stream.publish({"tick": True}, event="tick")
+            await asyncio.sleep(1)
+
+    task = asyncio.create_task(pump())
+    return stream.response(on_disconnect=task.cancel)
+```
+
+Receitas: [SSE](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sse.md), [WebSocket](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/websocket.md),
+[Web Push](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/webpush.md), [Tempo real](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/realtime.md).
+
+### Observabilidade
+
+Logging estruturado + `/logs`, métricas CPU/RAM/GPU + Prometheus `/metrics`,
+request-id, tracing OTel, health + tool-spec.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RequestIDMiddleware, make_health_router
+
+from src.api.dependencies.resources import db
+
+app = FastAPI()
+
+
+app.add_middleware(RequestIDMiddleware)
+app.include_router(make_health_router(checks={"db": db.health_check}))
+```
+
+Receitas: [Logging](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/logging.md), [Métricas](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/metrics.md),
+[Observabilidade](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/observability.md).
+
+### Hardening HTTP
+
+Rate limit (sliding window), idempotência, CSRF, CORS, limite de body,
+static seguro.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import IdempotencyMiddleware, RateLimitMiddleware
+
+app = FastAPI()
+
+
+app.add_middleware(RateLimitMiddleware, store=..., max_requests=100, window_seconds=60)
+app.add_middleware(IdempotencyMiddleware, store=...)
+```
+
+Receitas: [Camada HTTP](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http.md), [Idempotência](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/idempotency.md),
+[Segurança](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/security.md).
+
+### Arquivos
+
+`UploadUtils` (local/MinIO), `DownloadUtils`, `FileStoreUtils` (facade),
+storage MinIO/S3, presigned URLs.
+
+```python
+import asyncio
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import FileStoreUtils
+
+upload_file: UploadFile = ...  # comes from the endpoint signature
+
+
+store = FileStoreUtils(source="./uploads")     # ou um AsyncMinIOClient
+
+
+async def main() -> None:
+    """Run this example."""
+    key = await store.save(upload_file)
+
+
+asyncio.run(main())
+```
+
+Receitas: [File store](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/file-store.md), [Uploads](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/uploads.md),
+[Downloads](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/downloads.md), [Storage](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/storage.md),
+[Upload resumível (tus)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/resumable-upload.md),
+[Metadados de imagem](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/image-metadata.md).
+
+### Extras de domínio
+
+Feature flags, audit trail, multi-tenant, sync offline-first, sessões
+server-side, HTTP client tipado, i18n de erros.
+
+```python
+from tempest_fastapi_sdk import FeatureFlags, make_flag_dependency
+```
+
+Receitas: [Feature flags](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/feature-flags.md), [Audit trail](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/audit-trail.md),
+[Multi-tenant](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/multi-tenant.md), [Sync offline](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/offline-sync.md),
+[HTTP client](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http-client.md).
+
+### IA generativa self-hosted
+
+Checagem de hardware, LLM local, embeddings, RAG (web + PDF) — tudo no
+seu hardware.
+
+!!! info "Instalação"
+    O SDK já vem com `tempest-fastapi-sdk`. A IA generativa self-hosted depende do extra `[genai]` — `uv add "tempest-fastapi-sdk[genai]"` (traz `torch`, `transformers`, `accelerate`, `safetensors` e `huggingface-hub`).
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import can_run, TextGenerator
+from tempest_fastapi_sdk.genai.rag import PdfReader, build_context
+
+
+async def main() -> None:
+    """Run this example."""
+    if can_run(model_id="Qwen/Qwen2.5-7B-Instruct").fits:
+        gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
+        chunks = PdfReader().chunks("/kb/manual.pdf")
+        answer = await gen.generate(build_context("como estornar?", chunks))
+
+
+asyncio.run(main())
+```
+
+Receita: [IA generativa self-hosted](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md).
+
+### Trabalho longo, com status e cancelável
+
+`JobStore` dá ao trabalho uma linha que a tela lê; `run_cancellable` o
+interrompe de verdade quando o usuário desiste. `StageMap` cobre o caso em
+que os estágios decoram um registro que a tela já busca.
+
+```python
+import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    StageInterruptedError,
+    run_cancellable,
+)
+
+
+class JobModel(BaseJobModel):
+    """Uma unidade de trabalho longo."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def transcrever(caminho: str) -> str:
+    """Trabalho longo e cancelável (I/O assíncrono).
+
+    Args:
+        caminho (str): O arquivo a processar.
+
+    Returns:
+        str: O texto.
+    """
+    await asyncio.sleep(0)
+    return caminho
+
+
+async def executar(job_id: UUID) -> None:
+    """Roda o job, desistindo se cancelarem no meio.
+
+    Args:
+        job_id (UUID): O job a executar.
+    """
+    if await store.claim(job_id) is None:
+        return
+    try:
+        texto: str = await run_cancellable(
+            transcrever("audio.wav"),
+            interrupted=store.cancellation_watch(job_id),
+        )
+    except StageInterruptedError:
+        return
+    await store.succeed(job_id)
+    print(texto)
+```
+
+Receita: [Jobs (trabalho longo com status)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/jobs.md).
+
+### IA hospedada, e quanto ela custou
+
+`OpenAICompatGenerator` fala qualquer `/chat/completions` (DeepSeek, Groq,
+OpenRouter, vLLM, Azure); `AIUsageStore` guarda uma linha por chamada paga,
+para a pergunta "qual conta gastou o quê".
+
+```python
+import asyncio
+from uuid import uuid4
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import (
+    AIUsageStore,
+    BaseAIUsageModel,
+    OpenAICompatGenerator,
+    TokenUsage,
+)
+
+
+class AIUsageModel(BaseAIUsageModel):
+    """Uma chamada de IA cobrada."""
+
+    __tablename__ = "ai_usage"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+gen = OpenAICompatGenerator(
+    "deepseek-flash",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+)
+store: AIUsageStore[AIUsageModel] = AIUsageStore(
+    db, model=AIUsageModel, price_input_per_1k=0.00014
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    texto: str
+    uso: TokenUsage | None
+    texto, uso = await gen.generate_with_usage("Resuma isto.")
+    await store.record(subject_id=uuid4(), service="summary", usage=uso)
+    print(texto)
+
+
+asyncio.run(main())
+```
+
+Receita: [IA generativa self-hosted](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md).
+
+### Painel admin
+
+`AdminSite` + `AdminModel` + `make_admin_router` (Jinja+HTMX, temas,
+ações, upload, filtros).
+
+Receita: [Painel admin](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md).
+
+### SSR e visão
+
+SSR tipado (`Page`/`html_response`) sobre `tempestweb`; visão computacional
+(`Detector`/`Classifier`/`Segmenter`) via `ort-vision-sdk`.
+
+Receitas: [SSR](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/ssr.md), [Visão](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/vision.md).
+
+### CLI e deploy
+
+`tempest new` (scaffold), `tempest db` (migrations), `tempest user`,
+`tempest secrets`, gates de qualidade; deploy seguro (migrations + graceful
+shutdown).
+
+!!! info "Os gates do `tempest` pedem o extra `[cli]`"
+    `lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check` e
+    `pr-prompt` vêm do `[cli]`; com só o `[cli-ops]` (o do servidor), eles
+    saem com código 2 apontando o `[cli]`. Instale com
+    `uv add --dev "tempest-fastapi-sdk[cli]"` — detalhes em
+    [Instalação → CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/installation.md#cli).
+
+```bash
+tempest new my_service && cd my_service
+tempest db init && tempest db upgrade
+tempest check          # ruff + mypy + testes
+```
+
+Receitas: [CLI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli.md), [Deploy seguro](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/deploy-safety.md).
+
+### Recap
+
+O SDK cobre o ciclo inteiro de um serviço FastAPI: fundação tipada →
+persistência → auth → cache → background → tempo real → observabilidade →
+hardening → arquivos → IA → admin → CLI/deploy. Cada seção acima aponta pra
+receita com o guia completo. Comece pelo [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial.md) e volte
+aqui pra plugar cada capacidade conforme precisar.
+
+## Índice das receitas
+
+| Tema | Cobre |
+| --- | --- |
+| **[Ações SSR (confirmação, flash, redirect-back) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ssr-actions.md)** | `form_for(..., confirm=...)` / `confirm()` sem JS inline, `FlashMiddleware` + `flash` / `get_flashes` + `FlashMessages` (cookie assinado de leitura única), `redirect_back` contra open redirect, `register_html_error_handlers` (página de erro no GET, flash + 303 no POST, JSON para a API) |
+| **[Agentes de IA »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents.md)** | `Agent` (objetivo → traço + artefatos), `AgentBudget` (passos/tempo/chamadas), `AgentTool` + ferramentas prontas sobre imagem/visão/áudio/RAG, `InMemoryAgentRunSink` / `DbAgentRunSink`, `make_agent_router` |
+| **[Agentes de IA (arquitetura) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents-architecture.md)** | como organizar um serviço com agentes: a camada `ai` ao lado de `services`, `runtime` com um gerador por processo, `tools` separado de `agents`, `views` e `policy`, o controller que semeia a identidade, e quando trocar um agente por skills |
+| **[Agentes de IA (avançado) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents-advanced.md)** | saída estruturada tipada (`run_structured`), três camadas de memória (`scratchpad_tools` / `fact_tools` / `recall_prompt`), `Skill` sob demanda, `agent_tool` para delegação, `run_until` / `refine` |
+| **[Agentes de IA (banco de dados) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents-db.md)** | ferramenta que consulta o banco: `db.get_session_context()` por chamada, convenção `from_session`, um `AsyncDatabaseManager` por processo, e o que `AgentContext` carrega (`state` com quem pergunta, `artifacts`, `deadline`) |
+| **[Agentes de IA (conceitos) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents-concepts.md)** | o laço passo a passo, a transcrição que o modelo recebe em cada volta, o vocabulário (passo, observação, artefato, orçamento, `stop_reason`), por que o contexto cresce e o que isso custa, e quando usar ferramenta, skill, delegação ou laço |
+| **[Agentes de IA (ferramentas) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents-tools.md)** | ferramenta que chama API (`httpx.AsyncClient` do processo, timeout abaixo do orçamento, 4xx/5xx/timeout virando `AgentToolError`, teste com `httpx.MockTransport`), ferramenta que estrutura texto (`schema_of`, `final_answer_tool`, `ToolResult(final=True)`), `typed_tool` sobre método ligado e `text_tool` |
+| **[Agentes de IA (prompts) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents-prompts.md)** | a pasta `src/ai/prompts/` (um arquivo por agente + `base.py`), o que o modelo recebe de fato (system, objetivo e specs via `ScriptedBackend`), anatomia de um prompt, `DEFAULT_SYSTEM_PROMPT` / `skills_prompt` / `DEFAULT_CRITIC_PROMPT`, prompt por requisição com `facts_prompt` (custo medido de construir o `Agent`) e como testar o prompt |
+| **[Agentes de IA (testes) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/agents-testing.md)** | `ScriptedBackend` / `replies` / `replies_with_tool` para escrever as decisões do modelo, `assert_completed` / `assert_used_tools` / `assert_artifact`, `FailingBackend`, e a camada `@model` separada |
+| **[Arquivo no serviço (mixin) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/stored-files.md)** | `StoredFileServiceMixin` — `set_file` / `replace` / `clear_file` sobre `UploadUtils` |
+| **[Artefatos versionados (modelos) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — versão ativa sem redeploy |
+| **[Audit trail »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/audit-trail.md)** | `BaseAuditLogModel`, `add_audited` / `update_audited` / `delete_audited`, `snapshot_model` / `diff_snapshots` |
+| **[Auth Firebase (ID token) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/firebase-auth.md)** | `FirebaseAuth`, `FirebaseIdentity`, `FirebaseUserResolver` — verificar o ID token que o app mobile manda, inicialização idempotente, um `code` por falha, extra `[firebase]` |
+| **[Auth flow (signup/reset) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md)** | `UserAuthService`, `make_auth_router` — signup / ativação / login / reset de senha, entrega de token (bearer/cookie/ambos), `BaseUserModel` |
+| **[Auth por introspecção (resource server) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/introspection-auth.md)** | `IntrospectionAuth` — validar bearer opaco perguntando ao provedor de identidade upstream |
+| **[Banco de dados »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md)** | `BaseModel`, `AsyncDatabaseManager`, `BaseRepository` (CRUD + filtros + bulk), paginação offset/cursor, mixins, `AlembicHelper`, `SlowQueryLogger` |
+| **[Busca aproximada (fuzzy) e cidades em texto »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fuzzy-matching.md)** | `normalize_text`, `similarity`, `FuzzyIndex` (trigramas, sem dependência), os 5571 municípios do IBGE com código e coordenada, `find_municipalities_in_text` (cidade e UF numa frase, com erro de digitação e apelido), `search_municipalities`, `parse_trip_intent` (origem, destino, data e período de uma frase de viagem, com fala transcrita), busca por significado e combinada (`SemanticNameIndex`, `HybridNameIndex`), tools de agente (`municipality_search_tool`, `name_search_tool`) |
+| **[Busca textual (LIKE + full-text) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/text-search.md)** | `search()` portátil (ILIKE escapado, `AND` entre palavras), `full_text_search()` com `websearch_to_tsquery` + `ts_rank` no PostgreSQL, `TextSearchLanguageEnum` / `TextSearchWeightEnum` / `TokenMatchEnum`, condições que entram em `where=` |
+| **[Cache »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cache.md)** | `AsyncRedisManager` (+ `client_proxy`, para store construído no import), decorator `@cached`, `CacheInvalidator` (tag/namespace) |
+| **[Camada HTTP »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` (429 no envelope de erro do SDK), `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
+| **[Camada UI (páginas e componentes) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui.md)** | a camada `src/ui/` (páginas, layout, componentes, estilos), `Page` + `shell()` herdado, `Card` / `Alert` / `DataTable` (com `TableColumn` para link/form na célula) / `Pagination` / `EmptyState` / `NavBar`, `Shell` (inclusive `width="full"`) / `Grid`, scaffold via `tempest new --extras "ssr"` |
+| **[Campos validados (tipos prontos) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fields.md)** | tipos Pydantic Annotated — `PositiveIntField` / `CentsField` / `PriceField` / `SlugField` / `HexColorField` / `CPFField` / `UFField` |
+| **[Carteira e saque Pix »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/wallet.md)** | `WalletLedger` (crédito, débito e estorno num `UPDATE` só, retenção dentro do débito, na transação do chamador), `WalletService` (saque Pix), `WalletBalanceMixin`, `BaseWalletEntryModel`, `claim_once`, `split_net` / `openpix_fee_cents` em basis points, `OpenPixPayoutProvider`, `make_wallet_router` |
+| **[Chat (conversas + mensagens) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/chat.md)** | `ChatService`, `make_chat_router`, tabelas base + fan-out em tempo real via `SSEBroker` |
+| **[CLI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
+| **[Cliente de integração (OpenAPI) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-client.md)** | `tempest openapi-client` — schemas Pydantic + client tipado a partir da spec de um terceiro |
+| **[Cliente de WebSocket (AsyncAPI) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/asyncapi-client.md)** | `tempest asyncapi-client` — cliente de socket tipado a partir de um documento AsyncAPI 3 |
+| **[Colunas de enum (seguras nos dois bancos) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/enum-columns.md)** | `Mapped[MeuEnum]` guardando o `value`, `ENUM` nativo no PostgreSQL e `CHECK` no SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` para a migration que o autogenerate não vê |
+| **[Comentários + avaliações »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/reviews.md)** | `ReviewService`, `make_reviews_router`, notas 0–5 estrelas com agregação, comentários encadeados |
+| **[Compartilhar com prévia (Open Graph) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/share-preview.md)** | `make_share_router` (página com as tags Open Graph escapadas, prévia genérica para item indisponível, URL absoluta obrigatória), `ShareCardRenderer` (card PNG 1200×630 com a sua marca, `ETag`/`304` sem redesenho, `?v=` por versão), fonte no Docker |
+| **[Console SQL no admin »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin-sql-console.md)** | `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas, `require_where`), análise real via `sqlglot`, auditoria de toda tentativa, página opt-in no admin |
+| **[Controle do host (arquivos, comandos, energia) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/hostbridge.md)** | `HostBridge` + `HostBridgeConfig` / `HostBridgeSettings` (energia, arquivos, PDF, comandos, seletor nativo), `make_hostbridge_router` com auth obrigatória e lado destrutivo opt-in, caminhos WSL/Windows com sandbox |
+| **[CSS tipado (StyleSheet e tokens) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (tokens do `tempest_core` como CSS variables, claro e escuro), `make_css_router` com ETag/304 e URL versionada (`sheet.url()`, cache `immutable`), família da fonte por token, `app_stylesheet`, `cls()` que rejeita classe inexistente |
+| **[Deploy seguro »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/deploy-safety.md)** | `AlembicHelper.safe_upgrade` (barra DROPs), `GracefulShutdownMiddleware` |
+| **[Downloads »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, anti path-traversal |
+| **[Email transacional »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/email.md)** | `EmailUtils` — SMTP, corpo texto/HTML, anexos, templates Jinja2 |
+| **[Erros do app (relatados pelo cliente) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/app-errors.md)** | `make_app_error_model` (FK de usuário nullable, `SET NULL`, `created_at` indexado), `AppErrorService` (trunca em vez de recusar), listagem admin opt-in, intervalo de datas semiaberto |
+| **[Erros no OpenAPI (Swagger) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
+| **[Escolhendo o modelo »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/models.md)** | `TextModelEnum` / `EmbeddingModelEnum` / `RerankerModelEnum` / `VisionModelEnum` / `ImageModelEnum` / `SpeechToTextModelEnum` / `TextToSpeechModelEnum` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
+| **[Estorno de Pix (idempotente) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-refund.md)** | `PixRefundProvider` (`refund_pix_charge(..., refund_reference=)` + `get_refunded_cents`), `PixRefund`, retry seguro depois de timeout sem lease próprio, estorno parcial, `PixRefundExceedsBalanceException` / `PixRefundReferenceConflictException`, `PixProviderRouter.refund_pix_charge`, como a idempotência é garantida no Mercado Pago, no OpenPix e no `FakePixProvider` |
+| **[Event sourcing (event store) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/event-sourcing.md)** | `EventStore` (append com `expected_version`, leitura de stream para frente e para trás, `$all` por posição, assinatura, snapshots) sobre SQL (`SqlEventStore`, sem dependência nova, outbox na mesma transação) ou KurrentDB (`KurrentDBEventStore`, extra `[kurrentdb]`), `DomainEvent` + `EventRegistry`, `WrongExpectedVersionException`, `AggregateRepository`, `ProjectionRunner` |
+| **[Exportação e exclusão de titular (LGPD) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/subject-data.md)** | `SubjectGraph` (tabelas que o `DELETE` do titular alcança por cascata, derivadas da `MetaData`), `export` sem colunas secretas, `violations` + `assert_subject_graph_valid` como guard de CI, `SubjectObjectStorage` (prefixo por titular, upload direto com `presign_put` + `read` limitado, `delete_all` em lote) |
+| **[Fakes (sem provedor real) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fakes.md)** | `FakePixProvider`, `FakeCardProvider`, `FakePayoutProvider`, `FakeTextBackend`, `FakeStructuredBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend`, `FakeObjectStorageClient` — doze costuras sem credencial e sem rede, dirigíveis (`advance`, `flag`, `fail_next`) e inspecionáveis |
+| **[Feature flags »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
+| **[Fila e Tarefas »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
+| **[File store (unificado) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/file-store.md)** | `FileStoreUtils` — upload + download + presign sobre um backend só |
+| **[Formulários a partir de schemas Pydantic »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (erros por campo e valores preservados), `form_dependency` (rota sem `Request`), campo oculto, upload com `UploadFile`, mapeamento tipo → controle, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
+| **[Frontend tempestweb + SDK »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/tempestweb-frontend.md)** | Frontend tempestweb chamando o backend do SDK: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, mesma origem vs CORS |
+| **[Geolocalização (distância + tempo) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin`, `CachedGeocodingBackend` (cache de geocoding plugável) |
+| **[Geração de imagem (local) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/image-generation.md)** | `ImageGenerator` (diffusers local — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` com a seed que reproduz, `make_genai_router(image_generator=...)` → `POST /image` |
+| **[Google Drive (uploads) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/google-drive.md)** | `GoogleDriveUploadStorage` como backend do `UploadUtils` via service account (JWT bearer sobre `httpx` + `pyjwt`), upload resumível em pedaços de 256 KiB com retry, key em `appProperties`, key repetida substitui o conteúdo, `GoogleDriveSettings` |
+| **[Guards de permissão (@requires) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/permission-guards.md)** | `@requires` + guards `(user) -> user` (com `meta: dict[str, Any]` opcional via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
+| **[Helpers brasileiros »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone, incluindo só-celular (`is_valid_mobile_phone_br`, `MobilePhoneBRField`) e `parse_phone_br` (DDD, número, E.164) |
+| **[HTTP client (saída) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http-client.md)** | `HTTPClient` — httpx tipado com retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
+| **[IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai-hosted.md)** | `AnthropicGenerator` (Messages API) e `OpenAICompatGenerator` (OpenAI, DeepSeek, Gemini) nos mesmos protocolos do Ollama — `generate`/`chat`/`stream`, `chat_with_tools`, `chat_structured`; `complete_structured` (saída + uso + motivo de parada, imagem por `image_part`, PDF por `document_part` + `supports_documents`); `hosted_generator` (provedor pelo id do modelo, Gemini incluso); `OpenAICompatEmbedder`; transcrição remota com `OpenAICompatSpeech` (`/audio/transcriptions`, troca direta pelo `SpeechToText`); `HostedGenAISettings` + `*_kwargs()` / `hosted_kwargs()`; erros tipados (`HostedAuthenticationError`, `HostedRateLimitError`, `HostedServerError`) |
+| **[IA generativa self-hosted »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), áudio (STT/TTS + batching), `make_genai_router`; backend hospedado (`OpenAICompatGenerator`, qualquer `/chat/completions`) com `TokenUsage`, incluindo o prefixo servido de cache; saída em lista (`parse_structured_list`, retry com temperatura) e em objeto (`extract_json_object`); contabilidade de uso por usuário (`AIUsageStore`) |
+| **[Idempotência »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — replay seguro de POST/PUT/PATCH/DELETE |
+| **[Jobs (trabalho longo com status) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/jobs.md)** | `BaseJobModel` + `JobStore` — uma linha por unidade de trabalho, `claim`/`succeed`/`fail`, `watch` para a tela, `reclaim_stale`; cancelamento cooperativo (`cancel` + `run_cancellable`); `StageMap` para vários estágios no próprio registro |
+| **[Kestra (orquestrador de workflows) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/kestra.md)** | disparar flow do serviço (`HTTPClient` + webhook trigger ou API de execução, caminho do tenant medido), flow chamando rota protegida por `make_token_dependency`, e outbox (`OutboxRelay`) + `WebhookInbox` para entrega garantida; executado contra Kestra 2.0.6 |
+| **[Localização ao vivo »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/live-location.md)** | `LivePositionSchema`, `LivePositionStore` (última posição no Redis com throttle, distância mínima, TTL e `clear`; entrega por SSE só ao `audience`; ETA por destinatário) e `make_live_position_router` (`authorize` e `channel_active` obrigatórios) |
+| **[Logging »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
+| **[Login e cadastro server-side »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-pages.md)** | `make_auth_pages_router`, `make_session_user_dependency`, `redirect_to_login` — login, MFA, cadastro, ativação e logout como páginas HTML sem JavaScript, sessão `SessionAuth`, CSRF por formulário |
+| **[Login social (OAuth2/OIDC) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/oauth.md)** | `AUTH_OAUTH_ENABLED` + `oauth_clients=` (quatro rotas `/auth/oauth/*`), `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`, `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `OAuthClient`, `generate_oauth_state` |
+| **[Management commands (tempest &lt;cmd&gt;) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
+| **[MCP (Model Context Protocol) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mcp.md)** | servir um `FastMCP` em `/mcp` atrás do `current_user` (`mount_mcp`), publicar `AgentTool`s e rotas FastAPI escolhidas como ferramentas MCP (`add_agent_tools`, `add_fastapi_routes`), e usar ferramentas de outro servidor MCP num `Agent` (`MCPToolset`, stdio e HTTP) |
+| **[Mercado Pago (contas e credenciais de teste) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mercado-pago-sandbox.md)** | passo a passo para criar a vendedora de teste e achar o token certo (Checkout Transparente / API de Orders), o que o pagador precisa ter, cartões de teste e a tabela de erros que cada desvio produz |
+| **[Mercado Pago (Pix, cartão, boleto) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mercado-pago.md)** | `MercadoPagoClient` (132 operações geradas da OpenAPI oficial do provedor, sem a API de Payments descontinuada), `MercadoPagoPixProvider` + `MercadoPagoCardProvider` (Pix e cartão pela API de Orders, recusa de cartão como resultado, autorizar e capturar, reembolso parcial), `make_mercado_pago_webhook_delivery_dependency` (webhook que relê a order), `AuthenticatedUser`, `to_cents` / `from_cents` (reais, não centavos), `make_mercado_pago_webhook_dependency`, `MercadoPagoSettings`, `x_idempotency_key` por chamada |
+| **[Mercado Pago (testando webhooks) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mercado-pago-webhooks.md)** | API de Orders e notificação simuladas pelo SDK (`FakeMercadoPagoOrdersAPI`, `tempest mercado-pago fake-api` / `simulate-webhook`, sem rede), simulação assinada relendo uma order real do sandbox, simulação do painel e entrega real por túnel |
+| **[Metadados de imagem »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/image-metadata.md)** | `strip_image_metadata` — recodifica a foto do usuário no mesmo formato sem EXIF (GPS, aparelho), XMP, IPTC, ICC e chunks de texto, aplica a orientação antes, teto de pixels contra decompression bomb, erros tipados (`ImageDecodeException`, `ImageTypeMismatchException`, `ImageFormatUnsupportedException`, `ImageTooLargeException`) |
+| **[Métricas »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
+| **[MFA (TOTP / 2FA) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mfa.md)** | `MFAMixin`, `TOTPHelper`, endpoints enroll/confirm/verify/disable no `make_auth_router`, códigos de recuperação |
+| **[Migrations »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/migrations.md)** | `AlembicHelper.sync_schema()` / `adopt()` / `base_revision()` / `has_existing_schema()` — como o schema nasce, adotar banco que precede o Alembic, e por que `create_tables()` + `stamp("head")` quebra em silêncio |
+| **[Modelops (export, bench, quantização) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/modelops.md)** | `benchmark_onnx` (latência/RAM/GPU/energia), `export_onnx_to_ort`, `quantize_onnx_dynamic`, `quantize_hf_onnx`, `rank` + fronteira de Pareto, `tempest model` |
+| **[Multi-tenant »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/multi-tenant.md)** | `TenantScopedRepository` — isolamento por `tenant_id` em toda query |
+| **[n8n (automação de workflows) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/n8n.md)** | disparar o Webhook node com `HTTPClient` + Header Auth (resposta imediata ou Respond to Webhook, URL de teste vs produção), HTTP Request node chamando rota protegida por `make_token_dependency`, e outbox + `WebhookInbox`; executado contra n8n 2.43.7 |
+| **[Observabilidade (tracing) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
+| **[OpenPix (assinaturas e planos) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openpix-subscriptions.md)** | `SubscriptionPayload`, `RECURRENT` vs `PIX_RECURRING` (Pix Automático), ciclo de vida e parcelas, o plano que mora no seu banco |
+| **[OpenPix (Pix via Woovi) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/openpix.md)** | Arquitetura em camadas, abrir cobrança, webhook verificado + conferência pela API, reconciliação, estorno, `OpenPixEnvironmentEnum`, `to_cents` |
+| **[Outbox transacional »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |
+| **[Painel admin »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
+| **[PDFs »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pdf.md)** | Gerar: `PdfRenderer`, cinco documentos prontos (recibo/orçamento/relatório/contrato/comprovante) com schema Pydantic, `make_pdf_router`, `tempest pdf render`, política de assets. Ler: `extract_pdf_text`, `read_pdf_pages` (upload pela API, página por página, tabelas) |
+| **[Permissões object-level »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/authz.md)** | `permission` (decorator de regra), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
+| **[Pesos de modelos (ciclo no Hub) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/model-weights.md)** | `ModelRef` (`revision` / `local_files_only` / `trust_remote_code`), `resolve_revision`, `download_model` com preflight de disco, `list_cached_models` / `remove_cached_model`, `tempest model pull` / `cache-list` / `cache-rm` |
+| **[Pipeline de transcrição (áudio → resumo) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/transcription-pipeline.md)** | os três estágios costurados: `StageMap` no próprio registro, cancelar uma transcrição já rodando por dentro do `on_progress`, `generate_with_usage` + `AIUsageStore` para saber quem pagou, `generate_structured_list` na etapa que devolve lista |
+| **[Planilhas (.xlsx) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/spreadsheets.md)** | `SheetWriter` (cursor de linha), `Column` (largura/máscara/alinhamento), `SheetStyle` como dado puro, formatos `BR_*` fixados em pt-BR, `new_workbook` / `workbook_to_bytes`; leitura de `.xlsx` com célula tipada (`read_xlsx_as`, `read_xlsx_sheets`) e de planilha pública do Google Sheets validada em schema (`read_google_sheet_as`, ou a pasta inteira com `read_google_sheet_xlsx`) |
+| **[Planos de query (EXPLAIN) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/query-plans.md)** | `explain_queries()` captura o bloco e explica na saída, `EXPLAIN ANALYZE` no PostgreSQL / `EXPLAIN QUERY PLAN` no SQLite, escrita nunca reexecutada, `report.slowest` |
+| **[Protocolo de Pix (um contrato, vários provedores) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/pix-protocol.md)** | `PixProvider` (Protocol: `create` / `get` / `cancel` / `parse_webhook`), `PixCharge` / `PixChargeRequest` / `PixPayer` campo por campo, `PaymentStatusEnum` canônico ao lado do `provider_status` cru, os seis `PixEventTypeEnum`, `OpenPixPixProvider` e `MercadoPagoPixProvider`, `PixProviderRouter` para migrar de provedor por fatia de pedidos, `confirm_pix_payment` + `claim_once` para liberar o pedido só depois de reler a cobrança, e uma vez só — e como escrever o seu adapter, com um fake in-memory para testar sem rede |
+| **[Push (web + mobile) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — uma chamada para navegador e celular, com poda unificada do aparelho morto |
+| **[QR Code com logo e moldura (link de carona) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/qr-logo.md)** | `render_qr` (nível `H`, sem Micro QR, logo com teto medido com `zxing-cpp`: até 35% do lado lê, 40% já falha), `ShareFrameRenderer` (moldura vertical para o status e quadrada para conversa: logo, foto redonda, nome, trajeto, QR, link), rotas que apontam para a página de compartilhamento |
+| **[Receber mensagens do WhatsApp (zap-api) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/zap-inbound.md)** | `make_zap_webhook_dependency` — HMAC sobre o corpo cru, `ZapWebhookDelivery` com `inbound` / `status` já parseados pelo `event`, enums (`ZapWebhookEventEnum`, `ZapInboundMediaTypeEnum`, `ZapJidServerEnum`, `ZapOutboundKindEnum`) para despachar sem string solta, camada completa model → repository → service → controller → router sobre `ZapInbox` + mixins (claim, status e envio prontos), `is_forward_transition` contra callback fora de ordem, mídia via `get_message_media` |
+| **[Reconhecimento facial »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/faces.md)** | `FaceRecognizer` (detectar / embutir / comparar), `compare_faces`, packs de 16 MB ou 191 MB, sem opencv e sem torch |
+| **[Refresh tokens (rotação/revogação) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotação + detecção de reuso por família |
+| **[RevenueCat (assinatura in-app) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/revenuecat.md)** | `make_revenuecat_webhook_router` (header Authorization + HMAC opcional, segredo vazio recusa tudo, grava uma vez), `WebhookInbox` + `BaseWebhookEventModel` (inbox idempotente para qualquer provedor: claim, efeito e marca na mesma transação, `max_attempts` → `FAILED`), `normalize` → `SubscriptionSnapshot` sobre os 21 tipos de evento documentados, `RevenueCatClient.get_subscriber`, `RevenueCatSettings`, `FakeRevenueCatClient` |
+| **[Salas de jogo online (TCP) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-tcp.md)** | `serve_game_rooms_tcp`: o mesmo protocolo de salas em TCP cru, frames `[u32 tamanho][u8 tipo][payload]`, `TCP_NODELAY`, ping e queda por silêncio; mesmas salas do WebSocket |
+| **[Salas de jogo online (WebSocket) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/game-rooms-websocket.md)** | `RoomRegistry` + `RoomPolicy` + `make_game_room_router`: salas por código para jogos multiplayer, anfitrião eleito, relay JSON e binário com o remetente carimbado pelo servidor, versão, reconexão com `resume`, limites; `make_jwt_room_identity_resolver` |
+| **[Segurança »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/security.md)** | `AttemptThrottle`, helpers de token opaco, `HardenedStaticFiles`, headers de segurança |
+| **[Server-Sent Events (SSE) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sse.md)** | `EventStream`, `sse_response`, `ServerSentEvent`, `SSEBroker` (fan-out por canal, ponte Redis) |
+| **[Serviço completo (settings, auth, upload, teste) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/full-service.md)** | projeto mínimo executável: settings compostas pelos mixins, `sync_schema_async()` no lifespan, `UserAuthService` + `make_auth_router` (signup / login / `/auth/me`), upload protegido por `current_user_dependency()` e teste ponta a ponta |
+| **[Sessões server-side »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sessions.md)** | `SessionMiddleware`, `SessionAuth`, `make_session_router`, `MemorySessionStore` / `RedisSessionStore` |
+| **[Settings (mixins e ordem de composição) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/settings.md)** | os 29 mixins de settings com extra, variáveis e `*_kwargs()`, `BaseAppSettings` por último, `.env.example`, `EnvironmentSettings` em produção |
+| **[Slides, gabaritos e Markdown em PDF »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/slides.md)** | `parse_slides` + `SlideRenderer` (HTML, PDF, PPTX com notas, DOCX de roteiro, Markdown reveal.js), `SlideVocabulary` para texto em português, `parse_answer_key` + `AnswerKeyRenderer`, `MarkdownPdfRenderer` com folha de estilo como parâmetro (`ABNT_MARKDOWN_CSS`), zip com imagens conferido antes de extrair, Mermaid via `[slides-mermaid]` |
+| **[SPA React no FastAPI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/react-spa.md)** | `make_spa_router` — servir o build do Vite pelo mesmo processo, com history fallback |
+| **[SSR (páginas tipadas) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/ssr.md)** | `Page`, `html_response`, `make_htmx_router`, hospedar um build do `tempestweb` |
+| **[Storage (MinIO/S3) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/storage.md)** | `AsyncMinIOClient`, `MinIOUploadStorage`, `presigned_get_url` / `presigned_put_url`, `list_objects` |
+| **[Storage em disco local »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/local-storage.md)** | `LocalObjectStorageClient` (objetos num diretório do servidor, escrita atômica, as mesmas chamadas do `AsyncMinIOClient`), links assinados para a própria API servidos por `make_local_storage_router` (`GET` com `Range`, `PUT` com teto), `STORAGE_BACKEND=local` + `build_storage_client()` |
+| **[Stripe (cartão + assinatura) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/stripe.md)** | `StripeClient`, `stripe_http_client`, `to_minor_units` / `from_minor_units`, `make_stripe_webhook_dependency`, `StripeEvent` — escrita form-encoded, idempotência por padrão, moeda de zero decimais |
+| **[Sync offline-first (delta) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, deltas por cursor + soft-delete |
+| **[System checks (check-config) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validar settings antes de servir |
+| **[Tempo real »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/realtime.md)** | Visão geral — quando escolher SSE, WebSocket ou Web Push |
+| **[Testes »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/testing.md)** | `conftest.py` com lifespan (`lifespan_context`), signup → login → `/auth/me`, LLM trocado por fake, `make_test_session`, `make_test_database`, fixtures pytest |
+| **[Tipagem (estático + runtime) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/typing.md)** | `strict_types` / `typed` / `require_annotations`, knob `[tool.tempest] typing_strictness`, ruff `ANN` |
+| **[Transações (commit e savepoint) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/transactions.md)** | `transaction()` compartilhado pela sessão, `commit()` / `flush()` / `rollback()` no repositório, `autocommit=False`, `savepoint()` para o passo recuperável |
+| **[Trânsito da frota (GPS anônimo) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fleet-traffic.md)** | `TrafficAggregator` (velocidade mediana por trecho, k-anonimato, corte de início e fim, sal rotativo), `match_to_roads` (HMM, porte do tempest-react-sdk), `RoadGraph` + `road_graph_from_overpass`/`load_road_graph`, `make_traffic_router` (por caixa + tile do grafo), qualidade do encaixe na frota real só agregada (`MatchQualityOptions` + `make_match_quality_router`), `OffRoadDensity` + `infer_road_candidates` (ruas que o OSM não tem, para revisão) |
+| **[Upload resumível (tus) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/resumable-upload.md)** | `make_tus_router` (servidor tus 1.0.0 do `createResumableUpload` do `tempest-react-sdk`: `POST`/`HEAD`/`PATCH`/`DELETE`, `Idempotency-Key` por dono, expiração, `409` de offset sob lock por upload), `LocalTusStore` e `S3TusStore` (estado que sobrevive a restart), `on_complete` |
+| **[Uploads (backends) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/uploads.md)** | `UploadUtils`, validação de extensão/MIME (`sniff_mime`), backends local / MinIO |
+| **[Utilitários »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, tokens opacos, `generate_password`, URL assinada (`sign_path`), `form_encode`, `is_light` |
+| **[Visão computacional (ONNX) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/vision.md)** | `Detector` / `Classifier` / `Segmenter` + schemas de predição |
+| **[Web Push »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/webpush.md)** | `WebPushDispatcher`, schemas VAPID, broadcast com poda |
+| **[WebAuthn / passkeys »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/webauthn.md)** | `WebAuthnService`, `make_web_authn_credential_model`, registro + login sem senha, store de desafios em memória/Redis |
+| **[WebSocket router »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/websocket.md)** | `WebSocketHub`, `make_websocket_router`, `broadcast` / `send_to`, heartbeat, auth via bearer |
+| **[WhatsApp (zap-api) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/zap.md)** | `ZapClient` sobre o gateway da casa — 27 operações geradas, envio assíncrono (`202` + linha enfileirada), `idempotency_key` por mensagem, sessão e QR de pareamento |
+
+## Exemplos completos
+
+As receitas mostram uma peça por vez. Estas páginas juntam **várias** num fluxo que roda de ponta a ponta — leia quando quiser ver as decisões de integração, não a API isolada.
+
+| Exemplo | O que junta |
+| --- | --- |
+| **[Admin de loja completo »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/admin-showcase.md)** | audit history + autocomplete FK + inlines + cards de negócio + import CSV + RBAC granular + lenses |
+| **[Checkout com Pix »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/integrated.md)** | auth JWT + campos validados (`PixKeyField`) + cache + outbox transacional + `MessageBroker` + `TaskQueue` + SSE + Web Push |
+| **[Fluxos de GenAI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/genai-examples.md)** | capacidade de hardware → LLM local → embeddings/RAG → áudio, self-hosted de ponta a ponta |
+| **[Fullstack web (SSR, WASM, server) »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/fullstack-web.md)** | os três modos de falar com o `tempestweb`: SSR + HTMX, SPA WASM e server-mode |
+| **[Marketplace de bairro »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/marketplace-local.md)** | geo (vendedores próximos, distância/tempo) + chat em tempo real + notificações ao vivo + avaliações com estrelas |
+
+## Anatomia de uma receita
+
+Toda receita segue o mesmo formato de quatro seções para você bater o olho:
+
+1. **O que resolve** — um parágrafo em linguagem simples.
+2. **Quando usar** — lista de situações + quando *não* usar.
+3. **O código** — completo, executável, com anotações `# 1. setup` / `# 2. wire` / `# 3. test`.
+4. **Pegadinhas** — ressalvas de produção, defaults de segurança, notas de escala.
+
+Se você encontrar uma receita que não segue esse formato, [abra uma issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/new) — tratamos regressões de doc como regressões de código.

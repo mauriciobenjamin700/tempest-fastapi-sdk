@@ -1,0 +1,837 @@
+# Jobs — long work with a status
+
+A queue hands the call to a worker. It answers none of what the person
+in front of the screen is asking:
+
+- has anything picked this up, or is it still queued?
+- is it running **right now**?
+- did it finish? what did it produce?
+- if it stopped, why — in their language, not as a traceback.
+
+TaskIQ's `AsyncResultBackend` comes close, but it is keyed by task id,
+holds the function's return value, and is not a table the application
+queries, paginates or shows in an admin. What the interface wants is a
+**row**.
+
+This is the symmetric half of the [outbox](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/outbox.md): there it is *a
+message to publish*, here it is *work to execute*.
+
+## 1. The table
+
+Subclass `BaseJobModel` and pick a `__tablename__` — exactly like
+`BaseOutboxModel`:
+
+```python
+# src/db/models/job.py
+from tempest_fastapi_sdk.tasks import BaseJobModel
+
+
+class JobModel(BaseJobModel):
+    """One unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+```
+
+Three lines, because the rest comes with it: `kind`, `status`, `params`,
+`payload`, `result_id`, `error`, `attempts`, `max_attempts`,
+`started_at`, `finished_at` — plus the `id` / `is_active` /
+`created_at` / `updated_at` every `BaseModel` has.
+
+| Column | What for |
+| --- | --- |
+| `kind` | which work this is; the worker branches on it and the interface filters by it |
+| `status` | `queued` → `running` → `done` / `failed`, indexed |
+| `params` | small input, as JSON |
+| `payload` | large input — the file a broker should not be carrying |
+| `result_id` | the row the work produced, so the screen links straight to it |
+| `error` | why it stopped, written for the user |
+
+## 2. Enqueue
+
+`JobStore` takes the `AsyncDatabaseManager`, not a session: every call
+opens and closes its own, because its users are a handler that enqueues,
+a worker that grinds for minutes, and a screen asking every couple of
+seconds — none of them should hold a session across that.
+
+```python
+# src/api/routers/extraction.py
+from uuid import UUID
+
+from fastapi import APIRouter, UploadFile
+
+from src.db.models.job import JobModel
+from src.api.dependencies.resources import db
+from src.tasks import extract_document
+
+from tempest_fastapi_sdk.tasks import JobStore
+
+router = APIRouter(prefix="/api/extraction")
+store: JobStore[JobModel] = JobStore(db, model=JobModel, stale_after=300.0)
+
+
+@router.post("/")
+async def start_extraction(file: UploadFile) -> dict[str, UUID]:
+    """Accept the document and return the job id to follow."""
+    job = await store.enqueue(
+        "extract",
+        params={"filename": file.filename or "unnamed.pdf"},
+        payload=await file.read(),
+    )
+    await extract_document.enqueue(str(job.id))
+    return {"job_id": job.id}
+```
+
+That order is deliberate: **write the row, then send the task**. The row
+is what the interface reads, and it has to exist before the worker can
+claim it.
+
+## 3. The worker
+
+```python
+# src/tasks/__init__.py
+from uuid import UUID, uuid4
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore, TaskQueue
+
+
+class JobModel(BaseJobModel):
+    """One unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+class UnsupportedFormat(Exception):
+    """The uploaded file is not something we know how to read."""
+
+
+async def read_tender(payload: bytes | None) -> UUID:
+    """The real work; returns the id of what it produced.
+
+    Args:
+        payload (bytes | None): The document claimed with the job.
+
+    Returns:
+        UUID: The id of the generated draft.
+
+    Raises:
+        UnsupportedFormat: When the document cannot be read.
+    """
+    if not payload:
+        raise UnsupportedFormat("empty file")
+    return uuid4()
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+tq = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/", resources=[db])
+store: JobStore[JobModel] = JobStore(db, model=JobModel, stale_after=300.0)
+
+
+@tq.task
+async def extract_document(job_id: str) -> None:
+    """Claim the job, do the work, close the row.
+
+    Args:
+        job_id (str): The id the route sent along with the task.
+    """
+    job = await store.claim(UUID(job_id))
+    if job is None:
+        return
+    try:
+        draft_id = await read_tender(job.payload)
+    except UnsupportedFormat as exc:
+        await store.fail(job.id, f"I could not read the file: {exc}")
+    else:
+        await store.succeed(job.id, result_id=draft_id)
+```
+
+Three things happening there, each for a reason:
+
+- **`claim` is what separates "queued" from "running".** Without it the
+  interface cannot tell "the worker is busy" from "nobody picked it
+  up" — which is the exact question when something takes a while.
+- **`claim` returns `None` when the job is not yours** (someone else
+  claimed it, or the id does not exist). It is a conditional `UPDATE`, so
+  two workers racing for one id cannot both win: one sees a row change,
+  the other does not.
+- **`succeed` / `fail` drop the `payload`.** Without that, the table of
+  finished jobs becomes a pile of documents.
+
+!!! warning "Do not hold the session across the work"
+    `claim` already returned the `payload`; from there the worker works
+    with **no session open** and only comes back to close the row. A
+    transaction that reads first and writes minutes later is the case no
+    `busy_timeout` can rescue — see
+    [Database](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/database/connection.md#sqlite-with-a-worker-wal-and-the-busy-timeout).
+
+### A column of your own, written with `done`
+
+A job that generates a file has to record **where** the file went. That
+column belongs to your model, not to the SDK — and it has to reach the row
+**in the same `UPDATE`** that marks it `done`:
+
+```python
+# src/tasks/export.py
+from uuid import UUID
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore, TaskQueue
+
+
+class ExportJobModel(BaseJobModel):
+    """An export that produces a file for the user to download."""
+
+    __tablename__ = "export_jobs"
+
+    object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+tq = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/", resources=[db])
+store: JobStore[ExportJobModel] = JobStore(db, model=ExportJobModel)
+
+
+async def build_archive(job_id: UUID) -> str:
+    """Generate the file and return its storage key.
+
+    Args:
+        job_id (UUID): The job that asked for the file.
+
+    Returns:
+        str: The key of the stored object.
+    """
+    return f"exports/{job_id}.zip"
+
+
+@tq.task
+async def export_data(job_id: str) -> None:
+    """Generate the file and close the job pointing at it.
+
+    Args:
+        job_id (str): The id the route sent along with the task.
+    """
+    job = await store.claim(UUID(job_id))
+    if job is None:
+        return
+    key = await build_archive(job.id)
+    await store.succeed(job.id, values={"object_key": key})
+```
+
+Why not write `object_key` from a session of your own and then call
+`succeed`? Because that is **two transactions**, and between them the row is
+`running` with the key already set. A cancel landing in that window makes
+`succeed` raise `JobCancelledError` — and leaves a `cancelled` row pointing at
+a file the worker is about to delete. With `values` the key goes into the
+same conditional `UPDATE` as `done`: a cancelled job gets nothing.
+
+!!! info "`values` only takes your own columns"
+    A name that is not a column of the model, or one the store controls
+    (`status`, `finished_at`, `result_id`, `progress`, ... — the full list
+    is `STORE_OWNED_JOB_COLUMNS`), raises `ValueError` **before** any SQL
+    runs. `result_id` has its own parameter; the rest are the transition
+    `succeed` exists to make.
+
+## 4. The screen asking "is it done yet?"
+
+```python
+# src/ui/pages/extraction.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore
+
+
+class JobModel(BaseJobModel):
+    """One unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def show_progress(job_id: UUID) -> list[str]:
+    """Follow the job until it finishes.
+
+    Args:
+        job_id (UUID): The job the screen is watching.
+
+    Returns:
+        list[str]: Every status the job went through.
+    """
+    seen: list[str] = []
+    async for job in store.watch(job_id, interval=2.0):
+        seen.append(job.status)
+    return seen
+```
+
+`watch` yields the job on **every status change**, until a terminal
+state, and then ends. The current status comes out immediately, so a
+caller subscribing after the job already finished still gets exactly one
+value.
+
+The detail this helper exists to stop you getting wrong: **no session is
+held between ticks**. Each poll opens and closes its own, so the worker
+writing to the same database is never blocked by the screen watching it.
+
+`timeout=` gives up with `TimeoutError` instead of waiting forever.
+
+## 5. The worker that died holding the job
+
+A `running` row nobody will ever close is the failure a queue cannot
+see: the task is gone, the row is not. `reclaim_stale()` readmits it:
+
+```python
+# src/tasks/__init__.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore, TaskQueue
+
+
+class JobModel(BaseJobModel):
+    """One unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+tq = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/", resources=[db])
+store: JobStore[JobModel] = JobStore(db, model=JobModel, stale_after=300.0)
+
+
+@tq.task
+async def extract_document(job_id: str) -> None:
+    """Claim the job and close the row.
+
+    Args:
+        job_id (str): The id the route sent along with the task.
+    """
+    job = await store.claim(UUID(job_id))
+    if job is None:
+        return
+    await store.succeed(job.id)
+
+
+@tq.interval(seconds=60)
+async def reclaim_jobs() -> None:
+    """Requeue what a dead worker left in RUNNING, and send it again."""
+    reclaimed = await store.reclaim_stale()
+    for job_id in reclaimed.requeued:
+        await extract_document.enqueue(str(job_id))
+
+
+async def send_job(job: JobModel) -> None:
+    """Hand one job to the worker.
+
+    Args:
+        job (JobModel): The row going to the queue.
+    """
+    await extract_document.enqueue(str(job.id))
+
+
+@tq.interval(seconds=300)
+async def redispatch_jobs() -> None:
+    """Resend `queued` rows whose send was lost."""
+    await store.redispatch_queued(send_job, older_than=600.0)
+```
+
+Rows whose `started_at` is older than `stale_after` go back to `queued` —
+unless they already spent their `max_attempts`, in which case they are
+closed as `failed`. Without that budget, a job that kills its worker
+would be readmitted forever.
+
+**Going back to `queued` is not enough.** That job's message died with the
+worker, and nothing in the SDK sends a `queued` row to the queue on its own —
+which is why `reclaim_stale()` returns the ids (`ReclaimedJobs.requeued` and
+`ReclaimedJobs.failed`), and `reclaim_jobs` above resends them straight away.
+
+`redispatch_queued` covers the other way a row stays `queued` forever: the
+row's `enqueue` succeeded and the task's send did not (broker down, process
+died between the two steps). It resends `queued` rows nobody touched for more
+than `older_than` (age is `updated_at`, which it refreshes on every send — so
+each row goes out at most once per window).
+
+!!! tip "Sending twice is harmless"
+    A row whose message is merely waiting in a long backlog is resent too.
+    Both messages reach `claim`, and its conditional `UPDATE` lets exactly
+    one of them run; the other gets `None` and returns. Pick an
+    `older_than` above the backlog you expect so this stays rare — not to
+    keep it correct.
+
+!!! warning "`reclaim_stale()` no longer returns an `int`"
+    It used to return the count; it now returns `ReclaimedJobs`. `len()`
+    and truthiness still work (`if await store.reclaim_stale():`), but
+    `== 1` or adding to a number does not: use `.total`.
+
+!!! info "Without `stale_after`, the method refuses"
+    `JobStore(db, model=JobModel)` with no `stale_after` raises
+    `RuntimeError` from `reclaim_stale()` rather than guessing a
+    threshold.
+
+## 6. Listing
+
+```python
+# src/services/extraction.py
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatusEnum, JobStore
+
+
+class JobModel(BaseJobModel):
+    """One unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def dashboard() -> tuple[list[JobModel], list[JobModel]]:
+    """Read what the progress screen shows.
+
+    Returns:
+        tuple[list[JobModel], list[JobModel]]: The recent jobs and the
+        ones running right now.
+    """
+    recent = await store.list_recent(kind="extract", limit=20)
+    running = await store.list_recent(status=JobStatusEnum.RUNNING)
+    return recent, running
+```
+
+Returns `[]` when nothing matches — "no jobs yet" is a successful
+answer, not a 404.
+
+## 7. Cancelling
+
+The user clicked "cancel". Nothing in TaskIQ — or in any broker the SDK
+speaks — offers "kill the task with this id": once it is running inside the
+worker process, only that process can stop it. So cancellation is
+**cooperative**: the request writes `cancelled` and answers immediately; the
+worker reads that status at agreed checkpoints and gives up.
+
+```python
+# src/services/extraction.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore
+
+
+class JobModel(BaseJobModel):
+    """A unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def cancel(job_id: UUID) -> bool:
+    """Ask the job to stop.
+
+    Args:
+        job_id (UUID): The job to cancel.
+
+    Returns:
+        bool: True when there was something to stop.
+    """
+    job: JobModel | None = await store.cancel(job_id, reason="cancelled by the user")
+    return job is not None
+```
+
+!!! tip "Idempotent on purpose"
+    `cancel()` returns `None` — rather than raising — when there is nothing
+    to stop: an unknown id, a job already done, already failed, or already
+    cancelled. Double-clicking, or clicking just as the job finished on its
+    own, is not an error.
+
+### The worker gives up
+
+`run_cancellable` is the checkpoint that runs **during** the work rather
+than between steps. It races the coroutine against a predicate polled on an
+interval, and when the predicate says stop, the coroutine is cancelled for
+real — an in-flight HTTP request is aborted and the worker is free within
+the poll interval, instead of finishing a call whose result nobody wants.
+
+```python
+# src/tasks/extract.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    StageInterruptedError,
+    run_cancellable,
+)
+
+
+class JobModel(BaseJobModel):
+    """A unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def summarize(text: str) -> str:
+    """Genuinely long work (a network call, cancellable).
+
+    Args:
+        text (str): The text to summarize.
+
+    Returns:
+        str: The summary.
+    """
+    return text[:100]
+
+
+async def run(job_id: UUID) -> None:
+    """Run the job, giving up if it is cancelled midway.
+
+    Args:
+        job_id (UUID): The job to run.
+    """
+    job: JobModel | None = await store.claim(job_id)
+    if job is None:
+        return
+
+    try:
+        summary: str = await run_cancellable(
+            summarize("a long text"),
+            interrupted=store.cancellation_watch(job_id),
+        )
+    except StageInterruptedError:
+        return
+
+    await store.succeed(job_id)
+    print(summary)
+```
+
+!!! danger "Only works on genuinely cancellable awaits"
+    Work handed to `asyncio.to_thread` is **not** cancellable: cancelling
+    the coroutine abandons the wrapper while the thread runs on to
+    completion, still holding the CPU and still competing with the next
+    job. For that shape — local inference, say — check between steps, and
+    check again before writing the result.
+
+!!! info "`succeed` refuses to land on top of a cancellation"
+    A worker that raced past its last checkpoint still cannot overwrite the
+    row: `succeed()`/`fail()` raise `JobCancelledError`, a subclass of
+    `JobAlreadyFinishedError`. The two are distinct on purpose — a plain
+    `JobAlreadyFinishedError` says two workers believe the job is theirs,
+    while this one says the system did exactly what it was told. Log it and
+    move on; do not alert.
+
+!!! warning "`cancelled` is terminal, but it is not a failure"
+    It joins `TERMINAL_JOB_STATUSES` (the poll stops, the `payload` is
+    dropped), but nothing went wrong. An interface that highlights `failed`
+    should leave this one alone, and an alert that pages on failures should
+    not fire.
+
+## 8. Progress: the bar that does not lie
+
+A status answers "is it done yet?". It does not answer "how much longer?"
+— and that is the question of whoever has been watching the screen for a
+minute and a half.
+
+There are two dishonest ways to answer. A bar that crawls on a timer tells
+a story unrelated to the work. A bar that jumps 0 to 100 when the work
+ends is a spinner wearing a percentage.
+
+The third way is to measure. Run the real work over real inputs, take the
+median of each phase, and declare what you measured:
+
+```python
+# src/tasks/plan.py
+from tempest_fastapi_sdk.tasks import PhasePlan
+
+PLAN: PhasePlan = PhasePlan.from_seconds(
+    {"pdf": 1.0, "table": 30.0, "reading": 19.0},
+    per_kilochar={"table": 0.5, "reading": 0.2},
+)
+```
+
+The medians are the weights: a phase that takes half the time takes half
+the bar. `per_kilochar` is the slope fitted against input size — with it,
+a call over 40,000 characters is not paced like one over 4,000.
+
+The worker then runs each phase through the `ProgressTracker`:
+
+```python
+# src/tasks/extract.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    PhasePlan,
+    ProgressTracker,
+    StageInterruptedError,
+)
+
+
+class JobModel(BaseJobModel):
+    """One unit of long work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+PLAN: PhasePlan = PhasePlan.from_seconds({"table": 30.0, "reading": 19.0})
+
+
+async def read_table(text: str) -> str:
+    """Call the model to transcribe the table.
+
+    Args:
+        text (str): The pages carrying the table.
+
+    Returns:
+        str: The model's reply.
+    """
+    return text
+
+
+async def read_document(job_id: UUID, text: str) -> None:
+    """Read a document, reporting the progress of each phase.
+
+    Args:
+        job_id (UUID): The claimed job.
+        text (str): The already-extracted document.
+    """
+    tracker = ProgressTracker(store, job_id, plan=PLAN)
+    try:
+        table = await tracker.run("table", read_table(text), size=len(text))
+    except StageInterruptedError:
+        return
+    await store.succeed(job_id, result_id=None)
+    del table
+```
+
+Every tick writes `progress` and `stage` on the row, and a phase never
+fills: the interpolation stops at 95% of its span, because "the table call
+is done" is something only the table call finishing can say.
+
+!!! tip "One poll answers both questions"
+    The tick that writes progress is the one that asks whether the user
+    cancelled — same row, same interval. Asking twice would double the
+    traffic to say the same thing.
+
+!!! info "A real count beats the interpolation"
+    When the phase can count — pages extracted out of pages total — use
+    `await tracker.report("pdf", done=read / total)`. A measured number
+    beats an estimate, and only it may reach the phase ceiling.
+
+!!! warning "Your own work in a thread"
+    Cancelling the coroutine does not stop a thread. A
+    [`TextGenerator`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai.md) already handles its own case: when
+    `tracker.run` cancels the call, it sets the event the model checks
+    after every token. For **your** work running in a thread, pass a
+    `threading.Event` to `tracker.run(..., stop_event=event)` and check it
+    in your loop. Without it, the screen says "cancelled" while the thread
+    keeps working.
+
+On the screen side, ask `watch` to emit on progress changes too, or the
+bar will not move:
+
+```python
+# src/ui/pages/extraction.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatusEnum, JobStore
+
+
+class JobModel(BaseJobModel):
+    """One unit of long work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def follow(job_id: UUID) -> list[tuple[str, float]]:
+    """Follow a reading to the end, frame by frame.
+
+    Args:
+        job_id (UUID): The job to follow.
+
+    Returns:
+        list[tuple[str, float]]: Each phase and the percentage at that moment.
+    """
+    frames: list[tuple[str, float]] = []
+    async for job in store.watch(
+        job_id,
+        interval=2.0,
+        emit_on=("status", "progress", "stage"),
+    ):
+        frames.append((job.stage, job.progress))
+    return frames
+
+
+async def in_flight() -> list[JobModel]:
+    """List what the progress strip shows.
+
+    Returns:
+        list[JobModel]: The queued jobs and the running ones.
+    """
+    return await store.list_recent(
+        kind="extract",
+        statuses=(JobStatusEnum.QUEUED, JobStatusEnum.RUNNING),
+    )
+```
+
+Plural `statuses` is what a progress screen actually asks: "queued or
+running" is one question, and asking it as two queries makes the two
+halves disagree the moment a worker claims a job between them.
+
+## 9. Several stages on the record itself
+
+`JobStore` above gives long work its own row. That is right when the work
+**is** the thing — an export, an import, a batch. It is the wrong shape
+when the work **decorates a record the interface is already showing**: a
+document that gets transcribed, then summarized, then mined for
+suggestions. There the screen already fetches the document, and a second
+table means a second query and a join to render one page.
+
+The alternative is status columns on the record — `summary_status`,
+`summary_error`, one triple per stage. That works, and it rots in a
+specific way: each stage grows its own copy of "set running" and "mark
+failed", a fix has to land N times, and a copy-pasted stage that kept a
+neighbour's column name **compiles, imports, and reports the neighbour's
+state**.
+
+`StageMap` is that table written once.
+
+```python
+# src/core/stages.py
+from tempest_fastapi_sdk.tasks import StageMap, StageStatusEnum
+
+STAGES: StageMap = StageMap(
+    ["transcription", "summary", "suggestions"],
+    prefix="doc_",
+)
+```
+
+That resolves `doc_status_summary`, `doc_error_summary` and
+`doc_result_summary`. The templates are configurable, because column naming
+is a house convention rather than something a library imposes.
+
+```python
+# src/tasks/summarize.py
+from typing import Any
+
+from tempest_fastapi_sdk.tasks import StageMap, StageStatusEnum
+
+STAGES: StageMap = StageMap(["summary"], prefix="doc_")
+
+
+async def summarize(text: str) -> str:
+    """Long work.
+
+    Args:
+        text (str): The text to summarize.
+
+    Returns:
+        str: The summary.
+    """
+    return text[:100]
+
+
+async def run(document: Any) -> None:
+    """Run the stage, writing only if it is still ours.
+
+    Args:
+        document (Any): The record, freshly read from the database.
+    """
+    STAGES.mark(document, "summary", StageStatusEnum.RUNNING)
+    summary: str = await summarize("a long text")
+
+    if STAGES.owns(document, "summary", StageStatusEnum.RUNNING):
+        STAGES.mark(document, "summary", StageStatusEnum.DONE, result=summary)
+```
+
+!!! danger "`owns` is an ownership check, not a cancellation check"
+    "This stage is no longer mine" covers **two** things: the user
+    cancelled, and a newer run restarted the stage. In both cases the old
+    run must not write — one would resurrect work that was stopped, the
+    other would clobber a fresher result.
+
+    Re-read the record from the database before calling it. An object
+    loaded before the work started still holds the old status and would
+    answer `True` no matter what happened meanwhile.
+
+!!! tip "Cancelling is deliberately partial"
+    `STAGES.cancel(document)` returns `(cancelled, ignored)`. A stage that
+    already finished lands in `ignored` rather than raising: a screen
+    polling for status will routinely ask to cancel something that
+    completed a moment ago.
+
+    There is no cascade, and none is needed: if each stage only enqueues
+    the next on success, cancelling the first means the second never
+    exists.
+
+!!! info "Marking without a `result` does not erase the previous one"
+    Cancelling a regeneration keeps the old summary — it is still the best
+    answer available. Wiping it would make cancelling strictly worse than
+    never asking.
+
+!!! warning "The map declares no columns"
+    The `mapped_column` declarations are yours. Migrations, types and
+    indexes stay where a reader expects them; the map only agrees with you
+    on the naming. It refuses at construction when two stages would resolve
+    to the same column — the copy-paste bug nothing else in the stack would
+    notice.
+
+## Errors
+
+| Exception | When |
+| --- | --- |
+| `JobNotFoundError` | the id does not exist (`get`, `succeed`, `fail`, `watch`) |
+| `JobAlreadyFinishedError` | closing a job that is already terminal — two workers believe it is theirs |
+| `JobCancelledError` | closing a job the user cancelled midway; a subclass of the above, so a worker can tell "we did as told" from "the concurrency is wrong" |
+| `StageInterruptedError` | `run_cancellable` saw the cancellation; not a failure, the handler just returns |
+
+They are `LookupError` / `RuntimeError`, not `AppException`: the store
+runs in the worker as often as in a request, and a worker has no HTTP
+status to answer with. Translate at the boundary with
+[`not_found_exception(...)`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openapi-errors.md#the-factory-not_found_exception-conflict_exception).
+
+## Recap
+
+- The queue hands the call to a worker; it answers none of what the person in
+  front of the screen is asking. `JobStore` gives long work a **row of its
+  own**, and that row is what the screen reads.
+- `BaseJobModel` is abstract: your service ships the concrete table and picks
+  the `__tablename__`.
+- `JobStore` takes the `AsyncDatabaseManager`, not a session — each operation
+  opens and closes its own, because a worker and a request do not share a unit
+  of work.
+- `reclaim_stale` exists because a `running` row nobody will ever close is the
+  failure the queue cannot see: the process died holding the job. It returns the
+  ids, because a `queued` row with no message never runs; `redispatch_queued`
+  resends what stayed `queued` without a send.
+- `succeed(values=...)` writes your model's column in the same `UPDATE` as
+  `done` — a cancelled job gets nothing.
+- Cancelling is cooperative: the request writes `CANCELLED` and the worker
+  aborts at its next checkpoint. No broker kills in-flight work for you.
+- Status answers "is it done?"; progress answers "how much is left?". Those are
+  different questions: `PhasePlan` + `ProgressTracker` turn a measured phase
+  into the percentage the row carries, and `watch(emit_on=...)` is what makes
+  the bar move between two status changes. `StageMap` covers the third question
+  — several stages on one record.
+- The store raises `LookupError` / `RuntimeError`, not `AppException`: it runs
+  in the worker, where there is no request to turn into an HTTP response.

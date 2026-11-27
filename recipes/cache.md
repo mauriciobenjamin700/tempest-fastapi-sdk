@@ -1,0 +1,359 @@
+# Cache
+
+Bater no banco repetidamente para os mesmos dados caros custa latência e carga. Esta receita entrega três blocos apoiados em Redis: um cliente gerenciado (`AsyncRedisManager`) com lifespan e health-check, um decorator de memoização (`@cached`) que guarda o retorno de funções async, e a invalidação por tag/namespace (`CacheInvalidator`) para derrubar entradas antes do TTL. Os blocos aparecem nessa ordem — primeiro o cliente, depois a memoização, depois a invalidação. Requer o extra `[cache]`.
+
+## AsyncRedisManager
+
+
+`AsyncRedisManager` embrulha `redis.asyncio` com a mesma superfície de connect/disconnect/health-check do `AsyncDatabaseManager`. Instale com `[cache]`.
+
+```python
+# src/api/app.py
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+from src.core.settings import settings
+
+cache = AsyncRedisManager(**settings.redis_kwargs())   # url + decode_responses
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    await cache.connect()           # primeira chamada — sem isso, .client levanta RuntimeError
+    try:
+        yield
+    finally:
+        await cache.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+
+# Dependência FastAPI — entrega o client ativo.
+from fastapi import APIRouter, Depends
+from redis.asyncio import Redis
+
+router = APIRouter()
+
+
+@router.get("/named")
+async def named_endpoint() -> dict[str, str | None]:
+    """Use the manager's client directly, after lifespan startup ran."""
+    await cache.client.set("user:123:name", "Ana", ex=300)
+    name = await cache.client.get("user:123:name")
+    return {"name": name}
+
+
+@router.get("/cached")
+async def cached_endpoint(
+    redis: Redis = Depends(cache.client_dependency),
+) -> dict[str, str]:
+    value = await redis.get("greeting") or "hello"
+    return {"value": value}
+
+
+app.include_router(router)
+```
+
+Conecte o health check no router canônico com `make_health_router(checks={"redis": cache.health_check})` para que as readiness probes falhem quando o Redis cair.
+
+
+### Store de middleware: `client_proxy`
+
+Os dois ciclos de vida não se encaixam. O FastAPI exige que middleware seja registrado no **import** do módulo — `add_middleware` depois do startup levanta —, mas o `connect()` só roda no lifespan. Um store construído com `cache.client` no import bate no guard:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RateLimitMiddleware, RedisRateLimitStore
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+
+app = FastAPI()
+cache = AsyncRedisManager("redis://localhost:6379/0")
+
+app.add_middleware(
+    RateLimitMiddleware,
+    store=RedisRateLimitStore(cache.client),   # RuntimeError: connect() must be called before
+)
+```
+
+E adiantar a construção não resolve: `disconnect()` descarta o client, e o `connect()` seguinte cria um **objeto novo** — um store que guardou a referência antiga fica com client morto.
+
+`client_proxy` é o handle estável para esse caso. Ele resolve o client vivo a cada comando, então é construível antes do primeiro `connect()` e continua correto depois de uma reconexão:
+
+```python
+# src/api/set_middlewares.py — roda no import
+from tempest_fastapi_sdk import RateLimitMiddleware, RedisRateLimitStore
+
+from src.api.app import app, cache
+
+
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=15,
+    window_seconds=1.0,
+    store=RedisRateLimitStore(cache.client_proxy),
+)
+```
+
+Vale para todo store Redis do SDK — `RedisRateLimitStore`, `RedisQuotaStore`, `RedisSessionStore`, `RedisIdempotencyStore`, `RedisResponseCacheStore`, `RedisFeatureFlagBackend`, `RedisWebAuthnChallengeStore` —, que recebem o client pronto e não uma factory.
+
+!!! info "`client` continua sendo o certo dentro de um request"
+    Quando o código roda **dentro** de um endpoint, o lifespan já conectou: use `cache.client` ou a dependência `cache.client_dependency`. O `client_proxy` é para o que é construído antes disso.
+
+!!! warning "É um handle que encaminha, não um `Redis`"
+    O tipo declarado é `Redis` para o proxy encaixar em todo parâmetro de store sem cast do lado do consumidor, mas `isinstance(cache.client_proxy, Redis)` é `False`, e protocolo dunder resolvido no tipo (`async with proxy`) não é encaminhado. Ler um atributo antes do primeiro `connect()` continua levantando `RuntimeError` — o que muda é que **construir** o store deixou de levantar.
+
+
+## Decorator @cached
+
+
+`@cached(redis, ttl=..., key_prefix=...)` memoiza o resultado de uma função async no Redis. As chaves de cache são derivadas do `__qualname__` da função mais um SHA-256 de args/kwargs (sem o `self`/`cls` de um método — veja [abaixo](#cache-aside-num-service)); passe `key_prefix=` para dar namespace às entradas. Para invalidar **antes** do TTL, use tags/namespace (abaixo) em vez de scan de prefixo.
+
+Cada argumento entra na chave pelo **dado**, nunca pelo `str()`: um model Pydantic contribui com todos os campos (inclusive `Field(repr=False)`, e `SecretStr` como hash do segredo), uma dataclass com os campos, e `UUID` / `datetime` / `Decimal` / `Enum` com um valor tipado. Assim duas chamadas que diferem só num segredo ou num campo escondido do `repr` nunca dividem a mesma entrada. Um argumento sem codificação fiel (um objeto arbitrário) faz a chamada rodar **sem cache**, com o aviso `cached_key_unencodable` no log — passe `key_builder=` para cacheá-la.
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
+
+from src.core.settings import settings
+
+
+async def load_from_db(product_id: str) -> dict[str, Any]:
+    """Read the product straight from the database."""
+    return {"id": product_id}
+
+
+redis = AsyncRedisManager(settings.REDIS_URL)
+
+
+@cached(redis, ttl=300, key_prefix="users:")
+async def get_user_profile(user_id: str) -> dict[str, str]:
+    """Hits Redis on warm cache; runs the body once every 5 minutes."""
+    return await load_from_db(user_id)
+
+
+# Pula o cache (leitura E escrita) seletivamente em algumas chamadas
+@cached(
+    redis,
+    ttl=60,
+    skip_cache=lambda args, kwargs: kwargs.get("fresh") is True,
+)
+async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]:
+    ...
+```
+
+Defaults: `ttl=300` segundos (`0` desabilita a expiração), `serializer=json.dumps` / `deserializer=json.loads`. Sobrescreva `serializer` / `deserializer` para payloads não-JSON (modelos Pydantic — passe `model_dump_json` / `MyModel.model_validate_json`, ou use `pickle.dumps` / `pickle.loads` para objetos arbitrários). Valores corrompidos no cache caem de volta para rodar a função embrulhada e emitem um warning no logger do SDK.
+
+!!! warning "`pickle.loads` executa código arbitrário"
+    `pickle.loads` desserializa qualquer payload, inclusive um que execute código no momento da carga. Só use `pickle` quando o Redis for de confiança e isolado (sem acesso de terceiros ou de outros serviços). O default seguro para modelos Pydantic é `model_dump_json` / `MyModel.model_validate_json` — mantenha o serializer em JSON sempre que possível.
+
+
+### Invalidação por tag / namespace
+
+Esperar o TTL não serve quando um dado **muda**. Marque cada entrada com um `namespace` (um balde por decorator) e/ou `tags` (rótulos finos, estáticos ou derivados dos argumentos da chamada). No write, a chave da entrada também entra num SET Redis por rótulo; o `CacheInvalidator` apaga todas as entradas de um rótulo de uma vez.
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk.cache import AsyncRedisManager, CacheInvalidator, cached
+
+from src.core.settings import settings
+
+
+async def load_profile(user_id: int) -> dict[str, Any]:
+    """Read the profile straight from the database."""
+    return {"id": user_id}
+
+
+redis = AsyncRedisManager(settings.REDIS_URL)
+
+
+@cached(
+    redis,
+    ttl=300,
+    key_prefix="users:",
+    namespace="profiles",                                    # balde coarse
+    tags=lambda args, kwargs: [f"user:{kwargs['user_id']}"],  # rótulo por usuário
+)
+async def get_profile(*, user_id: int) -> dict[str, Any]:
+    """Lê do banco; fica em cache por usuário."""
+    return await load_profile(user_id)
+```
+
+Quando o usuário muda, o service que faz a mutação derruba só as entradas dele:
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk.cache import AsyncRedisManager, CacheInvalidator
+
+from src.core.settings import settings
+
+redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+
+
+async def save_profile(user_id: int, data: dict[str, Any]) -> None:
+    """Persist the profile, then invalidate what it feeds."""
+
+
+async def update_profile(user_id: int, data: dict[str, Any]) -> None:
+    """Atualiza o perfil e invalida o cache só desse usuário.
+
+    Args:
+        user_id (int): O usuário alterado.
+        data (dict[str, Any]): Os campos novos.
+    """
+    await save_profile(user_id, data)
+    invalidator = CacheInvalidator(redis, key_prefix="users:")    # mesmo prefixo!
+    await invalidator.invalidate_tag(f"user:{user_id}")
+```
+
+O `CacheInvalidator` expõe `invalidate_namespace(ns)`, `invalidate_tag(tag)`, `invalidate_tags(*tags)` (dedupe entre tags) e `invalidate_keys(*keys)` (chaves cruas) — cada um devolve o número de entradas apagadas.
+
+!!! warning "Use o mesmo `key_prefix`"
+    O `CacheInvalidator` precisa do **mesmo `key_prefix`** dos decorators `@cached` que ele invalida — é assim que os nomes dos SETs de registro batem. Os SETs de registro herdam o TTL da entrada, então se auto-limpam depois do membro mais novo expirar; apagar uma chave já expirada é no-op inofensivo.
+
+## Receitas reais
+
+### Cache-aside num service
+
+O padrão mais comum: o service tenta o cache; no miss, lê do repositório
+e grava. Com `@cached` você nem escreve o try/miss — ele faz isso:
+
+```python
+# src/services/catalog.py
+
+from typing import Any
+from uuid import UUID
+
+from fastapi.encoders import jsonable_encoder
+from tempest_fastapi_sdk.cache import CacheInvalidator, cached
+
+from src.core.resources import redis
+from src.db.repositories import ProductRepository
+
+
+class CatalogService:
+    def __init__(self, repo: ProductRepository) -> None:
+        self.repo = repo
+
+    @cached(redis, ttl=300, key_prefix="catalog:", namespace="products")
+    async def get_product(self, product_id: UUID) -> dict[str, Any]:
+        """Lê do banco no miss; serve do Redis por 5 min no hit."""
+        product = await self.repo.get_by_id(product_id)
+        return jsonable_encoder(product.to_dict())
+
+    async def update_product(self, product_id: UUID, data: dict[str, Any]) -> None:
+        """Grava e derruba o cache do namespace inteiro."""
+        product = await self.repo.get_by_id(product_id)
+        product.update_from_dict(data, allowed_fields={"name", "price"})
+        await self.repo.update(product)
+        await CacheInvalidator(redis, key_prefix="catalog:").invalidate_namespace(
+            "products",
+        )
+```
+
+Dois detalhes desse exemplo não são enfeite:
+
+- **`jsonable_encoder(product.to_dict())`**, não `product.to_dict()` puro.
+  O `to_dict()` devolve o `id` como `UUID` e o `created_at` como
+  `datetime`, e o serializer default (`json.dumps`) recusa os dois: o
+  `@cached` registra `cached_serialization_failed`, devolve o resultado e
+  **não grava nada** — toda chamada vai ao banco, sem erro nenhum. Passado
+  pelo `jsonable_encoder`, o dict vira tipos JSON (strings no lugar de
+  `UUID`/`datetime`) e o miss e o hit devolvem o mesmo valor.
+- **`repo.update(product)`** recebe a instância já alterada — o
+  `BaseRepository.update` só faz `commit` + `refresh` do que a sessão
+  rastreia. Por isso o `update_product` busca, aplica com
+  `update_from_dict(..., allowed_fields=...)` e só então grava.
+
+!!! warning "A chave ignora `self` — e o estado dele"
+    Quando o primeiro parâmetro da função decorada se chama `self` ou
+    `cls`, a chave default **deixa esse argumento de fora**: entra só o
+    nome qualificado (`CatalogService.get_product`) e os demais
+    argumentos. É o que faz o cache acertar com um service construído por
+    request — `str(self)` de uma instância sem `__repr__` próprio carrega
+    o endereço de memória e nunca se repete. A consequência é que **todas
+    as instâncias da classe dividem a entrada**. Só cacheie métodos cujo
+    resultado dependa apenas dos argumentos (como acima, onde
+    `product_id` determina tudo). Se o resultado varia com o estado da
+    instância (um `tenant_id` guardado em `self`, por exemplo), passe um
+    `key_builder` que leia esse estado — ele recebe os `args` completos,
+    com `self` — ou cacheie uma função pura.
+
+### Um Redis pra tudo
+
+O `AsyncRedisManager` entrega um `redis.asyncio.Redis` em `.client` — o
+mesmo client alimenta os outros middlewares/stores do SDK, então você
+mantém **uma** conexão:
+
+```python
+from tempest_fastapi_sdk.api import RateLimitMiddleware, RedisRateLimitStore
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+from tempest_fastapi_sdk.sessions import RedisSessionStore
+from tempest_fastapi_sdk.sse import SSEBroker
+
+from src.core.settings import settings
+
+cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+
+
+# depois de cache.connect() no lifespan:
+rate_store = RedisRateLimitStore(cache.client)          # rate limit
+session_store = RedisSessionStore(cache.client)         # sessões server-side
+broker = SSEBroker(redis=cache.client)                  # fan-out SSE multi-worker
+```
+
+Veja [Rate limit](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/http.md), [Sessões](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sessions.md) e [SSE](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sse.md) pros
+detalhes de cada um.
+
+### Negative caching (cachear o "não existe")
+
+Uma consulta que sempre erra (id inexistente sondado em loop) bate no
+banco toda vez. Cacheie o resultado vazio com um TTL curto:
+
+```python
+from typing import Any
+
+from fastapi.encoders import jsonable_encoder
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
+
+from src.core.settings import settings
+from src.db.repositories import UserRepository
+
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+
+repo = UserRepository(session)
+
+
+@cached(redis, ttl=30, key_prefix="lookup:")  # TTL curto pro negativo
+async def find_user(email: str) -> dict[str, Any] | None:
+    """Retorna None no miss — e o None fica em cache por 30s."""
+    user = await repo.get_by_email(email)
+    return jsonable_encoder(user.to_dict()) if user else None
+```
+
+!!! tip "Stampede / dogpile"
+    Quando uma chave quente expira, N requests simultâneos podem rodar a
+    função cara ao mesmo tempo. Mitigue com TTLs escalonados (jitter no
+    `ttl`), um TTL maior pra chaves muito quentes, ou um lock curto no
+    Redis (`SET NX EX`) em volta do recomputo. O `@cached` não faz isso
+    sozinho — é uma decisão por caso.
+
+## Recapitulando
+
+- **`AsyncRedisManager`** — o cliente gerenciado: `connect`/`disconnect` no lifespan, `client` para uso direto, `client_dependency` como `Depends`, e `health_check` no `make_health_router`.
+- **`@cached`** — memoiza funções async no Redis com TTL, `key_prefix`, `skip_cache` e serializers customizáveis (prefira JSON; `pickle` só em Redis de confiança).
+- **`CacheInvalidator`** — derruba entradas antes do TTL por `namespace`, `tag`, `tags` ou chaves cruas, usando o **mesmo `key_prefix`** do decorator.
+
+Próximo passo: veja a receita de [banco de dados](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/database.md) para conectar o cache aos repositórios que ele acelera.

@@ -1,0 +1,796 @@
+# Web Push
+
+Notificações Web Push (assinadas com VAPID) para navegadores via
+`WebPushDispatcher`. Embrulha o `pywebpush` síncrono em
+`asyncio.to_thread` e expõe os dois erros que a aplicação realmente
+trata: `WebPushGoneError` (HTTP 404/410 — apague a inscrição) e
+`WebPushError` (qualquer outra falha). Requer o extra `[webpush]`
+(`pywebpush` + `cryptography`).
+
+
+!!! tip "Tem app mobile também?"
+    Esta receita cobre o navegador. Se o produto tem site **e** app,
+    veja [Push (web + mobile)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/push.md): um serviço, uma tabela e uma
+    chamada para os dois. Nada aqui muda — o módulo `push` reaproveita
+    este mesmo dispatcher.
+
+!!! info "O que este guia segue"
+    O SDK entrega as peças (tabela base, dispatcher, serviço, schema); o
+    projeto as monta na arquitetura em camadas
+    **router → controller → service → repository**. Cada bloco abaixo traz
+    o **caminho do arquivo** no topo e a explicação logo em seguida, pra
+    você colar direto no lugar certo.
+
+## Configuração VAPID
+
+`WebPushSettings` traz `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e
+`VAPID_SUBJECT`. A chave **pública** vai para o frontend (no
+`pushManager.subscribe`); a **privada** assina cada push no backend. O
+`sub` deve ser um URI `mailto:` ou `https:`.
+
+!!! warning "`VAPID_SUBJECT` errado falha na leitura, não no primeiro push *(v0.367.1+)*"
+    A `py_vapid` só assina com `mailto:<email>` ou `https://<host>`, e recusa
+    o resto com a mesma frase que usa para claim ausente
+    (`Missing 'sub' from claims`). Um e-mail sem o `mailto:` carregava
+    normalmente e derrubava todo push depois. Agora, com
+    `VAPID_PRIVATE_KEY` preenchida, o `WebPushSettings` (e o `PushSettings`)
+    recusa o valor ao ler o ambiente — medido, com
+    `VAPID_SUBJECT=admin@example.com`:
+
+    ```text
+    1 validation error for WebPushSettings
+      Value error, VAPID_SUBJECT must be 'mailto:<email>' or 'https://<host>' (got a bare e-mail; prefix it with 'mailto:') [type=value_error]
+    ```
+
+    Sem chave privada (push desligado), nada é checado. O
+    `WebPushDispatcher` faz a mesma checagem no construtor (inclusive num
+    `"sub"` passado em `extra_vapid_claims`), e uma recusa da `py_vapid` no
+    `send` vira `WebPushConfigurationError`, tipada, em vez da
+    `VapidException` crua que vazava antes. O `send_many` a levanta em vez
+    de logar por assinante, porque ela falha igual para todos.
+
+!!! tip "Gerando um par de chaves VAPID"
+    Você gera o par uma única vez e reaproveita em todos os ambientes.
+    Com o `pywebpush` (extra `[webpush]`) instalado:
+
+    ```bash
+    vapid --gen
+    ```
+
+    Isso escreve `private_key.pem` + `public_key.pem` e imprime a chave
+    pública em base64 url-safe (a `applicationServerKey` do frontend).
+    Sem Python à mão, o `web-push` do Node faz o mesmo:
+
+    ```bash
+    npx web-push generate-vapid-keys
+    ```
+
+    O output traz **Public Key** e **Private Key**: mapeie
+    `Public Key` → `VAPID_PUBLIC_KEY` e `Private Key` →
+    `VAPID_PRIVATE_KEY`. Defina `VAPID_SUBJECT` como um `mailto:` ou
+    `https:` seu.
+
+O dispatcher é um **singleton de infraestrutura**: construído uma única
+vez e alcançado por todo lugar via `Depends`, junto dos outros recursos
+(banco, storage, cache). Construa-o **preguiçosamente** (só no primeiro
+uso), como o broker de SSE — assim uma app sem chaves VAPID válidas (um
+teste, ou um serviço que não usa push) nunca falha no import.
+
+```python
+# src/api/dependencies/resources.py
+from tempest_fastapi_sdk import WebPushDispatcher
+
+from src.core.settings import settings
+
+_webpush_dispatcher: WebPushDispatcher | None = None
+
+
+def get_webpush_dispatcher() -> WebPushDispatcher:
+    """Retorna o dispatcher VAPID compartilhado, criado uma vez no 1º uso.
+
+    ``settings.webpush_kwargs()`` devolve ``vapid_private_key``,
+    ``vapid_subject`` e ``ttl_seconds``.
+    """
+    global _webpush_dispatcher
+    if _webpush_dispatcher is None:
+        _webpush_dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
+    return _webpush_dispatcher
+```
+
+## Tabela, repositório, serviço e controller (recomendado)
+
+Para guardar os aparelhos do usuário e entregar com poda automática, o
+SDK traz a **tabela base** `BaseWebPushSubscriptionModel` (uma linha por
+device, `endpoint` único) e o **serviço base** `WebPushSubscriptionService`
+(salva, remove e envia, podando as mortas sozinho). Montamos as quatro
+camadas na ordem em que uma requisição as atravessa.
+
+### 1. Model — a tabela concreta
+
+Igual ao padrão de auth, o SDK fornece a linha abstrata e o projeto cria
+a tabela concreta com a FK pro seu `UserModel`:
+
+```python
+# src/db/models/webpush.py
+from uuid import UUID
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import BaseWebPushSubscriptionModel
+
+
+class WebPushSubscriptionModel(BaseWebPushSubscriptionModel):
+    """Inscrição Web Push de um device do usuário (uma linha por device)."""
+
+    __tablename__ = "web_push_subscriptions"
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+```
+
+O `BaseWebPushSubscriptionModel` já traz `endpoint` (único + indexado),
+`p256dh`, `auth`, `expiration_time` e `user_agent`; você só adiciona a FK
+`user_id`. Lembre de gerar a migration pra essa tabela nova.
+
+!!! tip "Sem nada a customizar? A factory faz a classe pra você"
+    `make_web_push_subscription_model(user_table="users")` gera a classe
+    concreta — mesma tabela, mesma FK `ON DELETE CASCADE` — quando você não
+    precisa de coluna extra:
+
+    ```python
+    # src/db/models/webpush.py
+    from tempest_fastapi_sdk import (
+        BaseWebPushSubscriptionModel,
+        make_web_push_subscription_model,
+    )
+
+    WebPushSubscriptionModel: type[BaseWebPushSubscriptionModel] = (
+        make_web_push_subscription_model(user_table="users")
+    )
+    ```
+
+    `tablename=` e `class_name=` mudam os defaults
+    (`web_push_subscriptions` / `WebPushSubscriptionModel`). Precisando de
+    coluna própria — um `device_label`, um `tenant_id` — escreva a subclasse à
+    mão como acima; a factory não aceita campos extra.
+
+### 2. Repository — subclasse tipada do `BaseRepository`
+
+Seguindo o padrão dos demais repositórios do projeto, crie uma subclasse
+concreta (em vez de instanciar `BaseRepository` solto), pra ter um tipo
+nomeado que a DI e os testes referenciam:
+
+```python
+# src/db/repositories/webpush.py
+from sqlalchemy.ext.asyncio import AsyncSession
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import WebPushSubscriptionModel
+
+
+class WebPushSubscriptionRepository(BaseRepository[WebPushSubscriptionModel]):
+    """Repositório CRUD para o WebPushSubscriptionModel."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session=session, model=WebPushSubscriptionModel)
+```
+
+### 3. Service — o do SDK, sem wrapper
+
+O `WebPushSubscriptionService` do SDK já implementa
+`subscribe`/`unsubscribe`/`list_for_user`/`notify_user` sobre um
+`BaseRepository` + `WebPushDispatcher`. Como não há lógica extra a
+adicionar, use-o **direto** — nada de subclasse pass-through. Reexporte-o
+no pacote de serviços pra manter um ponto único de import:
+
+```python
+# src/services/__init__.py
+from tempest_fastapi_sdk import WebPushSubscriptionService
+
+# ... demais serviços do projeto ...
+
+__all__: list[str] = [
+    # ...
+    "WebPushSubscriptionService",
+]
+```
+
+O serviço expõe:
+
+| Método | O que faz |
+| --- | --- |
+| `subscribe(user_id, subscription, *, user_agent=None, transfer_ownership=False)` | Salva a inscrição, **idempotente por `endpoint`** — re-subscribe da mesma conta atualiza as chaves, não duplica. Endpoint de **outra conta** fica com o dono e a linha volta intacta; a rota responde igual a uma inscrição nova, para não revelar a quem o endpoint pertence (antes da v0.330.0, quem conhecesse o endpoint tomava a inscrição). Mover entre contas só com `transfer_ownership=True` (também em `make_web_push_router`). Dois logins no mesmo navegador dividem a mesma `PushSubscription`: o cliente chama `POST /unsubscribe` no logout. |
+| `unsubscribe(endpoint, *, user_id=None)` | Remove a inscrição (no-op se não existe). Com `user_id`, só apaga se a inscrição for desse usuário — a de outra conta fica intacta e a resposta é `False`, a mesma de "não existe". Todo caminho que parte de uma requisição passa o `user_id`. |
+| `list_for_user(user_id)` | Lista os devices do usuário. |
+| `prune(endpoints)` | Apaga as inscrições desses endpoints — a lista que `send_many` devolve. Devolve quantas linhas saíram; endpoint que não existe é ignorado. |
+| `notify_user(user_id, payload)` | Envia pra todos os devices e **poda os mortos** (404/410) antes de retornar. Devolve quantos receberam. |
+
+### 4. Controller — a camada fina de política
+
+O controller mantém o grafo `router → controller → service` uniforme e é
+onde entra a política de aplicação — aqui, o gate de usuário ativo
+(`require_active`) antes de delegar:
+
+```python
+# src/controllers/webpush.py
+from tempest_fastapi_sdk import WebPushSubscriptionSchema, require_active
+
+from src.db.models import UserModel, WebPushSubscriptionModel
+from src.services import WebPushSubscriptionService
+
+
+class WebPushController:
+    """Controller de inscrições Web Push (gate de auth + delegação)."""
+
+    def __init__(
+        self, service: WebPushSubscriptionService[WebPushSubscriptionModel]
+    ) -> None:
+        self.service = service
+
+    async def subscribe(
+        self,
+        user: UserModel,
+        subscription: WebPushSubscriptionSchema,
+        *,
+        user_agent: str | None = None,
+    ) -> None:
+        """Persiste o device do usuário autenticado (idempotente por endpoint)."""
+        require_active(user)
+        await self.service.subscribe(user.id, subscription, user_agent=user_agent)
+
+    async def unsubscribe(
+        self, user: UserModel, subscription: WebPushSubscriptionSchema
+    ) -> None:
+        """Remove o device do próprio usuário (no-op se não existir ou for de outro)."""
+        await self.service.unsubscribe(subscription.endpoint, user_id=user.id)
+```
+
+### 5. Providers de DI — uma camada por arquivo
+
+Cada camada ganha seu provider `Depends`, no arquivo correspondente. O
+`session` **sempre** vem via `Depends(get_session)` (senão o FastAPI
+tenta resolvê-lo como parâmetro da request):
+
+```python
+# src/api/dependencies/repositories.py
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.repositories import WebPushSubscriptionRepository
+
+from .resources import get_session
+
+
+def get_webpush_subscription_repository(
+    session: AsyncSession = Depends(get_session),
+) -> WebPushSubscriptionRepository:
+    """Repositório de inscrições ligado à sessão da request."""
+    return WebPushSubscriptionRepository(session=session)
+```
+
+```python
+# src/api/dependencies/services.py
+from fastapi import Depends
+from tempest_fastapi_sdk import WebPushDispatcher
+
+from src.db.models import WebPushSubscriptionModel
+from src.db.repositories import WebPushSubscriptionRepository
+from src.services import WebPushSubscriptionService
+
+from .repositories import get_webpush_subscription_repository
+from .resources import get_webpush_dispatcher
+
+
+def get_webpush_service(
+    webpush_repository: WebPushSubscriptionRepository = Depends(
+        get_webpush_subscription_repository
+    ),
+    dispatcher: WebPushDispatcher = Depends(get_webpush_dispatcher),
+) -> WebPushSubscriptionService[WebPushSubscriptionModel]:
+    """Casa o repositório (por request) com o dispatcher (compartilhado)."""
+    return WebPushSubscriptionService(webpush_repository, dispatcher)
+```
+
+```python
+# src/api/dependencies/controllers.py
+from fastapi import Depends
+
+from src.controllers import WebPushController
+from src.db.models import WebPushSubscriptionModel
+from src.services import WebPushSubscriptionService
+
+from .services import get_webpush_service
+
+
+def get_webpush_controller(
+    webpush_service: WebPushSubscriptionService[WebPushSubscriptionModel] = Depends(
+        get_webpush_service
+    ),
+) -> WebPushController:
+    """Monta o controller com o serviço da request."""
+    return WebPushController(service=webpush_service)
+```
+
+### 6. Router — alinhado com o tempest-react-sdk
+
+O `WebPushClient` do [`tempest-react-sdk`](https://github.com/mauriciobenjamin700/tempest-react-sdk)
+chama `onSubscribe(subscription)` e `onUnsubscribe(subscription)` com o
+`PushSubscription.toJSON()` cru. Esse JSON é exatamente o
+`WebPushSubscriptionSchema` (aliasa `expiration_time` ↔ `expirationTime`),
+então o front bate direto nos endpoints abaixo. O router recebe o
+**controller** via `Depends`, o usuário via a sua dependency de auth, e
+usa **prefixo nu** (`/webpush`) — o `/api` é aplicado no mount agregado:
+
+```python
+# src/api/routers/webpush.py
+from fastapi import APIRouter, Depends, Request, status
+from tempest_fastapi_sdk import WebPushSubscriptionSchema
+
+from src.api.dependencies import get_current_user, get_webpush_controller
+from src.controllers import WebPushController
+from src.db.models import UserModel
+
+router = APIRouter(prefix="/webpush", tags=["webpush"])
+
+
+@router.post("/subscribe", status_code=status.HTTP_201_CREATED)
+async def subscribe(
+    subscription: WebPushSubscriptionSchema,
+    request: Request,
+    user: UserModel = Depends(get_current_user),
+    controller: WebPushController = Depends(get_webpush_controller),
+) -> dict[str, str]:
+    """Recebe o onSubscribe e persiste o device, rotulando pelo User-Agent."""
+    await controller.subscribe(
+        user, subscription, user_agent=request.headers.get("user-agent")
+    )
+    return {"status": "subscribed"}
+
+
+@router.post("/unsubscribe", status_code=status.HTTP_200_OK)
+async def unsubscribe(
+    subscription: WebPushSubscriptionSchema,
+    user: UserModel = Depends(get_current_user),
+    controller: WebPushController = Depends(get_webpush_controller),
+) -> dict[str, str]:
+    """Recebe o onUnsubscribe e remove o device do usuário autenticado."""
+    await controller.unsubscribe(user, subscription)
+    return {"status": "unsubscribed"}
+```
+
+### 7. Registro — sob o `/api`
+
+Inclua o router no agregado de negócio (que o `app.py` monta com
+`prefix="/api"`), do mesmo jeito que os demais domínios:
+
+```python
+# src/api/routers/__init__.py
+from fastapi import APIRouter
+
+from .webpush import router as webpush_router
+
+router = APIRouter()
+
+# ... demais routers ...
+router.include_router(webpush_router)
+# efetivo: POST /api/webpush/subscribe (201) e POST /api/webpush/unsubscribe (200)
+```
+
+!!! note "Rota final"
+    Como o prefixo do router é nu (`/webpush`) e o agregado é montado sob
+    `/api`, hardcodar `/api/webpush` no `APIRouter(prefix=...)` duplicaria
+    o segmento (`/api/api/webpush`). Deixe o `/api` só no mount.
+
+Enviar pra um usuário (todos os devices, poda automática embutida) — de
+dentro de qualquer serviço/controller que tenha o `WebPushSubscriptionService`:
+
+```python
+import asyncio
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from tempest_fastapi_sdk.webpush import (
+    WebPushDispatcher,
+    WebPushSubscriptionService,
+)
+
+from src.core.settings import settings
+from src.db.models import UserModel
+from src.db.repositories import WebPushSubscriptionRepository
+
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
+subscriptions_repo = WebPushSubscriptionRepository(session)
+service = WebPushSubscriptionService(subscriptions_repo, dispatcher)
+
+user = UserModel(name="Ana", email="ana@example.com")
+
+
+async def main() -> None:
+    """Run this example."""
+    delivered: int = await service.notify_user(
+        user.id,
+        {"title": "Pagamento confirmado", "body": "Pedido aprovado."},
+    )
+
+
+asyncio.run(main())
+```
+
+### Router pronto (opt-in, contorna as camadas)
+
+Pra um protótipo rápido, `make_web_push_router` monta `/subscribe` +
+`/unsubscribe` já ligados ao serviço — estilo `make_auth_router`. Ele
+**pula o controller** e liga o router direto no serviço, então prefira as
+camadas acima em apps de produção; use isto só como atalho:
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    WebPushDispatcher,
+    WebPushSubscriptionService,
+    make_web_push_router,
+)
+
+from src.api.dependencies import get_current_user_id, get_session
+from src.core.settings import settings
+from src.db.models import WebPushSubscriptionModel
+from src.db.repositories import WebPushSubscriptionRepository
+
+app = FastAPI()
+
+
+def _service(session: AsyncSession) -> WebPushSubscriptionService:
+    repo = WebPushSubscriptionRepository(session)
+    return WebPushSubscriptionService(
+        repo, WebPushDispatcher(**settings.webpush_kwargs())
+    )
+
+
+app.include_router(
+    make_web_push_router(
+        service_factory=_service,
+        session_factory=get_session,
+        current_user_id=get_current_user_id,   # dependency -> UUID
+    )
+)
+# POST /api/push/subscribe (201) e POST /api/push/unsubscribe (200)
+```
+
+O `User-Agent` da requisição vira o rótulo do device (`store_user_agent=True`,
+default). Ambos os endpoints exigem autenticação via `current_user_id`, e o
+`/unsubscribe` só remove inscrição **do próprio usuário**: o endpoint de outra
+conta continua cadastrado e a resposta é o mesmo `200` de um endpoint
+desconhecido, então a rota não revela de quem ele é.
+
+## Enviar uma notificação (dispatcher direto)
+
+O `payload` aceita `WebPushPayloadSchema`, `dict`, `str` ou `bytes`
+(models e dicts viram JSON). Trate `WebPushGoneError` para podar a
+inscrição morta do seu store.
+
+```python
+from tempest_fastapi_sdk import (
+    WebPushGoneError,
+    WebPushPayloadSchema,
+    WebPushSubscriptionSchema,
+)
+from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
+
+from src.db.models import WebPushSubscriptionModel
+
+
+async def notify_order_paid(
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
+    subscription: WebPushSubscriptionSchema,
+    order_id: str,
+) -> None:
+    """Avisa um aparelho e apaga a inscrição se o push service a deu por morta.
+
+    Args:
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): O
+            serviço montado pelo `get_webpush_service`; traz o dispatcher
+            em `service.dispatcher`.
+        subscription (WebPushSubscriptionSchema): O aparelho de destino.
+        order_id (str): O pedido aprovado.
+    """
+    payload = WebPushPayloadSchema(
+        title="Pagamento confirmado",
+        body=f"Pedido {order_id} aprovado.",
+        icon="/static/icons/order.png",
+        url=f"/orders/{order_id}",
+        data={"orderId": order_id},
+    )
+    try:
+        await service.dispatcher.send(subscription, payload)
+    except WebPushGoneError:
+        await service.unsubscribe(subscription.endpoint)
+```
+
+### O payload que o service worker lê
+
+O `WebPushPayloadSchema` espelha o `PushPayload` do tempest-react-sdk: o
+`to_json()` que o dispatcher envia usa os nomes que o `installPushHandler`
+lê (`requireInteraction`, não `require_interaction`) e **omite** todo campo
+`None`, para o navegador aplicar o próprio default em vez de receber `null`.
+
+O destino do clique é o **`url` de topo**. O service worker grava
+`data.url` a partir dele depois de espalhar o `data`, justamente para um
+`data` livre — muitas vezes preenchido com o registro que disparou o push —
+não conseguir redirecionar o clique. Cada botão pode ter o próprio `url`.
+O resolver padrão do clique só abre página da própria origem do app, em
+`http(s)`: um `url` de outra origem vira `/`, a não ser que o app instale um
+`resolveUrl` próprio no `installNotificationClickHandler`.
+
+```python
+from tempest_fastapi_sdk import WebPushActionSchema, WebPushPayloadSchema
+
+payload: WebPushPayloadSchema = WebPushPayloadSchema(
+    title="Pagamento confirmado",
+    url="/orders/42",
+    require_interaction=True,
+    actions=[
+        WebPushActionSchema(action="track", title="Rastrear", url="/orders/42/track"),
+    ],
+    data={"orderId": "42"},
+)
+print(payload.to_json())
+```
+
+Saída:
+
+```json
+{"title":"Pagamento confirmado","url":"/orders/42","actions":[{"action":"track","title":"Rastrear","url":"/orders/42/track"}],"requireInteraction":true,"data":{"orderId":"42"}}
+```
+
+!!! info "Migrando de `data={\"url\": ...}`"
+    Versões anteriores desta receita punham o destino em `data`, e o
+    service worker do tempest-react-sdk (desde a 0.82) ignora essa chave: o
+    clique abria `/`, sem erro em nenhum lado. Agora o schema sobe um
+    `data["url"]` em texto para o `url` de topo quando o `url` não foi
+    passado (ou veio `None`; string vazia conta como valor), então o código antigo volta a abrir a página certa sem mudar.
+    Se os dois vierem com valores diferentes, vale o `url` de topo e um
+    aviso sai no logger `tempest_fastapi_sdk.webpush.schemas`. Para código
+    novo, passe `url=` direto.
+
+### Para onde o envio vai
+
+O `endpoint` foi escolhido pelo navegador de quem se inscreveu, então o
+`WebPushDispatcher` trata cada envio como saída para um destino não
+confiável:
+
+- o host do endpoint é resolvido e **todo** endereço da resposta precisa ser
+  público — loopback, rede privada, link-local (inclusive
+  `169.254.169.254`), CGNAT e afins são recusados com
+  `WebPushEndpointRefusedError` (um `WebPushError`), sem request nenhum (a mesma regra do `ContentExtractor` do RAG);
+- a conexão vai para o endereço que passou na checagem, com o `Host`, o SNI
+  e a validação do certificado no nome original — uma segunda resposta de
+  DNS diferente não chega ao socket;
+- redirect **não** é seguido: um `3xx` vira `WebPushError` com
+  `status_code` igual ao do redirect;
+- todo envio tem `timeout` (padrão de 10 s para
+  conectar e para cada leitura); estouro e erro de conexão viram
+  `WebPushError`.
+
+A mesma checagem roda **antes** de o endpoint ser gravado: o
+`WebPushSubscriptionService.subscribe` (e o `DeviceService.register` para
+device `web`) chama `dispatcher.check_endpoint(...)` no próprio dispatcher e
+levanta `PushEndpointNotPublicException` — `422 PUSH_ENDPOINT_NOT_PUBLIC` —
+para endpoint que o dispatcher recusaria, então ele nem chega à tabela. Isso
+cobre o seu router do passo 6 e o `make_web_push_router` pronto do mesmo
+jeito. Host que não resolve
+naquele momento é aceito — uma falha de DNS não pode recusar um navegador, e
+todo envio confere de novo.
+
+Se o `send_many` devolve um endpoint recusado para poda depende do que decidiu
+a recusa (`WebPushEndpointRefusedError.permanent`):
+
+- **a própria URL** — não é `https`, ou o host é um IP literal não público
+  (`https://10.0.0.1/...`): nenhuma tentativa futura funciona, então o
+  endpoint entra na lista devolvida e o `notify_user` / `notify_all` o
+  apagam;
+- **uma resposta de DNS** — um nome que resolveu para endereço interno:
+  resposta muda, então a primeira recusa só vai para o log. Se o mesmo
+  endpoint for recusado assim `prune_after_dns_refusals` vezes seguidas
+  (padrão `3`, contadas entre chamadas do mesmo dispatcher e espalhadas por
+  pelo menos `dns_refusal_window_seconds`, padrão 1 hora; uma entrega que
+  passa zera a conta, e outra falha nem conta nem zera), ele entra na lista e é apagado: é a inscrição de um
+  domínio que insiste em resolver para dentro da rede (DNS rebinding), que
+  antes ficava para sempre custando uma consulta e uma linha de log por
+  envio. O host de um push service de navegador
+  (`KNOWN_PUSH_SERVICE_HOSTS`: FCM, Mozilla, Apple, WNS) **nunca** é podado
+  assim: um resolver que aponte um push service real para um proxy interno
+  recusaria todas as inscrições de uma vez, e isso é erro de configuração,
+  não dispositivo que sumiu. `prune_after_dns_refusals=None` desliga a
+  poda.
+
+```python
+from tempest_fastapi_sdk import WebPushDispatcher
+
+dispatcher: WebPushDispatcher = WebPushDispatcher(
+    "<chave-privada-vapid>",
+    vapid_subject="mailto:ops@example.com",
+    timeout=5.0,
+)
+```
+
+!!! note "Push service próprio na rede interna"
+    `allow_private_networks=True` desliga só a checagem de endereço público
+    — o redirect continua desligado e o `timeout` continua valendo. Use
+    apenas quando quem se inscreve é confiável. É uma chave só: a rota de
+    inscrição consulta o mesmo dispatcher, então o cadastro abre junto com o
+    envio.
+
+## Broadcast: um aviso para todo mundo
+
+Enviar para a base inteira é `notify_all()`, no mesmo serviço que já guarda
+as inscrições — o caso "manutenção às 2h", "saiu versão nova", campanha:
+
+```python
+from tempest_fastapi_sdk import WebPushPayloadSchema
+from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
+
+from src.db.models import WebPushSubscriptionModel
+
+
+async def anunciar_manutencao(
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
+) -> int:
+    """Avisa todo dispositivo inscrito, podando os que morreram.
+
+    Args:
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): O
+            serviço montado pelo `get_webpush_service`.
+
+    Returns:
+        int: Quantos dispositivos receberam.
+    """
+    return await service.notify_all(
+        WebPushPayloadSchema(
+            title="Manutenção programada",
+            body="O app fica indisponível das 02h às 03h.",
+        ),
+    )
+```
+
+É o mesmo que o `notify_user` faz — entrega, poda o que voltou morto,
+devolve quantos receberam — sem o filtro de usuário. Duas diferenças, e as
+duas são sobre tamanho:
+
+- **Anda em lotes.** `page_size=500` por default: a tabela é percorrida
+  página a página, então a memória não cresce com a base. `notify_user`
+  carrega tudo de uma vez, o que é certo para os dois ou três aparelhos de
+  uma pessoa e arriscado para a base inteira.
+- **Limita o paralelismo.** `max_concurrency=32` por default. Cada dispatch
+  é uma requisição TLS a um push service; milhares ao mesmo tempo rendem
+  rate limit, não envio mais rápido. `None` dispara o lote inteiro de uma
+  vez.
+
+```python
+from tempest_fastapi_sdk import WebPushPayloadSchema
+from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
+
+from src.db.models import WebPushSubscriptionModel
+
+
+async def anunciar_devagar(
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
+    payload: WebPushPayloadSchema,
+    origem: str,
+) -> int:
+    """Envia em lotes menores, com menos conexões simultâneas.
+
+    Args:
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): O
+            serviço de inscrições.
+        payload (WebPushPayloadSchema): O aviso.
+        origem (str): Endpoint do aparelho que disparou a ação, que não
+            deve notificar a si mesmo.
+
+    Returns:
+        int: Quantos dispositivos receberam.
+    """
+    return await service.notify_all(
+        payload,
+        page_size=100,
+        max_concurrency=8,
+        exclude_endpoints=[origem],
+    )
+```
+
+!!! note "Por que o passeio é por cursor, e não por offset"
+    `notify_all` **apaga enquanto anda**: cada lote poda os endpoints que o
+    push service reportou como mortos. Com paginação por offset, cada linha
+    apagada desloca as seguintes uma casa para trás, e a próxima página
+    começa depois de uma linha que ninguém visitou.
+
+    Medido numa tabela de 8 inscrições, apagando 4 no caminho, em páginas de
+    2: o passeio por offset visitou **6** linhas e nunca chegou em duas —
+    uma delas **viva**. O passeio por cursor compara `(created_at, id)` em
+    vez de contar posições, então apagar não desloca nada.
+
+    Linha criada **durante** o broadcast não é visitada: o cursor vai da
+    mais nova para a mais antiga, e uma inscrição nova é mais nova que a
+    página que já passou. É isso que faz o passeio terminar.
+
+### Caminho baixo nível: `send_many`
+
+Quando a lista de destinatários não é "todo mundo" — os inscritos de um
+tópico, o resultado de uma query sua — o dispatcher recebe a lista pronta e
+devolve os endpoints mortos para você podar:
+
+```python
+from tempest_fastapi_sdk.webpush import (
+    WebPushDispatcher,
+    WebPushPayloadSchema,
+    WebPushSubscriptionSchema,
+    WebPushSubscriptionService,
+)
+
+from src.db.models import WebPushSubscriptionModel
+
+
+async def broadcast(
+    dispatcher: WebPushDispatcher,
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
+    subs: list[WebPushSubscriptionSchema],
+    payload: WebPushPayloadSchema,
+) -> None:
+    """Dispara para uma lista pronta e poda o que voltou morto.
+
+    Args:
+        dispatcher (WebPushDispatcher): O dispatcher configurado.
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): Onde as
+            inscrições vivem; `prune` apaga as mortas.
+        subs (list[WebPushSubscriptionSchema]): Os destinatários.
+        payload (WebPushPayloadSchema): A notificação.
+    """
+    gone: list[str] = await dispatcher.send_many(subs, payload, max_concurrency=16)
+    if gone:
+        await service.prune(gone)
+```
+
+!!! warning "A lista que volta é só de inscrição morta"
+    `send_many` devolve **apenas** os endpoints que o push service reportou
+    como mortos — é exatamente o que se pode apagar. Falha transitória
+    (timeout, `503`) é logada e fica de fora: uma entrega que falhou uma vez
+    não é um aparelho que sumiu, e apagá-lo desinscreveria um usuário ativo.
+
+!!! tip "O Edge não fala 404 — ele fala 400"
+    O padrão reserva `404` e `410` para "essa inscrição morreu", e é o que
+    FCM e o push service da Apple respondem. O WNS — o serviço da Microsoft,
+    usado pelo Edge — responde **`400 Bad Request` com corpo vazio** quando o
+    navegador foi desinstalado, o usuário saiu da conta Microsoft, ou a
+    inscrição foi despejada.
+
+    O dispatcher trata esse caso: `400` vindo de host `notify.windows.com` é
+    `WebPushGoneError`, igual a um `410`. `400` de qualquer outro serviço
+    continua sendo `WebPushError` — ali ele significa requisição malformada,
+    e apagar a inscrição por causa disso desinscreveria um aparelho vivo.
+
+## Recap
+
+- Instale `[webpush]` e configure `WebPushSettings` (chaves VAPID).
+- Chave pública → frontend; privada → assina os pushes no backend.
+- Dispatcher é singleton de infra em `resources.py`, construído preguiçosamente via `get_webpush_dispatcher`.
+- Monte as camadas: **model** (FK pro seu user) → **repository** (subclasse do `BaseRepository`) → **service** (o do SDK, sem wrapper) → **controller** (gate `require_active`) → **providers** (um por arquivo, `session` via `Depends`) → **router** (prefixo nu, controller via `Depends`) → registro sob `/api`.
+- O JSON do `WebPushClient` (tempest-react-sdk) é o próprio `WebPushSubscriptionSchema` — `subscribe`/`unsubscribe` batem direto.
+- `make_web_push_router` é atalho opt-in que **pula o controller** — bom pra protótipo, não pra app em camadas.
+- Aviso global é `notify_all()`: mesma poda do `notify_user`, em lotes
+  (`page_size=500`) e com paralelismo limitado (`max_concurrency=32`). O passeio
+  é por cursor porque o método apaga enquanto anda.
+- O destino do clique é o `url` de topo do `WebPushPayloadSchema` (cada
+  botão aceita o próprio `url`); `data["url"]` sozinho é promovido a ele.
+- Caminho baixo nível: `send()` para um destino, `send_many()` para uma lista
+  pronta (devolve só os mortos, nunca a falha transitória); trate
+  `WebPushGoneError` podando o store.
+- Inscrição morta é `404`/`410` em todo serviço — **e `400` no WNS**, que é como
+  o Edge soletra a mesma coisa. O dispatcher já cobre os três.
