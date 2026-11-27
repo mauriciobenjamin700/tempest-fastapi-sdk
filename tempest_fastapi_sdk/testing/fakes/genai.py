@@ -203,7 +203,9 @@ class FakeStructuredBackend(_Steerable):
     chose. A call with nothing queued raises :class:`LookupError`; a
     queued instance of another class raises :class:`TypeError`. Both are
     raised after the call is recorded, so :attr:`requests` still shows
-    what the route asked for.
+    what the route asked for. A failure queued with :meth:`fail_next` is
+    raised before that: the call shows up in :attr:`calls` only, not in
+    :attr:`requests` or :attr:`prompts`.
 
     Example:
 
