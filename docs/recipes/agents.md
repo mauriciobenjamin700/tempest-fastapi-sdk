@@ -595,6 +595,83 @@ máscara não é garantia
     modelo lê — não uma chamada com `{}`. Quando a chamada traz `id`, a
     mensagem `tool` de volta leva `tool_call_id` e `name`.
 
+## Chamada de ferramenta escrita no texto
+
+Alguns modelos escolhem a ferramenta e os argumentos certos, mas devolvem a
+chamada como JSON no `content`, com `tool_calls` vazio. Antes, o `Agent`
+tratava isso como resposta final: a ferramenta não rodava e o JSON virava a
+"resposta". Hoje ele reconhece essa forma **por padrão**:
+
+```python title="text_tool_call.py" hl_lines="17 25"
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+
+async def shout(arguments: dict[str, Any], _context: AgentContext) -> str:
+    """Return the text in upper case."""
+    return str(arguments["text"]).upper()
+
+
+async def main() -> None:
+    """Run a call the model wrote as JSON in its reply text."""
+    backend = ScriptedBackend(
+        [
+            replies('{"name": "shout", "arguments": {"text": "oi"}}'),
+            replies("Pronto: OI."),
+        ],
+    )
+    agent = Agent(backend, tools=[text_tool("shout", "Upper-case the text.", shout)])
+    run = await agent.run("Grite 'oi'.")
+
+    step = run.steps[1]
+    print(step.name, step.from_text, step.output)
+    print(run.stop_reason, run.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+shout True OI
+completed Pronto: OI.
+```
+
+A resposta inteira — sem espaço nas pontas e, se vier, sem uma única cerca
+de markdown em volta — precisa ser chamada e nada mais: um objeto
+`{"name": ..., "arguments": {...}}`, uma lista deles, ou vários separados
+só por espaço ou quebra de linha. `arguments` pode ser objeto ou string com
+um objeto JSON. Todo `name` precisa ser uma ferramenta disponível naquele
+turno; uma entrada só que não case, JSON inválido ou texto em volta do JSON,
+e a resposta inteira continua sendo resposta. A chamada roda como uma
+nativa, o passo da ferramenta sai com `from_text=True`, e o turno do
+assistente volta ao modelo com a chamada em `tool_calls` e `content` vazio.
+
+Medido em 2026-11-27 com as 34 tarefas de ferramentas da pesquisa de LLMs
+locais (Ollama 0.30.11, temperatura 0, `num_ctx` 8192, uma execução por
+tarefa, N=34 — uma taxa, não uma propriedade):
+
+| modelo | antes | depois |
+| --- | --- | --- |
+| `qwen2.5-coder:14b` | 20,6% (7/34) | 85,3% (29/34) |
+| `gpt-oss:20b` (já usava `tool_calls`) | 94,1% (32/34) | 94,1% (32/34), as mesmas duas tarefas falhando |
+
+Dois detalhes do mesmo experimento. Devolver ao modelo o turno com o JSON no
+`content` (em vez de `content` vazio) deu 35,3% (12/34): o template do
+`qwen2.5-coder` no Ollama imprime o `content` quando ele existe, o modelo
+não via a chamada que fez e repetia a mesma até o orçamento acabar. E nas 7
+tarefas em que o certo era **não** chamar ferramenta, o acerto caiu de 7/7
+para 5/7: antes, o JSON que o modelo escrevia nessas tarefas não rodava, e
+agora roda.
+
+Desligue com `Agent(..., parse_text_tool_calls=False)` quando uma resposta
+legítima puder ser um objeto JSON cujo `name` é o nome de uma ferramenta. O
+loop de ferramentas do `AIChatPipeline` tem o mesmo parâmetro, com o mesmo
+default.
+
 ## Escrever a sua própria ferramenta
 
 ```python title="report_tool.py" hl_lines="15 33"
@@ -981,6 +1058,9 @@ Duas configurações que se comportam bem:
 - **Erro de ferramenta vira observação** para o modelo, não exceção — e só o
   texto de `AgentToolError` chega ao modelo e ao traço; de qualquer outra
   exceção, os dois recebem só o tipo.
+- **Chamada escrita como JSON no texto** roda como nativa, por padrão, se
+  o `name` é uma ferramenta registrada; o passo sai com `from_text=True` e
+  `parse_text_tool_calls=False` desliga.
 - **`make_agent_router`** publica `/run`, `/run/stream` e download de
   artefato por `run_id`; `owner=` separa as execuções por quem chama.
 - **Em CPU**, o GGUF pelo `OllamaGenerator` gera 6× mais rápido que o

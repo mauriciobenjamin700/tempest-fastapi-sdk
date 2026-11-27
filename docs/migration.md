@@ -2,6 +2,21 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## Unreleased — `Agent` e `AIChatPipeline` rodam chamada de ferramenta escrita no texto
+
+Antes, uma resposta do modelo com `tool_calls` vazio era sempre a resposta final, mesmo quando o `content` era exatamente uma chamada em JSON (`{"name": "buscar_pedido", "arguments": {"pedido_id": "PED-1042"}}`). Agora, por padrão, o `Agent` e o loop de ferramentas do `AIChatPipeline` rodam essa chamada quando o texto inteiro é JSON de chamada e todo `name` é uma ferramenta registrada (#866). O passo da ferramenta sai com `AgentStep.from_text=True`.
+
+O que pode mudar para você: um agente cuja resposta legítima é um objeto JSON com `name` igual ao de uma ferramenta e com chave `arguments` passa a executar essa ferramenta em vez de devolver o JSON. Para manter o comportamento antigo:
+
+```python
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.genai import AIChatPipeline, OllamaGenerator
+
+generator = OllamaGenerator("qwen2.5-coder:14b")
+agent = Agent(generator, parse_text_tool_calls=False)
+pipeline = AIChatPipeline(generator, parse_text_tool_calls=False)
+```
+
 ## 0.373.0 — `BaseController` e `BaseService` ligam `ResponseT` à camada de baixo
 
 Antes, `BaseController` declarava o próprio `ResponseT` independente do service e convertia o retorno com `cast("ResponseT", ...)` — um controller que repetia o schema errado passava no `mypy --strict` e devolvia o schema do service em runtime (#838):

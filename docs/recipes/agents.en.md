@@ -598,6 +598,82 @@ The mask is not a guarantee
     not a call with `{}`. When the call carries an `id`, the `tool` message
     sent back includes `tool_call_id` and `name`.
 
+## Tool calls written in the text
+
+Some models pick the right tool and the right arguments but return the call
+as JSON in `content`, with `tool_calls` empty. The `Agent` used to treat that
+as the final answer: the tool never ran and the JSON became the "answer". It
+now recognizes this shape **by default**:
+
+```python title="text_tool_call.py" hl_lines="17 25"
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+
+async def shout(arguments: dict[str, Any], _context: AgentContext) -> str:
+    """Return the text in upper case."""
+    return str(arguments["text"]).upper()
+
+
+async def main() -> None:
+    """Run a call the model wrote as JSON in its reply text."""
+    backend = ScriptedBackend(
+        [
+            replies('{"name": "shout", "arguments": {"text": "oi"}}'),
+            replies("Pronto: OI."),
+        ],
+    )
+    agent = Agent(backend, tools=[text_tool("shout", "Upper-case the text.", shout)])
+    run = await agent.run("Grite 'oi'.")
+
+    step = run.steps[1]
+    print(step.name, step.from_text, step.output)
+    print(run.stop_reason, run.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+shout True OI
+completed Pronto: OI.
+```
+
+The whole reply — trimmed and, when present, without a single markdown fence
+around it — must be calls and nothing else: one object
+`{"name": ..., "arguments": {...}}`, a list of them, or several separated
+only by spaces or line breaks. `arguments` may be an object or a string
+holding a JSON object. Every `name` must be a tool available in that turn; a
+single entry that does not match, invalid JSON, or prose around the JSON, and
+the whole reply stays an answer. The call runs like a native one, the tool
+step carries `from_text=True`, and the assistant turn goes back to the model
+with the call in `tool_calls` and empty `content`.
+
+Measured on 2026-11-27 with the 34 tool tasks from the local-LLM survey
+(Ollama 0.30.11, temperature 0, `num_ctx` 8192, one run per task, N=34 — a
+rate, not a property):
+
+| model | before | after |
+| --- | --- | --- |
+| `qwen2.5-coder:14b` | 20.6% (7/34) | 85.3% (29/34) |
+| `gpt-oss:20b` (already used `tool_calls`) | 94.1% (32/34) | 94.1% (32/34), the same two tasks failing |
+
+Two details from the same experiment. Sending the turn back with the JSON in
+`content` (instead of empty `content`) scored 35.3% (12/34):
+`qwen2.5-coder`'s Ollama template prints `content` when it is present, so the
+model never saw the call it had made and repeated it until the budget ran
+out. And on the 7 tasks where the right move was **not** to call a tool,
+accuracy dropped from 7/7 to 5/7: the JSON the model wrote on those tasks did
+not run before, and now it does.
+
+Turn it off with `Agent(..., parse_text_tool_calls=False)` when a legitimate
+answer can be a JSON object whose `name` is a tool's name. The
+`AIChatPipeline` tool loop has the same parameter, with the same default.
+
 ## Writing your own tool
 
 ```python title="report_tool.py" hl_lines="15 33"
@@ -986,6 +1062,9 @@ Two setups that behave:
 - **A tool error becomes an observation** for the model, not an exception —
   and only `AgentToolError` text reaches the model and the trace; for any other
   exception both get only the type.
+- **A tool call written as JSON in the text** runs like a native one, by
+  default, when its `name` is a registered tool; the step carries
+  `from_text=True` and `parse_text_tool_calls=False` turns it off.
 - **`make_agent_router`** publishes `/run`, `/run/stream` and artifact
   download by `run_id`; `owner=` keeps each caller's runs apart.
 - **On CPU**, the GGUF through `OllamaGenerator` generates 6× faster than

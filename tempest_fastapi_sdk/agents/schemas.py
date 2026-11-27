@@ -195,6 +195,9 @@ class AgentStep(BaseSchema):
             step is still a step: the error is fed back to the model as an
             observation, so it can correct course.
         seconds (float): Wall-clock duration.
+        from_text (bool): The model wrote this tool call as JSON in its
+            reply text rather than in native ``tool_calls``; see
+            ``Agent(parse_text_tool_calls=...)``.
     """
 
     index: int = Field(
@@ -239,6 +242,13 @@ class AgentStep(BaseSchema):
         title="Seconds",
         description="Wall-clock duration of the step.",
         examples=[1.42],
+    )
+    from_text: bool = Field(
+        default=False,
+        title="From text",
+        description="The model wrote this tool call as JSON in its reply "
+        "text instead of native tool_calls, and the agent parsed it.",
+        examples=[False],
     )
     agent: str | None = Field(
         default=None,

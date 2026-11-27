@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 import re
 import time
@@ -43,6 +42,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from tempest_fastapi_sdk.agents._tool_calls import (
+    parse_arguments,
+    parse_text_tool_calls,
+)
 from tempest_fastapi_sdk.agents.protocols import AgentBackend, ToolCallingBackend
 from tempest_fastapi_sdk.agents.schemas import (
     AgentArtifact,
@@ -236,6 +239,7 @@ class Agent:
         metrics: Any = None,
         name: str = "agent",
         expose_tool_errors: bool = False,
+        parse_text_tool_calls: bool = True,
     ) -> None:
         """Configure the agent.
 
@@ -284,6 +288,19 @@ class Agent:
                 ``Authorization``, a URL's password) first — a backstop for
                 development, not a guarantee. :class:`AgentToolError`
                 messages always reach both as written.
+            parse_text_tool_calls (bool): When a reply has no native
+                ``tool_calls``, read its text as a call: one JSON object
+                ``{"name", "arguments"}`` (or a list of them, or several
+                separated by whitespace), optionally in a single markdown
+                fence, whose ``name`` is a tool available in that turn.
+                Such a call runs like a native one: the assistant turn is
+                echoed back with the call in ``tool_calls`` and empty
+                ``content``, and the tool step carries ``from_text=True``.
+                Some models choose the
+                right tool and arguments but write the call in ``content``;
+                without this the JSON becomes the run's answer. Turn it off
+                when a legitimate answer can be a JSON object whose ``name``
+                matches a tool name.
         """
         self.generator = generator
         self.tools = list(tools)
@@ -298,6 +315,7 @@ class Agent:
         self.metrics = metrics
         self.name = name
         self.expose_tool_errors = expose_tool_errors
+        self.parse_text_tool_calls = parse_text_tool_calls
 
     @property
     def tool_names(self) -> list[str]:
@@ -535,11 +553,13 @@ class Agent:
         use one implementation: the caller owns it, so two concurrent runs
         on the same agent never see each other.
 
-        A reply with no tool call ends the run. It ends ``COMPLETED`` only
-        when it carries text; a reply with neither text nor a tool call
-        (whitespace counts as no text) ends ``EMPTY_RESPONSE``, because
-        handing back ``""`` as a successful answer is the one failure a
-        caller checking ``succeeded`` cannot see. The agent does not
+        A reply with no tool call — native, or written as JSON in its text
+        when ``parse_text_tool_calls`` is on — ends the run. It ends
+        ``COMPLETED`` only when it carries text; a reply with neither text
+        nor a tool call (whitespace counts as no text) ends
+        ``EMPTY_RESPONSE``, because handing back ``""`` as a successful
+        answer is the one failure a caller checking ``succeeded`` cannot
+        see. The agent does not
         re-prompt on its own: a retry spends a step the budget was sized
         for and hides how often the model does this, while
         ``run_until(agent, goal, until=succeeded)`` already retries when the
@@ -608,6 +628,10 @@ class Agent:
 
             content = str(message.get("content") or "")
             calls: list[dict[str, Any]] = message.get("tool_calls") or []
+            from_text = False
+            if not calls and self.parse_text_tool_calls:
+                calls = parse_text_tool_calls(content, tool_by_name)
+                from_text = bool(calls)
             model_step = AgentStep(
                 index=len(state.steps),
                 kind=StepKindEnum.MODEL,
@@ -629,7 +653,7 @@ class Agent:
             messages.append(
                 {
                     "role": "assistant",
-                    "content": content,
+                    "content": "" if from_text else content,
                     "tool_calls": calls,
                 },
             )
@@ -645,6 +669,8 @@ class Agent:
                     state,
                     len(state.steps),
                 )
+                if from_text:
+                    outcome.step = outcome.step.model_copy(update={"from_text": True})
                 state.steps.append(outcome.step)
                 messages.append(self._tool_message(call, outcome))
                 yield outcome.step
@@ -722,38 +748,6 @@ class Agent:
         reply = await self.generator.chat(messages)
         return {"content": str(reply), "tool_calls": []}
 
-    @staticmethod
-    def _parse_arguments(raw: Any) -> tuple[dict[str, Any], str | None]:
-        """Normalize a call's ``arguments`` into a dict.
-
-        Ollama and the SDK's ``TextGenerator`` hand over a dict; the
-        OpenAI wire format (vLLM, TGI, hosted APIs) hands over a JSON
-        **string**. Both are accepted. Anything that is not an object —
-        malformed JSON, an array, a number — is reported as an error rather
-        than silently replaced by ``{}``, because a tool run with empty
-        arguments fails somewhere far from the real cause.
-
-        Args:
-            raw (Any): The ``arguments`` value from the call.
-
-        Returns:
-            tuple[dict[str, Any], str | None]: The arguments, and the
-            reason they are unusable (``None`` when they are fine).
-        """
-        if raw is None or raw == "":
-            return {}, None
-        if isinstance(raw, dict):
-            return raw, None
-        if isinstance(raw, str):
-            try:
-                parsed = json.loads(raw)
-            except ValueError as exc:
-                return {}, f"arguments are not valid JSON: {exc}"
-            if isinstance(parsed, dict):
-                return parsed, None
-            return {}, "arguments must be a JSON object"
-        return {}, f"arguments must be a JSON object, got {type(raw).__name__}"
-
     def _describe_failure(self, name: str, exc: Exception) -> tuple[str, str]:
         """Return what the model reads and what the trace records.
 
@@ -814,7 +808,7 @@ class Agent:
         ctx = state.context
         function: dict[str, Any] = call.get("function") or {}
         name = str(function.get("name", ""))
-        arguments, problem = self._parse_arguments(function.get("arguments"))
+        arguments, problem = parse_arguments(function.get("arguments"))
 
         tool = tool_by_name.get(name)
         if tool is None:

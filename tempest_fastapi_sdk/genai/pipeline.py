@@ -45,6 +45,7 @@ from fastapi import APIRouter, Depends
 from pydantic import Field
 from starlette.responses import StreamingResponse
 
+from tempest_fastapi_sdk.agents._tool_calls import parse_text_tool_calls
 from tempest_fastapi_sdk.agents.protocols import ToolCallingBackend
 from tempest_fastapi_sdk.api.route_docs import RouteDocs
 from tempest_fastapi_sdk.genai.rag.memory import MemoryHit
@@ -162,6 +163,8 @@ class AIChatPipeline:
         tools (list[Tool]): Tools available to the model (may be empty).
         base_system_prompt (str): System prompt prepended to every turn.
         max_tool_iterations (int): Upper bound on tool-loop rounds.
+        parse_text_tool_calls (bool): Whether a tool call written as JSON in
+            the reply text is run like a native one.
     """
 
     def __init__(
@@ -179,6 +182,7 @@ class AIChatPipeline:
         moderator: ModerationBackend | None = None,
         blocked_message: str = "Sorry, I can't help with that request.",
         stream_moderation: StreamModeration = "incremental",
+        parse_text_tool_calls: bool = True,
     ) -> None:
         """Configure the pipeline.
 
@@ -211,6 +215,15 @@ class AIChatPipeline:
                 ``"buffered"`` checks the whole reply before sending
                 anything, trading streaming for zero leakage. Ignored
                 without a ``moderator``.
+            parse_text_tool_calls (bool): When a tool-loop reply has no
+                native ``tool_calls``, read its text as a call: one JSON
+                object ``{"name", "arguments"}`` (or a list of them),
+                optionally in a single markdown fence, whose ``name`` is a
+                registered tool. Some models choose the right tool and
+                arguments but write the call in ``content``; without this
+                the JSON becomes the reply. Turn it off when a legitimate
+                reply can be a JSON object whose ``name`` matches a tool
+                name.
 
         Raises:
             ValueError: When ``stream_moderation`` is not one of the
@@ -233,6 +246,7 @@ class AIChatPipeline:
         self.moderator = moderator
         self.blocked_message = blocked_message
         self.stream_moderation: StreamModeration = stream_moderation
+        self.parse_text_tool_calls = parse_text_tool_calls
 
     async def _is_flagged(self, text: str) -> bool:
         """Return whether the configured moderator flags ``text``.
@@ -568,8 +582,12 @@ class AIChatPipeline:
         Repeatedly calls the backend's ``chat_with_tools``; when the model
         emits ``tool_calls``, each is dispatched to its :class:`Tool`
         handler and the result is appended as a ``tool`` message before
-        looping. Unknown tool names append an error result rather than
-        crashing. The loop runs at most ``max_tool_iterations`` times.
+        looping. With ``parse_text_tool_calls`` on, a reply whose text is a
+        JSON call to a registered tool is dispatched the same way, and the
+        assistant echo carries the call in ``tool_calls`` with empty
+        ``content`` — the shape a native call has. Unknown
+        tool names append an error result rather than crashing. The loop
+        runs at most ``max_tool_iterations`` times.
 
         Args:
             generator (ToolCallingBackend): The pipeline's backend, already
@@ -590,13 +608,17 @@ class AIChatPipeline:
             message: dict[str, Any] = await generator.chat_with_tools(messages, specs)
             reply = str(message.get("content", ""))
             tool_calls: list[dict[str, Any]] = message.get("tool_calls") or []
+            from_text = False
+            if not tool_calls and self.parse_text_tool_calls:
+                tool_calls = parse_text_tool_calls(reply, tool_by_name)
+                from_text = bool(tool_calls)
             if not tool_calls:
                 break
 
             messages.append(
                 {
                     "role": "assistant",
-                    "content": message.get("content", ""),
+                    "content": "" if from_text else message.get("content", ""),
                     "tool_calls": tool_calls,
                 }
             )
