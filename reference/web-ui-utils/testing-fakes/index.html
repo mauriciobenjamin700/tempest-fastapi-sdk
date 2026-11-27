@@ -17939,7 +17939,9 @@ and a made-up one would let the route serialise data the test never
 chose. A call with nothing queued raises :class:<code>LookupError</code>; a
 queued instance of another class raises :class:<code>TypeError</code>. Both are
 raised after the call is recorded, so :attr:<code>requests</code> still shows
-what the route asked for.</p>
+what the route asked for. A failure queued with :meth:<code>fail_next</code> is
+raised before that: the call shows up in :attr:<code>calls</code> only, not in
+:attr:<code>requests</code> or :attr:<code>prompts</code>.</p>
 <p>Example:</p>
 <div class="language-text highlight"><pre><span></span><code>&gt;&gt;&gt; backend = FakeStructuredBackend()
 &gt;&gt;&gt; backend.queue(Invoice(number="42", total_cents=1990))
