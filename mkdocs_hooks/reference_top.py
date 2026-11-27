@@ -8,8 +8,9 @@ page was a second copy of the reference: 22 819 038 bytes of HTML in the
 
 This hook replaces the :data:`MARKER` comment on that page with one list per
 module page: each name is an ``autorefs`` link to the anchor where that page
-documents it, and a deprecated alias links to the name it aliases. The list is derived from ``tempest_fastapi_sdk.__all__`` at
-build time, so a new root export shows up here without editing the page; a
+documents it, and a deprecated alias links to the name it aliases. The list
+is derived from ``tempest_fastapi_sdk.__all__`` at build time, so a new root
+export shows up here without editing the page; a
 name whose anchor no page renders makes ``autorefs`` warn, which fails
 ``mkdocs build --strict``.
 """
