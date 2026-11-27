@@ -76,6 +76,15 @@ from tempest_fastapi_sdk.genai.completion import (
 from tempest_fastapi_sdk.genai.completion import document_part as document_part
 from tempest_fastapi_sdk.genai.completion import image_part as image_part
 from tempest_fastapi_sdk.genai.completion import is_document_part as is_document_part
+from tempest_fastapi_sdk.genai.embedding_prefixes import (
+    MULTILINGUAL_E5_PREFIXES as MULTILINGUAL_E5_PREFIXES,
+)
+from tempest_fastapi_sdk.genai.embedding_prefixes import (
+    NOMIC_EMBED_TEXT_PREFIXES as NOMIC_EMBED_TEXT_PREFIXES,
+)
+from tempest_fastapi_sdk.genai.embedding_prefixes import (
+    EmbeddingPrefixes as EmbeddingPrefixes,
+)
 from tempest_fastapi_sdk.genai.embeddings import (
     AsyncEmbeddingCache as AsyncEmbeddingCache,
 )
@@ -360,6 +369,8 @@ __all__: list[str] = [
     "GOOGLE_EFFORT_VALUES",
     "HOSTED_PROVIDERS",
     "MODEL_PREFIXES",
+    "MULTILINGUAL_E5_PREFIXES",
+    "NOMIC_EMBED_TEXT_PREFIXES",
     "OPENAI_FINISH_REASONS",
     "OPENAI_MAX_TOKENS_FIELD",
     "PDF_MEDIA_TYPE",
@@ -385,6 +396,7 @@ __all__: list[str] = [
     "Embedder",
     "EmbeddingCache",
     "EmbeddingModelEnum",
+    "EmbeddingPrefixes",
     "GPUInfo",
     "GenAIMetrics",
     "GenAIRequestLimits",

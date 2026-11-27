@@ -147,10 +147,16 @@ pergunta. A `ChatMemory` faz o mesmo ao gravar e ao buscar mensagens. O
 `embed()` puro nunca aplica prefixo, então quem não declara nada continua com o
 comportamento de antes.
 
+O preset `MULTILINGUAL_E5_PREFIXES` carrega as duas strings, então
+`Embedder(EmbeddingModelEnum.MULTILINGUAL_E5_LARGE, **MULTILINGUAL_E5_PREFIXES)`
+é o mesmo que o exemplo acima. O `OllamaEmbedder` aceita os mesmos dois
+parâmetros — veja os
+[prefixos do `nomic-embed-text`](genai.md#prefixos-de-tarefa-do-nomic-embed-text).
+
 !!! note "Embedder que só tem `embed()`"
-    `OnnxEmbedder`, `OllamaEmbedder` ou um embedder seu sem `embed_query` /
-    `embed_passages` continuam funcionando no `Retriever` pelo `embed()` puro
-    — e, nesse caso, sem prefixo.
+    `OnnxEmbedder` ou um embedder seu sem `embed_query` / `embed_passages`
+    continuam funcionando no `Retriever` pelo `embed()` puro — e, nesse caso,
+    sem prefixo.
 
 ## Rerank — `RerankerModelEnum`
 

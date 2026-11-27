@@ -844,6 +844,69 @@ asyncio.run(main())
 `embed(texts, *, batch_size=32)` devolve `list[list[float]]`, igual ao
 `Embedder`.
 
+#### Prefixos de tarefa do `nomic-embed-text`
+
+O `nomic-embed-text` foi treinado com `search_query: ` na frente da pergunta e
+`search_document: ` na frente do trecho. Declare os dois no `OllamaEmbedder` —
+ou espalhe o preset `NOMIC_EMBED_TEXT_PREFIXES` — e o `Retriever` aplica cada
+um do lado certo:
+
+```python title="nomic_rag.py" hl_lines="11"
+import asyncio
+
+from tempest_fastapi_sdk.genai import NOMIC_EMBED_TEXT_PREFIXES, OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import Chunk, InMemoryVectorStore, Retriever
+
+
+async def main() -> None:
+    """Index two passages and search them with nomic's task prefixes."""
+    embedder = OllamaEmbedder(
+        "nomic-embed-text",
+        **NOMIC_EMBED_TEXT_PREFIXES,
+    )
+    rag = Retriever(embedder, InMemoryVectorStore())
+    await rag.index(
+        [
+            Chunk(text="O reembolso cai em até 7 dias úteis.", source="faq", index=0),
+            Chunk(text="A entrega expressa chega amanhã.", source="faq", index=1),
+        ],
+    )
+    hits = await rag.search("Quanto tempo demora o reembolso?", top_k=1)
+    print(hits[0].text)
+    await embedder.aclose()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+`Retriever.index` chama `embed_passages`, que envia `search_document: <trecho>`
+ao daemon; `Retriever.search` chama `embed_query`, que envia
+`search_query: <pergunta>`. O `embed()` puro continua sem prefixo, e o default
+dos dois parâmetros é `""` — quem não declara nada mantém os vetores de antes.
+
+O preset é escolhido por você, não adivinhado pelo nome do modelo: a mesma
+família sai com várias tags (`nomic-embed-text`, `nomic-embed-text:v1.5`, um
+fine-tune local), e um palpite errado mudaria todo vetor gravado em silêncio.
+Para a família E5 existe `MULTILINGUAL_E5_PREFIXES` (`query: ` / `passage: `),
+que serve também no `Embedder` do torch. Outro modelo: passe
+`query_prefix=` / `passage_prefix=` com as strings do model card dele.
+
+Quanto vale: numa medição de 21 perguntas em PT-BR sobre um manual fictício
+(`nomic-embed-text` via Ollama, um trecho de 2000 caracteres por documento),
+o documento certo apareceu entre os 4 primeiros em **18/21** sem prefixo e
+**20/21** com prefixo; em k=1 e k=2 não mudou (15/21 e 17/21). Com trechos de
+300 caracteres o prefixo não mudou nada (18/21 nos dois). N=21 é pouco: é um
+sinal, não uma taxa.
+
+!!! warning "Trocar o prefixo exige reindexar"
+    O prefixo entra no texto que vira vetor, então ligar, desligar ou trocar
+    `query_prefix` / `passage_prefix` muda **todos** os vetores. Um índice
+    gravado sem prefixo e consultado com prefixo (ou o contrário) compara
+    vetores de espaços diferentes e devolve resultado pior sem erro nenhum.
+    Ao mudar os prefixos, apague o índice e rode `Retriever.index` de novo
+    sobre o corpus inteiro.
+
 ### Busca híbrida (BM25 + denso)
 
 A busca densa capta significado mas erra termos exatos — nomes próprios,
