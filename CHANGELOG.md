@@ -78,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `tempest_fastapi_sdk.genai.ollama` virou pacote (#872), dividido por
+  responsabilidade, com a mesma superfície pública e o mesmo `__all__`.
 - **`Agent` e o loop de ferramentas do `AIChatPipeline` rodam chamada de
   ferramenta escrita como JSON no `content`** (#866), **ligado por padrão**.
   Quando a resposta vem sem `tool_calls` e o texto inteiro (sem espaço nas
