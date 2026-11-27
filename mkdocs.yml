@@ -160,7 +160,17 @@ plugins:
               - "Complete service (settings, auth, upload, test)": recipes/full-service.md
               - Computer vision (ONNX): recipes/vision.md
               - "Data subject export and erasure (LGPD)": recipes/subject-data.md
-              - Database: recipes/database.md
+              - Database:
+                  - "Index": recipes/database.md
+                  - "1. The base model": recipes/database/models.md
+                  - "2. Connect to the database": recipes/database/connection.md
+                  - "3. The repository": recipes/database/repository.md
+                  - "4. Convention-based filters": recipes/database/filters.md
+                  - "5. Bulk operations": recipes/database/bulk.md
+                  - "6. Soft-delete and auditing (mixins)": recipes/database/mixins.md
+                  - "7. Pagination": recipes/database/pagination.md
+                  - "8. Alembic migrations": recipes/database/migrations.md
+                  - "9. Detect slow queries": recipes/database/slow-queries.md
               - Downloads: recipes/downloads.md
               - Enum columns (safe on both databases): recipes/enum-columns.md
               - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
@@ -602,7 +612,17 @@ nav:
           - "Só o backend: do cadastro à rota protegida": recipes/auth-flow/backend-only.md
           - "Trocar e recuperar e-mail": recipes/auth-flow/email-change.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
-      - Banco de dados: recipes/database.md
+      - Banco de dados:
+          - "Índice": recipes/database.md
+          - "1. O modelo base": recipes/database/models.md
+          - "2. Conectar ao banco": recipes/database/connection.md
+          - "3. O repository": recipes/database/repository.md
+          - "4. Filtros por convenção": recipes/database/filters.md
+          - "5. Operações em lote": recipes/database/bulk.md
+          - "6. Soft-delete e auditoria (mixins)": recipes/database/mixins.md
+          - "7. Paginação": recipes/database/pagination.md
+          - "8. Migrações Alembic": recipes/database/migrations.md
+          - "9. Detectar queries lentas": recipes/database/slow-queries.md
       - Busca aproximada (fuzzy) e cidades em texto: recipes/fuzzy-matching.md
       - "Busca textual (LIKE + full-text)": recipes/text-search.md
       - Cache: recipes/cache.md

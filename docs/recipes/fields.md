@@ -171,7 +171,7 @@ class ProfileUpdateSchema(BaseSchema):
     lógica interna). Use o **`LocaleField`** num schema de request, quando a
     entrada é do cliente e vale normalizar — mesma relação de `UFEnum` para
     `UFField`. Para gravar o idioma numa tabela, veja o
-    [`LocaleColumnMixin`](database.md#locale-idioma-preferido-do-usuario).
+    [`LocaleColumnMixin`](database/mixins.md#locale-idioma-preferido-do-usuario).
 
 ## Chave Pix
 

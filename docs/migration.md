@@ -1559,7 +1559,7 @@ passa a rodar `PRAGMA foreign_keys=ON` em cada conexão. Antes nenhum rodava, e
 o SQLite aceitava o que o PostgreSQL recusa: filho apontando para pai
 inexistente, `ON DELETE CASCADE` que não apagava nada, e `add_all([filho,
 pai])` sem `relationship()` mandando o INSERT do filho primeiro. Detalhes e
-medição em [Banco de dados](recipes/database.md#sqlite-com-chave-estrangeira-pragma-foreign_keys).
+medição em [Banco de dados](recipes/database/connection.md#sqlite-com-chave-estrangeira-pragma-foreign_keys).
 
 ### O que muda
 
@@ -1749,7 +1749,7 @@ quando uma FK depende da unique. O caminho é uma revisão com `RENAME`:
 2. Cole os comandos numa revisão **vazia** e rode `alembic upgrade head`
    antes do deploy da versão nova. O passo a passo, com a revisão completa e
    o `downgrade()`, está em
-   [Banco de dados → Migrar constraints compostas da convenção antiga](recipes/database.md#migrar-constraints-compostas-da-convencao-antiga).
+   [Banco de dados → Migrar constraints compostas da convenção antiga](recipes/database/migrations.md#migrar-constraints-compostas-da-convencao-antiga).
 3. **No SQLite** o `statement()` levanta `ValueError`, como na saída acima: o
    SQLite não renomeia constraint, e lá a migração em batch que o
    autogenerate gera funciona.

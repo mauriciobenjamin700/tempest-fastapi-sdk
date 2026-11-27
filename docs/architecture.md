@@ -103,7 +103,7 @@ e [Erros da rota](service-standard.md#erros-da-rota-tempestapirouter-raises).
     Desde a **v0.291.0** o `tempest new` já escreve o arquivo com o nome
     da tabela de usuário, e o `CLAUDE.md` do projeto ensina a receita a
     partir dele. Ver
-    [Banco de dados › Centralizando os nomes das tabelas](recipes/database.md#centralizando-os-nomes-das-tabelas).
+    [Banco de dados › Centralizando os nomes das tabelas](recipes/database/models.md#centralizando-os-nomes-das-tabelas).
 
 !!! warning "Regras inegociáveis"
 

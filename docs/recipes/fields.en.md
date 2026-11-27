@@ -174,7 +174,7 @@ class ProfileUpdateSchema(BaseSchema):
     (constants, internal logic). Use **`LocaleField`** on a request schema,
     where the input is client-supplied and worth normalizing — the same
     relationship `UFEnum` has to `UFField`. To store the language on a table, see
-    [`LocaleColumnMixin`](database.md#locale-the-users-preferred-language).
+    [`LocaleColumnMixin`](database/mixins.md#locale-the-users-preferred-language).
 
 ## Pix key
 

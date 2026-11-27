@@ -103,7 +103,7 @@ and [Route errors](service-standard.md#route-errors-tempestapirouter-raises).
     As of **v0.291.0** `tempest new` writes the file with the user
     table's name already in it, and the project's `CLAUDE.md` teaches the
     recipe from there. See
-    [Database › Centralizing table names](recipes/database.md#centralizing-table-names).
+    [Database › Centralizing table names](recipes/database/models.md#centralizing-table-names).
 
 !!! warning "Rules that are not negotiable"
 

@@ -487,7 +487,7 @@ Piece by piece:
   names; a name that is not a mapped column raises `ValueError`.
 - `page_size` honours the repository's `max_page_size` when declared
   (`PageSizeTooLargeException`). See
-  [Pagination](database.md#which-columns-sort-and-how-many-rows-fit-in-a-page).
+  [Pagination](database/pagination.md#which-columns-sort-and-how-many-rows-fit-in-a-page).
 
 To return this from a route, map each pair to the response schema and reuse
 the envelope's metadata:

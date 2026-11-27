@@ -485,7 +485,7 @@ Pedaço por pedaço:
   nome; nome que não é coluna mapeada levanta `ValueError`.
 - `page_size` respeita o `max_page_size` do repository, quando declarado
   (`PageSizeTooLargeException`). Ver
-  [Paginação](database.md#quais-colunas-ordenam-e-quantas-linhas-cabem-numa-pagina).
+  [Paginação](database/pagination.md#quais-colunas-ordenam-e-quantas-linhas-cabem-numa-pagina).
 
 Para devolver isso numa rota, mapeie cada par para o schema de resposta e
 reaproveite os metadados do envelope:

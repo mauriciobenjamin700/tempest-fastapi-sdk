@@ -1578,7 +1578,7 @@ runs `PRAGMA foreign_keys=ON` on each connection. None did before, so SQLite
 accepted what PostgreSQL refuses: a child pointing at a missing parent,
 `ON DELETE CASCADE` deleting nothing, and `add_all([child, parent])` with no
 `relationship()` sending the child's INSERT first. Details and measurements in
-[Database](recipes/database.md#sqlite-with-foreign-keys-pragma-foreign_keys).
+[Database](recipes/database/connection.md#sqlite-with-foreign-keys-pragma-foreign_keys).
 
 ### What changes
 
@@ -1773,7 +1773,7 @@ revision with `RENAME`:
 2. Paste the statements into an **empty** revision and run
    `alembic upgrade head` before deploying the new version. The step by step,
    with the full revision and its `downgrade()`, is in
-   [Database → Migrate composite constraints from the old convention](recipes/database.md#migrate-composite-constraints-from-the-old-convention).
+   [Database → Migrate composite constraints from the old convention](recipes/database/migrations.md#migrate-composite-constraints-from-the-old-convention).
 3. **On SQLite** `statement()` raises `ValueError`, as in the output above:
    SQLite cannot rename a constraint, and there the batch migration the
    autogenerate renders works.
