@@ -151,7 +151,7 @@ O preset `MULTILINGUAL_E5_PREFIXES` carrega as duas strings, então
 `Embedder(EmbeddingModelEnum.MULTILINGUAL_E5_LARGE, **MULTILINGUAL_E5_PREFIXES)`
 é o mesmo que o exemplo acima. O `OllamaEmbedder` aceita os mesmos dois
 parâmetros — veja os
-[prefixos do `nomic-embed-text`](genai.md#prefixos-de-tarefa-do-nomic-embed-text).
+[prefixos do `nomic-embed-text`](genai/ollama.md#prefixos-de-tarefa-do-nomic-embed-text).
 
 !!! note "Embedder que só tem `embed()`"
     `OnnxEmbedder` ou um embedder seu sem `embed_query` / `embed_passages`

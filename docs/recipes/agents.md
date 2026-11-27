@@ -297,7 +297,7 @@ if __name__ == "__main__":
     O corte continua sem erro, mas não mais sem rastro: o `OllamaGenerator`
     loga um `WARNING` em `tempest_fastapi_sdk.genai.ollama` quando o
     `prompt_eval_count` cai onde o Ollama deixa um prompt truncado — veja
-    [Janela de contexto](genai.md#janela-de-contexto-num_ctx). O aviso
+    [Janela de contexto](genai/ollama.md#janela-de-contexto-num_ctx). O aviso
     aponta o problema; quem o resolve é o `num_ctx`.
 
 !!! tip "Quando o agente deve parar em vez de responder sobre metade do prompt"
@@ -310,7 +310,7 @@ if __name__ == "__main__":
     acima, em que o modelo perdeu a pergunta e respondeu errado. Fica de fora
     quando o agente pode seguir com o início da conversa perdido. Detalhes e
     os corpos medidos do daemon em
-    [Falhar em vez de cortar](genai.md#falhar-em-vez-de-cortar-truncate).
+    [Falhar em vez de cortar](genai/ollama.md#falhar-em-vez-de-cortar-truncate).
 
 ## Ferramentas tipadas com Pydantic
 
@@ -876,7 +876,7 @@ também faz um `<img src>` funcionar direto.
     22,4 para 26,9 tokens/s. O orçamento de tempo do agente conta a espera
     na fila, então dimensione `max_seconds` com isso em mente. Os números, o
     hardware e por que é um pool de threads e não um semáforo estão em
-    [IA generativa self-hosted](genai.md#varios-pedidos-ao-mesmo-tempo-em-cpu-max_concurrent).
+    [IA generativa self-hosted](genai/text.md#varios-pedidos-ao-mesmo-tempo-em-cpu-max_concurrent).
 
 ## Agente em CPU: backend, tamanho e orçamento
 
@@ -940,7 +940,7 @@ Pedaço por pedaço:
   pelo Ollama, e não o `TextGenerator` em `float32`. O porquê está nos
   números abaixo; o dimensionamento de memória (e por que o bitsandbytes em
   CPU não é a saída) está em
-  [IA generativa self-hosted › Em CPU](genai.md#em-cpu).
+  [IA generativa self-hosted › Em CPU](genai/hardware.md#em-cpu).
 - **`num_ctx=8192`** — o prompt do agente cresce a cada passo, e o Ollama
   corta o que passa da janela sem erro. Ver
   [O modelo roda com os defaults do gerador](#o-modelo-roda-com-os-defaults-do-gerador).

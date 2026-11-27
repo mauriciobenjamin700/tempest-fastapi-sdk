@@ -199,7 +199,22 @@ plugins:
               - "RevenueCat (in-app subscriptions)": recipes/revenuecat.md
               - Safe deploys (migrations + shutdown): recipes/deploy-safety.md
               - Security: recipes/security.md
-              - Self-hosted generative AI: recipes/genai.md
+              - Self-hosted generative AI:
+                  - "Index": recipes/genai.md
+                  - "AI chat pipeline": recipes/genai/chat.md
+                  - "Audio: STT and TTS": recipes/genai/audio.md
+                  - "Can the machine handle it? Hardware and estimates": recipes/genai/hardware.md
+                  - "Embeddings and scale": recipes/genai/embeddings.md
+                  - "Generate text (local and hosted)": recipes/genai/text.md
+                  - "Long-term memory": recipes/genai/memory.md
+                  - "Moderation, usage, metrics and cache": recipes/genai/operations.md
+                  - "Multimodal vision (local VLM)": recipes/genai/vision.md
+                  - "Ollama backend": recipes/genai/ollama.md
+                  - "RAG context": recipes/genai/rag.md
+                  - "Ready endpoints and Redis cache": recipes/genai/router.md
+                  - "Sound effects and music": recipes/genai/sound.md
+                  - "Typed config and structured output": recipes/genai/structured.md
+                  - "Who said what: diarization": recipes/genai/diarization.md
               - Server-Sent Events (SSE): recipes/sse.md
               - Server-side login and signup: recipes/auth-pages.md
               - Server-side sessions: recipes/sessions.md
@@ -595,7 +610,22 @@ nav:
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md
       - "IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google)": recipes/genai-hosted.md
-      - "IA generativa self-hosted": recipes/genai.md
+      - "IA generativa self-hosted":
+          - "Índice": recipes/genai.md
+          - "A máquina aguenta? Hardware e estimativa": recipes/genai/hardware.md
+          - "Áudio: STT e TTS": recipes/genai/audio.md
+          - "Backend Ollama": recipes/genai/ollama.md
+          - "Config tipada e saída estruturada": recipes/genai/structured.md
+          - "Contexto RAG": recipes/genai/rag.md
+          - "Efeitos sonoros e música": recipes/genai/sound.md
+          - "Embeddings e escala": recipes/genai/embeddings.md
+          - "Endpoints prontos e cache Redis": recipes/genai/router.md
+          - "Gerar texto (local e hospedado)": recipes/genai/text.md
+          - "Memória de longo prazo": recipes/genai/memory.md
+          - "Moderação, uso, métricas e cache": recipes/genai/operations.md
+          - "Pipeline de chat com IA": recipes/genai/chat.md
+          - "Quem falou o quê: diarização": recipes/genai/diarization.md
+          - "Visão multimodal (VLM local)": recipes/genai/vision.md
       - Idempotência: recipes/idempotency.md
       - "Jobs (trabalho longo com status)": recipes/jobs.md
       - Kestra (orquestrador de workflows): recipes/kestra.md

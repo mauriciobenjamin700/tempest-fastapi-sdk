@@ -308,7 +308,7 @@ cuda The quick brown fox jumps over the lazy dog.
 O `probe_hardware()` também avisa do par errado antes da primeira transcrição:
 com um `torch` CUDA 13 e o `ctranslate2` instalados, o `HardwareInfo.warnings`
 diz o que vai falhar e manda para esta seção (veja
-[Sondando o hardware](recipes/genai.md#sondando-o-hardware)).
+[Sondando o hardware](recipes/genai/hardware.md#sondando-o-hardware)).
 
 !!! check "O que foi medido"
     **Neste repositório**, em 2026-11-10, num container `python:3.12-slim`

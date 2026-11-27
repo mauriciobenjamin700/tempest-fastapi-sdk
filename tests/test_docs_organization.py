@@ -394,7 +394,11 @@ class TestRecipeIndexCoverage:
         nav_pages: list[str] = []
         _pages(pt_nav, nav_pages)
         recipes = {
-            p for p in nav_pages if p.startswith("recipes/") and p != "recipes/index.md"
+            p
+            for p in nav_pages
+            if p.startswith("recipes/")
+            and p != "recipes/index.md"
+            and p.count("/") == 1
         }
         listed = _table_targets(landing)
         missing = sorted(recipes - listed)

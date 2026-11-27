@@ -1880,7 +1880,7 @@ measured reason for each item is in `CHANGELOG.md`.
   `make_ai_chat_router(pipeline, current_user_id=...)`. A pipeline with
   `memory=` mounted **without** `current_user_id=` raises `ValueError` at
   mount time. Complete example in
-  [Long-term memory](recipes/genai.md#long-term-memory).
+  [Long-term memory](recipes/genai/memory.md).
 - `history` with a `role` other than `user`/`assistant` answers `422`.
 
 ### `ContentExtractor`
@@ -1896,7 +1896,7 @@ measured reason for each item is in `CHANGELOG.md`.
 
 - `make_genai_router` checks `GenAIRequestLimits` before running the model;
   pass `limits=GenAIRequestLimits(...)` if you need more
-  ([Per-request limits](recipes/genai.md#per-request-limits-genairequestlimits)).
+  ([Per-request limits](recipes/genai/router.md#per-request-limits-genairequestlimits)).
   `POST /image` refuses `num_images > 1`.
 - `make_vision_router` reads at most 20 MiB and 50 MP per image
   (`max_upload_bytes=` / `max_image_pixels=`).

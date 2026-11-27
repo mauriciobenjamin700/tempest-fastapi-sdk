@@ -90,7 +90,7 @@ gigabytes.
     when `generator.unload_if_idle()` agrees to drop the weights, and you are
     the one calling that method, from a periodic task (or
     `ModelRegistry.unload_idle()`, for several models at once). The pattern
-    is in [Generate text with a local LLM](genai.md#generate-text-with-a-local-llm).
+    is in [Generate text with a local LLM](genai/text.md#generate-text-with-a-local-llm).
 
 !!! warning "The budget is what protects the request"
     Keep `max_seconds` **below** the proxy timeout. Past it the client is gone

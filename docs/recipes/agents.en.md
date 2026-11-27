@@ -299,7 +299,7 @@ its own `config` wins field by field. `TextGenerator` takes the same
     The cut still raises no error, but it no longer leaves no trace:
     `OllamaGenerator` logs a `WARNING` on `tempest_fastapi_sdk.genai.ollama`
     when `prompt_eval_count` lands where Ollama leaves a truncated prompt —
-    see [Context window](genai.en.md#context-window-num_ctx). The warning
+    see [Context window](genai/ollama.md#context-window-num_ctx). The warning
     points at the problem; `num_ctx` is what fixes it.
 
 !!! tip "When the agent should stop instead of answering over half the prompt"
@@ -312,7 +312,7 @@ its own `config` wins field by field. `TextGenerator` takes the same
     above, where the model lost the question and answered wrong. Leave it
     off when the agent can carry on with the start of the conversation
     lost. Details and the daemon's measured bodies in
-    [Fail instead of cutting](genai.en.md#fail-instead-of-cutting-truncate).
+    [Fail instead of cutting](genai/ollama.md#fail-instead-of-cutting-truncate).
 
 ## Pydantic-typed tools
 
@@ -878,7 +878,7 @@ which also means an `<img src>` works directly.
     22.4 to 26.9 tokens/s. The agent's time budget counts the time spent in
     line, so size `max_seconds` with that in mind. The numbers, the hardware
     and why it is a thread pool and not a semaphore are in
-    [Self-hosted generative AI](genai.md#several-requests-at-once-on-cpu-max_concurrent).
+    [Self-hosted generative AI](genai/text.md#several-requests-at-once-on-cpu-max_concurrent).
 
 ## Agents on CPU: backend, size and budget
 
@@ -941,7 +941,7 @@ Piece by piece:
 - **`OllamaGenerator("qwen2.5:3b")`** — a 4-bit GGUF served by Ollama, not
   the `TextGenerator` in `float32`. Why is in the numbers below; memory
   sizing (and why bitsandbytes on CPU is not the way out) is in
-  [Self-hosted generative AI › On CPU](genai.md#on-cpu).
+  [Self-hosted generative AI › On CPU](genai/hardware.md#on-cpu).
 - **`num_ctx=8192`** — the agent's prompt grows every step, and Ollama cuts
   whatever passes the window with no error. See
   [The model runs on the generator's defaults](#the-model-runs-on-the-generators-defaults).

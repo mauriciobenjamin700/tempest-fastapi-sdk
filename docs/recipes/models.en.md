@@ -152,7 +152,7 @@ The `MULTILINGUAL_E5_PREFIXES` preset carries both strings, so
 `Embedder(EmbeddingModelEnum.MULTILINGUAL_E5_LARGE, **MULTILINGUAL_E5_PREFIXES)`
 is the same as the example above. `OllamaEmbedder` takes the same two
 parameters — see the
-[`nomic-embed-text` task prefixes](genai.md#nomic-embed-text-task-prefixes).
+[`nomic-embed-text` task prefixes](genai/ollama.md#nomic-embed-text-task-prefixes).
 
 !!! note "An embedder with only `embed()`"
     `OnnxEmbedder` or your own embedder without `embed_query` /

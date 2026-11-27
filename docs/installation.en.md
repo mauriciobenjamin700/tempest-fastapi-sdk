@@ -309,7 +309,7 @@ cuda The quick brown fox jumps over the lazy dog.
 `probe_hardware()` also flags the wrong pair before the first transcription:
 with a CUDA 13 `torch` and `ctranslate2` installed, `HardwareInfo.warnings`
 says what will fail and points to this section (see
-[Probing the hardware](recipes/genai.md#probing-the-hardware)).
+[Probing the hardware](recipes/genai/hardware.md#probing-the-hardware)).
 
 !!! check "What was measured"
     **In this repository**, on 2026-11-10, in a `python:3.12-slim`

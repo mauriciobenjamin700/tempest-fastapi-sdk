@@ -217,7 +217,7 @@ image per request.
 The route also answers `422` for a side above `max_image_side` (default
 `2048`) and `steps` above `max_image_steps` (default `100`), both from the
 `GenAIRequestLimits` that `make_genai_router(limits=...)` takes — see
-[Per-request limits](genai.md#per-request-limits-genairequestlimits).
+[Per-request limits](genai/router.md#per-request-limits-genairequestlimits).
 `ImageGenerationConfig` itself already rejects `width`/`height` above
 `4096`, `steps` above `500` and `num_images` above `16`, on every path.
 
