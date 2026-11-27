@@ -5103,3 +5103,14 @@ qualquer dos dois construtores), `NOMIC_EMBED_TEXT_PREFIXES` e
 "Prefixos de tarefa do `nomic-embed-text`" em `docs/recipes/genai.md`
 (+ `.en.md`), com o aviso de reindexação e a medição de N=21 (recall@4 18/21
 → 20/21). O `OpenAICompatEmbedder` ficou de fora.
+
+## Qualidade do `OllamaGenerator`: schema estrito, `think` e aviso de truncamento (#862, #863, #865)
+
+**Schema estrito (#862).** `generate_structured` e `chat_structured` passam o
+`model_json_schema()` por `_require_every_property` (`genai/ollama.py`) antes
+de postar o `format`: todo objeto (raiz, aninhado, item de lista, `$defs`)
+ganha `required == list(properties)`, opcional continua nullable, o model
+original não muda. O `lm-format-enforcer` do `[genai-structured]` e o
+`response_format` do OpenAI-compat não foram mudados (não medidos). Testes:
+`tests/genai/test_ollama_strict_schema.py`. Docs: receita de genai, seção de
+saída estruturada.

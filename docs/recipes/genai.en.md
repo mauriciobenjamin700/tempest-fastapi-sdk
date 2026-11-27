@@ -3193,11 +3193,32 @@ the recommended structured route, no extra library**.
     call uses `/api/chat`, and empty content raises `ValueError` instead of
     returning nothing.
 
-!!! danger "A field with a `default` is a field the model may skip"
+!!! info "Every field goes into `required` on the wire — defaulted ones too"
     Pydantic leaves a defaulted field out of `required` in the JSON schema,
-    and the daemon's constrained decoder may then omit it — and it omits
-    exactly the defaulted ones. In an extraction schema, **no field has a
-    default**; absence is expressed in the data (`""`), never in the schema.
+    and the daemon's constrained decoder lets the model omit it. The object
+    comes back valid (the default fills the field) and wrong, with no signal
+    at all. So `generate_structured` and `chat_structured`
+    send as `format` a copy of the schema where **every** object (root,
+    nested, list item, `$defs`) lists all of its properties in `required`.
+    An optional field (`X | None`) still accepts `null` — the model just has
+    to say it. Validation still runs against your model, unchanged.
+
+    Measured in the 2026-11-26/27 local-LLM study (Ollama 0.30.11, 33
+    extraction cases over 3 schemas, temperature 0), mean per-field
+    accuracy:
+
+    | model | Pydantic schema | every field `required` |
+    | --- | --- | --- |
+    | `gpt-oss:20b` | 70.8 | **95.4** |
+    | `qwen2.5:3b` | 69.2 | 87.3 |
+    | `lfm2.5-thinking:1.2b` | 56.6 | 74.3 |
+    | `qwen2.5-coder:14b` | 90.0 | 95.7 |
+    | `ministral-3:14b` | 84.4 | 89.9 |
+
+    On `gpt-oss:20b` the Pydantic schema never produced a
+    `Field(default_factory=list)` field: all 11 orders came back with
+    `items=[]`. You no longer need to declare the extraction schema without
+    defaults.
 
 !!! tip "Instruction separated from the document — `chat_structured`"
     Extracting fields from a long document, the instruction belongs in a

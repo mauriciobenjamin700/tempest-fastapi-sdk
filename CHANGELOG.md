@@ -45,6 +45,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Nas 7 tarefas em que o certo era não chamar, o `qwen2.5-coder` caiu de 7/7
   para 5/7, porque o JSON que ele escrevia nelas agora roda. Nota em
   `docs/migration.md`.
+- **`OllamaGenerator.generate_structured` e `chat_structured` mandam o
+  schema com todo campo em `required`** (#862). O `format` era
+  `schema.model_json_schema()`, que só lista em `required` os campos sem
+  default, e a decodificação restrita do Ollama deixava o modelo omitir os
+  demais — o objeto validava (o default preenchia) e vinha errado. Agora
+  todo objeto do schema enviado (raiz, aninhado, item de lista, `$defs`)
+  tem `required == list(properties)`; campo `X | None` continua aceitando
+  `null`, e a validação continua contra o model original. Mudança de
+  comportamento: o modelo passa a emitir campos que antes omitia. Medido na
+  pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11, 33 casos de
+  extração em 3 schemas, temperatura 0), acurácia média por campo:
+  `gpt-oss:20b` 70,8 → 95,4, `qwen2.5:3b` 69,2 → 87,3,
+  `lfm2.5-thinking:1.2b` 56,6 → 74,3, `qwen2.5-coder:14b` 90,0 → 95,7,
+  `ministral-3:14b` 84,4 → 89,9.
+
 
 ## [0.373.0] — 2026-11-26
 

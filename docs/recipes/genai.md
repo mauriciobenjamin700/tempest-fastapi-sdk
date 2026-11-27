@@ -3173,12 +3173,32 @@ rota estruturada recomendada, sem biblioteca extra**.
     a chamada usa `/api/chat`, e um conteúdo vazio levanta `ValueError`
     em vez de devolver nada.
 
-!!! danger "Campo com `default` é campo que o modelo pode pular"
+!!! info "Todo campo vai em `required` no fio — inclusive os que têm default"
     O Pydantic deixa campo com default fora de `required` no JSON schema,
-    e o decodificador constrangido do daemon então pode omiti-lo — e ele
-    omite justamente os que têm default. Em schema de extração, **nenhum
-    campo tem default**; a ausência se expressa no dado (`""`), nunca no
-    schema.
+    e o decodificador constrangido do daemon deixa o modelo omiti-lo. O
+    objeto volta válido (o default preenche o campo) e errado, sem sinal
+    nenhum. Por isso `generate_structured` e
+    `chat_structured` mandam no `format` uma cópia do schema em que **todo**
+    objeto (raiz, aninhado, item de lista, `$defs`) lista todas as
+    propriedades em `required`. Campo opcional (`X | None`) continua
+    aceitando `null` — o modelo só passa a dizê-lo. A validação continua
+    contra o seu model, sem mudança.
+
+    Medido na pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11,
+    33 casos de extração em 3 schemas, temperatura 0), acurácia média por
+    campo:
+
+    | modelo | schema do Pydantic | todo campo em `required` |
+    | --- | --- | --- |
+    | `gpt-oss:20b` | 70,8 | **95,4** |
+    | `qwen2.5:3b` | 69,2 | 87,3 |
+    | `lfm2.5-thinking:1.2b` | 56,6 | 74,3 |
+    | `qwen2.5-coder:14b` | 90,0 | 95,7 |
+    | `ministral-3:14b` | 84,4 | 89,9 |
+
+    No `gpt-oss:20b` o schema do Pydantic nunca fez sair um campo
+    `Field(default_factory=list)`: os 11 pedidos voltaram com `itens=[]`.
+    Você não precisa mais declarar o schema de extração sem default.
 
 !!! tip "Instrução separada do documento — `chat_structured`"
     Extraindo campos de um documento longo, a instrução precisa ir num
