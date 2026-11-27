@@ -78,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `tempest_fastapi_sdk.genai.ollama` virou pacote (#872), dividido por
+  responsabilidade, com a mesma superfície pública e o mesmo `__all__`.
 - **`Agent` e o loop de ferramentas do `AIChatPipeline` rodam chamada de
   ferramenta escrita como JSON no `content`** (#866), **ligado por padrão**.
   Quando a resposta vem sem `tool_calls` e o texto inteiro (sem espaço nas
@@ -113,6 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `OllamaContextExceededError` passa a constar do `__all__` de
+  `tempest_fastapi_sdk.genai.ollama` (já era re-exportada em
+  `tempest_fastapi_sdk.genai`, mas faltava no módulo de origem).
 - **Serviço com o extra `[pdf]` aceitava imagem truncada depois do primeiro
   PDF** (#868). `import weasyprint` (feito na primeira renderização do
   `PdfRenderer`) liga `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, chave global do
