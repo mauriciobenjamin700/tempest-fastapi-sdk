@@ -816,6 +816,82 @@ Isso importa sobretudo para quem **não** passa opção nenhuma por chamada — 
 assim. A janela e o config padrão entram na chave do `generation_cache`, então
 dois geradores com defaults diferentes não respondem um pelo cache do outro.
 
+#### Raciocínio: `think`
+
+Modelo de raciocínio (o `gpt-oss`, o `ornith`) aceita o campo `think` no
+**topo** do corpo do `/api/chat` e do `/api/generate`: `True`/`False` liga
+ou desliga o raciocínio, e `"low"`/`"medium"`/`"high"` escolhe o nível nos
+modelos que têm níveis. Dentro de `options` o daemon ignora o campo — e era
+para lá que ia um `think=` passado como keyword antes desta mudança. Agora ele
+é um parâmetro do gerador (`ThinkLevel`) e de cada chamada:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+gen = OllamaGenerator("gpt-oss:20b", think="low", num_ctx=16384)
+
+
+async def main() -> None:
+    """Run this example."""
+    rapida: str = await gen.chat([{"role": "user", "content": "Oi"}])
+    pensada: str = await gen.chat(
+        [{"role": "user", "content": "Quanto é 17 x 23?"}],
+        think="high",
+    )
+    print(rapida, pensada)
+
+
+asyncio.run(main())
+```
+
+- **`think=None`** (o padrão) não manda o campo: o modelo usa o default
+  dele, como antes.
+- O `think` da chamada ganha do construtor, e entra na chave do
+  `generation_cache`.
+- `generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured` e
+  `chat_structured` aceitam o parâmetro; o laço do `Agent` usa o do
+  construtor.
+
+Medido na pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11, RTX
+4070 Ti SUPER, temperatura 0):
+
+| modelo / uso | `think` | acerto | p50 |
+| --- | --- | --- | --- |
+| `gpt-oss:20b`, 34 tarefas de tools | `"low"` | 97,1% | **1,44 s** |
+| `gpt-oss:20b`, 34 tarefas de tools | default (medium) | 94,1% | 1,68 s |
+| `gpt-oss:20b`, 34 tarefas de tools | `"high"` | 97,1% | 3,59 s |
+| `gpt-oss:20b`, RAG com 27 perguntas | `"low"` | 20/21 fatos, 0/6 alucinações | **0,99 s** |
+| `ornith-1.5:9b`, 33 extrações estruturadas | `False` | 93,3 por campo | **1,34 s** |
+| `ornith-1.5:9b`, 33 extrações estruturadas | `True` | 95,0 por campo | 5,60 s |
+
+Com N=34 e N=33, um ponto e pouco é um item: não leia ordem fina entre
+`"low"` e `"high"`. O que a tabela mostra é o tempo — `"low"` empatou com
+os outros níveis com metade a um terço do p50.
+
+!!! warning "Modelo sem raciocínio recusa `think`"
+    Modelo sem a capacidade `thinking` (no `/api/show`) responde `400` com
+    `"<modelo>" does not support thinking` — reproduzido no Ollama 0.30.11
+    com o `ministral-3:14b` e `think=True`, no `/api/chat` e no
+    `/api/generate`, com e sem stream, sem carregar o modelo. O gerador
+    levanta `OllamaThinkingUnsupportedError` (subclasse de `OllamaError`,
+    com `.model` e `.detail`) em vez do `httpx.HTTPStatusError` cru. Para
+    esse modelo, deixe `think=None`.
+
+!!! danger "`think=False` faz alguns modelos ignorarem o `format`"
+    Com `think=False`, o `ornith:35b` respondeu a um `chat_structured` em
+    markdown (`**Nome:** Ana Costa ...`), com `200`, em 3 de 3 chamadas; com
+    `think` omitido ou `True`, devolveu o objeto JSON em 3 de 3. O
+    `ornith-1.5:9b`, o `gpt-oss:20b` e o `ministral-3:14b` respeitaram o
+    `format` com `think=False` (3 de 3 cada). Quando a resposta estruturada
+    não traz objeto JSON nenhum, `generate_structured` e `chat_structured`
+    levantam `OllamaFormatIgnoredError` — subclasse de `OllamaError` **e**
+    de `ValueError`, então o `except ValueError` de antes continua pegando —
+    com `.content` (o começo da resposta) e `.think`, e a mensagem aponta o
+    `think=False` quando foi ele. Antes, o mesmo caso virava um
+    `ValueError("no JSON object ...")` sem pista da causa.
+
 ### Embeddings via Ollama + RAG
 
 `OllamaEmbedder` satisfaz o mesmo protocolo `SupportsEmbed` do `Embedder`,

@@ -24,6 +24,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   é escolhido pelo chamador, nunca deduzido do nome do modelo.
   - Trocar os prefixos muda todos os vetores: índice existente precisa ser
     reindexado.
+- **`OllamaGenerator(think=...)`** (#863): o campo `think` do Ollama, no
+  construtor e por chamada (`generate`, `chat`, `chat_with_tools`, `stream`,
+  `generate_structured`, `chat_structured`), enviado no **topo** do corpo —
+  em `options` o daemon o ignora, e era lá que um `think=` em `**kwargs`
+  caía. Tipo `ThinkLevel` (`bool | Literal["low", "medium", "high"]`),
+  re-exportado de `tempest_fastapi_sdk.genai`; `None` (padrão) não envia o
+  campo; o valor entra na chave do `generation_cache`; valor fora do tipo
+  levanta `ValueError`. Medido na pesquisa de LLMs locais de 2026-11-26/27
+  (Ollama 0.30.11, temperatura 0): `gpt-oss:20b` com `"low"` fez 97,1% de 34
+  tarefas de tools com p50 1,44 s (default: 94,1%, 1,68 s; `"high"`:
+  97,1%, 3,59 s); `ornith-1.5:9b` com `False` fez 93,3 por campo em 33
+  extrações com p50 1,34 s (com `True`: 95,0, 5,60 s).
+- **`OllamaThinkingUnsupportedError`** (subclasse de `OllamaError`): o
+  `400` `"<modelo>" does not support thinking` — reproduzido no Ollama
+  0.30.11 com `ministral-3:14b` + `think=True`, no `/api/chat` e no
+  `/api/generate`, com e sem stream — vira esta exceção em vez de
+  `httpx.HTTPStatusError`. Outros status continuam `HTTPStatusError`.
+- **`OllamaFormatIgnoredError`** (subclasse de `OllamaError` e de
+  `ValueError`): `generate_structured`/`chat_structured` levantam quando a
+  resposta não traz objeto JSON — o daemon não aplicou o `format` —, com
+  `.content` e `.think`, e a mensagem aponta `think=False` quando foi ele.
+  Reproduzido no Ollama 0.30.11: `ornith:35b` com `think=false` respondeu
+  markdown com `200` em 3 de 3 chamadas. Antes o caso era um `ValueError`
+  genérico, que continua pegando esta exceção.
+
 
 ### Changed
 

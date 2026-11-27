@@ -819,6 +819,82 @@ This matters most for a caller that passes **no** option per call — the
 The window and the default config are part of the `generation_cache` key, so
 two generators with different defaults never answer from each other's cache.
 
+#### Reasoning: `think`
+
+A reasoning model (`gpt-oss`, `ornith`) takes the `think` field at the
+**top level** of the `/api/chat` and `/api/generate` body: `True`/`False`
+switches reasoning on or off, and `"low"`/`"medium"`/`"high"` picks the
+level on models that have levels. Inside `options` the daemon ignores the
+field — and that is where a `think=` passed as a keyword landed before this change. It is
+now a parameter of the generator (`ThinkLevel`) and of every call:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+gen = OllamaGenerator("gpt-oss:20b", think="low", num_ctx=16384)
+
+
+async def main() -> None:
+    """Run this example."""
+    quick: str = await gen.chat([{"role": "user", "content": "Hi"}])
+    careful: str = await gen.chat(
+        [{"role": "user", "content": "What is 17 x 23?"}],
+        think="high",
+    )
+    print(quick, careful)
+
+
+asyncio.run(main())
+```
+
+- **`think=None`** (the default) sends no field: the model uses its own
+  default, as before.
+- A call's `think` wins over the constructor's, and is part of the
+  `generation_cache` key.
+- `generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured`
+  and `chat_structured` take the parameter; the `Agent` loop uses the
+  constructor's.
+
+Measured in the 2026-11-26/27 local-LLM study (Ollama 0.30.11, RTX 4070 Ti
+SUPER, temperature 0):
+
+| model / use | `think` | score | p50 |
+| --- | --- | --- | --- |
+| `gpt-oss:20b`, 34 tool tasks | `"low"` | 97.1% | **1.44 s** |
+| `gpt-oss:20b`, 34 tool tasks | default (medium) | 94.1% | 1.68 s |
+| `gpt-oss:20b`, 34 tool tasks | `"high"` | 97.1% | 3.59 s |
+| `gpt-oss:20b`, RAG over 27 questions | `"low"` | 20/21 facts, 0/6 hallucinations | **0.99 s** |
+| `ornith-1.5:9b`, 33 structured extractions | `False` | 93.3 per field | **1.34 s** |
+| `ornith-1.5:9b`, 33 structured extractions | `True` | 95.0 per field | 5.60 s |
+
+At N=34 and N=33 a point or so is one item: do not read a fine ranking
+between `"low"` and `"high"`. What the table shows is time — `"low"` tied
+with the other levels at half to a third of the p50.
+
+!!! warning "A model without reasoning refuses `think`"
+    A model without the `thinking` capability (in `/api/show`) answers `400`
+    with `"<model>" does not support thinking` — reproduced on Ollama
+    0.30.11 with `ministral-3:14b` and `think=True`, on `/api/chat` and
+    `/api/generate`, streamed or not, without loading the model. The
+    generator raises `OllamaThinkingUnsupportedError` (an `OllamaError`
+    subclass, with `.model` and `.detail`) instead of the raw
+    `httpx.HTTPStatusError`. For that model, leave `think=None`.
+
+!!! danger "`think=False` makes some models ignore `format`"
+    With `think=False`, `ornith:35b` answered a `chat_structured` call in
+    markdown (`**Nome:** Ana Costa ...`), with `200`, in 3 of 3 calls; with
+    `think` omitted or `True` it returned the JSON object 3 of 3.
+    `ornith-1.5:9b`, `gpt-oss:20b` and `ministral-3:14b` honoured `format`
+    with `think=False` (3 of 3 each). When the structured reply carries no
+    JSON object at all, `generate_structured` and `chat_structured` raise
+    `OllamaFormatIgnoredError` — a subclass of `OllamaError` **and** of
+    `ValueError`, so an existing `except ValueError` still catches it — with
+    `.content` (the start of the reply) and `.think`, and the message points
+    at `think=False` when that was it. Before, the same case was a
+    `ValueError("no JSON object ...")` with no hint at the cause.
+
 ### Embeddings via Ollama + RAG
 
 `OllamaEmbedder` satisfies the same `SupportsEmbed` protocol as `Embedder`,

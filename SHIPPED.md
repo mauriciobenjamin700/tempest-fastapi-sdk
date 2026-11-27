@@ -5114,3 +5114,14 @@ original não muda. O `lm-format-enforcer` do `[genai-structured]` e o
 `response_format` do OpenAI-compat não foram mudados (não medidos). Testes:
 `tests/genai/test_ollama_strict_schema.py`. Docs: receita de genai, seção de
 saída estruturada.
+
+**`think` (#863).** `OllamaGenerator(think=...)` e o mesmo parâmetro em
+`generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured` e
+`chat_structured`, no topo do corpo (`_apply_common`), na chave do cache
+(`_key_params`). Tipo `ThinkLevel`; exceções `OllamaThinkingUnsupportedError`
+(o `400` "does not support thinking", também no stream) e
+`OllamaFormatIgnoredError` (resposta estruturada sem objeto JSON, com pista
+quando `think=False`). O OpenAI-compat já tem o equivalente (`effort`,
+enviado em `effort_field`, `reasoning_effort` por padrão, no
+`complete_structured`) e não mudou. Testes: `tests/genai/test_ollama_think.py`. Docs:
+receita de genai, "Raciocínio: `think`".

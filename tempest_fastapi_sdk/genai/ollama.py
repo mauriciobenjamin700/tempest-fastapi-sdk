@@ -32,7 +32,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from tempest_fastapi_sdk.genai.generation_cache import (
     AsyncGenerationCache,
@@ -41,7 +41,11 @@ from tempest_fastapi_sdk.genai.generation_cache import (
 )
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig, _layer_config
-from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
+from tempest_fastapi_sdk.genai.structured import (
+    StructuredT,
+    extract_json_object,
+    parse_structured,
+)
 from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
@@ -49,6 +53,27 @@ if TYPE_CHECKING:
     import httpx
 
 DEFAULT_OLLAMA_URL: str = "http://127.0.0.1:11434"
+
+ThinkLevel = bool | Literal["low", "medium", "high"]
+"""The Ollama ``think`` field: on/off, or a reasoning level.
+
+Sent at the top level of ``/api/chat`` and ``/api/generate`` (inside
+``options`` the daemon ignores it). ``True``/``False`` switch reasoning on
+or off on a model with the thinking capability; ``"low"``/``"medium"``/
+``"high"`` pick a level on the models that support levels (``gpt-oss``).
+"""
+
+_THINK_LEVELS: frozenset[str] = frozenset({"low", "medium", "high"})
+
+_THINKING_UNSUPPORTED: str = "does not support thinking"
+"""Substring of the daemon's error for ``think`` on a model without it.
+
+Reproduced on Ollama 0.30.11 with ``ministral-3:14b`` (``/api/show``
+capabilities ``completion``, ``vision``, ``tools``): ``think: true`` on
+``/api/chat`` and ``/api/generate``, streamed or not, answered ``400`` with
+``{"error": "\\"ministral-3:14b\\" does not support thinking"}`` before
+loading the model.
+"""
 
 # Maps HuggingFace-style generation kwarg names (what GenerationConfig and
 # the router speak) to their Ollama ``options`` equivalents.
@@ -214,6 +239,129 @@ class OllamaError(RuntimeError):
         self.detail: str = detail
 
 
+class OllamaThinkingUnsupportedError(OllamaError):
+    """The model has no thinking capability and the request set ``think``.
+
+    The daemon refuses the request with ``400`` and an ``error`` saying the
+    model ``does not support thinking`` (reproduced on Ollama 0.30.11 with
+    ``ministral-3:14b``). Leave ``think`` as ``None`` for that model.
+
+    Attributes:
+        model (str): The model tag the request targeted.
+        detail (str): The daemon's error message.
+    """
+
+    def __init__(self, model: str, detail: str) -> None:
+        """Build the error from the daemon message.
+
+        Args:
+            model (str): The model tag the request targeted.
+            detail (str): The daemon's ``error`` string.
+        """
+        super().__init__(model, detail)
+        self.args = (
+            f"Ollama model {model!r} does not support thinking ({detail}); "
+            "leave think=None for this model",
+        )
+
+
+class OllamaFormatIgnoredError(OllamaError, ValueError):
+    """A structured call came back as free text instead of the JSON asked for.
+
+    The request carried the schema as ``format`` and the reply holds no JSON
+    object, so the daemon did not constrain the decoder. Reproduced on Ollama
+    0.30.11: ``ornith:35b`` with ``think=false`` answered
+    ``**Nome:** Ana Costa ...`` with ``200`` in 3 of 3 calls, while the same
+    request with ``think`` omitted or ``true`` returned the object 3 of 3.
+    ``ornith-1.5:9b``, ``gpt-oss:20b`` and ``ministral-3:14b`` honoured
+    ``format`` with ``think=false`` (3 of 3 each).
+
+    Subclasses ``ValueError``, which is what a reply without a JSON object
+    raised before, so code already catching that keeps working.
+
+    Attributes:
+        model (str): The model tag the request targeted.
+        detail (str): What went wrong.
+        content (str): The start of the reply (first 500 characters).
+        think (ThinkLevel | None): The ``think`` value the request carried.
+    """
+
+    def __init__(self, model: str, content: str, think: ThinkLevel | None) -> None:
+        """Build the error from the reply.
+
+        Args:
+            model (str): The model tag the request targeted.
+            content (str): The reply content.
+            think (ThinkLevel | None): The ``think`` value sent, if any.
+        """
+        detail = (
+            "the reply holds no JSON object, so the format constraint was not applied"
+        )
+        if think is False:
+            detail += (
+                "; think=False makes some models ignore format (measured: "
+                "ornith:35b), so omit think or set it to True for this model"
+            )
+        super().__init__(model, detail)
+        self.content: str = content[:500]
+        self.think: ThinkLevel | None = think
+
+
+def _check_think(think: ThinkLevel | None) -> None:
+    """Reject a ``think`` value the daemon does not define.
+
+    Args:
+        think (ThinkLevel | None): The value to check.
+
+    Raises:
+        ValueError: When ``think`` is neither ``None``, a bool nor one of
+            ``"low"``, ``"medium"``, ``"high"``.
+    """
+    if think is None or isinstance(think, bool) or think in _THINK_LEVELS:
+        return
+    raise ValueError(
+        f"think must be None, a bool or one of {sorted(_THINK_LEVELS)}, got {think!r}",
+    )
+
+
+def _raise_if_thinking_unsupported(model: str, response: httpx.Response) -> None:
+    """Raise :class:`OllamaThinkingUnsupportedError` for the daemon's refusal.
+
+    Args:
+        model (str): The model tag, used in the message.
+        response (httpx.Response): A non-success response whose body is
+            already read.
+
+    Raises:
+        OllamaThinkingUnsupportedError: When the body's ``error`` says the
+            model does not support thinking.
+    """
+    try:
+        data = response.json()
+    except ValueError:
+        return
+    if isinstance(data, dict):
+        error = data.get("error")
+        if isinstance(error, str) and _THINKING_UNSUPPORTED in error:
+            raise OllamaThinkingUnsupportedError(model, error)
+
+
+def _raise_for_status(model: str, response: httpx.Response) -> None:
+    """Raise for a non-success response, naming the thinking refusal.
+
+    Args:
+        model (str): The model tag, used in the message.
+        response (httpx.Response): The daemon's response.
+
+    Raises:
+        OllamaThinkingUnsupportedError: When the daemon refused ``think``.
+        httpx.HTTPStatusError: For any other non-success status.
+    """
+    if response.is_error:
+        _raise_if_thinking_unsupported(model, response)
+    response.raise_for_status()
+
+
 def _raise_on_error(model: str, data: dict[str, Any]) -> None:
     """Raise :class:`OllamaError` when ``data`` is a daemon error object.
 
@@ -342,6 +490,8 @@ class OllamaGenerator(_OllamaClientMixin):
             layered under every call's own.
         options (dict[str, Any]): Raw Ollama ``options`` sent with every
             request, ``num_ctx`` included when set.
+        think (ThinkLevel | None): Default top-level ``think`` field, or
+            ``None`` to send none.
     """
 
     def __init__(
@@ -359,6 +509,7 @@ class OllamaGenerator(_OllamaClientMixin):
         config: GenerationConfig | None = None,
         num_ctx: int | None = None,
         options: dict[str, Any] | None = None,
+        think: ThinkLevel | None = None,
     ) -> None:
         """Configure the daemon connection and the per-request defaults.
 
@@ -403,10 +554,22 @@ class OllamaGenerator(_OllamaClientMixin):
             options (dict[str, Any] | None): Raw Ollama ``options`` sent on
                 every request (``num_thread``, ``num_gpu``, …), under the
                 ones a call's config or overrides produce.
+            think (ThinkLevel | None): Default ``think`` field for every
+                request, sent at the top level of the body (inside
+                ``options`` the daemon ignores it). ``None`` sends nothing
+                and leaves the model's default; a call's own ``think``
+                wins over it. Measured in the 2026-11-26/27 local-LLM study
+                (Ollama 0.30.11, temperature 0): ``gpt-oss:20b`` with
+                ``"low"`` solved 97.1% of 34 tool tasks at p50 1.44 s,
+                against 94.1% at 1.68 s for its default (medium) and 97.1%
+                at 3.59 s for ``"high"``; ``ornith-1.5:9b`` with ``False``
+                scored 93.3 per field on 33 extraction cases at p50
+                1.34 s, against 95.0 at 5.60 s with ``True``.
 
         Raises:
-            ValueError: When ``num_ctx`` is not positive, or is given both
-                as an argument and inside ``options``.
+            ValueError: When ``num_ctx`` is not positive, is given both as
+                an argument and inside ``options``, or ``think`` is not a
+                bool or one of ``"low"``, ``"medium"``, ``"high"``.
         """
         super().__init__(
             model,
@@ -426,8 +589,10 @@ class OllamaGenerator(_OllamaClientMixin):
             if "num_ctx" in merged:
                 raise ValueError("num_ctx given both as an argument and in options")
             merged["num_ctx"] = num_ctx
+        _check_think(think)
         self.config = config
         self.options: dict[str, Any] = merged
+        self.think: ThinkLevel | None = think
 
     @property
     def is_loaded(self) -> bool:
@@ -456,6 +621,7 @@ class OllamaGenerator(_OllamaClientMixin):
         *,
         config: GenerationConfig | None = None,
         images: list[str] | None = None,
+        think: ThinkLevel | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a completion for ``prompt``.
@@ -468,6 +634,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 multimodal model (e.g. ``llava``, ``llama3.2-vision``);
                 forwarded as the Ollama ``images`` field. ``None`` for a
                 text-only prompt.
+            think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (HuggingFace-style
                 names such as ``max_new_tokens`` / ``temperature``); these
                 win over ``config``.
@@ -476,18 +644,22 @@ class OllamaGenerator(_OllamaClientMixin):
             str: The generated text.
 
         Raises:
+            OllamaThinkingUnsupportedError: When ``think`` is set and the
+                model has no thinking capability.
             OllamaError: When the daemon answers with an ``error`` body
                 (e.g. the model is not pulled), even on a ``200``.
             httpx.HTTPStatusError: When the daemon answers a non-success
                 status.
         """
-        params = self._key_params(config, kwargs, images)
+        _check_think(think)
+        think = think if think is not None else self.think
+        params = self._key_params(config, kwargs, images, think=think)
 
         async def _produce() -> str:
             async with genai_span("generate", self.model) as trace_span:
                 if self.metrics is None:
                     text, prompt_tokens, eval_tokens = await self._generate_measured(
-                        prompt, config, images, dict(kwargs)
+                        prompt, config, images, dict(kwargs), think=think
                     )
                 else:
                     async with self.metrics.track(self.model, "generate") as span:
@@ -496,7 +668,7 @@ class OllamaGenerator(_OllamaClientMixin):
                             prompt_tokens,
                             eval_tokens,
                         ) = await self._generate_measured(
-                            prompt, config, images, dict(kwargs)
+                            prompt, config, images, dict(kwargs), think=think
                         )
                         span.tokens_in = prompt_tokens
                         span.tokens_out = eval_tokens
@@ -517,12 +689,15 @@ class OllamaGenerator(_OllamaClientMixin):
         config: GenerationConfig | None,
         overrides: dict[str, Any],
         images: list[str] | None = None,
+        *,
+        think: ThinkLevel | None = None,
     ) -> dict[str, Any]:
-        """Merge config + overrides (+ images) into the cache-key parameters.
+        """Merge config, overrides, images and think into the cache-key parameters.
 
-        The defaults are part of the key: a different context window or a
-        different default config produces different text, so a generator
-        must not answer from another's cached completions.
+        The defaults are part of the key: a different context window, a
+        different default config or a different ``think`` produces
+        different text, so a generator must not answer from another's
+        cached completions.
         """
         config = _layer_config(self.config, config)
         params: dict[str, Any] = {}
@@ -533,6 +708,8 @@ class OllamaGenerator(_OllamaClientMixin):
         params.update(overrides)
         if images:
             params["images"] = images
+        if think is not None:
+            params["think"] = think
         return params
 
     async def _generate_once(
@@ -557,16 +734,20 @@ class OllamaGenerator(_OllamaClientMixin):
         config: GenerationConfig | None,
         images: list[str] | None,
         overrides: dict[str, Any],
+        *,
+        think: ThinkLevel | None = None,
     ) -> tuple[str, int | None, int | None]:
         """Run one ``/api/generate`` call, returning text + Ollama token counts."""
-        payload = self._request_payload(prompt, config, overrides, stream=False)
+        payload = self._request_payload(
+            prompt, config, overrides, stream=False, think=think
+        )
         if images:
             payload["images"] = images
         response = await self._http().post(
             f"{self.base_url}/api/generate",
             json=payload,
         )
-        response.raise_for_status()
+        _raise_for_status(self.model, response)
         data: dict[str, Any] = response.json()
         _raise_on_error(self.model, data)
         return (
@@ -580,6 +761,7 @@ class OllamaGenerator(_OllamaClientMixin):
         messages: list[dict[str, Any]],
         *,
         config: GenerationConfig | None = None,
+        think: ThinkLevel | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a reply for a chat ``messages`` list.
@@ -590,6 +772,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 ``"images": [<base64>, ...]`` key for multimodal models —
                 it is forwarded verbatim to Ollama.
             config (GenerationConfig | None): Typed generation parameters.
+            think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
 
@@ -603,6 +787,8 @@ class OllamaGenerator(_OllamaClientMixin):
             str: The assistant reply.
 
         Raises:
+            OllamaThinkingUnsupportedError: When ``think`` is set and the
+                model has no thinking capability.
             OllamaError: When the daemon answers with an ``error`` body.
             httpx.HTTPStatusError: When the daemon answers a non-success
                 status.
@@ -612,7 +798,9 @@ class OllamaGenerator(_OllamaClientMixin):
             "messages": messages,
             "stream": False,
         }
-        self._apply_common(payload, config, kwargs)
+        _check_think(think)
+        think = think if think is not None else self.think
+        self._apply_common(payload, config, kwargs, think=think)
 
         async def _produce() -> str:
             async with genai_span("chat", self.model) as trace_span:
@@ -635,7 +823,7 @@ class OllamaGenerator(_OllamaClientMixin):
             self.generation_cache,
             self.model,
             json.dumps(messages, sort_keys=True, default=str),
-            self._key_params(config, kwargs),
+            self._key_params(config, kwargs, think=think),
             _produce,
             operation="chat",
         )
@@ -657,7 +845,7 @@ class OllamaGenerator(_OllamaClientMixin):
             OllamaError: When the daemon answers with an ``error`` body.
         """
         response = await self._http().post(f"{self.base_url}/api/chat", json=payload)
-        response.raise_for_status()
+        _raise_for_status(self.model, response)
         data: dict[str, Any] = response.json()
         _raise_on_error(self.model, data)
         message: dict[str, Any] = data.get("message") or {}
@@ -674,6 +862,7 @@ class OllamaGenerator(_OllamaClientMixin):
         *,
         system: str | None = None,
         config: GenerationConfig | None = None,
+        think: ThinkLevel | None = None,
         **kwargs: Any,
     ) -> StructuredT:
         """Generate a completion constrained to a Pydantic ``schema``.
@@ -708,14 +897,21 @@ class OllamaGenerator(_OllamaClientMixin):
                 ``prompt`` buries an instruction placed above it, and the
                 model answers about the document while ignoring the ask.
             config (GenerationConfig | None): Typed generation parameters.
+            think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default. ``False`` makes some
+                models ignore ``format`` (see
+                :class:`OllamaFormatIgnoredError`).
             **kwargs (Any): Per-call generation overrides (win over ``config``).
 
         Returns:
             StructuredT: The validated instance.
 
         Raises:
-            ValueError: When the daemon answers with no usable content, or
-                when the content carries no JSON object.
+            OllamaFormatIgnoredError: When the reply holds no JSON object,
+                so the daemon did not apply the ``format`` constraint.
+            OllamaThinkingUnsupportedError: When ``think`` is set and the
+                model has no thinking capability.
+            ValueError: When the daemon answers with no content.
             pydantic.ValidationError: When the JSON fails ``schema`` validation.
         """
         messages: list[dict[str, Any]] = []
@@ -729,14 +925,16 @@ class OllamaGenerator(_OllamaClientMixin):
             "stream": False,
             "format": _require_every_property(schema.model_json_schema()),
         }
-        self._apply_common(payload, config, kwargs)
+        _check_think(think)
+        think = think if think is not None else self.think
+        self._apply_common(payload, config, kwargs, think=think)
 
         async with genai_span("generate_structured", self.model):
             response = await self._http().post(
                 f"{self.base_url}/api/chat",
                 json=payload,
             )
-            response.raise_for_status()
+            _raise_for_status(self.model, response)
             data: dict[str, Any] = response.json()
             _raise_on_error(self.model, data)
             message: dict[str, Any] = data.get("message") or {}
@@ -747,6 +945,8 @@ class OllamaGenerator(_OllamaClientMixin):
                     f"(eval_count={data.get('eval_count')}); check that the "
                     "model supports constrained structured output",
                 )
+            if extract_json_object(content) is None:
+                raise OllamaFormatIgnoredError(self.model, content, think)
             return parse_structured(content, schema)
 
     async def chat_structured(
@@ -755,6 +955,7 @@ class OllamaGenerator(_OllamaClientMixin):
         schema: type[StructuredT],
         *,
         config: GenerationConfig | None = None,
+        think: ThinkLevel | None = None,
         **kwargs: Any,
     ) -> StructuredT:
         """Generate a chat reply constrained to a Pydantic ``schema``.
@@ -789,6 +990,10 @@ class OllamaGenerator(_OllamaClientMixin):
                 a ``system`` turn and the content being read in ``user``.
             schema (type[StructuredT]): The Pydantic model to produce.
             config (GenerationConfig | None): Typed generation parameters.
+            think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default. ``False`` makes some
+                models ignore ``format`` (see
+                :class:`OllamaFormatIgnoredError`).
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
 
@@ -799,7 +1004,10 @@ class OllamaGenerator(_OllamaClientMixin):
             TypeError: When ``format`` is passed as a keyword — the
                 schema argument is what sets it, and a keyword would be
                 dropped into ``options`` and ignored.
-            ValueError: When the reply carries no JSON object.
+            OllamaFormatIgnoredError: When the reply holds no JSON object,
+                so the daemon did not apply the ``format`` constraint.
+            OllamaThinkingUnsupportedError: When ``think`` is set and the
+                model has no thinking capability.
             pydantic.ValidationError: When the JSON fails ``schema``
                 validation.
 
@@ -839,17 +1047,22 @@ class OllamaGenerator(_OllamaClientMixin):
             "stream": False,
             "format": _require_every_property(schema.model_json_schema()),
         }
-        self._apply_common(payload, config, kwargs)
+        _check_think(think)
+        think = think if think is not None else self.think
+        self._apply_common(payload, config, kwargs, think=think)
         async with genai_span("chat", self.model):
             response = await self._http().post(
                 f"{self.base_url}/api/chat",
                 json=payload,
             )
-            response.raise_for_status()
+            _raise_for_status(self.model, response)
             data: dict[str, Any] = response.json()
             _raise_on_error(self.model, data)
             message: dict[str, Any] = data.get("message") or {}
-            return parse_structured(str(message.get("content", "")), schema)
+            content = str(message.get("content") or "")
+            if extract_json_object(content) is None:
+                raise OllamaFormatIgnoredError(self.model, content, think)
+            return parse_structured(content, schema)
 
     async def chat_with_tools(
         self,
@@ -857,6 +1070,7 @@ class OllamaGenerator(_OllamaClientMixin):
         tools: list[dict[str, Any]],
         *,
         config: GenerationConfig | None = None,
+        think: ThinkLevel | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Generate a chat reply with tool-calling enabled.
@@ -873,6 +1087,8 @@ class OllamaGenerator(_OllamaClientMixin):
             tools (list[dict[str, Any]]): Tool specifications in the Ollama /
                 OpenAI ``{"type": "function", "function": {...}}`` shape.
             config (GenerationConfig | None): Typed generation parameters.
+            think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
 
@@ -880,6 +1096,11 @@ class OllamaGenerator(_OllamaClientMixin):
             dict[str, Any]: The full response ``message`` dict (with
             ``content`` and an optional ``tool_calls`` list), or an empty
             dict when the daemon returns no message.
+
+        Raises:
+            OllamaThinkingUnsupportedError: When ``think`` is set and the
+                model has no thinking capability.
+            OllamaError: When the daemon answers with an ``error`` body.
         """
         payload: dict[str, Any] = {
             "model": self.model,
@@ -887,9 +1108,15 @@ class OllamaGenerator(_OllamaClientMixin):
             "stream": False,
             "tools": tools,
         }
-        self._apply_common(payload, config, kwargs)
+        _check_think(think)
+        self._apply_common(
+            payload,
+            config,
+            kwargs,
+            think=think if think is not None else self.think,
+        )
         response = await self._http().post(f"{self.base_url}/api/chat", json=payload)
-        response.raise_for_status()
+        _raise_for_status(self.model, response)
         data: dict[str, Any] = response.json()
         _raise_on_error(self.model, data)
         return data.get("message") or {}
@@ -899,6 +1126,7 @@ class OllamaGenerator(_OllamaClientMixin):
         prompt: str,
         *,
         config: GenerationConfig | None = None,
+        think: ThinkLevel | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream the completion piece by piece.
@@ -906,6 +1134,8 @@ class OllamaGenerator(_OllamaClientMixin):
         Args:
             prompt (str): The input text.
             config (GenerationConfig | None): Typed generation parameters.
+            think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
 
@@ -913,25 +1143,40 @@ class OllamaGenerator(_OllamaClientMixin):
             str: Text pieces as the daemon produces them.
 
         Raises:
+            OllamaThinkingUnsupportedError: When ``think`` is set and the
+                model has no thinking capability.
             OllamaError: When a stream line is an ``{"error": ...}`` object —
                 the daemon's way of failing mid-generation. Pieces already
                 yielded stay yielded; the stream does not end as if done.
         """
-        payload = self._request_payload(prompt, config, kwargs, stream=True)
-        async for line in self._http().stream(
+        _check_think(think)
+        payload = self._request_payload(
+            prompt,
+            config,
+            kwargs,
+            stream=True,
+            think=think if think is not None else self.think,
+        )
+        httpx_module = _require_httpx()
+        lines = self._http().stream(
             "POST",
             f"{self.base_url}/api/generate",
             json=payload,
-        ):
-            if not line.strip():
-                continue
-            chunk: dict[str, Any] = json.loads(line)
-            _raise_on_error(self.model, chunk)
-            piece = chunk.get("response")
-            if piece:
-                yield str(piece)
-            if chunk.get("done"):
-                break
+        )
+        try:
+            async for line in lines:
+                if not line.strip():
+                    continue
+                chunk: dict[str, Any] = json.loads(line)
+                _raise_on_error(self.model, chunk)
+                piece = chunk.get("response")
+                if piece:
+                    yield str(piece)
+                if chunk.get("done"):
+                    break
+        except httpx_module.HTTPStatusError as exc:
+            _raise_if_thinking_unsupported(self.model, exc.response)
+            raise
 
     def _request_payload(
         self,
@@ -940,6 +1185,7 @@ class OllamaGenerator(_OllamaClientMixin):
         overrides: dict[str, Any],
         *,
         stream: bool,
+        think: ThinkLevel | None = None,
     ) -> dict[str, Any]:
         """Build the ``/api/generate`` request body.
 
@@ -948,6 +1194,7 @@ class OllamaGenerator(_OllamaClientMixin):
             config (GenerationConfig | None): Typed generation parameters.
             overrides (dict[str, Any]): Per-call overrides.
             stream (bool): Whether to request a streamed response.
+            think (ThinkLevel | None): Resolved top-level ``think``.
 
         Returns:
             dict[str, Any]: The JSON payload for the daemon.
@@ -957,7 +1204,7 @@ class OllamaGenerator(_OllamaClientMixin):
             "prompt": prompt,
             "stream": stream,
         }
-        self._apply_common(payload, config, overrides)
+        self._apply_common(payload, config, overrides, think=think)
         return payload
 
     def _apply_common(
@@ -965,13 +1212,17 @@ class OllamaGenerator(_OllamaClientMixin):
         payload: dict[str, Any],
         config: GenerationConfig | None,
         overrides: dict[str, Any],
+        *,
+        think: ThinkLevel | None = None,
     ) -> None:
-        """Attach ``options`` and ``keep_alive`` to a request payload.
+        """Attach ``options``, ``keep_alive`` and ``think`` to a request payload.
 
         Args:
             payload (dict[str, Any]): The request body to mutate in place.
             config (GenerationConfig | None): Typed generation parameters.
             overrides (dict[str, Any]): Per-call overrides.
+            think (ThinkLevel | None): Resolved ``think``, sent at the top
+                level when not ``None``.
         """
         options = {
             **self.options,
@@ -981,6 +1232,8 @@ class OllamaGenerator(_OllamaClientMixin):
             payload["options"] = options
         if self.keep_alive is not None:
             payload["keep_alive"] = self.keep_alive
+        if think is not None:
+            payload["think"] = think
 
 
 class OllamaEmbedder(_OllamaClientMixin):
@@ -1154,5 +1407,8 @@ __all__: list[str] = [
     "DEFAULT_OLLAMA_URL",
     "OllamaEmbedder",
     "OllamaError",
+    "OllamaFormatIgnoredError",
     "OllamaGenerator",
+    "OllamaThinkingUnsupportedError",
+    "ThinkLevel",
 ]
