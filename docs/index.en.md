@@ -4,6 +4,9 @@
 
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![PyPI](https://img.shields.io/pypi/v/tempest-fastapi-sdk)
 
+!!! tip "A whole service, running"
+    [Complete service](recipes/full-service.md) builds a minimal runnable project with composed settings, migrations in the lifespan, signup and login, a protected upload and an end-to-end test — the shortest way to see the SDK's pieces together.
+
 ---
 
 ## What you get out of the box
