@@ -59,6 +59,7 @@ from tempest_fastapi_sdk.genai.ollama.generator import (
 
 __all__: list[str] = [
     "DEFAULT_OLLAMA_URL",
+    "OllamaContextExceededError",
     "OllamaEmbedder",
     "OllamaError",
     "OllamaFormatIgnoredError",
