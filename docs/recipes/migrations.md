@@ -48,13 +48,10 @@ file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(re
 timezone = UTC
 
 [post_write_hooks]
-hooks = ruff_format, ruff_fix
-ruff_format.type = exec
-ruff_format.executable = ruff
-ruff_format.options = format --quiet REVISION_SCRIPT_FILENAME
-ruff_fix.type = exec
-ruff_fix.executable = ruff
-ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME
+hooks = ruff
+ruff.type = module
+ruff.module = tempest_fastapi_sdk.db._ruff_post_write
+ruff.options = REVISION_SCRIPT_FILENAME
 ```
 
 Três coisas nele que a versão escrita à mão costuma errar:
@@ -68,7 +65,10 @@ Três coisas nele que a versão escrita à mão costuma errar:
   de logging que o `configure_logging` já montou. O bloco padrão do
   `alembic init -t async` traz `[logger_root]` com `level = WARNING`.
 - **`[post_write_hooks]` com `ruff format` e depois `ruff check --fix`**, para
-  a revision gerada já sair lint-clean. Requer `ruff` no `PATH`.
+  a revision gerada já sair lint-clean. O hook procura um `ruff` que rode (no
+  `PATH`, depois no ambiente do Python que roda o Alembic); sem nenhum, como
+  na instalação `[cli-ops]` de servidor, a revision é criada sem formatação e
+  sem mensagem de erro.
 
 O `alembic/env.py` gerado é uma chamada a `run_alembic_env(target_metadata)`
 — veja [O `env.py` gerado](#o-envpy-gerado).

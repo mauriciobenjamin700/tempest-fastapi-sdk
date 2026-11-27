@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`tempest db revision` sem `ruff` não imprime erro falso** (#883). O
+  `alembic.ini` que o `AlembicHelper.init` grava trocava `ruff` direto do
+  `PATH` por dois hooks `exec`; na instalação `[cli-ops]` (servidor, sem
+  ruff), medido numa venv limpa com a wheel e `PATH` sem ruff, a revisão era
+  escrita e o comando saía com código `1` e `FileNotFoundError: ... 'ruff'`
+  (sem o `Created revision`); atrás de um shim do pyenv, saía `0` imprimindo
+  `pyenv: ruff: command not found` duas vezes. O `[post_write_hooks]` agora
+  é um hook só, do tipo `module`, que roda
+  `tempest_fastapi_sdk.db._ruff_post_write`: ele procura um ruff que
+  responda a `--version` (no `PATH`, depois `python -m ruff` no interpretador
+  do Alembic) e, sem nenhum, não faz nada — nas mesmas duas situações o
+  comando sai `0`, cria a revisão e não imprime erro. Com ruff, continua
+  rodando `ruff format` e depois `ruff check --fix`. Um `alembic.ini` já
+  gerado mantém os hooks antigos: troque o bloco `[post_write_hooks]` pelo
+  da receita de migrations para ganhar a correção.
+
 ## [0.374.0] — 2026-11-27
 
 ### Added

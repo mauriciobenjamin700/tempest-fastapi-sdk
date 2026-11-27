@@ -2735,8 +2735,10 @@ prefix orders files chronologically and makes merge conflicts obvious.
     is why the formatter goes first: it is the one that wraps the long
     line and strips the trailing space, so running the linter first would
     report errors the next hook is about to fix. The hooks use
-    **your** project's `ruff` config. Requires `ruff` on `PATH` — already
-    a dev dependency in every `tempest new` scaffold.
+    **your** project's `ruff` config. Without `ruff` (on `PATH` or in
+    the environment of the Python running Alembic) the revision comes out
+    unformatted and without an error; every `tempest new` scaffold already
+    has it as a dev dependency.
 
 ### Apply on startup
 
