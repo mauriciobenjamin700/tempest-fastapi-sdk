@@ -280,6 +280,18 @@ its own `config` wins field by field. `TextGenerator` takes the same
     see [Context window](genai.en.md#context-window-num_ctx). The warning
     points at the problem; `num_ctx` is what fixes it.
 
+!!! tip "When the agent should stop instead of answering over half the prompt"
+    With `OllamaGenerator(..., truncate=False)`, a prompt that does not fit
+    the window is not cut: the daemon refuses, and the run ends with
+    `stop_reason` `error`, with no further steps. The last step holds
+    `OllamaContextExceededError: ...` with the prompt size and the window,
+    and the run's `output` is the same message. Use it when a `completed`
+    answer over a cut history is worse than a failure — the case measured
+    above, where the model lost the question and answered wrong. Leave it
+    off when the agent can carry on with the start of the conversation
+    lost. Details and the daemon's measured bodies in
+    [Fail instead of cutting](genai.en.md#fail-instead-of-cutting-truncate).
+
 ## Pydantic-typed tools
 
 Writing JSON-schema by hand next to the handler means **two descriptions of

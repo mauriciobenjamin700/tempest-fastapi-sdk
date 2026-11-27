@@ -5134,3 +5134,16 @@ o `context_length` do `/api/ps` (cacheado por instância em
 `_loaded_num_ctx`). Default de `num_ctx` mantido em `None` (opção B da
 issue). Testes: `tests/genai/test_ollama_truncation.py`. Docs: receita de
 genai ("Janela de contexto") e de agentes.
+
+**Falhar em vez de cortar (#871).** `OllamaGenerator(truncate=...)` e o mesmo
+parâmetro nos seis métodos do `think`, no topo do corpo (`_apply_common`) e na
+chave do cache (`_key_params`); `None` não envia. O `400
+exceed_context_size_error` (o `error` do corpo é um JSON aninhado com
+`n_prompt_tokens` e `n_ctx`) vira `OllamaContextExceededError(OllamaError)`
+com `prompt_tokens` e `context_window`, por `_raise_for_refusal` — o mesmo
+caminho do `400` de `think`, também no stream. No `Agent`, a execução termina
+`stop_reason=error` com a mensagem no último passo. Medido contra o Ollama
+0.30.11 em CPU (`qwen2.5:0.5b`, `num_ctx` 2048): `false` dá `400` nos dois
+endpoints, com e sem stream; ausente e `true` cortam para 1026. Testes:
+`tests/genai/test_ollama_truncate.py`. Docs: receita de genai ("Falhar em vez
+de cortar") e de agentes.

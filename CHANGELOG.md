@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`OllamaGenerator(truncate=...)`** (#871): no construtor e por chamada
+  (`generate`, `chat`, `chat_with_tools`, `stream`, `generate_structured`,
+  `chat_structured`), enviado no topo do corpo e incluído na chave do
+  `generation_cache`; `None` (o padrão) não envia o campo. Com
+  `truncate=False`, um prompt maior que a janela não é cortado: o daemon
+  responde `400 exceed_context_size_error` e o SDK levanta a nova
+  **`OllamaContextExceededError`** (subclasse de `OllamaError`), com
+  `prompt_tokens` e `context_window` lidos do corpo do erro — também no
+  `stream`, onde o `400` chega antes de qualquer linha. Medido no Ollama
+  0.30.11 em CPU (`qwen2.5:0.5b`, `num_ctx` 2048, prompt de 18 923 tokens):
+  `false` dá `400` no `/api/chat` e no `/api/generate`, com e sem stream;
+  sem o campo ou com `true`, o prompt é cortado para 1026 tokens com `200`.
 - **Prefixos de tarefa no `OllamaEmbedder`** (#864):
   `OllamaEmbedder(..., query_prefix="", passage_prefix="")` e os métodos
   `embed_query` / `embed_passages`, que antepõem o prefixo e chamam `embed`.

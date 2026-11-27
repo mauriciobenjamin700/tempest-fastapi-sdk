@@ -98,6 +98,18 @@ capabilities ``completion``, ``vision``, ``tools``): ``think: true`` on
 loading the model.
 """
 
+_CONTEXT_EXCEEDED: str = "exceed_context_size_error"
+"""The ``type`` the daemon names when ``truncate: false`` meets a long prompt.
+
+Measured on Ollama 0.30.11 on CPU (``qwen2.5:0.5b``, ``num_gpu=0``,
+``num_ctx=2048``, a 4,000-word prompt): ``"truncate": false`` on
+``/api/chat`` and ``/api/generate``, streamed or not, answered ``400``
+before any NDJSON line with ``{"error": "<json>"}``, where ``<json>`` is
+``{"error": {"code": 400, "message": "request (18923 tokens) exceeds the
+available context size (2048 tokens), try increasing it", "type":
+"exceed_context_size_error", "n_prompt_tokens": 18923, "n_ctx": 2048}}``.
+"""
+
 # Maps HuggingFace-style generation kwarg names (what GenerationConfig and
 # the router speak) to their Ollama ``options`` equivalents.
 _HF_TO_OLLAMA_OPTION: dict[str, str] = {
@@ -288,6 +300,59 @@ class OllamaThinkingUnsupportedError(OllamaError):
         )
 
 
+class OllamaContextExceededError(OllamaError):
+    """The prompt does not fit the context window and ``truncate`` was ``False``.
+
+    By default the daemon cuts an overflowing prompt to about half the
+    window and answers ``200``. With ``truncate=False`` it refuses instead:
+    ``400`` with an ``exceed_context_size_error`` that carries the prompt
+    size and the window (reproduced on Ollama 0.30.11 on ``/api/chat`` and
+    ``/api/generate``, streamed or not, before any line is streamed). Raise
+    ``num_ctx`` or shorten the prompt.
+
+    Attributes:
+        model (str): The model tag the request targeted.
+        detail (str): The daemon's error message.
+        prompt_tokens (int | None): The prompt size the daemon counted
+            (``n_prompt_tokens``), when it reported one.
+        context_window (int | None): The window the request ran with
+            (``n_ctx``), when the daemon reported one.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        detail: str,
+        *,
+        prompt_tokens: int | None = None,
+        context_window: int | None = None,
+    ) -> None:
+        """Build the error from the daemon message and the sizes it reported.
+
+        Args:
+            model (str): The model tag the request targeted.
+            detail (str): The daemon's error message.
+            prompt_tokens (int | None): The prompt size in tokens, if known.
+            context_window (int | None): The context window in tokens, if
+                known.
+        """
+        super().__init__(model, detail)
+        self.prompt_tokens: int | None = prompt_tokens
+        self.context_window: int | None = context_window
+        if prompt_tokens is not None and context_window is not None:
+            sizes = (
+                f"the prompt has {prompt_tokens} tokens and the context "
+                f"window {context_window}"
+            )
+        else:
+            sizes = detail
+        self.args = (
+            f"Ollama model {model!r} refused a prompt longer than its context "
+            f"window ({sizes}) because truncate=False; raise num_ctx or "
+            "shorten the prompt",
+        )
+
+
 class OllamaFormatIgnoredError(OllamaError, ValueError):
     """A structured call came back as free text instead of the JSON asked for.
 
@@ -347,8 +412,69 @@ def _check_think(think: ThinkLevel | None) -> None:
     )
 
 
-def _raise_if_thinking_unsupported(model: str, response: httpx.Response) -> None:
-    """Raise :class:`OllamaThinkingUnsupportedError` for the daemon's refusal.
+def _check_truncate(truncate: bool | None) -> None:
+    """Reject a ``truncate`` value that is not a bool.
+
+    Args:
+        truncate (bool | None): The value to check.
+
+    Raises:
+        ValueError: When ``truncate`` is neither ``None`` nor a bool.
+    """
+    if truncate is None or isinstance(truncate, bool):
+        return
+    raise ValueError(f"truncate must be None or a bool, got {truncate!r}")
+
+
+def _int_or_none(value: object) -> int | None:
+    """Return ``value`` when it is a plain int, else ``None``.
+
+    Args:
+        value (object): A decoded JSON value.
+
+    Returns:
+        int | None: The int, or ``None`` for anything else (bools included).
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _context_exceeded(model: str, error: str) -> OllamaContextExceededError | None:
+    """Build the context error when ``error`` is the daemon's overflow refusal.
+
+    The daemon nests a JSON document inside the ``error`` string (see
+    ``_CONTEXT_EXCEEDED``); the sizes come from it when it parses, and the
+    error is still recognised by its ``type`` name when it does not.
+
+    Args:
+        model (str): The model tag, used in the message.
+        error (str): The outer body's ``error`` string.
+
+    Returns:
+        OllamaContextExceededError | None: The error to raise, or ``None``
+        when ``error`` is some other failure.
+    """
+    if _CONTEXT_EXCEEDED not in error:
+        return None
+    try:
+        inner = json.loads(error)
+    except ValueError:
+        inner = None
+    details = inner.get("error") if isinstance(inner, dict) else None
+    if not isinstance(details, dict):
+        return OllamaContextExceededError(model, error)
+    message = details.get("message")
+    return OllamaContextExceededError(
+        model,
+        message if isinstance(message, str) else error,
+        prompt_tokens=_int_or_none(details.get("n_prompt_tokens")),
+        context_window=_int_or_none(details.get("n_ctx")),
+    )
+
+
+def _raise_for_refusal(model: str, response: httpx.Response) -> None:
+    """Raise the SDK error for a daemon refusal the SDK knows by name.
 
     Args:
         model (str): The model tag, used in the message.
@@ -358,19 +484,27 @@ def _raise_if_thinking_unsupported(model: str, response: httpx.Response) -> None
     Raises:
         OllamaThinkingUnsupportedError: When the body's ``error`` says the
             model does not support thinking.
+        OllamaContextExceededError: When the body's ``error`` is an
+            ``exceed_context_size_error``.
     """
     try:
         data = response.json()
     except ValueError:
         return
-    if isinstance(data, dict):
-        error = data.get("error")
-        if isinstance(error, str) and _THINKING_UNSUPPORTED in error:
-            raise OllamaThinkingUnsupportedError(model, error)
+    if not isinstance(data, dict):
+        return
+    error = data.get("error")
+    if not isinstance(error, str):
+        return
+    if _THINKING_UNSUPPORTED in error:
+        raise OllamaThinkingUnsupportedError(model, error)
+    exceeded = _context_exceeded(model, error)
+    if exceeded is not None:
+        raise exceeded
 
 
 def _raise_for_status(model: str, response: httpx.Response) -> None:
-    """Raise for a non-success response, naming the thinking refusal.
+    """Raise for a non-success response, naming the refusals the SDK knows.
 
     Args:
         model (str): The model tag, used in the message.
@@ -378,10 +512,12 @@ def _raise_for_status(model: str, response: httpx.Response) -> None:
 
     Raises:
         OllamaThinkingUnsupportedError: When the daemon refused ``think``.
+        OllamaContextExceededError: When ``truncate=False`` met a prompt
+            longer than the context window.
         httpx.HTTPStatusError: For any other non-success status.
     """
     if response.is_error:
-        _raise_if_thinking_unsupported(model, response)
+        _raise_for_refusal(model, response)
     response.raise_for_status()
 
 
@@ -515,6 +651,8 @@ class OllamaGenerator(_OllamaClientMixin):
             request, ``num_ctx`` included when set.
         think (ThinkLevel | None): Default top-level ``think`` field, or
             ``None`` to send none.
+        truncate (bool | None): Default top-level ``truncate`` field, or
+            ``None`` to send none.
     """
 
     def __init__(
@@ -533,6 +671,7 @@ class OllamaGenerator(_OllamaClientMixin):
         num_ctx: int | None = None,
         options: dict[str, Any] | None = None,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
     ) -> None:
         """Configure the daemon connection and the per-request defaults.
 
@@ -591,11 +730,20 @@ class OllamaGenerator(_OllamaClientMixin):
                 at 3.59 s for ``"high"``; ``ornith-1.5:9b`` with ``False``
                 scored 93.3 per field on 33 extraction cases at p50
                 1.34 s, against 95.0 at 5.60 s with ``True``.
+            truncate (bool | None): Default ``truncate`` field for every
+                request, sent at the top level of the body. ``False``
+                makes a prompt longer than the context window fail with
+                :class:`OllamaContextExceededError` instead of being cut
+                to about half the window; ``True`` is the daemon's own
+                default (measured on Ollama 0.30.11: the same
+                ``prompt_eval_count`` as omitting it). ``None`` sends
+                nothing; a call's own ``truncate`` wins over it.
 
         Raises:
             ValueError: When ``num_ctx`` is not positive, is given both as
-                an argument and inside ``options``, or ``think`` is not a
-                bool or one of ``"low"``, ``"medium"``, ``"high"``.
+                an argument and inside ``options``, ``think`` is not a
+                bool or one of ``"low"``, ``"medium"``, ``"high"``, or
+                ``truncate`` is not a bool.
         """
         super().__init__(
             model,
@@ -616,9 +764,11 @@ class OllamaGenerator(_OllamaClientMixin):
                 raise ValueError("num_ctx given both as an argument and in options")
             merged["num_ctx"] = num_ctx
         _check_think(think)
+        _check_truncate(truncate)
         self.config = config
         self.options: dict[str, Any] = merged
         self.think: ThinkLevel | None = think
+        self.truncate: bool | None = truncate
         self._loaded_num_ctx: int | None = None
 
     @property
@@ -649,6 +799,7 @@ class OllamaGenerator(_OllamaClientMixin):
         config: GenerationConfig | None = None,
         images: list[str] | None = None,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a completion for ``prompt``.
@@ -663,6 +814,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 text-only prompt.
             think (ThinkLevel | None): Top-level ``think`` for this call;
                 ``None`` uses the generator's default.
+            truncate (bool | None): Top-level ``truncate`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (HuggingFace-style
                 names such as ``max_new_tokens`` / ``temperature``); these
                 win over ``config``.
@@ -673,20 +826,31 @@ class OllamaGenerator(_OllamaClientMixin):
         Raises:
             OllamaThinkingUnsupportedError: When ``think`` is set and the
                 model has no thinking capability.
+            OllamaContextExceededError: When ``truncate`` is ``False``
+                and the prompt does not fit the context window.
             OllamaError: When the daemon answers with an ``error`` body
                 (e.g. the model is not pulled), even on a ``200``.
             httpx.HTTPStatusError: When the daemon answers a non-success
                 status.
         """
         _check_think(think)
+        _check_truncate(truncate)
         think = think if think is not None else self.think
-        params = self._key_params(config, kwargs, images, think=think)
+        truncate = truncate if truncate is not None else self.truncate
+        params = self._key_params(
+            config, kwargs, images, think=think, truncate=truncate
+        )
 
         async def _produce() -> str:
             async with genai_span("generate", self.model) as trace_span:
                 if self.metrics is None:
                     text, prompt_tokens, eval_tokens = await self._generate_measured(
-                        prompt, config, images, dict(kwargs), think=think
+                        prompt,
+                        config,
+                        images,
+                        dict(kwargs),
+                        think=think,
+                        truncate=truncate,
                     )
                 else:
                     async with self.metrics.track(self.model, "generate") as span:
@@ -695,7 +859,12 @@ class OllamaGenerator(_OllamaClientMixin):
                             prompt_tokens,
                             eval_tokens,
                         ) = await self._generate_measured(
-                            prompt, config, images, dict(kwargs), think=think
+                            prompt,
+                            config,
+                            images,
+                            dict(kwargs),
+                            think=think,
+                            truncate=truncate,
                         )
                         span.tokens_in = prompt_tokens
                         span.tokens_out = eval_tokens
@@ -718,13 +887,16 @@ class OllamaGenerator(_OllamaClientMixin):
         images: list[str] | None = None,
         *,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
     ) -> dict[str, Any]:
-        """Merge config, overrides, images and think into the cache-key parameters.
+        """Merge config, overrides, images, think and truncate into the cache key.
 
         The defaults are part of the key: a different context window, a
         different default config or a different ``think`` produces
         different text, so a generator must not answer from another's
-        cached completions.
+        cached completions. ``truncate`` is in it too: a completion cached
+        from a cut prompt must not answer a ``truncate=False`` call, which
+        would have failed.
         """
         config = _layer_config(self.config, config)
         params: dict[str, Any] = {}
@@ -737,6 +909,8 @@ class OllamaGenerator(_OllamaClientMixin):
             params["images"] = images
         if think is not None:
             params["think"] = think
+        if truncate is not None:
+            params["truncate"] = truncate
         return params
 
     async def _generate_once(
@@ -763,10 +937,11 @@ class OllamaGenerator(_OllamaClientMixin):
         overrides: dict[str, Any],
         *,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
     ) -> tuple[str, int | None, int | None]:
         """Run one ``/api/generate`` call, returning text + Ollama token counts."""
         payload = self._request_payload(
-            prompt, config, overrides, stream=False, think=think
+            prompt, config, overrides, stream=False, think=think, truncate=truncate
         )
         if images:
             payload["images"] = images
@@ -790,6 +965,7 @@ class OllamaGenerator(_OllamaClientMixin):
         *,
         config: GenerationConfig | None = None,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a reply for a chat ``messages`` list.
@@ -801,6 +977,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 it is forwarded verbatim to Ollama.
             config (GenerationConfig | None): Typed generation parameters.
             think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default.
+            truncate (bool | None): Top-level ``truncate`` for this call;
                 ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
@@ -817,6 +995,8 @@ class OllamaGenerator(_OllamaClientMixin):
         Raises:
             OllamaThinkingUnsupportedError: When ``think`` is set and the
                 model has no thinking capability.
+            OllamaContextExceededError: When ``truncate`` is ``False``
+                and the prompt does not fit the context window.
             OllamaError: When the daemon answers with an ``error`` body.
             httpx.HTTPStatusError: When the daemon answers a non-success
                 status.
@@ -827,8 +1007,10 @@ class OllamaGenerator(_OllamaClientMixin):
             "stream": False,
         }
         _check_think(think)
+        _check_truncate(truncate)
         think = think if think is not None else self.think
-        self._apply_common(payload, config, kwargs, think=think)
+        truncate = truncate if truncate is not None else self.truncate
+        self._apply_common(payload, config, kwargs, think=think, truncate=truncate)
 
         async def _produce() -> str:
             async with genai_span("chat", self.model) as trace_span:
@@ -851,7 +1033,7 @@ class OllamaGenerator(_OllamaClientMixin):
             self.generation_cache,
             self.model,
             json.dumps(messages, sort_keys=True, default=str),
-            self._key_params(config, kwargs, think=think),
+            self._key_params(config, kwargs, think=think, truncate=truncate),
             _produce,
             operation="chat",
         )
@@ -892,6 +1074,7 @@ class OllamaGenerator(_OllamaClientMixin):
         system: str | None = None,
         config: GenerationConfig | None = None,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
         **kwargs: Any,
     ) -> StructuredT:
         """Generate a completion constrained to a Pydantic ``schema``.
@@ -930,6 +1113,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 ``None`` uses the generator's default. ``False`` makes some
                 models ignore ``format`` (see
                 :class:`OllamaFormatIgnoredError`).
+            truncate (bool | None): Top-level ``truncate`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over ``config``).
 
         Returns:
@@ -940,6 +1125,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 so the daemon did not apply the ``format`` constraint.
             OllamaThinkingUnsupportedError: When ``think`` is set and the
                 model has no thinking capability.
+            OllamaContextExceededError: When ``truncate`` is ``False``
+                and the prompt does not fit the context window.
             ValueError: When the daemon answers with no content.
             pydantic.ValidationError: When the JSON fails ``schema`` validation.
         """
@@ -955,8 +1142,10 @@ class OllamaGenerator(_OllamaClientMixin):
             "format": _require_every_property(schema.model_json_schema()),
         }
         _check_think(think)
+        _check_truncate(truncate)
         think = think if think is not None else self.think
-        self._apply_common(payload, config, kwargs, think=think)
+        truncate = truncate if truncate is not None else self.truncate
+        self._apply_common(payload, config, kwargs, think=think, truncate=truncate)
 
         async with genai_span("generate_structured", self.model):
             response = await self._http().post(
@@ -986,6 +1175,7 @@ class OllamaGenerator(_OllamaClientMixin):
         *,
         config: GenerationConfig | None = None,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
         **kwargs: Any,
     ) -> StructuredT:
         """Generate a chat reply constrained to a Pydantic ``schema``.
@@ -1024,6 +1214,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 ``None`` uses the generator's default. ``False`` makes some
                 models ignore ``format`` (see
                 :class:`OllamaFormatIgnoredError`).
+            truncate (bool | None): Top-level ``truncate`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
 
@@ -1038,6 +1230,8 @@ class OllamaGenerator(_OllamaClientMixin):
                 so the daemon did not apply the ``format`` constraint.
             OllamaThinkingUnsupportedError: When ``think`` is set and the
                 model has no thinking capability.
+            OllamaContextExceededError: When ``truncate`` is ``False``
+                and the prompt does not fit the context window.
             pydantic.ValidationError: When the JSON fails ``schema``
                 validation.
 
@@ -1078,8 +1272,10 @@ class OllamaGenerator(_OllamaClientMixin):
             "format": _require_every_property(schema.model_json_schema()),
         }
         _check_think(think)
+        _check_truncate(truncate)
         think = think if think is not None else self.think
-        self._apply_common(payload, config, kwargs, think=think)
+        truncate = truncate if truncate is not None else self.truncate
+        self._apply_common(payload, config, kwargs, think=think, truncate=truncate)
         async with genai_span("chat", self.model):
             response = await self._http().post(
                 f"{self.base_url}/api/chat",
@@ -1102,6 +1298,7 @@ class OllamaGenerator(_OllamaClientMixin):
         *,
         config: GenerationConfig | None = None,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Generate a chat reply with tool-calling enabled.
@@ -1120,6 +1317,8 @@ class OllamaGenerator(_OllamaClientMixin):
             config (GenerationConfig | None): Typed generation parameters.
             think (ThinkLevel | None): Top-level ``think`` for this call;
                 ``None`` uses the generator's default.
+            truncate (bool | None): Top-level ``truncate`` for this call;
+                ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
 
@@ -1131,6 +1330,8 @@ class OllamaGenerator(_OllamaClientMixin):
         Raises:
             OllamaThinkingUnsupportedError: When ``think`` is set and the
                 model has no thinking capability.
+            OllamaContextExceededError: When ``truncate`` is ``False``
+                and the prompt does not fit the context window.
             OllamaError: When the daemon answers with an ``error`` body.
         """
         payload: dict[str, Any] = {
@@ -1140,11 +1341,13 @@ class OllamaGenerator(_OllamaClientMixin):
             "tools": tools,
         }
         _check_think(think)
+        _check_truncate(truncate)
         self._apply_common(
             payload,
             config,
             kwargs,
             think=think if think is not None else self.think,
+            truncate=truncate if truncate is not None else self.truncate,
         )
         response = await self._http().post(f"{self.base_url}/api/chat", json=payload)
         _raise_for_status(self.model, response)
@@ -1159,6 +1362,7 @@ class OllamaGenerator(_OllamaClientMixin):
         *,
         config: GenerationConfig | None = None,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream the completion piece by piece.
@@ -1167,6 +1371,8 @@ class OllamaGenerator(_OllamaClientMixin):
             prompt (str): The input text.
             config (GenerationConfig | None): Typed generation parameters.
             think (ThinkLevel | None): Top-level ``think`` for this call;
+                ``None`` uses the generator's default.
+            truncate (bool | None): Top-level ``truncate`` for this call;
                 ``None`` uses the generator's default.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
@@ -1177,17 +1383,21 @@ class OllamaGenerator(_OllamaClientMixin):
         Raises:
             OllamaThinkingUnsupportedError: When ``think`` is set and the
                 model has no thinking capability.
+            OllamaContextExceededError: When ``truncate`` is ``False``
+                and the prompt does not fit the context window.
             OllamaError: When a stream line is an ``{"error": ...}`` object —
                 the daemon's way of failing mid-generation. Pieces already
                 yielded stay yielded; the stream does not end as if done.
         """
         _check_think(think)
+        _check_truncate(truncate)
         payload = self._request_payload(
             prompt,
             config,
             kwargs,
             stream=True,
             think=think if think is not None else self.think,
+            truncate=truncate if truncate is not None else self.truncate,
         )
         httpx_module = _require_httpx()
         lines = self._http().stream(
@@ -1208,7 +1418,7 @@ class OllamaGenerator(_OllamaClientMixin):
                     await self._warn_if_truncated(payload, chunk)
                     break
         except httpx_module.HTTPStatusError as exc:
-            _raise_if_thinking_unsupported(self.model, exc.response)
+            _raise_for_refusal(self.model, exc.response)
             raise
 
     async def _warn_if_truncated(
@@ -1310,6 +1520,7 @@ class OllamaGenerator(_OllamaClientMixin):
         *,
         stream: bool,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
     ) -> dict[str, Any]:
         """Build the ``/api/generate`` request body.
 
@@ -1319,6 +1530,7 @@ class OllamaGenerator(_OllamaClientMixin):
             overrides (dict[str, Any]): Per-call overrides.
             stream (bool): Whether to request a streamed response.
             think (ThinkLevel | None): Resolved top-level ``think``.
+            truncate (bool | None): Resolved top-level ``truncate``.
 
         Returns:
             dict[str, Any]: The JSON payload for the daemon.
@@ -1328,7 +1540,7 @@ class OllamaGenerator(_OllamaClientMixin):
             "prompt": prompt,
             "stream": stream,
         }
-        self._apply_common(payload, config, overrides, think=think)
+        self._apply_common(payload, config, overrides, think=think, truncate=truncate)
         return payload
 
     def _apply_common(
@@ -1338,14 +1550,17 @@ class OllamaGenerator(_OllamaClientMixin):
         overrides: dict[str, Any],
         *,
         think: ThinkLevel | None = None,
+        truncate: bool | None = None,
     ) -> None:
-        """Attach ``options``, ``keep_alive`` and ``think`` to a request payload.
+        """Attach ``options``, ``keep_alive``, ``think`` and ``truncate`` to a payload.
 
         Args:
             payload (dict[str, Any]): The request body to mutate in place.
             config (GenerationConfig | None): Typed generation parameters.
             overrides (dict[str, Any]): Per-call overrides.
             think (ThinkLevel | None): Resolved ``think``, sent at the top
+                level when not ``None``.
+            truncate (bool | None): Resolved ``truncate``, sent at the top
                 level when not ``None``.
         """
         options = {
@@ -1358,6 +1573,8 @@ class OllamaGenerator(_OllamaClientMixin):
             payload["keep_alive"] = self.keep_alive
         if think is not None:
             payload["think"] = think
+        if truncate is not None:
+            payload["truncate"] = truncate
 
 
 class OllamaEmbedder(_OllamaClientMixin):
