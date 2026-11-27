@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Use for admin global search over `search_fields`; also covers session security, a custom auth backend, the task panel, storage browser and `AdminTheme`.">
+        <meta name="description" content="Use for admin global search over `search_fields`; covers the per-model limit, what the search respects and the query limits.">
       
       
       
@@ -1313,6 +1313,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1452,6 +1458,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../theme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customize the look (AdminTheme)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../dashboard/" class="md-nav__link">
         
   
@@ -1517,24 +1551,6 @@
         
       
       
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Global search
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1551,125 +1567,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#4-session-security-defaults" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Session security defaults
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="4. Session security defaults">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#signing-in-from-a-test" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Signing in from a test
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#login-failure-budget" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Login failure budget
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-plug-in-a-custom-auth-backend" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        5. Plug in a custom auth backend
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="5. Plug in a custom auth backend">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#authorize-by-role-and-require-mfa" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Authorize by role and require MFA
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#6-task-panel-what-is-scheduled-and-what-ran" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        6. Task panel — what is scheduled and what ran
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#7-storage-browser-view-preview-and-edit-files" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        7. Storage browser — view, preview and edit files
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#8-customize-the-look-admintheme" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        8. Customize the look — AdminTheme
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
       
     </li>
   
@@ -1747,6 +1644,62 @@
     
   
     Permissions: RBAC, row scope and impersonation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Task panel
   
 
     
@@ -11927,733 +11880,6 @@ term longer than <code>ADMIN_SEARCH_MAX_QUERY_LENGTH</code> (200) characters or 
 more than <code>ADMIN_SEARCH_MAX_TERMS</code> (8) words answers <code>400</code> with a notice,
 also without a query — each word becomes one <code>ILIKE</code> per field of every
 model.</p>
-<h2 id="4-session-security-defaults">4. Session security defaults<a class="headerlink" href="#4-session-security-defaults" title="Permanent link">&para;</a></h2>
-<p><code>SignedCookieSessionStore</code> uses <code>itsdangerous.TimestampSigner</code> (HMAC-SHA256) to sign a single cookie:</p>
-<ul>
-<li><code>HttpOnly</code> always set.</li>
-<li><code>Secure</code> flagged when <code>cookie_secure=True</code> (default; flip off in local HTTP dev).</li>
-<li><code>SameSite=Lax</code> (<code>"lax"</code>/<code>"strict"</code>/<code>"none"</code> accepted).</li>
-<li>Default lifetime <code>8h</code>; expired or tampered cookies are rejected silently.</li>
-<li>The cookie is not enough on its own: every authenticated route reloads the principal through the <code>auth_backend</code> on each request. An account deleted, deactivated or stripped of <code>is_admin</code> after the login is sent to <code>/admin/login</code> (<code>303</code>) on the very next request, without waiting for the cookie to expire.</li>
-<li><code>POST /admin/logout</code> ends the session on the server, not just in the browser: it marks the session's random id (<code>sid</code>, in the cookie) in an <code>AdminSessionRevocations</code>, and every request refuses a marked session. A copy of the cookie taken before the logout is sent to <code>/admin/login</code>. The default keeps the marks on an <code>InMemoryThrottleBackend</code>, per process, for the store's <code>max_age_seconds</code>. Behind more than one worker or replica, pass <code>make_admin_router(..., session_revocations=AdminSessionRevocations(redis_client))</code> (the same <code>redis.asyncio</code> client the throttle accepts), or a logout served by one process does not reach the others.</li>
-<li>The session is bound to the credential: at login the router writes into the cookie an HMAC (keyed with <code>secret_key</code>) of <code>AdminAuthBackend.credential_fingerprint(principal)</code> and checks it on every request. In <code>UserModelAuthBackend</code> the fingerprint covers <code>hashed_password</code> and <code>totp_secret</code>, so changing the password or re-enrolling MFA ends every session issued before it, on every replica, with no extra state. A custom backend returns <code>None</code> by default (no binding); override the method to opt in. Cookies issued before this version carry no HMAC and are refused once: the operator signs in again.</li>
-<li>Per-session CSRF token is generated at login and required by every session form POST (logout, create, edit, delete, bulk actions, SQL console runs, task cancellation).</li>
-<li>The login form runs before any session exists and carries a token of its own: <code>GET /admin/login</code> sets a signed 1 h cookie (<code>tempest_admin_login_csrf</code>, with a salt distinct from the session's) and repeats the token in a hidden field. The <code>POST</code> compares the two in constant time <strong>before</strong> the failure budget and the password, and refuses with <code>403</code> — the page comes back with a fresh token, and the refusal spends no attempt. Without it, a page on another site could make the operator's browser sign in to the <strong>attacker's</strong> account (login CSRF); <code>SameSite=Lax</code> does not prevent that, because it restricts the cookie the POST sends, not the one the response sets. The limit: the cookie is scoped to the admin prefix, so it cannot use the <code>__Host-</code> prefix, and a <strong>sibling subdomain</strong> under someone else's control (<code>evil.example.com</code> next to <code>admin.example.com</code>) can plant, for the parent domain, a signed cookie it got by loading the form itself. Serve the admin on a host without third-party subdomains.</li>
-<li><code>secret_key</code> must be at least 32 bytes — short keys raise <code>ValueError</code> at construction time.</li>
-</ul>
-<div class="admonition danger">
-<p class="admonition-title">Login refused or looping? It's the cookie <code>Secure</code> flag over plain HTTP</p>
-<p>If every <code>POST /admin/login</code> returns <code>403</code> with <em>The sign-in form expired,
-please try again</em>, the login form's token cookie is <strong>not coming back</strong>. If
-it returns <code>303</code> (looks like success), but the following
-<code>GET /admin/</code> redirects back to the login — forever — it is the session
-cookie that is not coming back. Either way the almost-certain cause is the
-same: <code>cookie_secure=True</code> while the admin is served over <strong>plain HTTP</strong> (no
-TLS terminator in front). The browser refuses to store a <code>Secure</code> cookie on a
-non-HTTPS connection, and both admin cookies (the login token's and the
-session's) follow <code>cookie_secure</code>.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># ❌ Tied to DEBUG: in production DEBUG=false → cookie_secure=True,</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1">#    but with no HTTPS in front the login loops.</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">make_admin_router</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">cookie_secure</span><span class="o">=</span><span class="ow">not</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># ✅ Dedicated toggle, independent of DEBUG:</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">make_admin_router</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">cookie_secure</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">ADMIN_COOKIE_SECURE</span><span class="p">)</span>
-</span></code></pre></div>
-<p><strong>Right fix:</strong> put HTTPS in front (nginx/Caddy terminating TLS) and keep
-<code>cookie_secure=True</code> — the admin session cookie must not travel in the clear.
-<strong>Stopgap</strong> only when the admin genuinely runs over HTTP (intranet, MVP):
-<code>cookie_secure=False</code>, aware the session ships without <code>Secure</code>. Don't tie
-this flag to <code>DEBUG</code> — turning debug on in production is worse than the
-original problem.</p>
-</div>
-<div class="admonition warning">
-<p class="admonition-title">Browser says the login form is not secure? It's the scheme behind the proxy</p>
-<p>With HTTPS in front and the proxy speaking HTTP to the app, the form's
-<code>action</code> comes out as <code>http://...</code> and the browser flags the password
-field as not secure. Set <code>SERVER_PUBLIC_SCHEME=https</code> and add
-<code>PublicSchemeMiddleware</code> — recipe in
-<a href="../../security/#public-scheme-behind-a-proxy-server_public_scheme">Security</a>.
-Until then, <code>GET /admin/login</code> logs a <code>WARNING</code> saying so.</p>
-</div>
-<h3 id="signing-in-from-a-test">Signing in from a test<a class="headerlink" href="#signing-in-from-a-test" title="Permanent link">&para;</a></h3>
-<p>Since <code>POST /admin/login</code> requires the form's token, a test that posts the credentials alone gets <code>403</code>. <code>tempest_fastapi_sdk.testing</code> does what a browser does — loads the form, reads the hidden field (the cookie lands in the client's jar) and submits it:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">httpx</span><span class="w"> </span><span class="kn">import</span> <span class="n">ASGITransport</span><span class="p">,</span> <span class="n">AsyncClient</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">admin_login</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_dashboard_after_login</span><span class="p">(</span><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="sd">"""Sign in through the form, as a browser does, and open the panel."""</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">transport</span> <span class="o">=</span> <span class="n">ASGITransport</span><span class="p">(</span><span class="n">app</span><span class="o">=</span><span class="n">app</span><span class="p">)</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncClient</span><span class="p">(</span><span class="n">transport</span><span class="o">=</span><span class="n">transport</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="s2">"https://test"</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">admin_login</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="s2">"root@example.com"</span><span class="p">,</span> <span class="s2">"hunter2"</span><span class="p">)</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>        <span class="k">assert</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">303</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>        <span class="k">assert</span> <span class="p">(</span><span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/admin/"</span><span class="p">))</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
-</span></code></pre></div>
-<p>With <code>TestClient</code>, use <code>admin_login_sync(client, ...)</code>. Both accept <code>httpx</code> and <code>httpx2</code> clients (Starlette's <code>TestClient</code> subclasses the latter when <code>httpx2</code> is installed) without a <code>cast</code>, and return the response in the type of the client you passed. Both take <code>prefix=</code> when the admin is not mounted at <code>/admin</code>, and <code>headers=</code> for, say, the trusted client-IP header.</p>
-<div class="admonition tip">
-<p class="admonition-title"><code>https://</code> in the <code>base_url</code></p>
-<p>With <code>cookie_secure=True</code> (the default), the admin cookies are <code>Secure</code>, and the test's HTTP client only sends them back over <code>https://</code>. Use <code>base_url="https://test"</code>, or mount the router with <code>cookie_secure=False</code> in the test.</p>
-</div>
-<h3 id="login-failure-budget">Login failure budget<a class="headerlink" href="#login-failure-budget" title="Permanent link">&para;</a></h3>
-<p><code>POST /admin/login</code> counts wrong attempts against two budgets. The
-identifier one is on by default — every admin already mounted gets the
-protection with no configuration — and the IP one turns itself on as soon as
-you say which header carries the client IP:</p>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Key</th>
-<th>Default</th>
-<th>Cleared when</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>login_throttle</code></td>
-<td><code>login:&lt;sha256 of the normalized identifier&gt;</code> (<code>login_throttle_key</code>, the same as <code>/auth/login</code>)</td>
-<td>5 attempts / 900 s</td>
-<td>the login succeeds</td>
-</tr>
-<tr>
-<td><code>login_ip_throttle</code></td>
-<td><code>admin-login-ip:&lt;client ip&gt;</code></td>
-<td>20 failures / 900 s <strong>with</strong> <code>trusted_ip_header</code>; off without it</td>
-<td>never — it expires with the window</td>
-</tr>
-</tbody>
-</table>
-<p>Once either is spent, the form comes back as <code>429</code> with <code>Retry-After</code>
-<strong>before</strong> the password is checked — the right password gets the same answer,
-so the <code>429</code> is no oracle. An unknown identifier spends its budget the same
-way, and the <code>429</code> does not tell which addresses exist. The order is
-<code>make_auth_router</code>'s: the IP budget is read first (a blocked IP does not spend
-the identifier's), and the identifier's is <strong>reserved</strong> before the password,
-so a concurrent burst cannot all slip through a "not blocked yet" read.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">redis.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">Redis</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">AttemptThrottle</span><span class="p">,</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">UserModelAuthBackend</span><span class="p">,</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">make_admin_router</span><span class="p">,</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">)</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.admin.site</span><span class="w"> </span><span class="kn">import</span> <span class="n">site</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.api.dependencies</span><span class="w"> </span><span class="kn">import</span> <span class="n">db</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">UserModel</span>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="n">redis</span><span class="p">:</span> <span class="n">Redis</span> <span class="o">=</span> <span class="n">Redis</span><span class="o">.</span><span class="n">from_url</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">REDIS_URL</span><span class="p">)</span>
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="n">router</span> <span class="o">=</span> <span class="n">make_admin_router</span><span class="p">(</span>
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    <span class="n">site</span><span class="p">,</span>
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>    <span class="n">db</span><span class="o">=</span><span class="n">db</span><span class="p">,</span>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>    <span class="n">auth_backend</span><span class="o">=</span><span class="n">UserModelAuthBackend</span><span class="p">(</span><span class="n">UserModel</span><span class="p">),</span>
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>    <span class="n">secret_key</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">JWT_SECRET</span><span class="p">,</span>
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>    <span class="n">login_throttle</span><span class="o">=</span><span class="n">AttemptThrottle</span><span class="p">(</span><span class="n">redis</span><span class="p">,</span> <span class="n">max_attempts</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">window_seconds</span><span class="o">=</span><span class="mi">900</span><span class="p">),</span>
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="n">login_ip_throttle</span><span class="o">=</span><span class="n">AttemptThrottle</span><span class="p">(</span><span class="n">redis</span><span class="p">,</span> <span class="n">max_attempts</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">window_seconds</span><span class="o">=</span><span class="mi">900</span><span class="p">),</span>
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    <span class="n">trusted_ip_header</span><span class="o">=</span><span class="s2">"x-real-ip"</span><span class="p">,</span>
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="p">)</span>
-</span></code></pre></div>
-<div class="admonition warning">
-<p class="admonition-title">Without <code>trusted_ip_header</code>, the IP budget is off</p>
-<p>Without the header the IP is the connection peer — behind nginx, nginx
-itself. An IP budget on there would be one budget for every operator, and
-twenty bad logins from <strong>anyone</strong> would lock everyone out for 15 minutes.
-So the default only turns it on with <code>trusted_ip_header</code> (the header your
-edge <strong>overwrites</strong>: <code>x-real-ip</code>, <code>cf-connecting-ip</code>). A
-<code>login_ip_throttle</code> passed explicitly always applies. The header's value
-must be <strong>one</strong> IP address (<code>parse_client_ip</code>); a list, a port, a name or
-arbitrary text falls back to the connection peer, so a client cannot mint
-a fresh budget per request.</p>
-</div>
-<div class="admonition note">
-<p class="admonition-title">The per-identifier budget also locks out the account's owner</p>
-<p>Whoever knows an operator's e-mail can spend their 5 attempts and keep
-them out for one window, even with the right password — the trade every
-per-account lock makes, and the same as <code>/auth/login</code>. The <code>429</code> clears
-by itself when the window expires.</p>
-</div>
-<div class="admonition info">
-<p class="admonition-title">The default counts per process</p>
-<p>The default budgets live in an <code>InMemoryThrottleBackend</code>: with more than
-one worker each has its own, and the ceiling becomes <code>5 * workers</code>. For a
-real ceiling pass an <code>AttemptThrottle</code> over Redis, as above. <code>False</code> turns
-a budget off (<code>login_ip_throttle=False</code>), for a service that already limits
-login in another layer.</p>
-</div>
-<h2 id="5-plug-in-a-custom-auth-backend">5. Plug in a custom auth backend<a class="headerlink" href="#5-plug-in-a-custom-auth-backend" title="Permanent link">&para;</a></h2>
-<p><code>AdminAuthBackend</code> is an ABC that is <strong>generic in the principal</strong> — the value <code>authenticate</code> returns and every other method consumes. Swap the default for LDAP / OAuth / external IAM by subclassing, and name your principal in the parameter:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">UUID</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy</span><span class="w"> </span><span class="kn">import</span> <span class="n">select</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy.ext.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncSession</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdminAuthBackend</span><span class="p">,</span> <span class="n">AdminAuthError</span><span class="p">,</span> <span class="n">GoogleOAuthClient</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdminModel</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">my_oauth_client</span> <span class="o">=</span> <span class="n">GoogleOAuthClient</span><span class="p">(</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">client_id</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">GOOGLE_CLIENT_ID</span><span class="p">,</span>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="n">client_secret</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">GOOGLE_CLIENT_SECRET</span><span class="p">,</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">redirect_uri</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">GOOGLE_REDIRECT_URI</span><span class="p">,</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="p">)</span>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
-</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
-</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="k">class</span><span class="w"> </span><span class="nc">OAuthAdminBackend</span><span class="p">(</span><span class="n">AdminAuthBackend</span><span class="p">[</span><span class="n">AdminModel</span><span class="p">]):</span>
-</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">    </span><span class="sd">"""Trade the admin form's credential for an OAuth identity.</span>
-</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>
-</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="sd">    OAuth has no password to check, so the form's `password` field</span>
-</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="sd">    carries the authorization code the provider redirected back with.</span>
-</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="sd">    The ABC names the parameter `password`; what this backend expects</span>
-</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="sd">    there is the code.</span>
-</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="sd">    """</span>
-</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>
-</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">authenticate</span><span class="p">(</span>
-</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>        <span class="bp">self</span><span class="p">,</span>
-</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>        <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">,</span>
-</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>        <span class="o">*</span><span class="p">,</span>
-</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>        <span class="n">identifier</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>        <span class="n">password</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AdminModel</span><span class="p">:</span>
-</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="w">        </span><span class="sd">"""Exchange the code, then accept only a known admin e-mail."""</span>
-</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="k">await</span> <span class="n">my_oauth_client</span><span class="o">.</span><span class="n">exchange_code</span><span class="p">(</span><span class="n">password</span><span class="p">)</span>
-</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>        <span class="n">identity</span> <span class="o">=</span> <span class="k">await</span> <span class="n">my_oauth_client</span><span class="o">.</span><span class="n">fetch_user</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
-</span><span id="__span-4-37"><a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">identity</span><span class="o">.</span><span class="n">email_verified</span> <span class="ow">or</span> <span class="n">identity</span><span class="o">.</span><span class="n">email</span> <span class="o">!=</span> <span class="n">identifier</span><span class="p">:</span>
-</span><span id="__span-4-38"><a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a>            <span class="k">raise</span> <span class="n">AdminAuthError</span><span class="p">(</span><span class="s2">"not an admin"</span><span class="p">)</span>
-</span><span id="__span-4-39"><a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a>        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-</span><span id="__span-4-40"><a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a>            <span class="n">select</span><span class="p">(</span><span class="n">AdminModel</span><span class="p">)</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">AdminModel</span><span class="o">.</span><span class="n">email</span> <span class="o">==</span> <span class="n">identity</span><span class="o">.</span><span class="n">email</span><span class="p">)</span>
-</span><span id="__span-4-41"><a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a>        <span class="p">)</span>
-</span><span id="__span-4-42"><a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>        <span class="n">row</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">scalar_one_or_none</span><span class="p">()</span>
-</span><span id="__span-4-43"><a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>        <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-4-44"><a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a>            <span class="k">raise</span> <span class="n">AdminAuthError</span><span class="p">(</span><span class="s2">"not an admin"</span><span class="p">)</span>
-</span><span id="__span-4-45"><a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>        <span class="k">return</span> <span class="n">row</span>
-</span><span id="__span-4-46"><a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>
-</span><span id="__span-4-47"><a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">load_principal</span><span class="p">(</span>
-</span><span id="__span-4-48"><a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a>        <span class="bp">self</span><span class="p">,</span>
-</span><span id="__span-4-49"><a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a>        <span class="n">session</span><span class="p">:</span> <span class="n">AsyncSession</span><span class="p">,</span>
-</span><span id="__span-4-50"><a id="__codelineno-4-50" name="__codelineno-4-50" href="#__codelineno-4-50"></a>        <span class="n">principal_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-</span><span id="__span-4-51"><a id="__codelineno-4-51" name="__codelineno-4-51" href="#__codelineno-4-51"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AdminModel</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-4-52"><a id="__codelineno-4-52" name="__codelineno-4-52" href="#__codelineno-4-52"></a><span class="w">        </span><span class="sd">"""Reload the admin row on every request."""</span>
-</span><span id="__span-4-53"><a id="__codelineno-4-53" name="__codelineno-4-53" href="#__codelineno-4-53"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">AdminModel</span><span class="p">,</span> <span class="n">UUID</span><span class="p">(</span><span class="n">principal_id</span><span class="p">))</span>
-</span><span id="__span-4-54"><a id="__codelineno-4-54" name="__codelineno-4-54" href="#__codelineno-4-54"></a>
-</span><span id="__span-4-55"><a id="__codelineno-4-55" name="__codelineno-4-55" href="#__codelineno-4-55"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">principal_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">principal</span><span class="p">:</span> <span class="n">AdminModel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-4-56"><a id="__codelineno-4-56" name="__codelineno-4-56" href="#__codelineno-4-56"></a><span class="w">        </span><span class="sd">"""Return the identifier serialized into the cookie."""</span>
-</span><span id="__span-4-57"><a id="__codelineno-4-57" name="__codelineno-4-57" href="#__codelineno-4-57"></a>        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">principal</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
-</span><span id="__span-4-58"><a id="__codelineno-4-58" name="__codelineno-4-58" href="#__codelineno-4-58"></a>
-</span><span id="__span-4-59"><a id="__codelineno-4-59" name="__codelineno-4-59" href="#__codelineno-4-59"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">display_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">principal</span><span class="p">:</span> <span class="n">AdminModel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-4-60"><a id="__codelineno-4-60" name="__codelineno-4-60" href="#__codelineno-4-60"></a><span class="w">        </span><span class="sd">"""Return what the admin header shows."""</span>
-</span><span id="__span-4-61"><a id="__codelineno-4-61" name="__codelineno-4-61" href="#__codelineno-4-61"></a>        <span class="k">return</span> <span class="n">principal</span><span class="o">.</span><span class="n">email</span>
-</span></code></pre></div>
-<p>Pass the instance via <code>auth_backend=</code> and the rest of the admin pipeline (sessions, dashboard, list, detail) keeps working unchanged.</p>
-<div class="admonition tip">
-<p class="admonition-title">The <code>[AdminModel]</code> parameter is what makes the contract checkable</p>
-<p>Without it the class resolves to <code>AdminAuthBackend[Any]</code> — how it behaved
-before v0.263.0, and still valid. What the parameter buys you is the error
-that shows up when <code>authenticate</code> returns one type and <code>display_name</code> reads
-another. Measured with both mypy and basedpyright: both reject a
-<code>display_name(self, principal: dict[str, str])</code> on a class declared
-<code>AdminAuthBackend[LdapEntry]</code> — mypy names Liskov outright
-(<code>This violates the Liskov substitution principle</code>), basedpyright reports
-<code>reportIncompatibleMethodOverride</code>.</p>
-</div>
-<div class="admonition warning">
-<p class="admonition-title">An unparameterized subclass under <code>mypy --strict</code></p>
-<p><code>mypy --strict</code> turns on <code>disallow_any_generics</code>, so <code>class MyBackend(AdminAuthBackend)</code>
-now reports <code>Missing type arguments for generic type "AdminAuthBackend"</code>.
-Runtime did not change — this is the type-checker only. Write your principal
-(<code>AdminAuthBackend[MyRow]</code>), or keep the exact previous behaviour with
-<code>AdminAuthBackend[Any]</code>. The <code>pyproject.toml</code> that <code>tempest new</code> writes sets
-<code>strict = true</code>.</p>
-</div>
-<h3 id="authorize-by-role-and-require-mfa">Authorize by role and require MFA<a class="headerlink" href="#authorize-by-role-and-require-mfa" title="Permanent link">&para;</a></h3>
-<p>When who gets into <code>/admin</code> is decided by a column of yours (<code>role ==
-"STAFF"</code>) rather than <code>is_admin</code>, do not rewrite <code>authenticate</code> /
-<code>load_principal</code> — that is where the timing-safe password check lives.
-Override only <code>is_authorized</code>, which both consult:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy</span><span class="w"> </span><span class="kn">import</span> <span class="n">String</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy.orm</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapped</span><span class="p">,</span> <span class="n">mapped_column</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseUserModel</span><span class="p">,</span> <span class="n">MFAMixin</span><span class="p">,</span> <span class="n">UserModelAuthBackend</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">UserModel</span><span class="p">(</span><span class="n">MFAMixin</span><span class="p">,</span> <span class="n">BaseUserModel</span><span class="p">):</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="sd">"""The service's account, with its own role."""</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">__tablename__</span> <span class="o">=</span> <span class="s2">"users"</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">role</span><span class="p">:</span> <span class="n">Mapped</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">mapped_column</span><span class="p">(</span><span class="n">String</span><span class="p">(</span><span class="mi">16</span><span class="p">),</span> <span class="n">default</span><span class="o">=</span><span class="s2">"MEMBER"</span><span class="p">)</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="k">class</span><span class="w"> </span><span class="nc">StaffAdminBackend</span><span class="p">(</span><span class="n">UserModelAuthBackend</span><span class="p">):</span>
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">    </span><span class="sd">"""Opens /admin to staff, and only with MFA on."""</span>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>
-</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">is_authorized</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user</span><span class="p">:</span> <span class="n">BaseUserModel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">        </span><span class="sd">"""Staff get in, whether or not is_admin is set."""</span>
-</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">user</span><span class="p">,</span> <span class="n">UserModel</span><span class="p">)</span> <span class="ow">and</span> <span class="n">user</span><span class="o">.</span><span class="n">role</span> <span class="o">==</span> <span class="s2">"STAFF"</span>
-</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>
-</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>
-</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="n">auth_backend</span><span class="p">:</span> <span class="n">StaffAdminBackend</span> <span class="o">=</span> <span class="n">StaffAdminBackend</span><span class="p">(</span><span class="n">UserModel</span><span class="p">,</span> <span class="n">require_mfa</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span></code></pre></div>
-<p>Pass <code>auth_backend</code> to <code>make_admin_router(...)</code> as usual. What changes:</p>
-<ul>
-<li><strong>The password still comes first.</strong> A wrong password answers <code>"Invalid
-  credentials"</code> for any account; only someone with the right password reads
-  <code>"This account is not authorized for /admin"</code> (wrong role) or <code>"MFA
-  enrollment required for /admin"</code> (no MFA).</li>
-<li><strong><code>require_mfa=True</code></strong> refuses at login an authorized, active account that
-  has not enrolled MFA (<code>mfa_enabled</code> false) — instead of letting it in on the
-  password alone.</li>
-<li><strong>It holds for the session too.</strong> <code>load_principal</code> checks the same two rules
-  on every request: a revoked role, or MFA turned off after login, sends the
-  user to <code>/admin/login</code> on the next request.</li>
-<li><code>is_authorized</code> is synchronous on purpose: it receives the already-loaded
-  row and must not hit the database.</li>
-</ul>
-<div class="admonition warning">
-<p class="admonition-title">The admin has no MFA enrollment screen</p>
-<p>With <code>require_mfa=True</code>, someone who has not turned on the second factor
-sees <code>MFA enrollment required for /admin</code> on the login page itself
-(status <code>401</code>) and does not get in. Enrollment happens <strong>outside</strong> the
-admin: through the <code>POST /auth/mfa/enroll</code> + <code>POST /auth/mfa/confirm</code>
-routes of <code>make_auth_router</code> (see <a href="../../mfa/">MFA</a>), or when the account is
-created from the CLI, with <code>tempest user create --require-mfa</code>. Once
-enrolled, the next admin login asks for the TOTP code at <code>/admin/mfa</code>.</p>
-</div>
-<h2 id="6-task-panel-what-is-scheduled-and-what-ran">6. Task panel — what is scheduled and what ran<a class="headerlink" href="#6-task-panel-what-is-scheduled-and-what-ran" title="Permanent link">&para;</a></h2>
-<p><code>TaskPanelService</code> wires the admin to what the workers already produce: the
-<strong>schedule</strong> declared on the broker and the <strong>runs</strong> a <code>JobStore</code> persisted.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">AdminSite</span><span class="p">,</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">AsyncDatabaseManager</span><span class="p">,</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">UserModelAuthBackend</span><span class="p">,</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">make_admin_router</span><span class="p">,</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">)</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.admin</span><span class="w"> </span><span class="kn">import</span> <span class="n">TaskPanelService</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.tasks</span><span class="w"> </span><span class="kn">import</span> <span class="n">JobStore</span><span class="p">,</span> <span class="n">TaskQueue</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
-</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">JobModel</span><span class="p">,</span> <span class="n">UserModel</span>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
-</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
-</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="n">db</span><span class="p">:</span> <span class="n">AsyncDatabaseManager</span> <span class="o">=</span> <span class="n">AsyncDatabaseManager</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">DATABASE_URL</span><span class="p">)</span>
-</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="n">tq</span><span class="p">:</span> <span class="n">TaskQueue</span> <span class="o">=</span> <span class="n">TaskQueue</span><span class="o">.</span><span class="n">rabbitmq</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">RABBITMQ_URL</span><span class="p">)</span>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="n">jobs</span><span class="p">:</span> <span class="n">JobStore</span><span class="p">[</span><span class="n">JobModel</span><span class="p">]</span> <span class="o">=</span> <span class="n">JobStore</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">JobModel</span><span class="p">)</span>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span>
-</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>    <span class="n">make_admin_router</span><span class="p">(</span>
-</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>        <span class="n">AdminSite</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Ops"</span><span class="p">),</span>
-</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>        <span class="n">db</span><span class="o">=</span><span class="n">db</span><span class="p">,</span>
-</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>        <span class="n">auth_backend</span><span class="o">=</span><span class="n">UserModelAuthBackend</span><span class="p">(</span><span class="n">UserModel</span><span class="p">),</span>
-</span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>        <span class="n">secret_key</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">ADMIN_SECRET_KEY</span><span class="p">,</span>
-</span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>        <span class="n">tasks</span><span class="o">=</span><span class="n">TaskPanelService</span><span class="p">(</span><span class="n">queue</span><span class="o">=</span><span class="n">tq</span><span class="p">,</span> <span class="n">job_store</span><span class="o">=</span><span class="n">jobs</span><span class="p">),</span>
-</span><span id="__span-6-27"><a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>    <span class="p">)</span>
-</span><span id="__span-6-28"><a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="p">)</span>
-</span></code></pre></div>
-<p>That mounts three routes and a "Tasks" entry in the sidebar:</p>
-<table>
-<thead>
-<tr>
-<th>Route</th>
-<th>What it does</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>GET /admin/tasks</code></td>
-<td>recent runs (filterable by status) + the declared schedule</td>
-</tr>
-<tr>
-<td><code>GET /admin/tasks/{job_id}</code></td>
-<td>one run: progress, stage, attempts, error</td>
-</tr>
-<tr>
-<td><code>POST /admin/tasks/{job_id}/cancel</code></td>
-<td>asks it to stop, while the status still allows it</td>
-</tr>
-</tbody>
-</table>
-<div class="admonition warning">
-<p class="admonition-title">The panel does not show the broker's queue</p>
-<p>It shows what is <strong>persisted</strong> (<code>JobStore</code> rows) and what is <strong>declared</strong>
-(the broker's registry). Queue depth is absent because TaskIQ exposes
-none — and a screen implying otherwise would be worse than no screen.</p>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Either half is enough</p>
-<p><code>queue=</code> alone shows the schedule; <code>job_store=</code> alone shows the runs. A
-section with no source is not rendered, rather than rendering empty and
-implying there is nothing to see. Passing neither raises <code>ValueError</code> at
-construction.</p>
-</div>
-<div class="admonition info">
-<p class="admonition-title">The <code>Schedule</code> column carries every declared trigger</p>
-<p>A task may declare several triggers, and not every trigger is a cron:
-TaskIQ accepts <code>cron</code>, <code>interval</code> and <code>time</code> (one-shot) entries in the
-same list. The column shows one line per trigger, with the timezone
-beside the expression whenever the task declared one:</p>
-<table>
-<thead>
-<tr>
-<th>Declared</th>
-<th>Shows as</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>@tq.cron(daily(hour=2), cron_offset=CronOffsetEnum.BRASILIA)</code></td>
-<td><code>0 2 * * *</code> <code>-03:00</code></td>
-</tr>
-<tr>
-<td><code>@tq.cron(daily(hour=2))</code></td>
-<td><code>0 2 * * *</code></td>
-</tr>
-<tr>
-<td><code>@tq.interval(timedelta(seconds=30))</code></td>
-<td><code>every 30s</code></td>
-</tr>
-<tr>
-<td><code>schedule=[{"time": when}]</code></td>
-<td><code>once at 2026-01-01 12:00:00+00:00</code></td>
-</tr>
-<tr>
-<td><code>@tq.task</code></td>
-<td><code>on demand</code></td>
-</tr>
-</tbody>
-</table>
-<p>Showing the offset is not decoration. A cron expression <strong>reads as
-complete</strong> without it, so nothing invites the reader to check — and
-<code>0 2 * * *</code> with <code>cron_offset=CronOffsetEnum.BRASILIA</code> fires at 05:00 UTC.
-Whoever opens the panel to learn when the backup runs would be three
-hours off, on the one screen whose only alternative source is the code.</p>
-<p>The panel shows what was <strong>declared</strong>, not TaskIQ's default: an
-expression with no offset appears with no offset, not as <code>(UTC)</code>.</p>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Rendering the schedule yourself</p>
-<p><code>ScheduledTask.triggers</code> is the tuple of <code>TaskTrigger</code>, in registry
-order, and <code>TaskTrigger.cron_offset_label</code> formats the timezone
-(<code>"-03:00"</code> for a fixed offset, the IANA key for a named zone). The flat
-fields — <code>cron</code>, <code>interval_seconds</code>, <code>cron_offset</code>, <code>run_at</code> — summarize
-the first trigger of each kind, for callers that need only one. A
-schedule key the SDK does not model yet lands in <code>TaskTrigger.extra</code>
-rather than being dropped.</p>
-</div>
-<div class="admonition note">
-<p class="admonition-title">Why there is no \"next run\" column</p>
-<p><code>pycron</code>, which arrives with TaskIQ, exposes <code>is_now</code> and <code>has_been</code> —
-and no <code>next()</code>. Computing the next run would mean sweeping candidate
-minutes on every render (up to ~44k iterations for a monthly cron) or
-taking a new dependency for one column. The panel shows the expression —
-with its offset beside it, because without one the expression is not
-legible.</p>
-</div>
-<p>For the paginated, filterable, exportable list the admin already knows how to
-render, register the job model too — symmetric to the dead-letter panel:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdminSite</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.tasks</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_job_admin_model</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">JobModel</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">site</span><span class="p">:</span> <span class="n">AdminSite</span> <span class="o">=</span> <span class="n">AdminSite</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Ops"</span><span class="p">)</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">site</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">make_job_admin_model</span><span class="p">(</span><span class="n">JobModel</span><span class="p">))</span>
-</span></code></pre></div>
-<h2 id="7-storage-browser-view-preview-and-edit-files">7. Storage browser — view, preview and edit files<a class="headerlink" href="#7-storage-browser-view-preview-and-edit-files" title="Permanent link">&para;</a></h2>
-<p>The admin already writes to object storage (<code>upload_fields=</code>), but an
-operator had no screen to see what a bucket holds, open a file, or remove a
-stray upload. <code>StorageBrowserService</code> is that screen: it lists folders,
-previews a file, and uploads, replaces, edits text in place, renames and
-deletes.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">AdminSite</span><span class="p">,</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">AsyncDatabaseManager</span><span class="p">,</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">UserModelAuthBackend</span><span class="p">,</span>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">make_admin_router</span><span class="p">,</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="p">)</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.admin</span><span class="w"> </span><span class="kn">import</span> <span class="n">StorageBrowserService</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">LocalObjectStorageClient</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.core.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
-</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">UserModel</span>
-</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>
-</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
-</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="n">db</span><span class="p">:</span> <span class="n">AsyncDatabaseManager</span> <span class="o">=</span> <span class="n">AsyncDatabaseManager</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">DATABASE_URL</span><span class="p">)</span>
-</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="n">store</span><span class="p">:</span> <span class="n">LocalObjectStorageClient</span> <span class="o">=</span> <span class="n">LocalObjectStorageClient</span><span class="p">(</span>
-</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>    <span class="s2">"/var/lib/app/storage"</span><span class="p">,</span>
-</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>    <span class="n">public_url</span><span class="o">=</span><span class="s2">"https://api.example.com"</span><span class="p">,</span>
-</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>    <span class="n">signing_secret</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">JWT_SECRET</span><span class="p">,</span>
-</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="p">)</span>
-</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>
-</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span>
-</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>    <span class="n">make_admin_router</span><span class="p">(</span>
-</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>        <span class="n">AdminSite</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Ops"</span><span class="p">),</span>
-</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>        <span class="n">db</span><span class="o">=</span><span class="n">db</span><span class="p">,</span>
-</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>        <span class="n">auth_backend</span><span class="o">=</span><span class="n">UserModelAuthBackend</span><span class="p">(</span><span class="n">UserModel</span><span class="p">),</span>
-</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>        <span class="n">secret_key</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">ADMIN_SECRET_KEY</span><span class="p">,</span>
-</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>        <span class="n">storage</span><span class="o">=</span><span class="n">StorageBrowserService</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"uploads"</span><span class="p">),</span>
-</span><span id="__span-8-30"><a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>    <span class="p">)</span>
-</span><span id="__span-8-31"><a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a><span class="p">)</span>
-</span></code></pre></div>
-<p>MinIO/S3 is the same line: <code>StorageBrowserService(AsyncMinIOClient(...))</code>.
-The service uses only five calls — <code>list_objects</code>, <code>stat_object</code>,
-<code>stream_object</code>, <code>put_object</code> and <code>remove_object</code> (the <code>AdminStorageClient</code>
-protocol) — which both SDK clients implement.</p>
-<p>That mounts the routes below and a "Storage" entry in the sidebar:</p>
-<table>
-<thead>
-<tr>
-<th>Route</th>
-<th>What it does</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>GET /admin/storage?prefix=</code></td>
-<td>one folder: sub-folders first, then files with size, type and date; paged</td>
-</tr>
-<tr>
-<td><code>GET /admin/storage/object?key=</code></td>
-<td>one file: metadata, preview, text editor and the write forms</td>
-</tr>
-<tr>
-<td><code>GET /admin/storage/raw?key=</code></td>
-<td>the bytes, for the preview (<code>&amp;download=true</code> forces a download)</td>
-</tr>
-<tr>
-<td><code>POST /admin/storage/upload</code></td>
-<td>uploads a file into the current folder</td>
-</tr>
-<tr>
-<td><code>POST /admin/storage/object/replace</code></td>
-<td>swaps the content, keeping the key and metadata</td>
-</tr>
-<tr>
-<td><code>POST /admin/storage/object/edit</code></td>
-<td>saves the text editor</td>
-</tr>
-<tr>
-<td><code>POST /admin/storage/object/rename</code></td>
-<td>moves to another key, folder included</td>
-</tr>
-<tr>
-<td><code>POST /admin/storage/object/delete</code></td>
-<td>deletes</td>
-</tr>
-</tbody>
-</table>
-<p>Let's go piece by piece.</p>
-<p><strong>Folders do not exist.</strong> In object storage a folder is only the key prefix up
-to a <code>/</code>. So a folder appears as soon as one file is written under it and
-disappears when the last one leaves. On upload, the "Save as" field accepts
-<code>a/b.txt</code> and creates the folders on the way.</p>
-<p><strong>The preview depends on the type.</strong> Images, video, audio and PDF are
-rendered by the browser from the <code>raw</code> route. Text (<code>text/*</code>, JSON, YAML, XML,
-CSV) is shown in the page itself, escaped, in a <code>&lt;textarea&gt;</code> editable up to
-<code>max_text_bytes</code> (256 KiB by default). Anything else offers the download only.</p>
-<div class="admonition danger">
-<p class="admonition-title">SVG and HTML are never rendered</p>
-<p>The <code>raw</code> route answers on the admin's origin. HTML rendered there runs
-script with the signed-in operator's session, and SVG carries <code>&lt;script&gt;</code>
-just the same. So the route grants <code>inline</code> only to the types in
-<code>INLINE_SAFE_MEDIA_TYPES</code> — SVG and HTML always arrive as <code>attachment</code> —
-and every response carries <code>X-Content-Type-Options: nosniff</code> and a CSP
-with <code>sandbox</code>. In the page, SVG and HTML are shown as escaped source.</p>
-</div>
-<p><strong>Text editing refuses a concurrent write.</strong> The editor sends back the ETag
-it opened at; if the file changed in between, the save is refused with
-"changed since you opened it" instead of wiping the other write. And the
-<code>\r\n</code> the browser sends becomes <code>\n</code> when the original held no <code>\r\n</code>, so
-saving a Unix file unchanged does not rewrite every line.</p>
-<p><strong>Renaming costs one download and one upload.</strong> Object storage has no rename:
-the service copies the bytes, type and metadata to the new key and deletes the
-old one. A new key that is already taken is refused.</p>
-<div class="admonition tip">
-<p class="admonition-title">Read-only</p>
-<p><code>StorageBrowserService(store, read_only=True)</code> keeps listing, preview and
-download, hides the forms and answers <code>403</code> to every write. Who may open
-the screen is the <code>surface_policy</code>'s call, with <code>AdminSurfaceEnum.STORAGE</code> —
-see <a href="../permissions/#sql-console-tasks-and-logs-surface_policy">SQL console, tasks and logs</a>.</p>
-</div>
-<div class="admonition info">
-<p class="admonition-title">Limits</p>
-<p><code>max_upload_bytes</code> (25 MiB) applies to upload and replace,
-<code>max_text_bytes</code> (256 KiB) to text preview and editing, and <code>page_size</code>
-(100) to the listing. A key with an empty, <code>.</code> or <code>..</code> segment, a
-backslash, a control character or over 1024 bytes is refused before it
-reaches the store. Refusals come back as a red message on the same
-screen.</p>
-</div>
-<h2 id="8-customize-the-look-admintheme">8. Customize the look — <code>AdminTheme</code><a class="headerlink" href="#8-customize-the-look-admintheme" title="Permanent link">&para;</a></h2>
-<p>The admin CSS is driven entirely by <strong>CSS custom properties</strong> on <code>:root</code>. Instead of forking the stylesheet, you pass an <code>AdminTheme</code> with <strong>typed, documented parameters</strong> — colors, logo, favicon, font, radius, footer, dark mode — and the SDK injects a <code>&lt;style&gt;</code> block in the <code>&lt;head&gt;</code> (after <code>admin.css</code>, so it wins).</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># src/admin/site.py</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdminSite</span><span class="p">,</span> <span class="n">AdminTheme</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">theme</span><span class="p">:</span> <span class="n">AdminTheme</span> <span class="o">=</span> <span class="n">AdminTheme</span><span class="p">(</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">accent</span><span class="o">=</span><span class="s2">"#7c3aed"</span><span class="p">,</span>                       <span class="c1"># primary color (links, buttons, active item)</span>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">accent_hover</span><span class="o">=</span><span class="s2">"#6d28d9"</span><span class="p">,</span>                 <span class="c1"># hover shade of the accent</span>
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">header_bg</span><span class="o">=</span><span class="s2">"#1e1b4b"</span><span class="p">,</span>                    <span class="c1"># header/sidebar background (text turns light on its own)</span>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">radius</span><span class="o">=</span><span class="s2">"10px"</span><span class="p">,</span>                          <span class="c1"># radius of buttons, inputs, cards, tables</span>
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">font_family</span><span class="o">=</span><span class="s2">"'Inter', system-ui, sans-serif"</span><span class="p">,</span>
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="n">logo_url</span><span class="o">=</span><span class="s2">"/admin/static/logo.svg"</span><span class="p">,</span>      <span class="c1"># header image (instead of the text brand)</span>
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">favicon_url</span><span class="o">=</span><span class="s2">"/admin/static/favicon.ico"</span><span class="p">,</span>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">footer_text</span><span class="o">=</span><span class="s2">"Servus | 2026"</span><span class="p">,</span>
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">dark_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                         <span class="c1"># dark surfaces</span>
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="p">)</span>
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="n">site</span><span class="p">:</span> <span class="n">AdminSite</span> <span class="o">=</span> <span class="n">AdminSite</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"Servus Admin"</span><span class="p">,</span> <span class="n">brand</span><span class="o">=</span><span class="s2">"Servus"</span><span class="p">,</span> <span class="n">theme</span><span class="o">=</span><span class="n">theme</span><span class="p">)</span>
-</span></code></pre></div>
-<p><code>AdminTheme()</code> with no arguments is a <strong>no-op</strong>: it reproduces the stock look. You only set what you want to change.</p>
-<div class="admonition tip">
-<p class="admonition-title">The golden rule</p>
-<p>Every <code>AdminTheme</code> field maps to a <code>:root</code> CSS variable (or to a piece
-of chrome, like the logo). It is all typed — the editor autocompletes
-the options and mypy validates — and no string ever needs to be a CSS
-class name or selector.</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Type</th>
-<th>Default</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>accent</code></td>
-<td><code>str</code></td>
-<td><code>"#2563eb"</code></td>
-<td>Primary color: links, buttons, active sidebar item</td>
-</tr>
-<tr>
-<td><code>accent_hover</code></td>
-<td><code>str</code></td>
-<td><code>"#1d4ed8"</code></td>
-<td>Hover/active shade of <code>accent</code></td>
-</tr>
-<tr>
-<td><code>danger</code></td>
-<td><code>str</code></td>
-<td><code>"#b91c1c"</code></td>
-<td>Destructive actions and error messages</td>
-</tr>
-<tr>
-<td><code>header_bg</code></td>
-<td><code>str</code></td>
-<td><code>"#ffffff"</code></td>
-<td>Header background</td>
-</tr>
-<tr>
-<td><code>sidebar_bg</code></td>
-<td><code>str | None</code></td>
-<td><code>None</code></td>
-<td>Sidebar background (falls back to <code>header_bg</code>)</td>
-</tr>
-<tr>
-<td><code>header_fg</code></td>
-<td><code>str | None</code></td>
-<td><code>None</code></td>
-<td>Header and sidebar text color (<code>None</code> picks it from the background contrast)</td>
-</tr>
-<tr>
-<td><code>page_bg</code></td>
-<td><code>str | None</code></td>
-<td><code>None</code></td>
-<td>Content background (mode default)</td>
-</tr>
-<tr>
-<td><code>radius</code></td>
-<td><code>str</code></td>
-<td><code>"8px"</code></td>
-<td>Radius of buttons, inputs, cards, tables</td>
-</tr>
-<tr>
-<td><code>font_family</code></td>
-<td><code>str | None</code></td>
-<td><code>None</code></td>
-<td><code>font-family</code> for the whole panel</td>
-</tr>
-<tr>
-<td><code>logo_url</code></td>
-<td><code>str | None</code></td>
-<td><code>None</code></td>
-<td>Header image instead of the text brand</td>
-</tr>
-<tr>
-<td><code>logo_alt</code></td>
-<td><code>str</code></td>
-<td><code>"Logo"</code></td>
-<td><code>alt</code> text for the logo image</td>
-</tr>
-<tr>
-<td><code>favicon_url</code></td>
-<td><code>str | None</code></td>
-<td><code>None</code></td>
-<td>Browser-tab favicon</td>
-</tr>
-<tr>
-<td><code>footer_text</code></td>
-<td><code>str</code></td>
-<td><code>"Powered by tempest-fastapi-sdk"</code></td>
-<td>Footer text</td>
-</tr>
-<tr>
-<td><code>dark_mode</code></td>
-<td><code>bool</code></td>
-<td><code>False</code></td>
-<td>Dark surfaces (and the chrome, while <code>header_bg</code> is the default)</td>
-</tr>
-<tr>
-<td><code>custom_css_url</code></td>
-<td><code>str | None</code></td>
-<td><code>None</code></td>
-<td>Extra stylesheet, linked last</td>
-</tr>
-</tbody>
-</table>
-<div class="admonition info">
-<p class="admonition-title">Dark mode</p>
-<p><code>dark_mode=True</code> switches the <strong>content surfaces</strong> (page background,
-cards, text, table rows, inputs, borders) to a dark palette. The header
-and sidebar go dark with them while <code>header_bg</code> is the light default;
-a <code>header_bg</code> of yours is kept. <code>accent</code> and the other colors still
-apply. An explicit <code>page_bg</code> wins over the content's dark mode (the
-surfaces stay light), but the default chrome still goes dark.</p>
-</div>
-<div class="admonition info">
-<p class="admonition-title">Header text picked from the background</p>
-<p>The header and sidebar are light by default. Give them a dark hex
-<code>header_bg</code> (or <code>sidebar_bg</code>) and their text turns light on its own —
-the SDK computes the background's luminance. A color that is not hex
-(<code>"rebeccapurple"</code>, <code>rgb(...)</code>) is treated as dark; when that guess is
-wrong, pin the color with <code>header_fg</code>.</p>
-</div>
-<div class="admonition warning">
-<p class="admonition-title">Escape hatch for the rest</p>
-<p>For anything the fields do not cover, point <code>custom_css_url</code> at your own
-stylesheet. It is linked <strong>after</strong> the theme, so it overrides
-everything — including <code>AdminTheme</code>.</p>
-</div>
-<div class="admonition danger">
-<p class="admonition-title">Values are developer-set, not end-user input</p>
-<p>The characters <code>&lt; &gt; { } "</code> are rejected in any string field
-(<code>ValueError</code> at construction), because they would break the injected
-<code>&lt;style&gt;</code> block or an HTML attribute. Never derive <code>AdminTheme</code> values
-from end-user input.</p>
-</div>
-<p><strong>Recap:</strong> instantiate <code>AdminTheme</code> with the fields you want to change,
-pass it via <code>AdminSite(theme=...)</code>, and the look changes across every page
-(login, dashboard, list, detail, forms) without touching CSS. For full
-control, <code>custom_css_url</code>.</p>
 
 
 

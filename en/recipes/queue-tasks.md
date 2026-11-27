@@ -1,6 +1,6 @@
 # Queues and Tasks
 
-Background work without the pain. The SDK wraps **FastStream** (messaging) and **TaskIQ** (tasks + scheduling) in typed classes with a single vocabulary — the common path (publish, consume, enqueue, schedule) imports neither `faststream` nor `taskiq` in application code. The exception is a transport-specific option, such as the `RabbitExchange` passed as `exchange=` further down.
+Background work without the pain. The SDK wraps **FastStream** (messaging) and **TaskIQ** (tasks + scheduling) in typed classes with a single vocabulary — the common path (publish, consume, enqueue, schedule) imports neither `faststream` nor `taskiq` in application code. The exception is a transport-specific option, such as the `RabbitExchange` passed as `exchange=` in [class-based consumers](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/queue-tasks/broker.md#class-based-consumers).
 
 !!! tip "Which tool?"
     - **`MessageBroker`** (messaging) — an event happens and **many** services/consumers react. Fan-out, at-least-once, decoupled from the request. E.g. "order paid" → inventory, email, analytics.

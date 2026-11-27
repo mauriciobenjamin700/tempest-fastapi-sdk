@@ -1,6 +1,6 @@
 # Montar o painel
 
-Use para subir o painel: modelo de usuário, registro das classes de admin (ou `automap`) e o router com tudo o que ele monta.
+Use para subir o painel: modelo de usuário, registro das classes de admin (ou `automap`), o router com tudo o que ele monta, os defaults de segurança da sessão e um backend de auth customizado.
 
 Parte da receita [Painel admin](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin.md).
 
@@ -203,4 +203,296 @@ app.include_router(
 
     **Audit trail**: create/edit pelo admin carimba `created_by`/`updated_by` (do `AuditMixin`) com o id do admin atuante; o detail mostra um painel **Audit** com timestamps e — quando o modelo tem as colunas de auditoria — o ator (UUID resolvido para nome via o auth backend). Modelos sem `AuditMixin` mostram só os timestamps.
 
-    Edição inline in-place dos filhos: veja `Inline(editable=True)` mais abaixo.
+    Edição inline in-place dos filhos: veja [`Inline(editable=True)`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/admin/forms.md#edicao-in-place-editabletrue).
+
+## 4. Defaults de segurança de sessão
+
+`SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:
+
+- `HttpOnly` sempre definido.
+- `Secure` marcado quando `cookie_secure=True` (padrão; desligue no dev HTTP local).
+- `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` aceitos).
+- Tempo de vida padrão `8h`; cookies expirados ou adulterados são rejeitados silenciosamente.
+- O cookie não basta: toda rota autenticada relê o principal pelo `auth_backend` a cada request. Conta apagada, desativada ou sem `is_admin` depois do login é mandada para `/admin/login` (`303`) já no request seguinte, sem esperar o cookie expirar.
+- O `POST /admin/logout` encerra a sessão no servidor, não só no navegador: ele marca o id aleatório da sessão (`sid`, no cookie) num `AdminSessionRevocations`, e todo request recusa uma sessão marcada. Uma cópia do cookie tirada antes do logout é mandada para `/admin/login`. O default guarda as marcas num `InMemoryThrottleBackend`, por processo, pelo `max_age_seconds` do store. Atrás de mais de um worker ou réplica, passe `make_admin_router(..., session_revocations=AdminSessionRevocations(redis_client))` (o mesmo cliente `redis.asyncio` que o throttle aceita), senão o logout servido por um processo não chega aos outros.
+- A sessão fica presa à credencial: no login o router grava no cookie um HMAC (chaveado com o `secret_key`) do `AdminAuthBackend.credential_fingerprint(principal)` e confere a cada request. No `UserModelAuthBackend` a impressão cobre o `hashed_password` e o `totp_secret`, então trocar a senha ou re-cadastrar o MFA encerra toda sessão emitida antes, em todas as réplicas, sem estado extra. Backend próprio devolve `None` por padrão (sem vínculo); sobrescreva o método para ligar. Cookies emitidos antes dessa versão não carregam o HMAC e são recusados uma vez: o operador loga de novo.
+- Um token CSRF por sessão é gerado no login e exigido por todo POST de formulário da sessão (logout, criar, editar, excluir, ações em massa, execução no console SQL, cancelamento de task).
+- O formulário de login roda antes de existir sessão e carrega um token próprio: o `GET /admin/login` grava um cookie assinado de 1 h (`tempest_admin_login_csrf`, com salt distinto do da sessão) e repete o token num campo hidden. O `POST` compara os dois em tempo constante **antes** do orçamento de falhas e da senha, e recusa com `403` — a página volta com um token novo, e a recusa não gasta tentativa. Sem isso, uma página de outro site faria o navegador do operador logar na conta **do atacante** (login CSRF); `SameSite=Lax` não impede, porque restringe o cookie que o POST envia, não o que a resposta grava. O limite: o cookie fica restrito ao prefixo do admin, então não pode usar o prefixo `__Host-`, e um **subdomínio irmão** sob controle de terceiros (`evil.example.com` ao lado de `admin.example.com`) consegue plantar para o domínio pai um cookie assinado que ele mesmo obteve abrindo o formulário. Sirva o admin num host sem subdomínios de terceiros.
+- `secret_key` deve ter ao menos 32 bytes — chaves curtas levantam `ValueError` no momento da construção.
+
+!!! danger "Login recusado ou em loop? É o `Secure` do cookie sobre HTTP puro"
+    Se todo `POST /admin/login` responde `403` com *The sign-in form expired,
+    please try again*, o cookie do token do formulário **não está voltando**. Se
+    responde `303` (parece sucesso), mas o `GET /admin/`
+    seguinte redireciona de volta pro login — repetindo pra sempre — o cookie de
+    sessão é que não volta. Nos dois casos a causa quase certa é a mesma:
+    `cookie_secure=True` enquanto o admin é servido por **HTTP puro** (sem TLS na
+    frente). O browser recusa gravar um cookie `Secure` em conexão não-HTTPS, e os
+    dois cookies do admin (o do token de login e o da sessão) seguem o
+    `cookie_secure`.
+
+    ```python
+    # ❌ Atado a DEBUG: em produção DEBUG=false → cookie_secure=True,
+    #    mas se não houver HTTPS na frente, o login entra em loop.
+    make_admin_router(..., cookie_secure=not settings.DEBUG)
+
+    # ✅ Controle dedicado, independente de DEBUG:
+    make_admin_router(..., cookie_secure=settings.ADMIN_COOKIE_SECURE)
+    ```
+
+    **Correção certa:** ponha HTTPS na frente (nginx/Caddy terminando TLS) e
+    deixe `cookie_secure=True` — o cookie da sessão admin não deve trafegar em
+    claro. **Paliativo** só quando o admin roda mesmo em HTTP (intranet, MVP):
+    `cookie_secure=False`, ciente de que a sessão vai sem `Secure`. Não amarre
+    esse flag ao `DEBUG` — ligar debug em produção é pior que o problema original.
+
+!!! warning "O browser diz que o formulário de login não é seguro? É o scheme atrás do proxy"
+    Com HTTPS na frente e o proxy falando HTTP com a app, o `action` do
+    formulário sai `http://...` e o browser marca o campo de senha como não
+    seguro. Declare `SERVER_PUBLIC_SCHEME=https` e adicione o
+    `PublicSchemeMiddleware` — receita em
+    [Segurança](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/security.md#scheme-publico-atras-de-proxy-server_public_scheme).
+    Enquanto falta, o `GET /admin/login` loga um `WARNING` dizendo isso.
+
+### Logar em teste
+
+Como o `POST /admin/login` exige o token do formulário, teste que posta só as credenciais leva `403`. `tempest_fastapi_sdk.testing` faz o que o navegador faz — abre o formulário, lê o hidden (o cookie fica no jar do cliente) e envia:
+
+```python
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk.testing import admin_login
+
+
+async def test_dashboard_after_login(app: FastAPI) -> None:
+    """Loga pelo formulário, como o navegador faz, e abre o painel."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        response = await admin_login(client, "root@example.com", "hunter2")
+        assert response.status_code == 303
+        assert (await client.get("/admin/")).status_code == 200
+```
+
+Com `TestClient`, use `admin_login_sync(client, ...)`. Os dois aceitam `httpx` e `httpx2` (de que o `TestClient` do Starlette herda quando o `httpx2` está instalado) sem `cast`, e devolvem a resposta no tipo do cliente que você passou. Os dois recebem `prefix=` quando o admin não está em `/admin`, e `headers=` para, por exemplo, o header de IP confiável.
+
+!!! tip "`https://` na `base_url`"
+    Com `cookie_secure=True` (o padrão), os cookies do admin saem `Secure`, e o cliente HTTP do teste só os devolve sobre `https://`. Use `base_url="https://test"`, ou monte o router com `cookie_secure=False` no teste.
+
+### Orçamento de falhas no login
+
+`POST /admin/login` conta tentativas erradas em dois orçamentos. O do
+identificador vem ligado por padrão — todo admin já montado ganha a
+proteção sem configurar nada —, e o do IP liga sozinho assim que você diz
+qual header carrega o IP do cliente:
+
+| Parâmetro | Chave | Padrão | Zera quando |
+| --- | --- | --- | --- |
+| `login_throttle` | `login:<sha256 do identificador normalizado>` (`login_throttle_key`, a mesma do `/auth/login`) | 5 tentativas / 900 s | o login dá certo |
+| `login_ip_throttle` | `admin-login-ip:<ip do cliente>` | 20 falhas / 900 s **com** `trusted_ip_header`; desligado sem ele | nunca — expira com a janela |
+
+Esgotado qualquer um, o formulário volta com `429` e `Retry-After` **antes**
+de a senha ser conferida — a senha certa recebe a mesma resposta, então o
+`429` não vira oráculo. O identificador desconhecido gasta o orçamento do
+mesmo jeito, e o `429` não conta quais endereços existem. A ordem é a do
+`make_auth_router`: o orçamento do IP é lido primeiro (um IP bloqueado não
+gasta o do identificador), e o do identificador é **reservado** antes da
+senha, para uma rajada concorrente não passar inteira por um "ainda não
+bloqueado".
+
+```python
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    AttemptThrottle,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin.site import site
+from src.api.dependencies import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+redis: Redis = Redis.from_url(settings.REDIS_URL)
+
+router = make_admin_router(
+    site,
+    db=db,
+    auth_backend=UserModelAuthBackend(UserModel),
+    secret_key=settings.JWT_SECRET,
+    login_throttle=AttemptThrottle(redis, max_attempts=5, window_seconds=900),
+    login_ip_throttle=AttemptThrottle(redis, max_attempts=20, window_seconds=900),
+    trusted_ip_header="x-real-ip",
+)
+```
+
+!!! warning "Sem `trusted_ip_header`, o orçamento por IP fica desligado"
+    Sem o header, o IP é o par da conexão — atrás de nginx, o do próprio
+    nginx. Um orçamento por IP ligado ali seria um só para todos os
+    operadores, e vinte logins errados de **qualquer um** trancariam todo
+    mundo por 15 minutos. Por isso o padrão só o liga com `trusted_ip_header`
+    (o header que a sua borda **sobrescreve**: `x-real-ip`,
+    `cf-connecting-ip`). Um `login_ip_throttle` passado explicitamente vale
+    sempre. O valor do header precisa ser **um** endereço IP
+    (`parse_client_ip`); lista, porta, nome ou texto qualquer cai no par da
+    conexão, então um cliente não fabrica um orçamento novo por request.
+
+!!! note "O orçamento por identificador também tranca o dono da conta"
+    Quem sabe o e-mail de um operador pode gastar as 5 tentativas dele e
+    deixá-lo de fora por uma janela, mesmo com a senha certa — a troca que
+    todo bloqueio por conta faz, e a mesma do `/auth/login`. O `429` volta
+    sozinho quando a janela expira.
+
+!!! info "O padrão conta por processo"
+    Os orçamentos padrão vivem num `InMemoryThrottleBackend`: com mais de um
+    worker, cada um tem o seu, e o teto vira `5 * workers`. Para um teto de
+    verdade, passe um `AttemptThrottle` sobre o Redis, como acima. `False`
+    desliga um orçamento (`login_ip_throttle=False`), para quem já limita o
+    login em outra camada.
+
+## 5. Plugue um backend de auth customizado
+
+`AdminAuthBackend` é uma ABC **genérica no principal** — o valor que `authenticate` devolve e que todo o resto dos métodos consome. Troque o default por LDAP / OAuth / IAM externo subclasseando, e diga no parâmetro qual é o seu principal:
+
+```python
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
+
+from src.core.settings import settings
+from src.db.models import AdminModel
+
+my_oauth_client = GoogleOAuthClient(
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    redirect_uri=settings.GOOGLE_REDIRECT_URI,
+)
+
+
+class OAuthAdminBackend(AdminAuthBackend[AdminModel]):
+    """Troca a credencial do formulário do admin por uma identidade OAuth.
+
+    OAuth não tem senha para conferir, então o campo `password` do
+    formulário carrega o authorization code que o provedor devolveu no
+    redirect. A ABC chama o parâmetro de `password`; o que este backend
+    espera ali é o code.
+    """
+
+    async def authenticate(
+        self,
+        session: AsyncSession,
+        *,
+        identifier: str,
+        password: str,
+    ) -> AdminModel:
+        """Troca o code e aceita só um e-mail de admin conhecido."""
+        tokens = await my_oauth_client.exchange_code(password)
+        identity = await my_oauth_client.fetch_user(tokens)
+        if not identity.email_verified or identity.email != identifier:
+            raise AdminAuthError("not an admin")
+        result = await session.execute(
+            select(AdminModel).where(AdminModel.email == identity.email)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise AdminAuthError("not an admin")
+        return row
+
+    async def load_principal(
+        self,
+        session: AsyncSession,
+        principal_id: str,
+    ) -> AdminModel | None:
+        """Recarrega a linha de admin a cada request."""
+        return await session.get(AdminModel, UUID(principal_id))
+
+    def principal_id(self, principal: AdminModel) -> str:
+        """Devolve o identificador que vai serializado no cookie."""
+        return str(principal.id)
+
+    def display_name(self, principal: AdminModel) -> str:
+        """Devolve o que o cabeçalho do admin mostra."""
+        return principal.email
+```
+
+Passe a instância via `auth_backend=` e o resto do pipeline do admin (sessões, dashboard, list, detail) segue funcionando sem mudanças.
+
+!!! tip "O parâmetro `[AdminModel]` é o que torna o contrato conferível"
+
+    Sem ele a classe resolve para `AdminAuthBackend[Any]` — que é como ela se
+    comportava antes da v0.263.0, e continua válido. O que o parâmetro compra é
+    o erro que aparece quando `authenticate` devolve um tipo e `display_name`
+    lê outro. Medido com mypy e com basedpyright: os dois recusam um
+    `display_name(self, principal: dict[str, str])` numa classe declarada
+    `AdminAuthBackend[LdapEntry]` — o mypy citando Liskov por nome
+    (`This violates the Liskov substitution principle`), o basedpyright com
+    `reportIncompatibleMethodOverride`.
+
+!!! warning "Subclasse sem parâmetro sob `mypy --strict`"
+
+    `mypy --strict` liga `disallow_any_generics`, então `class MeuBackend(AdminAuthBackend)`
+    passa a acusar `Missing type arguments for generic type "AdminAuthBackend"`.
+    O runtime não mudou — é só o type-checker. Escreva o seu principal
+    (`AdminAuthBackend[MinhaLinha]`) ou, para manter exatamente o comportamento
+    anterior, `AdminAuthBackend[Any]`. O `pyproject.toml` que o `tempest new`
+    escreve tem `strict = true`.
+
+### Autorizar por papel e exigir MFA
+
+Quando quem entra no `/admin` é decidido por uma coluna sua (`role ==
+"STAFF"`) e não por `is_admin`, não reescreva `authenticate` /
+`load_principal` — é ali que mora a checagem de senha resistente a timing.
+Sobrescreva só `is_authorized`, que os dois consultam:
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseUserModel, MFAMixin, UserModelAuthBackend
+
+
+class UserModel(MFAMixin, BaseUserModel):
+    """Conta do serviço, com papel próprio."""
+
+    __tablename__ = "users"
+
+    role: Mapped[str] = mapped_column(String(16), default="MEMBER")
+
+
+class StaffAdminBackend(UserModelAuthBackend):
+    """Libera o /admin para a equipe, e só com MFA ativa."""
+
+    def is_authorized(self, user: BaseUserModel) -> bool:
+        """Entra quem tem papel STAFF, tenha ou não is_admin."""
+        return isinstance(user, UserModel) and user.role == "STAFF"
+
+
+auth_backend: StaffAdminBackend = StaffAdminBackend(UserModel, require_mfa=True)
+```
+
+Passe `auth_backend` ao `make_admin_router(...)` como de costume. O que muda:
+
+- **A senha continua primeiro.** Senha errada responde `"Invalid credentials"`
+  para qualquer conta; só quem acertou a senha lê `"This account is not
+  authorized for /admin"` (papel errado) ou `"MFA enrollment required for
+  /admin"` (sem MFA).
+- **`require_mfa=True`** recusa no login a conta autorizada e ativa que não
+  ativou MFA (`mfa_enabled` falso) — em vez de deixá-la entrar só com a senha.
+- **Vale para a sessão também.** `load_principal` consulta os mesmos dois
+  critérios a cada request: papel revogado, ou MFA desligada depois do login,
+  manda para `/admin/login` no request seguinte.
+- `is_authorized` é síncrono de propósito: recebe a linha já carregada e não
+  deve ir ao banco.
+
+!!! warning "O admin não tem tela de inscrição em MFA"
+    Com `require_mfa=True`, quem ainda não ativou o segundo fator vê, na
+    própria página de login, `MFA enrollment required for /admin` (status
+    `401`), e não entra. A inscrição acontece **fora** do admin: pelas rotas
+    `POST /auth/mfa/enroll` + `POST /auth/mfa/confirm` do
+    `make_auth_router` (veja [MFA](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/mfa.md)), ou na criação da conta pelo
+    CLI, com `tempest user create --require-mfa`. Feita a inscrição, o
+    próximo login no admin pede o código TOTP em `/admin/mfa`.

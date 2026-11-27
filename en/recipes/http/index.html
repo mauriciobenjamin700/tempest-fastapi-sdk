@@ -1311,6 +1311,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1432,6 +1438,34 @@
     
   
     Custom actions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/theme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customize the look (AdminTheme)
   
 
     
@@ -1600,6 +1634,62 @@
     
   
     Permissions: RBAC, row scope and impersonation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Task panel
   
 
     
@@ -11810,7 +11900,7 @@
 
 <h1 id="http-layer">HTTP layer<a class="headerlink" href="#http-layer" title="Permanent link">&para;</a></h1>
 <p>Middlewares, dependencies, routers and middleware composition for the API surface.</p>
-<p>Here you assemble a service's entire HTTP surface from the primitives <code>tempest_fastapi_sdk</code> ships — without hand-writing middleware, exception handlers or bootstrap glue. Each section is independent: grab only the one you need right now. This recipe covers ~12 primitives:</p>
+<p>Here you assemble a service's entire HTTP surface from the primitives <code>tempest_fastapi_sdk</code> ships — without hand-writing middleware, exception handlers or bootstrap glue. Each subpage is independent: open only the one you need right now. This recipe covers ~12 primitives:</p>
 <ul>
 <li><strong><code>create_app()</code> + <code>register_exception_handlers</code></strong> — the canonical bootstrap and the standardized error envelope (with optional i18n via <code>MessageCatalog</code>).</li>
 <li><strong><code>RequestIDMiddleware</code></strong> — <code>X-Request-ID</code> correlation on every log line.</li>
@@ -11827,8 +11917,8 @@
 <li><strong><code>BaseAppSettings</code> + <code>*Settings</code> mixins</strong> — composable env-var configuration.</li>
 </ul>
 <div class="admonition tip">
-<p class="admonition-title">The last three sections are full flows</p>
-<p>Authentication, uploads and transactional email appear here in condensed form; each has a dedicated, deeper recipe — see the <a href="#recap-next-steps">Recap</a> at the end of the page.</p>
+<p class="admonition-title">The last two subpages are full flows</p>
+<p>Authentication, uploads and transactional email appear there in condensed form; each has a dedicated, deeper recipe — see the <a href="#recap-next-steps">Recap</a> at the end of the page.</p>
 </div>
 <h2 id="where-each-task-lives">Where each task lives<a class="headerlink" href="#where-each-task-lives" title="Permanent link">&para;</a></h2>
 <p>Use this table to open only the subpage for the task at hand; they are listed in reading order.</p>
@@ -11875,7 +11965,7 @@
 </tbody>
 </table>
 <h2 id="recap-next-steps">Recap / next steps<a class="headerlink" href="#recap-next-steps" title="Permanent link">&para;</a></h2>
-<p>You now know the whole HTTP surface: app bootstrap, exception handlers with i18n, auth dependencies, rate limiting, webhook verification, pagination headers, tool-spec, the server entry point and settings composition. The last three sections (authentication, uploads, email) were a summary — each has a dedicated recipe that goes deeper:</p>
+<p>You now know the whole HTTP surface: app bootstrap, exception handlers with i18n, auth dependencies, rate limiting, webhook verification, pagination headers, tool-spec, the server entry point and settings composition. The last two subpages (authentication; uploads and email) are a summary — each has a dedicated recipe that goes deeper:</p>
 <ul>
 <li><a href="../auth-flow/">Authentication flow »</a> — the full bundled flow (<code>UserAuthService</code> + <code>make_auth_router</code>): signup, activation, login, password reset, refresh tokens and <code>current_user</code>.</li>
 <li><a href="../uploads/">File uploads »</a> — pluggable storage backends (<code>LocalUploadStorage</code> / <code>MinIOUploadStorage</code>), presigned URLs and content validation.</li>

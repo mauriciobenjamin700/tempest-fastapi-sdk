@@ -1311,6 +1311,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1432,6 +1438,34 @@
     
   
     Custom actions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/theme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customize the look (AdminTheme)
   
 
     
@@ -1600,6 +1634,62 @@
     
   
     Permissions: RBAC, row scope and impersonation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Task panel
   
 
     
@@ -11810,29 +11900,30 @@
 
 <h1 id="self-hosted-generative-ai">Self-hosted generative AI<a class="headerlink" href="#self-hosted-generative-ai" title="Permanent link">&para;</a></h1>
 <p>Run HuggingFace models on <strong>your own hardware</strong> — no external API, no data
-leaving your servers. This page covers the whole <code>tempest_fastapi_sdk.genai</code>
-module, starting where every adoption starts: knowing, <em>before</em> you download
+leaving your servers. This page is the index of the
+<code>tempest_fastapi_sdk.genai</code> module: each task lives on a subpage, and the
+first one is where every adoption starts — knowing, <em>before</em> you download
 gigabytes of weights, whether the machine can handle the model.</p>
 <div class="admonition info">
 <p class="admonition-title">How the module was built</p>
 <p>The module shipped in slices, and the order below is the recommended
-reading path -- each section assumes the ones before it. After v0.108 came
+reading path -- each subpage assumes the ones before it. After v0.108 came
 structured output (v0.142), diarization (v0.223), STT correction (v0.235)
 and the Coqui runtime behind the <code>[genai-audio]</code> extra (v0.252), all
-documented in their own sections on this same page.
+documented on their own subpages.
 - <strong>v0.96:</strong> <code>genai.hardware</code> — probing + <code>can_run</code> / <code>recommend</code>.
 - <strong>v0.97:</strong> <code>genai.rag</code> — RAG context (SearXNG web search + PDF
-  reading) to inject into LLMs (this page, <a href="rag/">RAG context</a>).
+  reading) to inject into LLMs (subpage <a href="rag/">RAG context</a>).
 - <strong>v0.98:</strong> <code>TextGenerator</code> — local LLM + int4/int8 quantization
-  (section <a href="text/#generate-text-with-a-local-llm">Generate text</a>).
+  (subpage <a href="text/#generate-text-with-a-local-llm">Generate text</a>).
 - <strong>v0.99:</strong> <code>Embedder</code>, <code>BatchScheduler</code>, <code>ModelRegistry</code> — embeddings
-  + scale (section <a href="embeddings/">Embeddings and scale</a>).
-- <strong>v0.102:</strong> <code>SpeechToText</code> / <code>TextToSpeech</code> — audio (section
+  + scale (subpage <a href="embeddings/">Embeddings and scale</a>).
+- <strong>v0.102:</strong> <code>SpeechToText</code> / <code>TextToSpeech</code> — audio (subpage
   <a href="audio/">Audio (voice)</a>).
 - <strong>v0.107:</strong> Ollama backend — <code>OllamaGenerator</code> / <code>OllamaEmbedder</code>,
-  a local LLM without torch (section <a href="ollama/">Ollama backend</a>).
+  a local LLM without torch (subpage <a href="ollama/">Ollama backend</a>).
 - <strong>v0.108:</strong> long-term memory, AI chat pipeline and vision/tools —
-  <code>ChatMemory</code> / <code>AIChatPipeline</code> (sections
+  <code>ChatMemory</code> / <code>AIChatPipeline</code> (subpages
   <a href="memory/">Long-term memory</a> and
   <a href="chat/">AI chat pipeline</a>).</p>
 </div>

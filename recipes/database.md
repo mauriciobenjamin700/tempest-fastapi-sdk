@@ -24,8 +24,8 @@ Mais três opcionais que entram quando o domínio pede: os **mixins**
 (`SoftDeleteMixin`, `AuditMixin`, `MFAMixin`), a **paginação por cursor**
 e o **`SlowQueryLogger`**.
 
-!!! tip "Como ler esta página"
-    Ela é progressiva. Comece pelo modelo, conecte o banco, suba um
+!!! tip "Como ler as subpáginas"
+    Elas são progressivas. Comece pelo modelo, conecte o banco, suba um
     repository, aprenda os filtros, então paginação, migrações e
     observabilidade. Cada bloco de código é um arquivo completo — copie,
     cole, rode. Se você só quer a referência da API, pule para
@@ -73,7 +73,7 @@ Use esta tabela para abrir só a subpágina da tarefa que você tem; elas estão
 
 ## Próximos passos
 
-Esta página cobriu o núcleo. Os recursos avançados de banco têm receitas
+As subpáginas acima cobrem o núcleo. Os recursos avançados de banco têm receitas
 dedicadas:
 
 - [Multi-tenant »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/multi-tenant.md) — `TenantScopedRepository` para

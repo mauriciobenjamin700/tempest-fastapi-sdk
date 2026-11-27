@@ -2,7 +2,7 @@
 
 Middlewares, dependências, routers e composição de middleware para a superfície da API.
 
-Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos primitivos que o `tempest_fastapi_sdk` entrega — sem escrever middleware, exception handler ou glue de bootstrap na mão. Cada seção é independente: pegue só a que você precisa agora. Esta receita cobre ~12 primitivos:
+Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos primitivos que o `tempest_fastapi_sdk` entrega — sem escrever middleware, exception handler ou glue de bootstrap na mão. Cada subpágina é independente: abra só a que você precisa agora. Esta receita cobre ~12 primitivos:
 
 - **`create_app()` + `register_exception_handlers`** — bootstrap canônico e o envelope de erro padronizado (com i18n opcional via `MessageCatalog`).
 - **`RequestIDMiddleware`** — correlação `X-Request-ID` em cada linha de log.
@@ -18,8 +18,8 @@ Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos pri
 - **`run_server`** — ponto de entrada programático do uvicorn.
 - **`BaseAppSettings` + mixins `*Settings`** — configuração componível por env var.
 
-!!! tip "As três últimas seções são flows completos"
-    Autenticação, upload e e-mail transacional aparecem aqui em forma resumida; cada uma tem uma receita dedicada e mais profunda — veja o [Recap](#recap-proximos-passos) no fim da página.
+!!! tip "As duas últimas subpáginas são flows completos"
+    Autenticação, upload e e-mail transacional aparecem nelas em forma resumida; cada uma tem uma receita dedicada e mais profunda — veja o [Recap](#recap-proximos-passos) no fim da página.
 
 ## Onde está cada tarefa
 
@@ -38,7 +38,7 @@ Use esta tabela para abrir só a subpágina da tarefa que você tem; elas estão
 
 ## Recap / próximos passos
 
-Você agora conhece a superfície HTTP inteira: bootstrap do app, exception handlers com i18n, dependências de auth, rate limit, verificação de webhook, headers de paginação, tool-spec, o ponto de entrada do servidor e a composição de settings. As três últimas seções (autenticação, upload, e-mail) foram um resumo — cada uma tem uma receita dedicada que vai mais fundo:
+Você agora conhece a superfície HTTP inteira: bootstrap do app, exception handlers com i18n, dependências de auth, rate limit, verificação de webhook, headers de paginação, tool-spec, o ponto de entrada do servidor e a composição de settings. As duas últimas subpáginas (autenticação; upload e e-mail) são um resumo — cada uma tem uma receita dedicada que vai mais fundo:
 
 - [Fluxo de autenticação »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/auth-flow.md) — o flow bundled completo (`UserAuthService` + `make_auth_router`): signup, ativação, login, reset de senha, refresh tokens e `current_user`.
 - [Upload de arquivos »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/uploads.md) — backends de storage plugáveis (`LocalUploadStorage` / `MinIOUploadStorage`), URLs pré-assinadas e validação de conteúdo.

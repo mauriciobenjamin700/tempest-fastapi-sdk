@@ -4,13 +4,9 @@
 
 Every link below is the Markdown source of a page, in English; the Portuguese original is the same path without `/en/`. [llms-core.txt](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/llms-core.txt) inlines the pages needed to start (installation, architecture, service standard, tutorial, recipe index); [llms-full.txt](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/llms-full.txt) inlines every page except the API reference.
 
-## Overview
+## Home
 
 - [tempest-fastapi-sdk](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/index.md): Entry point of the SDK: what you get out of the box, a five-minute quick start, where to go next and project status.
-- [Tutorial — building the *Users* feature](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/tutorial.md): Use to learn the SDK conventions by building the Users feature end to end; covers layout, settings, model, schemas, exceptions, repository, service, controller, router and pagination.
-- [Roadmap](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/roadmap.md): Use to see what the SDK already ships and what is in the backlog; covers tiers S, A and B with status and version, admin panel evolution, next steps and per-version deliveries.
-- [Contributing](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/contributing.md): Use before contributing: the issue-first flow, dev environment, quality gates, tests, docs, commit message style and the release process.
-- [Changelog](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/changelog.md): Use to see what changed in each SDK release; includes the repository `CHANGELOG.md` in full.
 
 ## Installation
 
@@ -26,18 +22,25 @@ Every link below is the Markdown source of a page, in English; the Portuguese or
 - [Recommended architecture](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recommended-architecture.md): Use to shape every file in a service the way `tempest check` enforces; covers the nine coded rules, declared exceptions and migrating an existing service.
 - [Service standard](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/service-standard.md): Use as the citable reference for laying out a Tempest service; covers what `tempest new` generates, each standard item with the gate enforcing it and `tempest generate --standard`.
 
+## Tutorial
+
+- [Tutorial — building the *Users* feature](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/tutorial.md): Use to learn the SDK conventions by building the Users feature end to end; covers layout, settings, model, schemas, exceptions, repository, service, controller, router and pagination.
+
 ## Recipes
 
 - [Recipes](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/index.md): Recipes index: an SDK tour with one example per building block (auth, cache, queue, AI, admin, CLI) plus the full list of recipes and complete examples.
 - [Admin site](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin.md): Use to get a Django-style admin panel under `/admin`; covers what it provides, installation and the index of per-task subpages.
 - [Audit history](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/audit.md): Use to show in the admin who changed what via `audit_model`, recent activity on the dashboard and restoring a version from history.
 - [Custom actions](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/actions.md): Use to add buttons that run your code via `@admin_action`: reveal a secret once, ask for input before running and create through a service.
+- [Customize the look — `AdminTheme`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/theme.md): Use to change the admin colors, logo, favicon, font, radius, footer and dark mode through typed `AdminTheme` parameters.
 - [Dashboard: cards, indicators and map](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/dashboard.md): Use to put business metrics on the admin dashboard: `dashboard_cards`, metric areas with thresholds and a geographic distribution map.
 - [Form fields](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/forms.md): Use to tune the admin form: `choices`, uploads, FK autocomplete, inlines, many-to-many, widgets, password fields and `exclude_fields`.
-- [Global search](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/search.md): Use for admin global search over `search_fields`; also covers session security, a custom auth backend, the task panel, storage browser and `AdminTheme`.
+- [Global search](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/search.md): Use for admin global search over `search_fields`; covers the per-model limit, what the search respects and the query limits.
 - [List view: counts, import and bulk edits](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/list.md): Use to boost the admin list view: related counts, CSV/XLSX import, duplicate, bulk edit, lenses and counting on large tables.
-- [Mount the admin site](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/setup.md): Use to stand up the admin panel: a `BaseUserModel` user model, registering admin classes or `automap`, and mounting the router.
+- [Mount the admin site](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/setup.md): Use to stand up the admin panel: a `BaseUserModel` user model, registering admin classes or `automap`, the router, session defaults and a custom auth backend.
 - [Permissions: RBAC, row scope and impersonation](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/permissions.md): Use to control who sees and does what in the admin: `access_policy` per model and action, `row_scope` on reads and writes, and `impersonate`.
+- [Storage browser — view, preview and edit files](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/storage.md): Use to view, preview, upload, edit, rename and delete object-storage files from the admin with `StorageBrowserService`.
+- [Task panel — what is scheduled and what ran](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/tasks.md): Use to see the broker schedule and the runs a `JobStore` persisted from the admin, with `TaskPanelService`.
 - [Timezone, concurrent edits and language](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/operator.md): Use to show dates in the operator time zone, block concurrent edits with optimistic locking and switch the admin UI to Portuguese.
 - [SQL console in the admin](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin-sql-console.md): Use to enable a SQL console in the admin with guardrails: capability policy, deny over allow, auditing, rolled-back reads and a production checklist.
 - [AI agents](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/agents.md): Use to build an AI agent over local models; covers extra per backend, `stop_reason`, budget, typed tools, tool failures, HTTP serving and CPU cost.
@@ -330,6 +333,10 @@ Every link below is the Markdown source of a page, in English; the Portuguese or
 - [Critical flows](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/learning/marketplace/flows.md): Use to implement the marketplace critical flows: sequence diagrams for signup, invites, idempotent checkout, SSE + Web Push and state machines.
 - [Endpoint map](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/learning/marketplace/api.md): Use to look up the marketplace REST API in one table: auth, orgs, invites, catalog, stock, orders, reviews, notifications and a checkout payload.
 
+## Roadmap
+
+- [Roadmap](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/roadmap.md): Use to see what the SDK already ships and what is in the backlog; covers tiers S, A and B with status and version, admin panel evolution, next steps and per-version deliveries.
+
 ## Migration guide
 
 - [Migration guide](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration.md): Use when upgrading the SDK across breaking changes; index of the per-version-range subpages and the list of all changes by release.
@@ -345,3 +352,11 @@ Every link below is the Markdown source of a page, in English; the Portuguese or
 - [Migration 0.25x](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-25x.md): Use when upgrading from before 0.259.0: OpenPix money as `int`, log rotation, `tools` in agent fakes, JSON 429 and per-session SQLite `:memory:`.
 - [Migration 0.22x–0.23x](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-22x-0-23x.md): Use when upgrading from before 0.234.0: generated models built by Python name, renamed OpenPix enums and Ollama structured output via `/api/chat`.
 - [Migration 0.8–0.17x](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/migration/0-8-0-17x.md): Use when upgrading from before 0.174.0: 500s that became 422s, token and cache scoping, `BaseAppSettings` as last base, the `payload` column and `ServerSettings`.
+
+## Contributing
+
+- [Contributing](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/contributing.md): Use before contributing: the issue-first flow, dev environment, quality gates, tests, docs, commit message style and the release process.
+
+## Changelog
+
+- [Changelog](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/changelog.md): Use to see what changed in each SDK release; includes the repository `CHANGELOG.md` in full.

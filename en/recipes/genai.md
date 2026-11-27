@@ -1,29 +1,30 @@
 # Self-hosted generative AI
 
 Run HuggingFace models on **your own hardware** — no external API, no data
-leaving your servers. This page covers the whole `tempest_fastapi_sdk.genai`
-module, starting where every adoption starts: knowing, *before* you download
+leaving your servers. This page is the index of the
+`tempest_fastapi_sdk.genai` module: each task lives on a subpage, and the
+first one is where every adoption starts — knowing, *before* you download
 gigabytes of weights, whether the machine can handle the model.
 
 !!! info "How the module was built"
     The module shipped in slices, and the order below is the recommended
-    reading path -- each section assumes the ones before it. After v0.108 came
+    reading path -- each subpage assumes the ones before it. After v0.108 came
     structured output (v0.142), diarization (v0.223), STT correction (v0.235)
     and the Coqui runtime behind the `[genai-audio]` extra (v0.252), all
-    documented in their own sections on this same page.
+    documented on their own subpages.
     - **v0.96:** `genai.hardware` — probing + `can_run` / `recommend`.
     - **v0.97:** `genai.rag` — RAG context (SearXNG web search + PDF
-      reading) to inject into LLMs (this page, [RAG context](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/rag.md)).
+      reading) to inject into LLMs (subpage [RAG context](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/rag.md)).
     - **v0.98:** `TextGenerator` — local LLM + int4/int8 quantization
-      (section [Generate text](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/text.md#generate-text-with-a-local-llm)).
+      (subpage [Generate text](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/text.md#generate-text-with-a-local-llm)).
     - **v0.99:** `Embedder`, `BatchScheduler`, `ModelRegistry` — embeddings
-      + scale (section [Embeddings and scale](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/embeddings.md)).
-    - **v0.102:** `SpeechToText` / `TextToSpeech` — audio (section
+      + scale (subpage [Embeddings and scale](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/embeddings.md)).
+    - **v0.102:** `SpeechToText` / `TextToSpeech` — audio (subpage
       [Audio (voice)](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/audio.md)).
     - **v0.107:** Ollama backend — `OllamaGenerator` / `OllamaEmbedder`,
-      a local LLM without torch (section [Ollama backend](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/ollama.md)).
+      a local LLM without torch (subpage [Ollama backend](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/ollama.md)).
     - **v0.108:** long-term memory, AI chat pipeline and vision/tools —
-      `ChatMemory` / `AIChatPipeline` (sections
+      `ChatMemory` / `AIChatPipeline` (subpages
       [Long-term memory](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/memory.md) and
       [AI chat pipeline](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/genai/chat.md)).
 

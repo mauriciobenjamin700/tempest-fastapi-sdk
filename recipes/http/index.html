@@ -6390,6 +6390,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -6559,6 +6565,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../admin/theme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizar a aparência (AdminTheme)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../admin/dashboard/" class="md-nav__link">
         
   
@@ -6679,6 +6713,62 @@
     
   
     Montar o painel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navegador de storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Painel de tasks
   
 
     
@@ -11808,7 +11898,7 @@
 
 <h1 id="camada-http">Camada HTTP<a class="headerlink" href="#camada-http" title="Permanent link">&para;</a></h1>
 <p>Middlewares, dependências, routers e composição de middleware para a superfície da API.</p>
-<p>Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos primitivos que o <code>tempest_fastapi_sdk</code> entrega — sem escrever middleware, exception handler ou glue de bootstrap na mão. Cada seção é independente: pegue só a que você precisa agora. Esta receita cobre ~12 primitivos:</p>
+<p>Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos primitivos que o <code>tempest_fastapi_sdk</code> entrega — sem escrever middleware, exception handler ou glue de bootstrap na mão. Cada subpágina é independente: abra só a que você precisa agora. Esta receita cobre ~12 primitivos:</p>
 <ul>
 <li><strong><code>create_app()</code> + <code>register_exception_handlers</code></strong> — bootstrap canônico e o envelope de erro padronizado (com i18n opcional via <code>MessageCatalog</code>).</li>
 <li><strong><code>RequestIDMiddleware</code></strong> — correlação <code>X-Request-ID</code> em cada linha de log.</li>
@@ -11825,8 +11915,8 @@
 <li><strong><code>BaseAppSettings</code> + mixins <code>*Settings</code></strong> — configuração componível por env var.</li>
 </ul>
 <div class="admonition tip">
-<p class="admonition-title">As três últimas seções são flows completos</p>
-<p>Autenticação, upload e e-mail transacional aparecem aqui em forma resumida; cada uma tem uma receita dedicada e mais profunda — veja o <a href="#recap-proximos-passos">Recap</a> no fim da página.</p>
+<p class="admonition-title">As duas últimas subpáginas são flows completos</p>
+<p>Autenticação, upload e e-mail transacional aparecem nelas em forma resumida; cada uma tem uma receita dedicada e mais profunda — veja o <a href="#recap-proximos-passos">Recap</a> no fim da página.</p>
 </div>
 <h2 id="onde-esta-cada-tarefa">Onde está cada tarefa<a class="headerlink" href="#onde-esta-cada-tarefa" title="Permanent link">&para;</a></h2>
 <p>Use esta tabela para abrir só a subpágina da tarefa que você tem; elas estão na ordem de leitura.</p>
@@ -11873,7 +11963,7 @@
 </tbody>
 </table>
 <h2 id="recap-proximos-passos">Recap / próximos passos<a class="headerlink" href="#recap-proximos-passos" title="Permanent link">&para;</a></h2>
-<p>Você agora conhece a superfície HTTP inteira: bootstrap do app, exception handlers com i18n, dependências de auth, rate limit, verificação de webhook, headers de paginação, tool-spec, o ponto de entrada do servidor e a composição de settings. As três últimas seções (autenticação, upload, e-mail) foram um resumo — cada uma tem uma receita dedicada que vai mais fundo:</p>
+<p>Você agora conhece a superfície HTTP inteira: bootstrap do app, exception handlers com i18n, dependências de auth, rate limit, verificação de webhook, headers de paginação, tool-spec, o ponto de entrada do servidor e a composição de settings. As duas últimas subpáginas (autenticação; upload e e-mail) são um resumo — cada uma tem uma receita dedicada que vai mais fundo:</p>
 <ul>
 <li><a href="../auth-flow/">Fluxo de autenticação »</a> — o flow bundled completo (<code>UserAuthService</code> + <code>make_auth_router</code>): signup, ativação, login, reset de senha, refresh tokens e <code>current_user</code>.</li>
 <li><a href="../uploads/">Upload de arquivos »</a> — backends de storage plugáveis (<code>LocalUploadStorage</code> / <code>MinIOUploadStorage</code>), URLs pré-assinadas e validação de conteúdo.</li>

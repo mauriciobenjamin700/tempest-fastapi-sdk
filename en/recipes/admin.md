@@ -27,7 +27,7 @@ Use this table to open only the subpage for the task at hand; they are listed in
 
 | Subpage | What it solves |
 | --- | --- |
-| [Mount the admin site](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/setup.md) | Use to stand the panel up: user model, admin class registration (or `automap`) and the router with everything it mounts. |
+| [Mount the admin site](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/setup.md) | Use to stand the panel up: user model, admin class registration (or `automap`), the router with everything it mounts, the session defaults and a custom auth backend. |
 | [Custom actions](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/actions.md) | Use to add buttons that run your code (`@admin_action`): show a secret once, ask for input before running, create through a service. |
 | [Form fields](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/forms.md) | Use to tune the form: choices, file upload, autocomplete FKs, inlines, many-to-many, widgets, passwords and hidden columns. |
 | [Audit history](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/audit.md) | Use to show who changed what on the detail page, recent activity on the dashboard and undo from the history. |
@@ -36,6 +36,9 @@ Use this table to open only the subpage for the task at hand; they are listed in
 | [Permissions: RBAC, row scope and impersonation](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/permissions.md) | Use to control who sees and does what: RBAC per model and action, row scope on reads and writes, and logging in as another user. |
 | [Timezone, concurrent edits and language](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/operator.md) | Use to show dates in the operator's timezone, stop two edits from overwriting each other and switch the interface to Portuguese. |
 | [Global search](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/search.md) | Use to search a term across every model with `search_fields` from the search box at the top of the panel. |
+| [Task panel](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/tasks.md) | Use to see in the panel what is scheduled on the broker and what the workers already ran (`TaskPanelService`). |
+| [Storage browser](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/storage.md) | Use to open the bucket on a screen: list, preview, upload, edit text, rename and delete (`StorageBrowserService`). |
+| [Customize the look](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/admin/theme.md) | Use to change colors, logo, favicon, font and dark mode without forking the stylesheet (`AdminTheme`). |
 
 ## Recap
 

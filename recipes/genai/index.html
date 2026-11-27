@@ -6390,6 +6390,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -6559,6 +6565,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../admin/theme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizar a aparência (AdminTheme)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../admin/dashboard/" class="md-nav__link">
         
   
@@ -6679,6 +6713,62 @@
     
   
     Montar o painel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navegador de storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Painel de tasks
   
 
     
@@ -11808,29 +11898,30 @@
 
 <h1 id="ia-generativa-self-hosted">IA generativa self-hosted<a class="headerlink" href="#ia-generativa-self-hosted" title="Permanent link">&para;</a></h1>
 <p>Rodar modelos do HuggingFace no <strong>seu próprio hardware</strong> — sem API
-externa, sem enviar dados pra fora. Esta página cobre o módulo
-<code>tempest_fastapi_sdk.genai</code> inteiro, começando por onde toda adoção começa:
-saber, <em>antes</em> de baixar gigabytes de pesos, se a máquina aguenta o modelo.</p>
+externa, sem enviar dados pra fora. Esta página é o índice do módulo
+<code>tempest_fastapi_sdk.genai</code>: cada tarefa mora numa subpágina, e a primeira
+é onde toda adoção começa — saber, <em>antes</em> de baixar gigabytes de pesos, se
+a máquina aguenta o modelo.</p>
 <div class="admonition info">
 <p class="admonition-title">Como o módulo foi construído</p>
 <p>O módulo saiu em fatias, e a ordem abaixo é o caminho de leitura
-recomendado — cada seção assume as anteriores. Depois da v0.108 vieram
+recomendado — cada subpágina assume as anteriores. Depois da v0.108 vieram
 saída estruturada (v0.142), diarização (v0.223), correção de STT (v0.235)
 e o runtime Coqui do extra <code>[genai-audio]</code> (v0.252), todos documentados
-nas seções correspondentes desta mesma página.
+nas subpáginas correspondentes.
 - <strong>v0.96:</strong> <code>genai.hardware</code> — sondagem + <code>can_run</code> / <code>recommend</code>.
 - <strong>v0.97:</strong> <code>genai.rag</code> — contexto RAG (busca web SearXNG + leitura de
-  PDF) pra injetar nas LLMs (esta página, seção <a href="rag/">Contexto RAG</a>).
+  PDF) pra injetar nas LLMs (subpágina <a href="rag/">Contexto RAG</a>).
 - <strong>v0.98:</strong> <code>TextGenerator</code> — LLM local + quantização int4/int8
-  (seção <a href="text/#gerar-texto-com-llm-local">Gerar texto</a>).
+  (subpágina <a href="text/#gerar-texto-com-llm-local">Gerar texto</a>).
 - <strong>v0.99:</strong> <code>Embedder</code>, <code>BatchScheduler</code>, <code>ModelRegistry</code> — embeddings
-  + escala (seção <a href="embeddings/">Embeddings e escala</a>).
-- <strong>v0.102:</strong> <code>SpeechToText</code> / <code>TextToSpeech</code> — áudio (seção
+  + escala (subpágina <a href="embeddings/">Embeddings e escala</a>).
+- <strong>v0.102:</strong> <code>SpeechToText</code> / <code>TextToSpeech</code> — áudio (subpágina
   <a href="audio/">Áudio (voz)</a>).
 - <strong>v0.107:</strong> backend Ollama — <code>OllamaGenerator</code> / <code>OllamaEmbedder</code>,
-  LLM local sem torch (seção <a href="ollama/">Backend Ollama</a>).
+  LLM local sem torch (subpágina <a href="ollama/">Backend Ollama</a>).
 - <strong>v0.108:</strong> memória de longo prazo, pipeline de chat com IA e
-  visão/tools — <code>ChatMemory</code> / <code>AIChatPipeline</code> (seções
+  visão/tools — <code>ChatMemory</code> / <code>AIChatPipeline</code> (subpáginas
   <a href="memory/">Memória de longo prazo</a> e
   <a href="chat/">Pipeline de chat com IA</a>).</p>
 </div>
