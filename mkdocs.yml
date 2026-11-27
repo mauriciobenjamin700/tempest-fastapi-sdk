@@ -113,12 +113,15 @@ plugins:
                   - "Index": recipes/admin.md
                   - "Audit history": recipes/admin/audit.md
                   - "Custom actions": recipes/admin/actions.md
+                  - "Customize the look (AdminTheme)": recipes/admin/theme.md
                   - "Dashboard: cards, indicators and map": recipes/admin/dashboard.md
                   - "Form fields": recipes/admin/forms.md
                   - "Global search": recipes/admin/search.md
                   - "List view: counts, import and bulk edits": recipes/admin/list.md
                   - "Mount the admin site": recipes/admin/setup.md
                   - "Permissions: RBAC, row scope and impersonation": recipes/admin/permissions.md
+                  - "Storage browser": recipes/admin/storage.md
+                  - "Task panel": recipes/admin/tasks.md
                   - "Timezone, concurrent edits and language": recipes/admin/operator.md
               - Admin SQL console: recipes/admin-sql-console.md
               - AI agents: recipes/agents.md
@@ -802,11 +805,14 @@ nav:
           - "Ações customizadas": recipes/admin/actions.md
           - "Busca global": recipes/admin/search.md
           - "Campos do formulário": recipes/admin/forms.md
+          - "Customizar a aparência (AdminTheme)": recipes/admin/theme.md
           - "Dashboard: cards, indicadores e mapa": recipes/admin/dashboard.md
           - "Fuso, edição simultânea e idioma": recipes/admin/operator.md
           - "Histórico de auditoria": recipes/admin/audit.md
           - "Listagem: contagens, import e edição em massa": recipes/admin/list.md
           - "Montar o painel": recipes/admin/setup.md
+          - "Navegador de storage": recipes/admin/storage.md
+          - "Painel de tasks": recipes/admin/tasks.md
           - "Permissões: RBAC, escopo por linha e impersonate": recipes/admin/permissions.md
       - PDFs: recipes/pdf.md
       - "Permissões object-level": recipes/authz.md

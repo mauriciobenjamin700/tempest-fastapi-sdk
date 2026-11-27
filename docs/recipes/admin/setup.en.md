@@ -1,10 +1,10 @@
 ---
-description: "Use to stand up the admin panel: a `BaseUserModel` user model, registering admin classes or `automap`, and mounting the router."
+description: "Use to stand up the admin panel: a `BaseUserModel` user model, registering admin classes or `automap`, the router, session defaults and a custom auth backend."
 ---
 
 # Mount the admin site
 
-Use to stand the panel up: user model, admin class registration (or `automap`) and the router with everything it mounts.
+Use to stand the panel up: user model, admin class registration (or `automap`), the router with everything it mounts, the session security defaults and a custom auth backend.
 
 Part of the [Admin site](../admin.md) recipe.
 
@@ -224,4 +224,297 @@ app.include_router(
 
     **Audit trail**: create/edit through the admin stamps `created_by`/`updated_by` (from `AuditMixin`) with the acting admin's id; the detail view shows an **Audit** panel with timestamps and — when the model has the audit columns — the actor (UUID resolved to a display name via the auth backend). Models without `AuditMixin` show timestamps only.
 
-    In-place inline editing of children: see `Inline(editable=True)` below.
+    In-place inline editing of children: see [`Inline(editable=True)`](forms.md#in-place-editing-editabletrue).
+
+## 4. Session security defaults
+
+`SignedCookieSessionStore` uses `itsdangerous.TimestampSigner` (HMAC-SHA256) to sign a single cookie:
+
+- `HttpOnly` always set.
+- `Secure` flagged when `cookie_secure=True` (default; flip off in local HTTP dev).
+- `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` accepted).
+- Default lifetime `8h`; expired or tampered cookies are rejected silently.
+- The cookie is not enough on its own: every authenticated route reloads the principal through the `auth_backend` on each request. An account deleted, deactivated or stripped of `is_admin` after the login is sent to `/admin/login` (`303`) on the very next request, without waiting for the cookie to expire.
+- `POST /admin/logout` ends the session on the server, not just in the browser: it marks the session's random id (`sid`, in the cookie) in an `AdminSessionRevocations`, and every request refuses a marked session. A copy of the cookie taken before the logout is sent to `/admin/login`. The default keeps the marks on an `InMemoryThrottleBackend`, per process, for the store's `max_age_seconds`. Behind more than one worker or replica, pass `make_admin_router(..., session_revocations=AdminSessionRevocations(redis_client))` (the same `redis.asyncio` client the throttle accepts), or a logout served by one process does not reach the others.
+- The session is bound to the credential: at login the router writes into the cookie an HMAC (keyed with `secret_key`) of `AdminAuthBackend.credential_fingerprint(principal)` and checks it on every request. In `UserModelAuthBackend` the fingerprint covers `hashed_password` and `totp_secret`, so changing the password or re-enrolling MFA ends every session issued before it, on every replica, with no extra state. A custom backend returns `None` by default (no binding); override the method to opt in. Cookies issued before this version carry no HMAC and are refused once: the operator signs in again.
+- Per-session CSRF token is generated at login and required by every session form POST (logout, create, edit, delete, bulk actions, SQL console runs, task cancellation).
+- The login form runs before any session exists and carries a token of its own: `GET /admin/login` sets a signed 1 h cookie (`tempest_admin_login_csrf`, with a salt distinct from the session's) and repeats the token in a hidden field. The `POST` compares the two in constant time **before** the failure budget and the password, and refuses with `403` — the page comes back with a fresh token, and the refusal spends no attempt. Without it, a page on another site could make the operator's browser sign in to the **attacker's** account (login CSRF); `SameSite=Lax` does not prevent that, because it restricts the cookie the POST sends, not the one the response sets. The limit: the cookie is scoped to the admin prefix, so it cannot use the `__Host-` prefix, and a **sibling subdomain** under someone else's control (`evil.example.com` next to `admin.example.com`) can plant, for the parent domain, a signed cookie it got by loading the form itself. Serve the admin on a host without third-party subdomains.
+- `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
+
+!!! danger "Login refused or looping? It's the cookie `Secure` flag over plain HTTP"
+    If every `POST /admin/login` returns `403` with *The sign-in form expired,
+    please try again*, the login form's token cookie is **not coming back**. If
+    it returns `303` (looks like success), but the following
+    `GET /admin/` redirects back to the login — forever — it is the session
+    cookie that is not coming back. Either way the almost-certain cause is the
+    same: `cookie_secure=True` while the admin is served over **plain HTTP** (no
+    TLS terminator in front). The browser refuses to store a `Secure` cookie on a
+    non-HTTPS connection, and both admin cookies (the login token's and the
+    session's) follow `cookie_secure`.
+
+    ```python
+    # ❌ Tied to DEBUG: in production DEBUG=false → cookie_secure=True,
+    #    but with no HTTPS in front the login loops.
+    make_admin_router(..., cookie_secure=not settings.DEBUG)
+
+    # ✅ Dedicated toggle, independent of DEBUG:
+    make_admin_router(..., cookie_secure=settings.ADMIN_COOKIE_SECURE)
+    ```
+
+    **Right fix:** put HTTPS in front (nginx/Caddy terminating TLS) and keep
+    `cookie_secure=True` — the admin session cookie must not travel in the clear.
+    **Stopgap** only when the admin genuinely runs over HTTP (intranet, MVP):
+    `cookie_secure=False`, aware the session ships without `Secure`. Don't tie
+    this flag to `DEBUG` — turning debug on in production is worse than the
+    original problem.
+
+!!! warning "Browser says the login form is not secure? It's the scheme behind the proxy"
+    With HTTPS in front and the proxy speaking HTTP to the app, the form's
+    `action` comes out as `http://...` and the browser flags the password
+    field as not secure. Set `SERVER_PUBLIC_SCHEME=https` and add
+    `PublicSchemeMiddleware` — recipe in
+    [Security](../security.md#public-scheme-behind-a-proxy-server_public_scheme).
+    Until then, `GET /admin/login` logs a `WARNING` saying so.
+
+### Signing in from a test
+
+Since `POST /admin/login` requires the form's token, a test that posts the credentials alone gets `403`. `tempest_fastapi_sdk.testing` does what a browser does — loads the form, reads the hidden field (the cookie lands in the client's jar) and submits it:
+
+```python
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from tempest_fastapi_sdk.testing import admin_login
+
+
+async def test_dashboard_after_login(app: FastAPI) -> None:
+    """Sign in through the form, as a browser does, and open the panel."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        response = await admin_login(client, "root@example.com", "hunter2")
+        assert response.status_code == 303
+        assert (await client.get("/admin/")).status_code == 200
+```
+
+With `TestClient`, use `admin_login_sync(client, ...)`. Both accept `httpx` and `httpx2` clients (Starlette's `TestClient` subclasses the latter when `httpx2` is installed) without a `cast`, and return the response in the type of the client you passed. Both take `prefix=` when the admin is not mounted at `/admin`, and `headers=` for, say, the trusted client-IP header.
+
+!!! tip "`https://` in the `base_url`"
+    With `cookie_secure=True` (the default), the admin cookies are `Secure`, and the test's HTTP client only sends them back over `https://`. Use `base_url="https://test"`, or mount the router with `cookie_secure=False` in the test.
+
+### Login failure budget
+
+`POST /admin/login` counts wrong attempts against two budgets. The
+identifier one is on by default — every admin already mounted gets the
+protection with no configuration — and the IP one turns itself on as soon as
+you say which header carries the client IP:
+
+| Parameter | Key | Default | Cleared when |
+| --- | --- | --- | --- |
+| `login_throttle` | `login:<sha256 of the normalized identifier>` (`login_throttle_key`, the same as `/auth/login`) | 5 attempts / 900 s | the login succeeds |
+| `login_ip_throttle` | `admin-login-ip:<client ip>` | 20 failures / 900 s **with** `trusted_ip_header`; off without it | never — it expires with the window |
+
+Once either is spent, the form comes back as `429` with `Retry-After`
+**before** the password is checked — the right password gets the same answer,
+so the `429` is no oracle. An unknown identifier spends its budget the same
+way, and the `429` does not tell which addresses exist. The order is
+`make_auth_router`'s: the IP budget is read first (a blocked IP does not spend
+the identifier's), and the identifier's is **reserved** before the password,
+so a concurrent burst cannot all slip through a "not blocked yet" read.
+
+```python
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    AttemptThrottle,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin.site import site
+from src.api.dependencies import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+redis: Redis = Redis.from_url(settings.REDIS_URL)
+
+router = make_admin_router(
+    site,
+    db=db,
+    auth_backend=UserModelAuthBackend(UserModel),
+    secret_key=settings.JWT_SECRET,
+    login_throttle=AttemptThrottle(redis, max_attempts=5, window_seconds=900),
+    login_ip_throttle=AttemptThrottle(redis, max_attempts=20, window_seconds=900),
+    trusted_ip_header="x-real-ip",
+)
+```
+
+!!! warning "Without `trusted_ip_header`, the IP budget is off"
+    Without the header the IP is the connection peer — behind nginx, nginx
+    itself. An IP budget on there would be one budget for every operator, and
+    twenty bad logins from **anyone** would lock everyone out for 15 minutes.
+    So the default only turns it on with `trusted_ip_header` (the header your
+    edge **overwrites**: `x-real-ip`, `cf-connecting-ip`). A
+    `login_ip_throttle` passed explicitly always applies. The header's value
+    must be **one** IP address (`parse_client_ip`); a list, a port, a name or
+    arbitrary text falls back to the connection peer, so a client cannot mint
+    a fresh budget per request.
+
+!!! note "The per-identifier budget also locks out the account's owner"
+    Whoever knows an operator's e-mail can spend their 5 attempts and keep
+    them out for one window, even with the right password — the trade every
+    per-account lock makes, and the same as `/auth/login`. The `429` clears
+    by itself when the window expires.
+
+!!! info "The default counts per process"
+    The default budgets live in an `InMemoryThrottleBackend`: with more than
+    one worker each has its own, and the ceiling becomes `5 * workers`. For a
+    real ceiling pass an `AttemptThrottle` over Redis, as above. `False` turns
+    a budget off (`login_ip_throttle=False`), for a service that already limits
+    login in another layer.
+
+## 5. Plug in a custom auth backend
+
+`AdminAuthBackend` is an ABC that is **generic in the principal** — the value `authenticate` returns and every other method consumes. Swap the default for LDAP / OAuth / external IAM by subclassing, and name your principal in the parameter:
+
+```python
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
+
+from src.core.settings import settings
+from src.db.models import AdminModel
+
+my_oauth_client = GoogleOAuthClient(
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    redirect_uri=settings.GOOGLE_REDIRECT_URI,
+)
+
+
+class OAuthAdminBackend(AdminAuthBackend[AdminModel]):
+    """Trade the admin form's credential for an OAuth identity.
+
+    OAuth has no password to check, so the form's `password` field
+    carries the authorization code the provider redirected back with.
+    The ABC names the parameter `password`; what this backend expects
+    there is the code.
+    """
+
+    async def authenticate(
+        self,
+        session: AsyncSession,
+        *,
+        identifier: str,
+        password: str,
+    ) -> AdminModel:
+        """Exchange the code, then accept only a known admin e-mail."""
+        tokens = await my_oauth_client.exchange_code(password)
+        identity = await my_oauth_client.fetch_user(tokens)
+        if not identity.email_verified or identity.email != identifier:
+            raise AdminAuthError("not an admin")
+        result = await session.execute(
+            select(AdminModel).where(AdminModel.email == identity.email)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise AdminAuthError("not an admin")
+        return row
+
+    async def load_principal(
+        self,
+        session: AsyncSession,
+        principal_id: str,
+    ) -> AdminModel | None:
+        """Reload the admin row on every request."""
+        return await session.get(AdminModel, UUID(principal_id))
+
+    def principal_id(self, principal: AdminModel) -> str:
+        """Return the identifier serialized into the cookie."""
+        return str(principal.id)
+
+    def display_name(self, principal: AdminModel) -> str:
+        """Return what the admin header shows."""
+        return principal.email
+```
+
+Pass the instance via `auth_backend=` and the rest of the admin pipeline (sessions, dashboard, list, detail) keeps working unchanged.
+
+!!! tip "The `[AdminModel]` parameter is what makes the contract checkable"
+
+    Without it the class resolves to `AdminAuthBackend[Any]` — how it behaved
+    before v0.263.0, and still valid. What the parameter buys you is the error
+    that shows up when `authenticate` returns one type and `display_name` reads
+    another. Measured with both mypy and basedpyright: both reject a
+    `display_name(self, principal: dict[str, str])` on a class declared
+    `AdminAuthBackend[LdapEntry]` — mypy names Liskov outright
+    (`This violates the Liskov substitution principle`), basedpyright reports
+    `reportIncompatibleMethodOverride`.
+
+!!! warning "An unparameterized subclass under `mypy --strict`"
+
+    `mypy --strict` turns on `disallow_any_generics`, so `class MyBackend(AdminAuthBackend)`
+    now reports `Missing type arguments for generic type "AdminAuthBackend"`.
+    Runtime did not change — this is the type-checker only. Write your principal
+    (`AdminAuthBackend[MyRow]`), or keep the exact previous behaviour with
+    `AdminAuthBackend[Any]`. The `pyproject.toml` that `tempest new` writes sets
+    `strict = true`.
+
+### Authorize by role and require MFA
+
+When who gets into `/admin` is decided by a column of yours (`role ==
+"STAFF"`) rather than `is_admin`, do not rewrite `authenticate` /
+`load_principal` — that is where the timing-safe password check lives.
+Override only `is_authorized`, which both consult:
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseUserModel, MFAMixin, UserModelAuthBackend
+
+
+class UserModel(MFAMixin, BaseUserModel):
+    """The service's account, with its own role."""
+
+    __tablename__ = "users"
+
+    role: Mapped[str] = mapped_column(String(16), default="MEMBER")
+
+
+class StaffAdminBackend(UserModelAuthBackend):
+    """Opens /admin to staff, and only with MFA on."""
+
+    def is_authorized(self, user: BaseUserModel) -> bool:
+        """Staff get in, whether or not is_admin is set."""
+        return isinstance(user, UserModel) and user.role == "STAFF"
+
+
+auth_backend: StaffAdminBackend = StaffAdminBackend(UserModel, require_mfa=True)
+```
+
+Pass `auth_backend` to `make_admin_router(...)` as usual. What changes:
+
+- **The password still comes first.** A wrong password answers `"Invalid
+  credentials"` for any account; only someone with the right password reads
+  `"This account is not authorized for /admin"` (wrong role) or `"MFA
+  enrollment required for /admin"` (no MFA).
+- **`require_mfa=True`** refuses at login an authorized, active account that
+  has not enrolled MFA (`mfa_enabled` false) — instead of letting it in on the
+  password alone.
+- **It holds for the session too.** `load_principal` checks the same two rules
+  on every request: a revoked role, or MFA turned off after login, sends the
+  user to `/admin/login` on the next request.
+- `is_authorized` is synchronous on purpose: it receives the already-loaded
+  row and must not hit the database.
+
+!!! warning "The admin has no MFA enrollment screen"
+    With `require_mfa=True`, someone who has not turned on the second factor
+    sees `MFA enrollment required for /admin` on the login page itself
+    (status `401`) and does not get in. Enrollment happens **outside** the
+    admin: through the `POST /auth/mfa/enroll` + `POST /auth/mfa/confirm`
+    routes of `make_auth_router` (see [MFA](../mfa.md)), or when the account is
+    created from the CLI, with `tempest user create --require-mfa`. Once
+    enrolled, the next admin login asks for the TOTP code at `/admin/mfa`.

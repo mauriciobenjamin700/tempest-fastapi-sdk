@@ -27,8 +27,8 @@ Plus three opt-ins that show up when the domain asks for them: the
 **mixins** (`SoftDeleteMixin`, `AuditMixin`, `MFAMixin`), **cursor
 pagination**, and the **`SlowQueryLogger`**.
 
-!!! tip "How to read this page"
-    It's progressive. Start with the model, connect the database, stand up
+!!! tip "How to read the subpages"
+    They are progressive. Start with the model, connect the database, stand up
     a repository, learn the filters, then pagination, migrations and
     observability. Every code block is a complete file — copy, paste, run.
     If you only want the API reference, jump to
@@ -77,7 +77,7 @@ Use this table to open only the subpage for the task at hand; they are listed in
 
 ## Next steps
 
-This page covered the core. The advanced database features have dedicated
+The subpages above cover the core. The advanced database features have dedicated
 recipes:
 
 - [Multi-tenant »](multi-tenant.md) — `TenantScopedRepository` for

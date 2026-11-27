@@ -368,3 +368,169 @@ def test_marker_never_reaches_the_bundles(built_site: Path) -> None:
     for name in ("llms.txt", "llms-core.txt", "llms-full.txt"):
         text = (built_site / name).read_text(encoding="utf-8")
         assert "<!-- reference-top-index -->" not in text, name
+
+
+def english_nav() -> list[object]:
+    """Return the ``nav`` the ``i18n`` plugin declares for the ``en`` locale.
+
+    Only that block is parsed, for the reason :func:`nav_pages` gives: the
+    whole config carries tags PyYAML's SafeLoader rejects. The block is the
+    indented ``nav:`` that follows ``- locale: en``.
+
+    Returns:
+        list[object]: The English nav.
+    """
+    raw = (ROOT / "mkdocs.yml").read_text(encoding="utf-8").splitlines()
+    locale = next(i for i, line in enumerate(raw) if line.strip() == "- locale: en")
+    start = next(i for i in range(locale, len(raw)) if raw[i].strip() == "nav:")
+    indent = len(raw[start]) - len(raw[start].lstrip())
+    block: list[str] = []
+    for line in raw[start + 1 :]:
+        if line.strip() and len(line) - len(line.lstrip()) <= indent:
+            break
+        block.append(line[indent:])
+    nav: list[object] = yaml.safe_load("\n".join(block))
+    assert nav, "the en locale declares an empty nav"
+    return nav
+
+
+def nav_top_sections(nav: list[object]) -> list[tuple[str, list[str]]]:
+    """Group the nav pages by the top-level entry that holds them.
+
+    Args:
+        nav (list[object]): A MkDocs nav.
+
+    Returns:
+        list[tuple[str, list[str]]]: ``(label, pages)`` per titled top-level
+        entry, in nav order.
+    """
+    sections: list[tuple[str, list[str]]] = []
+    for item in nav:
+        if isinstance(item, dict):
+            for title, value in item.items():
+                pages: list[str] = []
+                _nav_page_paths(value, pages)
+                if pages:
+                    sections.append((str(title), pages))
+    return sections
+
+
+def llms_sections(llms: str, root_url: str) -> list[tuple[str, list[str]]]:
+    """Read the ``## section`` blocks of ``llms.txt`` back as source paths.
+
+    Args:
+        llms (str): Content of ``llms.txt``.
+        root_url (str): ``site_url`` without the trailing slash.
+
+    Returns:
+        list[tuple[str, list[str]]]: ``(section, pages)`` in file order, each
+        link turned back into its default-locale source path.
+    """
+    sections: list[tuple[str, list[str]]] = []
+    for line in llms.splitlines():
+        if line.startswith("## "):
+            sections.append((line[3:].strip(), []))
+            continue
+        match = _LINK_RE.match(line)
+        if match and sections:
+            rel = match.group(1).removeprefix(f"{root_url}/").removeprefix("en/")
+            sections[-1][1].append(rel)
+    return sections
+
+
+def section_mismatches(llms: str, nav: list[object], root_url: str) -> list[str]:
+    """Compare the sections of ``llms.txt`` with the top level of the nav.
+
+    Args:
+        llms (str): Content of ``llms.txt``.
+        nav (list[object]): The English nav.
+        root_url (str): ``site_url`` without the trailing slash.
+
+    Returns:
+        list[str]: One message per difference: section labels or order that
+        do not match the nav, and each page listed under a section other
+        than the top-level nav entry that holds it.
+    """
+    expected = nav_top_sections(nav)
+    found = llms_sections(llms, root_url)
+    problems: list[str] = []
+    expected_titles = [title for title, _ in expected]
+    found_titles = [title for title, _ in found]
+    if expected_titles != found_titles:
+        problems.append(f"sections {found_titles} != nav {expected_titles}")
+    home = {page: title for title, pages in expected for page in pages}
+    for title, pages in found:
+        problems.extend(
+            f"{page} under '{title}', nav puts it under '{home.get(page)}'"
+            for page in pages
+            if home.get(page) != title
+        )
+    return problems
+
+
+@pytest.mark.docs
+def test_every_page_sits_in_its_nav_section(built_site: Path) -> None:
+    """Each ``llms.txt`` section is a top-level entry of the English nav.
+
+    Until this check the hook pooled every single-page top-level entry into
+    one ``Overview`` block at the head of the file, so ``Tutorial``,
+    ``Roadmap``, ``Contributing`` and ``Changelog`` were listed before
+    ``Installation``, out of the order the nav teaches.
+
+    Args:
+        built_site (Path): The built site directory.
+    """
+    llms = (built_site / "llms.txt").read_text(encoding="utf-8")
+    problems = section_mismatches(llms, english_nav(), site_url())
+    assert not problems, problems[:10]
+
+
+def _bullet(src: str) -> str:
+    """Format one ``llms.txt`` bullet for ``src``, as the hook writes it.
+
+    Args:
+        src (str): Source path.
+
+    Returns:
+        str: The bullet line.
+    """
+    return f"- [T]({site_url()}/en/{src}): Use to X.\n"
+
+
+def test_section_check_fires_on_misplaced_pages() -> None:
+    """The check rejects the pooled ``Overview`` and a page in a wrong section."""
+    root = site_url()
+    nav: list[object] = [
+        {"Home": "index.md"},
+        {"Installation": ["installation.md"]},
+        {"Architecture": ["architecture.md"]},
+        {"Tutorial": "tutorial.md"},
+        {"Recipes": ["recipes/index.md", {"GenAI": ["recipes/genai.md"]}]},
+    ]
+    pooled = (
+        f"## Overview\n\n{_bullet('index.md')}{_bullet('tutorial.md')}"
+        f"## Installation\n\n{_bullet('installation.md')}"
+        f"## Architecture\n\n{_bullet('architecture.md')}"
+        f"## Recipes\n\n{_bullet('recipes/index.md')}{_bullet('recipes/genai.md')}"
+    )
+    assert any(
+        "Overview" in problem for problem in section_mismatches(pooled, nav, root)
+    )
+    misplaced = (
+        f"## Home\n\n{_bullet('index.md')}"
+        f"## Installation\n\n{_bullet('installation.md')}"
+        f"## Architecture\n\n{_bullet('architecture.md')}{_bullet('recipes/genai.md')}"
+        f"## Tutorial\n\n{_bullet('tutorial.md')}"
+        f"## Recipes\n\n{_bullet('recipes/index.md')}"
+    )
+    assert section_mismatches(misplaced, nav, root) == [
+        "recipes/genai.md under 'Architecture', nav puts it under 'Recipes'"
+    ]
+    right = (
+        f"## Home\n\n{_bullet('index.md')}"
+        f"## Installation\n\n{_bullet('installation.md')}"
+        f"## Architecture\n\n{_bullet('architecture.md')}"
+        f"## Tutorial\n\n{_bullet('tutorial.md')}"
+        f"## Recipes\n\n{_bullet('recipes/index.md')}{_bullet('recipes/genai.md')}"
+    )
+    assert section_mismatches(right, nav, root) == []

@@ -4,7 +4,7 @@ description: "Índice de fila e tarefas em background sobre FastStream e TaskIQ;
 
 # Fila e Tarefas
 
-Trabalho em background sem dor. O SDK envelopa o **FastStream** (mensageria) e o **TaskIQ** (tarefas + agendamento) em classes tipadas com um vocabulário único — o caminho comum (publicar, consumir, enfileirar, agendar) não importa `faststream` nem `taskiq` no código da aplicação. A exceção é opção específica do transporte, como o `RabbitExchange` repassado em `exchange=` mais abaixo.
+Trabalho em background sem dor. O SDK envelopa o **FastStream** (mensageria) e o **TaskIQ** (tarefas + agendamento) em classes tipadas com um vocabulário único — o caminho comum (publicar, consumir, enfileirar, agendar) não importa `faststream` nem `taskiq` no código da aplicação. A exceção é opção específica do transporte, como o `RabbitExchange` repassado em `exchange=` nos [consumidores baseados em classe](queue-tasks/broker.md#consumidores-baseados-em-classe).
 
 !!! tip "Qual ferramenta usar?"
     - **`MessageBroker`** (mensageria) — evento acontece, **vários** serviços/consumidores reagem. Fan-out, at-least-once, desacoplado do request. Ex.: "pedido pago" → estoque, e-mail, analytics.

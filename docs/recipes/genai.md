@@ -5,29 +5,30 @@ description: "Índice da IA generativa self-hosted no seu hardware: aponta a sub
 # IA generativa self-hosted
 
 Rodar modelos do HuggingFace no **seu próprio hardware** — sem API
-externa, sem enviar dados pra fora. Esta página cobre o módulo
-`tempest_fastapi_sdk.genai` inteiro, começando por onde toda adoção começa:
-saber, *antes* de baixar gigabytes de pesos, se a máquina aguenta o modelo.
+externa, sem enviar dados pra fora. Esta página é o índice do módulo
+`tempest_fastapi_sdk.genai`: cada tarefa mora numa subpágina, e a primeira
+é onde toda adoção começa — saber, *antes* de baixar gigabytes de pesos, se
+a máquina aguenta o modelo.
 
 !!! info "Como o módulo foi construído"
     O módulo saiu em fatias, e a ordem abaixo é o caminho de leitura
-    recomendado — cada seção assume as anteriores. Depois da v0.108 vieram
+    recomendado — cada subpágina assume as anteriores. Depois da v0.108 vieram
     saída estruturada (v0.142), diarização (v0.223), correção de STT (v0.235)
     e o runtime Coqui do extra `[genai-audio]` (v0.252), todos documentados
-    nas seções correspondentes desta mesma página.
+    nas subpáginas correspondentes.
     - **v0.96:** `genai.hardware` — sondagem + `can_run` / `recommend`.
     - **v0.97:** `genai.rag` — contexto RAG (busca web SearXNG + leitura de
-      PDF) pra injetar nas LLMs (esta página, seção [Contexto RAG](genai/rag.md)).
+      PDF) pra injetar nas LLMs (subpágina [Contexto RAG](genai/rag.md)).
     - **v0.98:** `TextGenerator` — LLM local + quantização int4/int8
-      (seção [Gerar texto](genai/text.md#gerar-texto-com-llm-local)).
+      (subpágina [Gerar texto](genai/text.md#gerar-texto-com-llm-local)).
     - **v0.99:** `Embedder`, `BatchScheduler`, `ModelRegistry` — embeddings
-      + escala (seção [Embeddings e escala](genai/embeddings.md)).
-    - **v0.102:** `SpeechToText` / `TextToSpeech` — áudio (seção
+      + escala (subpágina [Embeddings e escala](genai/embeddings.md)).
+    - **v0.102:** `SpeechToText` / `TextToSpeech` — áudio (subpágina
       [Áudio (voz)](genai/audio.md)).
     - **v0.107:** backend Ollama — `OllamaGenerator` / `OllamaEmbedder`,
-      LLM local sem torch (seção [Backend Ollama](genai/ollama.md)).
+      LLM local sem torch (subpágina [Backend Ollama](genai/ollama.md)).
     - **v0.108:** memória de longo prazo, pipeline de chat com IA e
-      visão/tools — `ChatMemory` / `AIChatPipeline` (seções
+      visão/tools — `ChatMemory` / `AIChatPipeline` (subpáginas
       [Memória de longo prazo](genai/memory.md) e
       [Pipeline de chat com IA](genai/chat.md)).
 
